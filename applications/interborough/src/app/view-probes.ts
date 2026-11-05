@@ -2,6 +2,7 @@ import type { HttpClient } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
+import { AUDIT_EVENT_TYPES } from '../lib/audit-event-types.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { getGoal, listGoals } from '../lib/bureau-goals.ts';
@@ -64,9 +65,9 @@ function notFound(what: string): ViewProbeFault {
   return new ViewProbeFault(`No ${what} was found.`, 404);
 }
 
-/** The audit trail: empty when the caller may see no record, which the Bureau answers for any caller. */
+/** The audit log: empty when the caller may see no event, which the Bureau answers for any caller. */
 async function probeAudit(): Promise<ViewProbeResult> {
-  const page = await queryAudit({}, undefined, { limit: 1 });
+  const page = await queryAudit({ types: AUDIT_EVENT_TYPES }, undefined, { limit: 1 });
   return { empty: page.records.length === 0 };
 }
 

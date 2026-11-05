@@ -2461,62 +2461,122 @@ export const GOALS_COPY = {
   },
 } as const;
 
-/** The words the audit trail (`/health/audit`) uses outside its view states. */
+/** The words the audit log (`/health/audit`) uses: its filters, its table, and the pane of one event. */
 export const AUDIT_COPY = {
-  /** The line under the page's title. */
-  description: 'Who changed what, and when.',
-  /** The accessible name of the search form. */
-  searchLabel: 'Search the audit trail',
-  sinceLabel: 'Since',
-  /** Shown in the time field while it is empty, so the field names what it narrows without a label above it. */
-  sincePlaceholder: 'Any time',
-  typeLabel: 'Type',
-  /** The select's first option: no narrowing by type. */
-  anyType: 'Any type',
-  /** The select's last option, which brings a field for a type the trail has not shown yet. */
-  otherType: 'Other…',
-  otherTypeLabel: 'Other type',
-  otherTypePlaceholder: 'Type, such as run.completed',
-  resourceLabel: 'Resource',
-  /** The first option of the resource picker: no narrowing by what a record is about. */
-  anyResource: 'Any resource',
-  resourceIdLabel: 'Resource ID',
-  resourceIdPlaceholder: 'ID',
-  searchAction: 'Search',
-  clearAction: 'Clear',
-  loadMore: 'Load more',
-  /** The name of the list of records, which also says how it is ordered. */
-  caption: 'Audit records, oldest first',
-  /** The name of the open record's pane. */
-  detailLabel: 'Record',
-  whoLabel: 'Who',
-  /** The Who select's first option: no narrowing by actor. */
+  /** The accessible name of the filter row. */
+  searchLabel: 'Filter the audit log',
+  actorLabel: 'Who',
+  /** The Who select's first option: no narrowing by who did it. */
   anyone: 'Anyone',
-  noActor: 'None',
-  /** The small heading above a record's raw JSON. */
-  rawRecord: 'Raw record',
-  emptyDetailTitle: 'Choose a record',
-  emptyDetailDescription: 'Pick one from the list to see what changed, who did it, and when.',
-  /** How many records are loaded, as a sentence. */
-  count: (count: number, more: boolean): string =>
-    `${String(count)} ${count === 1 ? 'record' : 'records'}${more ? ' so far' : ''}`,
-  /** The facts of one record. */
-  fact: {
-    what: 'What',
-    when: 'When',
-    who: 'Who',
-    about: 'About',
-    details: 'Details',
-    before: 'Before',
-    after: 'After',
-    beforeAfter: 'Before and after',
+  actors: { you: 'You', agents: 'Agents', interborough: 'Interborough' },
+  periodLabel: 'Period',
+  periods: {
+    today: 'Today',
+    '7d': 'Last 7 days',
+    '30d': 'Last 30 days',
+    '90d': 'Last 90 days',
+    all: 'All time',
   },
-  /** The link to the thing a record is about. */
-  openResource: (resource: string): string => `Open ${resource}`,
-  exportAction: 'Export JSON Lines',
+  actionLabel: 'Action',
+  /** The action select's first option: no narrowing by what was done. */
+  anyAction: 'Any action',
+  actions: {
+    approved: 'Approved',
+    deleted: 'Deleted',
+    edited: 'Edited',
+    removed: 'Removed',
+    started: 'Started',
+  },
+  textLabel: 'Search the audit log',
+  textPlaceholder: 'Search by actor, action or target',
+  /** The count at the right of the search box. */
+  count: (count: number, more: boolean): string =>
+    `${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'}${more ? ' so far' : ''}`,
+  /** The footer of the table. */
+  footer: (loaded: number, total: number | undefined, more: boolean): string =>
+    total === undefined || !more
+      ? `${loaded.toLocaleString('en-US')} ${loaded === 1 ? 'event' : 'events'}, newest first.`
+      : `Showing ${loaded.toLocaleString('en-US')} of ${Math.max(total, loaded).toLocaleString('en-US')} events, newest first. Scroll to load more.`,
+  /** The name of the table, which also says how it is ordered. */
+  caption: 'Audit events, newest first',
+  /** The name of the open event's pane. */
+  detailLabel: 'Event',
+  columns: { when: 'When', who: 'Who', what: 'What', target: 'Target' },
+  /** A day group's header: the day, then the zone the times are read in. */
+  dayHeading: {
+    today: (date: string): string => `Today, ${date}`,
+    yesterday: (date: string): string => `Yesterday, ${date}`,
+  },
+  /** The pane while no event is open. */
+  emptyDetailTitle: 'Select an event to see what changed',
+  emptyDetailDescription: 'Each event shows who did it, when, and the before and after.',
+  /** The line under an event's title. `when` reads "Today at 10:45:12 AM". */
+  whenLine: (when: string, context: string | null): string =>
+    context === null ? when : `${when} · ${context}`,
+  fromThisBrowser: 'from this browser',
+  inTheChat: (title: string): string => `in the chat “${title}”`,
+  fact: {
+    provider: 'Provider',
+    effect: 'Effect',
+    agent: 'Agent',
+    chat: 'Chat',
+    version: 'Version',
+    changed: 'Changed',
+    tool: 'Tool',
+    risk: 'Risk',
+    amount: 'Amount',
+    status: 'Status',
+    schedule: 'Schedule',
+    workflow: 'Workflow',
+    run: 'Run',
+    about: 'About',
+    detail: 'Details',
+  },
+  /** What removing a provider's key does, which is the same whichever provider it was. */
+  providerRemovedEffect: 'Agents that use a model can’t run until a provider is connected',
+  riskDangerous: 'Dangerous · Can’t be undone',
+  riskChanges: 'Changes things',
+  riskReadOnly: 'Only reads',
+  changedWords: {
+    instructions: 'Instructions',
+    tools: 'Tools',
+    toolApproval: 'Tool approvals',
+    model: 'Model',
+    description: 'Description',
+    skills: 'Skills',
+  },
+  toolsAdded: (names: string): string => `added ${names}`,
+  toolsRemoved: (names: string): string => `removed ${names}`,
+  /** The footer of the diff of an agent's instructions, in Cinder's own words. */
+  instructionsLabel: 'What changed in the instructions',
+  links: {
+    providers: 'Open Providers',
+    review: 'Open review',
+    agent: 'Open agent',
+    run: 'Open run',
+    chat: 'Open chat',
+    schedule: 'Open schedule',
+    workflow: 'Open workflow',
+    storage: 'Open storage',
+  },
+  copyAsJson: 'Copy as JSON',
+  copiedAsJson: 'Copied as JSON',
+  copyKey: 'Copy key',
+  copiedKey: 'Copied the key',
+  copyFailed: 'Couldn’t copy. Select the text and copy it yourself.',
+  /** The heading of a target too long for a table cell, with how many characters it has. */
+  targetHeading: (length: number): string =>
+    `Target · ${length.toLocaleString('en-US')} characters`,
+  /** The footer of every event's pane: how long records are kept, and what Export saves. */
+  retention: {
+    before: 'Audit records are kept 90 days (',
+    link: 'Settings › Data and retention',
+    after: '). Export downloads the filtered list as JSON Lines.',
+  },
+  exportAction: 'Export',
   exporting: 'Exporting…',
   exported: (count: number): string =>
-    `Exported ${String(count)} ${count === 1 ? 'record' : 'records'}`,
+    `Exported ${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'}`,
   nothingToExport: 'There is nothing to export for these filters.',
   exportFailed: {
     title: 'The export failed',
@@ -2525,27 +2585,78 @@ export const AUDIT_COPY = {
   },
   loadingLabel: 'Loading the audit log',
   noMatches: {
-    title: 'No records match',
-    description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
+    title: 'No events match these filters',
+    description: 'Nothing in the log matches this search. Try a longer period or clear a filter.',
     clear: 'Clear filters',
   },
-  /** An address that names a record the page could not show: the bounded read of the trail did not reach it. */
-  recordNotFound: {
-    more: 'That record was not found in the recent trail. Load more to keep looking.',
-    end: 'That record is not in the trail.',
-  },
-  /** A list with more pages to read, where none of the records read so far matches the search. */
+  /** A list with more pages to read, where none of the events read so far matches the search. */
   noLoadedMatches: {
-    title: 'No loaded record matches',
+    title: 'No loaded event matches',
     description:
-      'None of the records read so far matches this search, and the trail has more. Load more to keep looking, or change or clear a filter.',
+      'None of the events read so far matches this search, and the log has more. Change or clear a filter.',
     clear: 'Clear filters',
   },
+  /** An address that names an event the page could not show. */
+  recordNotFound: {
+    more: 'That event was not found in the recent log. Load more to keep looking.',
+    end: 'That event is not in the log.',
+  },
+  loadMore: 'Load more',
   failed: {
     title: 'The search failed',
     description:
       'The server did not answer this search. Check that the host is running, then try again.',
   },
+} as const;
+
+/** The sentences that say what an audit event was, in the order the table reads them: who, what, target. */
+export const AUDIT_EVENT_COPY = {
+  /** The actor of what the host itself did or noticed. */
+  host: 'Interborough',
+  you: 'You',
+  serverStarted: 'Server started',
+  serverStartedTarget: 'Interborough',
+  removedProviderKey: (provider: string): string => `Removed the ${provider} key`,
+  providerTarget: (provider: string): string => `${provider} provider`,
+  startedRun: 'Started a run',
+  stoppedRun: 'Stopped a run',
+  runFailed: 'A run failed',
+  chatTarget: (title: string): string => `Chat › ${title}`,
+  scheduleRan: 'Started a scheduled run',
+  createdSchedule: 'Created a schedule',
+  pausedSchedule: 'Paused a schedule',
+  resumedSchedule: 'Resumed a schedule',
+  canceledSchedule: 'Canceled a schedule',
+  missedRuns: (count: number): string =>
+    `Noticed ${count.toLocaleString('en-US')} missed ${count === 1 ? 'run' : 'runs'}`,
+  /** A tool asked before running: `request` is the tool's own sentence, lower-cased, such as "refund order 4471". */
+  askedTo: (request: string): string => `Asked to ${request}`,
+  askedToUse: (tool: string): string => `Asked to use ${tool}`,
+  approvedToolCall: 'Approved a tool call',
+  deniedToolCall: 'Denied a tool call',
+  ranTool: (tool: string): string => `Ran ${tool}`,
+  correctedMemory: 'Corrected a memory',
+  forgotMemory: 'Forgot a memory',
+  editedAgent: 'Edited an agent',
+  createdWorkflow: 'Created a workflow',
+  editedWorkflow: 'Edited a workflow',
+  createdHook: 'Created a hook',
+  editedHook: 'Edited a hook',
+  deletedChat: 'Deleted a chat',
+  chatTargetDeleted: 'Chat',
+  deletedStorageKey: 'Deleted a storage key',
+  storageTarget: (key: string): string => `Storage › ${key}`,
+  connectedToolSource: 'Connected a tool source',
+  removedToolSource: 'Removed a tool source',
+  trustedSkillSource: 'Changed what a skill source may do',
+  changedSettings: 'Changed a setting',
+  webhookGaveUp: 'Gave up delivering a hook',
+  /** An event the page has no sentence for: the record's own type, in words. */
+  other: (type: string): string => type,
+  anAgent: 'An agent',
+  aSchedule: 'A schedule',
+  versionRange: (from: number | undefined, to: number | undefined): string =>
+    from === undefined ? `version ${to ?? ''}` : `version ${from} → ${to ?? ''}`,
 } as const;
 
 /**

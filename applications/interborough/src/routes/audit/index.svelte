@@ -1,45 +1,44 @@
 <script lang="ts">
   /**
-   * `/health/audit`: the audit log, searched by time, type, resource and who. The trail comes back
-   * oldest first, as the Bureau returns it, as metadata only, and Load more follows the cursor the
-   * Bureau hands back. The address owns the filters (`audit-filter.ts`), so a search can be linked
-   * to, and a filter that is set stays set while the next page loads.
+   * `/health/audit`: the audit log, who did what and when, newest first. One row of filters (who,
+   * period, action, a search box and the count of events) with Export at its right end, and below
+   * it a table of events (When, Who, What, Target) under a heading for each day, with the open event
+   * beside it. The newest event is open when the page loads, and a row opens any other.
    *
-   * The records are a list with the open one beside it: who, what and when on each line, and the
-   * record, with a link to the thing it is about, in the pane. The Bureau takes no actor, so Who
-   * narrows the records already loaded, and the Export button reads the whole trail the filters
-   * match and saves it as JSON Lines.
-   *
-   * Nothing here asks for a syntax. Since is a date-time picker. Type is a select of the types the
-   * trail has shown (the first page of the whole trail, and every page loaded since), with the one
-   * the address names, and Other for a type it has not shown yet. The resource is a kind (Chat,
-   * Agent, Schedule, Workflow, or a run id) and an id, and the `kind:<id>` string is built from them
-   * (`splitResource` and `joinResource`), so no one types `schedule:`.
+   * The records the Bureau keeps are metadata only, and most of them are a run's own steps, so the
+   * log lists the ones that are events (`lib/audit-event-types.ts`) and words each one
+   * (`audit-events.ts`, with what the page looks up for it, `audit-lookups.svelte.ts`). The period
+   * and the action reach the Bureau, which pages through and counts only those; Who and the search
+   * narrow the events already read, so while either is set the page keeps reading pages until the
+   * log is read or a bound is reached. The address owns the filters (`audit-filter.ts`) and the open
+   * event (`?record=`), so a search can be linked to. Export saves what the filters match, as JSON
+   * Lines.
    *
    * The Bureau shows each caller the records about what it owns, so the page holds no scope of its
-   * own: owner scoping is the gate. Whether the trail is empty, failing, or refused is the view
-   * frame's to say (`app/view-probes.ts`), and this page speaks only for a search that fails after
-   * the view opened, and for one that matches nothing.
+   * own: owner scoping is the gate. Whether the log is empty, failing, or refused is the view
+   * frame's to say (`app/view-probes.ts`), and this page speaks only for a read that fails after
+   * the view opened, and for filters that match nothing.
    */
   import {
     Alert,
     Button,
-    DatePicker,
+    DataTable,
     EmptyState,
-    Input,
     ListDetail,
-    SelectableRow,
+    SearchField,
     Select,
     Skeleton,
   } from '@lostgradient/cinder';
-  import { Download } from '@lucide/svelte';
+  import type { DataTableColumn } from '@lostgradient/cinder';
+  import { Download, FileText } from '@lucide/svelte';
   import { createInfiniteQuery, createMutation, createQuery } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { AUDIT_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
-  import { queryAudit, type AuditRecord } from '../../lib/bureau-audit.ts';
-  import { keyedByOccurrence } from '../../lib/list-keys.ts';
+  import { AUDIT_ACTION_KINDS } from '../../lib/audit-event-types.ts';
+  import { queryAudit } from '../../lib/bureau-audit.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
@@ -53,44 +52,83 @@
     toJsonLines,
   } from './audit-export.ts';
   import {
-    byWho,
+    clockOf,
+    dayGroupOf,
+    describeRecords,
+    narrowEvents,
+    NO_LOOKUPS,
+    recordKey,
+    type AuditEvent,
+  } from './audit-events.ts';
+  import {
+    AUDIT_ACTORS,
+    AUDIT_PERIODS,
     draftFromSearch,
-    EMPTY_AUDIT_DRAFT,
     filterOf,
-    joinResource,
+    isNarrowed,
     pathOf,
-    RESOURCE_KINDS,
-    splitResource,
-    type ResourceKind,
+    type AuditDraft,
   } from './audit-filter.ts';
+  import { useAuditLookups } from './audit-lookups.svelte.ts';
 
   const copy = AUDIT_COPY;
 
-  /** The Type select's value for "a type that is not in the list", which brings a field to type it in. */
-  const OTHER_TYPE = '__other__';
+  /** How long a read runs before the skeleton is drawn, so a quick read never flashes one. */
+  const LOADING_DELAY_MILLISECONDS = 300;
 
-  /** How many pages an address that names a record reads, looking for it. */
+  /** How long a read runs before the skeleton says it is taking longer than usual. */
+  const STILL_LOADING_MILLISECONDS = 10_000;
+
+  /** How many pages an address that names an event reads, looking for it. */
   const RECORD_SEARCH_PAGES = 20;
 
-  // The filters the address holds are the ones the trail is asked with.
-  const applied = $derived(draftFromSearch(router.current.search));
-  const filter = $derived(filterOf(applied));
-  const filtered = $derived(Object.keys(filter).length > 0 || applied.who.trim() !== '');
+  /** How many pages a Who choice or a search reads on its own, looking for what it narrows to. */
+  const NARROWING_PAGES = 20;
 
-  // The form starts from the address, and is the person's until they search.
-  // The date picker clears its value to `undefined`.
-  let since = $state<string | undefined>(untrack(() => applied.since || undefined));
-  let typeChoice = $state(untrack(() => applied.type.trim()));
-  let otherType = $state('');
-  let resourceKind = $state<ResourceKind | ''>(untrack(() => splitResource(applied.resource).kind));
-  let resourceId = $state(untrack(() => splitResource(applied.resource).id));
-  let who = $state(untrack(() => applied.who.trim()));
+  /** The width of the log below which the table and an event's pane show one at a time. */
+  const PUSH_BELOW = 600;
+
+  /** How wide the table's pane starts, in pixels, before the divider is moved. */
+  const LIST_PANE_WIDTH = 640;
+
+  /** The widest the divider gives the table's pane, in pixels: its four columns need more than a list of rows. */
+  const LIST_PANE_MAXIMUM_WIDTH = 1000;
+
+  /** The widest the Target column grows before it ends a value with an ellipsis, so the row stays one line tall. */
+  const TARGET_COLUMN_WIDTH = 220;
+
+  // The filters the address holds are the ones the log is read with.
+  const applied = $derived(draftFromSearch(router.current.search));
+  // The reference time, read once: "Today" and the start of the period are as of when the page opened.
+  const now = Date.now();
+  const filter = $derived(filterOf(applied, now));
+  const narrowing = $derived(applied.actor !== '' || applied.text.trim() !== '');
+
+  let selectedKey = $state<string | null>(null);
+  // The box the table and the pane share, measured when the newest event is opened.
+  let frame = $state<HTMLElement>();
+
+  // The search box is the person's until the address catches up with it.
+  let text = $state(untrack(() => applied.text));
+
+  function go(next: Partial<AuditDraft>): void {
+    // Different filters list different events, so none is open until one is chosen.
+    selectedKey = null;
+    router.navigate(pathOf({ ...applied, ...next }), { replace: true });
+  }
+
+  $effect(() => {
+    if (text !== untrack(() => applied.text)) go({ text });
+  });
 
   const trail = createInfiniteQuery(
     () => ({
       queryKey: queryKeys.audit.list(filter),
       queryFn: ({ pageParam, signal }) =>
-        queryAudit(filter, pageParam === '' ? undefined : pageParam, { signal }),
+        queryAudit(filter, pageParam === '' ? undefined : pageParam, {
+          order: 'newest',
+          signal,
+        }),
       initialPageParam: '',
       getNextPageParam: (last) => last.nextCursor ?? undefined,
       retry: false,
@@ -98,124 +136,143 @@
     undefined,
   );
 
-  // The types and the people the trail has shown: its first page, whatever was searched, and any
-  // page loaded since. A search that narrows the trail still offers everything the first page had.
-  const wholeTrail = createQuery(
+  // How many events the period and the action match: read once, beside the first page.
+  const totalQuery = createQuery(
     () => ({
-      queryKey: queryKeys.audit.types(),
-      queryFn: ({ signal }) => queryAudit({}, undefined, { limit: 100, signal }),
+      queryKey: queryKeys.audit.total(filter),
+      queryFn: async ({ signal }) => {
+        const counted = await queryAudit(filter, undefined, {
+          limit: 1,
+          includeTotal: true,
+          signal,
+        });
+        return counted.total ?? null;
+      },
       retry: false,
-      staleTime: 60_000,
+      staleTime: 30_000,
     }),
     undefined,
   );
 
-  const loaded = $derived((trail.data?.pages ?? []).flatMap((page) => page.records));
-  const records = $derived(byWho(loaded, applied.who));
-  const rows = $derived(
-    keyedByOccurrence(records, keyOf).map(({ key, item }) => ({ key, record: item })),
+  const loaded = $derived(
+    combinePages(
+      trail.data?.pages ?? [],
+      (page) => page.records,
+      (record) => recordKey(record),
+    ),
   );
-  type Row = (typeof rows)[number];
-
-  // An address that names a record (`?record=`) opens it, even when it is on a later page: the list
-  // resolves its selection against the rows it holds, so read pages until the record is among them
-  // or the trail has no more.
-  // The read stops after `RECORD_SEARCH_PAGES` pages, so a link to a record that is gone, or far
-  // back, cannot read the whole trail; the page then says so and Load more continues by hand.
-  const wantedRecord = $derived(router.current.search.get('record'));
+  const lookups = useAuditLookups(() => loaded);
+  const allEvents = $derived(describeRecords(loaded, lookups.current));
+  const events = $derived(narrowEvents(allEvents, applied.actor, applied.text));
   const searchedPages = $derived(trail.data?.pages.length ?? 0);
+
+  // While Who or the search is set, read on until the log is read or a bound is reached, so what
+  // they narrow to is not only what the first page held.
+  $effect(() => {
+    if (!narrowing || !trail.hasNextPage || trail.isFetchingNextPage) return;
+    if (searchedPages >= NARROWING_PAGES) return;
+    void trail.fetchNextPage();
+  });
+
+  // An address that names an event (`?record=`) opens it, even when it is on a later page.
+  const wantedRecord = $derived(router.current.search.get('record'));
   const recordMissing = $derived(
     wantedRecord !== null &&
       !trail.isPending &&
       !trail.isError &&
       !trail.isFetchingNextPage &&
-      !rows.some((row) => row.key === wantedRecord),
+      !events.some((event) => event.key === wantedRecord),
   );
   $effect(() => {
-    if (!recordMissing || !trail.hasNextPage) return;
-    if (searchedPages >= RECORD_SEARCH_PAGES) return;
+    if (!recordMissing || !trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES) return;
     void trail.fetchNextPage();
   });
 
-  const seen = $derived([...(wholeTrail.data?.records ?? []), ...loaded]);
-
-  const typeOptions = $derived.by(() => {
-    const types = new Set<string>(seen.map((record) => record.type));
-    if (applied.type.trim() !== '') types.add(applied.type.trim());
-    return [
-      { value: '', label: copy.anyType },
-      ...[...types].toSorted().map((type) => ({ value: type, label: type })),
-      { value: OTHER_TYPE, label: copy.otherType },
-    ];
-  });
-
-  const whoOptions = $derived.by(() => {
-    const people = new Set<string>();
-    for (const record of seen) if (record.principal !== null) people.add(record.principal);
-    if (applied.who.trim() !== '') people.add(applied.who.trim());
-    return [
-      { value: '', label: copy.anyone },
-      ...[...people].toSorted().map((person) => ({ value: person, label: person })),
-    ];
-  });
-
-  const kindOptions = [
-    { value: '', label: copy.anyResource },
-    ...RESOURCE_KINDS.map(({ kind, label }) => ({ value: kind, label })),
+  const actorOptions = [
+    { value: '', label: copy.anyone },
+    ...AUDIT_ACTORS.map((actor) => ({ value: actor, label: copy.actors[actor] })),
+  ];
+  const periodOptions = AUDIT_PERIODS.map((period) => ({
+    value: period,
+    label: copy.periods[period],
+  }));
+  const actionOptions = [
+    { value: '', label: copy.anyAction },
+    ...AUDIT_ACTION_KINDS.map((kind) => ({ value: kind, label: copy.actions[kind] })),
   ];
 
-  /** The kind a select value names, or none for the first option. */
-  function kindOf(value: string): ResourceKind | '' {
-    return RESOURCE_KINDS.find((entry) => entry.kind === value)?.kind ?? '';
-  }
-
-  function search(event: SubmitEvent): void {
-    event.preventDefault();
-    router.navigate(
-      pathOf({
-        since: since ?? '',
-        type: typeChoice === OTHER_TYPE ? otherType : typeChoice,
-        resource: joinResource({ kind: resourceKind, id: resourceId }),
-        who,
-      }),
-      { replace: true },
-    );
-  }
+  /** The count beside the search: what the filters match, as far as it is known. */
+  const count = $derived(
+    narrowing || totalQuery.data == null || !trail.hasNextPage
+      ? copy.count(events.length, trail.hasNextPage)
+      : copy.count(totalQuery.data, false),
+  );
 
   function clear(): void {
-    since = undefined;
-    typeChoice = EMPTY_AUDIT_DRAFT.type;
-    otherType = '';
-    resourceKind = '';
-    resourceId = '';
-    who = '';
-    router.navigate(pathOf(EMPTY_AUDIT_DRAFT), { replace: true });
+    selectedKey = null;
+    text = '';
+    router.navigate(pathOf({ actor: '', period: '7d', action: '', text: '' }), { replace: true });
   }
 
-  /** The record's own key: its time and its place in the trail's order within that time. */
-  function keyOf(record: AuditRecord): string {
-    return `${record.timestamp}#${String(record.sequence ?? '')}`;
-  }
+  type EventRow = {
+    id: string;
+    at: number;
+    when: string;
+    who: string;
+    what: string;
+    target: string;
+  };
 
-  function timeOf(timestamp: string): string {
-    const date = new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString();
-  }
+  const rows = $derived<EventRow[]>(
+    events.map((event) => ({
+      id: event.key,
+      at: event.at,
+      when: clockOf(event.at),
+      who: event.actor.name,
+      what: event.action,
+      target: event.target,
+    })),
+  );
+  const columns: DataTableColumn<EventRow>[] = [
+    { key: 'when', label: copy.columns.when },
+    { key: 'who', label: copy.columns.who },
+    { key: 'what', label: copy.columns.what },
+    { key: 'target', label: copy.columns.target, truncate: true, maxWidth: TARGET_COLUMN_WIDTH },
+  ];
+
+  // The newest event is open when the log first shows, and no event is after the filters change.
+  let opened = false;
+  $effect(() => {
+    if (opened || trail.isPending || frame === undefined) return;
+    opened = true;
+    // Below the push breakpoint an open event would hide the table, so none opens on load there. A
+    // box that has no width yet (a page with no layout) is read as wide, as the list reads it.
+    const width = frame.getBoundingClientRect().width;
+    if (width > 0 && width < PUSH_BELOW) return;
+    if (untrack(() => router.current.search.get('record')) !== null) return;
+    const newest = untrack(() => events[0]);
+    if (newest !== undefined) selectedKey = newest.key;
+  });
 
   const selectionLocation = routerSelectionLocationFor('/health/audit');
 
-  // Export reads every page the filters match, not only the ones the list has loaded.
+  // Export reads every page the filters match, not only the ones the table has loaded. While Who or
+  // the search narrows the log, it saves the events on screen, which the page has read in full.
   const exportMutation = createMutation<number, unknown, void>(
     () => ({
       mutationFn: async () => {
-        const matched = await readAuditExport(filter, applied.who);
+        const read = narrowing ? undefined : await readAuditExport(filter);
+        const matched =
+          read === undefined
+            ? events.map((event) => event.record)
+            : read.filter((record) => describeRecords([record], NO_LOOKUPS).length > 0);
         if (matched.length === 0) return 0;
         downloadText(toJsonLines(matched), auditExportFilename(), JSON_LINES_TYPE);
         return matched.length;
       },
-      onSuccess: (count) =>
-        showToast(count === 0 ? copy.nothingToExport : copy.exported(count), {
-          variant: count === 0 ? 'info' : 'success',
+      onSuccess: (exported) =>
+        showToast(exported === 0 ? copy.nothingToExport : copy.exported(exported), {
+          variant: exported === 0 ? 'info' : 'success',
         }),
     }),
     undefined,
@@ -224,15 +281,59 @@
 
 <HealthFrame active="audit">
   <section class="ib-audit" aria-label={VIEW_COPY.audit.label} data-page="audit">
-    <div class="ib-audit__export">
-      <Button
-        variant="secondary"
-        loading={exportMutation.isPending}
-        onclick={() => exportMutation.mutate()}
+    <div class="ib-audit__controls">
+      <form
+        class="ib-audit__filters"
+        role="search"
+        aria-label={copy.searchLabel}
+        onsubmit={(event) => event.preventDefault()}
       >
-        {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
-        {exportMutation.isPending ? copy.exporting : copy.exportAction}
-      </Button>
+        <Select
+          id="ib-audit-actor"
+          label={copy.actorLabel}
+          labelVisible={false}
+          class="ib-audit__select"
+          options={actorOptions}
+          value={applied.actor}
+          onchange={(event) => go({ actor: event.currentTarget.value as AuditDraft['actor'] })}
+        />
+        <Select
+          id="ib-audit-period"
+          label={copy.periodLabel}
+          labelVisible={false}
+          class="ib-audit__select"
+          options={periodOptions}
+          value={applied.period}
+          onchange={(event) => go({ period: event.currentTarget.value as AuditDraft['period'] })}
+        />
+        <Select
+          id="ib-audit-action"
+          label={copy.actionLabel}
+          labelVisible={false}
+          class="ib-audit__select"
+          options={actionOptions}
+          value={applied.action}
+          onchange={(event) => go({ action: event.currentTarget.value as AuditDraft['action'] })}
+        />
+        <SearchField
+          aria-label={copy.textLabel}
+          placeholder={copy.textPlaceholder}
+          class="ib-audit__search"
+          bind:value={text}
+          onClear={() => (text = '')}
+        />
+        <p class="ib-audit__count" data-testid="audit-count">{count}</p>
+      </form>
+      <div class="ib-audit__export">
+        <Button
+          variant="secondary"
+          loading={exportMutation.isPending}
+          onclick={() => exportMutation.mutate()}
+        >
+          {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
+          {exportMutation.isPending ? copy.exporting : copy.exportAction}
+        </Button>
+      </div>
     </div>
 
     {#if exportMutation.isError}
@@ -242,65 +343,6 @@
         <Button variant="secondary" onclick={() => exportMutation.mutate()}>{RETRY_LABEL}</Button>
       </Alert>
     {/if}
-
-    <form class="ib-audit__search" role="search" aria-label={copy.searchLabel} onsubmit={search}>
-      <DatePicker
-        id="ib-audit-since"
-        label={copy.sinceLabel}
-        labelVisible={false}
-        placeholder={copy.sincePlaceholder}
-        granularity="minute"
-        bind:value={since}
-      />
-      <Select
-        id="ib-audit-type"
-        label={copy.typeLabel}
-        labelVisible={false}
-        class="ib-audit__identifier"
-        options={typeOptions}
-        value={typeChoice}
-        onchange={(event) => (typeChoice = event.currentTarget.value)}
-      />
-      {#if typeChoice === OTHER_TYPE}
-        <Input
-          id="ib-audit-type-other"
-          label={copy.otherTypeLabel}
-          labelVisible={false}
-          placeholder={copy.otherTypePlaceholder}
-          bind:value={otherType}
-        />
-      {/if}
-      <Select
-        id="ib-audit-who"
-        label={copy.whoLabel}
-        labelVisible={false}
-        options={whoOptions}
-        value={who}
-        onchange={(event) => (who = event.currentTarget.value)}
-      />
-      <Select
-        id="ib-audit-resource-kind"
-        label={copy.resourceLabel}
-        labelVisible={false}
-        options={kindOptions}
-        value={resourceKind}
-        onchange={(event) => (resourceKind = kindOf(event.currentTarget.value))}
-      />
-      {#if resourceKind !== ''}
-        <Input
-          id="ib-audit-resource"
-          label={copy.resourceIdLabel}
-          labelVisible={false}
-          placeholder={copy.resourceIdPlaceholder}
-          class="ib-audit__identifier"
-          bind:value={resourceId}
-        />
-      {/if}
-      <div class="ib-audit__actions">
-        <Button type="submit" variant="primary">{copy.searchAction}</Button>
-        <Button type="button" variant="secondary" onclick={clear}>{copy.clearAction}</Button>
-      </div>
-    </form>
 
     {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
       <Alert variant="info">
@@ -317,12 +359,20 @@
         <Button variant="secondary" onclick={() => void trail.refetch()}>{RETRY_LABEL}</Button>
       </Alert>
     {:else if trail.isPending}
-      <div role="status" aria-busy="true" aria-label={copy.loadingLabel}>
-        <Skeleton height="1.5rem" width="40%" />
-        <Skeleton height="12rem" />
+      <div data-testid="audit-loading" aria-busy="true">
+        <Skeleton
+          variant="list"
+          rows={5}
+          statusMarker="dot"
+          statusColumn={false}
+          delay={LOADING_DELAY_MILLISECONDS}
+          stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+          label={copy.loadingLabel}
+          onCancel={() => void trail.refetch()}
+        />
       </div>
-    {:else if rows.length === 0 && !trail.hasNextPage}
-      {#if filtered}
+    {:else if events.length === 0 && !trail.hasNextPage}
+      {#if isNarrowed(applied)}
         <EmptyState
           kind="filtered"
           headingLevel={2}
@@ -340,63 +390,65 @@
         />
       {/if}
     {:else}
-      <div class="ib-audit__frame" data-shortcut-region="list-detail">
+      <div class="ib-audit__frame" data-shortcut-region="list-detail" bind:this={frame}>
         <ListDetail
-          items={rows}
-          key={(row: Row) => row.key}
+          items={events}
+          key={(event: AuditEvent) => event.key}
           label={copy.caption}
           detailLabel={copy.detailLabel}
-          emptyTitle={copy.emptyDetailTitle}
-          emptyDescription={copy.emptyDetailDescription}
           selectionParameter="record"
           {selectionLocation}
+          bind:selectedKey
+          pushBelow={PUSH_BELOW}
           storageKey="interborough-audit"
+          defaultListWidth={LIST_PANE_WIDTH}
+          maximumListWidth={LIST_PANE_MAXIMUM_WIDTH}
+          class="ib-audit__layout"
         >
-          {#snippet header()}
-            <div class="ib-audit__list-bar">
-              <p class="ib-audit__count" data-testid="audit-count">
-                {copy.count(rows.length, trail.hasNextPage)}
-              </p>
-              {#if trail.hasNextPage}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={trail.isFetchingNextPage}
-                  onclick={() => void trail.fetchNextPage()}>{copy.loadMore}</Button
-                >
-              {/if}
-            </div>
-          {/snippet}
-          {#snippet list(row, state)}
-            <SelectableRow
-              selected={state.selected}
-              selectedState="current"
-              onclick={state.open}
-              data-record={row.record.sequence ?? ''}
+          {#snippet listBody(body)}
+            <DataTable
+              {columns}
+              {rows}
+              caption={copy.caption}
+              density="condensed"
+              class="ib-audit__table"
+              getRowId={(row) => row.id}
+              groupBy={(row) => dayGroupOf(row.at, now)}
+              openRowId={body.selectedKey}
+              onRowOpen={(row) => body.open(row.id)}
+              onReachEnd={trail.hasNextPage && !narrowing
+                ? () => void trail.fetchNextPage()
+                : undefined}
             >
-              {#snippet title()}<span class="ib-audit__type">{row.record.type}</span>{/snippet}
-              {#snippet description()}
-                <span class="ib-audit__who">{row.record.principal ?? copy.noActor}</span>
-                <span class="ib-audit__resource">{row.record.resource}</span>
+              {#snippet cell({ column, value })}
+                {#if column.key === 'what'}
+                  <span class="ib-audit__what">{value}</span>
+                {:else}
+                  {value}
+                {/if}
               {/snippet}
-              {#snippet meta()}
-                <time datetime={row.record.timestamp}>{timeOf(row.record.timestamp)}</time>
+              {#snippet footer()}
+                <span class="ib-audit__footer" data-testid="audit-footer">
+                  {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
+                </span>
               {/snippet}
-            </SelectableRow>
+            </DataTable>
           {/snippet}
-          {#snippet listEmpty()}
+          {#snippet detail(event)}
+            {#key event.key}
+              <AuditDetail {event} lookups={lookups.current} {now} />
+            {/key}
+          {/snippet}
+          {#snippet empty()}
             <EmptyState
-              kind="filtered"
+              kind="first-use"
               size="compact"
-              headingLevel={3}
-              title={copy.noLoadedMatches.title}
-              description={copy.noLoadedMatches.description}
-              clearFiltersLabel={copy.noLoadedMatches.clear}
-              onClearFilters={clear}
-            />
-          {/snippet}
-          {#snippet detail(row)}
-            <AuditDetail record={row.record} />
+              headingLevel={2}
+              title={copy.emptyDetailTitle}
+              description={copy.emptyDetailDescription}
+            >
+              {#snippet icon()}<FileText aria-hidden="true" />{/snippet}
+            </EmptyState>
           {/snippet}
         </ListDetail>
       </div>
@@ -410,21 +462,42 @@
     flex-direction: column;
     gap: var(--cinder-space-4);
     min-width: 0;
+    container-type: inline-size;
   }
 
-  /* One row of controls, all of one height and aligned on their bottom edge: only the time field
-   * carries a label, since a select that starts at "Any type" and an id field with a placeholder
-   * already say what they are. */
-  .ib-audit__search {
+  /* One row of controls, with Export at its right end because it applies to this tab only. */
+  .ib-audit__controls {
     display: flex;
     flex-wrap: wrap;
     gap: var(--cinder-space-3);
-    align-items: flex-end;
+    align-items: center;
+    justify-content: space-between;
   }
 
-  .ib-audit__search > :global(*) {
-    flex: 0 1 12rem;
+  .ib-audit__filters {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-3);
+    align-items: center;
     min-width: 0;
+  }
+
+  .ib-audit__filters > :global(.ib-audit__select) {
+    flex: 0 1 11rem;
+    min-width: 0;
+  }
+
+  .ib-audit__filters > :global(.ib-audit__search) {
+    flex: 0 1 18rem;
+    min-width: 0;
+  }
+
+  .ib-audit__count {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    white-space: nowrap;
   }
 
   .ib-audit__export {
@@ -432,17 +505,12 @@
     justify-content: flex-end;
   }
 
-  .ib-audit__actions {
-    display: flex;
-    flex: 0 0 auto;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-    align-items: center;
-  }
-
-  :global(.ib-audit__identifier input),
-  :global(.ib-audit__identifier select) {
-    font-family: var(--cinder-font-mono);
+  /* On a narrow page each control takes its own row. */
+  @container (max-width: 39.99rem) {
+    .ib-audit__filters > :global(.ib-audit__select),
+    .ib-audit__filters > :global(.ib-audit__search) {
+      flex: 1 1 100%;
+    }
   }
 
   .ib-audit__alert-title {
@@ -454,37 +522,31 @@
     margin: var(--cinder-space-1) 0 var(--cinder-space-2);
   }
 
-  /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+  /* The table and the open event, Cinder's list and detail, in one bordered box. Side by side the
+   * two fill the height they are given and scroll each pane on its own, so the box has one; below
+   * the push breakpoint they show one at a time and flow with the page. */
   .ib-audit__frame {
-    block-size: max(28rem, calc(100dvh - 20rem));
+    min-inline-size: 0;
+  }
+
+  .ib-audit__frame :global(.ib-audit__layout) {
     min-inline-size: 0;
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
     overflow: hidden;
   }
 
-  .ib-audit__list-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-2);
+  .ib-audit__frame :global(.ib-audit__layout[data-cinder-layout='split']) {
+    block-size: max(28rem, calc(100dvh - 20rem));
   }
 
-  .ib-audit__count {
-    margin: 0;
+  .ib-audit__what {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .ib-audit__footer {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-  }
-
-  .ib-audit__type,
-  .ib-audit__resource {
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
-  }
-
-  .ib-audit__who {
-    margin-inline-end: var(--cinder-space-2);
-    overflow-wrap: anywhere;
   }
 </style>

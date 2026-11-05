@@ -147,11 +147,13 @@ export const queryKeys = {
     /** The event kinds a hook can listen to (`bureau.events.catalog`). */
     events: () => ['hooks', 'events'] as const,
   },
-  /** The audit trail, narrowed by a search (`bureau.audit.query`). */
+  /** The audit log, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
-    /** The first page of the whole trail, read for the types the Type select offers. */
-    types: () => ['audit', 'types'] as const,
+    /** How many events a filter matches, read once beside the first page. */
+    total: (filter: AuditFilter) => ['audit', 'total', filter] as const,
+    /** The schedules' names, which the events of a schedule are worded with. */
+    schedules: () => ['audit', 'schedules'] as const,
   },
   /** The Bureau's runtime settings: their values (`bureau.settings.get`) and their schema (`bureau.settings.schema`). */
   settings: {

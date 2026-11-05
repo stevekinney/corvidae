@@ -45,6 +45,7 @@
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { dismissToast, showFault, showToast } from '../../app/toast-host.svelte';
   import { getClient } from '../../lib/client.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -466,9 +467,11 @@
         },
   );
   const tasks = $derived<readonly QueueTask[]>(
-    (tasksQuery.data?.pages ?? [])
-      .flatMap((page) => page.items)
-      .filter((task) => !clearer.hidden.has(task.operationId)),
+    combinePages(
+      tasksQuery.data?.pages,
+      (page) => page.items,
+      (task) => task.operationId,
+    ).filter((task) => !clearer.hidden.has(task.operationId)),
   );
 
   const retryAll = retryAllMutation(client, queryClient);

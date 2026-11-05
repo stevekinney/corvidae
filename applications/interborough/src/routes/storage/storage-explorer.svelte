@@ -560,7 +560,7 @@
 
   .ib-storage__problem {
     margin: 0;
-    color: var(--cinder-danger-text);
+    color: var(--cinder-status-danger-text);
     font-size: var(--cinder-text-sm);
   }
 

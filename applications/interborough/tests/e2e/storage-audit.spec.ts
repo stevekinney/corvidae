@@ -164,22 +164,22 @@ test.describe('the audit log', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/health/audit');
       await expect(page.locator('[data-view="audit"]')).toHaveAttribute('data-state', 'ready');
-      const first = page.locator('button[data-record]').first();
+      const first = page.locator('tbody tr[data-cinder-row-id]').first();
       await expect(first).toBeVisible();
-      await checkA11y(`audit log — the list at ${width}px`);
+      await checkA11y(`audit log — the table at ${width}px`);
 
       await first.click();
       const detail = page.getByTestId('audit-detail');
       await expect(detail).toBeVisible();
-      await expect(detail).toContainText(AUDIT_COPY.rawRecord);
-      await checkA11y(`audit log — a record open at ${width}px`);
+      await expect(detail).toContainText(AUDIT_COPY.copyAsJson);
+      await checkA11y(`audit log — an event open at ${width}px`);
     });
   }
 
   test('Export saves the trail as JSON Lines, one record per line', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/health/audit');
-    await expect(page.locator('button[data-record]').first()).toBeVisible();
+    await expect(page.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
 
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: AUDIT_COPY.exportAction }).click();

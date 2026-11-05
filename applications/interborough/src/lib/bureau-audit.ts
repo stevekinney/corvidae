@@ -1,8 +1,8 @@
 /**
  * The browser's view of the Bureau's audit trail: `bureau.audit.query` (COR-1482), parsed at the
- * boundary. The trail answers records oldest first, as metadata only, and pages by a cursor that
- * the answer hands back; the operation takes no upper bound on time and no ordering, so neither is
- * offered here.
+ * boundary. The trail answers records as metadata only, oldest first unless a query asks for the
+ * newest (`order: 'newest'`), and pages by a cursor that the answer hands back. The operation takes
+ * an upper bound on time (`until`) and an actor (`principal`), which the audit log does not use.
  */
 import { z } from 'zod';
 
@@ -39,6 +39,8 @@ export type AuditFilter = {
   readonly since?: number;
   /** Only records of this type, which is free text: `schedule.*` types are recorded outside the list of audit event types. */
   readonly type?: string;
+  /** Only records of one of these types, up to 64; combines with `type`. An empty list matches nothing. */
+  readonly types?: readonly string[];
   /** Only records about this run id, or this resource: `schedule:<id>`, `session:<id>`, `agent:<id>`, `workflow:<id>`. Sent as `runId`. */
   readonly resource?: string;
 };
@@ -69,6 +71,7 @@ export async function queryAudit(
     ...(options?.includeTotal === true ? { includeTotal: true } : {}),
     ...(filter.since === undefined ? {} : { since: filter.since }),
     ...(filter.type === undefined || filter.type === '' ? {} : { type: filter.type }),
+    ...(filter.types === undefined ? {} : { types: filter.types }),
     ...(filter.resource === undefined || filter.resource === '' ? {} : { runId: filter.resource }),
     ...(cursor === undefined ? {} : { cursor }),
   };

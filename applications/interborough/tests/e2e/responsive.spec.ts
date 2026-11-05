@@ -170,7 +170,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
   '/health/workers (queue open)': /Strategy/,
   // The audit log lists the seeded schedule's creation.
-  '/health/audit': /schedule\.created/,
+  '/health/audit': /Created a schedule/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
   // The agent that opts in prints its name, and its card address holds it too.
