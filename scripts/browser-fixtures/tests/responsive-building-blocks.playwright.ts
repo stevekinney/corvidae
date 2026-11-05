@@ -158,8 +158,8 @@ test.describe('at a 768px tablet viewport', () => {
     await page.getByRole('button', { name: 'Collapse sidebar' }).click();
     await expect(aside).toHaveAttribute('data-cinder-collapsed', '');
     await expect(aside).toBeVisible();
-    // The rail is the 4rem icon column, not a hidden drawer.
-    await expect.poll(() => widthOf(aside)).toBeCloseTo(64, 0);
+    // The rail is the 3.5rem icon column, not a hidden drawer.
+    await expect.poll(() => widthOf(aside)).toBeCloseTo(56, 0);
     await expect(aside.getByRole('link', { name: 'Dashboard' })).toBeVisible();
   });
 
