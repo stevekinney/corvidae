@@ -1,7 +1,7 @@
 /**
- * The command palette's search. It searches schedules only when the principal
- * holds `schedules:read`, which `weft.schedules.list` requires; without it the
- * read is skipped rather than sent and answered with a fault.
+ * The command palette's search. It lists the five kinds the board draws for "refund" (design row
+ * 03g) and the identifier-led kinds beside them; it never reads schedules or workflow types, so a
+ * sample world's "order-refund" workflow and "Weekly refund audit" schedule do not appear.
  */
 import { rejectionOf } from '@lostgradient/testing';
 import type { HttpClient } from '@lostgradient/weft';
@@ -9,13 +9,11 @@ import { describe, expect, test } from 'bun:test';
 
 import type { AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
-import type { CatalogRow } from '../../lib/workflow-catalog.ts';
 import type { NotificationItem } from '../notifications.svelte.ts';
 import {
   matchActions,
   matchAgents,
   matchChats,
-  matchDefinitions,
   matchNewChats,
   matchRuns,
   matchTools,
@@ -69,8 +67,7 @@ function agent(overrides: Partial<AgentSummary>): AgentSummary {
 const ECHO_CHAT = chat({ id: 'echo-chat', agentName: 'echo', title: 'Hello echo, say this back' });
 const ECHO_AGENT = agent({ name: 'echo', description: 'Repeats the last message it was sent.' });
 
-const OPEN = { disabled: false, title: undefined } as const;
-const LOCKED = { disabled: true, title: 'Requires schedules:read' } as const;
+const LOCKED = { disabled: true, title: 'Requires the scope' } as const;
 
 function fakeClient(calls: { schedules: number }): HttpClient {
   return {
@@ -103,44 +100,31 @@ function fakeClient(calls: { schedules: number }): HttpClient {
 }
 
 describe('searchConsole', () => {
-  test('searches workflows, schedules, workers, and reviews with schedules:read', async () => {
+  test('searches workflow runs by identifier, workers and reviews, and never reads schedules', async () => {
     const calls = { schedules: 0 };
 
-    const results = await searchConsole(fakeClient(calls), 'nightly', { scheduleReadGate: OPEN });
+    const results = await searchConsole(fakeClient(calls), 'nightly', {});
 
     expect(results.workflows.map((workflow) => workflow.id)).toEqual(['nightly-order']);
-    expect(results.schedules.map((schedule) => schedule.id)).toEqual(['nightly-rollup']);
     expect(results.workers.map((worker) => worker.id)).toEqual(['nightly-worker']);
     expect(results.reviews.map((review) => review.reviewId)).toEqual(['nightly-review']);
-    expect(calls.schedules).toBe(1);
-  });
-
-  test('skips the schedule read, and returns no schedules, without schedules:read', async () => {
-    const calls = { schedules: 0 };
-
-    const results = await searchConsole(fakeClient(calls), 'nightly', {
-      scheduleReadGate: LOCKED,
-    });
-
+    // A schedule whose identifier matches is not listed, and the schedules are not even read.
     expect(calls.schedules).toBe(0);
-    expect(results.schedules).toEqual([]);
-    // The other domains are unaffected.
-    expect(results.workers.map((worker) => worker.id)).toEqual(['nightly-worker']);
+    expect(results).not.toHaveProperty('schedules');
+    expect(results).not.toHaveProperty('definitions');
   });
 
   test('returns nothing for an empty query, and does not call the client', async () => {
     const calls = { schedules: 0 };
 
-    const results = await searchConsole(fakeClient(calls), '', { scheduleReadGate: OPEN });
+    const results = await searchConsole(fakeClient(calls), '', {});
 
     expect(results).toEqual(NOTHING);
     expect(calls.schedules).toBe(0);
   });
 
   test('does not search workflows by id prefix for a query that is not an id prefix', async () => {
-    const results = await searchConsole(fakeClient({ schedules: 0 }), 'nightly rollup', {
-      scheduleReadGate: OPEN,
-    });
+    const results = await searchConsole(fakeClient({ schedules: 0 }), 'nightly rollup', {});
 
     expect(results.workflows).toEqual([]);
   });
@@ -157,26 +141,20 @@ describe('searchConsole', () => {
     } as unknown as HttpClient;
 
     const results = await searchConsole(failing, 'nightly', {
-      scheduleReadGate: OPEN,
-      readWorkflows: refuse,
       readTools: refuse,
     });
 
     expect(results).toEqual({ ...NOTHING, failed: expect.any(Array) });
-    expect(results.failed).toEqual(
-      expect.arrayContaining(['Schedules', 'Workers', 'Reviews', 'Workflows', 'Tools']),
-    );
+    expect(results.failed).toEqual(expect.arrayContaining(['Workers', 'Reviews', 'Runs', 'Tools']));
   });
 
   test('a domain that was read, even with no match, is not named as failed', async () => {
     const results = await searchConsole(fakeClient({ schedules: 0 }), 'nightly rollup', {
-      scheduleReadGate: OPEN,
-      readWorkflows: async () => [],
       readTools: async () => [],
     });
 
-    expect(results.failed).not.toContain('Schedules');
-    expect(results.failed).not.toContain('Workflows');
+    expect(results.failed).not.toContain('Tools');
+    expect(results.failed).not.toContain('Workers');
   });
 });
 
@@ -247,9 +225,7 @@ describe('searchConsole for chats and agents', () => {
       return Response.json({ jsonrpc: '2.0', id: call.id, result });
     });
     try {
-      const results = await searchConsole(fakeClient({ schedules: 0 }), 'ech', {
-        scheduleReadGate: OPEN,
-      });
+      const results = await searchConsole(fakeClient({ schedules: 0 }), 'ech', {});
 
       expect(results.chats.map((match) => match.title)).toEqual(['Hello echo, say this back']);
       expect(results.agents.map((match) => match.name)).toEqual(['echo']);
@@ -261,22 +237,6 @@ describe('searchConsole for chats and agents', () => {
     }
   });
 });
-
-function row(overrides: Partial<CatalogRow>): CatalogRow {
-  return {
-    name: 'order',
-    kind: 'code',
-    agent: null,
-    description: null,
-    engine: false,
-    runs: null,
-    trigger: null,
-    file: null,
-    problem: null,
-    failure: null,
-    ...overrides,
-  };
-}
 
 function tool(overrides: Partial<CatalogTool>): CatalogTool {
   return {
@@ -321,18 +281,7 @@ describe('parseQuery', () => {
   });
 });
 
-describe('the workflow and tool matches', () => {
-  test('a workflow type matches on its name or description, and a type the Bureau runs itself is left out', () => {
-    const rows = [
-      row({ name: 'order-sync', description: 'Syncs orders nightly' }),
-      row({ name: 'digest' }),
-      row({ name: 'agentRun', engine: true }),
-    ];
-    expect(matchDefinitions(rows, 'order').map((match) => match.name)).toEqual(['order-sync']);
-    expect(matchDefinitions(rows, 'nightly').map((match) => match.name)).toEqual(['order-sync']);
-    expect(matchDefinitions(rows, 'agentrun')).toEqual([]);
-  });
-
+describe('the tool matches', () => {
   test('a tool matches on its name, or on the line a person is shown for it', () => {
     const tools = [
       tool({}),
@@ -572,67 +521,23 @@ describe('searchConsole by kind and scope', () => {
       return Response.json({ jsonrpc: '2.0', id: call.id, result });
     });
 
-  test('finds workflow types and tools beside the other kinds', async () => {
+  test('finds tools beside the other kinds', async () => {
     const restore = noAgents();
     try {
       const results = await searchConsole(fakeClient({ schedules: 0 }), 'refund', {
-        scheduleReadGate: OPEN,
-        readWorkflows: async () => [row({ name: 'refund-flow' }), row({ name: 'digest' })],
         readTools: async () => [
           tool({}),
           tool({ name: 'send-email', description: 'Emails the customer' }),
         ],
       });
 
-      expect(results.definitions.map((match) => match.name)).toEqual(['refund-flow']);
       expect(results.tools.map((match) => match.name)).toEqual(['issue-refund']);
     } finally {
       restore();
     }
   });
 
-  test('names a schedule by its description or what it starts, never by its identifier', async () => {
-    const restore = noAgents();
-    try {
-      const client = {
-        listSchedules: async () => ({
-          items: [
-            {
-              id: 'bureau-workflow-schedule:order-refund:1',
-              workflowType: 'order-refund',
-              description: 'Weekly refund audit',
-            },
-            { id: 'bureau-workflow-schedule:refund-digest:1', workflowType: 'refund-digest' },
-          ],
-        }),
-      } as unknown as HttpClient;
-      const results = await searchConsole(client, 'refund', {
-        scheduleReadGate: OPEN,
-        workflowReadGate: LOCKED,
-        reviewReadGate: LOCKED,
-        systemReadGate: LOCKED,
-        readTools: async () => [],
-      });
-
-      expect(results.schedules.map((schedule) => schedule.name)).toEqual([
-        'Weekly refund audit',
-        'Schedule for refund-digest',
-      ]);
-      expect(results.schedules.map((schedule) => schedule.identifiers)).toEqual([
-        [],
-        ['refund-digest'],
-      ]);
-      // The type shows beside a description, and not beside a name that already says it.
-      expect(results.schedules.map((schedule) => schedule.workflowTypeShown)).toEqual([
-        'order-refund',
-        null,
-      ]);
-    } finally {
-      restore();
-    }
-  });
-
-  test('reads no workflow, run, review or worker without the scope that lets it', async () => {
+  test('reads no workflow run, review or worker without the scope that lets it', async () => {
     const restore = noAgents();
     const reads: string[] = [];
     const client = {
@@ -653,20 +558,14 @@ describe('searchConsole by kind and scope', () => {
       },
     } as unknown as HttpClient;
     try {
-      const results = await searchConsole(client, 'nightly', {
-        scheduleReadGate: OPEN,
+      await searchConsole(client, 'nightly', {
         workflowReadGate: LOCKED,
         reviewReadGate: LOCKED,
         systemReadGate: LOCKED,
-        readWorkflows: async () => {
-          reads.push('workflows');
-          return [];
-        },
         readTools: async () => [],
       });
 
       expect(reads).toEqual([]);
-      expect(results.definitions).toEqual([]);
     } finally {
       restore();
     }
@@ -675,21 +574,15 @@ describe('searchConsole by kind and scope', () => {
   test('> reads only the agents, for the chats each can be opened with, and @ lists the agents', async () => {
     const restore = noAgents();
     try {
-      const actions = await searchConsole(fakeClient({ schedules: 0 }), '>new chat with ec', {
-        scheduleReadGate: OPEN,
-      });
+      const actions = await searchConsole(fakeClient({ schedules: 0 }), '>new chat with ec', {});
       expect(actions.newChats.map((match) => match.name)).toEqual(['echo']);
       expect(actions.chats).toEqual([]);
 
-      const everyone = await searchConsole(fakeClient({ schedules: 0 }), '@', {
-        scheduleReadGate: OPEN,
-      });
+      const everyone = await searchConsole(fakeClient({ schedules: 0 }), '@', {});
       expect(everyone.agents.map((match) => match.name)).toEqual(['echo', 'tool-runner']);
       expect(everyone.chats).toEqual([]);
 
-      const one = await searchConsole(fakeClient({ schedules: 0 }), '@runner', {
-        scheduleReadGate: OPEN,
-      });
+      const one = await searchConsole(fakeClient({ schedules: 0 }), '@runner', {});
       expect(one.agents.map((match) => match.name)).toEqual(['tool-runner']);
     } finally {
       restore();

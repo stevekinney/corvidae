@@ -10,7 +10,7 @@ import { ShortcutRegistry } from '../../lib/shortcuts.ts';
 import { PALETTE_COPY } from '../copy.ts';
 import type { NotificationEntry } from '../notification-items.ts';
 import { memoryStore } from '../notification-store.test-support.ts';
-import { schedulePath, toolPath, workerPath } from './command-palette-search.ts';
+import { toolPath, workerPath } from './command-palette-search.ts';
 import CommandPaletteLauncher from './command-palette.svelte';
 import { registerShellShortcuts } from './destinations.ts';
 
@@ -239,12 +239,6 @@ describe('the command palette', () => {
     await waitFor(() => expect(router.pathname).toBe('/runs/run-7'));
   });
 
-  test('opens the selected schedule, not the list of schedules', async () => {
-    // A schedule is named in words, not by its identifier (design row 03g); it is still found by it.
-    await choose('schedule-7', /^Schedule for order/);
-    await waitFor(() => expect(router.pathname).toBe(schedulePath('schedule-7')));
-  });
-
   test('opens the selected worker, not the list of workers', async () => {
     await choose('worker-7', /^worker-7/);
     await waitFor(() =>
@@ -351,7 +345,7 @@ describe('a search that failed', () => {
   });
 
   test('says which results may be missing when one domain failed and the others found a match', async () => {
-    stubEngine('/schedules');
+    stubEngine('/reviews');
     landAt('/chats');
     const view = render(CommandPaletteLauncher, {
       props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
@@ -360,13 +354,12 @@ describe('a search that failed', () => {
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'echo' } });
 
     expect(await view.findByRole('option', { name: /Hello echo/ })).not.toBeNull();
-    expect(await view.findByText(/Could not read schedules/)).not.toBeNull();
+    expect(await view.findByText(/Could not read reviews/)).not.toBeNull();
   });
 });
 
 describe('the paths of a record', () => {
   test('encode the identifier', () => {
-    expect(schedulePath('a b/c')).toBe('/schedules/a%20b%2Fc');
     expect(workerPath('a&b')).toBe('/health/workers?worker=a%26b');
   });
 });
@@ -449,7 +442,7 @@ describe('every kind of result, in order', () => {
     await waitFor(() => expect(router.pathname).toBe('/chats/session-refund'));
   });
 
-  test('groups a search for "refund" as waiting, chats, runs, agents and tools, workflows, then actions', async () => {
+  test('groups a search for "refund" as waiting, chats, runs, agents and tools, then actions, and no workflow or schedule', async () => {
     const store = memoryStore();
     store.setActivity([WAITING]);
     const { registry } = shellRegistry();
@@ -457,14 +450,14 @@ describe('every kind of result, in order', () => {
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
 
     await waitFor(() => expect(groups(view)).toContain('Agents and tools'));
-    // The five groups of row 03g keep their order; the workflow type, which the board does not
-    // draw, sits after them and before the actions, never between two of the board's groups.
+    // Exactly the five groups the board draws for "refund" (row 03g), in its order: the sample
+    // world's "refund-flow" workflow type and a refund schedule are not searched, so no Workflows
+    // or Schedules group appears.
     expect(groups(view)).toEqual([
       'Waiting on you',
       'Chats',
       'Runs',
       'Agents and tools',
-      'Workflows',
       'Actions',
     ]);
     const label = (index: number) => view.getAllByRole('option')[index]?.getAttribute('aria-label');
@@ -518,13 +511,15 @@ describe('every kind of result, in order', () => {
     );
   });
 
-  test('a workflow type opens its page', async () => {
+  test('a schedule or a workflow type is not found, by its name or its identifier', async () => {
     const view = open();
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund-f' } });
+    await view.findByText(PALETTE_COPY.noMatchesTitle);
+    expect(view.queryByRole('option', { name: /^refund-flow/ })).toBeNull();
 
-    await fireEvent.click(await view.findByRole('option', { name: /^refund-flow/ }));
-
-    await waitFor(() => expect(router.pathname).toBe('/workflows/refund-flow'));
+    await fireEvent.input(view.getByRole('combobox'), { target: { value: 'schedule-7' } });
+    await view.findByText(PALETTE_COPY.noMatchesTitle);
+    expect(view.queryByRole('option', { name: /schedule/i })).toBeNull();
   });
 
   test('> lists only the actions, and runs the one chosen', async () => {
@@ -571,14 +566,11 @@ describe('every kind of result, in order', () => {
       workflowReadGate: locked,
       reviewReadGate: locked,
       systemReadGate: locked,
-      scheduleReadGate: locked,
     });
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
 
     await waitFor(() => expect(groups(view)).toContain('Agents and tools'));
-    // What is behind a scope is not read: no workflows, schedules, workers or reviews.
-    expect(groups(view)).not.toContain('Workflows');
-    expect(groups(view)).not.toContain('Schedules');
+    // What is behind a scope is not read: no workers or reviews.
     expect(groups(view)).not.toContain('Workers');
     expect(groups(view)).not.toContain('Reviews');
   });

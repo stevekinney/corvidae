@@ -309,7 +309,6 @@
   {client}
   store={notifications}
   registry={shortcuts}
-  scheduleReadGate={scopeGate(principalStore, ['schedules:read'])}
   workflowReadGate={scopeGate(principalStore, ['workflows:read'])}
   reviewReadGate={scopeGate(principalStore, ['reviews:read'])}
   systemReadGate={scopeGate(principalStore, ['system:read'])}

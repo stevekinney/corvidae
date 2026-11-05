@@ -1,7 +1,9 @@
 /**
  * The command palette's search: chats, runs (the Bureau's tasks by title, agent or identifier, then
- * a workflow run by the start of its identifier), workflows, schedules, workers and reviews via
- * each domain's list operation, then agents and tools. What is waiting on the
+ * a workflow run by the start of its identifier), workers and reviews via each domain's list
+ * operation, then agents and tools. Workflow types and schedules are not searched: the board's
+ * search for "refund" draws five groups and no others (design row 03g), and each has its own page
+ * and list. What is waiting on the
  * person and the actions (the registry's shortcuts, and "New chat with <agent>") are not searched
  * here: the palette lists them from the notification store and the shortcut registry.
  *
@@ -13,15 +15,8 @@
  * failing the whole palette — a search-as-you-type surface degrading one
  * section beats it going blank. The domains that could not be read are named in
  * `failed`, so the palette never presents a failed search as "no matches".
- * Schedules are not searched at all without `schedules:read`, which
- * `weft.schedules.list` requires.
  */
-import type {
-  HttpClient,
-  ReviewListEntry,
-  ScheduleSummary,
-  WorkflowSummary,
-} from '@lostgradient/weft';
+import type { HttpClient, ReviewListEntry, WorkflowSummary } from '@lostgradient/weft';
 
 import { getAgentCatalog, type AgentCatalog } from '../../lib/agent-definitions.ts';
 import { agentLabel } from '../../lib/agent-label.ts';
@@ -32,16 +27,9 @@ import {
   type ChatContext,
 } from '../../lib/bureau-client.ts';
 import { listTasks, type TaskState, type TaskView } from '../../lib/bureau-tasks.ts';
-import { scheduleDetailPath } from '../../lib/router.svelte.ts';
-import { kindOf, loadScheduleOverlay } from '../../lib/schedule-kinds.ts';
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 import type { ShortcutAction } from '../../lib/shortcuts.ts';
 import { taskStatusWord } from '../../lib/status.ts';
-import { loadCatalog, type CatalogRow } from '../../lib/workflow-catalog.ts';
-import {
-  scheduleName,
-  scheduleNameIdentifiers,
-} from '../../routes/schedules/schedule-presentation.ts';
 import { PALETTE_COPY, SHORTCUT_COPY } from '../copy.ts';
 import type { NotificationItem } from '../notifications.svelte.ts';
 
@@ -78,18 +66,6 @@ export interface RunMatch {
   readonly waiting: 'approval' | 'answer' | null;
 }
 
-/** One schedule the palette lists, named in the words the Schedules page uses for it. */
-export interface ScheduleMatch {
-  readonly id: string;
-  /** What the schedule is called: its description, else what it starts. Never its identifier. */
-  readonly name: string;
-  /** The parts of `name` that are identifiers, to be set in monospace. */
-  readonly identifiers: string[];
-  readonly workflowType: string;
-  /** The type the schedule starts, for the row's meta, or `null` when the name already says it. */
-  readonly workflowTypeShown: string | null;
-}
-
 export interface ConsoleSearchResults {
   readonly chats: ChatContext[];
   /** The Bureau's runs whose title, agent or identifier matches, most recently changed first. */
@@ -97,11 +73,8 @@ export interface ConsoleSearchResults {
   /** Each agent's identifier and the name a person reads, so a row names "Tool runner" and not `tool-runner`. */
   readonly agentNames: ReadonlyMap<string, string>;
   readonly agents: AgentSummary[];
-  /** The workflow types whose name or description matches. */
-  readonly definitions: CatalogRow[];
   /** Runs, by the start of their identifier. */
   readonly workflows: WorkflowSummary[];
-  readonly schedules: ScheduleMatch[];
   readonly workers: { id: string; queue: string }[];
   readonly reviews: ReviewListEntry[];
   /** The tools of the catalog whose name or description matches. */
@@ -115,46 +88,14 @@ export interface ConsoleSearchResults {
 const OPEN_GATE: ScopeGate = { disabled: false, title: undefined };
 
 export interface ConsoleSearchOptions {
-  /** Whether the principal holds `schedules:read`; without it schedules are not searched. */
-  readonly scheduleReadGate: ScopeGate;
-  /** `workflows:read`: without it neither workflow types nor runs are searched. Open when omitted. */
+  /** `workflows:read`: without it workflow runs are not searched by identifier. Open when omitted. */
   readonly workflowReadGate?: ScopeGate | undefined;
   /** `reviews:read`: without it reviews are not searched. Open when omitted. */
   readonly reviewReadGate?: ScopeGate | undefined;
   /** `system:read`: without it workers are not searched. Open when omitted. */
   readonly systemReadGate?: ScopeGate | undefined;
-  /** Reads the workflow types; the shell answers from its query cache, so a keystroke does not read them again. */
-  readonly readWorkflows?: (() => Promise<readonly CatalogRow[]>) | undefined;
   /** Reads the tools of the catalog, likewise. */
   readonly readTools?: (() => Promise<readonly CatalogTool[]>) | undefined;
-}
-
-/**
- * A schedule as the palette lists it: named as the Schedules page names it (its description, else
- * the agent or workflow it starts), never by its identifier. The type is shown beside the name only
- * when the name does not already say it.
- */
-export function scheduleMatch(
-  schedule: Pick<ScheduleSummary, 'id' | 'workflowType' | 'description'>,
-  overlay: Parameters<typeof kindOf>[1],
-): ScheduleMatch {
-  const kind = kindOf(schedule, overlay);
-  const identifiers = scheduleNameIdentifiers(schedule, kind);
-  return {
-    id: schedule.id,
-    name: scheduleName(schedule, kind),
-    identifiers,
-    workflowType: schedule.workflowType,
-    workflowTypeShown:
-      kind.kind === 'agent-run' || identifiers.includes(schedule.workflowType)
-        ? null
-        : schedule.workflowType,
-  };
-}
-
-/** Where a schedule's own page is. */
-export function schedulePath(scheduleId: string): string {
-  return scheduleDetailPath(scheduleId);
 }
 
 /** Where a worker's own page is: the workers view, on its list, with the worker selected. */
@@ -304,16 +245,6 @@ export function newChatAboutPath(topic: string): string {
   return `/chats/new?about=${encodeURIComponent(topic)}`;
 }
 
-/** The workflow types a person starts or edits (not the ones the Bureau runs itself) whose name or description holds `query`. */
-export function matchDefinitions(rows: readonly CatalogRow[], query: string): CatalogRow[] {
-  return rows
-    .filter(
-      (row) =>
-        !row.engine && (containsQuery(query, row.name) || containsQuery(query, row.description)),
-    )
-    .slice(0, RESULTS_PER_GROUP);
-}
-
 /** The tools whose name or description holds `query`. */
 export function matchTools(tools: readonly CatalogTool[], query: string): CatalogTool[] {
   return tools
@@ -436,9 +367,7 @@ export const NO_RESULTS: ConsoleSearchResults = {
   runs: [],
   agentNames: new Map(),
   agents: [],
-  definitions: [],
   workflows: [],
-  schedules: [],
   workers: [],
   reviews: [],
   tools: [],
@@ -511,106 +440,75 @@ export async function searchConsole(
 
   const failed: string[] = [];
   const groups = PALETTE_COPY.groups;
-  const [contexts, agents, definitions, tools, workflows, schedules, workers, reviews, tasks] =
-    await Promise.all([
-      // Chats a person started: a goal's or a schedule's session is reached from its run.
-      reading(
-        failed,
-        groups.chats,
-        listContexts({ origin: 'chat', limit: CHATS_SEARCHED }).then((page) => page.contexts),
-        [] as ChatContext[],
-      ),
-      reading(failed, groups.agents, listAgents(), [] as readonly AgentSummary[]),
-      workflowGate.disabled
-        ? Promise.resolve([] as readonly CatalogRow[])
-        : reading(
-            failed,
-            groups.workflows,
-            options.readWorkflows?.() ?? loadCatalog(client),
-            [] as readonly CatalogRow[],
-          ),
-      reading(
-        failed,
-        groups.tools,
-        options.readTools?.() ?? getAgentCatalog().then((catalog) => catalog.tools),
-        [] as readonly CatalogTool[],
-      ),
-      idPrefix
-        ? reading(
-            failed,
-            groups.runs,
-            client
-              .list({ idPrefix, limit: 50 })
-              .then((result) =>
-                result.items
-                  .filter((workflow) => workflow.id.startsWith(idPrefix))
-                  .slice(0, RESULTS_PER_GROUP),
-              ),
-            [] as WorkflowSummary[],
-          )
-        : Promise.resolve([] as WorkflowSummary[]),
-      options.scheduleReadGate.disabled
-        ? Promise.resolve([] as ScheduleMatch[])
-        : reading(
-            failed,
-            groups.schedules,
-            client.listSchedules({ limit: 100 }).then((result) =>
-              loadScheduleOverlay(client).then((overlay) =>
-                result.items
-                  .map((schedule) => scheduleMatch(schedule, overlay))
-                  .filter(
-                    (schedule) =>
-                      containsQuery(query, schedule.name) ||
-                      containsQuery(query, schedule.id) ||
-                      containsQuery(query, schedule.workflowType),
-                  )
-                  .slice(0, RESULTS_PER_GROUP),
-              ),
-            ),
-            [] as ScheduleMatch[],
-          ),
-      systemGate.disabled
-        ? Promise.resolve([] as { id: string; queue: string }[])
-        : reading(
-            failed,
-            groups.workers,
-            client.operations['weft.workers.list']({}).then((result) =>
+  const [contexts, agents, tools, workflows, workers, reviews, tasks] = await Promise.all([
+    // Chats a person started: a goal's or a schedule's session is reached from its run.
+    reading(
+      failed,
+      groups.chats,
+      listContexts({ origin: 'chat', limit: CHATS_SEARCHED }).then((page) => page.contexts),
+      [] as ChatContext[],
+    ),
+    reading(failed, groups.agents, listAgents(), [] as readonly AgentSummary[]),
+    reading(
+      failed,
+      groups.tools,
+      options.readTools?.() ?? getAgentCatalog().then((catalog) => catalog.tools),
+      [] as readonly CatalogTool[],
+    ),
+    idPrefix
+      ? reading(
+          failed,
+          groups.runs,
+          client
+            .list({ idPrefix, limit: 50 })
+            .then((result) =>
               result.items
-                .filter((worker) => containsQuery(query, worker.id))
+                .filter((workflow) => workflow.id.startsWith(idPrefix))
                 .slice(0, RESULTS_PER_GROUP),
             ),
-            [] as { id: string; queue: string }[],
+          [] as WorkflowSummary[],
+        )
+      : Promise.resolve([] as WorkflowSummary[]),
+    systemGate.disabled
+      ? Promise.resolve([] as { id: string; queue: string }[])
+      : reading(
+          failed,
+          groups.workers,
+          client.operations['weft.workers.list']({}).then((result) =>
+            result.items
+              .filter((worker) => containsQuery(query, worker.id))
+              .slice(0, RESULTS_PER_GROUP),
           ),
-      reviewGate.disabled
-        ? Promise.resolve([] as ReviewListEntry[])
-        : reading(
-            failed,
-            groups.reviews,
-            client
-              .listReviews({})
-              .then((result) =>
-                result
-                  .filter((review) => containsQuery(query, review.reviewId))
-                  .slice(0, RESULTS_PER_GROUP),
-              ),
-            [] as ReviewListEntry[],
-          ),
-      reading(
-        failed,
-        groups.runs,
-        listTasks({ limit: RUNS_SEARCHED }).then((page) => page.tasks),
-        [] as readonly TaskView[],
-      ),
-    ]);
+          [] as { id: string; queue: string }[],
+        ),
+    reviewGate.disabled
+      ? Promise.resolve([] as ReviewListEntry[])
+      : reading(
+          failed,
+          groups.reviews,
+          client
+            .listReviews({})
+            .then((result) =>
+              result
+                .filter((review) => containsQuery(query, review.reviewId))
+                .slice(0, RESULTS_PER_GROUP),
+            ),
+          [] as ReviewListEntry[],
+        ),
+    reading(
+      failed,
+      groups.runs,
+      listTasks({ limit: RUNS_SEARCHED }).then((page) => page.tasks),
+      [] as readonly TaskView[],
+    ),
+  ]);
   const agentNames = agentNamesOf(agents);
   return {
     chats: matchChats(contexts, query),
     runs: matchRuns(tasks, contexts, agentNames, query),
     agentNames,
     agents: matchAgents(agents, query),
-    definitions: matchDefinitions(definitions, query),
     workflows,
-    schedules,
     workers,
     reviews,
     tools: matchTools(tools, query),
