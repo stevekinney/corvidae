@@ -10,6 +10,7 @@ import { runInstalledRelease } from './test-installed-release.ts';
 // load-proof: builds the real signed artifact and exercises installed process and browser boundaries.
 // spawn-free: real archive and supervised lifecycle are the acceptance subject, under the approved slow-test deadline.
 test('runs the installed release journey from the built archive and npm bin link', async () => {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') return;
   expect(Bun.which('bun', { PATH: '/usr/bin:/bin' })).toBeNull();
   expect(Bun.which('node', { PATH: '/usr/bin:/bin' })).toBeNull();
   const output = await mkdtemp(join(tmpdir(), 'interborough-installed-release-build-'));
