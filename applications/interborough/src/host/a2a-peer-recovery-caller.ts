@@ -21,6 +21,18 @@ const value = (key: string): string => {
   if (result === undefined) throw new Error(`caller fixture environment is missing ${key}`);
   return result;
 };
+function isPeerCallKey(candidate: unknown): candidate is {
+  parentRunId: string;
+  operationKey: string;
+} {
+  if (typeof candidate !== 'object' || candidate === null) return false;
+  return (
+    'parentRunId' in candidate &&
+    typeof candidate.parentRunId === 'string' &&
+    'operationKey' in candidate &&
+    typeof candidate.operationKey === 'string'
+  );
+}
 const home = value('INTERBOROUGH_HOME');
 for (const key of required) value(key);
 
@@ -104,22 +116,21 @@ if (environment['RESTART'] === '1') {
     }
     while (!(await Bun.file(value('APPROVE_FILE')).exists()))
       await new Promise<void>((resolve) => setImmediate(resolve));
-    const reviewId = (await Bun.file(value('REVIEW_FILE')).text()).trim();
+    const reviewFile = await Bun.file(value('REVIEW_FILE')).text();
+    const reviewId = reviewFile.trim();
     void host.bureau.reviews
       .resolve({ id: reviewId, decision: 'approve', principal: 'anonymous:local' })
       .catch(() => undefined);
     while (!(await Bun.file(value('GO_FILE')).exists()))
       await new Promise<void>((resolve) => setImmediate(resolve));
-    journal: for (;;) {
+    for (;;) {
       if (await Bun.file(value('KEY_FILE')).exists()) {
-        const key = JSON.parse(await Bun.file(value('KEY_FILE')).text()) as {
-          parentRunId: string;
-          operationKey: string;
-        };
+        const key = JSON.parse(await Bun.file(value('KEY_FILE')).text()) as unknown;
+        if (!isPeerCallKey(key)) throw new Error('caller fixture journal key is malformed');
         const entry = await peerCalls.read(key);
         if (entry !== undefined) {
           await Bun.write(value('JOURNAL_FILE'), JSON.stringify({ key, entry }));
-          break journal;
+          break;
         }
       }
       await new Promise<void>((resolve) => setImmediate(resolve));
