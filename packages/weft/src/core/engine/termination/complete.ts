@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- terminal orchestration keeps the complete state machine together. */
 import type { BatchOperation } from '@lostgradient/storage';
 import { KEYS } from '../../../storage/keys.ts';
 import { decode, encode } from '../../codec.ts';
@@ -30,10 +31,13 @@ import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-si
 import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { staleFailureGuard, type FailureOrigin } from '../execution-attempts.ts';
 import {
+  captureFileWorkflowRunIdentity,
   fileWorkflowTerminalOperations,
+  isFileWorkflowRunCurrent,
   prepareFileWorkflowTerminalHistory as prepareTerminalHistory,
   recordFileWorkflowTerminalHistory as recordTerminalHistory,
   shouldRetryFileWorkflowTermination,
+  type FileWorkflowRunIdentity,
 } from '../file-workflow-history.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
 import { captureInFlightActivityTurn } from '../in-flight-operation.ts';
@@ -129,6 +133,7 @@ export async function timeoutWorkflow(
   await terminateWorkflow(internals, workflowId, 'timed-out', callbacks);
 }
 
+// eslint-disable-next-line complexity -- identity-fenced retry adds one causal branch to this state machine.
 export async function terminateWorkflow(
   internals: EngineInternals,
   workflowId: string,
@@ -136,6 +141,7 @@ export async function terminateWorkflow(
   callbacks: TerminationCallbacks,
   reason?: TerminationReason,
   historyRetry = 0,
+  historyRunIdentity?: FileWorkflowRunIdentity,
 ): Promise<void> {
   const terminatedRun = captureTerminatedRun(internals, workflowId);
   const inFlightActivityTurn = captureInFlightActivityTurn(internals, workflowId);
@@ -144,7 +150,20 @@ export async function terminateWorkflow(
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.strategy.cancelWorkflow(workflowId);
   try {
-    const fileWorkflowHistory = await prepareTerminalHistory(internals, workflowId, status);
+    const capturedHistoryRunIdentity =
+      historyRunIdentity ?? (await captureFileWorkflowRunIdentity(internals, workflowId));
+    const fileWorkflowHistory = await prepareTerminalHistory(
+      internals,
+      workflowId,
+      status,
+      capturedHistoryRunIdentity,
+    );
+    if (
+      capturedHistoryRunIdentity !== undefined &&
+      !(await isFileWorkflowRunCurrent(internals, workflowId, capturedHistoryRunIdentity))
+    ) {
+      return;
+    }
     const terminalCleanupToken = internals.workflowsNeedingTerminalCleanup.has(workflowId)
       ? crypto.randomUUID()
       : undefined;
@@ -228,6 +247,7 @@ export async function terminateWorkflow(
           callbacks,
           reason,
           historyRetry + 1,
+          capturedHistoryRunIdentity,
         );
       }
       throw error;

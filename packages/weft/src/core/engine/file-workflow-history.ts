@@ -6,10 +6,18 @@ import type { ContextOperationRequest } from '../context.ts';
 import { EventLog, type EventHeadRecord } from '../event-log.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveWorkflowSourceForExecution } from './source-resolution.ts';
+import { loadWorkflowState } from './storage-io.ts';
 
 const FILE_WORKFLOW_TAG = 'file-workflow';
 
 type FileWorkflowEvent = Readonly<{ type: string; payload: Record<string, unknown> }>;
+
+export type FileWorkflowRunIdentity = Readonly<{
+  type: string;
+  revision: string | undefined;
+  workflowExecutionToken: string | undefined;
+  generation: Uint8Array | null;
+}>;
 
 type PreparedTerminalHistory = Readonly<{
   append: (operations: BatchOperation[]) => EventHeadRecord;
@@ -87,6 +95,51 @@ async function isFileWorkflow(
     if (surfaceSourceErrors) throw error;
     return false;
   }
+}
+
+export async function captureFileWorkflowRunIdentity(
+  internals: EngineInternals,
+  workflowId: string,
+): Promise<FileWorkflowRunIdentity | undefined> {
+  const state = await loadWorkflowState(internals, workflowId);
+  if (state === null) return undefined;
+  return {
+    type: state.type,
+    revision: state.revision,
+    workflowExecutionToken: state.workflowExecutionToken,
+    generation: await internals.storage.get(KEYS.workflowGeneration(workflowId)),
+  };
+}
+
+function sameFileWorkflowRun(
+  expected: FileWorkflowRunIdentity,
+  current: FileWorkflowRunIdentity | undefined,
+): boolean {
+  if (current === undefined) return false;
+  if (
+    current.type !== expected.type ||
+    current.revision !== expected.revision ||
+    current.workflowExecutionToken !== expected.workflowExecutionToken
+  ) {
+    return false;
+  }
+  if (current.generation === null || expected.generation === null) {
+    return current.generation === expected.generation;
+  }
+  const expectedGeneration = expected.generation;
+  const currentGeneration = current.generation;
+  return (
+    currentGeneration.length === expectedGeneration.length &&
+    currentGeneration.every((byte, index) => byte === expectedGeneration[index])
+  );
+}
+
+export async function isFileWorkflowRunCurrent(
+  internals: EngineInternals,
+  workflowId: string,
+  expected: FileWorkflowRunIdentity,
+): Promise<boolean> {
+  return sameFileWorkflowRun(expected, await captureFileWorkflowRunIdentity(internals, workflowId));
 }
 
 function eventKey(event: FileWorkflowEvent): string {
@@ -241,11 +294,13 @@ export async function prepareFileWorkflowTerminalHistory(
   internals: EngineInternals,
   workflowId: string,
   status: 'completed' | 'failed' | 'cancelled' | 'timed-out',
+  expectedRun?: FileWorkflowRunIdentity,
 ): Promise<PreparedTerminalHistory | undefined> {
-  if (
-    !(await isFileWorkflow(internals, workflowId, status === 'cancelled' || status === 'timed-out'))
-  )
-    return undefined;
+  const run = expectedRun ?? (await captureFileWorkflowRunIdentity(internals, workflowId));
+  if (run === undefined) return undefined;
+  const currentRun = await captureFileWorkflowRunIdentity(internals, workflowId);
+  if (!sameFileWorkflowRun(run, currentRun)) return undefined;
+  if (!(await isTerminalFileWorkflow(internals, run, status))) return undefined;
   const initialHead = await new EventLog(
     internals.storage,
     workflowId,
@@ -274,6 +329,21 @@ export async function prepareFileWorkflowTerminalHistory(
       expectedValue: initialHead.sequence < 0 ? null : encode(initialHead),
     }),
   };
+}
+
+async function isTerminalFileWorkflow(
+  internals: EngineInternals,
+  run: FileWorkflowRunIdentity,
+  status: 'completed' | 'failed' | 'cancelled' | 'timed-out',
+): Promise<boolean> {
+  try {
+    return isTaggedFileWorkflow(
+      await fileWorkflowDefinition(internals, { type: run.type, revision: run.revision }),
+    );
+  } catch (error) {
+    if (status === 'cancelled' || status === 'timed-out') throw error;
+    return false;
+  }
 }
 
 export function recordFileWorkflowTerminalHistory(
