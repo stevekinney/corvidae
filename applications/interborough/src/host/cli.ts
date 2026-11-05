@@ -7,6 +7,7 @@ import { environmentalist } from '@lostgradient/environmentalist';
 import type { Source } from '@lostgradient/environmentalist/types';
 import { z } from 'zod';
 
+import { executeCli } from './cli-client.ts';
 import {
   A2A_PUBLIC_ORIGIN_VARIABLE,
   BUILD_DIRECTORY_VARIABLE,
@@ -132,6 +133,12 @@ async function run(arguments_: string[]): Promise<number> {
       throw new Error('The supervisor must supply the build directory.');
     await serveHost(environment, buildDirectory);
     return 0;
+  }
+  if (command !== 'start' && command !== '--help' && command !== '--version') {
+    const result = await executeCli(arguments_);
+    if (result.stdout !== '') process.stdout.write(`${result.stdout}\n`);
+    if (result.stderr !== '') console.error(result.stderr);
+    return result.exitCode;
   }
   const cwd = process.cwd();
   let result: ReturnType<typeof startEnvironment>;
