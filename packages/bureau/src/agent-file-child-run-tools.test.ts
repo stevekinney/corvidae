@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { MemoryStorage } from '@lostgradient/storage';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { createTool, type Tool } from 'armorer';
+import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from './assets/storage';
@@ -22,10 +24,24 @@ import type { Bureau } from './types';
 type Script = GenerateFunction;
 const roots: string[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
+let childMutationCount = 0;
+
+const issueRefund = createTool({
+  name: 'issue-refund',
+  version: '1.0.0',
+  description: 'Issue a test refund.',
+  input: z.object({}),
+  metadata: { mutates: true },
+  execute: async () => {
+    childMutationCount += 1;
+    return { ok: true };
+  },
+});
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0).toReversed()) await bureau.dispose();
   for (const root of roots.splice(0).toReversed()) await rm(root, { recursive: true, force: true });
+  childMutationCount = 0;
 });
 
 function lastResult(context: Parameters<Script>[0]): unknown {
@@ -52,6 +68,7 @@ async function open(options: {
   readonly childTools?: string;
   readonly childApproval?: string;
   readonly childModel?: boolean;
+  readonly agentTools?: Readonly<Record<string, Tool>>;
   readonly childAgents?: string;
   readonly approval?: string;
   readonly rootAuthority?: { readonly levels: number; readonly concurrentChildren: number };
@@ -114,7 +131,10 @@ async function open(options: {
     durable: true,
     storage: new MemoryStorage(),
     assets: { storage: createMemoryAssetStorage() },
-    agentSource: agentFileDirectory(directory),
+    agentSource: agentFileDirectory(
+      directory,
+      options.agentTools === undefined ? {} : { tools: options.agentTools },
+    ),
     models: { generate: (descriptor) => async (context) => scripts[descriptor.model]!(context) },
     requestAuthorityValidator: () => true,
     ...(options.rootAuthority === undefined
@@ -352,7 +372,7 @@ describe('registered child-run tools on file agents', () => {
     expect(resolved).toMatchObject({ decision: 'approve' });
   });
 
-  it('executes a registered mutating tool from the dispatched child model', async () => {
+  it('holds a registered child mutating tool in the real chat-root path', async () => {
     let dispatched = false;
     let childCalled = false;
     let childToolResult: unknown;
@@ -360,9 +380,9 @@ describe('registered child-run tools on file agents', () => {
     let parentDispatchResult: unknown;
     const { bureau } = await open({
       childAgents: '[worker]',
-      childTools: '[bureau:child-runs-cancel]',
+      childTools: '[issue-refund]',
       childModel: true,
-      childApproval: 'bureau:child-runs-cancel=never',
+      agentTools: { 'issue-refund': issueRefund },
       rootAuthority: { levels: 2, concurrentChildren: 4 },
       approval: 'bureau:child-runs-dispatch=never',
       child: async (context) => {
@@ -377,8 +397,8 @@ describe('registered child-run tools on file agents', () => {
           content: '',
           toolCalls: [
             {
-              name: 'bureau__child-runs-cancel',
-              arguments: { childRunId: 'missing-child' },
+              name: 'issue-refund',
+              arguments: {},
             },
           ],
         };
@@ -417,7 +437,8 @@ describe('registered child-run tools on file agents', () => {
       if (childToolResult !== undefined) break;
     }
     expect(childCalled).toBe(true);
-    expect(childToolResult).toEqual({ status: 'not-found' });
+    expect(childMutationCount).toBe(0);
+    expect(String(childToolResult)).toMatch(/held|denied|approval/i);
   });
 
   it('denies a different principal access to a dispatched child', async () => {
