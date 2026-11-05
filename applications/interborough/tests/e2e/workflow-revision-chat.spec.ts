@@ -117,12 +117,17 @@ test.describe('workflow revision review in Chat', () => {
     await page.goto(`/chats/${longValuesThread}`);
     const longValuesFrame = page.frameLocator('iframe[title="Review workflow revision"]');
     await expect(longValuesFrame.getByRole('button', { name: 'Apply' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: `/chats/${longValuesThread}`,
+      state: 'workflow revision long values',
+      source: 'workflow-revision-chat.spec.ts',
+    });
     await longValuesFrame.locator('.revision-comparison').evaluate((element) => {
       element.scrollTop = element.scrollHeight;
     });
     await captureForDesignReview(page, {
       route: `/chats/${longValuesThread}`,
-      state: 'workflow revision long values',
+      state: 'workflow revision long values scrolled',
       source: 'workflow-revision-chat.spec.ts',
     });
     await page.setViewportSize({ width: 1280, height: 720 });
