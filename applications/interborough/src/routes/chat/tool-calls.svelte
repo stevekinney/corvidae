@@ -30,7 +30,13 @@
   let open = $state(false);
   const folded = $derived(entries.length > 1 && !open);
   const visible = $derived(
-    folded ? entries.filter((entry) => entry.state === 'needs-you') : entries,
+    folded
+      ? entries.filter(
+          (entry) =>
+            entry.state === 'needs-you' ||
+            (mcpApp !== undefined && entry.name === 'bureau__workflows-propose-update'),
+        )
+      : entries,
   );
   let detailsOpen = $state<Readonly<Record<string, boolean>>>({});
 
@@ -136,9 +142,4 @@
       {/if}
     </div>
   {/each}
-  {#if folded && mcpApp !== undefined}
-    {#each entries.filter((entry) => entry.state === 'done') as entry (entry.callId)}
-      {@render mcpApp(entry)}
-    {/each}
-  {/if}
 </div>

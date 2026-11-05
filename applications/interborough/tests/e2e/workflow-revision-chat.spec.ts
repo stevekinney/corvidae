@@ -26,13 +26,23 @@ test.describe('workflow revision review in Chat', () => {
 
     const frame = page.frameLocator('iframe[title="Review workflow revision"]');
     await expect(frame.getByRole('heading', { name: 'Review workflow revision' })).toBeVisible();
-    await expect(frame.locator('.revision-row[data-state="changed"]')).toHaveCount(4);
+    await expect(
+      page
+        .locator('.ib-tool')
+        .filter({ has: page.locator('iframe[title="Review workflow revision"]') }),
+    ).toHaveCount(1);
+    await expect(
+      frame.locator(
+        '.revision-row[data-state="changed"], .revision-row[data-state="added"], .revision-row[data-state="removed"]',
+      ),
+    ).toHaveCount(4);
     await captureForDesignReview(page, {
       route: `/chats/${thread}`,
       state: 'workflow revision proposal',
       source: 'workflow-revision-chat.spec.ts',
     });
     await page.setViewportSize({ width: 375, height: 720 });
+    await expect(frame.getByRole('heading', { name: 'Review workflow revision' })).toBeVisible();
     await captureForDesignReview(page, {
       route: `/chats/${thread}`,
       state: 'workflow revision proposal phone',

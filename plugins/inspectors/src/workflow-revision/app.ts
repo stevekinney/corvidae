@@ -12,6 +12,16 @@ type Definition = {
 };
 
 type Workflow = { readonly id: string; readonly hash: string; readonly text: string };
+type RevisionState =
+  | 'loading'
+  | 'changed'
+  | 'no-changes'
+  | 'applying'
+  | 'applied'
+  | 'conflict'
+  | 'denied'
+  | 'offline'
+  | 'unknown';
 
 function structured<T>(
   result: { structuredContent?: unknown; isError?: boolean | undefined },
@@ -59,7 +69,9 @@ function isResult(
 }
 
 function text(value: unknown): string {
-  return JSON.stringify(value, null, 2);
+  if (value === undefined) return 'Not present';
+  if (value === null) return 'None';
+  return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -89,9 +101,24 @@ function changedRows(current: Definition, proposed: Definition): HTMLElement[] {
   const add = (label: string, oldValue: unknown, newValue: unknown): void => {
     const row = document.createElement('div');
     row.className = 'revision-row';
-    const state = same(oldValue, newValue) ? 'unchanged' : 'changed';
+    const state = same(oldValue, newValue)
+      ? 'unchanged'
+      : oldValue === undefined || oldValue === null
+        ? 'added'
+        : newValue === undefined || newValue === null
+          ? 'removed'
+          : 'changed';
     row.dataset['state'] = state;
-    row.innerHTML = `<strong>${label}</strong><span>${state === 'unchanged' ? 'Unchanged' : 'Changed'}</span><pre>${text(oldValue)}</pre><pre>${text(newValue)}</pre>`;
+    const name = document.createElement('strong');
+    name.textContent = label;
+    const marker = document.createElement('span');
+    marker.className = 'revision-row__marker';
+    marker.textContent = `${state.at(0)?.toUpperCase() ?? ''}${state.slice(1)}`;
+    const currentValue = document.createElement('pre');
+    currentValue.textContent = text(oldValue);
+    const proposedValue = document.createElement('pre');
+    proposedValue.textContent = text(newValue);
+    row.append(name, marker, currentValue, proposedValue);
     rows.push(row);
   };
   for (const key of [
@@ -116,7 +143,7 @@ function render(
   root: HTMLElement,
   current: Definition,
   proposed: Definition,
-  state: string,
+  state: RevisionState,
   message: string | undefined,
   onApply: () => void,
   disabled: boolean,
@@ -126,27 +153,53 @@ function render(
   title.textContent = 'Review workflow revision';
   root.append(title);
   const status = document.createElement('p');
+  status.className = `revision-status revision-status--${state}`;
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
   status.textContent =
     message ??
-    (state === 'no-changes'
-      ? 'No changes in this proposal.'
-      : state === 'applied'
-        ? 'Applied.'
-        : 'Review the four visible changes before applying.');
+    (state === 'loading'
+      ? 'Loading the current workflow definition…'
+      : state === 'no-changes'
+        ? 'No changes in this proposal.'
+        : state === 'applying'
+          ? 'Applying the approved revision…'
+          : state === 'applied'
+            ? 'Applied. The workflow now matches the proposed definition.'
+            : state === 'conflict'
+              ? 'The file changed since the proposal. Check the current definition before retrying.'
+              : state === 'denied'
+                ? 'You do not have access to apply this revision. No changes were made.'
+                : state === 'offline'
+                  ? 'Could not confirm the update. Check the current definition before retrying.'
+                  : state === 'unknown'
+                    ? 'The update returned an unknown result. Check the current definition before retrying.'
+                    : 'Review the four visible changes before applying.');
   root.append(status);
   const comparison = document.createElement('div');
   comparison.className = 'revision-comparison';
+  comparison.setAttribute('role', 'region');
+  comparison.setAttribute('aria-label', 'Workflow definition comparison');
+  comparison.tabIndex = 0;
   const heading = document.createElement('h2');
   heading.textContent = 'Current and proposed';
-  comparison.append(heading, ...changedRows(current, proposed));
+  const columns = document.createElement('div');
+  columns.className = 'revision-columns';
+  const changeHeading = document.createElement('span');
+  const currentHeading = document.createElement('span');
+  const proposedHeading = document.createElement('span');
+  columns.append(document.createElement('span'), changeHeading, currentHeading, proposedHeading);
+  changeHeading.textContent = 'Change';
+  currentHeading.textContent = 'Current';
+  proposedHeading.textContent = 'Proposed';
+  comparison.append(heading, columns, ...changedRows(current, proposed));
   root.append(comparison);
   const footer = document.createElement('footer');
   const apply = document.createElement('button');
   apply.type = 'button';
-  apply.textContent = 'Apply';
-  apply.disabled = disabled || state !== 'changed';
+  apply.textContent =
+    state === 'applying' ? 'Applying…' : state === 'applied' ? 'Applied' : 'Apply';
+  apply.disabled = disabled || !['changed', 'applying'].includes(state);
   apply.addEventListener('click', onApply);
   footer.append(apply);
   root.append(footer);
@@ -167,7 +220,7 @@ async function start(): Promise<void> {
   loading.textContent = 'Loading workflow revision…';
   root.append(loading);
 
-  const show = (state: string, message?: string): void => {
+  const show = (state: RevisionState, message?: string): void => {
     if (tornDown || current === undefined || proposed === undefined) return;
     render(
       root,
@@ -198,27 +251,36 @@ async function start(): Promise<void> {
   };
   const apply = async (): Promise<void> => {
     if (proposed === undefined || typeof argumentsOfCall['id'] !== 'string') return;
-    const result = await app.callServerTool({
-      name: 'bureau.workflows.update',
-      arguments: { id: argumentsOfCall['id'], expectedHash: baseHash, definition: proposed },
-    });
-    const outcomeValue = structuredResult(result);
-    const outcome = isResult(outcomeValue) ? outcomeValue : undefined;
-    if (
-      outcome !== undefined &&
-      (outcome.status === 'ok' || typeof Reflect.get(outcome, 'hash') === 'string')
-    )
-      show('applied', `Applied. New hash: ${String(Reflect.get(outcome, 'hash') ?? '')}`);
-    else if (outcome?.status === 'conflict' || result.isError === true)
-      show(
-        'conflict',
-        'The file changed since the proposal. Check the current definition before retrying.',
-      );
-    else
-      show(
-        'conflict',
-        'The revision was not applied. Check the current definition before retrying.',
-      );
+    show('applying');
+    try {
+      const result = await app.callServerTool({
+        name: 'bureau.workflows.update',
+        arguments: { id: argumentsOfCall['id'], expectedHash: baseHash, definition: proposed },
+      });
+      const outcomeValue = structuredResult(result);
+      const outcome = isResult(outcomeValue) ? outcomeValue : undefined;
+      const resultText = JSON.stringify(outcomeValue ?? result.content ?? '').toLowerCase();
+      if (
+        outcome !== undefined &&
+        (outcome.status === 'ok' || typeof Reflect.get(outcome, 'hash') === 'string')
+      )
+        show('applied', `Applied. New hash: ${String(Reflect.get(outcome, 'hash') ?? '')}`);
+      else if (
+        outcome?.status === 'conflict' ||
+        resultText.includes('stale') ||
+        resultText.includes('changed')
+      )
+        show('conflict');
+      else if (
+        resultText.includes('forbidden') ||
+        resultText.includes('unauthorized') ||
+        resultText.includes('access')
+      )
+        show('denied');
+      else show('unknown');
+    } catch {
+      show('offline');
+    }
   };
   app.ontoolinput = (params) => {
     argumentsOfCall = isRecord(params.arguments) ? params.arguments : {};
