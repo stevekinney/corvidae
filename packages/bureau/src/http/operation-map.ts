@@ -87,6 +87,7 @@ export const OPERATION_MAP = {
   'bureau.contexts.delete': { member: 'contexts.delete' },
   'bureau.contexts.input': { member: 'contexts.input' },
   'bureau.contexts.retract': { member: 'contexts.retract' },
+  'bureau.contexts.rewind': { member: 'contexts.rewind' },
   'bureau.contexts.steer': { member: 'contexts.steer' },
   'bureau.contexts.fork': { member: 'contexts.fork' },
   'bureau.contexts.rename': { member: 'contexts.rename' },

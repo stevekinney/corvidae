@@ -577,6 +577,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.contexts.list',
         'bureau.contexts.rename',
         'bureau.contexts.retract',
+        'bureau.contexts.rewind',
         'bureau.contexts.steer',
         'bureau.contexts.window',
         'bureau.decisions.decide',

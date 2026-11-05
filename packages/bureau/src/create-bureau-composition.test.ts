@@ -41,6 +41,7 @@ const NAMESPACE_VERBS: ReadonlySet<string> = new Set([
   'signal',
   'input',
   'retract',
+  'rewind',
   'inputsDeliveredBy',
   'steer',
   'steering',

@@ -206,10 +206,10 @@ describe('a run that delivered session input', () => {
               id: 'follow-up-1',
               principal: 'anonymous:local',
             });
-            await waitForCondition(
-              async () => (await original.call(this, commandId))?.state === 'cancellation-requested',
-              'the cancellation was requested',
-            );
+            await waitForCondition(async () => {
+              const current = await original.call(this, commandId);
+              return current?.state === 'cancellation-requested';
+            }, 'the cancellation was requested');
             return original.call(this, commandId);
           }
           return receipt;

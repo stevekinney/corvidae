@@ -73,6 +73,7 @@ import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
+import { holdsPendingApproval } from '../session-rewind.ts';
 import type { Bureau, BureauReviews, BureauInternals, BureauTasks } from '../types.ts';
 import type { TaskState } from '../task-registry.ts';
 import {
@@ -905,29 +906,6 @@ export function createAgUiMount(
     pathPrefix,
     fetch: (request, context) => route(request, context),
   };
-}
-
-/**
- * Whether a session holds an unexpired tool approval for `runId` in `pendingApprovalOverrides`.
- * Bureau persists the entry when an approval is gated and removes it in the same write as the
- * resolution; an entry whose binding has expired is not pending, by the rule `reviews.list`
- * uses.
- */
-function holdsPendingApproval(
-  metadata: AgentSession['metadata'],
-  runId: string,
-  asOf: number,
-): boolean {
-  const overrides = metadata['pendingApprovalOverrides'];
-  if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
-    return false;
-  }
-  return Object.entries(overrides).some(([reviewId, approval]) => {
-    if (!reviewId.startsWith(`approval:${runId}:`)) return false;
-    const expiresAt = (approval as { approvalBinding?: { expiresAt?: unknown } } | null)
-      ?.approvalBinding?.expiresAt;
-    return typeof expiresAt !== 'number' || expiresAt > asOf;
-  });
 }
 
 /**

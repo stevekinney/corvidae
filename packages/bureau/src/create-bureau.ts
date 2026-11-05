@@ -600,6 +600,12 @@ import {
   SessionForkRefusedError,
 } from './session-fork';
 import {
+  holdsPendingApproval,
+  rewoundSession,
+  type SessionRewindOutcome,
+  type SessionRewindRequest,
+} from './session-rewind';
+import {
   answerSteeringRetry,
   type BureauSteeringGate,
   getSteeringLedgerEntry,
@@ -16076,6 +16082,78 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * B06 (rows 19r and 20c) — take a turn back out of a context: the conversation from
+   * `request.fromMessageId` to its end is removed, and the grants of `request.forgetGrantsFor` are
+   * forgotten, so Retry sends the turn again over a transcript that never held the failed attempt
+   * and a changing tool asks again. A context a run still holds (going, or parked on an approval)
+   * is refused, because the run writes the rows this removes; the answer comes from the context
+   * as it is read inside the store's own update, so a run that starts meanwhile is seen.
+   */
+  async function rewindSession(
+    sessionId: string,
+    request: SessionRewindRequest,
+  ): Promise<SessionRewindOutcome> {
+    if (runAdmissionClosed) {
+      throw new BureauShuttingDownError(
+        'Cannot rewind: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
+    }
+    const sessions = requireSessionStore();
+    const session = await sessions.load(sessionId);
+    if (session === undefined) return { outcome: 'not-found' };
+    if (await sessionHoldsRun(session)) return { outcome: 'run-in-progress' };
+    let outcome: SessionRewindOutcome = { outcome: 'not-found' };
+    await sessions.update(
+      sessionId,
+      async (current) => {
+        if (current === undefined || current.incarnation !== session.incarnation) {
+          outcome = { outcome: 'not-found' };
+          return undefined;
+        }
+        if (await sessionHoldsRun(current)) {
+          outcome = { outcome: 'run-in-progress' };
+          return undefined;
+        }
+        const rewound = rewoundSession(current, request);
+        if (rewound === undefined) {
+          outcome = { outcome: 'message-not-found' };
+          return undefined;
+        }
+        outcome = {
+          outcome: 'rewound',
+          removed: rewound.removed,
+          forgotten: rewound.forgotten,
+        };
+        return rewound.session;
+      },
+      { refreshActivity: true },
+    );
+    return outcome;
+  }
+
+  /**
+   * Whether a run of `session` is going, or is parked on an unexpired tool approval: the rule the
+   * AG-UI mount decides a thread is busy with, so a start and a rewind never disagree.
+   */
+  async function sessionHoldsRun(session: AgentSession): Promise<boolean> {
+    const metadata = session.metadata;
+    const lastRunId = metadata['lastRunId'];
+    if (typeof lastRunId !== 'string') return false;
+    try {
+      if (metadata['lastRunStatus'] === 'running') {
+        const durable = await getDurableRun(lastRunId);
+        if (durable !== undefined && durable !== null && isDurableRunUnsettled(durable.status)) {
+          return true;
+        }
+      }
+      return holdsPendingApproval(metadata, lastRunId, runtimeServices.clock.now());
+    } catch {
+      return true;
+    }
+  }
+
+  /**
    * AB-67/AB-199 — admit a `pause`/`resume` steering command. Pre-admission
    * checks reuse `submitSessionInput`'s fixed order (authorization, then
    * session lifecycle, then capability): an unauthorized caller or unknown
@@ -22258,6 +22336,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     signal: signalSession,
     input: submitSessionInput,
     retract: retractSessionInput,
+    rewind: rewindSession,
     inputsDeliveredBy: sessionInputsDeliveredBy,
     steer: submitSteeringCommand,
     steering: getSessionSteering,

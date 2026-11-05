@@ -203,6 +203,8 @@ const CONTEXT_COMMAND_PARAMETERS = {
   throughMessageId: 'message-1',
   // The input a retract takes back.
   inputId: 'input-1',
+  // The row a rewind removes with every row after it.
+  fromMessageId: 'message-1',
   // Clearing a title the context never had changes nothing, so the rename reaches its own check
   // without altering the title the transcript scan looks for.
   title: null,
@@ -838,11 +840,12 @@ describe('identifiers grant nothing', () => {
     const shape = (operation.inputSchema as unknown as { shape: Record<string, unknown> }).shape;
     // `messageId` and `signalId` are a caller's idempotency keys, `callId` selects a wait within a
     // task, and `inputId` an input within a context: none is the id of a resource on its own, and
-    // `callId` and `inputId` need their task or context named beside them (the context is probed).
+    // `callId` and `inputId` need their task or context named beside them (the context is probed). `fromMessageId` is a row of a context, as `throughMessageId` is.
     return Object.keys(shape).filter(
       (key) =>
         key !== 'messageId' &&
         key !== 'throughMessageId' &&
+        key !== 'fromMessageId' &&
         key !== 'commandId' &&
         key !== 'signalId' &&
         key !== 'callId' &&

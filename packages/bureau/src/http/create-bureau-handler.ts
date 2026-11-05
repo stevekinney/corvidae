@@ -115,6 +115,10 @@ import {
   contextsRetractOperation,
 } from './management/contexts-retract-operation.ts';
 import {
+  type BureauContextsRewindOperationHost,
+  contextsRewindOperation,
+} from './management/contexts-rewind-operation.ts';
+import {
   type BureauContextsForkOperationHost,
   contextsForkOperation,
 } from './management/contexts-fork-operation.ts';
@@ -294,6 +298,7 @@ export type BureauHandlerSource = Pick<
     | 'window'
     | 'input'
     | 'retract'
+    | 'rewind'
     | 'inputsDeliveredBy'
     | 'steer'
     | 'steering'
@@ -370,6 +375,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsOperationHost &
   BureauContextsInputOperationHost &
   BureauContextsRetractOperationHost &
+  BureauContextsRewindOperationHost &
   BureauContextsSteerOperationHost &
   BureauContextsForkOperationHost &
   BureauContextsRenameOperationHost &
@@ -778,6 +784,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsDeleteOperation,
   contextsInputOperation,
   contextsRetractOperation,
+  contextsRewindOperation,
   contextsSteerOperation,
   contextsForkOperation,
   contextsRenameOperation,
@@ -1236,6 +1243,7 @@ export function buildBureauHandlerHost(
       window: (id, windowOptions) => bureau.contexts.window(id, windowOptions),
       input: (id, request) => bureau.contexts.input(id, request),
       retract: (id, request) => bureau.contexts.retract(id, request),
+      rewind: (id, request) => bureau.contexts.rewind(id, request),
       steer: (id, request) => bureau.contexts.steer(id, request),
       fork: (id, request) => bureau.contexts.fork(id, request),
       get lifecycle() {
