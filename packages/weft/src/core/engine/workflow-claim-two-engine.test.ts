@@ -36,6 +36,7 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import { GENERATION_KEYS } from '../../storage/generation-keys.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
+import { EventLog } from '../event-log.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';
 import { purgeWorkflow } from './bulk-operations-purge.ts';
@@ -2008,6 +2009,20 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
 
 describe('COR-1384: an old run durable terminal teardown must not touch a same-id start-new replacement', () => {
   const TYPE = 'teardown-durable';
+  const FILE_RACE_TYPE = 'file-cancel-race';
+  let releaseFileActivity: (() => void) | undefined;
+  const fileCancelRaceWorkflow = workflow({
+    name: FILE_RACE_TYPE,
+    tags: ['file-workflow'],
+  }).execute(async function* (ctx: WorkflowContext) {
+    yield* ctx.waitForSignal('go');
+    yield* ctx.run(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFileActivity = resolve;
+        }),
+    );
+  });
   /** Input is `partition:behavior`; the partition names the concurrency slot, the behavior is `fail` or anything else. */
   const teardownWorkflow = workflow({
     name: TYPE,
@@ -2081,7 +2096,11 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
   };
 
   async function createEngine(storage: MemoryStorage) {
-    return Engine.create({ storage, workflows: { [TYPE]: teardownWorkflow }, recover: false });
+    return Engine.create({
+      storage,
+      workflows: { [TYPE]: teardownWorkflow, [FILE_RACE_TYPE]: fileCancelRaceWorkflow },
+      recover: false,
+    });
   }
 
   /** Park the old run, then commit its terminal state and freeze it at `gate`. */
@@ -2603,6 +2622,71 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       expect(await slotHolders(storage, 'P1')).toEqual([]);
       expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
     } finally {
+      await engineB[Symbol.asyncDispose]();
+      await engineA[Symbol.asyncDispose]();
+    }
+  });
+
+  it('rebuilds cancellation history after a concurrent checkpoint advances the event head', async () => {
+    const id = `file-cancel-race-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    const engineA = await createEngine(storage);
+    let cancellationWrites = 0;
+    let armed = true;
+    const gatedStorage = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch') {
+          return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+            const cancelling = operations.some(
+              (operation) =>
+                operation.type === 'put' &&
+                operation.key === KEYS.workflow(id) &&
+                (decode(operation.value) as { status?: string }).status === 'cancelled',
+            );
+            if (armed && cancelling) {
+              armed = false;
+              gate.reached.resolve();
+              await gate.release.promise;
+            }
+            if (cancelling) cancellationWrites += 1;
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const engineB = await createEngine(gatedStorage);
+    try {
+      await engineA.start(FILE_RACE_TYPE, null, { id });
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      const headBeforeCancel = await new EventLog(storage, id).loadHead();
+      const cancellation = engineB.cancel(id);
+      await gate.reached.promise;
+      await engineA.signal(id, 'go');
+      releaseFileActivity?.();
+      await waitForCondition(
+        async () =>
+          (await new EventLog(storage, id).loadHead()).sequence > headBeforeCancel.sequence,
+        { label: 'checkpoint after cancellation race signal' },
+      );
+      gate.release.resolve();
+      await cancellation;
+      expect(cancellationWrites).toBeGreaterThan(1);
+      const recordedEvents = await engineA.getEvents(id);
+      const events = recordedEvents
+        .filter((event) => event.type.startsWith('file-workflow:'))
+        .map(({ type, data }) => ({ type, data }));
+      expect(events.at(-1)).toEqual({
+        type: 'file-workflow:run-terminal',
+        data: { status: 'cancelled' },
+      });
+      expect(events.filter(({ type }) => type === 'file-workflow:run-terminal')).toHaveLength(1);
+      const verification = await new EventLog(storage, id).verify();
+      expect(verification.valid).toBe(true);
+    } finally {
+      gate.release.resolve();
       await engineB[Symbol.asyncDispose]();
       await engineA[Symbol.asyncDispose]();
     }

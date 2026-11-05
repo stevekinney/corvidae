@@ -52,6 +52,8 @@ export type WorkflowStateUpdateOptions = {
    * `'self'` category; a refused write that fails every attempt throws `CheckpointCommitFailedError`.
    */
   retryRefusedWrite?: 'failure';
+  /** Additional durable conditions owned by the transition's caller. */
+  extraConditions?: readonly ConditionalBatchCondition[];
 };
 
 export type WorkflowStateUpdateResult = {
@@ -189,7 +191,10 @@ async function attemptWorkflowStateUpdate(
       ],
       {
         includePendingAtomicSideEffects: isTerminalWorkflowStatus(updated.status),
-        extraConditions: decisionConditions(workflowId, bytes, fence),
+        extraConditions: [
+          ...decisionConditions(workflowId, bytes, fence),
+          ...(options.extraConditions ?? []),
+        ],
         ...(options.retryRefusedWrite === undefined
           ? {}
           : { retryRefusedWrite: options.retryRefusedWrite }),

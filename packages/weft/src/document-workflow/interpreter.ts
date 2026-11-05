@@ -111,6 +111,7 @@ export async function buildDocumentWorkflowDefinition(
   const builder = workflow({
     name: document.name,
     version: await workflowDocumentVersion(document),
+    tags: ['file-workflow'],
   }).activities(Object.fromEntries(activities));
   // A document that awaits no signal declares none, so its contract carries no `signals` entry.
   return signalNames.length === 0

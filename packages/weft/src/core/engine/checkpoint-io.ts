@@ -48,6 +48,7 @@ import {
   type CompactionResult,
 } from './event-log-compaction.ts';
 import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
+import { appendFileWorkflowCheckpointEvents } from './file-workflow-history.ts';
 import type { EngineInternals } from './internals.ts';
 import { getTimelineInputSummary, getTimelineOperationLabel } from './state-utilities.ts';
 import { buildPendingTimelineOperation } from './termination.ts';
@@ -417,7 +418,20 @@ async function commitCheckpoint(
           commit.timestamp,
           commit.operations,
         );
-  const { newHead, timestamp } = appendCheckpointEventLog(internals, workflowId, commit);
+  const fileWorkflowHead = await appendFileWorkflowCheckpointEvents(
+    internals,
+    workflowId,
+    operation,
+    commit.stepIndex,
+    commit.operations,
+    internals.eventLogHeads.get(workflowId) ?? EMPTY_EVENT_HEAD,
+  );
+  const { newHead, timestamp } = appendCheckpointEventLog(
+    internals,
+    workflowId,
+    commit,
+    fileWorkflowHead,
+  );
 
   // Event-log compaction: fold the deletes + watermark into the SAME batch as the
   // checkpoint and event append, so verify() can never observe a gap without its
@@ -685,6 +699,7 @@ function appendCheckpointEventLog(
   internals: EngineInternals,
   workflowId: string,
   commit: CheckpointCommit,
+  head = internals.eventLogHeads.get(workflowId) ?? EMPTY_EVENT_HEAD,
 ): ReturnType<EventLog['appendToBatch']> {
   const eventLog = new EventLog(internals.storage, workflowId, internals.options.getNow);
   return eventLog.appendToBatch(
@@ -693,7 +708,7 @@ function appendCheckpointEventLog(
       payload: createCheckpointEventPayload(commit.step, commit.replayPayload),
     },
     commit.operations,
-    internals.eventLogHeads.get(workflowId) ?? EMPTY_EVENT_HEAD,
+    head,
     internals.workflowVersionTuples.get(workflowId),
   );
 }
