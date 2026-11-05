@@ -4,6 +4,9 @@ import type { HTMLAttributes } from 'svelte/elements';
 /** Visual treatment of the disclosure: a bordered card, or a flat row with no box. */
 export type CollapsibleVariant = 'default' | 'flat';
 
+/** Where a disclosure's chevron sits: before the label, or at the trailing edge. */
+export type CollapsibleChevron = 'start' | 'end';
+
 /** State passed to a trigger snippet so labels can react to open/disabled. */
 export type CollapsibleTriggerState = { open: boolean; disabled: boolean };
 
@@ -53,6 +56,13 @@ export type CollapsibleProps = Omit<
    * @default true
    */
   animated?: boolean;
+  /**
+   * Where the chevron sits. `'end'` is at the trailing edge and points down, turning over when the
+   * disclosure opens. `'start'` is before the label and points right, turning down when it opens,
+   * for a row that reads as a section opening beneath it (Health's Advanced).
+   * @default 'end'
+   */
+  chevron?: CollapsibleChevron;
   /**
    * Base used to derive the trigger and panel ARIA ids (`<base>-header`,
    * `<base>-label`, `<base>-panel`). NOT the root element id. Auto-generated
@@ -105,6 +115,12 @@ export interface CollapsibleSchemaProps {
    * @default true
    */
   animated?: boolean;
+  /**
+   * Where the chevron sits. `'end'` is at the trailing edge and points down, turning over when the
+   * disclosure opens. `'start'` is before the label and points right, turning down when it opens.
+   * @default 'end'
+   */
+  chevron?: CollapsibleChevron;
   /** Base used to derive the trigger, label, and panel ARIA ids. Auto-generated when omitted. */
   idBase?: string;
   /** Additional classes merged onto the root element. */

@@ -429,6 +429,43 @@ describe('Collapsible variant', () => {
     expect(panel.get('background')).toBe('transparent');
   });
 
+  test('the chevron is at the end by default, and before the label for chevron="start"', async () => {
+    const css = await Bun.file(new URL('./collapsible.css', import.meta.url)).text();
+    const end = render(Collapsible, { trigger: 'Details', children: bodySnippet() });
+    const endRoot = end.container.querySelector('.cinder-collapsible');
+    expect(endRoot?.hasAttribute('data-cinder-chevron')).toBe(false);
+    expect(
+      trigger(end.container).lastElementChild?.classList.contains('cinder-collapsible__chevron'),
+    ).toBe(true);
+    cleanup();
+
+    const start = render(Collapsible, {
+      trigger: 'Details',
+      children: bodySnippet(),
+      chevron: 'start',
+      animated: false,
+    });
+    expect(
+      start.container.querySelector('.cinder-collapsible')?.getAttribute('data-cinder-chevron'),
+    ).toBe('start');
+    const row = trigger(start.container);
+    expect(row.firstElementChild?.classList.contains('cinder-collapsible__chevron')).toBe(true);
+    expect(row.querySelectorAll('.cinder-collapsible__chevron')).toHaveLength(1);
+    // Closed it points right, and opened it points down.
+    const closed = declarationsFor(
+      css,
+      ".cinder-collapsible[data-cinder-chevron='start'] .cinder-collapsible__chevron",
+    );
+    expect(closed.get('transform')).toBe('rotate(-90deg)');
+    const opened = declarationsFor(
+      css,
+      ".cinder-collapsible[data-cinder-chevron='start'][data-cinder-expanded] .cinder-collapsible__chevron",
+    );
+    expect(opened.get('transform')).toBe('rotate(0deg)');
+    await fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+  });
+
   test('flat keeps the toggle behavior', async () => {
     const { container } = render(Collapsible, {
       trigger: 'Details',
