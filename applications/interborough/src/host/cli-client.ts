@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import { createCatalogSnapshot } from '@lostgradient/weft';
 
+import { executeAutomation } from './cli-automation.ts';
 import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
@@ -171,6 +172,8 @@ const optionNames = new Set([
   'revision',
   'include-runs',
   'signal-id',
+  'occurrence',
+  'secret-output',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -334,6 +337,46 @@ const commandOptions: Record<string, readonly string[]> = {
     'signal-name',
     'signal-id',
   ],
+  schedules: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'if-revision',
+    'expected-revision',
+    'occurrence',
+    'limit',
+    'offset',
+  ],
+  goals: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'if-revision',
+    'expected-revision',
+    'limit',
+    'offset',
+  ],
+  hooks: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'if-revision',
+    'expected-revision',
+    'secret-output',
+    'limit',
+  ],
 };
 
 const helpText: Record<string, string> = {
@@ -356,6 +399,11 @@ const helpText: Record<string, string> = {
     'Usage: interborough agents <list|get|create|update|delete|duplicate|models|versions|try> [options]',
   workflows:
     'Usage: interborough workflows <list|get|create|update|validate|start|signal|history> [options]',
+  schedules:
+    'Usage: interborough schedules <list|get|create|update|pause|resume|run|skip-next> [options]',
+  goals: 'Usage: interborough goals <list|get|create|cancel> [options]',
+  hooks:
+    'Usage: interborough hooks <list|get|create|update|replace-secret|delete|test|deliveries> [options]',
 };
 const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
@@ -549,6 +597,8 @@ async function execute(
   if (parsed.command === 'audit') return executeAudit(resolved, parsed, dependencies);
   if (parsed.command === 'agents' || parsed.command === 'workflows')
     return executeDefinitions(resolved, parsed, dependencies);
+  if (parsed.command === 'schedules' || parsed.command === 'goals' || parsed.command === 'hooks')
+    return executeAutomation(resolved, parsed, dependencies);
   if (parsed.command === 'restart') {
     if (parsed.options.get('yes') !== true)
       throw makeCliFailure(
@@ -781,7 +831,20 @@ export async function executeCli(
     const mutation =
       parsed.command === 'restart' ||
       (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
-      (parsed.command === 'runs' && parsed.arguments[0] === 'cancel');
+      (parsed.command === 'runs' && parsed.arguments[0] === 'cancel') ||
+      (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
+        [
+          'create',
+          'update',
+          'pause',
+          'resume',
+          'run',
+          'skip-next',
+          'cancel',
+          'replace-secret',
+          'delete',
+          'test',
+        ].includes(parsed.arguments[0] ?? ''));
     const exitCode: CliExitCode = dependencies.signal?.aborted
       ? 130
       : isRecord(error) && isCliExitCode(error['exitCode'])
