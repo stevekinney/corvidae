@@ -6,6 +6,7 @@ import {
 } from '@modelcontextprotocol/ext-apps';
 
 type Definition = {
+  readonly [key: string]: unknown;
   readonly title?: string;
   readonly description?: string;
   readonly agent?: string;
@@ -26,7 +27,15 @@ type RevisionState =
   | 'conflict'
   | 'denied'
   | 'offline'
-  | 'unknown';
+  | 'unknown'
+  | 'retryable';
+
+type ProposalResult = {
+  readonly status: 'ok';
+  readonly id: string;
+  readonly baseHash: string;
+  readonly proposedText: string;
+};
 
 function structured<T>(
   result: { structuredContent?: unknown; isError?: boolean | undefined },
@@ -73,6 +82,16 @@ function isResult(
   );
 }
 
+function isProposalResult(value: unknown): value is ProposalResult {
+  return (
+    isRecord(value) &&
+    value['status'] === 'ok' &&
+    typeof value['id'] === 'string' &&
+    typeof value['baseHash'] === 'string' &&
+    typeof value['proposedText'] === 'string'
+  );
+}
+
 function text(value: unknown): string {
   if (value === undefined) return 'Not present';
   if (value === null) return 'None';
@@ -83,24 +102,14 @@ function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function definitionFrom(args: Record<string, unknown>): Definition | undefined {
-  if (!isRecord(args['trigger']) || !Array.isArray(args['steps'])) return undefined;
-  return {
-    ...(typeof args['title'] === 'string' ? { title: args['title'] } : {}),
-    ...(typeof args['description'] === 'string' ? { description: args['description'] } : {}),
-    ...(typeof args['agent'] === 'string' ? { agent: args['agent'] } : {}),
-    ...(typeof args['paused'] === 'boolean' ? { paused: args['paused'] } : {}),
-    ...(args['inputSchema'] === undefined ? {} : { inputSchema: args['inputSchema'] }),
-    ...(args['outputSchema'] === undefined ? {} : { outputSchema: args['outputSchema'] }),
-    trigger: args['trigger'],
-    steps: args['steps'].filter(isRecord),
-  };
-}
-
-function definitionFromText(value: string): Definition | undefined {
+function definitionFromCanonicalText(value: string): Definition | undefined {
   try {
     const parsed: unknown = JSON.parse(value);
-    return isRecord(parsed) ? definitionFrom(parsed) : undefined;
+    if (!isRecord(parsed) || !isRecord(parsed['trigger']) || !Array.isArray(parsed['steps']))
+      return undefined;
+    if (!parsed['steps'].every(isRecord)) return undefined;
+    const { name: _name, ...definition } = parsed;
+    return definition as Definition;
   } catch {
     return undefined;
   }
@@ -172,7 +181,7 @@ function render(
   state: RevisionState,
   message: string | undefined,
   onApply: () => void,
-  disabled: boolean,
+  onCheckHash: () => void,
 ): void {
   root.replaceChildren();
   const title = document.createElement('h1');
@@ -200,7 +209,9 @@ function render(
                   ? 'Could not confirm the update. Check the current definition before retrying.'
                   : state === 'unknown'
                     ? 'The update returned an unknown result. Check the current definition before retrying.'
-                    : 'Review the four visible changes before applying.');
+                    : state === 'retryable'
+                      ? 'The base hash is current. Retry Apply when ready.'
+                      : 'Review the four visible changes before applying.');
   root.append(status);
   const comparison = document.createElement('div');
   comparison.className = 'revision-comparison';
@@ -221,11 +232,25 @@ function render(
   comparison.append(heading, columns, ...changedRows(current, proposed));
   root.append(comparison);
   const footer = document.createElement('footer');
+  if (state === 'offline' || state === 'unknown' || state === 'retryable') {
+    const check = document.createElement('button');
+    check.type = 'button';
+    check.textContent = 'Check current hash';
+    check.disabled = state === 'retryable';
+    check.addEventListener('click', onCheckHash);
+    footer.append(check);
+  }
   const apply = document.createElement('button');
   apply.type = 'button';
   apply.textContent =
-    state === 'applying' ? 'Applying…' : state === 'applied' ? 'Applied' : 'Apply';
-  apply.disabled = disabled || !['changed', 'applying'].includes(state);
+    state === 'applying'
+      ? 'Applying…'
+      : state === 'applied'
+        ? 'Applied'
+        : state === 'retryable'
+          ? 'Retry Apply'
+          : 'Apply';
+  apply.disabled = !['changed', 'applying', 'retryable'].includes(state);
   apply.addEventListener('click', onApply);
   footer.append(apply);
   root.append(footer);
@@ -253,27 +278,53 @@ async function start(): Promise<void> {
 
   const show = (state: RevisionState, message?: string): void => {
     if (tornDown || current === undefined || proposed === undefined) return;
-    const currentDefinition = definitionFromText(current.text);
+    const currentDefinition = definitionFromCanonicalText(current.text);
     if (currentDefinition === undefined) return;
-    render(root, currentDefinition, proposed, state, message, () => void apply(), false);
+    render(
+      root,
+      currentDefinition,
+      proposed,
+      state,
+      message,
+      () => void apply(),
+      () => void checkHash(),
+    );
   };
   const inspect = async (): Promise<void> => {
     const id = argumentsOfCall['id'];
-    const expectedHash = argumentsOfCall['expectedHash'];
-    proposed = definitionFrom(argumentsOfCall);
-    if (typeof id !== 'string' || typeof expectedHash !== 'string' || proposed === undefined)
+    if (typeof id !== 'string' || proposal === undefined || proposal.id !== id) {
       return;
-    baseHash = expectedHash;
+    }
+    const nextProposed = definitionFromCanonicalText(proposal.proposedText);
+    if (nextProposed === undefined) return;
+    proposed = nextProposed;
+    baseHash = proposal.baseHash;
     try {
       const result = await app.callServerTool({ name: 'bureau.workflows.get', arguments: { id } });
       current = structured(result, isWorkflow);
       if (current === undefined) return;
-      const currentDefinition = definitionFromText(current.text);
+      const currentDefinition = definitionFromCanonicalText(current.text);
       if (currentDefinition === undefined) return;
       const state = same(currentDefinition, proposed) ? 'no-changes' : 'changed';
       show(state);
     } catch {
       if (!tornDown) root.textContent = 'The current workflow could not be read.';
+    }
+  };
+  const checkHash = async (): Promise<void> => {
+    if (typeof argumentsOfCall['id'] !== 'string' || proposed === undefined) return;
+    try {
+      const result = await app.callServerTool({
+        name: 'bureau.workflows.get',
+        arguments: { id: argumentsOfCall['id'] },
+      });
+      const checked = structured(result, isWorkflow);
+      if (checked === undefined) return show('offline');
+      current = checked;
+      if (checked.hash === baseHash) show('retryable');
+      else show('conflict');
+    } catch {
+      show('offline');
     }
   };
   const apply = async (): Promise<void> => {
@@ -312,7 +363,13 @@ async function start(): Promise<void> {
   };
   app.ontoolinput = (params) => {
     argumentsOfCall = isRecord(params.arguments) ? params.arguments : {};
-    void inspect();
+    if (proposal !== undefined) void inspect();
+  };
+  let proposal: ProposalResult | undefined;
+  app.ontoolresult = (result) => {
+    const value = structuredResult(result);
+    proposal = isProposalResult(value) ? value : undefined;
+    if (proposal !== undefined) void inspect();
   };
   app.onteardown = async () => {
     tornDown = true;

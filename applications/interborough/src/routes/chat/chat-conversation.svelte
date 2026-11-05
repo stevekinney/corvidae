@@ -1045,6 +1045,12 @@
                   hostContext={mcpHostContext}
                   maxHeight={560}
                   toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
+                  toolResult={{
+                    content: [],
+                    ...(typeof entry.result === 'object' && entry.result !== null
+                      ? { structuredContent: entry.result }
+                      : {}),
+                  }}
                 />
               {/if}
             {/snippet}

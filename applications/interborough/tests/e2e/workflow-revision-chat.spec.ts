@@ -6,6 +6,17 @@ import { createWorkflowFile, readWorkflow, removeWorkflow } from './workflow-sup
 
 const WORKFLOW_ID = 'cor-2034-chat-workflow';
 
+function proposedTextOf(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  if (typeof Reflect.get(value, 'proposedText') === 'string')
+    return Reflect.get(value, 'proposedText');
+  for (const child of Object.values(value)) {
+    const found = proposedTextOf(child);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
 test.describe('workflow revision review in Chat', () => {
   const threads: string[] = [];
 
@@ -18,7 +29,9 @@ test.describe('workflow revision review in Chat', () => {
     page,
     request,
   }) => {
-    const created = await createWorkflowFile(request, WORKFLOW_ID);
+    const created = await createWorkflowFile(request, WORKFLOW_ID, {
+      description: 'Owner note: Platform Operations',
+    });
     const thread = newThreadId('workflow-revision-apply');
     threads.push(thread);
     await runToEnd(request, 'workflow-revision', thread, `Propose a revision for ${WORKFLOW_ID}`);
@@ -26,6 +39,32 @@ test.describe('workflow revision review in Chat', () => {
 
     const frame = page.frameLocator('iframe[title="Review workflow revision"]');
     await expect(frame.getByRole('heading', { name: 'Review workflow revision' })).toBeVisible();
+    const messagesResponse = await request.get(
+      `/bureau/ag-ui/threads/${encodeURIComponent(thread)}/messages`,
+    );
+    const messages = (await messagesResponse.json()) as { messages: unknown[] };
+    const proposalText = proposedTextOf(messages);
+    expect(proposalText).toContain('"agent": "workflow-revision"');
+    expect(
+      messages.messages.some((message) => {
+        if (typeof message !== 'object' || message === null) return false;
+        const calls = Reflect.get(message, 'toolCalls');
+        return (
+          Array.isArray(calls) &&
+          calls.some((call) => {
+            if (typeof call !== 'object' || call === null) return false;
+            const functionValue = Reflect.get(call, 'function');
+            if (typeof functionValue !== 'object' || functionValue === null) return false;
+            const argumentsValue = Reflect.get(functionValue, 'arguments');
+            return (
+              Reflect.get(functionValue, 'name') === 'bureau__workflows-propose-update' &&
+              typeof argumentsValue === 'string' &&
+              !Object.hasOwn(JSON.parse(argumentsValue) as object, 'agent')
+            );
+          })
+        );
+      }),
+    ).toBe(true);
     await expect(
       page
         .locator('.ib-tool')
@@ -59,11 +98,35 @@ test.describe('workflow revision review in Chat', () => {
     expect(hostText).not.toBe('');
     expect(framePrimary).toBe(hostText);
     expect(frameText).toBe(hostMuted);
+    await frame.locator('.revision-comparison').focus();
+    await expect(frame.locator('.revision-comparison')).toBeFocused();
     await captureForDesignReview(page, {
       route: `/chats/${thread}`,
       state: 'workflow revision proposal',
       source: 'workflow-revision-chat.spec.ts',
     });
+    const longValuesThread = newThreadId('workflow-revision-long-values');
+    threads.push(longValuesThread);
+    await runToEnd(
+      request,
+      'workflow-revision',
+      longValuesThread,
+      `long-values proposal for ${WORKFLOW_ID}`,
+    );
+    await page.setViewportSize({ width: 390, height: 1600 });
+    await page.goto(`/chats/${longValuesThread}`);
+    const longValuesFrame = page.frameLocator('iframe[title="Review workflow revision"]');
+    await expect(longValuesFrame.getByRole('button', { name: 'Apply' })).toBeVisible();
+    await longValuesFrame.locator('.revision-comparison').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await captureForDesignReview(page, {
+      route: `/chats/${longValuesThread}`,
+      state: 'workflow revision long values',
+      source: 'workflow-revision-chat.spec.ts',
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(`/chats/${thread}`);
     await page.setViewportSize({ width: 375, height: 720 });
     await expect(frame.getByRole('heading', { name: 'Review workflow revision' })).toBeVisible();
     await frame.getByRole('button', { name: 'Apply' }).scrollIntoViewIfNeeded();
@@ -83,10 +146,13 @@ test.describe('workflow revision review in Chat', () => {
     const updated = await readWorkflow(request, WORKFLOW_ID);
     expect(updated.hash).not.toBe(created.hash);
     expect(updated.text).toContain('approved');
+    expect(updated.text).toBe(proposalText);
   });
 
   test('preserves a concurrent writer and shows conflict on Apply', async ({ page, request }) => {
-    const created = await createWorkflowFile(request, WORKFLOW_ID);
+    const created = await createWorkflowFile(request, WORKFLOW_ID, {
+      description: 'Owner note: Platform Operations',
+    });
     const thread = newThreadId('workflow-revision-conflict');
     threads.push(thread);
     await runToEnd(request, 'workflow-revision', thread, `Propose a revision for ${WORKFLOW_ID}`);
@@ -132,7 +198,10 @@ test.describe('workflow revision review in Chat', () => {
   });
 
   test('captures no-change and applying lifecycle states', async ({ page, request }) => {
-    await createWorkflowFile(request, WORKFLOW_ID);
+    await createWorkflowFile(request, WORKFLOW_ID, {
+      agent: 'workflow-revision',
+      description: 'Owner note: Platform Operations',
+    });
     const thread = newThreadId('workflow-revision-no-change');
     threads.push(thread);
     await runToEnd(request, 'workflow-revision', thread, `no-change proposal for ${WORKFLOW_ID}`);
@@ -188,7 +257,9 @@ test.describe('workflow revision review in Chat', () => {
     pageErrors,
   }) => {
     for (const outcome of ['denied', 'offline', 'unknown'] as const) {
-      await createWorkflowFile(request, WORKFLOW_ID);
+      await createWorkflowFile(request, WORKFLOW_ID, {
+        description: 'Owner note: Platform Operations',
+      });
       const thread = newThreadId(`workflow-revision-${outcome}`);
       threads.push(thread);
       await runToEnd(request, 'workflow-revision', thread, `Propose a revision for ${WORKFLOW_ID}`);
@@ -236,12 +307,28 @@ test.describe('workflow revision review in Chat', () => {
         source: 'workflow-revision-chat.spec.ts',
       });
       await page.unroute('**/host/plugins/inspectors/apps/workflow-revision-review/tool-calls');
+      if (outcome === 'offline') {
+        await frame.getByRole('button', { name: 'Check current hash' }).click();
+        await expect(frame.getByRole('status')).toContainText('base hash is current');
+        await expect(frame.getByRole('button', { name: 'Retry Apply' })).toBeEnabled();
+        await captureForDesignReview(page, {
+          route: `/chats/${thread}`,
+          state: 'workflow revision retryable',
+          source: 'workflow-revision-chat.spec.ts',
+        });
+        await frame.getByRole('button', { name: 'Retry Apply' }).click();
+        await expect(frame.getByRole('status')).toContainText('Applied. New hash:');
+      } else if (outcome === 'denied') {
+        await expect(frame.getByRole('button', { name: 'Check current hash' })).toHaveCount(0);
+      }
       await removeWorkflow(request, WORKFLOW_ID);
     }
   });
 
   test('does not mount invalid or stale proposals', async ({ page, request, pageErrors }) => {
-    const created = await createWorkflowFile(request, WORKFLOW_ID);
+    const created = await createWorkflowFile(request, WORKFLOW_ID, {
+      description: 'Owner note: Platform Operations',
+    });
     const invalidThread = newThreadId('workflow-revision-invalid');
     threads.push(invalidThread);
     await runToEnd(
@@ -266,13 +353,17 @@ test.describe('workflow revision review in Chat', () => {
       failureThread,
       `Propose a revision for ${WORKFLOW_ID}`,
     );
-    await page.route('**/host/plugins/inspectors/apps/workflow-revision-review', (route) =>
-      route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'fixture resource failure' }),
-      }),
-    );
+    let resourceAttempts = 0;
+    await page.route('**/host/plugins/inspectors/apps/workflow-revision-review', (route) => {
+      resourceAttempts += 1;
+      return resourceAttempts === 1
+        ? route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'fixture resource failure' }),
+          })
+        : route.continue();
+    });
     pageErrors.expect({
       pattern: loggedFailedResponse(500, /workflow-revision-review/),
       reason: 'the test returns a failed inspector resource to capture the error state',
@@ -282,6 +373,14 @@ test.describe('workflow revision review in Chat', () => {
     await captureForDesignReview(page, {
       route: `/chats/${failureThread}`,
       state: 'workflow revision resource failure',
+      source: 'workflow-revision-chat.spec.ts',
+    });
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.locator('iframe[title="Review workflow revision"]')).toBeVisible();
+    expect(resourceAttempts).toBe(2);
+    await captureForDesignReview(page, {
+      route: `/chats/${failureThread}`,
+      state: 'workflow revision resource retry',
       source: 'workflow-revision-chat.spec.ts',
     });
     await page.unroute('**/host/plugins/inspectors/apps/workflow-revision-review');

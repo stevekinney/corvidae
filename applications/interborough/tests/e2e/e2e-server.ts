@@ -213,6 +213,7 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
         const stale = /stale:([^\s]+)/.exec(content)?.[1] ?? currentHash;
         const invalid = content.includes('invalid');
         const noChange = content.includes('no-change');
+        const longValues = content.includes('long-values');
         const currentDefinition = (() => {
           try {
             const parsed = JSON.parse(
@@ -231,14 +232,18 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
                 Object.entries(currentDefinition).filter(([key]) => key !== 'name'),
               )
             : {
-                description: 'Updated in Chat.',
                 trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
                 steps: [
                   {
                     kind: 'activity',
                     handler: 'agent',
                     title: 'Write the revised digest',
-                    input: { agent: 'demo:assistant', message: 'Write the revised digest.' },
+                    input: {
+                      agent: 'demo:assistant',
+                      message: longValues
+                        ? 'Write the revised digest with this deliberately long value: '.repeat(8)
+                        : 'Write the revised digest.',
+                    },
                   },
                 ],
               };
