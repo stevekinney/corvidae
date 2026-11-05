@@ -78,6 +78,15 @@ export type SchedulesOperationTypes = {
     readonly output: unknown;
     readonly faults: 'Conflict' | 'NotFound' | 'StaleRevision';
   };
+  'weft.schedules.unskip': {
+    readonly input: {
+      readonly expectedRevision?: number;
+      readonly occurrence: number;
+      readonly scheduleId: string;
+    };
+    readonly output: unknown;
+    readonly faults: 'Conflict' | 'NotFound' | 'StaleRevision';
+  };
   'weft.schedules.update': {
     readonly input: {
       readonly backfill?: unknown;

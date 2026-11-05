@@ -1,16 +1,29 @@
 /**
- * The two things a person does to a schedule's cadence without changing its definition (COR-1829):
- * skip the next run, and start one now.
+ * The things a person does to a schedule's cadence without changing its definition (COR-1829,
+ * COR-2018): skip an upcoming run, take a skip back, and start one now.
  */
 
 import { encode } from '../codec.ts';
 import { ScheduleAttemptedEvent, ScheduleSkippedEvent } from '../events.ts';
-import type { ScheduleSkipOptions, ScheduleState, ScheduleTriggerResult } from '../types.ts';
+import {
+  SCHEDULE_SKIPPED_OCCURRENCE_LIMIT,
+  type ScheduleSkipOptions,
+  type ScheduleState,
+  type ScheduleTriggerResult,
+  type ScheduleUnskipOptions,
+} from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import { startUnderScheduleRead } from './schedule-conditioned-start.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { ScheduleOccurrenceNotNextError } from './schedule-occurrence-not-next-error.ts';
-import { findFiringScheduleOccurrence, getNextScheduleOccurrence } from './schedule-occurrence.ts';
+import {
+  findFiringScheduleOccurrence,
+  getNextScheduleOccurrence,
+  isFiringScheduleOccurrence,
+  isSkippedOccurrence,
+  withSkippedOccurrences,
+  withSkipsFrom,
+} from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import {
   runIsolatedScheduleStateOperation,
@@ -32,24 +45,26 @@ import {
   coerceScheduleOccurrence,
 } from './validation/schedule.ts';
 
-/** `state` without the skip a person asked for, which a change of cadence or status ends. */
+/** `state` without any skipped occurrence, which a cancel ends. */
 export function withoutSkip(state: ScheduleState): ScheduleState {
-  const { skipUntil: _ended, ...rest } = state;
-  return rest;
+  return withSkippedOccurrences(state, []);
 }
 
 /**
- * Skips the next occurrence that would start a run (COR-1829). It is bookkeeping, as a fire is:
- * `revision`, `nextFireAt` and the timer stay as they are, so a timer tick in flight goes on and
- * honors the skip instead of being stopped by it. Skipping again before that occurrence has passed
- * changes nothing.
+ * Skips one upcoming occurrence that would start a run (COR-1829, COR-2018). It is bookkeeping, as
+ * a fire is: `revision`, `nextFireAt` and the timer stay as they are, so a timer tick in flight goes
+ * on and honors the skip instead of being stopped by it. Skipping an occurrence that is already
+ * skipped changes nothing.
  *
- * `options.occurrence` (COR-1985) names the run the caller means. A fire moves neither `revision` nor
- * `status`, so `expectedRevision` cannot catch one between the caller's read and this write; the
- * occurrence is compared here, against the next real run of the schedule as the guarded write reads
- * it, and refused with {@link ScheduleOccurrenceNotNextError} unless it is that run or the one
- * already skipped. A write that loses its conditions reads the schedule again, so the comparison is
- * always made against the bytes the skip lands on.
+ * `options.occurrence` names the run the caller means, the next or any after it; omitted, it is the
+ * next. A fire moves neither `revision` nor `status`, so `expectedRevision` cannot catch one between
+ * the caller's read and this write; the occurrence is compared here, against the schedule as the
+ * guarded write reads it, and refused with {@link ScheduleOccurrenceNotNextError} unless it is an
+ * instant the cadence starts a run at, no earlier than the next real run. A paused schedule
+ * accepts a skip too (a Bureau holds a workflow file's schedule paused while its file cannot load,
+ * and a person can still skip its runs), counted from the first run after now, the one a resume
+ * would start from. A write that loses its conditions reads the schedule again, so the comparison
+ * is always made against the bytes the skip lands on.
  */
 export async function skipNextScheduleOccurrence(
   internals: EngineInternals,
@@ -64,32 +79,101 @@ export async function skipNextScheduleOccurrence(
     normalizedScheduleId,
     expectedRevision,
     async (state, readConditions) => {
-      if (state.status !== 'active' || state.nextFireAt === null) {
-        throw new Error(
-          `Schedule "${normalizedScheduleId}" is ${state.status} and has no next occurrence to skip`,
-        );
-      }
       const now = internals.options.getNow();
-      const skipUntil = nextRunnableOccurrence(
-        internals,
-        { ...state, nextFireAt: state.nextFireAt },
-        now,
-      );
+      const earliest = requireEarliestSkippableOccurrence(internals, state, now);
+      const skipped = occurrence ?? earliest;
       if (
         occurrence !== undefined &&
-        (occurrence !== skipUntil ||
-          (state.skipUntil !== undefined && state.skipUntil > occurrence))
+        (occurrence < earliest || !isFiringScheduleOccurrence(state, occurrence))
       ) {
-        throw new ScheduleOccurrenceNotNextError(normalizedScheduleId, occurrence, skipUntil);
+        throw new ScheduleOccurrenceNotNextError(normalizedScheduleId, occurrence, earliest);
       }
-      if (state.skipUntil !== undefined && state.skipUntil >= skipUntil) return;
+      if (isSkippedOccurrence(state, skipped)) return;
+      const kept = withSkipsFrom(state, earliest).skippedOccurrences ?? [];
+      if (kept.length >= SCHEDULE_SKIPPED_OCCURRENCE_LIMIT) {
+        throw new Error(
+          `Schedule "${normalizedScheduleId}" already skips ${String(kept.length)} occurrences, ` +
+            'the most it keeps; run one of them after all first',
+        );
+      }
       await writeScheduleState(
         internals,
-        { ...state, skipUntil, updatedAt: now },
+        { ...withSkippedOccurrences(state, [...kept, skipped]), updatedAt: now },
         { includeTimer: false, extraConditions: readConditions },
       );
     },
   );
+}
+
+/**
+ * Takes back the skip of one upcoming occurrence (COR-2018), so it starts a run after all. Like a
+ * skip it is bookkeeping: `revision`, `nextFireAt` and the timer stay as they are. An occurrence
+ * that is upcoming and not skipped changes nothing; one that has already passed (a fire passed it,
+ * or the tick that reached it honored the skip) cannot be taken back and is refused with
+ * {@link ScheduleOccurrenceNotNextError}. A tick that is honoring the skip as this is written can
+ * still pass the occurrence without a run: the occurrence is then gone from the set either way.
+ */
+export async function unskipScheduleOccurrence(
+  internals: EngineInternals,
+  scheduleId: string,
+  options: ScheduleUnskipOptions,
+): Promise<void> {
+  const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
+  const expectedRevision = coerceExpectedScheduleRevision(options.expectedRevision);
+  const occurrence = coerceScheduleOccurrence(options.occurrence);
+  if (occurrence === undefined) {
+    throw new TypeError('options.occurrence must be the occurrence to run after all');
+  }
+  await runScheduleTransition(
+    internals,
+    normalizedScheduleId,
+    expectedRevision,
+    async (state, readConditions) => {
+      const now = internals.options.getNow();
+      const earliest = requireEarliestSkippableOccurrence(internals, state, now);
+      if (occurrence < earliest) {
+        throw new ScheduleOccurrenceNotNextError(normalizedScheduleId, occurrence, earliest);
+      }
+      if (!isSkippedOccurrence(state, occurrence)) return;
+      const kept = (withSkipsFrom(state, earliest).skippedOccurrences ?? []).filter(
+        (at) => at !== occurrence,
+      );
+      await writeScheduleState(
+        internals,
+        { ...withSkippedOccurrences(state, kept), updatedAt: now },
+        { includeTimer: false, extraConditions: readConditions },
+      );
+    },
+  );
+}
+
+/**
+ * The first occurrence of `state` a person can still skip or take a skip back from: for an active
+ * schedule the next real run ({@link nextRunnableOccurrence}), for a paused one the first run after
+ * `now`, which a resume would start from. A cancelled schedule has none, and `null` says so.
+ */
+export function earliestSkippableOccurrence(
+  internals: EngineInternals,
+  state: ScheduleState,
+  now: number,
+): number | null {
+  if (state.status === 'paused') {
+    return findFiringScheduleOccurrence(state, getNextScheduleOccurrence(state, now));
+  }
+  if (state.status !== 'active' || state.nextFireAt === null) return null;
+  return nextRunnableOccurrence(internals, { ...state, nextFireAt: state.nextFireAt }, now);
+}
+
+function requireEarliestSkippableOccurrence(
+  internals: EngineInternals,
+  state: ScheduleState,
+  now: number,
+): number {
+  const earliest = earliestSkippableOccurrence(internals, state, now);
+  if (earliest === null) {
+    throw new Error(`Schedule "${state.id}" is ${state.status} and has no next occurrence to skip`);
+  }
+  return earliest;
 }
 
 /**

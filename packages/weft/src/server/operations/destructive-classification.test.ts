@@ -112,6 +112,7 @@ const EXPECTED_DESTRUCTIVE: Readonly<Record<string, boolean>> = {
   'weft.schedules.pause': false,
   'weft.schedules.resume': false,
   'weft.schedules.skipnext': false,
+  'weft.schedules.unskip': false,
   'weft.schedules.runnow': false,
   'weft.schedules.missed': false,
   'weft.system.registry': false,

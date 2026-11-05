@@ -1,10 +1,11 @@
 import { WeftError } from '../weft-error.ts';
 
 /**
- * Thrown by `skipNextScheduleOccurrence` when the caller named an `occurrence` that is neither the
- * schedule's next real run nor the run already skipped (COR-1985): a fire passed it, it is later
- * than the next run, or it is a wake-up that starts nothing. Nothing was written. Read the schedule
- * again and choose from `nextOccurrence`, the next real run as the schedule stands now.
+ * Thrown by `skipNextScheduleOccurrence` and `unskipScheduleOccurrence` when the caller named an
+ * `occurrence` that is not an upcoming run of the schedule (COR-1985, COR-2018): a fire passed it,
+ * or it is a time the cadence starts no run at (a wake-up that starts nothing, a time off the
+ * cadence). Nothing was written. Read the schedule again and choose from `nextOccurrence` on, the
+ * schedule's next real run as it stands now.
  *
  * @example
  * ```ts
@@ -24,18 +25,18 @@ import { WeftError } from '../weft-error.ts';
  * ```
  */
 export class ScheduleOccurrenceNotNextError extends WeftError<'ScheduleOccurrenceNotNextError'> {
-  /** The id of the schedule the skip was for. */
+  /** The id of the schedule the skip, or its undoing, was for. */
   readonly scheduleId: string;
   /** The occurrence the caller named, in milliseconds since the epoch. */
   readonly occurrence: number;
-  /** The schedule's next real run now, in milliseconds since the epoch. */
+  /** The schedule's next real run now, the first that can be skipped, in milliseconds since the epoch. */
   readonly nextOccurrence: number;
 
   constructor(scheduleId: string, occurrence: number, nextOccurrence: number) {
     super(
       'ScheduleOccurrenceNotNextError',
-      `Schedule "${scheduleId}" has its next run at ${nextOccurrence}, not ${occurrence}. ` +
-        'The occurrence changed after it was read; read it again.',
+      `Schedule "${scheduleId}" has no upcoming run at ${occurrence}; its next run is at ` +
+        `${nextOccurrence}. The occurrence changed after it was read; read it again.`,
     );
     this.scheduleId = scheduleId;
     this.occurrence = occurrence;

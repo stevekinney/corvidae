@@ -79,6 +79,7 @@ import {
   type ScheduleSummary,
   type ScheduleTransitionOptions,
   type ScheduleTriggerResult,
+  type ScheduleUnskipOptions,
   type ScheduleUpdateOptions,
   type SearchAttributeValue,
   type SignalDefinition,
@@ -307,6 +308,7 @@ import {
 import {
   skipNextScheduleOccurrence as skipNextScheduleOccurrenceFromInternals,
   triggerSchedule as triggerScheduleFromInternals,
+  unskipScheduleOccurrence as unskipScheduleOccurrenceFromInternals,
 } from './schedule-controls.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
 import { listScheduleMissedFires as listScheduleMissedFiresFromInternals } from './schedule-missed-fires.ts';
@@ -2528,25 +2530,26 @@ export class Engine<
     return updateScheduleFromInternals(internals, scheduleId, newSpec, options);
   }
   /**
-   * Skip the next run of an active schedule (COR-1829): the next occurrence that would start a run
-   * (not always {@link ScheduleSummary.nextFireAt}, which in a time zone can be the end of a
-   * daylight-saving gap that fires nothing) starts none, and the one after it fires as usual. The
-   * occurrence is {@link ScheduleSummary.skipUntil} until the schedule moves past it. An occurrence
-   * that is due but has not started a run (a jittered fire, one inside the poll window, the next of a
-   * backfill catching up) is the next run; one a late tick will count as missed is not. The skip is
-   * bookkeeping, as a fire is: `revision`, `nextFireAt` and the timer stay as they are, so a tick in
-   * flight honors it. `options.expectedRevision` guards it as it does a pause, and skipping again
-   * before that occurrence passes changes nothing. A schedule that is not active has no next run to
-   * skip and rejects.
+   * Skip one upcoming run of a schedule (COR-1829, COR-2018): the next, or any after it. Without
+   * `options.occurrence` it is the next occurrence that would start a run (not always
+   * {@link ScheduleSummary.nextFireAt}, which in a time zone can be the end of a daylight-saving gap
+   * that fires nothing); an occurrence that is due but has not started a run (a jittered fire, one
+   * inside the poll window, the next of a backfill catching up) is the next run, and one a late
+   * tick will count as missed is not. The occurrence joins {@link ScheduleSummary.skippedOccurrences}
+   * until the schedule moves past it, and the runs around it fire as usual. The skip is bookkeeping,
+   * as a fire is: `revision`, `nextFireAt` and the timer stay as they are, so a tick in flight
+   * honors it. `options.expectedRevision` guards it as it does a pause, and skipping an occurrence
+   * already skipped changes nothing. A paused schedule's runs can be skipped too, counted from the
+   * first after now (a pause keeps the skips, for when it is resumed); a cancelled schedule has no
+   * run to skip and rejects.
    *
    * A fire is not a revision, so `expectedRevision` cannot tell a person that the run they were
    * looking at has started since. `options.occurrence` names the run to skip (milliseconds since
-   * the epoch, as {@link ScheduleSummary.nextFireAt} and {@link ScheduleSummary.skipUntil} are): it
-   * is compared inside the guarded write with the next real run, and a call naming any other
-   * occurrence (one a fire has passed, one later than the next, a wake-up that starts nothing)
-   * rejects with {@link ScheduleOccurrenceNotNextError} and writes nothing. Naming the run that is
-   * already skipped changes nothing. The revision is compared first. Omitted, the next run is
-   * skipped, whichever it is by the time the write lands.
+   * the epoch, as {@link ScheduleSummary.nextFireAt} is): it is compared inside the guarded write,
+   * and a call naming anything other than an upcoming run (one a fire has passed, a time the cadence
+   * does not start a run at) rejects with {@link ScheduleOccurrenceNotNextError} and writes nothing.
+   * The revision is compared first. A schedule keeps at most
+   * {@link SCHEDULE_SKIPPED_OCCURRENCE_LIMIT} skipped occurrences, and one more rejects.
    *
    * @example
    * ```ts
@@ -2569,6 +2572,38 @@ export class Engine<
       await ensureWorkflowCatalogReady(this as unknown as Engine);
     }
     return skipNextScheduleOccurrenceFromInternals(internals, scheduleId, options);
+  }
+  /**
+   * Take back the skip of one upcoming run (COR-2018): `options.occurrence`, one of
+   * {@link ScheduleSummary.skippedOccurrences}, starts a run after all. Like a skip it is
+   * bookkeeping that leaves `revision`, `nextFireAt` and the timer as they are, and
+   * `options.expectedRevision` guards it. An upcoming occurrence that is not skipped changes
+   * nothing; one that has already passed cannot be taken back and rejects with
+   * {@link ScheduleOccurrenceNotNextError}, as does a cancelled schedule's.
+   *
+   * @example
+   * ```ts
+   * import { Engine, workflow } from '@lostgradient/weft';
+   *
+   * const engine = new Engine();
+   * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'ok'; }));
+   * await engine.schedule('report', null, '0 9 * * *', { id: 'daily-report' });
+   * const occurrence = (await engine.getSchedule('daily-report'))?.nextFireAt ?? 0;
+   * await engine.skipNextScheduleOccurrence('daily-report', { occurrence });
+   * await engine.unskipScheduleOccurrence('daily-report', { occurrence });
+   * engine[Symbol.dispose]();
+   * ```
+   */
+  async unskipScheduleOccurrence(
+    scheduleId: string,
+    options: ScheduleUnskipOptions,
+  ): Promise<void> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return unskipScheduleOccurrenceFromInternals(internals, scheduleId, options);
   }
   /**
    * Start one run of a schedule now (COR-1829), under its overlap policy: it starts, is queued behind

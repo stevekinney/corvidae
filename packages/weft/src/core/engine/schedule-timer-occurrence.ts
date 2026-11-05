@@ -12,7 +12,11 @@ import {
   type RecordedMisses,
 } from './schedule-missed-fires.ts';
 import type { OccurrenceCommit } from './schedule-occurrence-commit.ts';
-import { getNextScheduleOccurrence, isSkippedOccurrence } from './schedule-occurrence.ts';
+import {
+  getNextScheduleOccurrence,
+  isSkippedOccurrence,
+  withSkipsFrom,
+} from './schedule-occurrence.ts';
 import { drainQueuedScheduleRunUnderRead } from './schedule-overlap.ts';
 import { loadScheduleState, ScheduleReadConditionLostError } from './schedule-state-read.ts';
 import {
@@ -44,15 +48,11 @@ export type ScheduleTimerWork = PlannedScheduleTimerWork & { recorded: RecordedM
 
 /**
  * The schedule once the tick's work is done: its next occurrence is the one after the last instant
- * the tick accounted for, and a skip the tick has moved past is spent.
+ * the tick accounted for, and the skips the tick has moved past are spent.
  */
 export function scheduleAfterWork(state: ScheduleState, work: ScheduleTimerWork): ScheduleState {
   const nextFireAt = resolveNextScheduleFireAt(state, work);
-  if (state.skipUntil === undefined || state.skipUntil > work.anchor) {
-    return { ...state, nextFireAt };
-  }
-  const { skipUntil: _spent, ...withoutSkip } = state;
-  return { ...withoutSkip, nextFireAt };
+  return { ...withSkipsFrom(state, work.anchor + 1), nextFireAt };
 }
 
 function resolveNextScheduleFireAt(state: ScheduleState, work: ScheduleTimerWork): number {

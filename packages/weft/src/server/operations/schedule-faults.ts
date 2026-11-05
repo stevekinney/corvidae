@@ -116,7 +116,8 @@ function isScheduleConflictMessage(normalizedMessage: string): boolean {
     normalizedMessage.includes('already exists') ||
     normalizedMessage.includes('cannot be resumed') ||
     normalizedMessage.includes('cannot be run') ||
-    normalizedMessage.includes('has no next occurrence to skip')
+    normalizedMessage.includes('has no next occurrence to skip') ||
+    normalizedMessage.includes('occurrences, the most it keeps')
   );
 }
 

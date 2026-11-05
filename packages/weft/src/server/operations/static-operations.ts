@@ -85,6 +85,7 @@ import { submitReviewDecisionOperation } from './submit-review-decision.ts';
 import { suspendWorkflowOperation } from './suspend-workflow.ts';
 import { timeoutWorkflowOperation } from './timeout-workflow.ts';
 import { triggerScheduleOperation } from './trigger-schedule.ts';
+import { unskipScheduleOperation } from './unskip-schedule.ts';
 import { updateScheduleOperation } from './update-schedule.ts';
 import { updateWorkflowOperation } from './update-workflow.ts';
 import { workerStartOverridePreviewOperation } from './worker-start-override-preview.ts';
@@ -160,6 +161,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   pauseScheduleOperation,
   resumeScheduleOperation,
   skipNextScheduleOperation,
+  unskipScheduleOperation,
   triggerScheduleOperation,
   listScheduleMissedFiresOperation,
   getStreamChunksOperation,

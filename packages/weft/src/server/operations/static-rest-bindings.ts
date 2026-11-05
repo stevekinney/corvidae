@@ -85,6 +85,7 @@ import { submitReviewDecisionRestBinding } from './submit-review-decision.ts';
 import { suspendWorkflowRestBinding } from './suspend-workflow.ts';
 import { timeoutWorkflowRestBinding } from './timeout-workflow.ts';
 import { triggerScheduleRestBinding } from './trigger-schedule.ts';
+import { unskipScheduleRestBinding } from './unskip-schedule.ts';
 import { updateScheduleRestBinding } from './update-schedule.ts';
 import { updateWorkflowRestBinding } from './update-workflow.ts';
 import { workerStartOverridePreviewRestBinding } from './worker-start-override-preview.ts';
@@ -159,6 +160,7 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   cancelScheduleRestBinding,
   pauseScheduleRestBinding,
   skipNextScheduleRestBinding,
+  unskipScheduleRestBinding,
   triggerScheduleRestBinding,
   listScheduleMissedFiresRestBinding,
   resumeScheduleRestBinding,

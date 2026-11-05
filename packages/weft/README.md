@@ -578,7 +578,7 @@ The scope each operation requires:
 | `weft.schedules.list`, `weft.schedules.get`, `weft.schedules.missed` | `schedules:read` |
 | `weft.workflows.attributes.get`, `weft.workflows.attributes.set` | `attributes:read`, `attributes:write` |
 | `weft.workflows.streams.chunks`, `weft.workflows.streams.sse` | `streams:read` |
-| `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.skipnext`, `weft.schedules.runnow`, `weft.schedules.cancel` | `schedules:write` |
+| `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.skipnext`, `weft.schedules.unskip`, `weft.schedules.runnow`, `weft.schedules.cancel` | `schedules:write` |
 | `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
 | `weft.retention.get` | `system:read` |
 | `weft.workflows.definitions.list`, `weft.workflows.definitions.get` | `system:read` or `workflows:read` (either one) |
@@ -728,13 +728,13 @@ engine[Symbol.dispose]();
 
 ### Skipping a run, running now, and missed runs
 
-`engine.skipNextScheduleOccurrence(id)` skips the next run of an active schedule: the next occurrence that would start a workflow starts none, and the one after it runs as usual. That occurrence is `skipUntil` on the schedule until the schedule moves past it, and it is not always `nextFireAt`: in a time zone `nextFireAt` can be the end of a daylight-saving gap that starts nothing, so the skip lands on the next real run. The skip leaves `revision` and `nextFireAt` as they are, and `expectedRevision` guards it as it does a pause; skipping again before that run has passed changes nothing, and a pause, a cancel, or an update after which that run is no longer the next one ends the skip. An update that leaves it next (a new description or overlap policy, an interval it already has) keeps it.
+`engine.skipNextScheduleOccurrence(id, { occurrence })` skips one upcoming run: the occurrence you name, the next run or any after it, starts no workflow, and the runs around it fire as usual. Omit `occurrence` and the next run is skipped; it is not always `nextFireAt`, because in a time zone `nextFireAt` can be the end of a daylight-saving gap that starts nothing, so the skip lands on the next real run. Skipped runs are `skippedOccurrences` on the schedule, ascending, until the schedule moves past them, and `engine.unskipScheduleOccurrence(id, { occurrence })` takes one back. Both leave `revision` and `nextFireAt` as they are, and `expectedRevision` guards them as it does a pause; skipping a run that is already skipped, or taking back one that is not, changes nothing. A paused schedule's runs can be skipped too, counted from the first after now, and a pause keeps the skips for when the schedule resumes; a resume drops the ones it slept past, a cancel ends them all, and an update keeps only those that are still runs of its cadence. A schedule keeps at most `SCHEDULE_SKIPPED_OCCURRENCE_LIMIT` (100) skipped runs.
 
-A fire moves neither `revision` nor `status`, so the run you read can start before your skip is written. Pass `occurrence`, the `nextFireAt` or `skipUntil` you read, and the skip is refused with `ScheduleOccurrenceNotNextError` (`Conflict` over HTTP, with `weftCode: "ScheduleOccurrenceNotNextError"` in the body to tell it from a paused or cancelled schedule) unless that is still the next real run; nothing is written. Over HTTP the body of `POST /v1/schedules/:id/skip-next` takes `occurrence` and `expectedRevision`, both optional.
+A fire moves neither `revision` nor `status`, so the run you read can start before your skip is written. The occurrence is compared inside the write, and a skip or unskip naming anything other than an upcoming run (one a fire has passed, a time the cadence starts no run at) is refused with `ScheduleOccurrenceNotNextError` (`Conflict` over HTTP, with `weftCode: "ScheduleOccurrenceNotNextError"` in the body to tell it from a cancelled schedule); nothing is written. Over HTTP the body of `POST /v1/schedules/:id/skip-next` takes `occurrence` and `expectedRevision`, both optional, and `POST /v1/schedules/:id/unskip` takes `occurrence` and an optional `expectedRevision`.
 
 `engine.triggerSchedule(id)` starts one run now, under the schedule's overlap policy, and returns `started`, `queued`, or `skipped` (with the run that blocked it). The run is not an occurrence of the cadence: `nextFireAt`, `lastFireAt`, and `revision` do not change, and the run's schedule metadata (`WorkflowServicesResolverScheduleInfo`) is `manual: true` with no `occurrence`. A paused schedule can be run; a cancelled one cannot.
 
-A schedule keeps a row for each occurrence it missed, because the engine was down (`late`) or the clock sprang forward past the time (`dst-gap`): `engine.listScheduleMissedFires(id)` reads the latest `SCHEDULE_MISSED_FIRE_LIMIT` (100) of them, newest first, while `missedFireCount` keeps counting. A row is keyed by schedule, occurrence, and reason and is written in the same storage batch as the counter, so a tick replayed after a crash records a miss once. Over HTTP these are `weft.schedules.skipnext`, `weft.schedules.runnow` (both `schedules:write`), and `weft.schedules.missed` (`schedules:read`).
+A schedule keeps a row for each occurrence it missed, because the engine was down (`late`) or the clock sprang forward past the time (`dst-gap`): `engine.listScheduleMissedFires(id)` reads the latest `SCHEDULE_MISSED_FIRE_LIMIT` (100) of them, newest first, while `missedFireCount` keeps counting. A row is keyed by schedule, occurrence, and reason and is written in the same storage batch as the counter, so a tick replayed after a crash records a miss once. Over HTTP these are `weft.schedules.skipnext`, `weft.schedules.unskip`, `weft.schedules.runnow` (all `schedules:write`), and `weft.schedules.missed` (`schedules:read`).
 
 ```typescript
 import { Engine, workflow } from '@lostgradient/weft';
@@ -746,7 +746,9 @@ engine.register(
   }),
 );
 await engine.schedule('report', null, '0 9 * * 1-5', { id: 'weekday-report', overlap: 'skip' });
-await engine.skipNextScheduleOccurrence('weekday-report');
+const next = (await engine.getSchedule('weekday-report'))?.nextFireAt ?? 0;
+await engine.skipNextScheduleOccurrence('weekday-report', { occurrence: next });
+await engine.unskipScheduleOccurrence('weekday-report', { occurrence: next });
 const result = await engine.triggerSchedule('weekday-report');
 const missed = await engine.listScheduleMissedFires('weekday-report', { limit: 10 });
 console.log(result.outcome, missed?.length);

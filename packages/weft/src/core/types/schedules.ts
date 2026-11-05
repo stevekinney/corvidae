@@ -445,16 +445,20 @@ export interface ScheduleMetadata {
   lastSkippedAt?: number;
   nextFireAt: number | null;
   /**
-   * The occurrence a person asked to skip (see {@link Engine.skipNextScheduleOccurrence}): the
-   * schedule starts no run for the occurrence at this instant. It names the next
-   * occurrence that would actually have started a run, which is not always {@link nextFireAt}: in
-   * a time zone, `nextFireAt` can be the end of a daylight-saving gap that fires nothing. It is
-   * absent when nothing is skipped, and is cleared as soon as the schedule moves past it, by a
-   * pause, a cancel, or an update after which it is no longer the next occurrence. An update that
-   * leaves it the next occurrence (a new description or overlap policy, say) keeps it. A stored
-   * schedule that predates the field reads as absent.
+   * The occurrences a person asked to skip (see {@link Engine.skipNextScheduleOccurrence}), in
+   * milliseconds since the epoch, ascending and without repeats: the schedule starts no run at any
+   * of them. Each is an instant the cadence starts a run at, which is not always
+   * {@link nextFireAt}: in a time zone, `nextFireAt` can be the end of a daylight-saving gap that
+   * fires nothing. Any upcoming run can be skipped, of an active schedule or a paused one (a pause
+   * keeps them, for when it is resumed), and {@link Engine.unskipScheduleOccurrence} takes one back.
+   * An occurrence leaves the set once the schedule moves past it, and they all go when it is
+   * cancelled or an update moves its cadence off them; an update that leaves an occurrence on the
+   * cadence (a new description or overlap policy, say) keeps it. It holds at most
+   * {@link SCHEDULE_SKIPPED_OCCURRENCE_LIMIT} occurrences, and is absent when nothing is skipped. A
+   * stored schedule that predates the field and carries the single skipped occurrence it replaced
+   * (`skipUntil`) reads as a set of that one.
    */
-  skipUntil?: number;
+  skippedOccurrences?: number[];
   currentWorkflowId?: string;
   /** Ordered durable occurrences waiting behind `currentWorkflowId`. */
   queuedRuns: ScheduleQueuedRun[];
