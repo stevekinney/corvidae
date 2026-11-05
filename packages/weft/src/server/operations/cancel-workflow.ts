@@ -37,7 +37,11 @@ export const cancelWorkflowOperation = createSingleWorkflowControlOperation({
   producibleFaults: ['Conflict', 'NotFound'],
   mapErrorToFault: ({ message }) =>
     message.includes('replaced before it was cancelled.')
-      ? { code: 'Conflict', message, data: { reason: 'workflow-replaced' } }
+      ? {
+          code: 'Conflict',
+          message,
+          data: { reason: 'workflow-replaced', publicReason: 'workflow-replaced' },
+        }
       : undefined,
   requiredEngineMethods: ['cancel'],
   invoke: async ({ input, engine }): Promise<CancelWorkflowOutput> => {

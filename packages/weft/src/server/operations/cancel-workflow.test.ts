@@ -126,6 +126,7 @@ describe('weft.workflows.cancel', () => {
       expect(response.status).toBe(409);
       expect(await response.json()).toEqual({
         error: 'Workflow "wf-1" was replaced before it was cancelled.',
+        data: { reason: 'workflow-replaced' },
       });
     } finally {
       engine.cancel = originalCancel;

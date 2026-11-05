@@ -77,6 +77,8 @@ export type OperationFault =
       message: string;
       data: {
         reason: string;
+        /** Stable, machine-readable reason approved for REST disclosure. */
+        publicReason?: 'workflow-replaced' | undefined;
         // See the `NotFound.weftCode` note: `Conflict` collapses several typed
         // errors (`WorkflowAlreadyExistsError`, `StartOrSignalConflictError`,
         // `IdempotencyKeyPurgedError`), and `weftCode` recovers which one.
@@ -255,16 +257,10 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
     }),
   Conflict: (data) =>
     filterDefined({
+      reason: data.publicReason,
       missingTypes: data.missingTypes === undefined ? undefined : [...data.missingTypes],
       missingWorkflowCount: data.missingWorkflowCount,
       samplesTruncated: data.samplesTruncated,
-      // WFT-11: intentionally NOT `reason` — REST has never disclosed the
-      // internal `Conflict.data.reason` string (see this table's own
-      // "deny-by-default" doc comment); these two fields are additive and
-      // narrower. A REST caller that must branch on WHICH of
-      // `engine.workflows.activate()`'s four refusal reasons occurred
-      // should use JSON-RPC, which gets full fidelity via `dataForConflict`
-      // in `fault-to-json-rpc.ts`.
       currentGeneration: data.currentGeneration,
       compatibilityReasons:
         data.compatibilityReasons === undefined ? undefined : [...data.compatibilityReasons],
