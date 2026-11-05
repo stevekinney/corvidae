@@ -1107,7 +1107,7 @@ export function isDurableRunUnsettled(status: string): boolean {
  */
 export interface CancelDurableRunDependencies {
   getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  cancel: (runId: string) => Promise<void>;
+  cancel: (runId: string) => Promise<unknown>;
 }
 
 /** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
@@ -11725,7 +11725,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               verdict: 'cancel',
               rejection: 'prepared-not-launched',
             });
-            cancelNeverLaunched(handle.id, durable.engine.cancel(handle.id));
+            cancelNeverLaunched(
+              handle.id,
+              durable.engine.cancel(handle.id).then(() => undefined),
+            );
           }
           continue;
         }
@@ -12713,7 +12716,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function cancelDurableRun(runId: string): Promise<CancelDurableRunOutcome> {
     const outcome = await resolveCancelDurableRun(runId, {
       getDurableRun,
-      cancel: (id) => runtime.durable!.engine.cancel(id),
+      cancel: (id) => runtime.durable!.engine.cancel(id).then(() => undefined),
     });
     // AB-46: only an ACTUALLY-committed cancellation ('requested') terminates
     // the run — 'already-terminal'/'not-found'/'failed'/'unsupported-capability'

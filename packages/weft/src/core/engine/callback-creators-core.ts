@@ -151,14 +151,15 @@ export function createLifecycleCallbacks<TWorkflows extends object, TActivities 
     handleCleanupError: (source, error, workflowId) =>
       createTerminationCallbacks(engine).handleCleanupError(source, error, workflowId),
     swallowPromiseRejection: (promise) => swallowPromiseRejection(promise),
-    enforceHistoryCircuitBreaker: (workflowId) =>
-      terminateWorkflow(
+    enforceHistoryCircuitBreaker: async (workflowId) => {
+      await terminateWorkflow(
         getInternals(engine),
         workflowId,
         'timed-out',
         createTerminationCallbacks(engine),
         HISTORY_CIRCUIT_BREAKER_REASON,
-      ),
+      );
+    },
     failWorkflowForUnavailableServices: failBeforeAdoption,
     failWorkflowForRecoveryHook: failBeforeAdoption,
     failWorkflowForCheckpointDecodeError: failBeforeAdoption,

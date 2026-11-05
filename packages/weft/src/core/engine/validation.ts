@@ -443,7 +443,9 @@ export function resolveRetentionForStatus(
   }
 }
 
-export function isTerminalWorkflowStatus(status: WorkflowStatus): boolean {
+export function isTerminalWorkflowStatus(
+  status: WorkflowStatus,
+): status is Extract<WorkflowStatus, 'completed' | 'failed' | 'cancelled' | 'timed-out'> {
   return (
     status === 'completed' ||
     status === 'failed' ||

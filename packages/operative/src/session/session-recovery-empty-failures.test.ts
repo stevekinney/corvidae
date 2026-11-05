@@ -31,7 +31,7 @@ describe('recover() — empty failure reporting', () => {
       resume: async (_workflowId: string) => {
         throw new Error('should never be called: there is no running ref');
       },
-      cancel: async () => {},
+      cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
       signal: async () => {},
       update: async () => {},
       query: async () => {},

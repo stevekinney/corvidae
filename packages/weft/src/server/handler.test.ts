@@ -524,8 +524,8 @@ describe('handleRequest', () => {
     expect(response.status).toBe(404);
   });
 
-  // 6. Cancel workflow returns 204
-  it('DELETE /v1/workflows/:id returns 204', async () => {
+  // 6. Cancel workflow returns its atomic outcome
+  it('DELETE /v1/workflows/:id returns 200 JSON', async () => {
     engine = createEngine();
 
     // Start a workflow
@@ -537,7 +537,8 @@ describe('handleRequest', () => {
 
     const response = await handleRequest(request('DELETE', `/v1/workflows/${id}`), engine);
 
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ workflowId: id, status: 'cancel-requested' });
   });
 
   // 7. Signal workflow returns 200
