@@ -62,6 +62,17 @@ export type SystemOperationTypes = {
         | `${string}.${string}:${string}`
       >;
       readonly subject: string | null;
+      readonly workspace?: {
+        readonly actorId: string;
+        readonly actorKind: 'user' | 'service' | 'local';
+        readonly capabilities: ReadonlyArray<
+          'workspace:use' | 'workspace:manage' | 'deployment:operate'
+        >;
+        readonly membershipRevision: string;
+        readonly owner: string;
+        readonly version: 1;
+        readonly workspaceId: string;
+      };
     };
     readonly faults: never;
   };
