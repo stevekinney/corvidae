@@ -174,10 +174,12 @@ async function throwStorageError(response: Response): Promise<never> {
 export async function storageGet(
   connection: StorageConnection,
   key: string,
+  signal?: AbortSignal,
 ): Promise<Uint8Array | null> {
   const response = await fetch(storageUrl(connection, `/${encodeKeyForPath(key)}`), {
     method: 'GET',
     headers: storageHeaders(connection),
+    ...(signal === undefined ? {} : { signal }),
   });
 
   if (response.status === 404) return null;

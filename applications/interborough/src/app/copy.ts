@@ -4782,6 +4782,21 @@ export const STORAGE_COPY = {
     return more ? `${keys} Scroll to load more.` : keys;
   },
   loadingLabel: 'Loading keys',
+  /** What the table says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+  stopped: {
+    title: 'Stopped loading keys',
+    description:
+      'You stopped the read, so the keys are not shown. Nothing stored was changed by it.',
+    tryAgain: 'Try again',
+  },
+  /**
+   * The footer after "Scroll to load more" failed: the keys already loaded stay, and Cinder's load
+   * more says what failed and retries.
+   */
+  loadMore: {
+    itemLabel: 'keys',
+    retry: 'Load more',
+  },
   empty: {
     title: 'No keys stored yet',
     description: 'Keys appear here once the application stores something.',
@@ -4804,8 +4819,27 @@ export const STORAGE_COPY = {
   managedBadge: 'Managed',
   detail: {
     label: 'Selected key',
-    emptyTitle: 'Choose a key',
-    emptyDescription: 'Pick a key from the table to see its value.',
+    emptyTitle: 'Select a key to see its value',
+    emptyDescription:
+      'Pick a row to read what is stored. Keys Interborough doesn’t manage can also be edited and deleted.',
+    /** The accessible name of the region that holds the pane. */
+    paneLabel: 'Key',
+    /** The name of the menu at the end of the header row, which holds Delete. */
+    moreActions: 'More actions',
+    /** The pane's line while the key is being read: only what the row already says. */
+    groupOnly: (group: string): string => group,
+    /** The line over the key while its value is being edited after a failed save. */
+    editingSummary: (group: string, size: string, key: string): string =>
+      `${group} · ${size} · ${key}`,
+    /** What the pane says while the value is read: nothing for the first 300 ms, then a skeleton. */
+    valueLoadingLabel: 'Loading the value',
+    /** What the pane says after "Cancel" in the "Still loading" line. */
+    valueStopped: 'You stopped loading this value.',
+    /** What the pane says when the value could not be read. */
+    valueFailed: 'Couldn’t read the value.',
+    valueRetry: 'Try again',
+    /** What the pane says when the key was removed after the row was listed. */
+    valueGone: 'This key is no longer stored. Another writer removed it.',
     /** The line over the key: its group, size and when it was written. */
     summary: (group: string, size: string, updated: string | null): string =>
       updated === null ? `${group} · ${size}` : `${group} · ${size} · updated ${updated}`,
@@ -4815,11 +4849,11 @@ export const STORAGE_COPY = {
     copyValue: 'Copy value',
     edit: 'Edit',
     delete: 'Delete',
-    save: 'Save',
+    save: 'Save value',
     cancel: 'Cancel',
     jsonSwitch: 'JSON',
     valueLabel: 'Value',
-    editLabel: 'Edit the value',
+    editLabel: 'Value',
     /** The lock line of a managed key, around its prefix, which the pane sets in monospace. */
     locked: {
       before: 'Locked: Interborough manages keys that start with ',
@@ -4833,7 +4867,15 @@ export const STORAGE_COPY = {
       'Locked: Interborough could not say which keys it manages, so no key can be edited or deleted here.',
     binaryNote: 'This value is not text, so it cannot be edited here.',
     notJson: 'The value was JSON and this is not, so it cannot be saved.',
-    saveFailed: 'The value was not saved.',
+    /**
+     * The danger alert over the editor after a failed save: a bold lead, the cause, and what became
+     * of the edit.
+     */
+    saveFailed: {
+      lead: 'Couldn’t save the value.',
+      noAnswer: 'Interborough didn’t answer.',
+      kept: 'Your edit is still here.',
+    },
     capabilityUnknown:
       'The storage has not said whether it can check that a value is unchanged, so nothing was written. Try again in a moment.',
     changedUnderYou:
@@ -4850,9 +4892,10 @@ export const STORAGE_COPY = {
   },
   confirmDelete: {
     title: 'Delete this key?',
-    description: (key: string, unchecked = false): string =>
-      `This removes ${key} from storage. It cannot be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
-    confirm: 'Delete',
+    /** The sentence after the key, which the dialog sets in monospace: its size and that it cannot be undone. */
+    afterKey: (size: string, unchecked = false): string =>
+      ` and its ${size} value are removed from storage. This can’t be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Delete key',
   },
   backend: {
     sqlite: 'SQLite',

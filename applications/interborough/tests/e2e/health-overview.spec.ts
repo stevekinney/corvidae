@@ -248,14 +248,17 @@ test.describe('the sample world', () => {
       await expect(main.locator('.cinder-data-table tbody tr td:nth-child(4)').first()).toHaveText(
         /^(Today|Yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}), \d{1,2}:\d{2} (AM|PM)$/,
       );
+      // The table's own box is the bordered box of Cinder's list and detail, which the table fills edge to edge.
       const scroller = main.locator('.cinder-table-scroll');
       await expect(scroller).toBeVisible();
-      const frame = await scroller.evaluate((element) => ({
-        overflowing: element.scrollWidth > element.clientWidth,
-        border: getComputedStyle(element).borderTopWidth,
-      }));
-      expect(frame.overflowing).toBe(true);
-      expect(frame.border).not.toBe('0px');
+      const overflowing = await scroller.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      );
+      expect(overflowing).toBe(true);
+      const box = await main
+        .locator('.cinder-list-detail')
+        .evaluate((element) => getComputedStyle(element).borderTopWidth);
+      expect(box).not.toBe('0px');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
@@ -294,7 +297,11 @@ test.describe('the sample world', () => {
     await expect(pane.getByRole('button', { name: 'Delete' })).toHaveCount(0);
 
     // 06q: the pane sits under the table at this width, and the page never scrolls sideways.
-    const table = await main.locator('.ib-storage__keys').boundingBox();
+    await expect(main.locator('.cinder-list-detail')).toHaveAttribute(
+      'data-cinder-layout',
+      'below',
+    );
+    const table = await main.locator('.cinder-list-detail__list').boundingBox();
     const detail = await pane.boundingBox();
     expect((detail?.y ?? 0) >= (table?.y ?? 0) + (table?.height ?? 0) - 1).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

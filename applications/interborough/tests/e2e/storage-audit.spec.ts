@@ -102,13 +102,15 @@ test.describe('storage', () => {
     const pane = page.getByTestId('storage-key');
     await expect(pane.getByTestId('storage-key-managed')).toContainText('webhook-delivery:v1:');
     await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.edit })).toHaveCount(0);
-    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).toHaveCount(0);
+    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).toHaveCount(
+      0,
+    );
 
     // A key of the application, in another group, can be changed.
     await group.selectOption('e2e-storage:');
     await keyButton(page, APP_KEY).click();
     await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.edit })).toBeVisible();
-    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).toBeVisible();
+    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).toBeVisible();
   });
 
   test('edits a key after a confirmation, and the new value is what storage holds', async ({
@@ -121,7 +123,7 @@ test.describe('storage', () => {
     await keyButton(page, APP_KEY).click();
     const pane = page.getByTestId('storage-key');
     await pane.getByRole('button', { name: STORAGE_COPY.detail.edit }).click();
-    await pane.getByLabel(STORAGE_COPY.detail.editLabel).fill('an edited note');
+    await pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }).fill('an edited note');
     await pane.getByRole('button', { name: STORAGE_COPY.detail.save }).click();
     const dialog = page.getByRole('dialog', { name: STORAGE_COPY.confirmSave.title });
     await expect(dialog).toBeVisible();
@@ -139,7 +141,8 @@ test.describe('storage', () => {
     await page.goto('/health/storage');
     await searchKeys(page, 'e2e-storage');
     await keyButton(page, APP_KEY).click();
-    await page.getByRole('button', { name: STORAGE_COPY.detail.delete }).click();
+    await page.getByRole('button', { name: STORAGE_COPY.detail.moreActions }).click();
+    await page.getByRole('menuitem', { name: STORAGE_COPY.detail.delete }).click();
     const dialog = page.getByRole('dialog', { name: STORAGE_COPY.confirmDelete.title });
     await expect(dialog).toBeVisible();
     const before = await request.get(storageUrl(APP_KEY));

@@ -16,18 +16,27 @@
    * Edit or Delete (`key-detail.svelte`). The scan carries each key's write time (`updatedAt`, null for a backend
    * that records none), which the Updated column words absolutely, in Central time ("Today, 10:44
    * AM"). A UUID in a key is cut to its first eight characters in the table; the row's title and the
-   * pane hold the whole key. The table scrolls sideways inside its own bordered box when its columns
-   * do not fit, with a visible scrollbar and a fade at the end, so the page never scrolls sideways;
-   * the key's pane drops below it where the page is too narrow for both.
+   * pane hold the whole key. The table and the key's pane are Cinder's list and detail: the table in
+   * the list slot, scrolling inside its pane with a visible scrollbar and a fade at the end so the
+   * page never scrolls sideways, and the pane pinned beside it. Where the page is too narrow for
+   * both it shows one at a time, the pane with a Back button.
+   *
+   * While the keys are read the filters stay and the table is a skeleton, drawn only after 300 ms;
+   * after 10 s it says the read is taking longer than usual and offers Cancel, which stops the read
+   * and says so. When "Scroll to load more" fails the keys already loaded stay and the footer becomes
+   * Cinder's load more in its retry state, which a keyboard can press.
    */
   import {
     Alert,
     Button,
     DataTable,
     EmptyState,
+    ErrorState,
     formatDateTime,
     formatTimeZoneLabel,
     Input,
+    ListDetail,
+    LoadMore,
     SearchField,
     Segment,
     SegmentedControl,
@@ -35,7 +44,8 @@
     Skeleton,
   } from '@lostgradient/cinder';
   import type { DataTableColumn } from '@lostgradient/cinder';
-  import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
+  import { Database } from '@lucide/svelte';
+  import { createInfiniteQuery, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, STORAGE_COPY } from '../../app/copy.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
@@ -64,9 +74,28 @@
   let { client, conditionalBatch = undefined }: Props = $props();
 
   const copy = STORAGE_COPY;
+  const queryClient = useQueryClient();
+
+  /** How long a read runs before the skeleton is drawn, so a quick read never flashes one. */
+  const LOADING_DELAY_MILLISECONDS = 300;
+
+  /** How long a read runs before the skeleton says it is taking longer than usual. */
+  const STILL_LOADING_MILLISECONDS = 10_000;
 
   /** The widest the Group column grows before it ends a name with an ellipsis. */
   const GROUP_COLUMN_WIDTH = 168;
+
+  /** How wide the table's pane starts, in pixels, before the divider is moved. */
+  const LIST_PANE_WIDTH = 640;
+
+  /**
+   * The width of the layout below which the key's pane sits under the table instead of beside it, in
+   * pixels: the table's pane starts at 640 and the detail needs 320 of its own.
+   */
+  const STACK_BELOW_WIDTH = 960;
+
+  /** The widest the divider gives the table's pane, in pixels: its four columns need more than a list of rows. */
+  const LIST_PANE_MAXIMUM_WIDTH = 1000;
 
   /** The widest the Key column grows before it ends a key with an ellipsis, so Size and Updated stay in view. */
   const KEY_COLUMN_WIDTH = 232;
@@ -79,6 +108,13 @@
   let start = $state('');
   let end = $state('');
   let selectedKey = $state<string | null>(null);
+  // "Cancel" in the "Still loading" line stopped the read of the keys, and "Try again" reads them
+  // again. TanStack puts a first read that is cancelled back to pending, so the page keeps what it
+  // was told here. A new filter is a new read.
+  let loadStopped = $state(false);
+  // "Scroll to load more" failed: the footer is Cinder's load more in its retry state until a read
+  // of the next page succeeds, or the filter changes.
+  let loadMoreFailed = $state(false);
 
   const filter = $derived<KeyFilter>(
     mode === 'prefix' ? { mode, group, text } : { mode, group, start, end },
@@ -152,7 +188,6 @@
       (entry) => entry.key,
     ),
   );
-  const selected = $derived(entries.find((entry) => entry.key === selectedKey));
   const filtered = $derived(group !== '' || text !== '' || start !== '' || end !== '');
   const zoneLabel = formatTimeZoneLabel(Date.now(), { style: 'long' });
 
@@ -206,11 +241,41 @@
     end = '';
   }
 
-  function loadMore(): void {
-    if (listing.hasNextPage && !listing.isFetchingNextPage && !listing.isFetchNextPageError) {
-      void listing.fetchNextPage();
-    }
+  // A new filter reads the keys afresh, so what happened to the last read does not carry over.
+  $effect(() => {
+    void boundsKey;
+    loadStopped = false;
+    loadMoreFailed = false;
+  });
+
+  function stopLoading(): void {
+    loadStopped = true;
+    void queryClient.cancelQueries({ queryKey: storageQueryKeys.keys(boundsKey) });
   }
+
+  function readAgain(): void {
+    loadStopped = false;
+    void listing.refetch();
+  }
+
+  /** Reads the next page, and rejects when it fails, which is what Cinder's load more retries. */
+  async function fetchMore(): Promise<void> {
+    await listing.fetchNextPage({ throwOnError: true });
+  }
+
+  function loadMore(): void {
+    if (!listing.hasNextPage || listing.isFetchingNextPage || loadMoreFailed) return;
+    void fetchMore().catch(() => {
+      loadMoreFailed = true;
+    });
+  }
+
+  async function retryLoadMore(): Promise<void> {
+    await fetchMore();
+    loadMoreFailed = false;
+  }
+
+  const totalKeys = $derived(counted === undefined ? undefined : summary.data?.keyCount);
 
   const lastResult = $derived(
     problem !== undefined && applied.mode === 'range'
@@ -291,16 +356,35 @@
     <p class="ib-storage__problem" id="ib-storage-range-problem" role="alert">{problem}</p>
   {/if}
 
-  {#if listing.isError}
+  {#if listing.isError && listing.data === undefined}
     <Alert variant="danger">
       <p class="ib-storage__alert-title">{copy.failed.title}</p>
       <p class="ib-storage__alert-body">{copy.failed.description}</p>
       <Button variant="secondary" onclick={() => void listing.refetch()}>{RETRY_LABEL}</Button>
     </Alert>
+  {:else if listing.isPending && loadStopped}
+    <ErrorState
+      bordered
+      headingLevel={2}
+      tone="neutral"
+      title={copy.stopped.title}
+      description={copy.stopped.description}
+      retryLabel={copy.stopped.tryAgain}
+      retryVariant="secondary"
+      onRetry={readAgain}
+    />
   {:else if listing.isPending}
-    <div role="status" aria-busy="true" aria-label={copy.loadingLabel}>
-      <Skeleton height="1.5rem" width="40%" />
-      <Skeleton height="12rem" />
+    <div data-testid="storage-loading" aria-busy="true">
+      <Skeleton
+        variant="list"
+        rows={5}
+        statusMarker="dot"
+        statusColumn={false}
+        delay={LOADING_DELAY_MILLISECONDS}
+        stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+        label={copy.loadingLabel}
+        onCancel={stopLoading}
+      />
     </div>
   {:else if entries.length === 0}
     {#if applied.mode === 'range' && (applied.start !== '' || applied.end !== '')}
@@ -328,11 +412,23 @@
       />
     {/if}
   {:else}
-    <div class="ib-storage__panes">
-      <section class="ib-storage__keys" aria-label={copy.tableLabel}>
-        {#if lastResult !== undefined}
-          <p class="ib-storage__note" data-testid="storage-last-result">{lastResult}</p>
-        {/if}
+    {#if lastResult !== undefined}
+      <p class="ib-storage__note" data-testid="storage-last-result">{lastResult}</p>
+    {/if}
+    <ListDetail
+      items={entries}
+      key={(entry) => entry.key}
+      label={copy.tableLabel}
+      detailLabel={copy.detail.paneLabel}
+      class="ib-storage__layout"
+      selectionParameter={null}
+      bind:selectedKey
+      storageKey="interborough-storage"
+      defaultListWidth={LIST_PANE_WIDTH}
+      maximumListWidth={LIST_PANE_MAXIMUM_WIDTH}
+      stackBelow={STACK_BELOW_WIDTH}
+    >
+      {#snippet listBody(body)}
         <DataTable
           {columns}
           {rows}
@@ -340,8 +436,8 @@
           density="condensed"
           class="ib-storage__table"
           getRowId={(row) => row.id}
-          openRowId={selectedKey}
-          onRowOpen={(row) => (selectedKey = row.key)}
+          openRowId={body.selectedKey}
+          onRowOpen={(row) => body.open(row.key)}
           onReachEnd={listing.hasNextPage ? loadMore : undefined}
         >
           {#snippet cell({ row, column, value })}
@@ -352,43 +448,56 @@
             {/if}
           {/snippet}
           {#snippet footer()}
-            <span class="ib-storage__footer" data-testid="storage-count">
-              {copy.footer(
-                entries.length,
-                counted === undefined ? undefined : summary.data?.keyCount,
-                listing.hasNextPage,
-              )}
-            </span>
+            {#if loadMoreFailed}
+              <LoadMore
+                variant="footer"
+                failed
+                hasMore={listing.hasNextPage}
+                loading={listing.isFetchingNextPage}
+                loadedCount={entries.length}
+                {...totalKeys === undefined
+                  ? {}
+                  : { totalCount: Math.max(totalKeys, entries.length) }}
+                itemLabel={copy.loadMore.itemLabel}
+                retryLabel={copy.loadMore.retry}
+                endOfListMessage=""
+                onLoadMore={retryLoadMore}
+              />
+            {:else}
+              <span class="ib-storage__footer" data-testid="storage-count">
+                {copy.footer(entries.length, totalKeys, listing.hasNextPage)}
+              </span>
+            {/if}
           {/snippet}
         </DataTable>
-      </section>
-
-      <aside class="ib-storage__pane" aria-label={copy.detail.label}>
-        {#if selected !== undefined}
-          <!-- A key of its own, so another key starts with the editor closed and the fields showing. -->
-          {#key selected.key}
-            <KeyDetail
-              {client}
-              entry={selected}
-              {bureauPrefixes}
-              {conditionalBatch}
-              onDeleted={(key) => {
-                // Only the key just deleted: another may have been opened while the delete was in flight.
-                if (selectedKey === key) selectedKey = null;
-              }}
-            />
-          {/key}
-        {:else}
-          <EmptyState
-            kind="first-use"
-            size="compact"
-            headingLevel={2}
-            title={copy.detail.emptyTitle}
-            description={copy.detail.emptyDescription}
+      {/snippet}
+      {#snippet detail(entry)}
+        <!-- A key of its own, so another key starts with the editor closed and the fields showing. -->
+        {#key entry.key}
+          <KeyDetail
+            {client}
+            {entry}
+            {bureauPrefixes}
+            {conditionalBatch}
+            onDeleted={(key) => {
+              // Only the key just deleted: another may have been opened while the delete was in flight.
+              if (selectedKey === key) selectedKey = null;
+            }}
           />
-        {/if}
-      </aside>
-    </div>
+        {/key}
+      {/snippet}
+      {#snippet empty()}
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={2}
+          title={copy.detail.emptyTitle}
+          description={copy.detail.emptyDescription}
+        >
+          {#snippet icon()}<Database aria-hidden="true" />{/snippet}
+        </EmptyState>
+      {/snippet}
+    </ListDetail>
   {/if}
 </div>
 
@@ -464,27 +573,18 @@
     margin: var(--cinder-space-1) 0 var(--cinder-space-2);
   }
 
-  /* The table and the selected key, side by side where the page is wide enough for both. Each track
-   * is `minmax(0, 1fr)`: a bare `1fr` grows to its content, and a 2,000-character key would push the
-   * page wider than the screen. */
-  .ib-storage__panes {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--cinder-space-4);
-    align-items: start;
+  /* The table and the selected key, Cinder's list and detail, in one bordered box. Side by side the
+   * two fill the height they are given and scroll each pane on its own, so the box has one; under
+   * the stacked and the one-pane layouts they flow with the page. */
+  .ib-storage :global(.ib-storage__layout) {
+    min-inline-size: 0;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    overflow: hidden;
   }
 
-  @container (min-width: 56rem) {
-    .ib-storage__panes {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
-    }
-  }
-
-  .ib-storage__keys {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    min-width: 0;
+  .ib-storage :global(.ib-storage__layout[data-cinder-layout='split']) {
+    block-size: max(28rem, calc(100dvh - 22rem));
   }
 
   .ib-storage__note,
@@ -492,12 +592,5 @@
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-  }
-
-  .ib-storage__pane {
-    min-width: 0;
-    padding: var(--cinder-space-4);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
   }
 </style>

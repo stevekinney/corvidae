@@ -394,7 +394,7 @@ describe('the selected key', () => {
     const pane = within(await select(view, 'app:blob'));
     expect(pane.getByText(STORAGE_COPY.detail.binaryNote)).not.toBeNull();
     expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.edit })).toBeNull();
-    expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull();
+    expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull();
   });
 });
 
@@ -405,7 +405,7 @@ describe('a key the application manages', () => {
       const pane = within(await select(view, key));
       expect(pane.getByTestId('storage-key-managed')).not.toBeNull();
       expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.edit })).toBeNull();
-      expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.delete })).toBeNull();
+      expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.moreActions })).toBeNull();
       expect(pane.getByRole('button', { name: STORAGE_COPY.detail.copyKey })).not.toBeNull();
     });
   }
@@ -427,7 +427,7 @@ describe('a key the application manages', () => {
     const pane = within(await select(view, 'app:config'));
     await waitFor(() => expect(pane.getByText(STORAGE_COPY.detail.unknownManaged)).not.toBeNull());
     expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.edit })).toBeNull();
-    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.delete })).toBeNull();
+    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.moreActions })).toBeNull();
   });
 });
 
@@ -467,6 +467,12 @@ function refocusWindow(): void {
   focusManager.setFocused(true);
 }
 
+/** Opens the "⋯" menu at the end of the pane's buttons and chooses Delete, which asks to confirm. */
+async function chooseDelete(view: View, pane: ReturnType<typeof within>): Promise<void> {
+  await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions }));
+  await fireEvent.click(await view.findByRole('menuitem', { name: STORAGE_COPY.detail.delete }));
+}
+
 /** Opens a key, starts editing it, and returns the pane once the editor is up. */
 async function startEditing(view: View, key: string) {
   const pane = within(await select(view, key));
@@ -481,7 +487,7 @@ describe('Edit', () => {
   test('saves only after the confirmation, and only if the key still holds what was read', async () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
-    const editor = pane.getByLabelText(STORAGE_COPY.detail.editLabel);
+    const editor = pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel });
     expect((editor as HTMLTextAreaElement).value).toBe('plain text note');
 
     await fireEvent.input(editor, { target: { value: 'a new note' } });
@@ -501,14 +507,16 @@ describe('Edit', () => {
     expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('a new note');
     expect(await view.findByText(STORAGE_COPY.detail.saved('app:notes'))).not.toBeNull();
     await waitFor(() =>
-      expect(pane.queryByLabelText(STORAGE_COPY.detail.editLabel)?.outerHTML ?? null).toBeNull(),
+      expect(
+        pane.queryByRole('textbox', { name: STORAGE_COPY.detail.editLabel })?.outerHTML ?? null,
+      ).toBeNull(),
     );
   });
 
   test('writes nothing when the key changed after it was opened, and says so', async () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: 'my version' },
     });
     // Someone else writes the key while the editor is open.
@@ -522,13 +530,13 @@ describe('Edit', () => {
 
     expect(await pane.findByText(STORAGE_COPY.detail.changedUnderYou)).not.toBeNull();
     expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('their version');
-    expect(pane.getByLabelText(STORAGE_COPY.detail.editLabel)).not.toBeNull();
+    expect(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel })).not.toBeNull();
   });
 
   test('fences the save on the value that was opened, not on what a refetch read since', async () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: 'my version' },
     });
     // Another writer changes the key, and the window regains focus, so the table reads it again.
@@ -551,40 +559,21 @@ describe('Edit', () => {
     expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('their version');
   });
 
-  test('opening Delete during an edit does not move the edit\u2019s fence', async () => {
+  test('while the editor is open the pane offers the editor’s buttons and nothing that changes the key another way', async () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
-      target: { value: 'my version' },
-    });
-    // Another writer changes the key and the table reads it again, then Delete is opened and cancelled.
-    const scansBefore = scanCount();
-    server?.store.set('app:notes', new TextEncoder().encode('their version'));
-    refocusWindow();
-    await waitUntil(() => scanCount() > scansBefore);
-    await waitFor(() => expect(rowOf(view, 'app:notes').textContent).toContain('13 B'));
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
-    const deleteDialog = await view.findByRole('dialog');
-    await fireEvent.click(within(deleteDialog).getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
-
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
-    const dialog = await view.findByRole('dialog');
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
-    );
-
-    expect(await pane.findByText(STORAGE_COPY.detail.changedUnderYou)).not.toBeNull();
-    expect(conditionalBatchOf(server)?.conditions).toEqual([
-      { key: 'app:notes', expected: 'plain text note' },
+    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.moreActions })).toBeNull();
+    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.edit })).toBeNull();
+    expect(pane.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      STORAGE_COPY.detail.cancel,
+      STORAGE_COPY.detail.save,
     ]);
-    expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('their version');
   });
 
   test('a refusal outlives the pane when the key was deleted by another writer', async () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: 'my version' },
     });
     server?.store.delete('app:notes');
@@ -603,7 +592,7 @@ describe('Edit', () => {
   test('a refused save reads the key again, so opening it shows what it holds now', async () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: 'my version' },
     });
     server?.store.set('app:notes', new TextEncoder().encode('their version'));
@@ -628,7 +617,7 @@ describe('Edit', () => {
         true,
       ),
     );
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: 'unchecked' },
     });
     await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
@@ -653,7 +642,7 @@ describe('Edit', () => {
         true,
       ),
     );
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: 'plain put' },
     });
     await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
@@ -676,7 +665,7 @@ describe('Edit', () => {
   test('a save the server refuses is an error in the pane, and the editor stays open', async () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: 'changed' },
     });
     if (server) server.control.refuseWrites = true;
@@ -686,16 +675,18 @@ describe('Edit', () => {
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
     );
 
-    expect(await pane.findByText(STORAGE_COPY.detail.saveFailed)).not.toBeNull();
-    expect(pane.getByText('Raw storage access requires storage:admin.')).not.toBeNull();
-    expect(pane.getByLabelText(STORAGE_COPY.detail.editLabel)).not.toBeNull();
+    const alert = await pane.findByTestId('storage-save-failed');
+    expect(alert.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
+      `${STORAGE_COPY.detail.saveFailed.lead} Raw storage access requires storage:admin. ${STORAGE_COPY.detail.saveFailed.kept}`,
+    );
+    expect(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel })).not.toBeNull();
   });
 
   test('refuses to save text where the value was JSON, and says why', async () => {
     const view = await open();
     const pane = await startEditing(view, 'cache:rates');
 
-    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
       target: { value: '{"usd":' },
     });
 
@@ -709,7 +700,7 @@ describe('Edit', () => {
     const view = await open();
     const pane = await startEditing(view, 'app:notes');
     await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.cancel }));
-    expect(pane.queryByLabelText(STORAGE_COPY.detail.editLabel)).toBeNull();
+    expect(pane.queryByRole('textbox', { name: STORAGE_COPY.detail.editLabel })).toBeNull();
     expect(conditionalBatchOf(server)).toBeUndefined();
     expect(server?.calls.some((call) => call.method === 'PUT')).toBe(false);
   });
@@ -720,9 +711,9 @@ describe('Delete', () => {
     const view = await open();
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
 
     const dialog = await view.findByRole('dialog');
     expect(conditionalBatchOf(server)).toBeUndefined();
@@ -745,10 +736,10 @@ describe('Delete', () => {
     const view = await open();
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
     server?.store.set('cache:rates', new TextEncoder().encode('{"usd":2}'));
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
     const dialog = await view.findByRole('dialog');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
@@ -763,9 +754,9 @@ describe('Delete', () => {
     const view = await open();
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
     const dialog = await view.findByRole('dialog');
     const scansBefore = scanCount();
     server?.store.set('cache:rates', new TextEncoder().encode('{"usd":22}'));
@@ -784,14 +775,14 @@ describe('Delete', () => {
     const view = await open({ capabilitiesStatus: 500 });
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
     await waitFor(() =>
       expect(server?.calls.some((call) => call.body?.includes('weft.storage.capabilities'))).toBe(
         true,
       ),
     );
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
     const dialog = await view.findByRole('dialog');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
@@ -807,10 +798,10 @@ describe('Delete', () => {
     const view = await open();
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
     if (server) server.control.refuseWrites = true;
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
     const dialog = await view.findByRole('dialog');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
@@ -825,17 +816,17 @@ describe('Delete', () => {
     const view = await open({ conditionalBatch: false });
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
     await waitFor(() =>
       expect(server?.calls.some((call) => call.body?.includes('weft.storage.capabilities'))).toBe(
         true,
       ),
     );
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
     const dialog = await view.findByRole('dialog');
-    expect(dialog.textContent).toContain(
-      STORAGE_COPY.confirmDelete.description('cache:rates', true),
+    expect(dialog.textContent?.replaceAll(/\s+/g, ' ')).toContain(
+      `cache:rates${STORAGE_COPY.confirmDelete.afterKey('9 B', true)}`,
     );
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
@@ -855,9 +846,9 @@ describe('Delete', () => {
     await fireEvent.change(groups, { target: { value: 'cache:' } });
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
     const dialog = await view.findByRole('dialog');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
@@ -873,9 +864,9 @@ describe('Delete', () => {
     const view = await open();
     const pane = within(await select(view, 'cache:rates'));
     await waitFor(() =>
-      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
     );
-    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    await chooseDelete(view, pane);
     const dialog = await view.findByRole('dialog');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
@@ -938,5 +929,137 @@ describe('the storage line', () => {
     expect(
       await view.findByText('Running on Postgres and S3 in db.example.test:5432/interborough'),
     ).not.toBeNull();
+  });
+});
+
+describe('before a key is chosen', () => {
+  test('the pane says what to do, with a database glyph, and no row is highlighted', async () => {
+    const view = await open();
+    await view.findByRole('table');
+    const pane = within(await view.findByLabelText(STORAGE_COPY.detail.paneLabel));
+    expect(pane.getByRole('heading', { name: STORAGE_COPY.detail.emptyTitle })).not.toBeNull();
+    expect(pane.getByText(STORAGE_COPY.detail.emptyDescription)).not.toBeNull();
+    expect(view.container.querySelector('tbody tr[aria-current="true"]')).toBeNull();
+    expect(view.queryByTestId('storage-key')).toBeNull();
+  });
+});
+
+describe('reading the value of a chosen key', () => {
+  test('shows the group and the key at once, Copy key disabled, and nothing else, while the value is read', async () => {
+    const view = await open();
+    await view.findByRole('table');
+    if (server) server.control.holdValues = true;
+    const pane = within(await select(view, 'app:notes'));
+
+    expect(pane.getByTestId('storage-key-summary').textContent?.trim()).toBe('App data and memory');
+    expect(pane.getByTestId('storage-key-name').textContent).toBe('app:notes');
+    expect(
+      (pane.getByRole('button', { name: STORAGE_COPY.detail.copyKey }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    for (const name of [
+      STORAGE_COPY.detail.copyValue,
+      STORAGE_COPY.detail.edit,
+      STORAGE_COPY.detail.moreActions,
+    ]) {
+      expect(pane.queryByRole('button', { name })).toBeNull();
+    }
+    // The value is a skeleton after the 300 ms every loading state waits, and a quick read never shows one.
+    await waitFor(() =>
+      expect(pane.getByText(STORAGE_COPY.detail.valueLoadingLabel)).not.toBeNull(),
+    );
+    expect(pane.queryByText('plain text note')).toBeNull();
+  });
+
+  test('says when the value could not be read, and reads it again on Try again', async () => {
+    const view = await open();
+    await view.findByRole('table');
+    if (server) server.control.valueStatus = 500;
+    const pane = within(await select(view, 'app:notes'));
+
+    expect(await pane.findByText(STORAGE_COPY.detail.valueFailed)).not.toBeNull();
+    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.edit })).toBeNull();
+
+    if (server) server.control.valueStatus = undefined;
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.valueRetry }));
+
+    expect(await pane.findByText('plain text note')).not.toBeNull();
+    expect(pane.getByRole('button', { name: STORAGE_COPY.detail.edit })).not.toBeNull();
+  });
+
+  test('says when the key was removed after its row was listed', async () => {
+    const view = await open();
+    await view.findByRole('table');
+    server?.store.delete('app:notes');
+    const pane = within(await select(view, 'app:notes'));
+
+    expect(await pane.findByText(STORAGE_COPY.detail.valueGone)).not.toBeNull();
+    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.edit })).toBeNull();
+  });
+});
+
+describe('the buttons of a key the application does not manage', () => {
+  test('Copy key, Copy value and Edit are buttons, and Delete is only in the menu at the end of the row', async () => {
+    const view = await open();
+    const pane = within(await select(view, 'app:config'));
+    await waitFor(() =>
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.edit })).not.toBeNull(),
+    );
+
+    const names = pane.getAllByRole('button').map((button) => button.textContent?.trim());
+    expect(names.slice(0, 3)).toEqual([
+      STORAGE_COPY.detail.copyKey,
+      STORAGE_COPY.detail.copyValue,
+      STORAGE_COPY.detail.edit,
+    ]);
+    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.delete })).toBeNull();
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions }));
+    expect(await view.findByRole('menuitem', { name: STORAGE_COPY.detail.delete })).not.toBeNull();
+  });
+
+  test('Delete asks first, names the key and its size, and says it cannot be undone', async () => {
+    const view = await open();
+    const pane = within(await select(view, 'cache:rates'));
+    await waitFor(() =>
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).not.toBeNull(),
+    );
+    await chooseDelete(view, pane);
+
+    const dialog = await view.findByRole('dialog');
+    expect(dialog.textContent?.replaceAll(/\s+/g, ' ')).toContain(
+      'Delete this key? cache:rates and its 9 B value are removed from storage. This can’t be undone.',
+    );
+    expect(within(dialog).getByRole('button', { name: 'Delete key' })).not.toBeNull();
+    expect(server?.store.has('cache:rates')).toBe(true);
+  });
+
+  test('a save that fails says so in one line over the editor, keeps the typed value, and folds the key into the line above', async () => {
+    const view = await open();
+    const pane = await startEditing(view, 'app:notes');
+    await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
+      target: { value: 'kept text' },
+    });
+    if (server) server.control.refuseWrites = true;
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
+    const dialog = await view.findByRole('dialog');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
+    );
+
+    const alert = await pane.findByTestId('storage-save-failed');
+    expect(alert.querySelector('strong')?.textContent).toBe(STORAGE_COPY.detail.saveFailed.lead);
+    // The alert sits above the editor, and the editor keeps what was typed.
+    const editor = pane.getByRole('textbox', {
+      name: STORAGE_COPY.detail.editLabel,
+    }) as HTMLTextAreaElement;
+    expect(alert.compareDocumentPosition(editor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(editor.value).toBe('kept text');
+    expect(pane.getByTestId('storage-key-summary').textContent?.trim()).toMatch(
+      /^App data and memory · \d+ B · app:notes$/,
+    );
+    expect(pane.queryByTestId('storage-key-name')).toBeNull();
+    expect(pane.getByRole('button', { name: STORAGE_COPY.detail.save }).textContent?.trim()).toBe(
+      'Save value',
+    );
   });
 });

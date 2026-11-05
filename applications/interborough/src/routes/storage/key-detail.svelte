@@ -5,18 +5,34 @@
    * `PayloadInspector` shows without a card, as fields with a switch to the JSON itself when it is a
    * JSON object, and as the value alone, quoted in the JSON view, otherwise. A key the
    * application manages shows a lock and why, and offers no Edit or Delete. Any other key can be
-   * edited, where the value is text, and deleted, each after a confirmation.
+   * edited, where the value is text, and deleted, each after a confirmation. Edit sits in the row of
+   * buttons; Delete, like every destructive action in the application, is in the "⋯" menu at the
+   * end of that row.
+   *
+   * The pane reads the value itself when a key is opened (`storageGet`), not from the table's scan:
+   * the group and the key show at once and the value is a skeleton, which after 10 s says it is
+   * taking longer than usual and offers Cancel. What the pane then shows, sizes, copies and fences a
+   * write on is what the read returned.
    *
    * The write functions refuse a managed key too, so a control that appears by mistake still cannot
    * change one.
    */
-  import { Alert, Button, ConfirmDialog, CopyButton, Textarea } from '@lostgradient/cinder';
-  import { Copy, Lock, Pencil, Trash2 } from '@lucide/svelte';
-  import { createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import {
+    Alert,
+    Button,
+    ConfirmDialog,
+    CopyButton,
+    Dropdown,
+    Skeleton,
+    Textarea,
+    VisuallyHidden,
+  } from '@lostgradient/cinder';
+  import { Copy, Ellipsis, Lock, Pencil, Trash2 } from '@lucide/svelte';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { STORAGE_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
-  import { faultTreatment } from '../../lib/faults.ts';
+  import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { formatBytes } from '../../lib/format/index.ts';
   import { isJson, textOf } from './key-value.ts';
@@ -29,6 +45,7 @@
   import {
     storageConditionalBatch,
     storageDelete,
+    storageGet,
     storagePut,
     type StorageConnection,
     type StorageScanEntry,
@@ -66,7 +83,32 @@
     bureauPrefixes === undefined ? undefined : managedPrefix(entry.key, bureauPrefixes),
   );
   const writable = $derived(bureauPrefixes !== undefined && managed === undefined);
-  const text = $derived(textOf(entry.value));
+
+  // The value as storage holds it now: `undefined` while it is read, `null` when the key is gone.
+  const valueQuery = createQuery(
+    () => ({
+      queryKey: storageQueryKeys.value(entry.key),
+      queryFn: ({ signal }) => storageGet(client, entry.key, signal),
+      retry: false,
+      refetchOnWindowFocus: false,
+    }),
+    undefined,
+  );
+  const stored = $derived(valueQuery.data ?? undefined);
+  const text = $derived(stored === undefined ? undefined : textOf(stored));
+  // TanStack puts a first read that is cancelled back to pending, so the pane keeps what it was
+  // told here: the person stopped it, and "Try again" reads again.
+  let stopped = $state(false);
+
+  function stopLoading(): void {
+    stopped = true;
+    void queryClient.cancelQueries({ queryKey: storageQueryKeys.value(entry.key) });
+  }
+
+  function readAgain(): void {
+    stopped = false;
+    void valueQuery.refetch();
+  }
 
   let editing = $state(false);
   let draft = $state('');
@@ -85,13 +127,21 @@
   const draftInvalid = $derived(editing && text !== undefined && isJson(text) && !isJson(draft));
 
   function startEditing(): void {
+    if (stored === undefined) return;
     draft = text ?? '';
-    editFence = entry.value;
+    editFence = stored;
+    saveMutation.reset();
     editing = true;
   }
 
+  function stopEditing(): void {
+    saveMutation.reset();
+    editing = false;
+  }
+
   function startDeleting(): void {
-    deleteFence = entry.value;
+    if (stored === undefined) return;
+    deleteFence = stored;
     confirmDelete = true;
   }
 
@@ -99,6 +149,8 @@
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: storageQueryKeys.allKeys() }),
       queryClient.invalidateQueries({ queryKey: storageQueryKeys.prefixes() }),
+      // What the pane read is what was written, or gone.
+      queryClient.invalidateQueries({ queryKey: storageQueryKeys.allValues() }),
       // The footer's "of N keys" and the details' key count follow what is stored.
       queryClient.invalidateQueries({ queryKey: queryKeys.hostStorageSummaries() }),
     ]);
@@ -107,6 +159,11 @@
   /** What a failed write says: a refusal in its own words, anything else as the fault it is. */
   function messageOf(error: unknown): string {
     return error instanceof WriteRefusedError ? error.message : faultTreatment(error).message;
+  }
+
+  /** The sentence after the bold lead of a failed save: the cause. What became of the edit follows it. */
+  function saveFailureCause(error: unknown): string {
+    return isNetworkFailure(error) ? copy.saveFailed.noAnswer : messageOf(error);
   }
 
   /** Refuses a managed key, or any key while the managed prefixes are unknown. */
@@ -183,46 +240,70 @@
     }),
     undefined,
   );
+
+  // After a save that failed the pane's line folds the key into itself, as the failed-save frame
+  // draws it, so the line above the alert is the only thing above it.
+  const saveFailed = $derived(editing && saveMutation.isError);
+  const size = $derived(stored === undefined ? undefined : formatBytes(stored.byteLength));
+  const group = $derived(keyGroupName(entry.key, STORAGE_COPY.noGroup));
+  // The editor is as tall as what it holds, between three lines and sixteen.
+  const editorRows = $derived(Math.min(16, Math.max(3, draft.split('\n').length)));
 </script>
 
 <article class="ib-storage-key" data-testid="storage-key" aria-label={copy.label}>
   <p class="ib-storage-key__summary" data-testid="storage-key-summary">
-    {copy.summary(
-      keyGroupName(entry.key, STORAGE_COPY.noGroup),
-      formatBytes(entry.value.byteLength),
-      updatedPhrase(entry.updatedAt),
-    )}
-  </p>
-
-  <p class="ib-storage-key__key">
-    <span data-testid="storage-key-name">{entry.key}</span>
-    {#if entry.key.length > LONG_KEY_CHARACTERS}
-      <span class="ib-storage-key__length">{copy.characters(entry.key.length)}</span>
+    {#if saveFailed && size !== undefined}
+      {copy.editingSummary(group, size, entry.key)}
+    {:else if size !== undefined}
+      {copy.summary(group, size, updatedPhrase(entry.updatedAt))}
+    {:else}
+      {copy.groupOnly(group)}
     {/if}
   </p>
 
-  <div class="ib-storage-key__actions">
-    <CopyButton value={entry.key} label={copy.copyKey}>
-      <Copy aria-hidden="true" size={14} />
-      {copy.copyKey}
-    </CopyButton>
-    <CopyButton value={text ?? ''} label={copy.copyValue} disabled={text === undefined}>
-      <Copy aria-hidden="true" size={14} />
-      {copy.copyValue}
-    </CopyButton>
-    {#if writable && !editing && text !== undefined}
-      <Button variant="secondary" onclick={startEditing}>
-        {#snippet leadingIcon()}<Pencil aria-hidden="true" size={14} />{/snippet}
-        {copy.edit}
-      </Button>
-    {/if}
-    {#if writable}
-      <Button data-changes variant="danger" onclick={startDeleting}>
-        {#snippet leadingIcon()}<Trash2 aria-hidden="true" size={14} />{/snippet}
-        {copy.delete}
-      </Button>
-    {/if}
-  </div>
+  {#if !saveFailed}
+    <p class="ib-storage-key__key">
+      <span data-testid="storage-key-name">{entry.key}</span>
+      {#if entry.key.length > LONG_KEY_CHARACTERS}
+        <span class="ib-storage-key__length">{copy.characters(entry.key.length)}</span>
+      {/if}
+    </p>
+  {/if}
+
+  {#if !editing}
+    <div class="ib-storage-key__actions">
+      <CopyButton value={entry.key} label={copy.copyKey} disabled={valueQuery.isPending}>
+        <Copy aria-hidden="true" size={14} />
+        {copy.copyKey}
+      </CopyButton>
+      {#if stored !== undefined}
+        <CopyButton value={text ?? ''} label={copy.copyValue} disabled={text === undefined}>
+          <Copy aria-hidden="true" size={14} />
+          {copy.copyValue}
+        </CopyButton>
+        {#if writable && text !== undefined}
+          <Button variant="secondary" onclick={startEditing}>
+            {#snippet leadingIcon()}<Pencil aria-hidden="true" size={14} />{/snippet}
+            {copy.edit}
+          </Button>
+        {/if}
+        {#if writable}
+          <Dropdown id="ib-storage-key-actions" placement="bottom-end">
+            <Dropdown.Trigger caretVisible={false}>
+              <Ellipsis aria-hidden="true" size={16} />
+              <VisuallyHidden>{copy.moreActions}</VisuallyHidden>
+            </Dropdown.Trigger>
+            <Dropdown.Menu>
+              <Dropdown.Item data-changes variant="danger" onclick={startDeleting}>
+                <Trash2 aria-hidden="true" size={14} />
+                {copy.delete}
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          </Dropdown>
+        {/if}
+      {/if}
+    </div>
+  {/if}
 
   {#if managed !== undefined}
     <p class="ib-storage-key__lock" data-testid="storage-key-managed">
@@ -247,23 +328,59 @@
     </Alert>
   {/if}
 
-  {#if editing}
+  {#if stored === undefined}
+    {#if stopped}
+      <p class="ib-storage-key__note" data-testid="storage-key-stopped">{copy.valueStopped}</p>
+      <div class="ib-storage-key__actions">
+        <Button variant="secondary" onclick={readAgain}>{copy.valueRetry}</Button>
+      </div>
+    {:else if valueQuery.isError}
+      <Alert variant="danger">
+        <p class="ib-storage-key__alert-line">
+          <strong>{copy.valueFailed}</strong>
+          {isNetworkFailure(valueQuery.error)
+            ? copy.saveFailed.noAnswer
+            : faultTreatment(valueQuery.error).message}
+        </p>
+      </Alert>
+      <div class="ib-storage-key__actions">
+        <Button variant="secondary" onclick={readAgain}>{copy.valueRetry}</Button>
+      </div>
+    {:else if valueQuery.data === null}
+      <p class="ib-storage-key__note" data-testid="storage-key-gone">{copy.valueGone}</p>
+    {:else}
+      <div data-testid="storage-key-loading">
+        <Skeleton
+          lines={4}
+          delay={300}
+          stillLoadingAfter={10_000}
+          label={copy.valueLoadingLabel}
+          onCancel={stopLoading}
+        />
+      </div>
+    {/if}
+  {:else if editing}
     <div class="ib-storage-key__edit">
-      <Textarea
-        id="ib-storage-edit"
-        label={copy.editLabel}
-        variant="code"
-        rows={10}
-        bind:value={draft}
-        {...draftInvalid ? { error: copy.notJson } : {}}
-      />
       {#if saveMutation.isError}
         <Alert variant="danger">
-          <p class="ib-storage-key__alert">{copy.saveFailed}</p>
-          <p>{messageOf(saveMutation.error)}</p>
+          <p class="ib-storage-key__alert-line" data-testid="storage-save-failed">
+            <strong>{copy.saveFailed.lead}</strong>
+            <span>{saveFailureCause(saveMutation.error)}</span>
+            <span>{copy.saveFailed.kept}</span>
+          </p>
         </Alert>
       {/if}
-      <div class="ib-storage-key__actions">
+      <!-- After a failed save the editor sits straight under the alert, as the failed-save frame draws it, and keeps its name for assistive technology. -->
+      <Textarea
+        id="ib-storage-edit"
+        variant="code"
+        rows={editorRows}
+        bind:value={draft}
+        {...saveFailed ? { 'aria-label': copy.editLabel } : { label: copy.editLabel }}
+        {...draftInvalid ? { error: copy.notJson } : {}}
+      />
+      <div class="ib-storage-key__actions ib-storage-key__actions--end">
+        <Button variant="secondary" onclick={stopEditing}>{copy.cancel}</Button>
         <Button
           data-changes
           variant="primary"
@@ -271,16 +388,15 @@
           loading={saveMutation.isPending}
           onclick={() => (confirmSave = true)}>{copy.save}</Button
         >
-        <Button variant="secondary" onclick={() => (editing = false)}>{copy.cancel}</Button>
       </div>
     </div>
   {:else if text === undefined}
-    <StorageValueDisplay value={entry.value} label={copy.valueLabel} />
+    <StorageValueDisplay value={stored} label={copy.valueLabel} />
     {#if writable}
       <p class="ib-storage-key__note">{copy.binaryNote}</p>
     {/if}
   {:else}
-    <StorageValueDisplay value={entry.value} label={copy.valueLabel} />
+    <StorageValueDisplay value={stored} label={copy.valueLabel} />
   {/if}
 </article>
 
@@ -289,22 +405,30 @@
   title={STORAGE_COPY.confirmSave.title}
   description={STORAGE_COPY.confirmSave.description(entry.key, conditionalBatch === false)}
   confirmLabel={STORAGE_COPY.confirmSave.confirm}
-  onConfirm={() =>
-    saveMutation.mutate({
-      key: entry.key,
-      value: draft,
-      expected: editFence ?? entry.value,
-    })}
+  onConfirm={() => {
+    if (editFence !== undefined) {
+      saveMutation.mutate({ key: entry.key, value: draft, expected: editFence });
+    }
+  }}
 />
+
+{#snippet deleteDescription()}
+  <span class="ib-storage-key__prefix ib-storage-key__dialog-key">{entry.key}</span
+  >{STORAGE_COPY.confirmDelete.afterKey(size ?? '', conditionalBatch === false)}
+{/snippet}
 
 <ConfirmDialog
   bind:open={confirmDelete}
   title={STORAGE_COPY.confirmDelete.title}
-  description={STORAGE_COPY.confirmDelete.description(entry.key, conditionalBatch === false)}
+  description={deleteDescription}
   confirmLabel={STORAGE_COPY.confirmDelete.confirm}
   destructive
-  onConfirm={() => deleteMutation.mutate({ key: entry.key, expected: deleteFence ?? entry.value })}
-/>
+  onConfirm={() => {
+    if (deleteFence !== undefined) deleteMutation.mutate({ key: entry.key, expected: deleteFence });
+  }}
+>
+  {#snippet confirmIcon()}<Trash2 aria-hidden="true" size={14} />{/snippet}
+</ConfirmDialog>
 
 <style>
   .ib-storage-key {
@@ -343,6 +467,10 @@
     gap: var(--cinder-space-2);
   }
 
+  .ib-storage-key__actions--end {
+    justify-content: flex-end;
+  }
+
   .ib-storage-key__lock {
     display: flex;
     align-items: flex-start;
@@ -361,6 +489,19 @@
   .ib-storage-key__alert {
     margin: 0;
     font-weight: 600;
+  }
+
+  /* One line with a bold lead sentence, then the cause, as every failed-save alert reads. */
+  .ib-storage-key__alert-line {
+    margin: 0;
+  }
+
+  .ib-storage-key__alert-line > strong {
+    font-weight: 600;
+  }
+
+  .ib-storage-key__dialog-key {
+    overflow-wrap: anywhere;
   }
 
   .ib-storage-key__note {

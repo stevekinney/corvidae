@@ -19,6 +19,20 @@ export interface StorageServerOptions {
   readonly sizeBytes?: number | null;
 }
 
+/** What a test changes about the server while it runs. */
+export interface StorageServerControl {
+  /** Fails every scan with this status. */
+  scanStatus: number | undefined;
+  /** Refuses every write with a 403. */
+  refuseWrites: boolean;
+  /** Fails a scan that carries a cursor (`gt`), so the first page reads and the next does not. */
+  pageStatus: number | undefined;
+  /** Fails a read of one key's value with this status. */
+  valueStatus: number | undefined;
+  /** Never answers a read of one key's value, so the pane stays loading until the read is cancelled. */
+  holdValues: boolean;
+}
+
 /** The capabilities `weft.storage.capabilities` answers with. */
 export const STORAGE_CAPABILITIES = {
   persistence: 'local',
@@ -28,6 +42,15 @@ export const STORAGE_CAPABILITIES = {
   conditionalBatch: true,
   boundedRangeDelete: true,
 } as const;
+
+/** A read the server never answers: it ends only when the page aborts it, as a cancelled read does. */
+function heldRead(signal: AbortSignal | undefined): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+      once: true,
+    });
+  });
+}
 
 const bytesOf = (value: string | Uint8Array): Uint8Array =>
   typeof value === 'string' ? new TextEncoder().encode(value) : value;
@@ -68,12 +91,15 @@ export function serveStorage(options: StorageServerOptions): {
   readonly calls: StubbedFetchCall[];
   readonly store: Map<string, Uint8Array>;
   /** Change what the server answers while a test runs. */
-  readonly control: { scanStatus: number | undefined; refuseWrites: boolean };
+  readonly control: StorageServerControl;
   readonly restore: () => void;
 } {
-  const control: { scanStatus: number | undefined; refuseWrites: boolean } = {
+  const control: StorageServerControl = {
     scanStatus: options.scanStatus,
     refuseWrites: false,
+    pageStatus: undefined,
+    valueStatus: undefined,
+    holdValues: false,
   };
   const store = new Map<string, Uint8Array>(
     Object.entries(options.keys).map(([key, value]) => [key, bytesOf(value)]),
@@ -122,6 +148,12 @@ export function serveStorage(options: StorageServerOptions): {
       }
       const prefix = url.searchParams.get('prefix') ?? '';
       const gt = url.searchParams.get('gt');
+      if (gt !== null && control.pageStatus !== undefined) {
+        return Response.json(
+          { error: 'The store is unavailable.' },
+          { status: control.pageStatus },
+        );
+      }
       const gte = url.searchParams.get('gte');
       const lt = url.searchParams.get('lt');
       const lte = url.searchParams.get('lte');
@@ -143,6 +175,19 @@ export function serveStorage(options: StorageServerOptions): {
       return new Response(rows.length > 0 ? `${rows.join('\n')}\n` : '', {
         headers: { 'Content-Type': 'application/x-ndjson' },
       });
+    }
+    if (call.method === 'GET' && url.pathname.startsWith('/v1/storage/')) {
+      if (control.holdValues) return heldRead(call.signal);
+      if (control.valueStatus !== undefined) {
+        return Response.json(
+          { error: 'The store is unavailable.' },
+          { status: control.valueStatus },
+        );
+      }
+      const stored = store.get(decodeURIComponent(url.pathname.replace('/v1/storage/', '')));
+      return stored === undefined
+        ? new Response(null, { status: 404 })
+        : new Response(new Blob([stored.slice()]));
     }
     if (control.refuseWrites && call.method !== 'GET') {
       return Response.json(

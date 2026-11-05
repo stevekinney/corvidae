@@ -1,6 +1,7 @@
 /**
  * The Health Storage tab on the sample world (`fixtures/sample-world-seed.ts`, the showcase host;
- * COR-2018, rows 80a to 80e, 80g, 80i to 80k, 80p to 80r and 81e). The page is read at 1280 pixels:
+ * COR-2018, rows 80a to 80e, 80g, 80i to 80k, 80p to 80r and 81e; and, in the second part of this
+ * file, rows 80l, 80m, 80t, 80u, 80w, 81c and 81d). The page is read at 1280 pixels:
  * the frame (the heading, the storage line, the Live indicator, the four tabs), the warning, the
  * control row, the table with its footer, and the pane of a key the application manages; then the
  * storage popover, Range mode, a range whose end comes before its start, and a key thousands of
@@ -12,7 +13,7 @@
  * values. The times the host wrote follow the clock of the capture, since the host stamps each key
  * with the sample world's clock.
  */
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -135,6 +136,8 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(pane.getByRole('button')).toContainText(['Copy key', 'Copy value']);
     await expect(pane.getByRole('button', { name: 'Edit' })).toHaveCount(0);
     await expect(pane.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+    // 80l: a managed key never offers Edit or Delete, nor the menu that holds Delete.
+    await expect(pane.getByRole('button', { name: 'More actions' })).toHaveCount(0);
     await expect(pane.getByTestId('storage-key-managed')).toContainText(
       'Locked: Interborough manages keys that start with agent-session: and needs them to recover runs.',
     );
@@ -298,10 +301,11 @@ test.describe('Health › Storage on the sample world', () => {
     );
     // The table keeps the last good result: nothing new was read.
     await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
-    const borderColor = await end.evaluate((element) => getComputedStyle(element).borderColor);
-    expect(borderColor).not.toBe(
-      await start.evaluate((element) => getComputedStyle(element).borderColor),
-    );
+    // The border follows the field's state through a short transition, so it is waited for.
+    const startBorder = await start.evaluate((element) => getComputedStyle(element).borderColor);
+    await expect
+      .poll(() => end.evaluate((element) => getComputedStyle(element).borderColor))
+      .not.toBe(startBorder);
     await captureForDesignReview(page, {
       route: '/health/storage',
       state: 'range-reversed',
@@ -405,6 +409,389 @@ test.describe('Health › Storage on the sample world', () => {
         state: 'popover-phone',
         source: SOURCE,
       });
+    });
+  });
+});
+
+// The second part: writing, and every state the table and the pane are in on the way. A key the
+// application does not manage (`app:welcome-banner`, the board's own) is written for the cases that
+// change data, and removed after each, so the sample world is left as it was found.
+const BANNER = 'app:welcome-banner';
+const BANNER_VALUE = '{"dismissed":true,"dismissedOn":"2026-11-01T22:12:00Z"}';
+const BANNER_SUMMARY =
+  /^App data and memory · \d+ B · updated (today, \d{1,2}:\d{2} (AM|PM)|yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM))$/;
+
+/** The address of one key's value, which the pane reads when a row is opened. */
+const valueAddress = (key: string): string => `/v1/storage/${encodeURIComponent(key)}`;
+
+/**
+ * Holds every request `matches` accepts, and `release` lets them all through. The rest are
+ * answered as the host does.
+ */
+async function holdRequests(
+  page: Page,
+  matches: (url: URL, method: string) => boolean,
+): Promise<{ release: () => void }> {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    () => true,
+    async (route: Route) => {
+      const request = route.request();
+      if (!matches(new URL(request.url()), request.method())) {
+        await route.fallback();
+        return;
+      }
+      await gate;
+      await route.fallback();
+    },
+  );
+  return { release };
+}
+
+/** Opens the Storage tab on a clock that can be moved, which the loading states need. */
+async function openStorageOnAClock(page: Page, width = 1280): Promise<void> {
+  await page.setViewportSize({ width, height: 900 });
+  await page.clock.install();
+  await page.goto('/health/storage');
+}
+
+test.describe('Health › Storage writes and states', () => {
+  test.beforeEach(async ({ request }) => {
+    await request.put(valueAddress(BANNER), { data: BANNER_VALUE });
+  });
+
+  test.afterEach(async ({ request }) => {
+    await request.delete(valueAddress(BANNER));
+  });
+
+  /** Opens the banner key's pane. */
+  async function openBanner(page: Page) {
+    await openStorage(page);
+    const main = page.locator('main');
+    await main.getByPlaceholder('Keys starting with').fill('app:welcome');
+    await main.locator(`tr[data-cinder-row-id="${BANNER}"]`).click();
+    return main.getByTestId('storage-key');
+  }
+
+  test('a key the app does not manage: Copy key, Copy value and Edit are buttons, Delete is in the ⋯ menu, and Delete asks first', async ({
+    page,
+    checkA11y,
+  }) => {
+    const pane = await openBanner(page);
+    const main = page.locator('main');
+
+    // 80l: the table is Cinder's list and the pane is its detail, beside it.
+    const layout = main.locator('.cinder-list-detail');
+    await expect(layout).toHaveAttribute('data-cinder-layout', 'split');
+    await expect(layout.locator('.cinder-list-detail__list .cinder-data-table')).toBeVisible();
+    const tableBox = await layout.locator('.cinder-list-detail__list').boundingBox();
+    const paneBox = await layout.locator('.cinder-list-detail__detail').boundingBox();
+    expect((tableBox?.x ?? 0) + (tableBox?.width ?? 0)).toBeLessThanOrEqual(paneBox?.x ?? 0);
+
+    // 80m: the line, the key, then the buttons and the menu at the end of the row.
+    await expect(pane.getByTestId('storage-key-summary')).toHaveText(BANNER_SUMMARY);
+    await expect(pane.getByTestId('storage-key-name')).toHaveText(BANNER);
+    await expect(pane.locator('.ib-storage-key__actions').first().getByRole('button')).toHaveText([
+      'Copy key',
+      'Copy value',
+      'Edit',
+      'More actions',
+    ]);
+    await expect(pane.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+    const fields = pane.getByRole('group', { name: 'Value' });
+    await expect(fields.getByText('Dismissed', { exact: true })).toBeVisible();
+    await expect(fields.getByText('Yes', { exact: true })).toBeVisible();
+    await expect(fields.getByText('Dismissed on')).toBeVisible();
+    await expect(fields.getByText('Sun Nov 1, 4:12 PM')).toBeVisible();
+
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'unmanaged-key',
+      source: SOURCE,
+    });
+    await checkA11y('health storage, a key the app does not manage');
+
+    // Every destructive write confirms first: the key, its size, and that it cannot be undone.
+    await pane.getByRole('button', { name: 'More actions' }).click();
+    const menu = page.getByRole('menu');
+    await expect(menu.getByRole('menuitem')).toHaveText(['Delete']);
+    await menu.getByRole('menuitem', { name: 'Delete' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Delete this key?' });
+    await expect(dialog).toContainText(`${BANNER} and its`);
+    await expect(dialog).toContainText(
+      /\d+ B value are removed from storage\. This can’t be undone\./,
+    );
+    await expect(dialog.getByRole('button', { name: 'Delete key' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'delete-confirm',
+      source: SOURCE,
+    });
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('a save that fails says so in one line over the editor, keeps the typed JSON, and Save value is the retry', async ({
+    page,
+    pageErrors,
+    checkA11y,
+  }) => {
+    // The writes this test cuts are the cause it declares: the page asks again as the person retries.
+    for (const pattern of [
+      /request failed: POST \S+\/v1\/storage\/-\/conditional-batch/,
+      /Failed to load resource: net::ERR_FAILED \(\S+\/v1\/storage\/-\/conditional-batch/,
+    ]) {
+      pageErrors.expectEvery({
+        pattern,
+        reason: 'the test makes the host unanswering for a write',
+      });
+    }
+    const pane = await openBanner(page);
+    await pane.getByRole('button', { name: 'Edit' }).click();
+    const editor = pane.getByRole('textbox', { name: 'Value' });
+    await editor.fill('{\n  "dismissed": false\n}');
+
+    // The host does not answer a write.
+    const unanswered = (url: URL): boolean => url.pathname.startsWith('/v1/storage/');
+    await page.route(unanswered, async (route) => {
+      if (route.request().method() === 'GET') await route.fallback();
+      else await route.abort();
+    });
+    await pane.getByRole('button', { name: 'Save value' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+
+    const alert = pane.getByTestId('storage-save-failed');
+    await expect(alert).toHaveText(
+      'Couldn’t save the value. Interborough didn’t answer. Your edit is still here.',
+    );
+    await expect(alert.locator('strong')).toHaveText('Couldn’t save the value.');
+    // The alert is above the editor, which keeps what was typed; the header folds the key into its line.
+    const alertBox = await alert.boundingBox();
+    const editorBox = await editor.boundingBox();
+    expect((alertBox?.y ?? 0) + (alertBox?.height ?? 0)).toBeLessThanOrEqual(editorBox?.y ?? 0);
+    await expect(editor).toHaveValue('{\n  "dismissed": false\n}');
+    await expect(pane.getByTestId('storage-key-summary')).toHaveText(
+      new RegExp(`^App data and memory · \\d+ B · ${BANNER}$`),
+    );
+    // Cancel, then Save value, and Save value keeps its own label as the retry.
+    await expect(pane.getByRole('button')).toHaveText(['Cancel', 'Save value']);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'save-failed',
+      source: SOURCE,
+    });
+    await checkA11y('health storage, a failed save');
+
+    // The retry writes when the host answers again.
+    await page.unroute(unanswered);
+    await pane.getByRole('button', { name: 'Save value' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+    await expect(pane.getByTestId('storage-save-failed')).toHaveCount(0);
+    await expect(pane.getByRole('textbox', { name: 'Value' })).toHaveCount(0);
+  });
+
+  test('nothing selected: the pane says what to do, the table keeps no row highlighted', async ({
+    page,
+    checkA11y,
+  }) => {
+    await openStorage(page);
+    const main = page.locator('main');
+    const detail = main.locator('.cinder-list-detail__detail');
+    await expect(
+      detail.getByRole('heading', { name: 'Select a key to see its value' }),
+    ).toBeVisible();
+    await expect(
+      detail.getByText(
+        'Pick a row to read what is stored. Keys Interborough doesn’t manage can also be edited and deleted.',
+      ),
+    ).toBeVisible();
+    await expect(detail.locator('.cinder-empty-state svg')).toBeVisible();
+    await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'nothing-selected',
+      source: SOURCE,
+    });
+    await checkA11y('health storage, nothing selected');
+  });
+
+  test('while the keys are read the filters stay, rows appear after 300 ms, Still loading with Cancel after 10 s, and Cancel stops the read', async ({
+    page,
+    checkA11y,
+  }) => {
+    const held = await holdRequests(
+      page,
+      (url, method) => method === 'GET' && url.pathname === '/v1/storage',
+    );
+    await openStorageOnAClock(page);
+    const main = page.locator('main');
+
+    // The real filter row, at once.
+    const filters = main.getByRole('search', { name: 'Find a key' });
+    await expect(filters.getByLabel('Group', { exact: true })).toHaveValue('');
+    await expect(filters.getByRole('radio')).toHaveText(['Starts with', 'Range']);
+    await expect(filters.getByPlaceholder('Keys starting with')).toBeVisible();
+    const loading = main.getByTestId('storage-loading');
+    await expect(loading).toBeVisible();
+
+    // After 300 ms: rows in the real layout (a dot, a key bar, a meta bar, a size bar).
+    await page.clock.runFor(300);
+    await expect(loading.locator('.cinder-skeleton-row')).toHaveCount(5);
+    await expect(
+      loading.locator('.cinder-skeleton-status-bar[data-cinder-marker="dot"]'),
+    ).toHaveCount(5);
+    await expect(loading.locator('.cinder-skeleton-title-bar')).toHaveCount(5);
+    await expect(loading.locator('.cinder-skeleton-meta-bar')).toHaveCount(5);
+    await expect(loading.locator('.cinder-skeleton-time-bar')).toHaveCount(5);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'loading',
+      source: SOURCE,
+    });
+    await checkA11y('health storage, loading');
+
+    // After 10 s: the skeleton's own line, and a Cancel.
+    await page.clock.runFor(10_000);
+    await expect(
+      loading.getByText('Still loading. This is taking longer than usual.'),
+    ).toBeVisible();
+    await expect(loading.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'loading-slow',
+      source: SOURCE,
+    });
+
+    // Cancel stops the read and says so; Try again reads again.
+    await loading.getByRole('button', { name: 'Cancel' }).click();
+    await expect(main.getByRole('heading', { name: 'Stopped loading keys' })).toBeVisible();
+    held.release();
+    await main.getByRole('button', { name: 'Try again' }).click();
+    await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
+  });
+
+  test('a key being read: the group and the key at once, Copy key disabled, the value a skeleton, Still loading with Cancel after 10 s', async ({
+    page,
+    checkA11y,
+  }) => {
+    await openStorageOnAClock(page);
+    const main = page.locator('main');
+    await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
+    const key = 'agent-session:summary-index';
+    const held = await holdRequests(
+      page,
+      (url, method) => method === 'GET' && url.pathname === valueAddress(key),
+    );
+    await main.locator(`tr[data-cinder-row-id="${key}"]`).click();
+    const pane = main.getByTestId('storage-key');
+
+    await expect(pane.getByTestId('storage-key-summary')).toHaveText('Chat sessions');
+    await expect(pane.getByTestId('storage-key-name')).toHaveText(key);
+    await expect(pane.getByRole('button')).toHaveText(['Copy key']);
+    await expect(pane.getByRole('button', { name: 'Copy key' })).toBeDisabled();
+    await page.clock.runFor(300);
+    await expect(pane.locator('.cinder-skeleton')).not.toHaveCount(0);
+    await expect(pane.getByText('Format version')).toHaveCount(0);
+
+    await page.clock.runFor(10_000);
+    await expect(pane.getByText('Still loading. This is taking longer than usual.')).toBeVisible();
+    await expect(pane.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'value-loading-slow',
+      source: SOURCE,
+    });
+    await checkA11y('health storage, a value being read');
+
+    await pane.getByRole('button', { name: 'Cancel' }).click();
+    await expect(pane.getByTestId('storage-key-stopped')).toBeVisible();
+    held.release();
+    await pane.getByRole('button', { name: 'Try again' }).click();
+    await expect(pane.getByText('Format version')).toBeVisible();
+    await expect(pane.getByRole('button', { name: 'Copy key' })).toBeEnabled();
+  });
+
+  test('when Scroll to load more fails, the rows stay and the footer is Cinder’s load more with its retry', async ({
+    page,
+    pageErrors,
+    checkA11y,
+  }) => {
+    // The next page is the one cause this test declares: the host answers it with a 500.
+    pageErrors.expectEvery({
+      pattern: /status of 500.*\/v1\/storage\?.*gt=/,
+      reason: 'the test makes the host fail the page after the first',
+    });
+    await openStorage(page);
+    const main = page.locator('main');
+    const footer = main.getByTestId('storage-count');
+    await expect(footer).toContainText('Showing 100 of');
+    const rowCount = await main.locator('tbody tr[data-cinder-row-id]').count();
+
+    // The next page is not answered.
+    const nextPage = (url: URL): boolean =>
+      url.pathname === '/v1/storage' && url.searchParams.has('gt');
+    await page.route(nextPage, (route) =>
+      route.fulfill({ status: 500, json: { error: 'The store is unavailable.' } }),
+    );
+    await footer.scrollIntoViewIfNeeded();
+    const loadMore = main.locator('.cinder-load-more');
+    await loadMore.scrollIntoViewIfNeeded();
+    await expect(loadMore).toBeVisible();
+    await expect(loadMore.locator('[role="alert"] strong')).toHaveText('Couldn’t load more keys.');
+    await expect(loadMore.getByRole('alert')).toHaveText(
+      /^Couldn’t load more keys\. Showing 100 of [\d,]+\.$/,
+    );
+    await expect(loadMore.getByRole('button', { name: 'Load more' })).toBeVisible();
+    await expect(main.locator('tbody tr[data-cinder-row-id]')).toHaveCount(rowCount);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'load-more-failed',
+      source: SOURCE,
+    });
+    await checkA11y('health storage, load more failed');
+
+    // A keyboard user retries with the button; the footer goes back to counting.
+    await page.unroute(nextPage);
+    await loadMore.getByRole('button', { name: 'Load more' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(main.getByTestId('storage-count')).toContainText(/Showing (200|300) of/);
+    await expect(main.locator('.cinder-load-more')).toHaveCount(0);
+  });
+
+  test.describe('on a touch phone', () => {
+    test.use({ viewport: { width: 375, height: 900 }, hasTouch: true, isMobile: true });
+
+    test('the table and the pane are one at a time, the pane with a Back button, and the page never scrolls sideways', async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.goto('/health/storage');
+      const main = page.locator('main');
+      const first = main.locator('tbody tr[data-cinder-row-id]').first();
+      await expect(first).toBeVisible();
+      await expect(main.locator('.cinder-list-detail')).toHaveAttribute(
+        'data-cinder-layout',
+        'stacked',
+      );
+      await first.click();
+      await expect(main.getByTestId('storage-key')).toBeVisible();
+      await expect(main.locator('tbody tr[data-cinder-row-id]')).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await captureForDesignReview(page, {
+        route: '/health/storage',
+        state: 'pane-phone',
+        source: SOURCE,
+      });
+      await checkA11y('health storage, a key at 375px');
+
+      await main.getByRole('button', { name: 'Back' }).click();
+      await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
+      await expect(main.getByTestId('storage-key')).toHaveCount(0);
     });
   });
 });
