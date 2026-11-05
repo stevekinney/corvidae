@@ -1,13 +1,13 @@
 /**
- * While the server does not answer, the composer keeps what was typed, Send is off, and the page
- * says why beside Send: "Off until it’s back" (design row 02l). It takes keys again when the
- * server answers.
+ * While the server does not answer, the chat's composer is replaced by the shared blocked row that
+ * says sending is off (design row 17b), so nothing is said beside Send, and what was typed is kept
+ * for when the server answers again.
  */
 import { cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { CONNECTION_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy.ts';
 import { mount, restoreBureau, serve, TURNS } from './chat-more-menu.test-support.ts';
 
 const monitors: ConnectionMonitor[] = [];
@@ -37,32 +37,32 @@ function monitorThatIs(unreachable: boolean) {
 }
 
 describe('the chat composer while the server does not answer', () => {
-  test('keeps the typed text, turns Send off, and says why beside it', async () => {
+  test('swaps the text box for the blocked row, keeps the typed text, and brings both back', async () => {
     const monitor = monitorThatIs(false);
     const view = mountWith(monitor);
     await view.findByText('Second answer');
-    const composer = view.getByRole('textbox', { name: /message/i }) as HTMLTextAreaElement;
-    await fireEvent.input(composer, { target: { value: 'What did I approve yesterday?' } });
-    expect(view.container.querySelector('.chat-input-paused-reason')).toBeNull();
+    const composer = () => view.container.querySelector<HTMLTextAreaElement>('textarea');
+    await fireEvent.input(composer()!, { target: { value: 'What did I approve yesterday?' } });
+    expect(view.container.querySelector('.chat-input-blocked')).toBeNull();
 
     monitor.reportUnreachable();
 
-    const reason = await waitFor(() => {
-      const found = view.container.querySelector<HTMLElement>('.chat-input-paused-reason');
-      expect(found).not.toBeNull();
-      return found!;
-    });
-    expect(reason.textContent).toBe(CONNECTION_COPY.changesOff);
-    expect(composer.value).toBe('What did I approve yesterday?');
-    expect(composer.readOnly).toBe(true);
-    const send = view.container.querySelector<HTMLButtonElement>('button.chat-input-send')!;
-    expect(send.disabled).toBe(true);
-    expect(send.getAttribute('aria-describedby')).toContain(reason.id);
+    await waitFor(() => expect(view.container.querySelector('.chat-input-blocked')).not.toBeNull());
+    expect(view.container.querySelector('.chat-input-blocked')?.textContent).toContain(
+      CHAT_COPY.composer.unreachable,
+    );
+    expect(composer()).toBeNull();
+    expect(view.container.querySelector('.chat-input-paused-reason')).toBeNull();
+
+    monitor.reportReachable();
+
+    await waitFor(() => expect(composer()).not.toBeNull());
+    expect(composer()?.value).toBe('What did I approve yesterday?');
   });
 
-  test('shows no reason while the server answers', async () => {
+  test('shows no blocked row while the server answers', async () => {
     const view = mountWith(monitorThatIs(false));
     await view.findByText('Second answer');
-    expect(view.container.querySelector('.chat-input-paused-reason')).toBeNull();
+    expect(view.container.querySelector('.chat-input-blocked')).toBeNull();
   });
 });
