@@ -22,6 +22,7 @@ import type {
   ChatAttachmentErrorFormatter,
   ChatAttachmentUpload,
 } from './input/chat-attachment.ts';
+import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
@@ -198,8 +199,10 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   header?: Snippet;
   /** Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. */
   composerActions?: Snippet;
-  /** Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet takes no arguments and stays interactive while a run streams; the caller owns the semantics inside it. */
-  composerControls?: Snippet | undefined;
+  /** Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether the composer is narrower than `COMPOSER_FOLD_WIDTH` (`folded`), so a host can draw one Settings control in place of several selects; the footer never wraps. */
+  composerControls?: Snippet<[ChatComposerControlsContext]> | undefined;
+  /** The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it. */
+  composerHeader?: Snippet | undefined;
   /** The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`. */
   composerPlaceholder?: string | undefined;
   /** Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`. */
@@ -208,7 +211,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerHint?: string | false | undefined;
   /** Toolbar slot at the start of the composer footer, given a `format` command for the composer's selection. */
   composerToolbar?: Snippet<[ChatComposerToolbarContext]>;
-  /** Show the composer's Bold, Italic, Code, Link, and List buttons. Default `false`. */
+  /** Show a row of Bold, Italic, Code, Link, and List buttons above the composer's text, with the words of their shortcuts at its right, while the composer has focus. Link is Cmd or Ctrl with Shift and K; plain Cmd or Ctrl with K is left to the host. Default `false`. */
   composerFormattingToolbar?: boolean;
   /** Style Markdown in place in the composer while it still sends Markdown. Default `true`. */
   composerMarkdownStyling?: boolean;

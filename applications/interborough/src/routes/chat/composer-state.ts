@@ -6,7 +6,8 @@
  * A blocked row says the first of these that holds, because each makes the ones after it moot:
  * the server is unreachable (Retry lives in the banner, so the row has no action), the host is
  * restarting after a plugin was enabled, the chat's agent comes from a disabled plugin, the host
- * stopped the chat when it restarted, or no provider is connected for an agent that needs a model.
+ * stopped the chat when it restarted, a chat started from Workflows has no agent that can create
+ * workflows, or no provider is connected for an agent that needs a model.
  * Otherwise the line under the box is, in this order, the reconnect count, a queued follow-up, a
  * note about a setting that was just changed, and the steering line while the chat is working.
  */
@@ -36,6 +37,13 @@ export interface ComposerFacts {
   readonly ended: boolean;
   /** The agent needs a model, and no provider is connected. */
   readonly noProvider: boolean;
+  /**
+   * A new chat started from Workflows, and no agent has the Create workflow tool. What the person
+   * typed is kept, and shows again once an agent that can create workflows exists.
+   */
+  readonly noWorkflowAgent?: boolean | undefined;
+  /** Where the agents are listed. */
+  readonly agentsHref?: string | undefined;
   /** Where a provider is connected. */
   readonly connectHref: string;
   /** Switches to Assistant, where the person may choose it (a new chat). */
@@ -70,6 +78,13 @@ export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | und
       kind: 'blocked',
       reason: COPY.ended,
       action: { label: COPY.newChat, href: facts.newChatHref },
+    };
+  }
+  if (facts.noWorkflowAgent === true) {
+    return {
+      kind: 'blocked',
+      reason: COPY.noWorkflowAgent,
+      action: { label: COPY.openAgents, href: facts.agentsHref ?? '/agents' },
     };
   }
   if (facts.noProvider) {

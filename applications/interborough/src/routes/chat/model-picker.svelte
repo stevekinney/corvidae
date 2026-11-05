@@ -8,6 +8,9 @@
    * that model (or on "Agent default"), because a single model is no choice but is still the answer
    * to which model this chat runs on.
    *
+   * A new chat has no session to switch yet, so with `draft` a choice only goes to `onDraft`: the
+   * page keeps it, passes it back as `current`, and switches the session once it exists.
+   *
    * Choosing a model asks the Bureau to switch the session (`bureau.contexts.steer`) with the
    * `configVersion` the page last read as `expectedRevision`, and the new model is used from the
    * live run's next step, or by the next run of an idle chat. The choice is shown at once and stays
@@ -43,6 +46,11 @@
     onBusyChange?: (busy: boolean) => void;
     /** Called when the Bureau took a switch, with the name of the model it switched to. */
     onApplied?: (label: string) => void;
+    /** The chat has no session yet: a choice is handed to `onDraft` instead of being sent. */
+    draft?: boolean;
+    /** Called with the chosen model and its name when a choice is made on a chat with no session yet. */
+    onDraft?:
+      ((choice: { provider: string; model: string; displayName: string }) => void) | undefined;
   }
 
   let {
@@ -55,6 +63,8 @@
     unavailable,
     onBusyChange,
     onApplied,
+    draft = false,
+    onDraft,
   }: ModelPickerProps = $props();
 
   const COPY = CHAT_COPY.modelPicker;
@@ -139,7 +149,16 @@
 
   async function choose(next: string): Promise<void> {
     const choice = choices.find((entry) => keyOf(entry) === next);
-    if (choice === undefined || next === shown || revision === undefined) return;
+    if (choice === undefined || next === shown) return;
+    if (draft) {
+      onDraft?.({
+        provider: choice.provider,
+        model: choice.model,
+        displayName: choice.displayName,
+      });
+      return;
+    }
+    if (revision === undefined) return;
     pending = next;
     busy = true;
     onBusyChange?.(true);
@@ -186,7 +205,7 @@
   disabled={busy ||
     locked ||
     unavailable !== undefined ||
-    revision === undefined ||
+    (revision === undefined && !draft) ||
     choices.length < 2}
   title={unavailable}
   {...notice === undefined ? {} : { error: notice }}

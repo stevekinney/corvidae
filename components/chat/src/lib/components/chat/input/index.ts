@@ -13,6 +13,7 @@ export type {
   ChatAttachmentUpload,
 } from './chat-attachment.ts';
 export { default as ChatInput } from './chat-input.svelte';
+export { COMPOSER_FOLD_WIDTH, type ChatComposerControlsContext } from './composer-controls.ts';
 export {
   applyComposerFormat,
   highlightComposerMarkdown,

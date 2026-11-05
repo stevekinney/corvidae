@@ -159,7 +159,12 @@
       {
         "name": "composerControls",
         "reason": "function-or-snippet",
-        "description": "Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet takes no arguments and stays interactive while a run streams; the caller owns the semantics inside it."
+        "description": "Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether the composer is narrower than `COMPOSER_FOLD_WIDTH` (`folded`), so a host can draw one Settings control in place of several selects; the footer never wraps."
+      },
+      {
+        "name": "composerHeader",
+        "reason": "function-or-snippet",
+        "description": "The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it."
       },
       {
         "name": "composerHint",

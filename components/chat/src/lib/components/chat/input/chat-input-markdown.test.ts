@@ -69,26 +69,38 @@ describe('ChatInput — Markdown in place', () => {
     expect(composer(container).classList.contains('chat-input-editor-styled')).toBe(false);
   });
 
-  test('Cmd+B, Cmd+I, Cmd+E, and Cmd+K format the selection', async () => {
+  test('Cmd+B, Cmd+I, Cmd+E, and Cmd+Shift+K format the selection', async () => {
     const { container } = render(ChatInput, { id: 'markdown-shortcuts' });
     const textarea = composer(container);
 
     const cases = [
-      { key: 'b', expected: 'say **hi**' },
-      { key: 'i', expected: 'say *hi*' },
-      { key: 'e', expected: 'say `hi`' },
-      { key: 'k', expected: 'say [hi](url)' },
+      { key: 'b', shiftKey: false, expected: 'say **hi**' },
+      { key: 'i', shiftKey: false, expected: 'say *hi*' },
+      { key: 'e', shiftKey: false, expected: 'say `hi`' },
+      { key: 'K', shiftKey: true, expected: 'say [hi](url)' },
     ];
-    for (const { key, expected } of cases) {
+    for (const { key, shiftKey, expected } of cases) {
       await type(textarea, 'say hi');
       textarea.setSelectionRange(4, 6);
-      const notPrevented = await fireEvent.keyDown(textarea, { key, metaKey: true });
+      const notPrevented = await fireEvent.keyDown(textarea, { key, shiftKey, metaKey: true });
       await tick();
       expect(notPrevented).toBe(false);
       expect(textarea.value).toBe(expected);
     }
     // The link leaves its URL placeholder selected, ready to paste over.
     expect(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)).toBe('url');
+  });
+
+  test('Cmd+K is left alone, so the host can open its command palette from the composer', async () => {
+    const { container } = render(ChatInput, { id: 'markdown-palette' });
+    const textarea = composer(container);
+    await type(textarea, 'say hi');
+    textarea.setSelectionRange(4, 6);
+    const notPrevented = await fireEvent.keyDown(textarea, { key: 'k', metaKey: true });
+    await tick();
+
+    expect(notPrevented).toBe(true);
+    expect(textarea.value).toBe('say hi');
   });
 
   test('Ctrl+B pressed again on the bolded selection unwraps it', async () => {

@@ -2504,7 +2504,12 @@ export const CHAT_COPY = {
   /** The empty chat page's second action, to the agents a chat can start with. */
   browseAgents: 'Browse agents',
   agentLabel: 'Agent',
-  agentPlaceholder: 'Search agents',
+  agentPlaceholder: 'Choose an agent',
+  /** The agent select at the top of a new chat's composer. */
+  agentSelect: {
+    /** Said under an agent that runs on a model while no provider is connected. */
+    needsProvider: 'Needs a provider',
+  },
   sessionsTitle: 'Chats',
   /** The headings the list of chats is cut under; "Needs you" is the run states' word for waiting on a person. */
   groups: {
@@ -2795,6 +2800,18 @@ export const CHAT_COPY = {
     noProvider: 'Connect a model provider to chat',
     connectProvider: 'Connect a provider',
     useAssistant: 'Use Assistant',
+    /** Said in the blocked row of a chat started from Workflows when no agent has the tool. */
+    noWorkflowAgent:
+      'No agent can create workflows. Add the Create workflow tool to an agent’s Access tab.',
+    openAgents: 'Open Agents',
+    /**
+     * The one control that holds Model, Effort and Permissions when the composer is too narrow for
+     * them side by side. Its name lists what it holds.
+     */
+    settings: {
+      word: 'Settings',
+      label: 'Settings: Model, Effort and Permissions',
+    },
   },
   /** The context meter in the composer: a bar and a reading of how full the window is. */
   contextMeter: {
@@ -2920,17 +2937,23 @@ export const CHAT_COPY = {
    * message, which can name an asset or an upload.
    */
   attachments: {
-    /** The file is over the limit the selected agent's model states. */
-    tooLarge: (limit: number) =>
-      `This file is larger than the ${formatBytes(limit)} this agent accepts.`,
-    /** The file is of a type the selected agent's model does not take. */
-    typeNotAccepted: 'This agent does not accept that type of file.',
+    /** The file is over the limit its own type has, which the selected agent's model states. */
+    tooLarge: (size: number, limit: number) =>
+      `Can’t attach: ${formatBytes(size)} is over the ${formatBytes(limit)} limit.`,
+    /**
+     * The file is of a type the selected agent's model does not take. `kind` names the file's type
+     * (`TIFF`), and `accepted` the types the agent does take (`PNG, JPG, PDF or text`).
+     */
+    typeNotAccepted: (kind: string, accepted: string) =>
+      `Can’t attach: ${kind} files aren’t supported. Use ${accepted}.`,
+    /** The selected agent takes no file at all, so whatever was attached is refused. */
+    noFiles: 'Can’t attach: this agent does not take files.',
     /** The upload did not finish, for a reason the person cannot act on beyond trying again. */
-    uploadFailed: 'The file could not be uploaded. Remove it and attach it again.',
+    uploadFailed: 'Upload failed. Try again, or remove it.',
     /** The Bureau looked at the bytes and refused them: a safety gate flagged the file, or it is not the type it says. */
-    rejected: 'The server would not accept this file. Its content was refused.',
+    rejected: 'Can’t attach: the server would not accept this file’s content.',
     /** The upload session was gone before the file finished arriving. */
-    expired: 'The upload expired before it finished. Remove the file and attach it again.',
+    expired: 'The upload expired. Try again, or remove it.',
     /** The run was refused because the model could not take an attachment. */
     modelRefusedMedia:
       'The agent’s model could not take an attached file. Send again without the file.',
@@ -3526,6 +3549,11 @@ export const TASK_COPY = {
   respondFailed: 'The answer was not sent',
   cancelHeading: 'Cancellation',
   cancelAction: 'Cancel run',
+  /** The run page's message bar while no model provider is connected, so nothing can be sent. */
+  messageBlocked: {
+    reason: 'Connect a model provider to send messages',
+    connect: 'Connect a provider',
+  },
   cancelFailed: 'The run was not canceled',
   cancelConfirm: {
     title: 'Cancel this run?',

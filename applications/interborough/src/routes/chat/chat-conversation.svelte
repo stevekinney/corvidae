@@ -41,14 +41,7 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import {
-    Alert,
-    Button,
-    Combobox,
-    ConfirmDialog,
-    EmptyState,
-    PageHeader,
-  } from '@lostgradient/cinder';
+  import { Alert, Button, ConfirmDialog, EmptyState, PageHeader } from '@lostgradient/cinder';
   import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
   import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -66,7 +59,6 @@
     listAgents,
     steerContext,
     wireCodeOf,
-    type AgentSummary,
     type Effort,
     type PermissionMode,
   } from '../../lib/bureau-client.ts';
@@ -104,6 +96,8 @@
     hasExportableText,
   } from './chat-export.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
+  import AgentSelect from './agent-select.svelte';
+  import ComposerSettings from './composer-settings.svelte';
   import ContextMeter from './context-meter.svelte';
   import ContextWindowRing from './context-window-ring.svelte';
   import SettingSelect from './setting-select.svelte';
@@ -116,6 +110,7 @@
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
+  import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
@@ -132,6 +127,11 @@
     isNew?: boolean;
     /** For a new chat: whether the address names the agent, rather than the default being used. */
     agentChosen?: boolean;
+    /**
+     * For a new chat started from Workflows: no agent has the Create workflow tool, so the
+     * composer says so in its blocked row, with the way to Agents, and keeps what was typed.
+     */
+    noWorkflowAgent?: boolean;
   }
 
   let {
@@ -140,6 +140,7 @@
     agentName,
     isNew = false,
     agentChosen = false,
+    noWorkflowAgent = false,
   }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
@@ -168,6 +169,7 @@
       // person came from, and this page stays mounted so the run carries on.
       router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
+      void applyDraft();
     },
   });
 
@@ -178,14 +180,6 @@
     }),
     undefined,
   );
-  const choices = $derived(
-    (agents.data ?? []).map((entry: AgentSummary) => ({
-      value: entry.name,
-      label: entry.displayName,
-      ...(entry.description === null ? {} : { description: entry.description }),
-    })),
-  );
-
   // What the selected agent's model lets a person attach. An agent the Bureau has not listed yet,
   // or one that names no model, takes no attachment.
   const settings = $derived(
@@ -383,6 +377,8 @@
         : undefined,
       ended: context.data?.endReason === 'host-stopped',
       noProvider,
+      noWorkflowAgent: choosing && noWorkflowAgent,
+      agentsHref: router.href('/agents'),
       connectHref: router.href('/settings/models'),
       useAssistant:
         choosing && assistantName !== undefined && agent !== assistantName
@@ -395,6 +391,114 @@
       working: session.streaming,
     }),
   );
+
+  // What the person chose in the composer before the chat had a session. A session is what the
+  // Bureau steers, so the choices wait here and are applied, one after the other, as soon as the
+  // first message has started it (`applyDraft`); they take effect from the run's next step.
+  let draftModel = $state<{ provider: string; model: string; displayName: string } | undefined>();
+  let draftEffort = $state<string | undefined>();
+  let draftPermission = $state<string | undefined>();
+  const settingNotices = {
+    model: {
+      staleRevision: CHAT_COPY.modelPicker.staleRevision,
+      denied: CHAT_COPY.modelPicker.modelNotAllowed,
+      sessionTerminal: CHAT_COPY.modelPicker.sessionTerminal,
+      unsupportedCapability: CHAT_COPY.modelPicker.unsupportedCapability,
+      notChanged: CHAT_COPY.modelPicker.notSwitched,
+      fault: CHAT_COPY.modelPicker.fault,
+    },
+    effort: SETTINGS.effortNotices,
+    permission: SETTINGS.permissionNotices,
+  } satisfies Record<string, SteerNotices>;
+
+  /** Applies what was chosen before the session existed, each change under the revision the last left. */
+  async function applyDraft(): Promise<void> {
+    const model = draftModel;
+    const effort = draftEffort;
+    const permission = draftPermission;
+    draftModel = draftEffort = draftPermission = undefined;
+    if (model === undefined && effort === undefined && permission === undefined) return;
+    const commands = createPendingCommandKey();
+    const first = await context.refetch();
+    let revision = first.data?.configVersion;
+    const changes = [
+      ...(model === undefined
+        ? []
+        : [
+            {
+              name: SETTINGS.model,
+              label: model.displayName,
+              kind: 'step' as const,
+              notices: settingNotices.model,
+              request: (commandId: string, expectedRevision: number) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  override: { provider: model.provider, model: model.model },
+                }),
+            },
+          ]),
+      ...(effort === undefined
+        ? []
+        : [
+            {
+              name: SETTINGS.effort,
+              label:
+                SETTINGS.effortOptions.find((entry) => entry.value === effort)?.label ?? effort,
+              kind: 'step' as const,
+              notices: settingNotices.effort,
+              request: (commandId: string, expectedRevision: number) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  effort: effort as Effort,
+                }),
+            },
+          ]),
+      ...(permission === undefined
+        ? []
+        : [
+            {
+              name: SETTINGS.permission,
+              label:
+                SETTINGS.permissionOptions.find((entry) => entry.value === permission)?.label ??
+                permission,
+              kind: 'toolCall' as const,
+              notices: settingNotices.permission,
+              request: (commandId: string, expectedRevision: number) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  permissionMode: permission as PermissionMode,
+                }),
+            },
+          ]),
+    ];
+    for (const change of changes) {
+      if (revision === undefined) {
+        appliesNote = change.notices.fault;
+        return;
+      }
+      const expected = revision;
+      const result = await changeSetting({
+        commands,
+        scope: sessionId,
+        content: `${change.name}:${change.label}`,
+        send: (commandId) => change.request(commandId, expected),
+        reload: reloadContext,
+        notices: change.notices,
+      });
+      if (!result.applied) {
+        appliesNote = result.notice ?? change.notices.notChanged;
+        return;
+      }
+      revision = context.data?.configVersion;
+      noted(change.kind, change.name, change.label);
+    }
+  }
 
   // Steering admits only the chat's own principal (`bureau.contexts.steer`). The page knows who that
   // is only for the one local caller, whose subject is the owner of every chat it started; for any
@@ -911,6 +1015,8 @@
           : CHAT_COPY.questionAnswerLabel
         : CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
       {composerStatus}
+      composerHeader={choosing ? newChatHeader : undefined}
+      composerFormattingToolbar
       composerAnswering={answering}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
@@ -975,76 +1081,11 @@
           />
         {/if}
       {/snippet}
-      {#snippet composerControls()}
-        {#if choosing}
-          <div class="ib-agent-pill">
-            <Combobox
-              id="weft-chat-agent"
-              aria-label={CHAT_COPY.agentLabel}
-              placeholder={CHAT_COPY.agentPlaceholder}
-              size="sm"
-              options={choices}
-              value={agent}
-              onValueChange={chooseAgent}
-            />
-          </div>
+      {#snippet composerControls({ folded })}
+        {#if folded}
+          <ComposerSettings>{@render settingControls()}</ComposerSettings>
         {:else}
-          {#if usesModel}
-            <ModelPicker
-              {sessionId}
-              agentName={agent}
-              current={context.data?.model}
-              revision={context.data?.configVersion}
-              reload={reloadContext}
-              locked={steering}
-              unavailable={cannotSteer}
-              onBusyChange={(busy) => (steering = busy)}
-              onApplied={(value) => noted('step', SETTINGS.model, value)}
-            />
-            <SettingSelect
-              {sessionId}
-              id="weft-chat-effort"
-              label={SETTINGS.effort}
-              options={SETTINGS.effortOptions}
-              current={context.data?.effort}
-              unsetLabel={SETTINGS.agentDefault}
-              revision={context.data?.configVersion}
-              send={(value, commandId, expectedRevision) =>
-                steerContext({
-                  contextId: sessionId,
-                  commandId,
-                  expectedRevision,
-                  effort: value as Effort,
-                })}
-              notices={SETTINGS.effortNotices}
-              reload={reloadContext}
-              locked={steering}
-              unavailable={cannotSteer}
-              onBusyChange={(busy) => (steering = busy)}
-              onApplied={(value) => noted('step', SETTINGS.effort, value)}
-            />
-          {/if}
-          <SettingSelect
-            {sessionId}
-            id="weft-chat-permission"
-            label={SETTINGS.permission}
-            options={SETTINGS.permissionOptions}
-            current={context.data?.permissionMode}
-            revision={context.data?.configVersion}
-            send={(value, commandId, expectedRevision) =>
-              steerContext({
-                contextId: sessionId,
-                commandId,
-                expectedRevision,
-                permissionMode: value as PermissionMode,
-              })}
-            notices={SETTINGS.permissionNotices}
-            reload={reloadContext}
-            locked={steering}
-            unavailable={cannotSteer}
-            onBusyChange={(busy) => (steering = busy)}
-            onApplied={(value) => noted('toolCall', SETTINGS.permission, value)}
-          />
+          {@render settingControls()}
         {/if}
       {/snippet}
       {#snippet composerActions()}
@@ -1119,6 +1160,87 @@
       {/snippet}
     </Chat>
   </div>
+  <!-- Model, Effort and Permissions: the live session's, or, on a new chat, the person's choices
+       before it has a session (applied once the first message has started it). Rendered once, in
+       the row or folded into the one Settings control. -->
+  {#snippet settingControls()}
+    {#if usesModel}
+      <ModelPicker
+        {sessionId}
+        agentName={agent}
+        current={choosing
+          ? draftModel === undefined
+            ? null
+            : { provider: draftModel.provider, model: draftModel.model }
+          : context.data?.model}
+        revision={context.data?.configVersion}
+        reload={reloadContext}
+        locked={steering}
+        unavailable={cannotSteer}
+        onBusyChange={(busy) => (steering = busy)}
+        onApplied={(value) => noted('step', SETTINGS.model, value)}
+        draft={choosing}
+        onDraft={(choice) => (draftModel = choice)}
+      />
+      <SettingSelect
+        {sessionId}
+        id="weft-chat-effort"
+        label={SETTINGS.effort}
+        options={SETTINGS.effortOptions}
+        current={choosing ? (draftEffort ?? null) : context.data?.effort}
+        unsetLabel={SETTINGS.agentDefault}
+        revision={context.data?.configVersion}
+        send={(value, commandId, expectedRevision) =>
+          steerContext({
+            contextId: sessionId,
+            commandId,
+            expectedRevision,
+            effort: value as Effort,
+          })}
+        notices={SETTINGS.effortNotices}
+        reload={reloadContext}
+        locked={steering}
+        unavailable={cannotSteer}
+        onBusyChange={(busy) => (steering = busy)}
+        onApplied={(value) => noted('step', SETTINGS.effort, value)}
+        draft={choosing}
+        onDraft={(value) => (draftEffort = value)}
+      />
+    {/if}
+    <SettingSelect
+      {sessionId}
+      id="weft-chat-permission"
+      label={SETTINGS.permission}
+      options={SETTINGS.permissionOptions}
+      current={choosing ? (draftPermission ?? 'on-changes') : context.data?.permissionMode}
+      revision={context.data?.configVersion}
+      send={(value, commandId, expectedRevision) =>
+        steerContext({
+          contextId: sessionId,
+          commandId,
+          expectedRevision,
+          permissionMode: value as PermissionMode,
+        })}
+      notices={SETTINGS.permissionNotices}
+      reload={reloadContext}
+      locked={steering}
+      unavailable={cannotSteer}
+      onBusyChange={(busy) => (steering = busy)}
+      onApplied={(value) => noted('toolCall', SETTINGS.permission, value)}
+      draft={choosing}
+      onDraft={(value) => (draftPermission = value)}
+    />
+  {/snippet}
+
+  <!-- The agent a new chat is with, at the top of the composer. -->
+  {#snippet newChatHeader()}
+    <AgentSelect
+      agents={agents.data ?? []}
+      value={agent}
+      providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
+      onChange={chooseAgent}
+    />
+  {/snippet}
   <ConfirmDialog
     bind:open={confirmingEnable}
     title={CHAT_COPY.composer.enableDialog.title(pluginTitle)}

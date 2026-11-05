@@ -133,6 +133,19 @@
   font-size: var(--cinder-text-sm);
 }
 
+.ib-run__message-blocked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-3);
+}
+
+/* The blocked row takes what Cancel run leaves, and drops it to its own line when there is none. */
+.ib-run__message-blocked-row {
+  flex: 1 1 24rem;
+  min-inline-size: 0;
+}
+
 .ib-run__cancel-note {
   flex-basis: 100%;
 }

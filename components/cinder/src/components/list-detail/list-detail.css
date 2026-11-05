@@ -98,6 +98,17 @@
     overflow-y: visible;
   }
 
+  /* A flush detail (an open conversation) keeps the height it is given when it is the one pane
+   * showing, so what it docks at its bottom edge sits at the bottom of the screen. The list and a
+   * detail with its own padding keep growing with their content. */
+  .cinder-list-detail[data-cinder-layout='stacked'][data-cinder-flush-detail][data-cinder-showing='detail'],
+  .cinder-list-detail[data-cinder-layout='stacked'][data-cinder-flush-detail][data-cinder-showing='detail']
+    .cinder-list-detail__detail,
+  .cinder-list-detail[data-cinder-layout='stacked'][data-cinder-flush-detail][data-cinder-showing='detail']
+    .cinder-list-detail__detail-body {
+    block-size: 100%;
+  }
+
   /* The divider between the panes is a full-height 1px rule. The grip is drawn on it only while the
    * pointer is over the divider or it has focus, so a resting list-and-detail shows a quiet line. */
   .cinder-list-detail__panels > .cinder-resizable-panels__handle::before {

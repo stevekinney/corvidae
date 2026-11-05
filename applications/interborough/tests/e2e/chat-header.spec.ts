@@ -12,7 +12,7 @@ import type { Page } from '@playwright/test';
 import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
 import { CHAT_COPY } from '../../src/app/copy.ts';
 import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
-import { newThreadId, runToEnd } from './chat-support.ts';
+import { newThreadId, revealSettings, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -51,6 +51,8 @@ for (const viewport of VIEWPORTS) {
   }) => {
     await page.setViewportSize(viewport);
     await open(page, request, 'demo:model-switcher');
+    // A composer this narrow folds the three selects into one Settings control; open it.
+    await revealSettings(page);
 
     // The composer says what the chat runs with before anything was changed.
     await expect(model(page)).toContainText(SONNET.model);
@@ -72,6 +74,7 @@ for (const viewport of VIEWPORTS) {
     // A reload shows the chat kept both.
     await page.reload();
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+    await revealSettings(page);
     await expect(permission(page)).toContainText('Read-only');
     await expect(model(page)).toContainText(HAIKU.model);
     await checkA11y(`the chat composer after changes, at ${viewport.width} pixels`);

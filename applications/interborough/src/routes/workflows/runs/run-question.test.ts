@@ -123,6 +123,27 @@ describe('the question card on a run waiting for you', () => {
     );
   });
 
+  test('with no provider the message bar is the blocked row with Cancel run beside it, and no text box', async () => {
+    const view = open([]);
+    await view.findByText('Question from Request human input · 1 h ago');
+
+    const bar = await view.findByTestId('run-message-blocked');
+    expect(bar.textContent).toContain('Connect a model provider to send messages');
+    expect(bar.querySelector('[data-chat-composer-status="blocked"]')).not.toBeNull();
+    expect(bar.querySelector('textarea')).toBeNull();
+    const connect = bar.querySelector('a')!;
+    expect(connect.textContent?.trim()).toBe('Connect a provider');
+    expect(connect.getAttribute('href')).toBe('/settings/models');
+    const buttons = [...bar.querySelectorAll('button')].map((button) => button.textContent?.trim());
+    expect(buttons).toContain('Cancel run');
+  });
+
+  test('has no blocked message bar when a provider is connected', async () => {
+    const view = open([{ provider: 'anthropic', id: 'sonnet' }]);
+    await view.findByText('Question from Request human input · 1 h ago');
+    expect(view.queryByTestId('run-message-blocked')).toBeNull();
+  });
+
   test('says nothing about a provider when one is connected', async () => {
     const view = open([{ provider: 'anthropic', id: 'sonnet' }]);
     await view.findByText('Question from Request human input · 1 h ago');

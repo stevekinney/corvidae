@@ -119,6 +119,7 @@
     header,
     composerActions,
     composerControls,
+    composerHeader,
     composerPlaceholder,
     composerAnswering = false,
     composerHint,
@@ -2041,6 +2042,7 @@
           answering={questions.composerTarget !== undefined || composerAnswering}
           hint={composerHint}
           controls={composerControls}
+          header={composerHeader}
           disabled={streaming && !followUpsEnabled}
           paused={disabled}
           sending={composerSending}

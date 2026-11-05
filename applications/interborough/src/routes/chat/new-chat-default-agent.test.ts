@@ -68,8 +68,8 @@ describe('a new chat with no agent named', () => {
     const { findByRole } = mount();
 
     const agent = await findByRole('combobox', { name: 'Agent' });
-    await waitFor(() => expect((agent as HTMLInputElement).value).toMatch(/assistant/i));
-    expect((agent as HTMLInputElement).value).not.toMatch(/broken/i);
+    await waitFor(() => expect(agent.textContent).toMatch(/assistant/i));
+    expect(agent.textContent).not.toMatch(/broken/i);
   });
 
   test('shows the loading status, with no conversation, until the default is known, then starts the chat', async () => {
@@ -120,7 +120,7 @@ describe('a new chat with no agent named', () => {
 
     release();
     const agent = await findByRole('combobox', { name: 'Agent' });
-    await waitFor(() => expect((agent as HTMLInputElement).value).toMatch(/assistant/i));
+    await waitFor(() => expect(agent.textContent).toMatch(/assistant/i));
     expect(container.querySelector('textarea')).not.toBeNull();
   });
 });

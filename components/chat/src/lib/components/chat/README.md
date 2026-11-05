@@ -358,6 +358,25 @@ Quoting covers assistant messages only. User messages and tool output offer no Q
 
 `composerControls` is an optional snippet rendered right after the attach button for the host's own selects (Cinder `Select` with `variant="ghost"`, `presentation="listbox"` and a `valuePrefix` draws `Model Claude Sonnet 5.5`), and `composerActions` still sits beside Send for something like a context meter. `composerPlaceholder` sets the placeholder, and `composerHint` replaces or hides the line under the box (default `Enter to send · Shift and Enter for a new line`).
 
+`composerHeader` is an optional snippet for the top row inside the composer's border, above the text, where a new chat draws its ghost agent `Select` (a `leading` avatar, the agent's name). The footer is one row that never wraps. When the composer is narrower than `COMPOSER_FOLD_WIDTH` (40rem: a side panel docked beside the conversation, a phone), `composerControls` is called with `{ folded: true }`, and a host draws one ghost `Settings` control holding the model, effort and permissions in place of the three selects. Controls and Send are 44px tall on a composer under 28rem. `composerFormattingToolbar` draws a row of Bold, Italic, Code, Link and List buttons above the text, with the words of their shortcuts (`⌘B bold · ⌘I italic · ⌘E code · ⌘⇧K link`) at its right, only while the composer has focus. Link is Cmd or Ctrl with Shift and K; plain Cmd or Ctrl with K is left to the host, so its command palette still opens from the composer. A file the person attaches is a chip with its name and size and a Remove cross; a file that failed keeps its chip, with the reason beside it and a Remove link, and the typed text and Send are unaffected.
+
+```svelte
+<Chat id="new-chat" {conversation} composerFormattingToolbar>
+  {#snippet composerHeader()}
+    <AgentSelect />
+  {/snippet}
+  {#snippet composerControls({ folded })}
+    {#if folded}
+      <SettingsSelect />
+    {:else}
+      <ModelSelect />
+      <EffortSelect />
+      <PermissionsSelect />
+    {/if}
+  {/snippet}
+</Chat>
+```
+
 `composerStatus` is the line that replaces the hint: `{ kind: 'steering' }` ("A message now steers the run."), `{ kind: 'note', text }` for a sentence of the host's own such as "Effort High applies from the next step.", `{ kind: 'reconnecting', attempt }` and `{ kind: 'queued' }`. Its `{ kind: 'blocked', reason, action?, link? }` kind replaces the whole composer with one compact row: a warning glyph, the reason in muted text, a secondary button for `action` and a quiet link for `link` (each a button with `onclick`, or an anchor with `href`). Use it for a missing provider ("Connect a model provider to chat"), an unreachable server, an ended chat or a disabled plugin. While a question waits, the composer is in answer mode: the placeholder reads "Choose an answer above, or type your own…" and its button reads Answer. Chat does this itself for the questions it draws; a host that draws its own sets `composerAnswering` (the button reads Answer) and words the placeholder through `composerPlaceholder`.
 
 ## Composer actions
@@ -590,7 +609,8 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `adapter` | `(opaque)` | no | — | Optional command/transport boundary around `conversation`. Its methods take precedence over the matching callback props (e.g. `sendMessage` over `onSubmit`); omit it and Chat behaves exactly as with plain callbacks. Not expressible in JSON Schema; see the component types for the signature. |
 | `capabilities` | `(opaque)` | no | — | Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable individual Chat features (attachments, search, copy, editing, retry, quote) as a group rather than as six separate boolean props. Not expressible in JSON Schema; see the component types for the signature. |
 | `composerActions` | `(opaque)` | no | — | Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. Not expressible in JSON Schema; see the component types for the signature. |
-| `composerControls` | `(opaque)` | no | — | Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet takes no arguments and stays interactive while a run streams; the caller owns the semantics inside it. Not expressible in JSON Schema; see the component types for the signature. |
+| `composerControls` | `(opaque)` | no | — | Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether the composer is narrower than `COMPOSER_FOLD_WIDTH` (`folded`), so a host can draw one Settings control in place of several selects; the footer never wraps. Not expressible in JSON Schema; see the component types for the signature. |
+| `composerHeader` | `(opaque)` | no | — | The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it. Not expressible in JSON Schema; see the component types for the signature. |
 | `composerHint` | `(opaque)` | no | — | The line of help under the composer while no status shows. Default `Enter to send · Shift and Enter for a new line`; `false` hides it. Not expressible in JSON Schema; see the component types for the signature. |
 | `conversation` | `(opaque)` | yes | — | The conversation transcript to render. Pass a {@link ConversationHistory} snapshot; consumers holding a stateful conversation object pass its current snapshot (e.g. `conversation.current`). Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

@@ -130,11 +130,17 @@ describe('composerShortcutFormat', () => {
     return new KeyboardEvent('keydown', init);
   }
 
-  test('maps Cmd or Ctrl with B, I, E, and K', () => {
+  test('maps Cmd or Ctrl with B, I and E, and with Shift and K', () => {
     expect(composerShortcutFormat(key({ key: 'b', metaKey: true }))).toBe('bold');
     expect(composerShortcutFormat(key({ key: 'I', ctrlKey: true }))).toBe('italic');
     expect(composerShortcutFormat(key({ key: 'e', metaKey: true }))).toBe('code');
-    expect(composerShortcutFormat(key({ key: 'k', ctrlKey: true }))).toBe('link');
+    expect(composerShortcutFormat(key({ key: 'K', metaKey: true, shiftKey: true }))).toBe('link');
+    expect(composerShortcutFormat(key({ key: 'k', ctrlKey: true, shiftKey: true }))).toBe('link');
+  });
+
+  test('leaves Cmd or Ctrl with K to the host, which opens its command palette', () => {
+    expect(composerShortcutFormat(key({ key: 'k', metaKey: true }))).toBeUndefined();
+    expect(composerShortcutFormat(key({ key: 'k', ctrlKey: true }))).toBeUndefined();
   });
 
   test('ignores other keys and extra modifiers', () => {

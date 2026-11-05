@@ -10,6 +10,9 @@
    * It is a ghost listbox select inside the composer: no border or fill at rest, the setting's name
    * in muted words before its value ("Effort Medium"), and a help line under an option that has one.
    *
+   * A new chat has no session to change yet, so with `draft` a choice only goes to `onDraft`: the
+   * page keeps it, passes it back as `current`, and applies it once the session exists.
+   *
    * Every setting of a session shares one revision, so while one of them is being changed the
    * others wait (`locked`): a second change sent before the first is read back would be refused as
    * stale and silently undone.
@@ -50,6 +53,10 @@
     onBusyChange: (busy: boolean) => void;
     /** Called when the Bureau took a change, with the words of the option it took. */
     onApplied: (label: string) => void;
+    /** The chat has no session yet: a choice is handed to `onDraft` instead of being sent. */
+    draft?: boolean;
+    /** Called with the option's value when a choice is made on a chat that has no session yet. */
+    onDraft?: ((value: string) => void) | undefined;
   }
 
   let {
@@ -67,6 +74,8 @@
     unavailable,
     onBusyChange,
     onApplied,
+    draft = false,
+    onDraft,
   }: SettingSelectProps = $props();
 
   /** The choice on screen until the page has what the Bureau settled on; see `model-picker.svelte`. */
@@ -87,13 +96,12 @@
   ]);
 
   async function choose(next: string): Promise<void> {
-    if (
-      next === shown ||
-      revision === undefined ||
-      !options.some((entry) => entry.value === next)
-    ) {
+    if (next === shown || !options.some((entry) => entry.value === next)) return;
+    if (draft) {
+      onDraft?.(next);
       return;
     }
+    if (revision === undefined) return;
     pending = next;
     busy = true;
     onBusyChange(true);
@@ -130,7 +138,7 @@
   options={shownOptions}
   {...shown === undefined ? {} : { value: shown }}
   onValueChange={(next) => void choose(next)}
-  disabled={busy || locked || unavailable !== undefined || revision === undefined}
+  disabled={busy || locked || unavailable !== undefined || (revision === undefined && !draft)}
   title={unavailable}
   {...notice === undefined ? {} : { error: notice }}
 />

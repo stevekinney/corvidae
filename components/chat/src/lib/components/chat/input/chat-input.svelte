@@ -9,6 +9,7 @@
     ChatAttachmentUpload,
   } from './chat-attachment.ts';
   import type { AttachmentKind } from './attachment-kind.ts';
+  import type { ChatComposerControlsContext } from './composer-controls.ts';
   import type { ChatComposerFormat, ChatComposerToolbarContext } from './composer-markdown.ts';
   import type { ChatComposerStatus } from './composer-status.ts';
 
@@ -115,7 +116,10 @@
      * Default `true`.
      */
     markdownStyling?: boolean;
-    /** Show Bold, Italic, Code, Link, and List buttons in the footer. Default `false`. */
+    /**
+     * Show a row of Bold, Italic, Code, Link, and List buttons above the text, with the words of
+     * their shortcuts at its right, while the composer has focus. Default `false`.
+     */
     formattingToolbar?: boolean;
     /**
      * The line under the composer (a reconnect, queued follow-ups, a note of the host's own), or,
@@ -138,9 +142,16 @@
     // Snippets for extensibility
     /**
      * Controls at the start of the footer, right after the attach button: the host's own selects
-     * for the model, effort and permissions. They stay interactive while a run streams.
+     * for the model, effort and permissions. They stay interactive while a run streams. The
+     * snippet is told whether the composer is too narrow for them (`folded`), so a host can draw
+     * one Settings control in their place; the footer never wraps.
      */
-    controls?: Snippet | undefined;
+    controls?: Snippet<[ChatComposerControlsContext]> | undefined;
+    /**
+     * The top row inside the composer's border, above the text: the host's own control for who the
+     * message goes to, such as an agent select.
+     */
+    header?: Snippet | undefined;
     /** Custom actions area (e.g., additional buttons) beside Send, such as a context meter. */
     actions?: Snippet | undefined;
     /** Toolbar slot at the start of the footer, given a `format` command for the selection. */
@@ -154,7 +165,7 @@
    *
    * Features:
    * - Uses a native textarea composer so Chat does not require the rich editor bundle
-   * - Keyboard shortcuts: Enter to send, Shift+Enter for newline; Cmd/Ctrl+B, I, E, K format Markdown
+   * - Keyboard shortcuts: Enter to send, Shift+Enter for newline; Cmd/Ctrl+B, I, E and Cmd/Ctrl+Shift+K format Markdown
    * - Styles Markdown in place over the textarea, which still holds the Markdown that is sent
    * - IME-aware: composition input (Japanese/Chinese/Korean) won't trigger send
    * - File attachments (images, code, documents) via paste, drag-drop, or file picker
@@ -194,6 +205,7 @@
     composerShortcutFormat,
     highlightComposerMarkdown,
   } from './composer-markdown.ts';
+  import { COMPOSER_FOLD_WIDTH } from './composer-controls.ts';
   import { composerStatusText } from './composer-status.ts';
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
@@ -205,11 +217,14 @@
   // get a unique suffix rather than a duplicate DOM ID.
   const usedAttachmentIds = new Set<string>();
 
+  /** The words of the shortcuts, drawn at the right of the toolbar while the composer has focus. */
+  const FORMATTING_HINT = '⌘B bold · ⌘I italic · ⌘E code · ⌘⇧K link';
+
   const FORMATTING_BUTTONS = [
     { format: 'bold', label: 'Bold', keyshortcuts: 'Meta+B Control+B', icon: Bold },
     { format: 'italic', label: 'Italic', keyshortcuts: 'Meta+I Control+I', icon: Italic },
     { format: 'code', label: 'Code', keyshortcuts: 'Meta+E Control+E', icon: Code },
-    { format: 'link', label: 'Link', keyshortcuts: 'Meta+K Control+K', icon: LinkIcon },
+    { format: 'link', label: 'Link', keyshortcuts: 'Meta+Shift+K Control+Shift+K', icon: LinkIcon },
     { format: 'list', label: 'List', keyshortcuts: undefined, icon: List },
   ] as const satisfies readonly {
     format: ChatComposerFormat;
@@ -273,6 +288,7 @@
     answering = false,
     hint,
     controls,
+    header,
     actions,
     toolbar,
     ...rest
@@ -316,6 +332,25 @@
   let formElement = $state<HTMLFormElement | null>(null);
   let editorElement = $state<HTMLTextAreaElement | null>(null);
   let fileInputRef = $state<HTMLInputElement | null>(null);
+
+  // Whether the composer is too narrow for the host's controls, measured against its own width
+  // so a docked side panel and a phone fold them alike. A composer that cannot measure (no
+  // ResizeObserver) draws the full row.
+  let folded = $state(false);
+  $effect(() => {
+    const element = formElement;
+    if (element === null || typeof ResizeObserver === 'undefined') return;
+    const remInPixels =
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const measure = (width: number): void => {
+      folded = width > 0 && width < COMPOSER_FOLD_WIDTH * remInPixels;
+    };
+    measure(element.getBoundingClientRect().width);
+    const observer = new ResizeObserver(() => measure(element.getBoundingClientRect().width));
+    observer.observe(element);
+    return () => observer.disconnect();
+  });
+  const controlsContext = $derived<ChatComposerControlsContext>({ folded });
 
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);
@@ -830,6 +865,10 @@
     };
 
     // Call onsubmit callback
+    // A file that failed is left out of the message, and the announcement names each one.
+    const leftOut = attachments
+      .filter((attachment) => attachment.status === 'error')
+      .map((attachment) => attachment.file.name);
     onsubmit?.(
       message,
       readyAttachments.filter((attachment) => attachment.restoreText === undefined),
@@ -850,7 +889,9 @@
 
       // Restore focus to editor
       editorElement?.focus();
-      announcer.announce('Message sent');
+      announcer.announce(
+        leftOut.length === 0 ? 'Message sent' : `Message sent without ${leftOut.join(', ')}`,
+      );
     } else {
       // In form action mode, sync the bound value with trimmed content
       // so the hidden input sends the same content as the callback.
@@ -1188,28 +1229,30 @@
         <input type="hidden" {name} {value} />
       {/if}
 
-      <!-- Attachment previews -->
-      {#if attachments.length > 0}
-        <div class="chat-input-attachments" role="list" aria-label="Attached files">
-          {#each attachments as attachment (attachment.id)}
-            <div class="chat-input-attachment-wrapper" role="listitem">
-              <ChatAttachmentPreview {attachment} />
-              <button
+      {#if header}
+        <div class="chat-input-header">{@render header()}</div>
+      {/if}
+
+      {#if formattingToolbar}
+        <div class="chat-input-format">
+          <div class="chat-input-toolbar" role="toolbar" aria-label="Formatting">
+            {#each FORMATTING_BUTTONS as button (button.format)}
+              <Button
                 type="button"
-                class="chat-input-attachment-remove"
-                onclick={() => removeAttachment(attachment.id)}
-                aria-label={`Remove ${attachment.file.name}`}
+                variant="ghost"
+                size="sm"
+                aria-label={button.label}
+                aria-keyshortcuts={button.keyshortcuts}
+                disabled={disabled || paused || sendBlocked}
+                onmousedown={(event: MouseEvent) => event.preventDefault()}
+                onclick={() => applyFormat(button.format)}
               >
-                <X class="cinder-icon-xs" />
-              </button>
-            </div>
-          {/each}
+                <button.icon class="cinder-icon-sm" />
+              </Button>
+            {/each}
+          </div>
+          <p class="chat-input-format-hint" aria-hidden="true">{FORMATTING_HINT}</p>
         </div>
-        {#each attachments.filter((a) => a.status === 'error' && a.error) as failed (failed.id)}
-          <p class="chat-input-attachment-error" data-attachment-error={failed.id}>
-            {failed.file.name}: {failed.error}
-          </p>
-        {/each}
       {/if}
 
       <!-- Editor area -->
@@ -1246,6 +1289,45 @@
           rows="1"></textarea>
       </div>
 
+      <!-- Attachments: a chip each, with the reason beside one that failed -->
+      {#if attachments.length > 0}
+        <ul class="chat-input-attachments" aria-label="Attached files">
+          {#each attachments as attachment (attachment.id)}
+            <li
+              class="chat-input-attachment-wrapper"
+              data-attachment-state={attachment.status}
+              data-attachment-id={attachment.id}
+            >
+              {#if attachment.status === 'error'}
+                <ChatAttachmentPreview {attachment} />
+                <span class="chat-input-attachment-error" data-attachment-error={attachment.id}
+                  >{attachment.error ?? 'Upload failed. Try again, or remove it.'}</span
+                >
+                <button
+                  type="button"
+                  class="chat-input-attachment-remove chat-input-attachment-remove-text"
+                  onclick={() => removeAttachment(attachment.id)}
+                  aria-label={`Remove ${attachment.file.name}`}>Remove</button
+                >
+              {:else}
+                <ChatAttachmentPreview {attachment}>
+                  {#snippet action()}
+                    <button
+                      type="button"
+                      class="chat-input-attachment-remove"
+                      onclick={() => removeAttachment(attachment.id)}
+                      aria-label={`Remove ${attachment.file.name}`}
+                    >
+                      <X class="cinder-icon-xs" />
+                    </button>
+                  {/snippet}
+                </ChatAttachmentPreview>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
       <!-- Footer with actions -->
       <div class="chat-input-footer">
         <div class="chat-input-footer-left">
@@ -1274,29 +1356,11 @@
             </Button>
           {/if}
 
-          {#if formattingToolbar}
-            <div class="chat-input-toolbar" role="toolbar" aria-label="Formatting">
-              {#each FORMATTING_BUTTONS as button (button.format)}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={button.label}
-                  aria-keyshortcuts={button.keyshortcuts}
-                  disabled={disabled || paused || sendBlocked}
-                  onmousedown={(event: MouseEvent) => event.preventDefault()}
-                  onclick={() => applyFormat(button.format)}
-                >
-                  <button.icon class="cinder-icon-sm" />
-                </Button>
-              {/each}
-            </div>
-          {/if}
           {#if toolbar}
             {@render toolbar(toolbarContext)}
           {/if}
           {#if controls}
-            {@render controls()}
+            {@render controls(controlsContext)}
           {/if}
 
           <!-- Visually hidden shortcut description: always in the accessibility tree even when hint is container-queried away -->
@@ -1463,49 +1527,79 @@
     pointer-events: none;
   }
 
-  /* Attachment previews */
+  /* Attachments: a chip each. A file that failed shows its reason beside the chip, then Remove. */
   .chat-input-attachments {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: flex-start;
     gap: var(--cinder-space-2);
+    margin: 0;
+    padding: 0;
+    padding-inline: var(--cinder-space-3);
+    list-style: none;
   }
 
-  /* Keep the remove control inside the preview while preserving its hit target. */
   .chat-input-attachment-wrapper {
-    position: relative;
-    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    min-inline-size: 0;
+    max-inline-size: 100%;
   }
 
+  /* The remove control sits at the end of the chip, a touch-sized target around a small cross. */
   .chat-input-attachment-remove {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-end: 0;
-    display: flex;
+    position: relative;
+    display: inline-flex;
+    flex: none;
     align-items: center;
     justify-content: center;
-    /* WCAG 2.2 AA compliant touch target with visual icon inside */
-    width: var(--cinder-touch-target-min);
-    height: var(--cinder-touch-target-min);
+    min-inline-size: 1.5rem;
+    min-block-size: 1.5rem;
+    margin-inline-end: calc(var(--cinder-space-1) * -1);
     padding: 0;
-    background: oklch(0% 0 0 / 70%);
     border: none;
-    border-radius: var(--cinder-radius-full);
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-muted);
     cursor: pointer;
-    color: white;
-    opacity: 1;
-    transition:
-      opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
-      background var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-input-attachment-remove {
+      min-inline-size: var(--cinder-touch-target-min);
+      min-block-size: var(--cinder-touch-target-min);
+    }
+  }
+
+  /* Remove beside a failed file is a quiet link, not a cross inside a chip. */
+  .chat-input-attachment-remove-text {
+    min-block-size: 0;
+    margin-inline-end: 0;
+    padding: 0;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-input-attachment-remove-text {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   @media (hover: hover) {
     .chat-input-attachment-remove:hover {
-      background: var(--cinder-status-danger-solid);
+      color: var(--cinder-text-default);
+    }
+    .chat-input-attachment-remove-text:hover {
+      text-decoration: underline;
     }
   }
 
   .chat-input-attachment-remove:focus-visible {
-    opacity: 1;
+    outline: none;
   }
 
   .chat-input-attachment-remove:focus-visible::before {
@@ -1627,10 +1721,49 @@
     text-decoration: underline;
   }
 
+  /* The top row inside the border: the host's control for who the message goes to. */
+  .chat-input-header {
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
+    margin-inline-start: calc(var(--cinder-space-2) * -1);
+  }
+
+  /* The formatting row: the toolbar at the left, the words of its shortcuts at the right. It is
+   * there only while the composer has focus, so an idle composer stays quiet. */
+  .chat-input-format {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    padding-block-end: var(--cinder-space-1);
+    border-block-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .chat-input:focus-within .chat-input-format {
+    display: flex;
+  }
+
   .chat-input-toolbar {
     display: flex;
     align-items: center;
     gap: 2px;
+    margin-inline-start: calc(var(--cinder-space-2) * -1);
+  }
+
+  .chat-input-format-hint {
+    min-inline-size: 0;
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+    text-align: end;
+  }
+
+  /* Too narrow for the shortcuts' words: the buttons carry them in their names. */
+  @container (max-inline-size: 30rem) {
+    .chat-input-format-hint {
+      display: none;
+    }
   }
 
   .chat-input-shell {
@@ -1715,9 +1848,11 @@
     gap: var(--cinder-space-2);
   }
 
+  /* The row never wraps: the host's selects shrink (a ghost select ellipsizes its value) or fold
+   * into one Settings control (`controls` is told when) before anything drops to a second line. */
   .chat-input-footer-left {
     flex: 1 1 auto;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     min-inline-size: 0;
   }
 
@@ -1735,6 +1870,14 @@
    * Cinder's own quiet look; Stop keeps a faint danger border so it reads as the one way out. */
   .chat-input-footer-right :global(.chat-input-send[data-stop]) {
     border-color: var(--cinder-status-danger-border);
+  }
+
+  /* On a phone-width composer, and wherever the primary pointer is a finger, the footer's controls
+   * are touch targets. */
+  @container (max-inline-size: 28rem) {
+    .chat-input-footer :global(.cinder-button) {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   @media (any-pointer: coarse) {
@@ -1761,8 +1904,8 @@
 
   /* Error */
   .chat-input-attachment-error {
-    margin: 0;
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    min-inline-size: 0;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     color: var(--cinder-status-danger-text);
     overflow-wrap: anywhere;
   }

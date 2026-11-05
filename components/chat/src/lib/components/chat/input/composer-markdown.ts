@@ -191,9 +191,16 @@ const SHORTCUT_FORMATS: Readonly<Record<string, ChatComposerFormat>> = {
   k: 'link',
 };
 
-/** The format a keydown asks for: Cmd or Ctrl with B, I, E, or K, and nothing else held. */
+/**
+ * The format a keydown asks for: Cmd or Ctrl with B, I or E, or with Shift and K for a link, and
+ * nothing else held. Plain Cmd or Ctrl with K is not a formatting shortcut, so it reaches the
+ * host's command palette from the composer.
+ */
 export function composerShortcutFormat(event: KeyboardEvent): ChatComposerFormat | undefined {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return undefined;
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return undefined;
   const key = event.key.toLowerCase();
-  return Object.hasOwn(SHORTCUT_FORMATS, key) ? SHORTCUT_FORMATS[key] : undefined;
+  if (!Object.hasOwn(SHORTCUT_FORMATS, key)) return undefined;
+  const format = SHORTCUT_FORMATS[key];
+  // Link is the only shortcut that takes Shift, and it requires it: Cmd+K belongs to the host.
+  return (format === 'link') === event.shiftKey ? format : undefined;
 }

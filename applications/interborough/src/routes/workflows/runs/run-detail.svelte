@@ -61,6 +61,7 @@
   import RunHeader from './run-header.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunPanels from './run-panels.svelte';
+  import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
 
@@ -431,6 +432,7 @@
       <div class="ib-run__main">
         {#if task.data}
           <RunWaiting task={task.data} onAnswerHold={(held) => (answerHeld = held)} />
+          <RunMessageBlocked task={task.data} />
         {/if}
         {#if summary !== undefined}
           <RunInputOutput

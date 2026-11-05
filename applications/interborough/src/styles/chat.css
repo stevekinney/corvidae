@@ -363,10 +363,25 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* The agent pill sits in the composer's footer beside Send, so it is as wide as its name. */
-.ib-agent-pill {
-  min-inline-size: 10rem;
-  max-inline-size: 16rem;
+/* The agent a new chat is with sits at the top of the composer, a ghost select in the accent, so it
+ * reads as the one thing the box is about to do. */
+.ib-agent-select {
+  display: inline-flex;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+/* The settings the composer folds into one control when it is too narrow for them side by side. */
+.ib-composer-settings {
+  font-weight: var(--cinder-font-semibold);
+}
+
+.ib-composer-settings__fields {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--cinder-space-1);
+  min-inline-size: min(16rem, 100%);
 }
 
 /* The popover on an agent's reply: why this model, what it saw, the run's tokens. */

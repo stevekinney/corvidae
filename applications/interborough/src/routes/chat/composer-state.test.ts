@@ -53,6 +53,17 @@ describe('a blocked composer', () => {
     expect(enabled).toBe(1);
   });
 
+  test('says no agent can create workflows once, with a link to Agents', () => {
+    expect(
+      composerStatusOf(facts({ noWorkflowAgent: true, agentsHref: '/agents', noProvider: true })),
+    ).toEqual({
+      kind: 'blocked',
+      reason:
+        'No agent can create workflows. Add the Create workflow tool to an agent’s Access tab.',
+      action: { label: 'Open Agents', href: '/agents' },
+    });
+  });
+
   test('says a chat the server stopped when it restarted has ended, with New chat', () => {
     expect(composerStatusOf(facts({ ended: true }))).toEqual({
       kind: 'blocked',

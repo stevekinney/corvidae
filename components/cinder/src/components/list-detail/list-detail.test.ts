@@ -604,6 +604,39 @@ describe('ListDetail', () => {
     );
   });
 
+  test('a flush detail shown alone fills the height it is given, and the list does not', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), flushDetail: true },
+    });
+    await measure(container, 599);
+    const root = () => container.querySelector('.cinder-list-detail')!;
+    expect(root().getAttribute('data-cinder-showing')).toBe('list');
+
+    await fireEvent.click(primaryOf(container, 'beta'));
+    await tick();
+    await tick();
+    expect(root().getAttribute('data-cinder-showing')).toBe('detail');
+
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+    );
+    const fill = css.slice(css.indexOf("[data-cinder-showing='detail']"));
+    expect(fill).toMatch(/\{\s*block-size: 100%;/);
+    expect(css).not.toMatch(
+      /\.cinder-list-detail\[data-cinder-layout='stacked'\]\[data-cinder-flush-detail\]\s*\{/,
+    );
+  });
+
+  test('is not marked as showing a pane in the split layout', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation() },
+    });
+    await measure(container, 1000);
+    expect(
+      container.querySelector('.cinder-list-detail')?.hasAttribute('data-cinder-showing'),
+    ).toBe(false);
+  });
+
   test('groups the rows under header bands', async () => {
     const { container } = render(ListDetailFixture, {
       props: {
