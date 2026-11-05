@@ -89,11 +89,11 @@ test('compiled definitions commands map every route to Bureau operations', async
     ['agents', 'versions', 'list', 'test'],
     ['agents', 'versions', 'restore', 'test', '3', '--if-revision', 'hash-1'],
     ['agents', 'try', '--file', definitionFile, '--message', 'hello'],
-    ['workflows', 'list'],
+    ['workflows', 'list', '--include-runs'],
     ['workflows', 'get', 'test'],
     ['workflows', 'create', 'test', '--file', workflowFile],
     ['workflows', 'update', 'test', '--file', workflowFile, '--if-revision', 'hash-1'],
-    ['workflows', 'validate', 'test', '--file', workflowFile],
+    ['workflows', 'validate', 'test', '--file', workflowFile, '--expected-revision', 'hash-v'],
     ['workflows', 'start', 'test', '--input-file', workflowFile],
     ['workflows', 'start', 'test', '--input-file', workflowFile, '--wait'],
     ['workflows', 'signal', 'ready', '--input-file', workflowFile, '--signal-id', 'sig-1'],
@@ -165,11 +165,11 @@ test('compiled definitions commands cover versions and transient try', async () 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
 test('compiled workflow commands cover validation, start observation, signal, and history', async () => {
   const commands = [
-    ['workflows', 'list'],
+    ['workflows', 'list', '--include-runs'],
     ['workflows', 'get', 'test'],
     ['workflows', 'create', 'test', '--file', workflowFile],
     ['workflows', 'update', 'test', '--file', workflowFile, '--if-revision', 'hash-1'],
-    ['workflows', 'validate', 'test', '--file', workflowFile],
+    ['workflows', 'validate', 'test', '--file', workflowFile, '--expected-revision', 'hash-v'],
     ['workflows', 'start', 'test', '--input-file', workflowFile],
     ['workflows', 'start', 'test', '--input-file', workflowFile, '--wait'],
     ['workflows', 'signal', 'ready', '--input-file', workflowFile, '--signal-id', 'sig-1'],
@@ -190,6 +190,19 @@ test('compiled workflow commands cover validation, start observation, signal, an
     'bureau.workflows.signal',
     'bureau.workflows.history',
   ]);
+  expect(
+    requests.some(
+      (request) =>
+        request.method === 'bureau.workflows.list' && request.params?.['includeRuns'] === true,
+    ),
+  ).toBe(true);
+  expect(
+    requests.some(
+      (request) =>
+        request.method === 'bureau.workflows.validate' &&
+        request.params?.['expectedHash'] === 'hash-v',
+    ),
+  ).toBe(true);
 });
 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.

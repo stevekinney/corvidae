@@ -222,7 +222,11 @@ async function workflowCommand(
     if (action !== 'validate' || parsed.arguments[1] !== undefined)
       params['id'] = identifier(parsed);
     if (action === 'update') params['expectedHash'] = expectedHash(parsed);
-    if (action === 'validate' && option(parsed, 'if-revision') !== undefined)
+    if (
+      action === 'validate' &&
+      (option(parsed, 'if-revision') !== undefined ||
+        option(parsed, 'expected-revision') !== undefined)
+    )
       params['expectedHash'] = expectedHash(parsed);
     return rpc(target, parsed, dependencies, `bureau.workflows.${action}`, params);
   }

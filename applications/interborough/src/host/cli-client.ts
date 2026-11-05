@@ -389,7 +389,7 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     const inline = equals === -1 ? undefined : argument.slice(equals + 1);
     const booleanOption =
       ['all', 'help', 'no-input', 'yes'].includes(name) ||
-      (name === 'wait' && command === 'workflows');
+      ((name === 'wait' || name === 'include-runs') && command === 'workflows');
     if (booleanOption) {
       if (inline !== undefined) return usage(`Option --${name} does not take a value.`);
       values.set(name, true);
