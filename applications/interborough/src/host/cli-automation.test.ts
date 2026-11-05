@@ -1,6 +1,6 @@
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, expect, test } from 'bun:test';
-import { chmod, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,7 +34,10 @@ await writeFile(
     bounds: { maximumAttempts: 1, maximumTotalSteps: 10 },
   }),
 );
-await writeFile(hookUpdateFile, JSON.stringify({ events: ['task.failed'], enabled: false }));
+await writeFile(
+  hookUpdateFile,
+  JSON.stringify({ url: 'https://example.test/updated', events: ['task.failed'], enabled: false }),
+);
 const build = await runWithHangGuard([
   process.execPath,
   'build',
@@ -74,8 +77,36 @@ const server = Bun.serve({
         { message: 'stale', error: { data: { httpStatus: 409 } } },
         { status: 409 },
       );
+    if (body.method === 'bureau.schedules.skipnext' && params['occurrence'] === 'conflict')
+      return Response.json(
+        { message: 'occurrence is no longer next', error: { data: { httpStatus: 409 } } },
+        { status: 409 },
+      );
     if (body.method === 'bureau.hooks.create' || body.method === 'bureau.hooks.secret.replace')
       return Response.json({ result: { id: 'hook-1', signingSecret: 'secret-value' } });
+    if (body.method === 'bureau.schedules.pause')
+      return Response.json({ result: { outcome: 'paused', status: 'paused', revision: 3 } });
+    if (body.method === 'bureau.schedules.resume')
+      return Response.json({ result: { outcome: 'resumed', status: 'active', revision: 4 } });
+    if (body.method === 'bureau.goals.cancel')
+      return Response.json({ result: { outcome: 'canceled', status: 'canceled', revision: 3 } });
+    if (body.method === 'bureau.schedules.create' || body.method === 'bureau.schedules.update')
+      return Response.json({
+        result: {
+          ...params,
+          id: 'schedule-1',
+          timeZone: 'America/Denver',
+          nextFireAt: '2026-11-05T12:00:00.000Z',
+        },
+      });
+    if (body.method === 'bureau.goals.create')
+      return Response.json({
+        result: {
+          outcome: 'created',
+          goalRunId: 'goal-1',
+          idempotencyKey: params['idempotencyKey'],
+        },
+      });
     return Response.json({
       result: {
         ...body.params,
@@ -95,17 +126,22 @@ afterAll(async () => {
 });
 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
-async function invokeCommands(commands: string[][]): Promise<void> {
+async function invokeCommands(
+  commands: string[][],
+): Promise<Array<Awaited<ReturnType<typeof invoke>>>> {
   const url = `http://127.0.0.1:${server.port}`;
+  const results: Array<Awaited<ReturnType<typeof invoke>>> = [];
   for (const command of commands) {
     const result = await invoke([...command, '--url', url]);
     expect(result.exitCode).toBe(0);
+    results.push(result);
   }
+  return results;
 }
 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
 test('compiled automation commands forward schedules', async () => {
-  await invokeCommands([
+  const outputs = await invokeCommands([
     ['schedules', 'list'],
     ['schedules', 'get', 'schedule-1'],
     ['schedules', 'create', '--file', scheduleFile],
@@ -135,11 +171,37 @@ test('compiled automation commands forward schedules', async () => {
   ]);
   expect(requests.at(-2)?.params).toEqual({ scheduleId: 'schedule-1' });
   expect(requests.at(-1)?.params).toMatchObject({ scheduleId: 'schedule-1', expectedRevision: 2 });
+  const scheduleRequests = requests.slice(-8);
+  expect(scheduleRequests[2]?.params).toMatchObject({
+    agentName: 'agent',
+    spec: '* * * * *',
+    input: 'hello',
+    timeZone: 'UTC',
+  });
+  expect(scheduleRequests[3]?.params).toEqual({
+    scheduleId: 'schedule-1',
+    spec: '*/5 * * * *',
+    timeZone: 'America/Denver',
+    expectedRevision: 1,
+  });
+  expect(scheduleRequests[4]?.params).toEqual({ scheduleId: 'schedule-1', expectedRevision: 2 });
+  expect(scheduleRequests[5]?.params).toEqual({ scheduleId: 'schedule-1', expectedRevision: 3 });
+  expect(scheduleRequests[7]?.params).toEqual({
+    scheduleId: 'schedule-1',
+    occurrence: '2026-11-05T12:00:00.000Z',
+    expectedRevision: 2,
+  });
+  expect(outputs[2]?.stdout.toString()).toContain('America/Denver');
+  expect(outputs[2]?.stdout.toString()).toContain('2026-11-05T12:00:00.000Z');
+  expect(outputs[3]?.stdout.toString()).toContain('America/Denver');
+  expect(outputs[3]?.stdout.toString()).toContain('2026-11-05T12:00:00.000Z');
+  expect(outputs[4]?.stdout.toString()).toContain('paused');
+  expect(outputs[5]?.stdout.toString()).toContain('resumed');
 });
 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
 test('compiled automation commands forward goals', async () => {
-  await invokeCommands([
+  const outputs = await invokeCommands([
     ['goals', 'list'],
     ['goals', 'get', 'goal-1'],
     ['goals', 'create', '--file', goalFile],
@@ -152,11 +214,21 @@ test('compiled automation commands forward goals', async () => {
     'bureau.goals.cancel',
   ]);
   expect(requests.at(-1)?.params).toMatchObject({ goalRunId: 'goal-1', expectedRevision: 2 });
+  expect(requests.at(-2)?.params).toMatchObject({
+    idempotencyKey: 'goal-1',
+    agentName: 'agent',
+    prompt: 'reach the goal',
+    identity: { name: 'cli-test', version: '1' },
+    validator: { name: 'test', version: '1' },
+    bounds: { maximumAttempts: 1, maximumTotalSteps: 10 },
+  });
+  expect(outputs[2]?.stdout.toString()).toContain('goal-1');
+  expect(outputs[3]?.stdout.toString()).toContain('canceled');
 });
 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
 test('compiled automation commands forward hooks', async () => {
-  await invokeCommands([
+  const outputs = await invokeCommands([
     ['hooks', 'list'],
     ['hooks', 'get', 'hook-1'],
     ['hooks', 'create', '--file', hookFile],
@@ -176,6 +248,18 @@ test('compiled automation commands forward hooks', async () => {
     'bureau.hooks.test',
     'bureau.hooks.deliveries',
   ]);
+  const hookRequests = requests.slice(-8);
+  expect(hookRequests[2]?.params).toMatchObject({
+    events: ['task.completed'],
+    url: 'https://example.test/hook',
+  });
+  expect(hookRequests[3]?.params).toMatchObject({
+    hookId: 'hook-1',
+    url: 'https://example.test/updated',
+    expectedRevision: 1,
+  });
+  expect(hookRequests[4]?.params).toEqual({ hookId: 'hook-1', expectedRevision: 2 });
+  expect(outputs[4]?.stdout.toString()).not.toContain('secret-value');
 });
 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
@@ -196,6 +280,22 @@ test('compiled mutations fail closed without retrying and reject owner impersona
   expect(stale.exitCode).toBe(4);
   expect(
     requests.slice(before).filter(({ method }) => method === 'bureau.schedules.update'),
+  ).toHaveLength(1);
+  const skipBefore = requests.length;
+  const skipConflict = await invoke([
+    'schedules',
+    'skip-next',
+    'schedule-1',
+    '--occurrence',
+    'conflict',
+    '--if-revision',
+    '2',
+    '--url',
+    url,
+  ]);
+  expect(skipConflict.exitCode).toBe(4);
+  expect(
+    requests.slice(skipBefore).filter(({ method }) => method === 'bureau.schedules.skipnext'),
   ).toHaveLength(1);
   const impersonation = await invoke([
     'hooks',
@@ -228,11 +328,10 @@ test('compiled hook output redacts a generated secret unless explicitly written'
     url,
   ]);
   expect(result.exitCode).toBe(0);
-  expect(result.stdout).not.toContain('secret-value');
+  expect(result.stdout.toString()).not.toContain('secret-value');
   expect(await Bun.file(secretOutput).text()).toBe('secret-value\n');
   const secretStatus = await stat(secretOutput);
   expect(secretStatus.mode & 0o777).toBe(0o600);
-  await chmod(secretOutput, 0o600);
   const refused = await invoke([
     'hooks',
     'create',
