@@ -6,6 +6,7 @@
 
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -191,5 +192,3 @@ describe('transcript presentation', () => {
     expect(container.querySelector('.chat-message-line')).toBeNull();
   });
 });
-
-import { createRawSnippet } from 'svelte';

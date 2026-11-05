@@ -154,7 +154,7 @@ describe('a chat whose run failed on a call', () => {
     expect(started[0]).toContain('Please refund order 4471, it arrived damaged.');
     expect(started[0]).not.toContain('call-1');
     await waitFor(() =>
-      expect(container.querySelector('[data-cinder-status="interrupted"]')).toBeNull(),
+      expect(container.querySelectorAll('[data-cinder-status="interrupted"]').length).toBe(0),
     );
   });
 });

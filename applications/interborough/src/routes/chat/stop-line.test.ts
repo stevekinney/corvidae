@@ -36,7 +36,6 @@ function conversation(...rows: Row[]): ConversationHistory {
     id: 't',
     status: 'active',
     metadata: {},
-    tags: [],
     ids: rows.map((entry) => entry.id),
     messages: Object.fromEntries(rows.map((entry) => [entry.id, entry])),
     createdAt: '2026-11-02T16:00:00.000Z',

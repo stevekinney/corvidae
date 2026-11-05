@@ -287,7 +287,9 @@ describe('the compact composer', () => {
         onsubmit: () => {},
       },
     } as never);
-    expect(streaming.container.querySelector('.chat-input-send')?.hasAttribute('data-stop')).toBe(true);
+    expect(streaming.container.querySelector('.chat-input-send')?.hasAttribute('data-stop')).toBe(
+      true,
+    );
     expect(streaming.container.querySelector('textarea')?.disabled).toBe(true);
   });
 

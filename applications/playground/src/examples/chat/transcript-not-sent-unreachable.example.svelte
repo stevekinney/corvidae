@@ -7,16 +7,12 @@
 <script lang="ts">
   import {
     appendAssistantMessage,
-    appendMessages,
     appendUserMessage,
     Chat,
-    CINDER_NOTES_METADATA_KEY,
     createConversation,
     markMessageDeliveryFailed,
-    markMessageDeliveryPending,
     type ChatAdapter,
   } from '@lostgradient/chat';
-  import { Button } from '@lostgradient/cinder';
   const adapter: ChatAdapter = {
     sendMessage: async () => undefined,
     retryMessage: async () => undefined,
