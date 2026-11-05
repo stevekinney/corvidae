@@ -467,9 +467,8 @@ describe('release arguments', () => {
           buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
         ),
       ).toThrow('fixture command failed');
-      expect(
-        (await readdir(output)).filter((entry) => entry.startsWith('.interborough-staging-')),
-      ).toEqual([]);
+      const entries = await readdir(output);
+      expect(entries.filter((entry) => entry.startsWith('.interborough-staging-'))).toEqual([]);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
