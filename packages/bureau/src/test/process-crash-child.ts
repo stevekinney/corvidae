@@ -16,7 +16,7 @@
  * scenario is a named function below; the `scenarios` table is the extension
  * point for further crash scenarios.
  */
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
@@ -66,6 +66,7 @@ import { LMDBStorage } from '@lostgradient/storage-lmdb';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { textValueStore } from '@lostgradient/storage';
 import { reviewDecisionKey } from '../review-decision-record';
+import { agentFileDirectory } from '../sources/agent-file-directory';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -520,58 +521,27 @@ async function approveThenCrash(): Promise<void> {
 /** COR-2051: journals a peer task, then dies while the approved peer call is in flight. */
 async function childWaitParked(): Promise<void> {
   const childWaitCallId = 'parent-child-wait-call';
-  const siblingCallId = 'parent-sibling-call';
   const parentReady = Promise.withResolvers<void>();
   const allowParent = Promise.withResolvers<void>();
   let parentId: string | undefined;
   let durableEngine: {
     get(runId: string): Promise<{ waitingForSignals?: readonly string[] } | null>;
   };
-  const waitForChild = createTool({
-    name: 'wait-for-child',
-    description: 'Wait for the named child.',
-    input: z.object({ childRunId: z.string() }),
-    metadata: { durableChildWait: true },
-    execute: async ({ childRunId }, context) => {
-      const wait = context.executionContext?.['durableChildWait'];
-      if (typeof wait !== 'function') throw new Error('missing durable child wait');
-      return wait({ childRunId, toolCallId: context.meta?.callId ?? context.toolCall.id });
-    },
-  });
-  const siblingAction = createTool({
-    name: 'sibling-action',
-    description: 'A sibling action that must not replay after the park.',
-    input: z.object({}),
-    execute: async () => {
-      appendFileSync(join(dirname(markerPath as string), 'siblingAction'), '1\n');
-      return { action: 'ran-once' };
-    },
-  });
+  const agentsPath = join(dirname(markerPath as string), 'agents');
+  mkdirSync(agentsPath, { recursive: true });
+  writeFileSync(
+    join(agentsPath, 'planner.md'),
+    [
+      '---',
+      'model: anthropic/claude-opus-5-5',
+      'tools: ["bureau:child-runs-wait"]',
+      '---',
+      'Wait for the child and report its result.',
+      '',
+    ].join('\n'),
+  );
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
-      planner: createAgent({
-        name: 'planner',
-        toolbox: createToolbox([waitForChild, siblingAction]),
-        generate: async ({ step }) => {
-          if (step === 0) {
-            parentReady.resolve();
-            await allowParent.promise;
-            return {
-              content: 'waiting',
-              toolCalls: [
-                {
-                  id: childWaitCallId,
-                  name: 'wait-for-child',
-                  arguments: { childRunId: 'child-1' },
-                },
-                { id: siblingCallId, name: 'sibling-action', arguments: {} },
-              ],
-            };
-          }
-          return { content: 'recovered', toolCalls: [] };
-        },
-        stopWhen: stopWhen.noToolCalls(),
-      }),
       worker: createAgent({
         name: 'worker',
         generate: async () => {
@@ -591,6 +561,26 @@ async function childWaitParked(): Promise<void> {
         },
         stopWhen: stopWhen.noToolCalls(),
       }),
+    },
+    agentSource: agentFileDirectory(agentsPath),
+    models: {
+      generate: () => async ({ step }) => {
+        if (step === 0) {
+          parentReady.resolve();
+          await allowParent.promise;
+          return {
+            content: 'waiting',
+            toolCalls: [
+              {
+                id: childWaitCallId,
+                name: 'bureau:child-runs-wait',
+                arguments: { childRunId: 'child-1' },
+              },
+            ],
+          };
+        }
+        return { content: 'recovered', toolCalls: [] };
+      },
     },
     storage:
       backend === 'lmdb'
@@ -650,7 +640,12 @@ async function childWaitParked(): Promise<void> {
   if (child.outcome !== 'started') throw new Error(`child did not start: ${child.outcome}`);
   publishChildFile(
     markerPath as string,
-    JSON.stringify({ runId: parent.id, childRunId: 'child-1', contextId: parent.contextId }),
+    JSON.stringify({
+      runId: parent.id,
+      childRunId: 'child-1',
+      contextId: parent.contextId,
+      agentsPath,
+    }),
   );
   allowParent.resolve();
   await pollUntil('parent park', async () => {

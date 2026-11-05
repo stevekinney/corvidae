@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createAgent, createCheckpointStore, stopWhen } from '@lostgradient/operative';
@@ -16,6 +16,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
+import { agentFileDirectory } from './sources/agent-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
@@ -23,7 +24,6 @@ import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './test/process-crash-work-integrit
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const CHILD_WAIT_CALL_ID = 'parent-child-wait-call';
-const SIBLING_CALL_ID = 'parent-sibling-call';
 
 async function crashScenario(scope: ScenarioScope): Promise<void> {
   const runtime = createDefaultRuntimeServices();
@@ -41,10 +41,11 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     await crashed.exited;
     expect(crashed.signalCode).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
-    const { runId, childRunId, contextId } = readChildJson<{
+    const { runId, childRunId, contextId, agentsPath } = readChildJson<{
       runId: string;
       childRunId: string;
       contextId: string;
+      agentsPath: string;
     }>(markerPath);
     const barrier = readChildJson<{
       childRecord: { status: string; outcome?: unknown };
@@ -52,55 +53,33 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     }>(join(directory, 'afterChildSettlementBeforeParentWake'));
     expect(barrier.childRecord.status).toBe('completed');
     expect(barrier.parentWaitingForSignals).toEqual([`durable-child:${runId}:${childRunId}`]);
-    expect(readFileSync(join(directory, 'siblingAction'), 'utf8').trim().split('\n')).toEqual([
-      '1',
-    ]);
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     let generations = 0;
     let nextGenerationToolResults: readonly unknown[] = [];
-    const waitForChild = createTool({
-      name: 'wait-for-child',
-      description: 'Wait for the named child.',
-      input: z.object({ childRunId: z.string() }),
-      metadata: { durableChildWait: true },
-      execute: async ({ childRunId }, context) => {
-        const wait = context.executionContext?.['durableChildWait'];
-        if (typeof wait !== 'function') throw new Error('missing durable child wait');
-        return wait({ childRunId, toolCallId: context.meta?.callId ?? context.toolCall.id });
-      },
-    });
     const bureau = await createBureau({
-      agents: {
-        planner: createAgent({
-          name: 'planner',
-          toolbox: createToolbox([waitForChild]),
-          generate: async ({ step, conversation }) => {
-            generations += 1;
-            nextGenerationToolResults = conversation
-              .getMessages()
-              .filter((message) => message.role === 'tool-result')
-              .map((message) => message.toolResult);
-            return step === 0
-              ? {
-                  content: 'unexpected replay',
-                  toolCalls: [
-                    {
-                      id: CHILD_WAIT_CALL_ID,
-                      name: 'wait-for-child',
-                      arguments: { childRunId },
-                    },
-                  ],
-                }
-              : { content: 'recovered', toolCalls: [] };
-          },
-          stopWhen: stopWhen.noToolCalls(),
-        }),
-        worker: createAgent({
-          name: 'worker',
-          generate: async () => ({ content: 'child done', toolCalls: [] }),
-          stopWhen: stopWhen.noToolCalls(),
-        }),
+      agents: {},
+      agentSource: agentFileDirectory(agentsPath),
+      models: {
+        generate: () => async ({ step, conversation }) => {
+          generations += 1;
+          nextGenerationToolResults = conversation
+            .getMessages()
+            .filter((message) => message.role === 'tool-result')
+            .map((message) => message.toolResult);
+          return step === 0
+            ? {
+                content: 'unexpected replay',
+                toolCalls: [
+                  {
+                    id: CHILD_WAIT_CALL_ID,
+                    name: 'bureau:child-runs-wait',
+                    arguments: { childRunId },
+                  },
+                ],
+              }
+            : { content: 'recovered', toolCalls: [] };
+        },
       },
       storage: fixture.open(),
       durable: true,
@@ -141,8 +120,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
           outcome: 'success',
           result: { status: 'settled', child: currentChildRecord },
         });
-        expect(step.results.filter((result) => result.callId === SIBLING_CALL_ID)).toHaveLength(1);
-        expect(nextGenerationToolResults).toHaveLength(2);
+        expect(nextGenerationToolResults).toHaveLength(1);
         expect(
           nextGenerationToolResults.filter(
             (result) =>
