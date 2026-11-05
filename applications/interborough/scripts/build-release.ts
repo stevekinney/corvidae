@@ -229,7 +229,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
   try {
     const deadline = now() + 20_000;
     const link = join(home, 'plugins', 'node_modules');
-    while (Date.now() < deadline) {
+    while (now() < deadline) {
       try {
         await lstat(link);
         break;
@@ -263,7 +263,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       throw new Error('Prebuilt inspector is missing');
     let listing: Record<string, unknown> | undefined;
     let snapshot: Record<string, unknown> | undefined;
-    while (Date.now() < deadline) {
+    while (now() < deadline) {
       try {
         const response = await fetch(`http://127.0.0.1:${port}/host/plugins`);
         if (response.ok) {
