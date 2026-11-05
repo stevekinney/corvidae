@@ -104,6 +104,8 @@ export async function buildDocumentWorkflowDefinition(
         case 'activity':
           // The activity itself, not its name: `ctx.run` reads the retry policy and the
           // per-attempt timeout from the activity it is given, and a name carries neither.
+          // `step` is already the document index on the activity request, including every retry;
+          // wrapping this generator would interfere with the activity retry state machine.
           previous = yield* context.run(activities.get(step.handler)!, {
             input: step.input ?? null,
             trigger: firedBy,

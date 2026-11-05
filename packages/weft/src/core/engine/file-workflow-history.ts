@@ -71,6 +71,14 @@ async function isFileWorkflow(
   workflowId: string,
   surfaceSourceErrors = false,
 ): Promise<boolean> {
+  const cached = internals.workflowTypeByWorkflowId?.get(workflowId);
+  if (
+    cached !== undefined &&
+    !internals.sources.byName.has(cached.type) &&
+    !internals.sources.resolved.has(cached.type)
+  ) {
+    return isTaggedFileWorkflow(internals.workflowDefinitionsByName.get(cached.type));
+  }
   const identity = await workflowIdentity(internals, workflowId);
   if (identity === undefined) return false;
   try {
