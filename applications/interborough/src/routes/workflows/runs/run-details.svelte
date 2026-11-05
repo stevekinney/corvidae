@@ -16,7 +16,7 @@
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { formatDuration } from '../../../lib/format/index.ts';
-  import { router } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { classifyRevisionAgainstActive } from '../../../lib/workflow-revision.ts';
   import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
@@ -194,7 +194,7 @@
   {#if workflowOrigin?.kind === 'agent-run'}
     <span data-testid="run-lineage">
       An agent's tool call · <span>{workflowOrigin.agentId}</span> ·
-      <a href={router.href(`/runs/${workflowOrigin.runId}`)}>Calling run</a>
+      <a href={router.href(workflowDetailPath(workflowOrigin.runId))}>Calling run</a>
     </span>
   {:else}
     <ol class="ib-run-lineage" data-testid="run-lineage">

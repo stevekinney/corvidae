@@ -215,6 +215,8 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.workflows.impact', 'shared'],
       ['bureau.workflows.runs.list', 'owner-collection'],
       ['bureau.workflows.runs.get', 'owner'],
+      ['bureau.workflows.runs.cancel', 'owner'],
+      ['bureau.workflows.runs.history', 'owner'],
       ['bureau.workflows.start', 'shared'],
       ['bureau.workflows.signal', 'caller-create'],
     ],

@@ -961,7 +961,7 @@ export const workflowsRunsCancelOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const workflows = workflowsFor(host, principal, 'bureau.workflows:write', 'run', input.runId);
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'run', input.runId);
     if (
       principal.method !== 'unauthenticated' &&
       principal.workspace !== undefined &&
@@ -984,8 +984,14 @@ export const workflowsRunsCancelOperation = defineOperation<
 });
 
 const runsHistoryInput = z.object({
-  runId: z.string().min(1),
-  limit: z.number().int().min(1).max(500).optional(),
+  runId: z.string().min(1).describe('The identifier of the workflow instance to inspect.'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe('The maximum number of sanitized events to return.'),
 });
 
 export const workflowsRunsHistoryOperation = defineOperation<

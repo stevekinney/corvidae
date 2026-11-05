@@ -13,7 +13,7 @@
   import { getClient } from '../../lib/client.ts';
   import { formatDuration, formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router, workflowRunPath } from '../../lib/router.svelte.ts';
+  import { router, workflowDetailPath, workflowRunPath } from '../../lib/router.svelte.ts';
   import { listWorkflowFileRuns } from '../../lib/workflow-files.ts';
   import { workflowRunsPath } from '../../lib/workflow-type-paths.ts';
   import { workflowStatusBadge } from '../workflows/list/workflow-status-badge.ts';
@@ -166,7 +166,7 @@
               Not recorded
             {:else if origin.kind === 'agent-run'}
               An agent's tool call · {origin.agentId} ·
-              <a href={router.href(`/runs/${origin.runId}`)}>Calling run</a>
+              <a href={router.href(workflowDetailPath(origin.runId))}>Calling run</a>
             {:else}
               {STARTED_BY_LABELS[origin.kind]}
             {/if}

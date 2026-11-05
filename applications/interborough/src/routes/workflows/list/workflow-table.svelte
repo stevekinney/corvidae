@@ -42,7 +42,7 @@
   import type { WorkflowSummary } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
-  import { router, workflowRunPath } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath, workflowRunPath } from '../../../lib/router.svelte.ts';
   import type { RevisionActiveComparison } from '../../../lib/workflow-revision.ts';
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import RevisionComparisonBadge from '../revision-comparison-badge.svelte';
@@ -188,7 +188,7 @@
                   >
                   · {workflowOrigin.agentId}
                 </span>
-                <a href={router.href(`/runs/${workflowOrigin.runId}`)}>Calling run</a>
+                <a href={router.href(workflowDetailPath(workflowOrigin.runId))}>Calling run</a>
               </span>
             {/if}
           </span>

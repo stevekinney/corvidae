@@ -182,7 +182,7 @@ function recordedOrigin(
         kind: 'agent-run',
         agentName: recordedText(recorded, 'agentId') ?? '',
         runId,
-        href: `/runs/${runId}`,
+        href: workflowDetailPath(runId),
       };
     }
     case 'goal': {

@@ -17,7 +17,7 @@ afterEach(async () => {
 const definition = {
   agent: 'writer',
   trigger: { kind: 'signal', name: 'workspace-go' },
-  steps: [AGENT_STEP],
+  steps: [{ kind: 'await-signal', signal: 'workspace-hold' }, AGENT_STEP],
 };
 const cases = [
   ['bureau.workflows.create', 'administrator'],
@@ -35,6 +35,8 @@ const cases = [
   ['bureau.workflows.signal', 'shared'],
   ['bureau.workflows.runs.list', 'private-list'],
   ['bureau.workflows.runs.get', 'private-get'],
+  ['bureau.workflows.runs.cancel', 'private-get'],
+  ['bureau.workflows.runs.history', 'private-get'],
 ] as const;
 
 for (const [operation, access] of cases) {
@@ -59,7 +61,11 @@ for (const [operation, access] of cases) {
     const input: Record<string, unknown> =
       operation === 'bureau.workflows.list' || operation === 'bureau.workflows.runs.list'
         ? {}
-        : operation === 'bureau.workflows.runs.get'
+        : [
+              'bureau.workflows.runs.get',
+              'bureau.workflows.runs.cancel',
+              'bureau.workflows.runs.history',
+            ].includes(operation)
           ? { runId }
           : operation === 'bureau.workflows.signal'
             ? { name: 'workspace-go', payload: { caller: 'new private run' } }
