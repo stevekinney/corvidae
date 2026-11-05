@@ -27,6 +27,7 @@ async function releaseFixture(
       | 'malformed-html';
   } = {},
 ) {
+  console.info(`runtime failure fixture: ${runtimeFailure}`);
   const root = await mkdtemp(join(tmpdir(), 'interborough-release-fixture-'));
   const source = join(root, 'source');
   const dependencies = join(root, 'dependencies');
@@ -167,7 +168,6 @@ async function expectRuntimeFailure(
   runtimeFailure: NonNullable<Parameters<typeof releaseFixture>[0]>['runtimeFailure'],
   message: string,
 ) {
-  console.info(`runtime failure fixture: ${runtimeFailure}`);
   const fixture = await releaseFixture({ runtimeFailure });
   const output = await mkdtemp(join(tmpdir(), `interborough-release-${runtimeFailure}-`));
   let clock = 0;
