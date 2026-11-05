@@ -722,6 +722,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         for (const variable of [
           'INTERBOROUGH_SECRET_APPROVAL_SECRET',
           'INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY',
+          'INTERBOROUGH_SECRET_DELEGATION_SECRET',
         ]) {
           if (environment[variable] === undefined || environment[variable] === '') {
             throw new Error(`${variable} is not set. Remote mode needs it on every host.`);

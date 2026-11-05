@@ -994,6 +994,21 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         await store.issueGrant(rootGrant);
         chain = [rootGrant];
       }
+    } else if (root !== undefined && chain.length > 0) {
+      const terminal = chain.at(-1)!;
+      const rootLoad = await store.loadGrant(`delegation:root:${terminal.parentRunId}`);
+      if (rootLoad.status !== 'found') {
+        return {
+          status: 'rejected',
+          code: 'delegation-invalid',
+          reason: `root grant is ${rootLoad.status}`,
+        };
+      }
+      const rootVerification = verifyDelegationGrant(rootLoad.grant, options.secret, now);
+      if (!rootVerification.valid) {
+        return { status: 'rejected', code: 'delegation-invalid', reason: rootVerification.reason };
+      }
+      chain = [...chain, rootLoad.grant];
     }
     const parentGrant = chain[0];
     const authority =

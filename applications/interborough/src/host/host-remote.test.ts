@@ -34,6 +34,7 @@ function remoteVariables(server: S3TestServer): Record<string, string> {
     S3_REGION: client.region,
     S3_ACCESS_KEY_ID: client.accessKeyId,
     S3_SECRET_ACCESS_KEY: client.secretAccessKey,
+    INTERBOROUGH_SECRET_DELEGATION_SECRET: 'delegation-secret-for-the-test-0123456789',
   };
 }
 
@@ -102,6 +103,32 @@ describe('remote mode needs the answer encryption key (COR-1920)', () => {
     const message = (failure as Error).message;
     expect(message).toContain('INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY');
     expect(message).not.toContain('never-shown');
+    const listener = Bun.serve({ port, fetch: () => new Response() });
+    await listener.stop(true);
+  });
+});
+
+describe('remote mode needs the delegation secret', () => {
+  test('stops before listening when INTERBOROUGH_SECRET_DELEGATION_SECRET is unset', async () => {
+    const server = createS3TestServer();
+    servers.push(server);
+    const port = await freePort();
+    const { INTERBOROUGH_SECRET_DELEGATION_SECRET: _delegation, ...environment } = {
+      ...remoteVariables(server),
+      INTERBOROUGH_SECRET_APPROVAL_SECRET: 'approval-secret-for-the-test-0123456789',
+      INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY: TEST_ANSWER_ENCRYPTION_KEY,
+    };
+
+    const failure = await startHost({ environment, port }).then(
+      (host) => {
+        hosts.push(host);
+        return undefined;
+      },
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('INTERBOROUGH_SECRET_DELEGATION_SECRET');
     const listener = Bun.serve({ port, fetch: () => new Response() });
     await listener.stop(true);
   });

@@ -1770,6 +1770,9 @@ describe('delegation grants', () => {
       parents: {
         'parent-1': { agentName: 'planner', live: true },
         'child-a': { agentName: 'worker', live: true },
+        'child-b': { agentName: 'worker', live: true },
+        'child-c': { agentName: 'worker', live: true },
+        'child-d': { agentName: 'worker', live: true },
         'grandchild-a': { agentName: 'worker', live: true },
         'great-grandchild-a': { agentName: 'worker', live: true },
       },
@@ -1815,6 +1818,24 @@ describe('delegation grants', () => {
         childRunId: 'depth-exhausted',
       }),
     ).toMatchObject({ outcome: 'rejected', code: 'depth-exhausted' });
+
+    const descendants = ['child-a', 'child-b', 'child-c', 'child-d'].flatMap((parent) =>
+      Array.from({ length: 4 }, (_, index) => ({
+        parentRunId: parent,
+        agentName: 'worker',
+        input: 'x',
+        childRunId: `${parent}-grandchild-${index}`,
+      })),
+    );
+    const descendantResults = [];
+    for (const request of descendants) {
+      descendantResults.push(await fixture.topology.children.dispatch(request));
+    }
+    expect(descendantResults.filter((result) => result.outcome === 'started')).toHaveLength(10);
+    expect(descendantResults.at(-1)).toMatchObject({
+      outcome: 'rejected',
+      code: 'budget-exhausted',
+    });
   });
 
   it('issues a signed grant for a top-level dispatch and discloses only what its policy allows', async () => {
