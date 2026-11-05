@@ -54,6 +54,7 @@ export type AssetRejectionCode =
   | 'fetch-failed'
   | 'held'
   | 'interrupted'
+  | 'invalid-file-name'
   | 'media-facts-unmeasured'
   | 'media-type-mismatch'
   | 'media-type-not-allowed'
@@ -153,6 +154,7 @@ interface AssetDescriptorFields {
   readonly digest: string | undefined;
   /** The detected media type (or, before detection, the declared one). */
   readonly mediaType: string | undefined;
+  readonly fileName: string | undefined;
   readonly modality: Modality | undefined;
   readonly mimeFamily: MimeFamily | undefined;
   readonly byteLength: number | undefined;
@@ -218,6 +220,8 @@ export interface AssetAdmissionRequest {
   readonly source: AssetAdmissionSource;
   /** The caller's claim; admission compares it against the detected media type. */
   readonly declaredMediaType?: string | undefined;
+  /** Optional caller-provided name retained with the immutable asset descriptor. */
+  readonly fileName?: string | undefined;
   /** Additional principals allowed to read the asset. The admitting principal always owns it. */
   readonly readers?: readonly string[] | undefined;
   /** Overrides the policy's default retention for this asset. */

@@ -51,6 +51,7 @@ const REFUSED_TOOLS: Readonly<Record<string, string>> = Object.freeze({
   'bureau:workflows-runs-cancel': 'cancels durable workflow runs',
   'bureau:child-runs-dispatch': 'dispatches durable child runs',
   'bureau:child-runs-cancel': 'cancels durable child runs',
+  'bureau:assets-publish': 'publishes managed assets',
   'settings-update': 'changes the deployment’s settings',
 });
 

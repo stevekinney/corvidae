@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MemoryStorage } from '@lostgradient/storage';
-import type { GenerateContext, GenerateFunction } from '@lostgradient/operative';
+import {
+  withBackendDescriptors,
+  type GenerateContext,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { createTool, type Tool } from 'armorer';
 import { z } from 'zod';
@@ -12,6 +16,9 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from './assets/storage';
 import { createBureau } from './create-bureau';
+import { createBureauHandler } from './http/create-bureau-handler';
+import { as, authentication } from './http/management/management-fixtures.test-support';
+import { base64Of, pdfBytes } from './testing/asset-fixtures.test-support';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import {
   agentFileText,
@@ -20,6 +27,7 @@ import {
 } from './testing/agent-file-fixtures.test-support';
 import type { AgentDefinitions } from './agent-catalog';
 import type { Bureau } from './types';
+import type { WorkspaceMembershipOptions } from './http/workspace-principal';
 
 type Script = GenerateFunction;
 const roots: string[] = [];
@@ -66,13 +74,19 @@ async function open(options: {
   readonly parent: Script;
   readonly child?: Script;
   readonly childTools?: string;
+  readonly parentTools?: string;
   readonly childApproval?: string;
   readonly childModel?: boolean;
   readonly agentTools?: Readonly<Record<string, Tool>>;
   readonly childAgents?: string;
   readonly approval?: string;
   readonly rootAuthority?: { readonly levels: number; readonly concurrentChildren: number };
-}): Promise<{ bureau: Bureau<AgentDefinitions>; directory: string }> {
+  readonly workspace?: WorkspaceMembershipOptions;
+}): Promise<{
+  bureau: Bureau<AgentDefinitions>;
+  directory: string;
+  handler: (request: Request) => Promise<Response>;
+}> {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-file-child-tools-'));
   roots.push(directory);
   const approval =
@@ -88,6 +102,7 @@ async function open(options: {
   const parentText = agentFileText({
     model: KNOWN_MODEL,
     tools:
+      options.parentTools ??
       '[bureau:discover-agents, bureau:child-runs-dispatch, bureau:child-runs-list, bureau:child-runs-get, bureau:child-runs-wait, bureau:child-runs-cancel]',
     ...(options.childAgents === undefined ? {} : { childAgents: options.childAgents }),
   }).replace('---\n', `---\n${approval}`);
@@ -127,6 +142,7 @@ async function open(options: {
       options.child ?? (async () => ({ content: 'child done', toolCalls: [] })),
   };
   const bureau = await createBureau<AgentDefinitions>({
+    id: 'agent-file-child-tools',
     agents: {},
     durable: true,
     storage: new MemoryStorage(),
@@ -135,8 +151,15 @@ async function open(options: {
       directory,
       options.agentTools === undefined ? {} : { tools: options.agentTools },
     ),
-    models: { generate: (descriptor) => async (context) => scripts[descriptor.model]!(context) },
+    models: {
+      generate: (descriptor) =>
+        withBackendDescriptors(
+          async (context) => scripts[descriptor.model]!(context),
+          [descriptor],
+        ),
+    },
     requestAuthorityValidator: () => true,
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.rootAuthority === undefined
       ? {}
       : {
@@ -156,7 +179,14 @@ async function open(options: {
   if (bureau.agents.find('parent') === undefined)
     throw new Error(JSON.stringify(bureau.agents.list()));
   bureaus.push(bureau);
-  return { bureau, directory };
+  return {
+    bureau,
+    directory,
+    handler: createBureauHandler(bureau, {
+      authentication,
+      ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
+    }),
+  };
 }
 
 describe('registered child-run tools on file agents', () => {
@@ -518,5 +548,337 @@ describe('registered child-run tools on file agents', () => {
       }),
     ).toBeUndefined();
     await task.abort('test cleanup');
+  });
+
+  it('refuses missing and unreadable asset refs before any child record is written', async () => {
+    for (const principal of ['alice', 'bob']) {
+      let dispatched = false;
+      const { bureau } = await open({
+        childAgents: '[worker]',
+        approval: 'bureau:child-runs-dispatch=never',
+        parent: async () => {
+          if (dispatched) return { content: 'done', toolCalls: [] };
+          dispatched = true;
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__child-runs-dispatch',
+                arguments: { agent: 'worker', input: 'x', assets: ['missing-asset'] },
+              },
+            ],
+          };
+        },
+      });
+      const task = await bureau.tasks.start('parent', 'missing asset', { principal });
+      await task.result();
+      expect(await bureau.children.list(task.id)).toEqual([]);
+    }
+  });
+
+  it('rechecks workspace authority for registered asset reads and child preflight', async () => {
+    const owner = 'workspace:alice';
+    const service = 'workspace:service';
+    const workspace: WorkspaceMembershipOptions = {
+      workspaceId: 'workspace-a',
+      resolveMembership: async ({ subject }) =>
+        subject === 'alice'
+          ? {
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: 'alice',
+              actorKind: 'user',
+              owner,
+              membershipRevision: '1',
+              capabilities: ['workspace:use'],
+            }
+          : subject === 'service'
+            ? {
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: 'service',
+                actorKind: 'service',
+                owner: service,
+                membershipRevision: '1',
+                capabilities: ['workspace:use'],
+              }
+            : null,
+      resolveOwnerMembership: async (candidate) =>
+        candidate === owner
+          ? {
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: 'alice',
+              actorKind: 'user',
+              owner,
+              membershipRevision: '1',
+              capabilities: ['workspace:use'],
+            }
+          : candidate === service
+            ? {
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: 'service',
+                actorKind: 'service',
+                owner: service,
+                membershipRevision: '1',
+                capabilities: ['workspace:use'],
+              }
+            : null,
+    };
+    let assetId: string | undefined;
+    let readChecked = false;
+    let dispatchChecked = false;
+    const { bureau } = await open({
+      workspace,
+      parentTools: '[bureau:assets-read, bureau:child-runs-dispatch]',
+      childAgents: '[worker]',
+      approval: 'bureau:child-runs-dispatch=never',
+      parent: async (context) => {
+        if (!readChecked) {
+          readChecked = true;
+          return {
+            content: '',
+            toolCalls: [{ name: 'bureau__assets-read', arguments: { assetId } }],
+          };
+        }
+        if (!dispatchChecked) {
+          expect(parsedResult(context)).toEqual({ status: 'not-found' });
+          dispatchChecked = true;
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__child-runs-dispatch',
+                arguments: { agent: 'worker', input: 'inspect', assets: [assetId] },
+              },
+            ],
+          };
+        }
+        expect(parsedResult(context)).toMatchObject({
+          status: 'refused',
+          reason: 'An asset reference is unavailable.',
+        });
+        return { content: 'service denied', toolCalls: [] };
+      },
+    });
+    const shared = await bureau.assets!.admit(
+      {
+        source: { kind: 'inline', bytes: new TextEncoder().encode('private') },
+        readers: [service],
+      },
+      { id: owner },
+    );
+    await shared.work.result();
+    assetId = shared.assetId;
+    const plain = await bureau.assets!.inspect(shared.assetId, { id: service });
+    expect(plain.authorization).toEqual({ access: 'reader' });
+    const resolved = await bureau.assets!.resolve({ assetId: shared.assetId }, { id: service });
+    expect(resolved.content.kind).toBe('bytes');
+    const task = await bureau.tasks.start('parent', 'service asset denial', { principal: service });
+    const result = await task.result();
+    expect(result.content).toBe('service denied');
+    expect(await bureau.children.list(task.id)).toEqual([]);
+  });
+
+  it('publishes through the registered tool, serves the owner over HTTP, and resolves an asset in a child transcript', async () => {
+    let published: string | undefined;
+    let dispatched = false;
+    let childUser: unknown;
+    let childSources: unknown;
+    const { bureau, handler } = await open({
+      parentTools: '[bureau:assets-publish, bureau:child-runs-dispatch]',
+      childAgents: '[worker]',
+      approval: 'bureau:assets-publish=never,bureau:child-runs-dispatch=never',
+      child: async (context) => {
+        childUser = context.conversation
+          .getMessages()
+          .find((message) => message.role === 'user')?.content;
+        childSources = context.resolvedSources;
+        return { content: 'child done', toolCalls: [] };
+      },
+      parent: async (context) => {
+        if (lastResult(context) === undefined) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__assets-publish',
+                arguments: {
+                  base64: base64Of(pdfBytes(1)),
+                  mediaType: 'application/pdf',
+                  fileName: 'payload.pdf',
+                },
+              },
+            ],
+          };
+        }
+        if (!dispatched) {
+          const result = parsedResult(context) as { status?: string; assetId?: string };
+          expect(result.status).toBe('ok');
+          published = result.assetId;
+          dispatched = true;
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__child-runs-dispatch',
+                arguments: { agent: 'worker', input: 'inspect', assets: [published] },
+              },
+            ],
+          };
+        }
+        return { content: 'parent done', toolCalls: [] };
+      },
+    });
+    const task = await bureau.tasks.start('parent', 'publish and delegate', {
+      principal: 'api-key:alice',
+    });
+    const result = await task.result();
+    expect(result.content).toBe('parent done');
+    expect(published).toBeString();
+
+    const response = await handler(
+      new Request(`http://localhost/jsonrpc`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...as('alice-assets-key') },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'bureau.assets.get',
+          params: { assetId: published },
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const metadata = (await response.json()) as { result?: Record<string, unknown> };
+    expect(metadata).toMatchObject({
+      result: { assetId: published, mediaType: 'application/pdf', fileName: 'payload.pdf' },
+    });
+
+    const childRunId = result.steps[1]?.results[0]?.content as {
+      child?: { childRunId?: string };
+    };
+    expect(childRunId.child?.childRunId).toBeString();
+    await bureau.children.wait({
+      parentRunId: task.id,
+      childRunId: childRunId.child!.childRunId!,
+      principal: 'api-key:alice',
+    });
+    expect(childUser).toEqual([
+      { type: 'text', text: 'inspect' },
+      {
+        type: 'document',
+        mimeType: 'application/pdf',
+        name: 'payload.pdf',
+        source: { kind: 'managed-asset', assetId: published, revision: 2 },
+      },
+    ]);
+    expect(childSources).toBeInstanceOf(Map);
+    expect([...((childSources ?? new Map()) as Map<string, unknown>).values()]).toEqual([
+      expect.objectContaining({
+        outcome: 'resolved',
+        source: {
+          kind: 'inline',
+          data: base64Of(pdfBytes(1)),
+          encoding: 'base64',
+        },
+      }),
+    ]);
+  });
+
+  it('lets a child publish an asset, name it in final text, and lets the parent read it', async () => {
+    const childFinished = Promise.withResolvers<void>();
+    let dispatched = false;
+    let waited = false;
+    let read = false;
+    let childAssetId: string | undefined;
+    let childRunId: string | undefined;
+    const { bureau } = await open({
+      parentTools: '[bureau:child-runs-dispatch, bureau:child-runs-get, bureau:assets-read]',
+      childTools: '[bureau:assets-publish]',
+      childAgents: '[worker]',
+      approval: 'bureau:child-runs-dispatch=never',
+      childApproval: 'bureau:assets-publish=never',
+      child: async (context) => {
+        if (lastResult(context) === undefined) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__assets-publish',
+                arguments: { text: 'from child', mediaType: 'text/plain' },
+              },
+            ],
+          };
+        }
+        const result = parsedResult(context) as { status?: string; assetId?: string };
+        expect(result.status).toBe('ok');
+        childAssetId = result.assetId;
+        childFinished.resolve();
+        if (childAssetId === undefined) throw new Error('expected the child asset id');
+        return { content: childAssetId, toolCalls: [] };
+      },
+      parent: async (context) => {
+        if (!dispatched) {
+          dispatched = true;
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__child-runs-dispatch',
+                arguments: { agent: 'worker', input: 'publish' },
+              },
+            ],
+          };
+        }
+        if (!waited) {
+          waited = true;
+          await childFinished.promise;
+          const dispatch = parsedResult(context) as {
+            outcome?: string;
+            child?: { childRunId?: string };
+          };
+          expect(dispatch.outcome).toBe('started');
+          childRunId = dispatch.child?.childRunId;
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__child-runs-get',
+                arguments: { childRunId: dispatch.child?.childRunId },
+              },
+            ],
+          };
+        }
+        if (!read) {
+          const settled = parsedResult(context) as {
+            status?: string;
+            child?: { status?: string; outcome?: { content?: string } };
+          };
+          if (settled.child?.status !== 'completed') {
+            return {
+              content: '',
+              toolCalls: [{ name: 'bureau__child-runs-get', arguments: { childRunId } }],
+            };
+          }
+          read = true;
+          const assetId = settled.child.outcome?.content;
+          expect(assetId).toBeString();
+          return {
+            content: '',
+            toolCalls: [{ name: 'bureau__assets-read', arguments: { assetId } }],
+          };
+        }
+        expect(parsedResult(context)).toMatchObject({ status: 'ok', content: 'from child' });
+        return { content: 'parent read child asset', toolCalls: [] };
+      },
+    });
+    const task = await bureau.tasks.start('parent', 'child publishes', {
+      principal: 'api-key:alice',
+    });
+    const result = await task.result();
+    expect(result.content).toBe('parent read child asset');
+    expect(childAssetId).toBeString();
   });
 });

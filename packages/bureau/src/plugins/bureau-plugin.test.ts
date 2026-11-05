@@ -1,6 +1,6 @@
 /**
  * COR-1890 — Bureau's own tools reach agents as the built-in `bureau` plugin's contributions:
- * `bureau:discover-agents`, five `bureau:child-runs-*`, and the eleven `bureau:workflows-*` tools. The plugin is required, holds the
+ * `bureau:discover-agents`, five `bureau:child-runs-*`, two asset tools, and the eleven `bureau:workflows-*` tools. The plugin is required, holds the
  * name `bureau` before any other plugin, and the events its tools cause carry `source: 'bureau'`.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -75,6 +75,7 @@ const CHILD_RUN_TOOLS = [
   'child-runs-wait',
   'child-runs-cancel',
 ];
+const ASSET_TOOLS = ['assets-publish', 'assets-read'];
 
 function twin(source: BureauPluginEntry['source'], location: string): BureauPluginEntry {
   return {
@@ -112,7 +113,7 @@ describe('the built-in bureau plugin', () => {
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([]);
     expect(listing?.contributions.map(({ kind, id }) => `${kind} ${id}`).toSorted()).toEqual(
-      ['discover-agents', ...CHILD_RUN_TOOLS, ...WORKFLOW_TOOLS]
+      ['discover-agents', ...CHILD_RUN_TOOLS, ...ASSET_TOOLS, ...WORKFLOW_TOOLS]
         .map(
           (name) =>
             `tool bureau:${name}@${name === 'discover-agents' ? BUREAU_PLUGIN_VERSION : '1.0.0'}`,
