@@ -98,6 +98,7 @@ function containsControlCharacter(value: string): boolean {
 function validateFileName(fileName: string | undefined): void {
   if (fileName === undefined) return;
   if (
+    fileName.length === 0 ||
     fileName === '.' ||
     fileName === '..' ||
     fileName.includes('/') ||

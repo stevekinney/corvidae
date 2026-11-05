@@ -27,6 +27,7 @@ import {
 } from './testing/agent-file-fixtures.test-support';
 import type { AgentDefinitions } from './agent-catalog';
 import type { Bureau } from './types';
+import type { WorkspaceMembershipOptions } from './http/workspace-principal';
 
 type Script = GenerateFunction;
 const roots: string[] = [];
@@ -80,6 +81,7 @@ async function open(options: {
   readonly childAgents?: string;
   readonly approval?: string;
   readonly rootAuthority?: { readonly levels: number; readonly concurrentChildren: number };
+  readonly workspace?: WorkspaceMembershipOptions;
 }): Promise<{
   bureau: Bureau<AgentDefinitions>;
   directory: string;
@@ -157,6 +159,7 @@ async function open(options: {
         ),
     },
     requestAuthorityValidator: () => true,
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.rootAuthority === undefined
       ? {}
       : {
@@ -176,7 +179,14 @@ async function open(options: {
   if (bureau.agents.find('parent') === undefined)
     throw new Error(JSON.stringify(bureau.agents.list()));
   bureaus.push(bureau);
-  return { bureau, directory, handler: createBureauHandler(bureau, { authentication }) };
+  return {
+    bureau,
+    directory,
+    handler: createBureauHandler(bureau, {
+      authentication,
+      ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
+    }),
+  };
 }
 
 describe('registered child-run tools on file agents', () => {
@@ -564,6 +574,104 @@ describe('registered child-run tools on file agents', () => {
       await task.result();
       expect(await bureau.children.list(task.id)).toEqual([]);
     }
+  });
+
+  it('rechecks workspace authority for registered asset reads and child preflight', async () => {
+    const owner = 'workspace:alice';
+    const service = 'workspace:service';
+    const workspace: WorkspaceMembershipOptions = {
+      workspaceId: 'workspace-a',
+      resolveMembership: async ({ subject }) =>
+        subject === 'alice'
+          ? {
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: 'alice',
+              actorKind: 'user',
+              owner,
+              membershipRevision: '1',
+              capabilities: ['workspace:use'],
+            }
+          : subject === 'service'
+            ? {
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: 'service',
+                actorKind: 'service',
+                owner: service,
+                membershipRevision: '1',
+                capabilities: ['workspace:use'],
+              }
+            : null,
+      resolveOwnerMembership: async (candidate) =>
+        candidate === owner
+          ? {
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: 'alice',
+              actorKind: 'user',
+              owner,
+              membershipRevision: '1',
+              capabilities: ['workspace:use'],
+            }
+          : candidate === service
+            ? {
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: 'service',
+                actorKind: 'service',
+                owner: service,
+                membershipRevision: '1',
+                capabilities: ['workspace:use'],
+              }
+            : null,
+    };
+    let assetId: string | undefined;
+    let readChecked = false;
+    let dispatchChecked = false;
+    const { bureau } = await open({
+      workspace,
+      parentTools: '[bureau:assets-read, bureau:child-runs-dispatch]',
+      childAgents: '[worker]',
+      approval: 'bureau:child-runs-dispatch=never',
+      parent: async (context) => {
+        if (!readChecked) {
+          readChecked = true;
+          return {
+            content: '',
+            toolCalls: [{ name: 'bureau__assets-read', arguments: { assetId } }],
+          };
+        }
+        if (!dispatchChecked) {
+          expect(parsedResult(context)).toEqual({ status: 'not-found' });
+          dispatchChecked = true;
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__child-runs-dispatch',
+                arguments: { agent: 'worker', input: 'inspect', assets: [assetId] },
+              },
+            ],
+          };
+        }
+        expect(parsedResult(context)).toMatchObject({
+          status: 'refused',
+          reason: 'An asset reference is unavailable.',
+        });
+        return { content: 'service denied', toolCalls: [] };
+      },
+    });
+    const shared = await bureau.assets!.admit(
+      { source: { kind: 'inline', bytes: new TextEncoder().encode('private') } },
+      { id: owner },
+    );
+    await shared.work.result();
+    assetId = shared.assetId;
+    const task = await bureau.tasks.start('parent', 'service asset denial', { principal: service });
+    const result = await task.result();
+    expect(result.content).toBe('service denied');
+    expect(await bureau.children.list(task.id)).toEqual([]);
   });
 
   it('publishes through the registered tool, serves the owner over HTTP, and resolves an asset in a child transcript', async () => {

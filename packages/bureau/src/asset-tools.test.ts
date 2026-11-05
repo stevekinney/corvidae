@@ -1,5 +1,6 @@
 /** COR-2032 — registered managed-asset tools use the persisted run owner and bounded content. */
 import { createToolbox } from 'armorer';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAssetTools, managedAssetPart } from './asset-tools';
@@ -159,6 +160,16 @@ describe('registered managed-asset tools', () => {
     expect(await fixture.assets.auditRecords()).not.toContainEqual(
       expect.objectContaining({ type: 'asset.admission.started' }),
     );
+    const direct = await rejectionOf(
+      fixture.assets.admit(
+        {
+          source: { kind: 'inline', bytes: textBytes('payload') },
+          fileName: '',
+        },
+        { id: 'alice' },
+      ),
+    );
+    expect(direct).toMatchObject({ code: 'invalid-file-name' });
   });
 
   it('hides an owner asset from a different A2A owner', async () => {
