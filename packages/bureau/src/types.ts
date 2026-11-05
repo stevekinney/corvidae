@@ -1632,6 +1632,8 @@ export interface BureauRunOptions {
   signal?: AbortSignal;
   traceContext?: unknown;
   withTraceContext?: <T>(parentContext: unknown, fn: () => Promise<T>) => Promise<T>;
+  /** Authenticated request authority forwarded to child tool execution. */
+  requestContext?: import('armorer').ToolRequestContext;
   /**
    * AB-241 — the authenticated principal attributed with this run, forwarded
    * into `AgentRunContext.principal`. The dispatch records it as a task does —

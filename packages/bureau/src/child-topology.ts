@@ -107,6 +107,7 @@ import {
 } from '@lostgradient/operative';
 import type { WorkflowState } from '@lostgradient/weft';
 import type { MultiModalContent } from 'conversationalist';
+import type { ToolRequestContext } from 'armorer';
 
 import {
   type BureauChildChat,
@@ -180,6 +181,8 @@ export interface BureauChildDispatchRequest<TName extends string = string> {
    * recorded on the child's task as `origin.toolCallId`. A non-empty string of at most 256 bytes.
    */
   readonly toolCallId?: string | undefined;
+  /** The authenticated request authority inherited by the child run. */
+  readonly requestContext?: ToolRequestContext | undefined;
 }
 
 /** The grant a dispatch issued, as far as its disclosure policy allows. */
@@ -331,6 +334,7 @@ export interface ChildTopologyStart {
   readonly delegatedToolCapabilities?: readonly string[] | undefined;
   /** The origin of the child's task: the parent run that dispatched it (COR-1868). */
   readonly taskOrigin: AgentTaskOrigin;
+  readonly requestContext?: ToolRequestContext | undefined;
 }
 
 export interface ChildAuditEntry {
@@ -372,6 +376,8 @@ export interface ChildTopologyDependencies {
     agentName: string,
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   readonly startChild: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
+  /** Registers the child's request authority for approvals and recovery while it is live. */
+  readonly registerRequestContext?: (runId: string, context: ToolRequestContext) => void;
   readonly getEngine: () => ChildTopologyEngine | undefined;
   readonly cancelDurable: (workflowId: string) => Promise<CancelDurableRunOutcome>;
   readonly validateInput: (input: unknown) => void;
@@ -1569,7 +1575,15 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
           agentName: parent.agentName,
           ...(request.toolCallId === undefined ? {} : { toolCallId: request.toolCallId }),
         },
+        ...(request.requestContext === undefined ? {} : { requestContext: request.requestContext }),
       });
+      if (request.requestContext !== undefined) {
+        dependencies.registerRequestContext?.(childRunId, {
+          ...request.requestContext,
+          agentId: request.agentName,
+          runId: childRunId,
+        });
+      }
     } catch (error) {
       const reason = describeError(error);
       await settle(childRunId, 'failed', { reason });

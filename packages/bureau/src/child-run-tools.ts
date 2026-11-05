@@ -80,6 +80,9 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
           ? {}
           : { parentCancellation: input.parentCancellation }),
         ...(context?.meta?.callId === undefined ? {} : { toolCallId: context.meta.callId }),
+        ...(context?.requestContext === undefined
+          ? {}
+          : { requestContext: context.requestContext }),
         ...(calling.principal === undefined ? {} : { principal: calling.principal }),
       });
       return outcome;
