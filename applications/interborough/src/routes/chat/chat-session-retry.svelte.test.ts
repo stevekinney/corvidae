@@ -15,6 +15,7 @@ import {
   CINDER_NOTES_METADATA_KEY,
   resolveMessageNotes,
   type ConversationHistory,
+  type MessageNoteInfo,
 } from '@lostgradient/chat';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -113,7 +114,7 @@ function bureau(thread: readonly WireMessage[], forgetAnswer: () => Response | u
     // The rows the start sends that the thread does not hold yet: the person's new message.
     const held = new Set(state.thread.map((message) => message.id));
     const added = ((JSON.parse(sent) as { messages?: WireMessage[] }).messages ?? []).filter(
-      (message) => !held.has(message.id) && message.role === 'user',
+      (message) => !held.has(message.id) && message['role'] === 'user',
     );
     const reply: WireMessage = { id: 'run-2:step:0', role: 'assistant', content: 'Refunded.' };
     state.thread = [...state.thread, ...added, reply];
@@ -299,7 +300,7 @@ describe('running the last turn again', () => {
   });
 
   test('keeps the failed attempt’s status line on its row through the run’s snapshot and a thread read again', async () => {
-    const line = {
+    const line: MessageNoteInfo = {
       kind: 'stopped',
       id: 'stopped:task-1',
       reason: 'The model provider dropped the connection.',
