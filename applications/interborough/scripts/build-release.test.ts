@@ -79,6 +79,7 @@ const root = dirname(dirname(process.argv[1]));
 const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
 const behavior = ${JSON.stringify(options.runtimeFailure ?? 'success')};
 if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
+if (behavior === 'missing-inspector') process.exit(0);
 if (behavior !== 'missing-link') {
   await mkdir(join(home, 'plugins'), { recursive: true });
   await symlink(behavior === 'wrong-link' ? home : runtime, join(home, 'plugins', 'node_modules'));
