@@ -80,6 +80,7 @@ async function renderWorkersRoute(
 
 describe('Workers route — Task queues tab, queue selection and dead-letter clear', () => {
   test('no queue selected renders QueueListView', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { queues: [queue({ queue: 'payments' })] });
 
@@ -497,6 +498,7 @@ describe('Workers route — a dead letter on a queue that is not listed', () => 
 
 describe('Workers route — Diagnostics tab', () => {
   test('renders DiagnosticsView with the fetched items and summary', async () => {
+    resetLocation('/health/workers?tab=diagnostics');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       diagnosticsItems: [diagnosticItem({ kind: 'retry-storm', queue: 'payments' })],
@@ -517,6 +519,7 @@ describe('Workers route — Diagnostics tab', () => {
 
   test('a heartbeat 60–120s old reads stale in task detail, as it does in the diagnostics row', async () => {
     const now = Date.now();
+    resetLocation('/health/workers?tab=diagnostics');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       diagnosticsItems: [diagnosticItem({ kind: 'stale-inflight', queue: 'payments' })],
@@ -548,6 +551,7 @@ describe('Workers route — Diagnostics tab', () => {
   });
 
   test('a zeroed summary renders the "No diagnostics" empty state', async () => {
+    resetLocation('/health/workers?tab=diagnostics');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
 

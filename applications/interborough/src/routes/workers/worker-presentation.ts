@@ -30,6 +30,7 @@
  * approximate client-side.
  */
 import type { WorkerSummary } from './worker-catalog-types.ts';
+import { isConnectedWorker } from './worker-model.ts';
 
 export type WorkerHealthLabel = 'Healthy' | 'Draining' | 'Drained' | 'Stale';
 export type PresentationVariant = 'success' | 'warning' | 'danger' | 'neutral';
@@ -86,15 +87,17 @@ export interface WorkersSummaryInput {
 
 /**
  * The one line under the Workers list's title, such as `3 of 4 connected · 7 running · 12 waiting ·
- * 2 failed for good`. Every listed worker counts as connected: the server lists only registered
- * workers, and a drained one (drain marker, nothing in flight) is still connected until it
- * disconnects. Running is the tasks the workers hold now.
+ * 2 failed for good`. A worker is connected while it holds a session and takes work, or finishes
+ * what it has (a draining one); one that went away or finished draining is listed but not
+ * connected. Running is the tasks the connected workers hold now.
  */
 export function workersSummaryLine(input: WorkersSummaryInput): string {
-  const connected = input.workers.length;
-  const running = input.workers.reduce((total, worker) => total + worker.inFlight, 0);
-  const parts = [`${String(connected)} of ${String(input.workers.length)} connected`];
-  parts.push(`${String(running)} running`);
+  const connected = input.workers.filter(isConnectedWorker);
+  const running = connected.reduce((total, worker) => total + worker.inFlight, 0);
+  const parts = [
+    `${String(connected.length)} of ${String(input.workers.length)} connected`,
+    `${String(running)} running`,
+  ];
   if (input.waiting !== undefined) parts.push(`${String(input.waiting)} waiting`);
   if (input.failedForGood !== undefined) {
     parts.push(`${String(input.failedForGood)} failed for good`);

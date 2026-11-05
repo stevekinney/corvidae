@@ -195,6 +195,8 @@ export const queryKeys = {
   },
   queues: {
     list: () => ['queues', 'list'] as const,
+    /** The waiting and failed-for-good tasks of one queue, for one tab of the Workers page. */
+    tasks: (queue: string, tab: string) => ['queues', 'tasks', queue, tab] as const,
   },
   diagnostics: () => ['diagnostics'] as const,
   /** `weft.alerts.list`: the alert rules firing now, read by the Alerts tab and the Health line. */

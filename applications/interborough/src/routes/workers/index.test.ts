@@ -137,6 +137,7 @@ describe('Workers route — fault title mapping', () => {
   });
 
   test('a 401 on the Task queues tab shows "Not authorized", not the internal-fault title', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethod('weft.workers.list', { items: [], deployments: [] });
     scripted.routeJsonRpcMethodError(

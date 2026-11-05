@@ -1,17 +1,16 @@
 <script lang="ts">
   /**
-   * Worker detail (plan §9.4 T5.2), the open worker of the Workers list: its status, when it last
-   * spoke, the queue it serves, the tasks it is running, and its version; Drain or Resume; the
-   * deployment it belongs to with the ramp and Promote or Roll back; the diagnostics the server
-   * reports for it; and the server-reported session, manifest and contract verification
-   * (`weft.workers.diagnostics`, COR-124).
+   * The technical details of the open worker (plan §9.4 T5.2), under the page's Advanced
+   * disclosure: its connection and activities, the deployment it belongs to with the ramp and
+   * Promote or Roll back, the diagnostics the server reports for it, and the server-reported
+   * session, manifest and contract verification (`weft.workers.diagnostics`, COR-124). The
+   * worker's name, status, actions and tasks are the detail pane's own (`worker-detail-view.svelte`).
    */
   import {
     Alert,
     Badge,
     Button,
     DescriptionList,
-    PageHeader,
     SectionHeading,
     Tooltip,
   } from '@lostgradient/cinder';
@@ -24,18 +23,12 @@
   import WorkerContractVerificationPanel from './worker-contract-verification-panel.svelte';
   import WorkerManifestPanel from './worker-manifest-panel.svelte';
   import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
-  import {
-    LONG_POLL_LIMITATION,
-    TRANSPORT_LABEL,
-    workerHealthPresentation,
-  } from './worker-presentation.ts';
+  import { LONG_POLL_LIMITATION, TRANSPORT_LABEL } from './worker-presentation.ts';
   import WorkerSessionPanel from './worker-session-panel.svelte';
 
-  interface WorkerDetailViewProps {
+  interface WorkerTechnicalDetailsProps {
     readonly worker: WorkerSummary;
     readonly adminGate: ScopeGate;
-    readonly onDrain: () => void;
-    readonly onResume: () => void;
     /** Drains every worker of the worker's deployment. */
     readonly onDrainDeployment?: (deploymentName: string) => void;
     /** Resumes the worker's deployment. */
@@ -60,8 +53,6 @@
   let {
     worker,
     adminGate,
-    onDrain,
-    onResume,
     onDrainDeployment = undefined,
     onResumeDeployment = undefined,
     deployment = undefined,
@@ -75,12 +66,7 @@
     registryLoading = false,
     registryRefreshing = false,
     registryError = null,
-  }: WorkerDetailViewProps = $props();
-
-  const presentation = $derived(workerHealthPresentation(worker));
-  const draining = $derived(worker.health === 'draining');
-  // A draining worker is finishing its tasks, a drained one has finished them: Resume undoes either.
-  const drainMarked = $derived(worker.health !== 'active');
+  }: WorkerTechnicalDetailsProps = $props();
 
   const connectionItems = $derived([
     { term: 'Queue', definition: worker.queue },
@@ -95,30 +81,7 @@
   ]);
 </script>
 
-<div class="weft-worker-detail" data-testid="worker-detail">
-  <PageHeader headingLevel={2}>
-    {#snippet title()}<span class="weft-workers-id" title={worker.id}>{worker.id}</span>{/snippet}
-    {#snippet actions()}
-      <Badge variant={presentation.variant} data-testid="worker-health">{presentation.label}</Badge>
-      {#if adminGate.disabled}
-        <Tooltip text={adminGate.title ?? ''}>
-          <Button variant="secondary" size="sm" disabled label={drainMarked ? 'Resume' : 'Drain'} />
-        </Tooltip>
-      {:else if drainMarked}
-        <Button data-changes variant="secondary" size="sm" label="Resume" onclick={onResume} />
-      {:else}
-        <Button data-changes variant="secondary" size="sm" label="Drain" onclick={onDrain} />
-      {/if}
-    {/snippet}
-  </PageHeader>
-
-  {#if draining}
-    <Alert variant="warning">
-      Draining: finishing {worker.inFlight} in-flight task{worker.inFlight === 1 ? '' : 's'},
-      accepting no new work.
-    </Alert>
-  {/if}
-
+<div class="weft-worker-detail" data-testid="worker-technical-details">
   {#if worker.transport === 'long-poll'}
     <Alert variant="info">{LONG_POLL_LIMITATION}</Alert>
   {/if}

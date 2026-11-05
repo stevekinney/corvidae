@@ -127,7 +127,7 @@ describe('Workers route while the lists are being read', () => {
     expect(workersTabs(view).length).toBe(0);
 
     queuesGate.resolve({ items: [queue()] });
-    await waitFor(() => expect(workersTabs(view).length).toBe(5));
+    expect(await view.findByTestId('workers-advanced')).not.toBeNull();
   });
 
   test('stays the loading skeleton, not the sentence, until the diagnostics have been read', async () => {
@@ -144,7 +144,7 @@ describe('Workers route while the lists are being read', () => {
       items: [],
       summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
     });
-    await waitFor(() => expect(workersTabs(view).length).toBe(5));
+    expect(await view.findByTestId('workers-advanced')).not.toBeNull();
   });
 });
 
@@ -155,7 +155,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(workersTabs(view).length).toBe(5));
+    expect(await view.findByTestId('workers-advanced')).not.toBeNull();
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -165,7 +165,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(workersTabs(view).length).toBe(5));
+    expect(await view.findByTestId('workers-advanced')).not.toBeNull();
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -175,7 +175,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(workersTabs(view).length).toBe(5));
+    expect(await view.findByTestId('workers-advanced')).not.toBeNull();
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -190,7 +190,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(workersTabs(view).length).toBe(5));
+    expect(await view.findByTestId('workers-advanced')).not.toBeNull();
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -216,7 +216,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(workersTabs(view).length).toBe(5));
+    expect(await view.findByTestId('workers-advanced')).not.toBeNull();
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 });

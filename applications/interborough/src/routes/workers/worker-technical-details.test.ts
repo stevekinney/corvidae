@@ -7,11 +7,11 @@ import { HttpClientError } from '@lostgradient/weft';
 
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 import type { WorkerSummary } from './worker-catalog-types.ts';
-import WorkerDetailView from './worker-detail-view.svelte';
 import {
   MalformedWorkerDiagnosticsError,
   type WorkerManifestDiagnostics,
 } from './worker-manifest-diagnostics.ts';
+import WorkerTechnicalDetails from './worker-technical-details.svelte';
 
 function worker(overrides: Partial<WorkerSummary> = {}): WorkerSummary {
   return {
@@ -35,154 +35,9 @@ function worker(overrides: Partial<WorkerSummary> = {}): WorkerSummary {
 const OPEN_GATE: ScopeGate = { disabled: false, title: undefined };
 const DISABLED_GATE: ScopeGate = { disabled: true, title: 'Requires system:admin' };
 
-describe('WorkerDetailView — health badge and drain banner', () => {
-  test('an active worker shows Healthy or Stale (heartbeat-derived), no drain banner', () => {
-    const { getByText, queryByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'active', heartbeatAgeMs: 1_000 }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
-      },
-    });
-
-    expect(getByText('Healthy')).not.toBeNull();
-    expect(queryByText(/Draining:/)).toBeNull();
-  });
-
-  test('a draining worker shows the Draining badge and the warning callout with in-flight count', () => {
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'draining', inFlight: 3 }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
-      },
-    });
-
-    expect(getByText('Draining')).not.toBeNull();
-    expect(
-      getByText(/Draining: finishing 3 in-flight tasks, accepting no new work\./),
-    ).not.toBeNull();
-  });
-
-  test('a draining worker with exactly one in-flight task uses the singular "task" noun', () => {
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'draining', inFlight: 1 }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
-      },
-    });
-
-    expect(
-      getByText(/Draining: finishing 1 in-flight task, accepting no new work\./),
-    ).not.toBeNull();
-  });
-
-  test('a drained worker shows the Drained badge', () => {
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'drained' }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
-      },
-    });
-
-    expect(getByText('Drained')).not.toBeNull();
-  });
-
-  test('an active worker with a stale heartbeat is promoted to the Stale badge', () => {
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'active', heartbeatAgeMs: 200_000 }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
-      },
-    });
-
-    expect(getByText('Stale')).not.toBeNull();
-  });
-});
-
-describe('WorkerDetailView — drain/resume action', () => {
-  test('an active worker shows a Drain button that calls onDrain when the gate is open', async () => {
-    let drained = false;
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'active' }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {
-          drained = true;
-        },
-        onResume: () => {
-          throw new Error('must not be called');
-        },
-      },
-    });
-
-    await fireEvent.click(getByText('Drain'));
-    expect(drained).toBe(true);
-  });
-
-  test('a draining worker shows a Resume button that calls onResume when the gate is open', async () => {
-    let resumed = false;
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'draining' }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {
-          throw new Error('must not be called');
-        },
-        onResume: () => {
-          resumed = true;
-        },
-      },
-    });
-
-    await fireEvent.click(getByText('Resume'));
-    expect(resumed).toBe(true);
-  });
-
-  test('when the admin gate is disabled, the button is disabled and labeled per health (Drain for active)', () => {
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'active' }),
-        adminGate: DISABLED_GATE,
-        onDrain: () => {
-          throw new Error('must not be called while disabled');
-        },
-        onResume: () => {},
-      },
-    });
-
-    const button = getByText('Drain').closest('button');
-    expect(button?.hasAttribute('disabled')).toBe(true);
-  });
-
-  test('when the admin gate is disabled for a draining worker, the button is disabled and labeled Resume', () => {
-    const { getByText } = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'draining' }),
-        adminGate: DISABLED_GATE,
-        onDrain: () => {},
-        onResume: () => {
-          throw new Error('must not be called while disabled');
-        },
-      },
-    });
-
-    const button = getByText('Resume').closest('button');
-    expect(button?.hasAttribute('disabled')).toBe(true);
-  });
-});
-
-describe('WorkerDetailView — connection and activities panels', () => {
+describe('WorkerTechnicalDetails — connection and activities panels', () => {
   test('renders queue, build identity, and concurrency in the connection panel', () => {
-    const { getByText } = render(WorkerDetailView, {
+    const { getByText } = render(WorkerTechnicalDetails, {
       props: {
         worker: worker({
           queue: 'payments',
@@ -191,8 +46,6 @@ describe('WorkerDetailView — connection and activities panels', () => {
           concurrency: 8,
         }),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
       },
     });
 
@@ -202,14 +55,12 @@ describe('WorkerDetailView — connection and activities panels', () => {
   });
 
   test('missing build identity falls back to the em dash placeholder', () => {
-    const { getByText } = render(WorkerDetailView, {
+    const { getByText } = render(WorkerTechnicalDetails, {
       props: {
         // `worker()`'s defaults already omit optional `buildId`, so this
         // exercises the `?? '—'` fallback directly.
         worker: worker(),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
       },
     });
 
@@ -217,12 +68,10 @@ describe('WorkerDetailView — connection and activities panels', () => {
   });
 
   test('renders one badge per reported activity', () => {
-    const { getByText } = render(WorkerDetailView, {
+    const { getByText } = render(WorkerTechnicalDetails, {
       props: {
         worker: worker({ activities: ['Workflow.chargeCard', 'Workflow.sendEmail'] }),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
       },
     });
 
@@ -269,12 +118,10 @@ function renderSession(props: {
   loading?: boolean;
   error?: unknown;
 }) {
-  return render(WorkerDetailView, {
+  return render(WorkerTechnicalDetails, {
     props: {
       worker: worker(),
       adminGate: OPEN_GATE,
-      onDrain: () => {},
-      onResume: () => {},
       manifestDiagnostics: props.diagnostics,
       manifestLoading: props.loading ?? false,
       manifestError: props.error ?? null,
@@ -289,7 +136,7 @@ function sessionRegion(container: HTMLElement) {
   return within(region);
 }
 
-describe('WorkerDetailView — server-reported session', () => {
+describe('WorkerTechnicalDetails — server-reported session', () => {
   test('shows session generation, connection instant, heartbeat timing, and health from diagnostics', () => {
     const { container } = renderSession({ diagnostics: sessionDiagnostics() });
     const session = sessionRegion(container);
@@ -376,14 +223,12 @@ describe('WorkerDetailView — server-reported session', () => {
   });
 });
 
-describe('WorkerDetailView — transport-aware session lifecycle (COR-160)', () => {
+describe('WorkerTechnicalDetails — transport-aware session lifecycle (COR-160)', () => {
   test('a long-poll worker shows its lease expiry, no persistent connection, and the transport limit', () => {
-    const { container, getByText } = render(WorkerDetailView, {
+    const { container, getByText } = render(WorkerTechnicalDetails, {
       props: {
         worker: worker({ transport: 'long-poll' }),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
         manifestDiagnostics: sessionDiagnostics({
           transport: 'long-poll',
           sessionLeaseExpiresAt: SESSION_NOW + 42_000,
@@ -405,12 +250,10 @@ describe('WorkerDetailView — transport-aware session lifecycle (COR-160)', () 
   });
 
   test('a WebSocket worker in its grace window is reconnecting, registered, and has a closing instant', () => {
-    const { container, queryByText } = render(WorkerDetailView, {
+    const { container, queryByText } = render(WorkerTechnicalDetails, {
       props: {
         worker: worker(),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
         manifestDiagnostics: sessionDiagnostics({ reconnectGraceEndsAt: SESSION_NOW + 1_500 }),
         now: SESSION_NOW,
       },
@@ -425,12 +268,10 @@ describe('WorkerDetailView — transport-aware session lifecycle (COR-160)', () 
   });
 
   test('a drained worker reads as closed, and a draining one as closing', () => {
-    const closed = render(WorkerDetailView, {
+    const closed = render(WorkerTechnicalDetails, {
       props: {
         worker: worker({ health: 'drained' }),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
         manifestDiagnostics: sessionDiagnostics({ health: 'drained' }),
         now: SESSION_NOW,
       },
@@ -440,12 +281,10 @@ describe('WorkerDetailView — transport-aware session lifecycle (COR-160)', () 
     );
     closed.unmount();
 
-    const closing = render(WorkerDetailView, {
+    const closing = render(WorkerTechnicalDetails, {
       props: {
         worker: worker({ health: 'draining' }),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
         manifestDiagnostics: sessionDiagnostics({ health: 'draining' }),
         now: SESSION_NOW,
       },
@@ -456,7 +295,7 @@ describe('WorkerDetailView — transport-aware session lifecycle (COR-160)', () 
   });
 });
 
-describe('WorkerDetailView — deployment and diagnostics sections', () => {
+describe('WorkerTechnicalDetails — deployment and diagnostics sections', () => {
   const deploymentSnippet = createRawSnippet((deploymentName: () => string) => ({
     render: () => `<p data-testid="deployment-body">builds of ${deploymentName()}</p>`,
   }));
@@ -467,12 +306,10 @@ describe('WorkerDetailView — deployment and diagnostics sections', () => {
   test('a worker with a deployment shows the deployment under its name, and drains or resumes it by name', async () => {
     const drained: string[] = [];
     const resumed: string[] = [];
-    const view = render(WorkerDetailView, {
+    const view = render(WorkerTechnicalDetails, {
       props: {
         worker: worker({ deploymentName: 'billing' }),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
         onDrainDeployment: (name: string) => drained.push(name),
         onResumeDeployment: (name: string) => resumed.push(name),
         deployment: deploymentSnippet,
@@ -493,12 +330,10 @@ describe('WorkerDetailView — deployment and diagnostics sections', () => {
   });
 
   test('without system:admin the deployment can be read but not drained, and the reason is offered', () => {
-    const view = render(WorkerDetailView, {
+    const view = render(WorkerTechnicalDetails, {
       props: {
         worker: worker({ deploymentName: 'billing' }),
         adminGate: DISABLED_GATE,
-        onDrain: () => {},
-        onResume: () => {},
         deployment: deploymentSnippet,
       },
     });
@@ -510,37 +345,15 @@ describe('WorkerDetailView — deployment and diagnostics sections', () => {
   });
 
   test('a worker that reported no deployment has no deployment section, and no diagnostics until the route supplies them', () => {
-    const view = render(WorkerDetailView, {
+    const view = render(WorkerTechnicalDetails, {
       props: {
         worker: worker(),
         adminGate: OPEN_GATE,
-        onDrain: () => {},
-        onResume: () => {},
         deployment: deploymentSnippet,
       },
     });
 
     expect(view.queryByRole('region', { name: 'Deployment' })).toBeNull();
     expect(view.queryByRole('region', { name: 'Worker diagnostics' })).toBeNull();
-  });
-
-  test('a drained worker offers Resume, and a drained or draining worker never offers Drain', async () => {
-    let resumed = false;
-    const view = render(WorkerDetailView, {
-      props: {
-        worker: worker({ health: 'drained' }),
-        adminGate: OPEN_GATE,
-        onDrain: () => {
-          throw new Error('must not be called');
-        },
-        onResume: () => {
-          resumed = true;
-        },
-      },
-    });
-
-    expect(view.queryByRole('button', { name: 'Drain' })).toBeNull();
-    await fireEvent.click(view.getByRole('button', { name: 'Resume' }));
-    expect(resumed).toBe(true);
   });
 });

@@ -212,3 +212,16 @@ export function workersTabs(view: { readonly container: HTMLElement }): HTMLElem
   const list = view.container.querySelector('[role="tablist"][aria-label="Workers views"]');
   return list === null ? [] : [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
 }
+
+/**
+ * Opens the Advanced disclosure that holds the page's tab bar (Task queues, Deployments, Diagnostics,
+ * Conformance), which is closed until an address asks for one of its tabs.
+ */
+export async function openAdvanced(view: {
+  readonly findByTestId: (id: string) => Promise<HTMLElement>;
+}): Promise<void> {
+  const advanced = await view.findByTestId('workers-advanced');
+  const trigger = advanced.querySelector<HTMLElement>('button');
+  if (trigger === null) throw new Error('Advanced has no trigger');
+  if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+}

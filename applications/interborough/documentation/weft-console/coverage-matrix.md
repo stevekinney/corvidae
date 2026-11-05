@@ -58,6 +58,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.system.principal` | exposed | `src/lib/scopes.svelte.ts` |  | `src/lib/scopes.svelte.test.ts` |  |  |
 | `weft.system.registry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-registry-data.test.ts` | COR-162 |  |
 | `weft.task.queues.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
+| `weft.task.queues.tasks` | exposed | `src/routes/workers/queue-tasks-data.ts` |  | `src/routes/workers/index-tasks.test.ts` | COR-2018 |  |
 | `weft.tasks.deadletters.get` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-dead-letter-panel.test.ts` | COR-284 |  |
 | `weft.tasks.deadletters.retry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions-queues.additional.test.ts` | COR-1973 |  |
 | `weft.tasks.deliveries` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-delivery-history.test.ts` | COR-284 |  |
@@ -76,6 +77,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.worker.startoverrides.preview` | exposed | `src/routes/workflows/detail/restart-worker-override.svelte` |  | `src/routes/workflows/detail/restart-dialog-worker-override.test.ts` | COR-164 |  |
 | `weft.workers.diagnostics` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-manifest-data.test.ts` | COR-124, COR-162 |  |
 | `weft.workers.drain` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |
+| `weft.workers.forget` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` | COR-2018 |  |
 | `weft.workers.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
 | `weft.workers.rejections` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
 | `weft.workers.resume` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |

@@ -24,6 +24,7 @@ const entries = {
   taskDetail: queryKeys.tasks.detail('operation-1'),
   taskDeliveries: queryKeys.tasks.deliveries('operation-1'),
   queues: queryKeys.queues.list(),
+  queueTasks: queryKeys.queues.tasks('reports', 'all'),
   conformance: queryKeys.conformance.targets(),
 } satisfies Record<string, QueryKey>;
 
@@ -53,13 +54,15 @@ function invalidated(queryClient: QueryClient): EntryName[] {
 }
 
 const sourceEntries: EntryName[] = ['sources', 'diagnostics'];
+/** A queue's depth and the tasks listed on it move together. */
+const queueEntries: EntryName[] = ['queues', 'queueTasks'];
 const workerEntries: EntryName[] = [
   'workers',
   'manifests',
   'registry',
   'registrySnapshot',
   'deployments',
-  'queues',
+  ...queueEntries,
 ];
 
 const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
@@ -73,13 +76,13 @@ const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
   ['workflow:cancelled', ['deployments']],
   ['workflow:timed-out', ['deployments']],
   ['activity:remote-queued', ['deployments']],
-  ['activity:completed', ['deployments', 'queues']],
-  ['activity:failed', ['deployments', 'queues']],
-  ['task:dead-lettered', ['deployments', 'queues']],
+  ['activity:completed', ['deployments', ...queueEntries]],
+  ['activity:failed', ['deployments', ...queueEntries]],
+  ['task:dead-lettered', ['deployments', ...queueEntries]],
   // A queue's in-flight count is the tasks its workers hold: an attempt starting moves it.
-  ['activity:started', ['queues']],
+  ['activity:started', queueEntries],
   ['worker:deployment-changed', ['deployments', 'workers']],
-  ['queue:depth-changed', ['queues']],
+  ['queue:depth-changed', queueEntries],
   ['workflow:definition-registered', ['registry', 'registrySnapshot']],
   ['realm:state-changed', ['realms']],
   ['lease:health-changed', ['lease']],

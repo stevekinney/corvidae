@@ -18,6 +18,7 @@ import { router } from '../../lib/router.svelte.ts';
 import WorkersRoute from './index.svelte';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
 import {
+  openAdvanced,
   parseJsonObject,
   realClient,
   ScriptedFetch,
@@ -100,7 +101,7 @@ describe('Workers route — locked', () => {
 });
 
 describe('Workers route — the Workers list', () => {
-  test('is the default tab, and its counts are one line, not four cards', async () => {
+  test('is the page itself, and its counts are one line, not four cards', async () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       workers: [
@@ -115,18 +116,31 @@ describe('Workers route — the Workers list', () => {
     const { findByTestId, queryByText } = view;
 
     const summary = await findByTestId('workers-summary');
+    // A worker that finished draining is listed, but it no longer takes work.
     expect(summary.textContent).toBe(
-      '2 of 2 connected · 2 running · 12 waiting · 2 failed for good',
+      '1 of 2 connected · 2 running · 12 waiting · 2 failed for good',
     );
-    await waitFor(() =>
-      expect(
-        workersTabs(view)
-          .find((tab) => tab.textContent?.trim() === 'Workers')
-          ?.getAttribute('aria-selected'),
-      ).toBe('true'),
-    );
+    // The page's own tab bar is behind Advanced, closed until an address asks for a tab.
+    expect(workersTabs(view)).toHaveLength(0);
     expect(queryByText('Total workers')).toBeNull();
     expect(queryByText('Fleet overview')).toBeNull();
+  });
+
+  test('Advanced holds the Task queues, Deployments, Diagnostics and Conformance tabs', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted);
+
+    const view = await renderWorkersRoute();
+    await openAdvanced(view);
+
+    await waitFor(() =>
+      expect(workersTabs(view).map((tab) => tab.textContent?.trim())).toEqual([
+        'Task queues',
+        'Deployments',
+        'Diagnostics',
+        'Conformance',
+      ]),
+    );
   });
 
   test('a worker is a row; choosing it opens its detail beside the list and writes it to the address', async () => {
@@ -139,7 +153,9 @@ describe('Workers route — the Workers list', () => {
     await findByTestId('workers-summary');
     const row = container.querySelector<HTMLElement>('[data-worker-row="wkr_listed"]');
     expect(row).not.toBeNull();
-    await fireEvent.click(row!.querySelector('button') ?? row!);
+    // A row is a link to the worker: the address is the selection.
+    expect(row!.querySelector('a')?.getAttribute('href')).toContain('worker=wkr_listed');
+    router.navigate('/health/workers?worker=wkr_listed');
 
     const detail = await findByTestId('worker-detail');
     expect(detail.textContent).toContain('payments');
@@ -171,10 +187,10 @@ describe("Workers route — the open worker's evidence", () => {
       'invalid-request',
     );
 
-    resetLocation('/health/workers?worker=wkr_selected');
+    resetLocation('/health/workers?worker=wkr_selected&tab=queues');
     const { findByTestId, queryClient } = await renderWorkersRoute();
 
-    const detail = await findByTestId('worker-detail');
+    const detail = await findByTestId('worker-technical-details');
     // Whichever the panel settles on first: the manifest read succeeded (the server has no manifest
     // for the worker), so it must say that and never the unrelated rejection read's fault.
     const rejectionFailed = () =>
@@ -191,24 +207,44 @@ describe("Workers route — the open worker's evidence", () => {
 });
 
 describe('Workers route — drain and resume from the worker detail', () => {
-  test('draining a worker with a reason calls weft.workers.drain', async () => {
+  test('Drain asks first, saying what happens to its work, and then calls weft.workers.drain', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      workers: [worker({ id: 'wkr_selected', queue: 'payments', health: 'active', inFlight: 3 })],
+    });
+    scripted.routeJsonRpcMethod('weft.workers.drain', { ok: true });
+
+    resetLocation('/health/workers?worker=wkr_selected');
+    const { findByRole, findByText } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Drain this worker' }));
+    expect(await findByText('Drain Wkr selected?')).not.toBeNull();
+    expect(
+      await findByText(
+        'It finishes the 3 tasks it is running, takes no new ones, and then stops. New payments tasks wait until a payments worker connects.',
+      ),
+    ).not.toBeNull();
+    await fireEvent.click(await findByRole('button', { name: 'Drain worker' }));
+
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(callsTo(scripted, 'weft.workers.drain')).toEqual([{ workerId: 'wkr_selected' }]);
+  });
+
+  test('cancelling the Drain confirmation drains nothing', async () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_selected', health: 'active' })] });
     scripted.routeJsonRpcMethod('weft.workers.drain', { ok: true });
 
     resetLocation('/health/workers?worker=wkr_selected');
-    const { findByLabelText, findByRole } = await renderWorkersRoute();
+    const { findByRole } = await renderWorkersRoute();
 
-    await fireEvent.click(await findByRole('button', { name: 'Drain' }));
-    const reasonInput = await findByLabelText('Reason');
-    await fireEvent.input(reasonInput, { target: { value: 'rolling restart' } });
-    await fireEvent.click(await findByRole('button', { name: 'Drain worker' }));
+    await fireEvent.click(await findByRole('button', { name: 'Drain this worker' }));
+    await fireEvent.click(await findByRole('button', { name: 'Cancel' }));
 
-    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
+    // load-proof: nothing is sent, so there is no event to wait for; one turn lets a stray call show.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(callsTo(scripted, 'weft.workers.drain')).toEqual([
-      { workerId: 'wkr_selected', reason: 'rolling restart' },
-    ]);
+    expect(callsTo(scripted, 'weft.workers.drain')).toEqual([]);
   });
 
   test('resuming a draining worker calls weft.workers.resume directly, no dialog', async () => {
@@ -219,23 +255,44 @@ describe('Workers route — drain and resume from the worker detail', () => {
     resetLocation('/health/workers?worker=wkr_draining');
     const { findByRole, queryByRole } = await renderWorkersRoute();
 
-    await fireEvent.click(await findByRole('button', { name: 'Resume' }));
+    await fireEvent.click(await findByRole('button', { name: 'Resume this worker' }));
 
     // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(callsTo(scripted, 'weft.workers.resume')).toEqual([{ workerId: 'wkr_draining' }]);
-    expect(queryByRole('dialog', { name: 'Drain worker' })).toBeNull();
+    expect(queryByRole('dialog')).toBeNull();
   });
 
-  test('a drained worker offers Resume too, since the drain marker is still on it', async () => {
+  test('a worker that finished draining reads Stopped and offers Forget alone', async () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_idle', health: 'drained' })] });
 
     resetLocation('/health/workers?worker=wkr_idle');
     const { findByRole, queryByRole } = await renderWorkersRoute();
 
-    expect(await findByRole('button', { name: 'Resume' })).not.toBeNull();
-    expect(queryByRole('button', { name: 'Drain' })).toBeNull();
+    expect(await findByRole('button', { name: 'Forget this worker' })).not.toBeNull();
+    expect(queryByRole('button', { name: 'Drain this worker' })).toBeNull();
+    expect(queryByRole('button', { name: 'Resume this worker' })).toBeNull();
+  });
+
+  test('Forget asks first, then calls weft.workers.forget and leaves the worker’s page', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      workers: [worker({ id: 'wkr_gone', queue: 'reports', disconnectedAt: 1, inFlight: 0 })],
+    });
+    scripted.routeJsonRpcMethod('weft.workers.forget', { workerId: 'wkr_gone', forgotten: true });
+
+    resetLocation('/health/workers?worker=wkr_gone');
+    const { findByRole, findByText } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Forget this worker' }));
+    expect(await findByText('Forget Wkr gone?')).not.toBeNull();
+    await fireEvent.click(await findByRole('button', { name: 'Forget worker' }));
+
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(callsTo(scripted, 'weft.workers.forget')).toEqual([{ workerId: 'wkr_gone' }]);
+    await waitFor(() => expect(router.search.get('worker')).toBeNull());
   });
 
   test('a worker that changed while the drain dialog was open is not drained, and the refusal says so', async () => {
@@ -246,7 +303,7 @@ describe('Workers route — drain and resume from the worker detail', () => {
     resetLocation('/health/workers?worker=wkr_moving');
     const { findByRole, findByText, queryClient } = await renderWorkersRoute();
 
-    await fireEvent.click(await findByRole('button', { name: 'Drain' }));
+    await fireEvent.click(await findByRole('button', { name: 'Drain this worker' }));
     const confirm = await findByRole('button', { name: 'Drain worker' });
 
     // Someone else drains it first; the fleet is read again before the dialog is confirmed.
@@ -289,7 +346,7 @@ describe('Workers route — a worker’s deployment', () => {
     routeBilling(scripted);
     scripted.routeJsonRpcMethod('weft.worker.deployments.drain', { ok: true });
 
-    resetLocation('/health/workers?worker=wkr_billing');
+    resetLocation('/health/workers?worker=wkr_billing&tab=queues');
     const { findByRole, findByText } = await renderWorkersRoute();
 
     expect(await findByText('Current build')).not.toBeNull();
@@ -324,7 +381,7 @@ describe('Workers route — a worker’s deployment', () => {
       updatedAt: NOW,
     });
 
-    resetLocation('/health/workers?worker=wkr_billing');
+    resetLocation('/health/workers?worker=wkr_billing&tab=queues');
     const { findByRole, findByText } = await renderWorkersRoute();
 
     await fireEvent.click(await findByRole('button', { name: 'Promote' }));
