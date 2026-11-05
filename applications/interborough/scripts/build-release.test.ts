@@ -164,7 +164,10 @@ await new Promise(() => {});
 }
 
 async function expectRelocatedFailure(
-  runtimeFailure: NonNullable<Parameters<typeof releaseFixture>[0]>['runtimeFailure'],
+  runtimeFailure: Exclude<
+    NonNullable<Parameters<typeof releaseFixture>[0]>['runtimeFailure'],
+    undefined
+  >,
   message: string,
 ) {
   const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
