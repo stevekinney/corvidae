@@ -77,7 +77,7 @@ export type CliClientDependencies = {
   /** Optional sink used by interactive streams for incremental terminal output. */
   readonly writeStdout?: (chunk: string) => void;
   /** Optional interactive prompt used only when the input stream is a TTY. */
-  readonly prompt?: (question: string) => Promise<string>;
+  readonly prompt?: (question: string, signal?: AbortSignal) => Promise<string>;
   /** Whether interactive prompting is supported by the caller. */
   readonly stdinIsTTY?: boolean;
 };
@@ -218,6 +218,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'provider',
     'run',
+    'task-id',
   ],
   reviews: [
     'help',

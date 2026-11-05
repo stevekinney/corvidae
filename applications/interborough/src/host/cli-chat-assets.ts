@@ -38,10 +38,15 @@ export async function uploadAttachment(
   const uploadId = typeof created['uploadId'] === 'string' ? created['uploadId'] : undefined;
   if (uploadId === undefined) throw new Error('The host returned no asset upload identifier.');
   try {
-    await call(target, parsed, dependencies, 'bureau.assets.uploads.append', {
-      uploadId,
-      chunk: Buffer.from(bytes).toString('base64'),
-    });
+    const chunkSize = 256 * 1024;
+    for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+      await call(target, parsed, dependencies, 'bureau.assets.uploads.append', {
+        uploadId,
+        chunk: Buffer.from(
+          bytes.subarray(offset, Math.min(offset + chunkSize, bytes.byteLength)),
+        ).toString('base64'),
+      });
+    }
     return await call(target, parsed, dependencies, 'bureau.assets.uploads.complete', { uploadId });
   } catch (error) {
     try {

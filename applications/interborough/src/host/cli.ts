@@ -145,10 +145,10 @@ async function run(arguments_: string[]): Promise<number> {
       writeStdout: (chunk) => process.stdout.write(chunk),
       stdinIsTTY: process.stdin.isTTY,
       signal: interrupt.signal,
-      prompt: async (question) => {
+      prompt: async (question, signal) => {
         const readline = createInterface({ input: process.stdin, output: process.stderr });
         try {
-          return await readline.question(question);
+          return await readline.question(question, { signal });
         } finally {
           readline.close();
         }

@@ -113,10 +113,72 @@ describe('CLI chat control', () => {
     expect(starts).toBe(2);
   });
 
+  test('does not prompt on a TTY when --no-input is set', async () => {
+    let prompted = false;
+    const result = await executeCli(
+      ['chat', '--agent', 'demo', '--message', 'hello', '--no-input'],
+      {
+        stdinIsTTY: true,
+        prompt: async () => {
+          prompted = true;
+          return 'unexpected';
+        },
+        fetch: async () =>
+          sse(
+            { type: 'RUN_STARTED', threadId: 'thread-1', runId: 'run-1' },
+            { type: 'RUN_FINISHED', outcome: { type: 'interrupt', interrupts: [{ id: 'i-1' }] } },
+          ),
+      },
+    );
+    expect(result.exitCode).toBe(5);
+    expect(prompted).toBe(false);
+  });
+
+  test('redacts reasoning and private tool fields from structured output and renders snapshots', async () => {
+    const result = await executeCli(
+      ['chat', '--agent', 'demo', '--message', 'hello', '--output', 'json'],
+      {
+        fetch: async () =>
+          sse(
+            {
+              type: 'MESSAGES_SNAPSHOT',
+              messages: [{ role: 'assistant', content: 'restored' }],
+              metadata: { secret: 'private' },
+            },
+            { type: 'REASONING_MESSAGE_CONTENT', delta: 'do not expose', private: true },
+            {
+              type: 'TOOL_CALL_START',
+              toolCallId: 'tool-1',
+              toolCallName: 'lookup',
+              args: { secret: 'x' },
+            },
+            { type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } },
+          ),
+      },
+    );
+    const parsed = JSON.parse(result.stdout) as {
+      data: { text: string; events: Array<Record<string, unknown>> };
+    };
+    expect(parsed.data.text).toBe('restored');
+    expect(JSON.stringify(parsed)).not.toContain('do not expose');
+    expect(JSON.stringify(parsed)).not.toContain('secret');
+    expect(parsed.data.events).toContainEqual({ kind: 'snapshot', text: 'restored' });
+    expect(parsed.data.events).toContainEqual({
+      kind: 'tool',
+      toolCallId: 'tool-1',
+      toolCallName: 'lookup',
+    });
+  });
+
   // spawn-free: request capture verifies cursor forwarding and replay dedupe without mutation retry.
-  test('forwards durable cursors and emits a repeated event once', async () => {
+  test('forwards durable cursors, dedupes durable replay, and preserves idless deltas', async () => {
     let lastEventId: string | null = null;
-    const repeated = { id: 'cursor-2', type: 'TEXT_MESSAGE_CONTENT', delta: 'once' };
+    const repeated = {
+      id: 'cursor-2',
+      type: 'TEXT_MESSAGE_CONTENT',
+      delta: 'once',
+      metadata: { '@lostgradient/bureau': { durable: true, cursor: 'cursor-2' } },
+    };
     const result = await executeCli(
       ['chat', '--agent', 'demo', '--message', 'hello', '--cursor', 'cursor-1'],
       {

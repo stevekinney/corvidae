@@ -45,24 +45,85 @@ function messageFromEvent(event: RecordValue): string | undefined {
   return undefined;
 }
 
-function eventKind(event: RecordValue): string {
-  const type = typeof event['type'] === 'string' ? event['type'] : 'UNKNOWN';
-  if (type.startsWith('TOOL_CALL_')) return 'tool';
-  if (type === 'RUN_FINISHED' && record(event['outcome'])?.['interrupts'] !== undefined)
-    return 'awaiting-input';
-  if (type === 'RUN_FINISHED') return 'terminal';
-  if (type === 'RUN_ERROR') return 'error';
-  if (type === 'RUN_STARTED') return 'started';
-  return 'event';
+type PublicEvent =
+  | { kind: 'started'; threadId?: string; runId?: string }
+  | { kind: 'text'; delta: string }
+  | { kind: 'tool'; toolCallId?: string; toolCallName?: string }
+  | { kind: 'snapshot'; text: string }
+  | { kind: 'awaiting-input'; interruptIds: string[] }
+  | { kind: 'terminal' }
+  | { kind: 'error'; message: string };
+
+function snapshotText(event: RecordValue): string {
+  if (!Array.isArray(event['messages'])) return '';
+  return event['messages']
+    .filter((message) => record(message)?.['role'] === 'assistant')
+    .map((message) => record(message)?.['content'])
+    .map((content) => {
+      if (typeof content === 'string') return content;
+      if (!Array.isArray(content)) return '';
+      return content
+        .map((part) => (typeof record(part)?.['text'] === 'string' ? record(part)?.['text'] : ''))
+        .join('');
+    })
+    .join('');
 }
 
-function parseSse(buffer: string): { frames: RecordValue[]; rest: string } {
-  const frames: RecordValue[] = [];
+function projectEvent(event: RecordValue): PublicEvent | undefined {
+  const type = typeof event['type'] === 'string' ? event['type'] : '';
+  const delta = messageFromEvent(event);
+  if (delta !== undefined) return { kind: 'text', delta };
+  if (type === 'RUN_STARTED')
+    return {
+      kind: 'started',
+      ...(typeof event['threadId'] === 'string' ? { threadId: event['threadId'] } : {}),
+      ...(typeof event['runId'] === 'string' ? { runId: event['runId'] } : {}),
+    };
+  if (type === 'MESSAGES_SNAPSHOT') {
+    const text = snapshotText(event);
+    return text === '' ? undefined : { kind: 'snapshot', text };
+  }
+  if (type.startsWith('TOOL_CALL_'))
+    return {
+      kind: 'tool',
+      ...(typeof event['toolCallId'] === 'string' ? { toolCallId: event['toolCallId'] } : {}),
+      ...(typeof event['toolCallName'] === 'string' ? { toolCallName: event['toolCallName'] } : {}),
+    };
+  if (type === 'RUN_FINISHED') {
+    const interrupts = record(event['outcome'])?.['interrupts'];
+    if (Array.isArray(interrupts)) {
+      if (interrupts.length === 0) return { kind: 'terminal' };
+      return {
+        kind: 'awaiting-input',
+        interruptIds: interrupts
+          .map((item) => record(item)?.['id'])
+          .filter((item): item is string => typeof item === 'string'),
+      };
+    }
+    return { kind: 'terminal' };
+  }
+  if (type === 'RUN_ERROR')
+    return {
+      kind: 'error',
+      message: typeof event['message'] === 'string' ? event['message'] : 'The agent run failed.',
+    };
+  return undefined;
+}
+
+function parseSse(buffer: string): {
+  frames: Array<{ event: RecordValue; id?: string }>;
+  rest: string;
+} {
+  const frames: Array<{ event: RecordValue; id?: string }> = [];
   const sections = buffer.split(/\r?\n\r?\n/);
   const rest = sections.pop() ?? '';
   for (const section of sections) {
-    const data = section
-      .split(/\r?\n/)
+    const lines = section.split(/\r?\n/);
+    const frameId = lines
+      .find((line) => line.startsWith('id:'))
+      ?.slice(3)
+      .trim();
+    const data = lines
       .filter((line) => line.startsWith('data:'))
       .map((line) => line.slice(5).trimStart())
       .join('\n');
@@ -70,7 +131,7 @@ function parseSse(buffer: string): { frames: RecordValue[]; rest: string } {
     try {
       const value = JSON.parse(data);
       const parsed = record(value);
-      if (parsed !== undefined) frames.push(parsed);
+      if (parsed !== undefined) frames.push({ event: parsed, ...(frameId ? { id: frameId } : {}) });
     } catch {
       // Ignore comments and malformed keep-alive frames; valid AG-UI frames remain strict JSON.
     }
@@ -84,6 +145,7 @@ async function runStream(
   dependencies: CliClientDependencies,
   path: string,
   body?: RecordValue,
+  identifiers?: { threadId?: string; runId?: string },
 ): Promise<CliCommandResult> {
   const streamHeaders: Record<string, string> = { accept: 'text/event-stream' };
   const requestedCursor = option(parsed, 'cursor');
@@ -117,13 +179,14 @@ async function runStream(
   const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
   let cursor: string | undefined;
-  let threadId = typeof body?.['threadId'] === 'string' ? body['threadId'] : undefined;
-  let runId = typeof body?.['runId'] === 'string' ? body['runId'] : undefined;
+  let threadId = typeof body?.['threadId'] === 'string' ? body['threadId'] : identifiers?.threadId;
+  let runId = typeof body?.['runId'] === 'string' ? body['runId'] : identifiers?.runId;
   let text = '';
   let pendingInterrupts: unknown[] | undefined;
   let resynced = false;
-  const events: RecordValue[] = [];
-  const seen = new Set<string>();
+  const events: PublicEvent[] = [];
+  const seenDurable = new Set<string>();
+  let nativeTaskId: string | undefined;
   const write = parsed.output === 'text' ? dependencies.writeStdout : undefined;
   try {
     for (;;) {
@@ -132,11 +195,21 @@ async function runStream(
       buffer += next.value;
       const parsedFrames = parseSse(buffer);
       buffer = parsedFrames.rest;
-      for (const event of parsedFrames.frames) {
-        const key = typeof event['id'] === 'string' ? event['id'] : JSON.stringify(event);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        events.push({ kind: eventKind(event), event });
+      for (const frame of parsedFrames.frames) {
+        const event = frame.event;
+        const metadata = record(event['metadata']);
+        const bureau = record(metadata?.['@lostgradient/bureau']);
+        const durableKey =
+          frame.id ??
+          (bureau?.['durable'] === true && typeof bureau?.['cursor'] === 'string'
+            ? bureau['cursor']
+            : undefined);
+        if (durableKey !== undefined) {
+          if (seenDurable.has(durableKey)) continue;
+          seenDurable.add(durableKey);
+        }
+        const projected = projectEvent(event);
+        if (projected !== undefined) events.push(projected);
         if (typeof event['threadId'] === 'string') threadId = event['threadId'];
         if (typeof event['runId'] === 'string') runId = event['runId'];
         const outcome = record(event['outcome']);
@@ -148,14 +221,17 @@ async function runStream(
           throw new Error(message);
         }
         if (requestedCursor !== undefined && event['type'] === 'MESSAGES_SNAPSHOT') resynced = true;
-        const metadata = record(event['metadata']);
-        const bureau = record(metadata?.['@lostgradient/bureau']);
         if (typeof bureau?.['cursor'] === 'string' && bureau['durable'] === true)
           cursor = bureau['cursor'];
-        const delta = messageFromEvent(event);
+        if (typeof bureau?.['runId'] === 'string') nativeTaskId = bureau['runId'];
+        const delta = projected?.kind === 'text' ? projected.delta : undefined;
         if (delta !== undefined) {
           text += delta;
           write?.(delta);
+        }
+        if (projected?.kind === 'snapshot' && !text.endsWith(projected.text)) {
+          text += projected.text;
+          write?.(projected.text);
         }
       }
     }
@@ -172,14 +248,39 @@ async function runStream(
     throw error;
   }
   if (pendingInterrupts !== undefined && pendingInterrupts.length > 0) {
-    if (dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
-      const answer = await dependencies.prompt('Input required: ');
+    if (!parsed.noInput && dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
+      const firstInterrupt = record(pendingInterrupts[0]);
+      const schema = record(firstInterrupt?.['responseSchema']);
+      const decisionOnly =
+        schema?.['properties'] !== undefined &&
+        record(schema['properties'])?.['decision'] !== undefined;
+      let answer: string;
+      try {
+        answer = await dependencies.prompt(
+          decisionOnly ? 'Tool approval (approve, deny, or reject): ' : 'Input required: ',
+          dependencies.signal,
+        );
+      } catch (error) {
+        if (dependencies.signal?.aborted)
+          throw Object.assign(
+            new Error('Chat stream detached; resume with the reported identifiers.'),
+            {
+              exitCode: 130,
+              identifiers: { threadId, runId, cursor },
+            },
+          );
+        throw error;
+      }
+      if (decisionOnly && !['approve', 'deny', 'reject'].includes(answer.trim().toLowerCase()))
+        throw new Error('Tool approval requires an explicit approve, deny, or reject decision.');
       return runStream(target, parsed, dependencies, path, {
         ...body,
         resume: pendingInterrupts.map((interrupt) => ({
           interruptId: record(interrupt)?.['id'],
           status: 'resolved',
-          payload: { decision: 'approve', answer },
+          payload: decisionOnly
+            ? { decision: answer.trim().toLowerCase() }
+            : { decision: 'approve', answer },
         })),
       });
     }
@@ -191,7 +292,15 @@ async function runStream(
     );
   }
   return {
-    data: { threadId, runId, cursor, text, events, ...(resynced ? { resynced: true } : {}) },
+    data: {
+      threadId,
+      runId,
+      taskId: nativeTaskId,
+      cursor,
+      text,
+      events,
+      ...(resynced ? { resynced: true } : {}),
+    },
     metadata: { streamed: write !== undefined },
   };
 }
@@ -206,6 +315,17 @@ export async function executeChat(
   if (parsed.command === 'chat') {
     const agent = option(parsed, 'agent') ?? parsed.arguments[0];
     if (!agent) throw Object.assign(new Error('chat requires --agent <name>.'), { usage: true });
+    const threadId = option(parsed, 'thread') ?? id('thread');
+    const runId = option(parsed, 'run') ?? id('run');
+    if (option(parsed, 'cursor') !== undefined && option(parsed, 'thread') !== undefined)
+      return runStream(
+        target,
+        parsed,
+        dependencies,
+        `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
+        undefined,
+        { threadId, runId },
+      );
     const messageFile = option(parsed, 'message-file');
     let message =
       messageFile === undefined
@@ -230,16 +350,6 @@ export async function executeChat(
         { type: 'text', text: message },
         { type: modality, source: { type: 'file', provider: 'bureau', value: assetId } },
       ];
-    }
-    const threadId = option(parsed, 'thread') ?? id('thread');
-    const runId = option(parsed, 'run') ?? id('run');
-    if (option(parsed, 'cursor') !== undefined && option(parsed, 'thread') !== undefined) {
-      return runStream(
-        target,
-        parsed,
-        dependencies,
-        `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
-      );
     }
     return runStream(
       target,
@@ -268,12 +378,12 @@ export async function executeChat(
   };
   if (parsed.command === 'chats' && action !== undefined) {
     if (action === 'cancel') {
-      const runId = option(parsed, 'run') ?? parsed.arguments[1];
-      if (runId === undefined)
-        throw Object.assign(new Error('chats cancel requires --run <id>.'), { usage: true });
+      const taskId = option(parsed, 'task-id') ?? option(parsed, 'run') ?? parsed.arguments[1];
+      if (taskId === undefined)
+        throw Object.assign(new Error('chats cancel requires --task-id <id>.'), { usage: true });
       return request(
         target,
-        `/bureau/ag-ui/runs/${encodeURIComponent(runId)}/cancel`,
+        `/bureau/ag-ui/runs/${encodeURIComponent(taskId)}/cancel`,
         parsed,
         dependencies,
         { method: 'POST' },
