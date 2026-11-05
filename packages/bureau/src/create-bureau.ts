@@ -2777,12 +2777,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       children: () => childTopologyForWait?.children,
       assets: () => assetServiceHolder.current,
       ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
+      workspaceAuthority: (owner) => runtimeWorkspaceOwnerAuthority(workspace, owner),
       agentDetail: (id) => agentCatalog.detail(id),
       runAgent: async (runId) => runAttribution.get(runId)?.agentName,
     }),
     ...createAssetTools({
       assets: () => assetServiceHolder.current,
       ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
+      workspaceAuthority: (owner) => runtimeWorkspaceOwnerAuthority(workspace, owner),
     }),
     ...(options.workflowSource === undefined
       ? []

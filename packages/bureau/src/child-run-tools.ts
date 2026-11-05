@@ -9,6 +9,7 @@ import type { AgentFileDetail } from './agent-file-catalog';
 import type { AssetService } from './assets/types';
 import { managedAssetPart } from './asset-tools';
 import { AssetNotFoundError } from './assets/errors';
+import type { WorkspaceOwnerAuthority } from './http/workspace-principal';
 
 const referenceInput = z.object({ childRunId: z.string().min(1) });
 
@@ -18,6 +19,7 @@ export interface ChildRunToolHost {
   readonly ownerOfRun: (runId: string) => Promise<string | undefined>;
   readonly agentDetail: (id: string) => Promise<AgentFileDetail | undefined>;
   readonly runAgent: (runId: string) => Promise<string | undefined>;
+  readonly workspaceAuthority?: (owner: string) => WorkspaceOwnerAuthority | undefined;
 }
 
 function runIdOf(context: ToolContext | undefined): string | undefined {
@@ -84,6 +86,7 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
         if (service === undefined) return { status: 'not-found' as const };
         const owner = await host.ownerOfRun(calling.parentRunId);
         if (owner === undefined) return { status: 'not-found' as const };
+        const workspaceAuthority = host.workspaceAuthority?.(owner);
         const parts = [];
         for (const assetId of input.assets) {
           let descriptor;
@@ -94,6 +97,7 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
                 // The tool-execution principal may be synthesized per run; the persisted owner is
                 // the authorization identity for managed assets.
                 id: owner,
+                ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
               },
             );
             descriptor = resolved.descriptor;

@@ -54,6 +54,7 @@ export type AssetRejectionCode =
   | 'fetch-failed'
   | 'held'
   | 'interrupted'
+  | 'invalid-file-name'
   | 'media-facts-unmeasured'
   | 'media-type-mismatch'
   | 'media-type-not-allowed'

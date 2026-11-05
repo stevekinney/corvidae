@@ -86,6 +86,32 @@ export interface AdmissionPlan {
   readonly slot: number;
 }
 
+const MAX_FILE_NAME_BYTES = 255;
+
+function containsControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0)!;
+    return codePoint <= 0x1f || codePoint === 0x7f;
+  });
+}
+
+function validateFileName(fileName: string | undefined): void {
+  if (fileName === undefined) return;
+  if (
+    fileName === '.' ||
+    fileName === '..' ||
+    fileName.includes('/') ||
+    fileName.includes('\\') ||
+    containsControlCharacter(fileName) ||
+    new TextEncoder().encode(fileName).byteLength > MAX_FILE_NAME_BYTES
+  ) {
+    throw new AssetAdmissionError(
+      'invalid-file-name',
+      'The file name must be a bounded leaf name without separators or control characters.',
+    );
+  }
+}
+
 // ── Aggregate limits ──────────────────────────────────────────────────
 
 interface Usage {
@@ -318,6 +344,7 @@ export async function beginAdmission(
   slot: number,
   options: { readonly preflighted?: boolean } = {},
 ): Promise<AssetAdmission> {
+  validateFileName(request.fileName);
   if (!options.preflighted) await preflightAdmission(internals, principal, request.source);
   if (principal.workspaceAuthority !== undefined) {
     for (const reader of request.readers ?? []) {

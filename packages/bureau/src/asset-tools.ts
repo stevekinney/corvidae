@@ -2,12 +2,14 @@
 
 import { createTool, type Tool, type ToolContext } from 'armorer';
 import type { UserAdmissibleContent } from '@lostgradient/operative';
+import { mimeTypeFitsModality } from 'conversationalist';
 import { z } from 'zod';
 
 import { decodeBase64 } from './assets/base64';
 import { AssetAdmissionError, AssetNotFoundError } from './assets/errors';
 import { managedAssetSource } from './assets/asset-service';
 import type { AssetDescriptor, AssetService } from './assets/types';
+import type { WorkspaceOwnerAuthority } from './http/workspace-principal';
 
 const MAX_PUBLISH_BYTES = 256 * 1024;
 const MAX_READ_BYTES = 65_536;
@@ -16,6 +18,7 @@ const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
 export interface AssetToolHost {
   readonly assets: () => AssetService | undefined;
   readonly ownerOfRun: (runId: string) => Promise<string | undefined>;
+  readonly workspaceAuthority?: (owner: string) => WorkspaceOwnerAuthority | undefined;
 }
 
 async function serviceAndPrincipal(
@@ -33,7 +36,12 @@ async function serviceAndPrincipal(
       : undefined);
   if (typeof runId !== 'string' || runId === '') return undefined;
   const id = await host.ownerOfRun(runId);
-  return service === undefined || id === undefined ? undefined : { service, principal: { id } };
+  if (service === undefined || id === undefined) return undefined;
+  const workspaceAuthority = host.workspaceAuthority?.(id);
+  return {
+    service,
+    principal: { id, ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }) },
+  };
 }
 
 function contentBytes(input: { text: string | undefined; base64: string | undefined }): Uint8Array {
@@ -46,14 +54,16 @@ function contentBytes(input: { text: string | undefined; base64: string | undefi
   const encoded = input.base64 ?? '';
   if (!BASE64.test(encoded))
     throw new AssetAdmissionError('unsupported-source', 'base64 must be valid base64.');
+  const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  const decodedLength = (encoded.length / 4) * 3 - padding;
+  if (decodedLength > MAX_PUBLISH_BYTES)
+    throw new AssetAdmissionError('per-part-limit-exceeded', 'base64 exceeds the 256 KiB limit.');
   let bytes: Uint8Array;
   try {
     bytes = decodeBase64(encoded);
   } catch {
     throw new AssetAdmissionError('unsupported-source', 'base64 must be valid base64.');
   }
-  if (bytes.byteLength > MAX_PUBLISH_BYTES)
-    throw new AssetAdmissionError('per-part-limit-exceeded', 'base64 exceeds the 256 KiB limit.');
   return bytes;
 }
 
@@ -148,20 +158,25 @@ export function createAssetTools(host: AssetToolHost): readonly Tool[] {
 
 /** Builds a content part naming a managed asset for a child run. */
 export function managedAssetPart(descriptor: AssetDescriptor, fileName?: string) {
+  const mimeType = descriptor.mediaType ?? 'application/octet-stream';
+  const portableModality =
+    descriptor.modality === 'document' && !mimeTypeFitsModality('document', mimeType)
+      ? 'file'
+      : descriptor.modality;
   const fields = {
-    mimeType: descriptor.mediaType ?? 'application/octet-stream',
+    mimeType,
     ...(fileName === undefined && descriptor.fileName === undefined
       ? {}
       : { name: fileName ?? descriptor.fileName }),
     source: managedAssetSource(descriptor),
   };
-  if (descriptor.modality === 'image')
+  if (portableModality === 'image')
     return { type: 'image' as const, ...fields } as UserAdmissibleContent;
-  if (descriptor.modality === 'audio')
+  if (portableModality === 'audio')
     return { type: 'audio' as const, ...fields } as UserAdmissibleContent;
-  if (descriptor.modality === 'video')
+  if (portableModality === 'video')
     return { type: 'video' as const, ...fields } as UserAdmissibleContent;
-  if (descriptor.modality === 'file')
+  if (portableModality === 'file')
     return { type: 'file' as const, ...fields } as UserAdmissibleContent;
   return { type: 'document' as const, ...fields } as UserAdmissibleContent;
 }
