@@ -342,6 +342,7 @@ async function compile(
       '--compile',
       '--no-compile-autoload-dotenv',
       '--no-compile-autoload-bunfig',
+      '--compile-autoload-package-json',
       '--compile-exec-argv=--no-install',
       '--define',
       `INTERBOROUGH_RELEASE_VERSION=${JSON.stringify(version)}`,

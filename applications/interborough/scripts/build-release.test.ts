@@ -74,8 +74,10 @@ async function releaseFixture(
   }
   if (options.escapingLink)
     await symlink('/tmp/interborough-release-missing-target', join(sdk, 'escape'));
+  const buildArguments: string[][] = [];
   const command = async (arguments_: string[]): Promise<void> => {
     if (arguments_[1] === 'build') {
+      buildArguments.push(arguments_);
       if (options.commandFailure) throw new Error('fixture command failed');
       const output = arguments_[arguments_.indexOf('--outfile') + 1];
       if (output === undefined) throw new Error('missing bundle output');
@@ -169,7 +171,7 @@ await new Promise(() => {});
     },
     buildMcpAppPage: async () => ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }),
   };
-  return { root, operations };
+  return { root, operations, buildArguments };
 }
 
 async function expectRelocatedFailure(
@@ -411,6 +413,10 @@ describe('release arguments', () => {
           ),
         ).exists(),
       ).toBe(true);
+      const compileArguments = fixture.buildArguments.find((arguments_) =>
+        arguments_.includes('--compile'),
+      );
+      expect(compileArguments).toContain('--compile-autoload-package-json');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
