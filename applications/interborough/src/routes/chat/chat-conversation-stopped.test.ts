@@ -8,8 +8,8 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import ChatConversation from './chat-conversation.svelte';
+import ChatToasts from './chat-toasts.test-harness.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
-import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 const mount = (props: Record<string, unknown>) =>
-  render(QueryPage, { props: { page: ChatConversation, pageProps: props } } as never);
+  render(ChatToasts, { props: { page: ChatConversation, pageProps: props } } as never);
 
 const sse = (events: readonly unknown[]) =>
   new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
@@ -62,38 +62,77 @@ const catalog = (tier: 'read-only' | 'dangerous') => ({
   ],
 });
 
-/** A chat whose last run stopped on a call of `issue-refund` that has no answer. */
-function open(tier: 'read-only' | 'dangerous', started: string[] = []) {
-  const messages = [
-    { id: 'u1', role: 'user', content: 'Please refund order 4471, it arrived damaged.' },
+/** What the stubbed Bureau was asked while a chat was open, and the thread it holds. */
+type Served = {
+  readonly calls: { method: string; params: Record<string, unknown> }[];
+  readonly started: string[];
+  thread: { id: string; role: string; content: string; toolCalls?: unknown[] }[];
+};
+
+/**
+ * A chat whose last run stopped on a call of `issue-refund` that has no answer. The stubbed Bureau
+ * holds the thread, takes the failed turn back out of it when asked, and answers the retry's run
+ * with the thread it holds.
+ */
+function open(
+  tier: 'read-only' | 'dangerous',
+  options: {
+    readonly permissionMode?: string;
+    readonly steer?: 'accepted' | 'rejected';
+    readonly served?: Partial<Served>;
+  } = {},
+): { served: Served; view: ReturnType<typeof mount> } {
+  const served: Served = {
+    calls: [],
+    started: options.served?.started ?? [],
+    thread: [
+      { id: 'u1', role: 'user', content: 'Please refund order 4471, it arrived damaged.' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '',
+        toolCalls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'issue-refund', arguments: '{"orderId":"4471"}' },
+          },
+        ],
+      },
+    ],
+  };
+  const stub = bureau(
     {
-      id: 'a1',
-      role: 'assistant',
-      content: '',
-      toolCalls: [
-        {
-          id: 'call-1',
-          type: 'function',
-          function: { name: 'issue-refund', arguments: '{"orderId":"4471"}' },
-        },
-      ],
-    },
-  ];
-  restore = bureau(
-    {
-      'bureau.contexts.get': () => CONTEXT,
+      'bureau.contexts.get': () => ({
+        ...CONTEXT,
+        ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }),
+      }),
       'bureau.tasks.list': () => ({ tasks: [task], nextPageToken: null }),
       'bureau.agents.catalog': () => catalog(tier),
+      'bureau.contexts.rewind': (params) => {
+        const at = served.thread.findIndex((row) => row.id === params['fromMessageId']);
+        const removed = served.thread.splice(at).map((row) => row.id);
+        return { removed, forgotten: [] };
+      },
+      'bureau.contexts.steer': () =>
+        options.steer === 'rejected'
+          ? { outcome: 'rejected', failure: { reason: 'policy-denied' } }
+          : { outcome: 'accepted' },
     },
     (url, init) => {
-      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages });
+      if (url.endsWith('/messages')) {
+        return Response.json({ threadId: 'session-1', messages: served.thread });
+      }
       if (url.includes('/threads/')) {
         return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
       }
       if (url.includes('/agents/')) {
-        started.push(typeof init?.body === 'string' ? init.body : '');
+        served.started.push(typeof init?.body === 'string' ? init.body : '');
+        const reply = { id: 'run-2:step:0', role: 'assistant', content: 'Refunded.' };
+        served.thread = [...served.thread, reply];
         return sse([
           { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-2' },
+          { type: 'MESSAGES_SNAPSHOT', messages: served.thread },
           {
             type: 'RUN_FINISHED',
             threadId: 'session-1',
@@ -104,20 +143,25 @@ function open(tier: 'read-only' | 'dangerous', started: string[] = []) {
       }
       return undefined;
     },
-  ).restore;
+  );
+  restore = stub.restore;
+  served.calls = stub.calls;
   landAt('/chats/session-1');
-  return mount({ sessionId: 'session-1', title: 'Refund', agentName: 'assistant' });
+  return {
+    served,
+    view: mount({ sessionId: 'session-1', title: 'Refund', agentName: 'assistant' }),
+  };
 }
 
 describe('a chat whose run failed on a call', () => {
   test('shows Failed beside the title', async () => {
-    const { findByText } = open('dangerous');
+    const { findByText } = open('dangerous').view;
     const status = await findByText('Failed');
     expect(status.closest('[data-testid="chat-header"]')).not.toBeNull();
   });
 
   test('says the call may have run, and that Retry goes back through the approval, for a tool that changes things', async () => {
-    const { container, findByText } = open('dangerous');
+    const { container, findByText } = open('dangerous').view;
     const line = await findByText(/The reply stopped while Issue refund was running/);
     expect(line.textContent).toContain('the model provider dropped the connection');
     expect(line.textContent).toContain('Issue refund may have run.');
@@ -132,7 +176,7 @@ describe('a chat whose run failed on a call', () => {
   });
 
   test('says the call did not finish and nothing was changed for a tool that only reads', async () => {
-    const { container, findByText } = open('read-only');
+    const { container, findByText } = open('read-only').view;
     const line = await findByText(/The reply stopped while Issue refund was running/);
     expect(line.textContent).toContain('Issue refund didn’t finish and nothing was changed.');
     await waitFor(() =>
@@ -143,18 +187,62 @@ describe('a chat whose run failed on a call', () => {
     );
   });
 
-  test('Retry sends the message again over a fresh reply and never resumes the call', async () => {
-    const started: string[] = [];
-    const { container, findByRole } = open('dangerous', started);
+  test('Retry has the Bureau take the turn back out, and never resumes the call or brings the failed attempt back', async () => {
+    const { served, view } = open('dangerous');
+    const { container, findByRole } = view;
     await findByRole('button', { name: 'Retry' });
 
     await fireEvent.click(await findByRole('button', { name: 'Retry' }));
 
-    await waitFor(() => expect(started).toHaveLength(1));
-    expect(started[0]).toContain('Please refund order 4471, it arrived damaged.');
-    expect(started[0]).not.toContain('call-1');
-    await waitFor(() =>
-      expect(container.querySelectorAll('[data-cinder-status="interrupted"]').length).toBe(0),
+    await waitFor(() => expect(served.started).toHaveLength(1));
+    expect(served.started[0]).toContain('Please refund order 4471, it arrived damaged.');
+    expect(served.started[0]).not.toContain('call-1');
+    const rewind = served.calls.find((call) => call.method === 'bureau.contexts.rewind');
+    expect(rewind?.params).toEqual({
+      contextId: 'session-1',
+      fromMessageId: 'u1',
+      forgetGrantsFor: ['issue-refund'],
+    });
+    // The run ends with the thread the Bureau holds, which no longer holds the failed attempt.
+    await waitFor(() => expect(container.textContent).toContain('Refunded.'));
+    expect(container.querySelectorAll('[data-cinder-status="interrupted"]').length).toBe(0);
+    expect(container.textContent).not.toContain('The reply stopped while');
+  });
+
+  test('Retry on a chat set to Allow all sets it to On changes first, so the call asks again', async () => {
+    const { served, view } = open('dangerous', { permissionMode: 'allow-all' });
+    const { findByRole } = view;
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(served.started).toHaveLength(1));
+    const methods = served.calls.map((call) => call.method);
+    expect(methods.indexOf('bureau.contexts.steer')).toBeGreaterThan(-1);
+    expect(methods.indexOf('bureau.contexts.steer')).toBeLessThan(
+      methods.indexOf('bureau.contexts.rewind'),
     );
+    const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
+    expect(steer?.params).toMatchObject({ contextId: 'session-1', permissionMode: 'on-changes' });
+  });
+
+  test('Retry on a chat not set to Allow all changes no setting', async () => {
+    const { served, view } = open('dangerous');
+    const { findByRole } = view;
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(served.started).toHaveLength(1));
+    expect(served.calls.some((call) => call.method === 'bureau.contexts.steer')).toBe(false);
+  });
+
+  test('Retry on a chat set to Allow all sends nothing when it cannot be set to On changes', async () => {
+    const { served, view } = open('dangerous', { permissionMode: 'allow-all', steer: 'rejected' });
+    const { findByRole, findByText } = view;
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+
+    await findByText('This chat cannot use that mode.');
+    expect(served.calls.some((call) => call.method === 'bureau.contexts.rewind')).toBe(false);
+    expect(served.started).toEqual([]);
   });
 });

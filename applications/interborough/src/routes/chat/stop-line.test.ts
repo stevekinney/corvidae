@@ -14,6 +14,7 @@ import {
   hasFailedStop,
   interruptedTool,
   stopSentence,
+  subjectOf,
   withStopLine,
 } from './stop-line.ts';
 import type { ToolInfo } from './tool-activity.ts';
@@ -87,6 +88,7 @@ describe('the sentence', () => {
       stopSentence('The model provider dropped the connection.', {
         name: 'Lookup order',
         tier: 'read-only',
+        subject: 'order',
       }),
     ).toBe(
       'The reply stopped while Lookup order was running: the model provider dropped the connection. Lookup order didn’t finish and nothing was changed.',
@@ -98,8 +100,9 @@ describe('the sentence', () => {
       const line = stopSentence('The model provider dropped the connection.', {
         name: 'Issue refund',
         tier,
+        subject: undefined,
       });
-      expect(line).toContain('Issue refund may have run.');
+      expect(line).toContain('Issue refund may have run. Check the result before retrying.');
       expect(line).toContain('Retry goes back through the approval.');
       expect(line.toLowerCase()).not.toContain('nothing was changed');
     }
@@ -107,11 +110,25 @@ describe('the sentence', () => {
 });
 
 describe('the call a run was interrupted on', () => {
-  test('is the last call with no answer, named for a person', () => {
+  test('is the last call with no answer, named for a person, with what it acted on', () => {
     expect(interruptedTool(calling('issue-refund'), tools)).toEqual({
       name: 'Issue refund',
       tier: 'dangerous',
+      subject: 'order',
     });
+  });
+
+  test('says which thing to check when the call names it, and "result" when it does not', () => {
+    const line = (interrupted: Parameters<typeof stopSentence>[1]) =>
+      stopSentence('The model provider dropped the connection.', interrupted);
+    const changing = { name: 'Issue refund', tier: 'dangerous', subject: 'order' } as const;
+
+    expect(line(changing)).toBe(
+      'The reply stopped while Issue refund was running: the model provider dropped the connection. Issue refund may have run. Check the order before retrying. Retry goes back through the approval.',
+    );
+    expect(line({ ...changing, subject: undefined })).toContain(
+      'Check the result before retrying.',
+    );
   });
 
   test('is none when every call was answered', () => {
@@ -192,5 +209,23 @@ describe('the stop note on the transcript', () => {
   test('a transcript with no failed stop note is the very transcript it was', () => {
     const base = calling('issue-refund');
     expect(withStopLine(base, { tools })).toBe(base);
+  });
+});
+
+describe('what a call acted on', () => {
+  test('is the noun before the identifier word of an argument name, in any casing', () => {
+    expect(subjectOf({ orderId: 4471 })).toBe('order');
+    expect(subjectOf({ order_id: 4471 })).toBe('order');
+    expect(subjectOf({ 'order-id': 4471 })).toBe('order');
+    expect(subjectOf({ amount: 5, customerAccountId: 'c1' })).toBe('customer account');
+    expect(subjectOf({ orderID: 4471 })).toBe('order');
+  });
+
+  test('is nothing for arguments that name no thing, or that are not a record', () => {
+    expect(subjectOf({ id: 'x', amount: 5, valid: true })).toBeUndefined();
+    expect(subjectOf({ identity: 'x' })).toBeUndefined();
+    expect(subjectOf('orderId')).toBeUndefined();
+    expect(subjectOf(null)).toBeUndefined();
+    expect(subjectOf([{ orderId: 1 }])).toBeUndefined();
   });
 });

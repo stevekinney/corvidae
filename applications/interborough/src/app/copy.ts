@@ -2595,10 +2595,19 @@ export const CHAT_COPY = {
       `The reply stopped while ${tool} was running: ${cause}.`,
     /** Added for an interrupted tool that only reads. */
     didNotFinish: (tool: string): string => `${tool} didn’t finish and nothing was changed.`,
-    /** Added for an interrupted tool that changes things, or that nothing classifies. */
-    mayHaveRun: (tool: string): string =>
-      `${tool} may have run. Check the result before retrying. Retry goes back through the approval.`,
+    /**
+     * Added for an interrupted tool that changes things, or that nothing classifies. `subject` is
+     * what the call acted on ("order", from an `orderId` argument); a call that names none says
+     * "result".
+     */
+    mayHaveRun: (tool: string, subject: string = 'result'): string =>
+      `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
     retry: 'Retry',
+    /** Said when Retry could not take the failed turn back out of the chat. */
+    retryFailed: 'The failed reply could not be taken back, so nothing was sent. Try again.',
+    /** Said when a run still holds the chat, so the failed turn cannot be taken back yet. */
+    retryBusy:
+      'The agent is still working on this chat, so nothing was sent. Try again in a moment.',
   },
   /** The chat's header and its strip of runs. */
   strip: {

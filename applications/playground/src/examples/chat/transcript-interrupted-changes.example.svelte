@@ -33,7 +33,7 @@
               id: 'stopped',
               failed: true,
               reason:
-                'The reply stopped while Issue refund was running: the model provider dropped the connection. Issue refund may have run. Check the result before retrying. Retry goes back through the approval.',
+                'The reply stopped while Issue refund was running: the model provider dropped the connection. Issue refund may have run. Check the order before retrying. Retry goes back through the approval.',
             },
           ],
         },

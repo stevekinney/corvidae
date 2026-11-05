@@ -122,8 +122,8 @@
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
-  import { toolGroups, type ToolInfo } from './tool-activity.ts';
-  import { hasFailedStop, withStopLine } from './stop-line.ts';
+  import { mayChange, toolGroups, type ToolInfo } from './tool-activity.ts';
+  import { hasFailedStop, interruptedTool, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -594,6 +594,50 @@
     event.preventDefault();
     router.navigate(href);
   }
+  const retryCommands = createPendingCommandKey();
+
+  /**
+   * Runs the last turn again (Retry on the status line under a reply that stopped). A call the run
+   * was interrupted on that may change things goes back through its approval, so a chat set to
+   * Allow all is set to On changes first, and the composer says so (the chat's "Allow for the rest
+   * of this chat" grant for the tool is forgotten with the turn, `ChatSessionState.retryTurn`).
+   * When the setting cannot be changed, nothing is sent: the call would otherwise run unasked.
+   */
+  async function retryTurn(): Promise<void> {
+    const interrupted = interruptedTool(session.conversation, toolInfo);
+    const data = context.data;
+    if (
+      interrupted !== undefined &&
+      mayChange(interrupted.tier) &&
+      data?.permissionMode === 'allow-all'
+    ) {
+      const result = await changeSetting({
+        commands: retryCommands,
+        scope: sessionId,
+        content: 'on-changes',
+        send: (commandId) =>
+          steerContext({
+            contextId: sessionId,
+            commandId,
+            expectedRevision: data.configVersion,
+            permissionMode: 'on-changes',
+          }),
+        reload: reloadContext,
+        notices: SETTINGS.permissionNotices,
+      });
+      if (!result.applied) {
+        showToast(result.notice ?? SETTINGS.permissionNotices.notChanged, {
+          variant: 'warning',
+          duration: 0,
+        });
+        return;
+      }
+      const onChanges = SETTINGS.permissionOptions.find((entry) => entry.value === 'on-changes');
+      noted('toolCall', SETTINGS.permission, onChanges?.label ?? 'On changes asks');
+    }
+    await session.retryTurn({ tools: toolInfo });
+  }
+
   let branching = $state(false);
   let branchFailure = $state<string | undefined>(undefined);
   const branchCommands = createPendingCommandKey();
@@ -1209,7 +1253,7 @@
           size="sm"
           variant="secondary"
           disabled={!session.canRetryTurn || connection.unreachable}
-          onclick={() => void session.retryTurn()}
+          onclick={() => void retryTurn()}
         >
           {CHAT_COPY.stopLine.retry}
         </Button>

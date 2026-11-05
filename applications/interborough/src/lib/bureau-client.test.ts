@@ -18,6 +18,7 @@ import {
   listContexts,
   renameContext,
   retractContextInput,
+  rewindContext,
   sendContextInput,
   steerContext,
   type SteerOutcome,
@@ -234,6 +235,52 @@ describe('retractContextInput', () => {
     expect(
       await withStub(down.fetch, () => failureOf(retractContextInput('c1', 'row-1'))),
     ).toBeInstanceOf(Error);
+  });
+});
+
+describe('rewindContext', () => {
+  async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
+    const restore = installFetchImplementation(stub);
+    try {
+      return await body();
+    } finally {
+      restore();
+    }
+  }
+
+  test('asks the Bureau to remove the row and what follows it, and to forget the named grants', async () => {
+    const stub = answering(result({ removed: ['u1', 'a1'], forgotten: ['shop:issue_refund@1'] }));
+
+    const answer = await withStub(stub.fetch, () =>
+      rewindContext({ contextId: 'c1', fromMessageId: 'u1', forgetGrantsFor: ['issue_refund'] }),
+    );
+
+    expect(answer).toBe('rewound');
+    expect(stub.calls[0]?.body).toEqual({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.rewind',
+      method: 'bureau.contexts.rewind',
+      params: { contextId: 'c1', fromMessageId: 'u1', forgetGrantsFor: ['issue_refund'] },
+    });
+  });
+
+  test('answers absent for a row the Bureau does not hold, and throws for anything else', async () => {
+    const noRow = answering(fault(404, 'NotFound', 'No message', { resource: 'message' }));
+    const noContext = answering(fault(404, 'NotFound', 'No context', { resource: 'context' }));
+    const busy = answering(fault(409, 'Conflict', 'A run is going', { reason: 'run-in-progress' }));
+
+    expect(
+      await withStub(noRow.fetch, () => rewindContext({ contextId: 'c1', fromMessageId: 'u1' })),
+    ).toBe('absent');
+    expect(
+      await withStub(noContext.fetch, () =>
+        failureOf(rewindContext({ contextId: 'c1', fromMessageId: 'u1' })),
+      ),
+    ).toBeInstanceOf(Error);
+    const refused = await withStub(busy.fetch, () =>
+      failureOf(rewindContext({ contextId: 'c1', fromMessageId: 'u1' })),
+    );
+    expect(forkRefusalReason(refused)).toBe('run-in-progress');
   });
 });
 

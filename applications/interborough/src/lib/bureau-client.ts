@@ -386,6 +386,39 @@ export async function retractContextInput(
 }
 
 /**
+ * Takes a turn back out of a session (`bureau.contexts.rewind`): the row `fromMessageId` and every
+ * row after it are removed from the Bureau's own record, and the grants of `forgetGrantsFor` (tool
+ * names) are forgotten, so Retry sends the turn again over a thread that never held the failed
+ * attempt and a changing tool asks again. `absent` means the Bureau holds no such row, so there is
+ * nothing there to remove; a session a run still holds is a `Conflict` fault whose `data.reason` is
+ * `run-in-progress` (`forkRefusalReason` reads it), and any other failure throws.
+ */
+export async function rewindContext(
+  input: {
+    readonly contextId: string;
+    readonly fromMessageId: string;
+    readonly forgetGrantsFor?: readonly string[];
+  },
+  options?: { readonly signal?: AbortSignal },
+): Promise<'rewound' | 'absent'> {
+  try {
+    z.object({ removed: z.array(z.string()), forgotten: z.array(z.string()) }).parse(
+      await callBureau('bureau.contexts.rewind', input, options),
+    );
+    return 'rewound';
+  } catch (error) {
+    if (
+      error instanceof HttpClientError &&
+      wireCodeOf(error) === 'NotFound' &&
+      error.data?.['resource'] === 'message'
+    ) {
+      return 'absent';
+    }
+    throw error;
+  }
+}
+
+/**
  * Gives a session a title of the caller's choosing (`bureau.contexts.rename`), or takes the one it
  * was given away with `null`, which shows the title derived from its first message again. The
  * Bureau trims the title and refuses a blank one or one over 200 characters as `InvalidParams`.

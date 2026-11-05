@@ -24,6 +24,7 @@ import {
   createChatSessionController,
   createConversationHistory,
   getUnresolvedToolApprovals,
+  pairToolCallsWithResults,
   removeMessage,
   type ChatSessionController,
   type ConversationHistory,
@@ -32,7 +33,9 @@ import {
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import {
+  forkRefusalReason,
   retractContextInput,
+  rewindContext,
   sendContextInput,
   wireCodeOf,
   type Fetcher,
@@ -51,6 +54,7 @@ import {
   type Refusal,
   type RunUsage,
 } from './run-wiring.ts';
+import { mayChange, type ToolInfo } from './tool-activity.ts';
 
 export type ChatSessionOptions = {
   /** The session's identifier, which is the conversation's and the AG-UI thread's. */
@@ -520,18 +524,42 @@ export class ChatSessionState {
   }
 
   /**
-   * Runs the last turn again: the reply that stopped (and the calls it made) is dropped from the
-   * transcript, and the person's message is sent as a turn of its own, so the new reply replaces the
-   * old one and nothing of the failed attempt is kept. It never resumes a call the run was in the
-   * middle of: the agent decides again, and a tool that asks goes back through its approval, so a
-   * refund cannot be issued twice. A last message with files, or one that is not plain text, is not
-   * offered again here (`canRetryTurn`).
+   * Runs the last turn again: the Bureau takes the turn back out of the thread (`rewindContext`),
+   * the reply that stopped and the calls it made leave the transcript, and the person's message is
+   * sent as a turn of its own, so the new reply replaces the old one and nothing of the failed
+   * attempt is kept, here or in the thread the Bureau sends back when the run ends or the chat is
+   * opened again. It never resumes a call the run was in the middle of: the agent decides again,
+   * and a tool that may change things goes back through its approval, because the chat's "Allow for
+   * the rest of this chat" grant for the tools `tools` classifies that way, among the calls
+   * that never got an answer, is forgotten with the turn, so a refund cannot be issued twice. When
+   * the Bureau will not take the turn back (a run still holds the chat), nothing is sent and the
+   * failure says so. A last message with files, or one that is not plain text, is not offered again
+   * here (`canRetryTurn`).
    */
-  retryTurn(): Promise<void> {
+  async retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
     const id = this.#lastUserRowId();
     const row = id === undefined ? undefined : this.conversation.messages[id];
     const text = row === undefined ? undefined : retryText(row);
-    if (id === undefined || text === undefined) return Promise.resolve();
+    if (id === undefined || text === undefined) return;
+    const forgetGrantsFor = this.#unansweredCallsThatMayChange(options.tools);
+    try {
+      await rewindContext(
+        {
+          contextId: this.sessionId,
+          fromMessageId: id,
+          ...(forgetGrantsFor.length === 0 ? {} : { forgetGrantsFor }),
+        },
+        { signal: this.#abort.signal },
+      );
+    } catch (error) {
+      if (this.#abort.signal.aborted) return;
+      if (isNotFound(error)) this.#onNotFound?.();
+      this.failure =
+        forkRefusalReason(error) === 'run-in-progress'
+          ? CHAT_COPY.stopLine.retryBusy
+          : CHAT_COPY.stopLine.retryFailed;
+      return;
+    }
     const index = this.conversation.ids.indexOf(id);
     this.conversation = this.conversation.ids
       .slice(index)
@@ -542,6 +570,18 @@ export class ChatSessionState {
       );
     this.failure = undefined;
     return this.send(text);
+  }
+
+  /**
+   * The names of the tools the last turn called that never got an answer and may change things
+   * (the catalog says so, or says nothing): the calls a retry must put back through their approval.
+   */
+  #unansweredCallsThatMayChange(tools: ReadonlyMap<string, ToolInfo> | undefined): string[] {
+    const rows = this.conversation.ids.flatMap((rowId) => this.conversation.messages[rowId] ?? []);
+    const names = pairToolCallsWithResults(rows)
+      .filter((pair) => pair.result === undefined && mayChange(tools?.get(pair.call.name)?.tier))
+      .map((pair) => pair.call.name);
+    return [...new Set(names)];
   }
 
   /** Whether the last turn can be run again here: its message is plain text and nothing is going. */

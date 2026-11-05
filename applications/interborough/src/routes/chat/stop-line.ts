@@ -35,7 +35,32 @@ export function causeOf(reason: string): string {
 export type InterruptedTool = {
   readonly name: string;
   readonly tier: ToolInfo['tier'] | undefined;
+  /**
+   * What the call acted on, as a noun ("order"), read from the argument that names it (`orderId`
+   * is "order"); `undefined` when no argument does.
+   */
+  readonly subject: string | undefined;
 };
+
+/**
+ * The noun the arguments of a call name what it acts on with: `orderId`, `orderID`, `order_id` and
+ * `order-id` are "order" (a word that merely ends in "id", such as `valid`, is not an identifier).
+ * The first argument whose name ends in an identifier word, with something before it, says it; a call with no such argument has no subject.
+ */
+export function subjectOf(args: unknown): string | undefined {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return undefined;
+  for (const key of Object.keys(args)) {
+    const prefix = /^(.+?)(?:[_-](?:id|ID)|Id|ID)$/u.exec(key)?.[1];
+    if (prefix === undefined) continue;
+    const words = prefix
+      .replaceAll(/([a-z0-9])([A-Z])/gu, '$1 $2')
+      .replaceAll(/[_-]+/gu, ' ')
+      .trim()
+      .toLowerCase();
+    if (words !== '') return words;
+  }
+  return undefined;
+}
 
 /**
  * The tool whose call is the last in the transcript and has no answer, which a run that is no
@@ -52,6 +77,7 @@ export function interruptedTool(
   return {
     name: toolDisplayName(unanswered.call.name, info?.title),
     tier: info?.tier,
+    subject: subjectOf(unanswered.call.arguments),
   };
 }
 
@@ -60,7 +86,7 @@ export function stopSentence(reason: string, interrupted?: InterruptedTool): str
   const cause = causeOf(reason);
   if (interrupted === undefined) return COPY.partway(cause);
   const outcome = mayChange(interrupted.tier)
-    ? COPY.mayHaveRun(interrupted.name)
+    ? COPY.mayHaveRun(interrupted.name, interrupted.subject)
     : COPY.didNotFinish(interrupted.name);
   return `${COPY.whileRunning(interrupted.name, cause)} ${outcome}`;
 }

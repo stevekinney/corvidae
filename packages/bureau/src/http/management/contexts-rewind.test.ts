@@ -68,6 +68,24 @@ describe('bureau.contexts.rewind', () => {
     });
   });
 
+  it('keeps the removed rows out of the thread a run started afterwards ends with', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedSession(opened);
+      const before = await rowIds(opened, run.contextId);
+      await rewind(opened, run.contextId, 'alice-key', { fromMessageId: before[0] });
+
+      const again = await opened.bureau.tasks.start('agent', 'go again', {
+        principal: OWNER.alice,
+        contextId: run.contextId,
+      });
+      await waitForTaskState(opened.bureau, again.id);
+
+      const after = await rowIds(opened, run.contextId);
+      expect(after.length).toBeGreaterThan(1);
+      for (const id of before) expect(after).not.toContain(id);
+    });
+  });
+
   it('forgets the "Allow for the rest of this chat" grant of each tool named, whatever its version, and keeps the others', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened);
