@@ -24,6 +24,15 @@ const document = {
   steps: [{ kind: 'activity', handler: 'work' }],
 };
 
+const twoActivityDocument = {
+  name: 'two-activities',
+  trigger: { kind: 'manual' },
+  steps: [
+    { kind: 'activity', handler: 'first' },
+    { kind: 'activity', handler: 'second' },
+  ],
+};
+
 async function resultOf(activity: DocumentActivity, id: string): Promise<unknown> {
   await using engine = new Engine();
   await registerWorkflowDocuments(engine, hostWith(activity), { active: [document] });
@@ -74,6 +83,55 @@ describe('a document activity registered as a definition', () => {
           (event.data as { kind?: string }).kind === 'sleep',
       ),
     ).toBe(false);
+  });
+
+  it('keeps retried activities at their document indices in file history', async () => {
+    using engine = new TestEngine({ startTime: 0 });
+    let firstAttempts = 0;
+    const secondCalls: number[] = [];
+    await registerWorkflowDocuments(
+      engine,
+      {
+        activities: {
+          first: {
+            retry: { maxAttempts: 2, initialBackoff: 100, backoffMultiplier: 1, maxBackoff: 100 },
+            execute: () => {
+              firstAttempts += 1;
+              if (firstAttempts === 1) throw new Error('retry once');
+              return 'first complete';
+            },
+          },
+          second: {
+            execute: () => {
+              secondCalls.push(engine.now);
+              return 'second complete';
+            },
+          },
+        },
+        triggerKinds: { manual: () => undefined },
+      },
+      { active: [twoActivityDocument] },
+    );
+
+    const handle = await engine.start('two-activities', null, { id: 'two-activity-retry' });
+    await waitForParityCondition(() => firstAttempts === 1, { label: 'the first attempt' });
+    await engine.advanceTime(100);
+    expect(await handle.result()).toBe('second complete');
+    expect(secondCalls).toEqual([100]);
+
+    const events = await engine.getEvents('two-activity-retry');
+    const fileEvents = events.filter((event) => event.type.startsWith('file-workflow:'));
+    expect(fileEvents.map((event) => ({ type: event.type, data: event.data }))).toEqual([
+      { type: 'file-workflow:step-started', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:activity-started', data: { step: 0, handler: 'first' } },
+      { type: 'file-workflow:activity-completed', data: { step: 0, handler: 'first' } },
+      { type: 'file-workflow:step-completed', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:step-started', data: { step: 1, kind: 'activity' } },
+      { type: 'file-workflow:activity-started', data: { step: 1, handler: 'second' } },
+      { type: 'file-workflow:activity-completed', data: { step: 1, handler: 'second' } },
+      { type: 'file-workflow:step-completed', data: { step: 1, kind: 'activity' } },
+      { type: 'file-workflow:run-terminal', data: { status: 'completed' } },
+    ]);
   });
 
   it('fails with the last error when the retry policy is exhausted', async () => {

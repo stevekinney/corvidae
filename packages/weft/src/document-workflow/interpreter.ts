@@ -52,6 +52,34 @@ function* documentOperation<T>(
 }
 
 /**
+ * Activity retry backoff is an engine operation, not a document step. Mark only
+ * the activity dispatches yielded by the retry generator so a retry does not
+ * create a file-workflow sleep event or inherit the engine's step counter.
+ */
+function* documentActivityOperation<T>(
+  operation: Generator<unknown, T, unknown>,
+  documentStep: number,
+): Generator<ContextOperationRequest, T, unknown> {
+  let input: unknown;
+  while (true) {
+    const result = operation.next(input);
+    if (result.done) return result.value;
+    const request = result.value as ContextOperationRequest;
+    if (request.type === 'activity') request.documentStep = documentStep;
+    try {
+      input = yield request;
+    } catch (error) {
+      if (operation.throw === undefined) throw error;
+      const thrown = operation.throw(error);
+      if (thrown.done) return thrown.value;
+      const thrownRequest = thrown.value as ContextOperationRequest;
+      if (thrownRequest.type === 'activity') thrownRequest.documentStep = documentStep;
+      input = yield thrownRequest;
+    }
+  }
+}
+
+/**
  * Build the workflow definition that interprets `document`. Its version is the
  * document's {@link workflowDocumentVersion}. Its `.activities()` map holds
  * exactly the handlers the document's activity steps name, and its
@@ -104,15 +132,16 @@ export async function buildDocumentWorkflowDefinition(
         case 'activity':
           // The activity itself, not its name: `ctx.run` reads the retry policy and the
           // per-attempt timeout from the activity it is given, and a name carries neither.
-          // `step` is already the document index on the activity request, including every retry;
-          // wrapping this generator would interfere with the activity retry state machine.
-          previous = yield* context.run(activities.get(step.handler)!, {
-            input: step.input ?? null,
-            trigger: firedBy,
-            previous,
-            workflowId: context.workflowId,
-            step: index,
-          });
+          previous = yield* documentActivityOperation(
+            context.run(activities.get(step.handler)!, {
+              input: step.input ?? null,
+              trigger: firedBy,
+              previous,
+              workflowId: context.workflowId,
+              step: index,
+            }),
+            index,
+          );
           break;
         case 'sleep':
           yield* documentOperation(context.sleep(step.duration), index);
