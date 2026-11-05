@@ -20,7 +20,6 @@ import { buildApplication } from './build.ts';
 const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
 const REPOSITORY_ROOT = resolve(PACKAGE_DIRECTORY, '..', '..');
 const SDK = '@lostgradient/interborough-plugin';
-const LOCKFILE = join(REPOSITORY_ROOT, 'bun.lock');
 export type ReleaseArguments = { readonly version: string; readonly outdir: string };
 export type ReleaseManifest = {
   readonly version: string;
@@ -57,47 +56,35 @@ async function runCommand(arguments_: string[], cwd = REPOSITORY_ROOT): Promise<
     throw new Error(`${arguments_.join(' ')} failed (${exitCode}): ${stderr || stdout}`);
 }
 
-async function locate(name: string, parent?: string): Promise<string> {
-  const relative = name.startsWith('@lostgradient/') ? name.slice('@lostgradient/'.length) : name;
-  const workspace = join(
-    REPOSITORY_ROOT,
-    name.startsWith('@lostgradient/')
-      ? relative.startsWith('plugin-')
-        ? 'plugins'
-        : 'packages'
-      : 'node_modules',
-    relative,
-  );
-  if (await Bun.file(join(workspace, 'package.json')).exists()) return workspace;
-  for (const installed of [
-    ...(parent === undefined
-      ? []
-      : [
-          join(parent, 'node_modules', name),
-          join(parent, '..', name),
-          join(parent, '..', '..', name),
-        ]),
-    join(PACKAGE_DIRECTORY, 'node_modules', name),
+async function locateFromProductionInstall(
+  name: string,
+  dependencies: string,
+  parent?: string,
+): Promise<string> {
+  for (const candidate of [
+    join(dependencies, name),
+    ...(parent === undefined ? [] : [join(parent, 'node_modules', name)]),
   ]) {
-    if (await Bun.file(join(installed, 'package.json')).exists()) return realpath(installed);
+    if (await Bun.file(join(candidate, 'package.json')).exists()) return realpath(candidate);
   }
-  const store = join(REPOSITORY_ROOT, 'node_modules', '.bun');
+  const store = resolve(dependencies, '../../../node_modules/.bun');
   for (const entry of await readdir(store).catch(() => [])) {
-    const installed = join(store, entry, 'node_modules', name);
-    if (await Bun.file(join(installed, 'package.json')).exists()) return realpath(installed);
+    const candidate = join(store, entry, 'node_modules', name);
+    if (await Bun.file(join(candidate, 'package.json')).exists()) return realpath(candidate);
   }
-  throw new Error(`Cannot resolve ${name}${parent === undefined ? '' : ` required by ${parent}`}`);
+  throw new Error(`Frozen production install cannot resolve ${name}`);
 }
 
 async function stage(
   name: string,
   nodeModules: string,
   seen: Set<string>,
+  dependencies: string,
   parent?: string,
 ): Promise<void> {
   if (seen.has(name)) return;
   seen.add(name);
-  const source = await locate(name, parent);
+  const source = await locateFromProductionInstall(name, dependencies, parent);
   const destination = join(nodeModules, name);
   await mkdir(destination, { recursive: true });
   await cp(source, destination, {
@@ -119,15 +106,75 @@ async function stage(
     dependencies?: Record<string, string>;
   };
   for (const dependency of Object.keys(manifest.dependencies ?? {}))
-    await stage(dependency, nodeModules, seen, source);
+    await stage(dependency, nodeModules, seen, dependencies, source);
 }
 
-async function verifyFrozenInstall(): Promise<void> {
+async function verifyFrozenInstall(
+  sourceSha: string,
+): Promise<{ root: string; source: string; dependencies: string }> {
+  const root = await mkdtemp(join('/tmp', 'interborough-release-source-'));
+  const source = join(root, 'source');
+  await mkdir(source, { recursive: true });
+  const archive = join(root, 'source.tar');
+  await runCommand(['git', 'archive', sourceSha, '-o', archive]);
+  await runCommand(['tar', '-xf', archive, '-C', source]);
   await runCommand(
-    [process.execPath, 'install', '--frozen-lockfile', '--dry-run'],
-    REPOSITORY_ROOT,
+    [
+      process.execPath,
+      'install',
+      '--frozen-lockfile',
+      '--production',
+      '--ignore-scripts',
+      '--no-progress',
+      '--no-summary',
+      '--filter',
+      '@lostgradient/interborough...',
+    ],
+    source,
   );
-  if (!(await Bun.file(LOCKFILE).exists())) throw new Error('bun.lock is missing');
+  if (!(await Bun.file(join(source, 'bun.lock')).exists())) throw new Error('bun.lock is missing');
+  return {
+    root,
+    source,
+    dependencies: join(source, 'applications', 'interborough', 'node_modules'),
+  };
+}
+
+async function bundleSdk(runtime: string, source: string): Promise<void> {
+  const sdk = join(runtime, SDK);
+  const manifest = JSON.parse(await readFile(join(sdk, 'package.json'), 'utf8')) as Record<
+    string,
+    unknown
+  >;
+  const exportsMap = manifest['exports'];
+  if (typeof exportsMap !== 'object' || exportsMap === null || Array.isArray(exportsMap))
+    throw new Error('The SDK package must declare an exports map');
+  const bundledExports: Record<string, string> = {};
+  for (const [specifier, target] of Object.entries(exportsMap)) {
+    if (typeof target !== 'string' || !target.startsWith('./src/') || !target.endsWith('.ts'))
+      throw new Error(`The SDK export ${specifier} is not a runtime TypeScript entry`);
+    const output = `./${target.slice('./src/'.length, -'.ts'.length)}.js`;
+    await mkdir(join(sdk, output.slice(2, output.lastIndexOf('/')) || '.'), { recursive: true });
+    await runCommand(
+      [
+        process.execPath,
+        'build',
+        '--target',
+        'bun',
+        '--format',
+        'esm',
+        '--outfile',
+        join(sdk, output.slice(2)),
+        join(source, 'packages', 'interborough-plugin', target.slice('./'.length)),
+      ],
+      source,
+    );
+    bundledExports[specifier] = output;
+  }
+  await writeFile(
+    join(sdk, 'package.json'),
+    `${JSON.stringify({ ...manifest, exports: bundledExports }, null, 2)}\n`,
+  );
 }
 
 async function verifyRelocatedHost(root: string): Promise<void> {
@@ -138,12 +185,18 @@ async function verifyRelocatedHost(root: string): Promise<void> {
   await writeFile(
     join(plugin, 'plugin.ts'),
     `import { definePlugin } from '@lostgradient/interborough-plugin';
-export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', version: '1.0.0', description: 'Release proof', setup: () => ({ mcpApps: [{ name: 'external-proof', title: 'External proof', uri: 'ui://runtime-proof/external/v1', entry: new URL('./app.ts', import.meta.url), styles: '', allowedTools: [], opensFromTool: 'runtime.proof' }] }) });
+import { canonicalJson } from '@lostgradient/interborough-plugin/testing';
+const testingExportProof = canonicalJson({ release: 'proof' });
+if (testingExportProof !== '{"release":"proof"}') throw new Error('Testing export map is broken');
+export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', version: '1.0.0', description: 'Release proof', setup: () => ({ mcpApps: [{ name: 'external-proof', title: 'External proof', uri: 'ui://runtime-proof/external/v1', entry: new URL('./app.ts', import.meta.url), styles: '', allowedTools: ['bureau.workflows-list'], opensFromTool: 'bureau.workflows-list' }] }) });
 `,
   );
   await writeFile(join(plugin, 'app.ts'), 'document.body.textContent = "external runtime";\n');
+  const reservation = Bun.serve({ port: 0, fetch: () => new Response() });
+  const port = reservation.port;
+  await reservation.stop();
   const childProcess = Bun.spawn(
-    [join(root, 'bin', 'interborough'), 'start', '--port', '0', '--home', home],
+    [join(root, 'bin', 'interborough'), 'start', '--port', String(port), '--home', home],
     {
       cwd: '/tmp',
       env: { PATH: '', HOME: home, INTERBOROUGH_HOME: home, INTERBOROUGH_PORT: '0' },
@@ -188,6 +241,49 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       ).exists())
     )
       throw new Error('Prebuilt inspector is missing');
+    let listing: Record<string, unknown> | undefined;
+    let snapshot: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/host/plugins`);
+        if (response.ok) {
+          snapshot = (await response.json()) as Record<string, unknown>;
+          const plugins = Array.isArray(snapshot['plugins']) ? snapshot['plugins'] : [];
+          listing = plugins.find(
+            (entry): entry is Record<string, unknown> =>
+              typeof entry === 'object' &&
+              entry !== null &&
+              typeof Reflect.get(Reflect.get(entry, 'descriptor'), 'name') === 'string' &&
+              Reflect.get(Reflect.get(entry, 'descriptor'), 'name') === 'runtime-proof',
+          );
+          if (listing !== undefined) break;
+        }
+      } catch {
+        // The supervisor may not have bound its port yet.
+      }
+      await Bun.sleep(100);
+    }
+    if (listing === undefined || Reflect.get(listing, 'status') !== 'running')
+      throw new Error(`Relocated SDK plugin did not run: ${JSON.stringify(snapshot)}`);
+    const contributions = Reflect.get(listing, 'contributions');
+    if (
+      !Array.isArray(contributions) ||
+      !contributions.some(
+        (entry) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          Reflect.get(entry, 'kind') === 'mcp-app' &&
+          Reflect.get(entry, 'id') === 'runtime-proof:external-proof',
+      )
+    )
+      throw new Error('Relocated SDK plugin did not register its external MCP app');
+    const appResponse = await fetch(
+      `http://127.0.0.1:${port}/host/plugins/runtime-proof/apps/external-proof`,
+    );
+    if (!appResponse.ok) throw new Error(`External MCP app response was ${appResponse.status}`);
+    const app = (await appResponse.json()) as { html?: unknown };
+    if (typeof app.html !== 'string' || !app.html.includes('external runtime'))
+      throw new Error('External MCP app response did not contain its generated page');
   } finally {
     childProcess.kill('SIGTERM');
     await childProcess.exited;
@@ -237,13 +333,13 @@ export async function buildRelease(
     Bun.spawn(['git', 'status', '--porcelain'], { cwd: REPOSITORY_ROOT, stdout: 'pipe' }).stdout,
   ).text();
   if (status.trim() !== '') throw new Error('Release inputs are dirty');
-  await verifyFrozenInstall();
   const revisionProcess = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
     cwd: REPOSITORY_ROOT,
     stdout: 'pipe',
   });
   const revisionText = await new Response(revisionProcess.stdout).text();
   const sourceSha = revisionText.trim();
+  const productionInstall = await verifyFrozenInstall(sourceSha);
   await mkdir(options.outdir, { recursive: true });
   const targetRoot = join(options.outdir, 'interborough');
   const archive = join(options.outdir, `interborough-${options.version}-darwin-arm64.tar.gz`);
@@ -271,7 +367,8 @@ export async function buildRelease(
     }
     const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
     await mkdir(runtime, { recursive: true });
-    await stage(SDK, runtime, new Set());
+    await stage(SDK, runtime, new Set(), productionInstall.dependencies);
+    await bundleSdk(runtime, productionInstall.source);
     await assertContained(join(root, 'share', 'interborough', 'plugin-runtime'));
     await verifyRelocatedHost(root);
     const manifest: ReleaseManifest = {
@@ -284,6 +381,7 @@ export async function buildRelease(
     await rename(root, targetRoot);
   } finally {
     await rm(staging, { recursive: true, force: true });
+    await rm(productionInstall.root, { recursive: true, force: true });
   }
   return archive;
 }
