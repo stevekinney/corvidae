@@ -20,6 +20,7 @@ export type FileWorkflowRunIdentity = Readonly<{
 }>;
 
 type PreparedTerminalHistory = Readonly<{
+  identity: FileWorkflowRunIdentity;
   append: (operations: BatchOperation[]) => EventHeadRecord;
   head: () => EventHeadRecord;
   condition: () => ConditionalBatchCondition;
@@ -103,11 +104,19 @@ export async function captureFileWorkflowRunIdentity(
 ): Promise<FileWorkflowRunIdentity | undefined> {
   const state = await loadWorkflowState(internals, workflowId);
   if (state === null) return undefined;
+  let generation: Uint8Array | null;
+  try {
+    generation = await internals.storage.get(KEYS.workflowGeneration(workflowId));
+  } catch {
+    // A remote terminator can still commit the state transition when the optional
+    // generation read is unavailable; terminal teardown will fail closed without it.
+    return undefined;
+  }
   return {
     type: state.type,
     revision: state.revision,
     workflowExecutionToken: state.workflowExecutionToken,
-    generation: await internals.storage.get(KEYS.workflowGeneration(workflowId)),
+    generation,
   };
 }
 
@@ -132,14 +141,6 @@ function sameFileWorkflowRun(
     currentGeneration.length === expectedGeneration.length &&
     currentGeneration.every((byte, index) => byte === expectedGeneration[index])
   );
-}
-
-export async function isFileWorkflowRunCurrent(
-  internals: EngineInternals,
-  workflowId: string,
-  expected: FileWorkflowRunIdentity,
-): Promise<boolean> {
-  return sameFileWorkflowRun(expected, await captureFileWorkflowRunIdentity(internals, workflowId));
 }
 
 function eventKey(event: FileWorkflowEvent): string {
@@ -296,7 +297,11 @@ export async function prepareFileWorkflowTerminalHistory(
   status: 'completed' | 'failed' | 'cancelled' | 'timed-out',
   expectedRun?: FileWorkflowRunIdentity,
 ): Promise<PreparedTerminalHistory | undefined> {
-  const run = expectedRun ?? (await captureFileWorkflowRunIdentity(internals, workflowId));
+  const run =
+    expectedRun ??
+    ((await isFileWorkflow(internals, workflowId, status === 'cancelled' || status === 'timed-out'))
+      ? await captureFileWorkflowRunIdentity(internals, workflowId)
+      : undefined);
   if (run === undefined) return undefined;
   const currentRun = await captureFileWorkflowRunIdentity(internals, workflowId);
   if (!sameFileWorkflowRun(run, currentRun)) return undefined;
@@ -319,6 +324,7 @@ export async function prepareFileWorkflowTerminalHistory(
   const events = [...completionEvents(pending), terminal];
   let lastHead = initialHead;
   return {
+    identity: run,
     append: (operations) => {
       lastHead = appendEvents(internals, workflowId, operations, events, existing, initialHead);
       return lastHead;

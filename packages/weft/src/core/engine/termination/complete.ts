@@ -31,9 +31,7 @@ import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-si
 import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { staleFailureGuard, type FailureOrigin } from '../execution-attempts.ts';
 import {
-  captureFileWorkflowRunIdentity,
   fileWorkflowTerminalOperations,
-  isFileWorkflowRunCurrent,
   prepareFileWorkflowTerminalHistory as prepareTerminalHistory,
   recordFileWorkflowTerminalHistory as recordTerminalHistory,
   shouldRetryFileWorkflowTermination,
@@ -89,6 +87,7 @@ import {
   cancelRunTimers,
   captureOrReadTerminalFence,
   fencedTeardownCommit,
+  sameRunCondition,
   warnUnknownRunIdentity,
 } from './terminal-fence.ts';
 
@@ -150,20 +149,13 @@ export async function terminateWorkflow(
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.strategy.cancelWorkflow(workflowId);
   try {
-    const capturedHistoryRunIdentity =
-      historyRunIdentity ?? (await captureFileWorkflowRunIdentity(internals, workflowId));
     const fileWorkflowHistory = await prepareTerminalHistory(
       internals,
       workflowId,
       status,
-      capturedHistoryRunIdentity,
+      historyRunIdentity,
     );
-    if (
-      capturedHistoryRunIdentity !== undefined &&
-      !(await isFileWorkflowRunCurrent(internals, workflowId, capturedHistoryRunIdentity))
-    ) {
-      return;
-    }
+    const capturedHistoryRunIdentity = historyRunIdentity ?? fileWorkflowHistory?.identity;
     const terminalCleanupToken = internals.workflowsNeedingTerminalCleanup.has(workflowId)
       ? crypto.randomUUID()
       : undefined;
@@ -194,9 +186,23 @@ export async function terminateWorkflow(
         'external-terminal',
         {
           allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
+          ...(capturedHistoryRunIdentity === undefined
+            ? {}
+            : {
+                expectedWorkflowExecutionToken:
+                  capturedHistoryRunIdentity.workflowExecutionToken ?? null,
+              }),
           ...(fileWorkflowHistory === undefined
             ? {}
-            : { extraConditions: [fileWorkflowHistory.condition()] }),
+            : {
+                extraConditions: [
+                  fileWorkflowHistory.condition(),
+                  sameRunCondition(workflowId, {
+                    generation: fileWorkflowHistory.identity.generation,
+                    holderMarker: null,
+                  }),
+                ],
+              }),
           buildAdditionalOperations: (_previousState, updatedAt) => {
             finalizePendingTimelineEntry(
               internals,

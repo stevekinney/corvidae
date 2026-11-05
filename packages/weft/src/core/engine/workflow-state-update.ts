@@ -54,6 +54,8 @@ export type WorkflowStateUpdateOptions = {
   retryRefusedWrite?: 'failure';
   /** Additional durable conditions owned by the transition's caller. */
   extraConditions?: readonly ConditionalBatchCondition[];
+  /** Refuse a terminal retry if the persisted run token no longer matches the captured run. */
+  expectedWorkflowExecutionToken?: string | null;
 };
 
 export type WorkflowStateUpdateResult = {
@@ -73,6 +75,15 @@ function updateIsRefused(
   decided: { workflowExecutionToken: string | undefined } | undefined,
 ): boolean {
   if (decided !== undefined && state.workflowExecutionToken !== decided.workflowExecutionToken) {
+    return true;
+  }
+  if (
+    options.expectedWorkflowExecutionToken !== undefined &&
+    state.workflowExecutionToken !==
+      (options.expectedWorkflowExecutionToken === null
+        ? undefined
+        : options.expectedWorkflowExecutionToken)
+  ) {
     return true;
   }
   if (options.allowedStatuses && !options.allowedStatuses.includes(state.status)) return true;
