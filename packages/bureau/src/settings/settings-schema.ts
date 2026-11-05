@@ -263,6 +263,9 @@ export const settingsSchema = z
     'engine.maxNestingDepth': positiveInteger.describe(
       'How deeply workflows may start other workflows.',
     ),
+    'engine.maxConcurrentRuns': positiveInteger.describe(
+      'The most workflow runs that execute at the same time on this machine.',
+    ),
     'engine.workflowClaimTtl': positiveMilliseconds.describe(
       'How long a worker’s claim on a running workflow lasts without being renewed.',
     ),
@@ -335,6 +338,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'engine.schedulerPollIntervalMs': 'live',
   'engine.checkpointHistory': 'restart',
   'engine.maxNestingDepth': 'restart',
+  // A cap Weft's engine takes at construction: a new value applies from the next start.
+  'engine.maxConcurrentRuns': 'restart',
   'engine.workflowClaimTtl': 'restart',
   'engine.workflowClaimRenewInterval': 'restart',
   durable: 'restart',

@@ -270,6 +270,71 @@ describe('bureau.settings update outcomes', () => {
   });
 });
 
+describe('bureau.settings running values, revert and clear', () => {
+  test('reports a restart key at the value it booted with while a saved change waits', async () => {
+    const storage = new MemoryStorage();
+    const first = await compose({ storage });
+    await first.settings.update({ 'engine.maxConcurrentRuns': 6 }, { expectedRevision: 0 });
+    const booted = await compose({ storage });
+    await booted.settings.update(
+      { 'engine.maxConcurrentRuns': 8, 'tools.wakeup': false },
+      { expectedRevision: 1 },
+    );
+    const snapshot = await booted.settings.get();
+    expect(snapshot.values['engine.maxConcurrentRuns']).toBe(8);
+    expect(snapshot.running['engine.maxConcurrentRuns']).toBe(6);
+    // A live key runs the value it saved.
+    expect(snapshot.running['tools.wakeup']).toBe(false);
+    expect(snapshot.keys['engine.maxConcurrentRuns'].pendingRestart).toBe(true);
+  });
+
+  test('reverting a saved restart key to its running value ends the wait for a restart', async () => {
+    const storage = new MemoryStorage();
+    const first = await compose({ storage });
+    await first.settings.update({ 'engine.maxConcurrentRuns': 6 }, { expectedRevision: 0 });
+    const booted = await compose({ storage });
+    await booted.settings.update({ 'engine.maxConcurrentRuns': 2 }, { expectedRevision: 1 });
+    const { running } = await booted.settings.get();
+    const reverted = await booted.settings.update(
+      { 'engine.maxConcurrentRuns': running['engine.maxConcurrentRuns'] },
+      { expectedRevision: 2 },
+    );
+    expect(reverted).toEqual({ outcome: 'applied', revision: 3, pendingRestart: [] });
+    const after = await booted.settings.get();
+    expect(after.keys['engine.maxConcurrentRuns'].pendingRestart).toBe(false);
+  });
+
+  test('null clears a stored value, so a key nothing set at boot no longer waits', async () => {
+    const { settings } = await compose({
+      storage: new MemoryStorage(),
+      builtInDefaults: { 'engine.maxConcurrentRuns': 4 },
+    });
+    await settings.update({ 'engine.maxConcurrentRuns': 6 }, { expectedRevision: 0 });
+    const saved = await settings.get();
+    expect(Object.hasOwn(saved.running, 'engine.maxConcurrentRuns')).toBe(false);
+    expect(saved.keys['engine.maxConcurrentRuns'].pendingRestart).toBe(true);
+
+    const cleared = await settings.update(
+      { 'engine.maxConcurrentRuns': null },
+      { expectedRevision: 1 },
+    );
+    expect(cleared).toEqual({ outcome: 'applied', revision: 2, pendingRestart: [] });
+    const after = await settings.get();
+    expect(Object.hasOwn(after.values, 'engine.maxConcurrentRuns')).toBe(false);
+    expect(after.effective['engine.maxConcurrentRuns']).toBe(4);
+    expect(after.keys['engine.maxConcurrentRuns'].pendingRestart).toBe(false);
+  });
+
+  test('null clears a live key back to its code option', async () => {
+    const { settings, current } = await compose({ storage: new MemoryStorage() });
+    await settings.update({ 'tools.wakeup': false }, { expectedRevision: 0 });
+    await settings.update({ 'tools.wakeup': null }, { expectedRevision: 1 });
+    expect(current()['tools.wakeup']).toBe(true);
+    const { running } = await settings.get();
+    expect(running['tools.wakeup']).toBe(true);
+  });
+});
+
 describe('bureau.settings storage', () => {
   test('a second process sees a change once it re-reads, and its listeners hear of it', async () => {
     const storage = new MemoryStorage();

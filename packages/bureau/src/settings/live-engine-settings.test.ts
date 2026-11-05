@@ -35,13 +35,35 @@ describe('engine.* live settings', () => {
     });
   }
 
+  it('the durable engine caps workflow runs at 4 unless the deployment says otherwise', async () => {
+    await withLiveSettingsBureau(async ({ bureau }) => {
+      expect(bureau.durableEngine()?.runConcurrency()).toEqual({
+        max: 4,
+        running: [],
+        waiting: [],
+      });
+      const { effective } = await bureau.settings.get();
+      expect(effective['engine.maxConcurrentRuns']).toBe(4);
+    });
+    await withLiveSettingsBureau(
+      async ({ bureau }) => {
+        expect(bureau.durableEngine()?.runConcurrency()?.max).toBe(2);
+        const { running } = await bureau.settings.get();
+        expect(running['engine.maxConcurrentRuns']).toBe(2);
+      },
+      { durableGuardrails: { maxConcurrentRuns: 2 } },
+    );
+  });
+
   it('a restart key is stored without reconfiguring the engine', async () => {
     await withLiveSettingsBureau(async ({ bureau, change }) => {
       const engine = bureau.durableEngine();
       if (engine === undefined) throw new Error('expected a durable engine');
       const reconfigure = spyOn(engine, 'reconfigure');
-      await change({ 'engine.maxNestingDepth': 4 });
+      await change({ 'engine.maxNestingDepth': 4, 'engine.maxConcurrentRuns': 6 });
       expect(reconfigure).not.toHaveBeenCalled();
+      // The cap the engine was built with stays until the next start.
+      expect(engine.runConcurrency()?.max).toBe(4);
     });
   });
 });

@@ -35,7 +35,7 @@ import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from '../types.ts';
-import { A2A_PUSH_DEFAULTS } from './settings-options.ts';
+import { A2A_PUSH_DEFAULTS, DEFAULT_MAX_CONCURRENT_RUNS } from './settings-options.ts';
 import type { SettingKey, SettingsValues } from './settings-schema.ts';
 
 /** {@link BureauRetentionOptions.events}'s default window: 7 days. */
@@ -107,6 +107,7 @@ export function builtInSettingDefaults(context: BuiltInDefaultsContext): BuiltIn
     'engine.schedulerPollIntervalMs': DEFAULT_POLL_INTERVAL_MS,
     'engine.checkpointHistory': DEFAULT_CHECKPOINT_HISTORY,
     'engine.maxNestingDepth': DEFAULT_MAX_NESTING_DEPTH,
+    'engine.maxConcurrentRuns': DEFAULT_MAX_CONCURRENT_RUNS,
     'engine.workflowClaimTtl': DEFAULT_WORKFLOW_CLAIM_TTL_MS,
     'engine.workflowClaimRenewInterval': DEFAULT_WORKFLOW_CLAIM_RENEW_INTERVAL_MS,
     durable: context.persistentStorage,

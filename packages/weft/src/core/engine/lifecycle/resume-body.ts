@@ -25,6 +25,7 @@ import { completeExecutionAttemptLaunch } from '../execution-attempts.ts';
 import { commitFencedEngineWrite } from '../fenced-write.ts';
 import { getWorkflowExecutionStartedAt, type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
+import { recordResumedRunIdentity } from '../run-concurrency.ts';
 import { loadWorkflowState } from '../storage-io.ts';
 import { getComposedWorkflowInterceptor } from '../strategy-helpers.ts';
 import { visibilityIndexOperations } from '../workflow-visibility-maintenance.ts';
@@ -203,10 +204,8 @@ function relaunchInlineWorkflowAfterResume(
   // `inlineStrategy.adoptWorkflow` below, which can trigger the first turn.
   // Uses `resolvedRevision`, not `latestState.revision` — see
   // `SerializedResumeArgs.resolvedRevision`'s doc (WFT-19 review round 5).
-  internals.workflowTypeByWorkflowId.set(workflowId, {
-    type: latestState.type,
-    revision: resolvedRevision,
-  });
+  // A resumed run also takes its `runConcurrency` slot, even past the cap.
+  recordResumedRunIdentity(internals, workflowId, latestState, resolvedRevision);
 
   const context = new Context({
     workflowId,
@@ -269,10 +268,8 @@ function relaunchWorkerWorkflowAfterResume(
   // See `relaunchInlineWorkflowAfterResume()`'s matching comment: identity
   // population (WFT-19), landed before `startWorkflow()` below, using
   // `resolvedRevision` per `SerializedResumeArgs.resolvedRevision`'s doc.
-  internals.workflowTypeByWorkflowId.set(workflowId, {
-    type: latestState.type,
-    revision: resolvedRevision,
-  });
+  // A resumed run also takes its `runConcurrency` slot, even past the cap.
+  recordResumedRunIdentity(internals, workflowId, latestState, resolvedRevision);
   const serialized = serializeCheckpoint(resumeCheckpoint);
   internals.strategy.startWorkflow({
     workflowId,

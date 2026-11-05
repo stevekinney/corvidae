@@ -1126,6 +1126,7 @@ export type DurableGuardrailsConfiguration = Pick<
   | 'checkpointHistory'
   | 'payloadSize'
   | 'maxNestingDepth'
+  | 'maxConcurrentRuns'
   | 'onCheckpointSizeWarning'
 >;
 

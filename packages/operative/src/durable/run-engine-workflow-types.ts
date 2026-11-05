@@ -28,3 +28,10 @@ export type RunEngineWorkflowType =
 /** Every type `createRunEngine` registers, which a host that schedules by type reserves. */
 export const RUN_ENGINE_WORKFLOW_TYPES: readonly RunEngineWorkflowType[] =
   Object.values(RUN_ENGINE_WORKFLOW_TYPE);
+
+/** Whether `workflowType` is one of {@link RUN_ENGINE_WORKFLOW_TYPES}. */
+export function isRunEngineWorkflowType(
+  workflowType: string,
+): workflowType is RunEngineWorkflowType {
+  return (RUN_ENGINE_WORKFLOW_TYPES as readonly string[]).includes(workflowType);
+}

@@ -106,6 +106,7 @@ export const SCHEMA_CHECKED_KEYS = [
   'workflowVersion',
   'engine.checkpointHistory',
   'engine.maxNestingDepth',
+  'engine.maxConcurrentRuns',
   'a2a.push.enabled',
   'a2a.push.sweepIntervalMs',
 ] as const satisfies readonly SettingKey[];

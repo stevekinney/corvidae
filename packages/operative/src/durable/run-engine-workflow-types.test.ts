@@ -7,7 +7,11 @@ import { Engine, workflow } from '@lostgradient/weft';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createRunEngine } from './create-run-engine';
-import { RUN_ENGINE_WORKFLOW_TYPE, RUN_ENGINE_WORKFLOW_TYPES } from './run-engine-workflow-types';
+import {
+  isRunEngineWorkflowType,
+  RUN_ENGINE_WORKFLOW_TYPE,
+  RUN_ENGINE_WORKFLOW_TYPES,
+} from './run-engine-workflow-types';
 
 const named = (name: string) =>
   workflow({ name }).execute(async function* (ctx) {
@@ -97,5 +101,12 @@ describe('the check that a module imports nothing', () => {
 
   it('passes a module that only declares values', () => {
     expect(importFormsIn("export const A = { b: 'from here' } as const;\n")).toEqual([]);
+  });
+});
+
+describe('isRunEngineWorkflowType', () => {
+  it('names every type createRunEngine registers and no other', () => {
+    for (const type of RUN_ENGINE_WORKFLOW_TYPES) expect(isRunEngineWorkflowType(type)).toBe(true);
+    expect(isRunEngineWorkflowType('nightly-report')).toBe(false);
   });
 });

@@ -75,6 +75,7 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'engine.schedulerPollIntervalMs': 2_000,
   'engine.checkpointHistory': 5,
   'engine.maxNestingDepth': 4,
+  'engine.maxConcurrentRuns': 6,
   'engine.workflowClaimTtl': 30_000,
   'engine.workflowClaimRenewInterval': 10_000,
   durable: false,
@@ -88,6 +89,7 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
 type Snapshot = {
   values: Record<string, unknown>;
   effective: Record<string, unknown>;
+  running: Record<string, unknown>;
   revision: number;
   keys: Record<
     string,
@@ -173,6 +175,30 @@ describe('bureau.settings operations', () => {
     expect(snapshot.effective['decisions.maximumPerTask']).toBe(20);
     expect(Object.hasOwn(snapshot.effective, 'modelPolicy')).toBe(false);
     expect(Object.hasOwn(snapshot.effective, 'context.summarizerModel')).toBe(false);
+    expect(snapshot.effective['engine.maxConcurrentRuns']).toBe(4);
+  });
+
+  it('serves each restart key at its running value, and clears a stored value set to null', async () => {
+    const opened = await open();
+    const saved = await update(opened, {
+      patch: { 'engine.maxConcurrentRuns': 6, 'tools.wakeup': false },
+      expectedRevision: 0,
+    });
+    expect(saved.result).toEqual({ revision: 1, pendingRestart: ['engine.maxConcurrentRuns'] });
+    const waiting = await snapshotOf(opened);
+    expect(waiting.values['engine.maxConcurrentRuns']).toBe(6);
+    // Bureau's own default is the code option the host booted with.
+    expect(waiting.running['engine.maxConcurrentRuns']).toBe(4);
+    expect(waiting.running['tools.wakeup']).toBe(false);
+
+    const reverted = await update(opened, {
+      patch: { 'engine.maxConcurrentRuns': null },
+      expectedRevision: 1,
+    });
+    expect(reverted.result).toEqual({ revision: 2, pendingRestart: [] });
+    const after = await snapshotOf(opened);
+    expect(after.values['engine.maxConcurrentRuns']).toBe(4);
+    expect(after.keys['engine.maxConcurrentRuns']?.pendingRestart).toBe(false);
   });
 
   it('publishes the schema with every key', async () => {

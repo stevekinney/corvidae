@@ -63,6 +63,9 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
       options.durableGuardrails?.checkpointSizeWarningThreshold,
     'engine.checkpointHistory': options.durableGuardrails?.checkpointHistory,
     'engine.maxNestingDepth': options.durableGuardrails?.maxNestingDepth,
+    // Bureau caps workflow runs itself when the options do not (`runtime-composition.ts`).
+    'engine.maxConcurrentRuns':
+      options.durableGuardrails?.maxConcurrentRuns ?? DEFAULT_MAX_CONCURRENT_RUNS,
     'engine.workflowClaimTtl': options.durableOwnership?.workflowClaimTtlMs,
     'engine.workflowClaimRenewInterval': options.durableOwnership?.workflowClaimRenewIntervalMs,
     durable: options.durable,
@@ -73,6 +76,12 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
     'a2a.push.sweepIntervalMs': A2A_PUSH_DEFAULTS.sweepIntervalMs,
   });
 }
+
+/**
+ * {@link DurableGuardrailsConfiguration.maxConcurrentRuns}'s default: at most 4 workflow runs
+ * execute at once on one host. Agent runs, goals and schedule ticks are not counted.
+ */
+export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
 
 /**
  * The defaults of the `a2a.push.*` settings. There is no code option to take them from: the host
@@ -100,6 +109,7 @@ export const HOST_RESTART_KEYS = [
 export const RESTART_OPTION_PATHS = {
   'engine.checkpointHistory': ['durableGuardrails', 'checkpointHistory'],
   'engine.maxNestingDepth': ['durableGuardrails', 'maxNestingDepth'],
+  'engine.maxConcurrentRuns': ['durableGuardrails', 'maxConcurrentRuns'],
   'engine.workflowClaimTtl': ['durableOwnership', 'workflowClaimTtlMs'],
   'engine.workflowClaimRenewInterval': ['durableOwnership', 'workflowClaimRenewIntervalMs'],
   'durableOwnership.ownership': ['durableOwnership', 'ownership'],
