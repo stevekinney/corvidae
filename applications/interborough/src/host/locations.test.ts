@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import {
@@ -14,6 +15,7 @@ import {
   describeContent,
   disposeHostStorage,
   hostPathsReport,
+  hostWriteLocks,
   redactDatabase,
 } from './locations.ts';
 
@@ -53,11 +55,9 @@ describe('the backend report', () => {
     mode: 'remote' as const,
     workspaceId: 'locations-fixture',
     configurationWriteCapability: 'read-only' as const,
-    secretProvider: { capabilities: { read: true, prepare: false, transitions: false } } as any,
+    secretProvider: fixtureSecretProvider('locations-fixture', { secrets: new Map() }, false),
     database: { kind: 'postgres' as const, url: URL_WITH_CREDENTIALS },
     configurationLocation: 's3://state/prod/configuration.json',
-    secretLocation: (key: string) =>
-      `INTERBOROUGH_SECRET_${key.toUpperCase().replaceAll('-', '_')}`,
   };
 
   test('names the mode, the database server, and the content, and no credential', () => {
@@ -94,7 +94,7 @@ describe('the backend report', () => {
           mode: 'local',
           workspaceId: 'locations-fixture',
           configurationWriteCapability: 'writable' as const,
-          secretProvider: { capabilities: { read: true, prepare: true, transitions: true } } as any,
+          secretProvider: fixtureSecretProvider('locations-fixture', { secrets: new Map() }, true),
           database: { kind: 'sqlite', path: '/home/database.sqlite' },
           configurationLocation: '/home/configuration.json',
         },
@@ -187,3 +187,22 @@ describe('the skill source of a plugin’s shipped content', () => {
     ).toBeUndefined();
   });
 });
+
+for (const prepare of [false, true]) {
+  for (const transitions of [false, true]) {
+    for (const configurationWriteCapability of ['writable', 'read-only', 'unsupported'] as const) {
+      test(`credential publication lock reflects prepare=${prepare}, transitions=${transitions}, configuration=${configurationWriteCapability}`, () => {
+        const provider = fixtureSecretProvider('locations-fixture', { secrets: new Map() }, true);
+        const report = hostWriteLocks({
+          configurationWriteCapability,
+          secretProvider: { ...provider, capabilities: { read: true, prepare, transitions } },
+        });
+        expect(report.providerKeys).toBe(
+          prepare && transitions && configurationWriteCapability === 'writable'
+            ? undefined
+            : 'deployment',
+        );
+      });
+    }
+  }
+}

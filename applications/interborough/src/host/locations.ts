@@ -103,6 +103,7 @@ export function hostWriteLocks(
       ? {}
       : { configuration: 'deployment' as const }),
     ...(bungalow.secretProvider.capabilities.prepare &&
+    bungalow.secretProvider.capabilities.transitions &&
     bungalow.configurationWriteCapability === 'writable'
       ? {}
       : { providerKeys: 'deployment' as const }),

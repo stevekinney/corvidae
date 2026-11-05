@@ -157,7 +157,8 @@ export function createWorkspaceSecrets(home: SecretHome): WorkspaceSecrets {
 
   const active = async (operation: SecretOperationMetadata): Promise<boolean> => {
     const bindings = bindingsOf(documentOf(await home.readConfiguration()), workspaceId);
-    return bindings[operation.key] === operation.reference.serialized;
+    const reference = parseSecretReference(operation.reference, workspaceId);
+    return bindings[reference.key] === reference.serialized;
   };
 
   async function reconcileOperation(operation: SecretOperationMetadata): Promise<boolean> {

@@ -281,3 +281,28 @@ test('publication audit evidence hashes the exact document including its version
   expect(result.configurationHash).toBe(createHash('sha256').update(snapshot.text!).digest('hex'));
   expect(JSON.stringify(result)).not.toContain('not-in-audit');
 });
+
+test('recovery never reclaims an active reference when provider metadata reports a different key', async () => {
+  using home = await openTemporaryBungalow({ name: 'secret-test' });
+  const original = createWorkspaceSecrets(home);
+  await original.write('api-key', 'active-value', 'bound');
+  const provider = home.secretProvider;
+  const operation = await provider.getOperation('bound');
+  if (operation === undefined) throw new Error('Expected a published operation');
+  let reclaimed = 0;
+  const recovery = createWorkspaceSecrets({
+    ...home,
+    secretProvider: {
+      ...provider,
+      async listOperations() {
+        return [{ ...operation, key: 'incorrect-metadata-key', state: 'abandoned' as const }];
+      },
+      async reclaim() {
+        reclaimed += 1;
+      },
+    },
+  });
+  await recovery.reconcile();
+  expect(reclaimed).toBe(0);
+  expect(await recovery.read('api-key')).toBe('active-value');
+});
