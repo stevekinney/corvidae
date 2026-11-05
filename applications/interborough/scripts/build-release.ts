@@ -214,6 +214,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
   await writeFile(join(plugin, 'app.ts'), 'document.body.textContent = "external runtime";\n');
   const reservation = Bun.serve({ port: 0, fetch: () => new Response() });
   const port = reservation.port;
+  await fetch(`http://127.0.0.1:${port}/`);
   await reservation.stop();
   const childProcess = Bun.spawn(
     [join(root, 'bin', 'interborough'), 'start', '--port', String(port), '--home', home],
