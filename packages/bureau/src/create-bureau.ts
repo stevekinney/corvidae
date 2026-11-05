@@ -22702,7 +22702,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     isKnownRun,
     planChild: planChildRun,
     startChild: startChildRun,
-    registerRequestContext: (runId, context) => runRequestContexts.set(runId, context),
     getEngine: () => runtime.durable?.engine,
     cancelDurable: cancelDurableRun,
     validateInput: validateAgentRunInput,

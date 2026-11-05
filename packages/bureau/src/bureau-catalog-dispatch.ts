@@ -641,21 +641,8 @@ export function createCatalogDispatcher({
       // COR-1947: held as every run's toolbox is. A run that belongs to no chat, as a child and a
       // workflow step do not, has no mode, and is left to its toolbox.
       const toolbox = runtime.withChatPermission(withRuntime.toolbox, runId);
-      const requestContext = runOptions?.requestContext;
       return {
         ...withRuntime,
-        ...(requestContext === undefined
-          ? {}
-          : {
-              executeOptions: {
-                ...withRuntime.executeOptions,
-                requestContext: {
-                  ...requestContext,
-                  agentId: name,
-                  runId,
-                },
-              },
-            }),
         ...(humanInputEmitter === undefined && decide === undefined
           ? { toolbox }
           : {
@@ -1167,7 +1154,7 @@ export function createCatalogDispatcher({
       return runDurableCatalogAgent(
         start.agentName,
         start.input,
-        start.requestContext === undefined ? undefined : { requestContext: start.requestContext },
+        undefined,
         context,
         start.principal,
         agent,

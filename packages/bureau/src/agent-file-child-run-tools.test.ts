@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { MemoryStorage } from '@lostgradient/storage';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import type { ToolRequestContext } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from './assets/storage';
@@ -353,10 +352,11 @@ describe('registered child-run tools on file agents', () => {
     expect(resolved).toMatchObject({ decision: 'approve' });
   });
 
-  it('raises approval from the dispatched child model for its registered mutating tool', async () => {
+  it('executes a registered mutating tool from the dispatched child model', async () => {
     let dispatched = false;
     let childCalled = false;
     let childToolResult: unknown;
+    let rootPrimed = false;
     let parentDispatchResult: unknown;
     const { bureau } = await open({
       childAgents: '[worker]',
@@ -384,6 +384,10 @@ describe('registered child-run tools on file agents', () => {
         };
       },
       parent: async (context) => {
+        if (!rootPrimed) {
+          rootPrimed = true;
+          return { content: 'root ready', toolCalls: [] };
+        }
         if (dispatched) {
           parentDispatchResult = parsedResult(context);
           return { content: 'parent done', toolCalls: [] };
@@ -400,17 +404,11 @@ describe('registered child-run tools on file agents', () => {
         };
       },
     });
+    const root = await bureau.tasks.start('parent', 'root chat', { principal: 'alice' });
+    await root.result();
     const task = await bureau.tasks.start('parent', 'dispatch mutating child', {
       principal: 'alice',
-      requestContext: {
-        authority: {
-          principalId: 'alice',
-          tenantId: 'child-tools-test',
-          ownerId: 'alice',
-          capabilities: ['tools:execute'],
-          authorizationRevision: 'test:1',
-        },
-      } satisfies ToolRequestContext,
+      contextId: root.contextId,
     });
     const parentResult = await task.result();
     expect(parentResult.content).toBe('parent done');
