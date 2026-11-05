@@ -59,7 +59,7 @@ const recovery = await (async () => {
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: peerHome },
   });
-  peerBungalow.writeSecret('a2a-api-key', PEER_BEARER);
+  await peerBungalow.deploymentSecrets.write('a2a-api-key', PEER_BEARER);
   peerBungalow.close();
   const state = { sends: 0, active: false, release: () => {} };
   const peer = await startHost({
@@ -97,7 +97,7 @@ const recovery = await (async () => {
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: callerHome },
   });
-  callerBungalow.writeSecret('peer-bearer', PEER_BEARER);
+  await callerBungalow.deploymentSecrets.write('peer-bearer', PEER_BEARER);
   callerBungalow.close();
   await mkdir(join(callerHome, 'agents'), { recursive: true });
   await writeFile(

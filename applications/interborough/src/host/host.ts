@@ -883,6 +883,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       configuration.text,
       bungalow.configurationLocation,
     );
+    const peerSecrets = new Map<string, string | undefined>();
+    for (const peer of configuredPeers) {
+      if (peer.bearerSecret !== undefined && !peerSecrets.has(peer.bearerSecret)) {
+        peerSecrets.set(peer.bearerSecret, await workspaceSecrets.read(peer.bearerSecret));
+      }
+    }
     const recoverableStartedApprovals = new Map<
       string,
       NonNullable<BureauOptions['recoverableStartedApprovals']> extends ReadonlyMap<
@@ -905,7 +911,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     };
     const peerTools = createA2APeerTools({
       peers: configuredPeers,
-      readSecret: (key) => bungalow.readSecret(key),
+      readSecret: (key) => peerSecrets.get(key),
       ...(options.a2aPeerFetch === undefined ? {} : { fetch: options.a2aPeerFetch }),
       ...(options.a2aPeerRecoveryUpdate === undefined
         ? {}
