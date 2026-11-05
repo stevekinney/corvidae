@@ -97,6 +97,15 @@ function definitionFrom(args: Record<string, unknown>): Definition | undefined {
   };
 }
 
+function definitionFromText(value: string): Definition | undefined {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? definitionFrom(parsed) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -244,15 +253,9 @@ async function start(): Promise<void> {
 
   const show = (state: RevisionState, message?: string): void => {
     if (tornDown || current === undefined || proposed === undefined) return;
-    render(
-      root,
-      JSON.parse(current.text) as Definition,
-      proposed,
-      state,
-      message,
-      () => void apply(),
-      false,
-    );
+    const currentDefinition = definitionFromText(current.text);
+    if (currentDefinition === undefined) return;
+    render(root, currentDefinition, proposed, state, message, () => void apply(), false);
   };
   const inspect = async (): Promise<void> => {
     const id = argumentsOfCall['id'];
@@ -265,7 +268,9 @@ async function start(): Promise<void> {
       const result = await app.callServerTool({ name: 'bureau.workflows.get', arguments: { id } });
       current = structured(result, isWorkflow);
       if (current === undefined) return;
-      const state = same(JSON.parse(current.text), proposed) ? 'no-changes' : 'changed';
+      const currentDefinition = definitionFromText(current.text);
+      if (currentDefinition === undefined) return;
+      const state = same(currentDefinition, proposed) ? 'no-changes' : 'changed';
       show(state);
     } catch {
       if (!tornDown) root.textContent = 'The current workflow could not be read.';
@@ -299,6 +304,7 @@ async function start(): Promise<void> {
         resultText.includes('access')
       )
         show('denied');
+      else if (result.isError === true) show('offline');
       else show('unknown');
     } catch {
       show('offline');

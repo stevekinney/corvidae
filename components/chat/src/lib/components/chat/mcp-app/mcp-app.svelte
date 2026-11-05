@@ -213,6 +213,8 @@
         style:min-height={`${Math.min(120, maxHeight)}px`}
       ></iframe>
     {/key}
+  {:else}
+    <p class="mcp-app-loading" role="status" aria-busy="true">Loading app…</p>
   {/if}
 </div>
 
@@ -229,6 +231,13 @@
   }
 
   .mcp-app-error {
+    margin: 0;
+    padding: var(--cinder-space-3);
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  }
+
+  .mcp-app-loading {
     margin: 0;
     padding: var(--cinder-space-3);
     color: var(--cinder-text-muted);

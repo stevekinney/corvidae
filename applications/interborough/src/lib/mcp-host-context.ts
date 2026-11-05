@@ -31,7 +31,9 @@ const STYLE_MAP: ReadonlyArray<readonly [McpUiStyleVariableKey, string]> = [
 ];
 
 function themeOf(root: HTMLElement): 'light' | 'dark' {
-  return root.dataset['theme'] === 'dark' ? 'dark' : 'light';
+  const explicit = root.dataset['theme'];
+  if (explicit === 'dark' || explicit === 'light') return explicit;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 /** Translates the host's public Cinder tokens into the ext-apps style contract. */

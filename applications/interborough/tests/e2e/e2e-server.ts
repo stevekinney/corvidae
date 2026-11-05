@@ -227,7 +227,9 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
         })();
         const definition =
           noChange && currentDefinition !== undefined
-            ? currentDefinition
+            ? Object.fromEntries(
+                Object.entries(currentDefinition).filter(([key]) => key !== 'name'),
+              )
             : {
                 description: 'Updated in Chat.',
                 trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
