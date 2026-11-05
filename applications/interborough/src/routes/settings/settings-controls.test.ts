@@ -73,6 +73,7 @@ describe('the controls', () => {
       'engine.retentionSweepInterval': 'number',
       'engine.retentionSweepBatchSize': 'number',
       'engine.history': 'form',
+      'engine.maxConcurrentRuns': 'number',
       'engine.payloadSize': 'form',
       'engine.checkpointSizeWarningThreshold': 'number',
       'engine.schedulerPollIntervalMs': 'number',

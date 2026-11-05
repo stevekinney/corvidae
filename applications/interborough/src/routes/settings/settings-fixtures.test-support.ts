@@ -45,6 +45,7 @@ export const SETTING_VALUES: Record<string, unknown> = {
   'engine.schedulerPollIntervalMs': 1_000,
   'engine.checkpointHistory': 5,
   'engine.maxNestingDepth': 8,
+  'engine.maxConcurrentRuns': 4,
   'engine.workflowClaimTtl': 30_000,
   'engine.workflowClaimRenewInterval': 10_000,
   durable: true,
@@ -65,6 +66,11 @@ export type SettingsServed = {
   lockReasons: Record<string, 'deployment' | 'shared-storage'>;
   /** The restart keys a stored value waits on, which an update that sets one adds to. */
   pendingRestart: Set<string>;
+  /**
+   * What the host runs now, by key: a restart key's booted value. Unset, the values the fixture
+   * starts with. An update that puts a restart key back to its running value ends its wait.
+   */
+  running?: Record<string, unknown>;
 };
 
 export function servedSettings(overrides: Partial<SettingsServed> = {}): SettingsServed {
@@ -101,6 +107,7 @@ export function settingsSnapshot(served: SettingsServed) {
     values: served.values,
     // What the page reads for an unset row; a fixture's values stand in for it.
     effective: { ...served.values },
+    running: { ...(served.running ?? SETTING_VALUES) },
     revision: served.revision,
     persisted: served.persisted,
     keys: keyStates(served),
@@ -136,12 +143,21 @@ export function installSettingsBureau(
             reason: 'locked',
           });
         }
-        served.values = { ...served.values, ...patch };
+        // `null` clears a stored value, as the Bureau does.
+        const values: Record<string, unknown> = { ...served.values, ...patch };
+        for (const [key, value] of Object.entries(patch)) if (value === null) delete values[key];
+        served.values = values;
         served.revision += 1;
-        const pendingRestart = Object.keys(patch).filter(
+        const running = served.running ?? SETTING_VALUES;
+        const restartKeys = Object.keys(patch).filter(
           (key) => SETTING_APPLY[key as never] === 'restart',
         );
-        for (const key of pendingRestart) served.pendingRestart.add(key);
+        for (const key of restartKeys) {
+          if (JSON.stringify(values[key]) === JSON.stringify(running[key])) {
+            served.pendingRestart.delete(key);
+          } else served.pendingRestart.add(key);
+        }
+        const pendingRestart = restartKeys.filter((key) => served.pendingRestart.has(key));
         return { revision: served.revision, pendingRestart };
       },
       ...extra,

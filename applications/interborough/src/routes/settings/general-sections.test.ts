@@ -23,8 +23,7 @@ describe('generalSections', () => {
   });
 
   test('puts every engine setting under Runs, the claim interval first, then the run limit', () => {
-    const keys = [...KEYS, 'engine.maxConcurrentRuns'];
-    const runs = generalSections(keys, none, false).find((section) => section.id === 'runs');
+    const runs = generalSections(KEYS, none, false).find((section) => section.id === 'runs');
     expect(runs?.keys.slice(0, 2)).toEqual([
       'engine.workflowClaimRenewInterval',
       'engine.maxConcurrentRuns',
@@ -34,8 +33,7 @@ describe('generalSections', () => {
 
   test('moves what the deployment locks into the Remote deployment card in remote mode', () => {
     const locked = (key: string) => key === 'engine.maxConcurrentRuns' || key === 'durable';
-    const keys = [...KEYS, 'engine.maxConcurrentRuns'];
-    const sections = generalSections(keys, locked, true);
+    const sections = generalSections(KEYS, locked, true);
     expect(sections.map((section) => section.id)).toEqual(['tools', 'runs', 'remote']);
     const remote = sections.find((section) => section.id === 'remote');
     expect([...(remote?.keys ?? [])].sort()).toEqual(['durable', 'engine.maxConcurrentRuns']);

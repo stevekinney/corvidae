@@ -152,6 +152,28 @@ describe('the page', () => {
     );
   });
 
+  test('lists Max concurrent runs second under Runs, counted in runs', async () => {
+    const view = open(servedSettings());
+    await view.findByRole('group', READY);
+    const cap = row(view.container, 'engine.maxConcurrentRuns');
+    expect(cap?.querySelector('label')?.textContent?.trim()).toBe('Max concurrent runs');
+    expect(cap?.querySelector('.cinder-setting-row__identifier')?.textContent).toBe(
+      'engine.maxConcurrentRuns',
+    );
+    expect(cap?.textContent).toContain(
+      'The most workflow runs that execute at the same time on this machine.',
+    );
+    expect(cap?.querySelector('input')?.value).toBe('4');
+    expect(cap?.textContent).toContain('runs');
+    const runs = [
+      ...(cap?.closest('.cinder-form-section')?.querySelectorAll('[data-setting]') ?? []),
+    ];
+    expect(runs.map((found) => found.getAttribute('data-setting')).slice(0, 2)).toEqual([
+      'engine.workflowClaimRenewInterval',
+      'engine.maxConcurrentRuns',
+    ]);
+  });
+
   test('reads the claim interval as seconds, in the field, and has no page-level Save', async () => {
     const view = open(servedSettings());
     await view.findByRole('group', READY);
@@ -216,6 +238,32 @@ describe('the storage backend', () => {
         ?.querySelector('h2')
         ?.textContent?.trim(),
     ).toBe('Remote deployment');
+  });
+});
+
+describe('Max concurrent runs in remote mode', () => {
+  test('sits locked in the Remote deployment card, in the card’s own words', async () => {
+    const served = servedSettings({
+      locked: new Set(['engine.maxConcurrentRuns']),
+      lockReasons: { 'engine.maxConcurrentRuns': 'deployment' },
+    });
+    const view = open(served, { hostMode: 'remote' });
+    await view.findByRole('group', READY);
+    await waitFor(() =>
+      expect(
+        row(view.container, 'engine.maxConcurrentRuns')
+          ?.closest('section')
+          ?.querySelector('h2')
+          ?.textContent?.trim(),
+      ).toBe('Remote deployment'),
+    );
+    const cap = row(view.container, 'engine.maxConcurrentRuns');
+    expect(cap?.getAttribute('data-locked')).toBe('true');
+    expect(cap?.textContent).toContain('The most workflow runs that execute at the same time.');
+    expect(cap?.textContent).not.toContain('on this machine');
+    expect(cap?.textContent).toContain(SETTINGS_COPY.lockedMessage);
+    expect(fieldOf(view.container, 'engine.maxConcurrentRuns').disabled).toBe(true);
+    expect(fieldOf(view.container, 'engine.maxConcurrentRuns').value).toBe('4');
   });
 });
 
@@ -428,6 +476,53 @@ describe('the restart banner', () => {
     );
     expect(within(banner).getByRole('button', { name: 'Restart now' })).not.toBeNull();
     expect(statusOf(view.container, KEY)).toBe('Saved, waiting for a restart');
+  });
+
+  test('reverts the waiting change to the running value, and Undo puts the saved one back', async () => {
+    const view = open(
+      servedSettings({
+        values: { ...servedSettings().values, [KEY]: 15_000 },
+        running: { ...servedSettings().values, [KEY]: 30_000 },
+        pendingRestart: new Set([KEY]),
+      }),
+    );
+    const banner = await view.findByTestId('settings-restart-summary');
+    const revert = within(banner).getByRole('button', { name: 'Revert 1 change' });
+    expect(within(banner).getByRole('button', { name: 'Restart now' })).not.toBeNull();
+    await fireEvent.click(revert);
+
+    await waitFor(() => expect(statusOf(view.container, KEY)).toBe('Reverted · in effect now'));
+    expect(updates().at(-1)?.params['patch']).toEqual({ [KEY]: 30_000 });
+    expect(fieldOf(view.container, KEY).value).toBe('30');
+    expect(view.queryByTestId('settings-restart-summary')).toBeNull();
+    const toast = await view.findByText('Reverted 1 change. Nothing needs a restart.');
+    const undo = within(toast.closest('.cinder-toast') as HTMLElement).getByRole('button', {
+      name: 'Undo',
+    });
+
+    await fireEvent.click(undo);
+    await waitFor(() => expect(statusOf(view.container, KEY)).toBe('Saved, waiting for a restart'));
+    expect(updates().at(-1)?.params['patch']).toEqual({ [KEY]: 15_000 });
+    expect(fieldOf(view.container, KEY).value).toBe('15');
+    expect(await view.findByTestId('settings-restart-summary')).not.toBeNull();
+  });
+
+  test('clears a waiting setting that nothing set when the host started', async () => {
+    const { [KEY]: _unset, ...running } = servedSettings().values;
+    void _unset;
+    const view = open(servedSettings({ running, pendingRestart: new Set([KEY]) }));
+    const banner = await view.findByTestId('settings-restart-summary');
+    await fireEvent.click(within(banner).getByRole('button', { name: 'Revert 1 change' }));
+    await waitFor(() => expect(statusOf(view.container, KEY)).toBe('Reverted · in effect now'));
+    expect(updates().at(-1)?.params['patch']).toEqual({ [KEY]: null });
+  });
+
+  test('names how many changes it reverts', async () => {
+    const view = open(
+      servedSettings({ pendingRestart: new Set([KEY, 'engine.maxConcurrentRuns']) }),
+    );
+    const banner = await view.findByTestId('settings-restart-summary');
+    expect(within(banner).getByRole('button', { name: 'Revert 2 changes' })).not.toBeNull();
   });
 
   test('is not drawn when nothing waits', async () => {

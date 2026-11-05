@@ -213,7 +213,9 @@ export const APPROVAL_SECRET_KEY = 'approval-secret';
  * The restart-applied settings a remote host holds to their code options (COR-1797): ownership,
  * maintenance, the durable engine, and the claim TTL and renew interval, whose code defaults keep
  * renew below TTL. Hosts that share a database must all run the same overlap-safe configuration,
- * so the Bureau reports each as locked for the reason `shared-storage`.
+ * so the Bureau reports each as locked for the reason `shared-storage`. The cap on workflow runs
+ * executing at once is the deployment's to size (board SettingsShell, "Locked settings · remote
+ * mode"), so it is locked for the reason `deployment`.
  */
 const REMOTE_LOCKED_SETTINGS = {
   'durableOwnership.ownership': 'shared-storage',
@@ -221,6 +223,7 @@ const REMOTE_LOCKED_SETTINGS = {
   durable: 'shared-storage',
   'engine.workflowClaimTtl': 'shared-storage',
   'engine.workflowClaimRenewInterval': 'shared-storage',
+  'engine.maxConcurrentRuns': 'deployment',
 } as const satisfies NonNullable<SettingsOptions['locked']>;
 
 /**

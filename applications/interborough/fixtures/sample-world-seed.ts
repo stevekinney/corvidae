@@ -409,6 +409,13 @@ async function clearHookNotifications(host: Host): Promise<void> {
   if (ids.length > 0) await bureauCall(host, 'bureau.notifications.dismiss', { ids });
 }
 
+/** Saves one setting through the Bureau, as the Settings page does, and fails the seed if it is refused. */
+async function saveSetting(host: SessionContext['host'], key: string, value: unknown) {
+  const { revision } = await host.bureau.settings.get();
+  const saved = await host.bureau.settings.update({ [key]: value }, { expectedRevision: revision });
+  if (saved.outcome !== 'applied') throw new Error(`Saving ${key} was refused: ${saved.message}`);
+}
+
 async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host' | 'runtime'>> {
   const { host, runtime } = context;
   await missedRunsLogged(context);
@@ -444,6 +451,10 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
   if (!removed.ok)
     throw new Error(`Removing the Anthropic key answered ${String(removed.status)}.`);
   await clearHookNotifications(host);
+
+  // Settings › General holds one saved change that waits for a restart: the claim renew interval
+  // at 15 seconds (board SettingsShell, "General · /settings", row 47f).
+  await saveSetting(host, 'engine.workflowClaimRenewInterval', 15_000);
 
   return {
     runs: { refund4472: refund4472.runId, refund4471: refund4471.runId },
@@ -485,9 +496,14 @@ export async function seedSampleWorld(
   const history = SAMPLE_WORLD_HISTORY_TIMES;
   const [version1, version2, version3, version4] = TOOL_RUNNER_VERSIONS;
 
-  await session(story, times.toolRunnerVersion1, async ({ host }) =>
-    saveToolRunnerVersion(host, version1),
-  );
+  await session(story, times.toolRunnerVersion1, async ({ host }) => {
+    await saveToolRunnerVersion(host, version1);
+    // The claim timing the host runs: renewed every 30 seconds within a 90-second claim. A restart
+    // later in the story puts it in force, so on Monday only the 15-second interval it saves waits
+    // (board SettingsShell: "Saved, waiting for a restart", and Revert goes back to 30 seconds).
+    await saveSetting(host, 'engine.workflowClaimTtl', 90_000);
+    await saveSetting(host, 'engine.workflowClaimRenewInterval', 30_000);
+  });
   await session(story, times.toolRunnerVersion2, async ({ host }) => {
     await saveToolRunnerVersion(host, version2);
     runtime.setTime(times.neverShareEmails);

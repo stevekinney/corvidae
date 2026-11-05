@@ -36,6 +36,7 @@
   import RestartConfirmDialog from '../../app/restart/restart-confirm-dialog.svelte';
   import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { getTheme, type ThemeMode } from '../../app/theme.svelte.ts';
+  import { dismissToast, showToast } from '../../app/toast-host.svelte';
   import {
     getSettings,
     updateSettings,
@@ -53,6 +54,7 @@
   import { controlFor, settingLabel, type Control } from './settings-controls.ts';
   import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
   import { SettingsForm } from './settings-form.svelte.ts';
+  import { SettingsRevert } from './settings-revert.svelte.ts';
 
   interface Props {
     schema: SettingsSchema;
@@ -107,16 +109,30 @@
   const form = new SettingsForm(controls, (key) => stateOf(key).locked, validate, committed);
   untrack(() => form.load(snapshot));
 
+  /** Reads the settings again, into the page's own query. */
+  const readSettings = (): Promise<SettingsSnapshot> =>
+    queryClient.fetchQuery({
+      queryKey: queryKeys.settings.snapshot(),
+      queryFn: ({ signal }) => getSettings({ signal }),
+      staleTime: 0,
+    });
+
   const autosave = new SettingsAutosave({
     form,
     update: (patch, expectedRevision) => updateSettings(patch, expectedRevision),
-    read: () =>
-      queryClient.fetchQuery({
-        queryKey: queryKeys.settings.snapshot(),
-        queryFn: ({ signal }) => getSettings({ signal }),
-        staleTime: 0,
-      }),
+    read: readSettings,
   });
+
+  // The restart banner's Revert, and the Undo toast it leaves until the page is left.
+  const revert = new SettingsRevert({
+    form,
+    update: (patch, expectedRevision) => updateSettings(patch, expectedRevision),
+    read: readSettings,
+    showUndo: (message, undo) => showToast(message, { undo }),
+    dismiss: dismissToast,
+    fail: (message) => void showToast(message, { variant: 'danger' }),
+  });
+  onDestroy(() => revert.dispose());
 
   // The settings were read again: every setting not being edited takes them. A save in flight
   // reads them again itself and takes them when it is done, so this waits for it.
@@ -207,7 +223,7 @@
   </div>
 {/snippet}
 
-{#snippet field(key: string)}
+{#snippet field(key: string, remoteCard: boolean)}
   {@const node = schema[key]}
   {@const control = controls.get(key)}
   {#if node !== undefined && control !== undefined}
@@ -219,6 +235,9 @@
       keyState={stateOf(key)}
       {autosave}
       appliedNote={appliedNoteOf(key)}
+      reverted={revert.isReverted(key)}
+      descriptionOverride={remoteCard ? SETTINGS_COPY.general.remoteDescriptions[key] : undefined}
+      onEdit={() => revert.forget(key)}
     />
   {/if}
 {/snippet}
@@ -259,7 +278,16 @@
           <Button
             variant="secondary"
             size="sm"
-            disabled={restartFlow.running}
+            disabled={restartFlow.running || revert.busy || autosave.busy}
+            data-testid="settings-revert"
+            onclick={() => void revert.revert(restartKeys, snapshot)}
+          >
+            {SETTINGS_COPY.general.restartBanner.revert(restartKeys.length)}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={restartFlow.running || revert.busy}
             onclick={() => (confirmingRestart = true)}
           >
             {#snippet leadingIcon()}<RotateCw size={14} aria-hidden="true" />{/snippet}
@@ -286,7 +314,7 @@
         {@render backendRow(true)}
       {/if}
       {#each section.keys as key (key)}
-        {@render field(key)}
+        {@render field(key, section.id === 'remote')}
       {/each}
     </FormSection>
   {/each}

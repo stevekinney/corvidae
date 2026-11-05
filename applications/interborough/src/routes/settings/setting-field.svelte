@@ -46,17 +46,35 @@
     autosave: SettingsAutosave;
     /** What the status line says for a setting a restart just applied ("In effect since 10:44 AM"). */
     appliedNote?: string | undefined;
+    /** Whether the banner's Revert put this setting back to its running value ("Reverted · in effect now"). */
+    reverted?: boolean;
+    /** The row's own words in place of the Bureau's description, such as in the Remote deployment card. */
+    descriptionOverride?: string | undefined;
+    /** Called when the person changes the value, which ends what Revert said about it. */
+    onEdit?: (() => void) | undefined;
   }
 
-  let { name, node, control: spec, form, keyState, autosave, appliedNote }: Props = $props();
+  let {
+    name,
+    node,
+    control: spec,
+    form,
+    keyState,
+    autosave,
+    appliedNote,
+    reverted = false,
+    descriptionOverride,
+    onEdit,
+  }: Props = $props();
 
   const id = $derived(`weft-setting-${name.replaceAll('.', '-')}`);
   const label = $derived(settingLabel(name));
   /** The description as plain words: a code span reads as its text. */
   const description = $derived(
-    inlineSegments(node.description ?? '')
-      .map((segment) => segment.text)
-      .join(''),
+    descriptionOverride ??
+      inlineSegments(node.description ?? '')
+        .map((segment) => segment.text)
+        .join(''),
   );
   const draft = $derived(form.draft(name));
   const locked = $derived(keyState.locked);
@@ -102,6 +120,7 @@
     if (saveState?.phase === 'saving') return 'saving' as const;
     if (keyState.pendingRestart) return 'saved-restart' as const;
     if (saveState?.phase === 'saved' || appliedNote !== undefined) return 'saved' as const;
+    if (reverted) return 'reverted' as const;
     if (keyState.apply === 'restart') return 'restart' as const;
     return undefined;
   });
@@ -139,6 +158,7 @@
   /** Changes the draft, which clears what the last save said about the old one. */
   function change(next: unknown): void {
     autosave.clear(name);
+    onEdit?.();
     form.set(name, next);
   }
 
@@ -196,6 +216,7 @@
           disabled={locked}
           onValueChange={(next) => {
             autosave.clear(name);
+            onEdit?.();
             form.setSwitch(name, next);
             leave();
           }}
@@ -294,6 +315,7 @@
             error={problem ?? ''}
             onValueChange={(next) => {
               autosave.clear(name);
+              onEdit?.();
               form.setText(name, next);
             }}
           />

@@ -2187,7 +2187,25 @@ export const SETTINGS_COPY = {
           : `${String(count)} changes wait for a restart`,
       detail: (names: readonly string[]): string =>
         `${names.join(', ')}. Running work picks up where it stopped; reviews stay waiting.`,
+      /** Puts every waiting setting back to the value the host runs now (board SettingsShell, "More states"). */
+      revert: (count: number): string =>
+        count === 1 ? 'Revert 1 change' : `Revert ${String(count)} changes`,
     },
+    /** The Undo toast after Revert, and what the page says when Revert or Undo does not go through. */
+    reverted: {
+      toast: (count: number): string =>
+        `Reverted ${count === 1 ? '1 change' : `${String(count)} changes`}. Nothing needs a restart.`,
+      revertFailed: 'Couldn’t revert. The changes still wait for a restart.',
+      undoFailed: 'Couldn’t undo. The settings stay reverted.',
+    },
+    /**
+     * A setting's own words where the Remote deployment card shows it, in place of the Bureau's
+     * description (board SettingsShell, "Locked settings · remote mode"): a remote deployment's
+     * runs are not on this machine.
+     */
+    remoteDescriptions: {
+      'engine.maxConcurrentRuns': 'The most workflow runs that execute at the same time.',
+    } as Readonly<Record<string, string>>,
     /** The status of a row a restart just applied. */
     inEffectSince: (time: string): string => `In effect since ${time}`,
     /** Loading, and giving up on it. */

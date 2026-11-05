@@ -70,6 +70,7 @@ function open(served: SettingsServed, behaviour: Partial<HostBehaviour> = {}) {
       return {
         values: served.values,
         effective: { ...served.values },
+        running: { ...served.values },
         revision: served.revision,
         persisted: served.persisted,
         keys: Object.fromEntries(

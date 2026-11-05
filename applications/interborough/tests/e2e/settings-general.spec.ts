@@ -1,8 +1,8 @@
 /**
  * Settings › General (board SettingsShell, "General · /settings") on the sample world: the page at
  * 1280 and 375 pixels, a setting saved as its field is left, a value that is refused at its field,
- * a save that does not go through, a remote deployment's locked settings, and the placeholders
- * while the settings load. The restart that follows a saved change is `restart.spec.ts`.
+ * a save that does not go through, the banner's Revert with its Undo toast, a remote deployment's
+ * locked settings, and the placeholders while the settings load. The restart that follows a saved change is `restart.spec.ts`.
  *
  * Each captioned state is captured for the design review (`design-review-capture.ts`), at the two
  * widths the design draws it at.
@@ -68,6 +68,18 @@ test.describe('Settings › General', () => {
     await expect(settingRow(page, 'engine.workflowClaimRenewInterval')).toContainText(
       'Saved, waiting for a restart',
     );
+    await expect(
+      settingRow(page, 'engine.workflowClaimRenewInterval').getByRole('spinbutton'),
+    ).toHaveValue('15');
+    await expect(banner.getByRole('button', { name: 'Revert 1 change' })).toBeVisible();
+    await expect(banner.getByRole('button', { name: 'Restart now' })).toBeVisible();
+    const cap = settingRow(page, 'engine.maxConcurrentRuns');
+    await expect(cap).toContainText('Max concurrent runs');
+    await expect(cap).toContainText(
+      'The most workflow runs that execute at the same time on this machine.',
+    );
+    await expect(cap.getByRole('spinbutton')).toHaveValue('4');
+    await expect(cap).toContainText('runs');
     await checkA11y('settings general at 1280px');
     await captureAtBothWidths(page, 'ready');
 
@@ -75,7 +87,35 @@ test.describe('Settings › General', () => {
     await page.setViewportSize({ width: 375, height: 900 });
     await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Section' })).toHaveValue('/settings');
+    // The banner stacks: its Revert and Restart now sit below its words.
+    const words = await banner.getByText('Running work picks up where it stopped').boundingBox();
+    const revert = await banner.getByRole('button', { name: 'Revert 1 change' }).boundingBox();
+    expect(revert?.y ?? 0).toBeGreaterThan((words?.y ?? 0) + (words?.height ?? 0) - 1);
     await checkA11y('settings general at 375px');
+  });
+
+  test('reverted: Revert puts the waiting change back to the running value, with an Undo toast', async ({
+    page,
+  }) => {
+    await openGeneral(page);
+    const banner = page.getByTestId('settings-restart-summary');
+    const row = settingRow(page, 'engine.workflowClaimRenewInterval');
+    const saved = await row.getByRole('spinbutton').inputValue();
+    await banner.getByRole('button', { name: 'Revert 1 change' }).click();
+    await expect(row.getByRole('status')).toContainText('Reverted · in effect now');
+    // The host runs the 30 seconds it started with; the 15 it saved waited for a restart.
+    await expect(row.getByRole('spinbutton')).toHaveValue('30');
+    await expect(banner).toHaveCount(0);
+    const toast = page.locator('.cinder-toast', {
+      hasText: 'Reverted 1 change. Nothing needs a restart.',
+    });
+    await expect(toast.getByRole('button', { name: 'Undo' })).toBeVisible();
+    await captureAtBothWidths(page, 'reverted');
+
+    // Undo puts the sample world's saved change back for the specs that follow.
+    await toast.getByRole('button', { name: 'Undo' }).click();
+    await expect(row.getByRole('status')).toContainText('Saved, waiting for a restart');
+    await expect(row.getByRole('spinbutton')).toHaveValue(saved);
   });
 
   test('saved: a switch saves as it changes, and its row says Saved just now', async ({ page }) => {
@@ -168,6 +208,12 @@ test.describe('Settings › General', () => {
           state.lockReason = 'shared-storage';
         }
       }
+      // The host locks the run cap for the deployment in remote mode (`host.ts`).
+      const cap = answer.result.keys['engine.maxConcurrentRuns'];
+      if (cap !== undefined) {
+        cap.locked = true;
+        cap.lockReason = 'deployment';
+      }
       await route.fulfill({ response, json: answer });
     });
     await openGeneral(page);
@@ -177,6 +223,12 @@ test.describe('Settings › General', () => {
     const locked = settingRow(page, 'engine.workflowClaimRenewInterval');
     await expect(locked).toContainText(SETTINGS_COPY.lockedMessage);
     await expect(locked.getByRole('spinbutton')).toBeDisabled();
+    const cap = settingRow(page, 'engine.maxConcurrentRuns');
+    await expect(cap).toContainText('The most workflow runs that execute at the same time.');
+    await expect(cap).not.toContainText('on this machine');
+    await expect(cap).toContainText(SETTINGS_COPY.lockedMessage);
+    await expect(cap.getByRole('spinbutton')).toBeDisabled();
+    await expect(cap.getByRole('spinbutton')).toHaveValue('4');
     await captureAtBothWidths(page, 'locked-remote');
   });
 

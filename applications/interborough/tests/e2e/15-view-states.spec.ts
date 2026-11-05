@@ -124,6 +124,7 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   settings: bureauProbe('bureau.settings.get', {
     values: {},
     effective: {},
+    running: {},
     revision: 0,
     persisted: true,
     keys: {},
