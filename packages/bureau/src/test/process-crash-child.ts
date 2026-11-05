@@ -753,9 +753,13 @@ async function childWaitRunning(): Promise<void> {
   );
   allowParent.resolve();
   await pollUntil('parent park', async () => {
-    const workflow = await bureau.tasks.workflow(parent.id);
-    return workflow?.status === 'running';
+    const state = await durableEngine?.get(parent.id);
+    return state?.waitingForSignals?.includes(`durable-child:${parent.id}:child-1`) === true;
   });
+  const parentState = await durableEngine.get(parent.id);
+  if (!parentState?.waitingForSignals?.includes(`durable-child:${parent.id}:child-1`)) {
+    throw new Error('child: parent was not durably parked on the child signal');
+  }
   await pollUntil('running child record', async () => {
     const childRecord = await bureau.children.get({
       parentRunId: parent.id,
@@ -763,6 +767,20 @@ async function childWaitRunning(): Promise<void> {
     });
     return childRecord?.status === 'running';
   });
+  const childRecord = await bureau.children.get({
+    parentRunId: parent.id,
+    childRunId: 'child-1',
+  });
+  if (childRecord?.status !== 'running') {
+    throw new Error(`child: expected a running child before SIGKILL, got ${childRecord?.status}`);
+  }
+  publishChildFile(
+    join(dirname(markerPath as string), 'unobservable-ready'),
+    JSON.stringify({
+      parentWaitingForSignals: parentState.waitingForSignals,
+      childRecord,
+    }),
+  );
   return killSelf();
 }
 

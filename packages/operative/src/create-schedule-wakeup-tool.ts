@@ -240,6 +240,7 @@ export function createScheduleWakeupTool(options: CreateScheduleWakeupToolOption
       const refusal = refuseIfStepIsParked({
         pendingHumanWait: context.pendingHumanWait,
         pendingWakeup: context.pendingWakeup,
+        pendingChildWait: context.pendingChildWait,
       });
       if (refusal !== undefined) return { scheduled: false, ...refusal };
 

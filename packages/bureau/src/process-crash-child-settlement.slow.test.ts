@@ -191,10 +191,16 @@ async function unobservableScenario(scope: ScenarioScope): Promise<void> {
       { stdout: 'pipe', stderr: 'pipe' },
     );
     scope.onHang(() => crashed.kill());
-    await waitUntil(() => existsSync(markerPath));
+    await waitUntil(() => existsSync(join(directory, 'unobservable-ready')));
     await crashed.exited;
     expect(crashed.signalCode).toBe('SIGKILL');
     const { runId, childRunId } = readChildJson<{ runId: string; childRunId: string }>(markerPath);
+    const ready = readChildJson<{
+      parentWaitingForSignals: readonly string[];
+      childRecord: { status: string; childRunId: string };
+    }>(join(directory, 'unobservable-ready'));
+    expect(ready.parentWaitingForSignals).toEqual([`durable-child:${runId}:${childRunId}`]);
+    expect(ready.childRecord).toMatchObject({ status: 'running', childRunId });
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     const waitForChild = createTool({
@@ -208,75 +214,105 @@ async function unobservableScenario(scope: ScenarioScope): Promise<void> {
         return wait({ childRunId, toolCallId: context.meta?.callId ?? context.toolCall.id });
       },
     });
-    let generations = 0;
-    let toolResults: readonly unknown[] = [];
-    const rawStorage = fixture.open();
-    const storage = new Proxy(rawStorage, {
-      get(target, property, receiver) {
-        if (property === 'get') {
-          return async (key: string) => {
-            if (key === 'wf:child-1') throw new Error('child workflow unavailable during recovery');
-            return target.get(key);
-          };
-        }
-        const value = Reflect.get(target, property, receiver);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
-    const bureau = await createBureau({
-      agents: {
-        planner: createAgent({
-          name: 'planner',
-          toolbox: createToolbox([waitForChild]),
-          generate: async ({ step, conversation }) => {
-            generations += 1;
-            toolResults = conversation
-              .getMessages()
-              .filter((message) => message.role === 'tool-result')
-              .map((message) => message.toolResult);
-            return step === 0
-              ? {
-                  content: 'unexpected replay',
-                  toolCalls: [
-                    {
-                      id: CHILD_WAIT_CALL_ID,
-                      name: 'wait-for-child',
-                      arguments: { childRunId },
-                    },
-                  ],
-                }
-              : { content: 'recovered', toolCalls: [] };
-          },
-          stopWhen: stopWhen.noToolCalls(),
-        }),
-      },
-      storage,
-      durable: true,
-      onDiagnostic: () => {},
-      runtime,
-      durableOwnership: {
-        ownership: 'workflow-lease',
-        workflowClaimTtlMs: CLAIM_TTL_MS,
-        workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
-      },
-    });
-    scope.onHang(() => bureau.shutdown());
+    const ownerRuns = [
+      { generations: 0, steps: [] as number[], toolResults: [] as readonly unknown[] },
+      { generations: 0, steps: [] as number[], toolResults: [] as readonly unknown[] },
+    ];
+    const createRecoveryStorage = () => {
+      const rawStorage = fixture.open();
+      return new Proxy(rawStorage, {
+        get(target, property, receiver) {
+          if (property === 'get') {
+            return async (key: string) => {
+              if (key === 'wf:child-1')
+                throw new Error('child workflow unavailable during recovery');
+              return target.get(key);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    };
+    const createRecoveryBureau = async (owner: (typeof ownerRuns)[number]) =>
+      createBureau({
+        agents: {
+          planner: createAgent({
+            name: 'planner',
+            toolbox: createToolbox([waitForChild]),
+            generate: async ({ step, conversation }) => {
+              owner.generations += 1;
+              owner.steps.push(step);
+              owner.toolResults = conversation
+                .getMessages()
+                .filter((message) => message.role === 'tool-result')
+                .map((message) => message.toolResult);
+              return { content: 'recovered', toolCalls: [] };
+            },
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
+        storage: createRecoveryStorage(),
+        durable: true,
+        onDiagnostic: () => {},
+        runtime,
+        durableOwnership: {
+          ownership: 'workflow-lease',
+          workflowClaimTtlMs: CLAIM_TTL_MS,
+          workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
+        },
+      });
+    const bureaus = await Promise.all(ownerRuns.map(createRecoveryBureau));
+    scope.onHang(() => Promise.all(bureaus.map((bureau) => bureau.shutdown())));
     try {
-      await bureau.recovery();
-      const result = await bureau.tasks.wait(runId);
-      expect(result?.status).toBe('completed');
-      expect(generations).toBe(2);
-      expect(toolResults).toContainEqual(
+      await Promise.all(bureaus.map((bureau) => bureau.recovery()));
+      await Promise.all(
+        bureaus.map(async (bureau) => {
+          const result = await bureau.tasks.wait(runId);
+          expect(result?.status).toBe('completed');
+        }),
+      );
+      expect(ownerRuns.reduce((total, owner) => total + owner.generations, 0)).toBe(1);
+      expect(ownerRuns.flatMap((owner) => owner.steps)).toEqual([1]);
+      expect(ownerRuns.flatMap((owner) => owner.toolResults)).toContainEqual(
         expect.objectContaining({
           callId: CHILD_WAIT_CALL_ID,
           content: { status: 'unobservable', child: expect.objectContaining({ childRunId }) },
         }),
       );
-      expect(await bureau.children.get({ parentRunId: runId, childRunId })).toMatchObject({
+      const childRecord = await bureaus[0]?.children.get({ parentRunId: runId, childRunId });
+      expect(childRecord).toMatchObject({ status: 'running' });
+      const inspectionStorage = new BunSQLiteStorage(storagePath);
+      try {
+        const checkpointStore = createCheckpointStore(
+          textValueStore(inspectionStorage, { disposeUnderlyingStorage: false }),
+        );
+        const stepsOnDisk = await checkpointStore.loadSteps(runId, { strict: true });
+        expect(stepsOnDisk).toHaveLength(2);
+        const originalStep = stepsOnDisk[0];
+        if (originalStep === undefined) throw new Error('missing durable parent step');
+        expect(originalStep.toolCalls).toContainEqual(
+          expect.objectContaining({ id: CHILD_WAIT_CALL_ID, name: 'wait-for-child' }),
+        );
+        expect(
+          originalStep.results.filter((entry) => entry.callId === CHILD_WAIT_CALL_ID),
+        ).toHaveLength(1);
+        expect(originalStep.results).toContainEqual(
+          expect.objectContaining({
+            callId: CHILD_WAIT_CALL_ID,
+            toolCallId: CHILD_WAIT_CALL_ID,
+            outcome: 'success',
+            result: { status: 'unobservable', child: childRecord },
+          }),
+        );
+      } finally {
+        inspectionStorage[Symbol.dispose]();
+      }
+      expect(await bureaus[0]?.children.get({ parentRunId: runId, childRunId })).toMatchObject({
         status: 'running',
       });
     } finally {
-      await bureau.shutdown();
+      await Promise.all(bureaus.map((bureau) => bureau.shutdown()));
     }
   } finally {
     await fixture.dispose();

@@ -296,6 +296,7 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
       const refusal = refuseIfStepIsParked({
         pendingHumanWait: context.pendingHumanWait,
         pendingWakeup: context.pendingWakeup,
+        pendingChildWait: context.pendingChildWait,
       });
       if (refusal !== undefined) {
         return { parked: false, signalName: input.signalName, ...refusal };

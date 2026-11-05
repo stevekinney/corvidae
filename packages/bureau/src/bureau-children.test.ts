@@ -11,6 +11,7 @@
 
 import {
   createAgent,
+  createCheckpointStore,
   createLazyAgent,
   createMockGenerate,
   defineChildSignals,
@@ -1121,6 +1122,7 @@ describe('bureau.children across a process restart', () => {
     readonly duplicateWake?: boolean;
     readonly realDuplicateWake?: boolean;
     readonly competingPark?: 'human' | 'wakeup';
+    readonly competingParkOrder?: 'child-first' | 'competitor-first';
   };
 
   async function runDurableChildWaitCase(testCase: DurableChildWaitCase) {
@@ -1158,23 +1160,27 @@ describe('bureau.children across a process restart', () => {
             if (step === 0) {
               parentReady.resolve();
               await allowParent.promise;
+              const childCall = {
+                id: 'durable-child-wait-call',
+                name: 'wait-for-child',
+                arguments: { childRunId: testCase.childRunId },
+              };
+              const competingCall =
+                testCase.competingPark === 'human'
+                  ? {
+                      id: 'human-park-call',
+                      name: 'requestHumanInput',
+                      arguments: { signalName: 'human' },
+                    }
+                  : {
+                      id: 'wakeup-park-call',
+                      name: 'scheduleWakeup',
+                      arguments: { in: '1h' },
+                    };
               const toolCalls = [
-                {
-                  id: 'durable-child-wait-call',
-                  name: 'wait-for-child',
-                  arguments: { childRunId: testCase.childRunId },
-                },
-                ...(testCase.competingPark === 'human'
-                  ? [
-                      {
-                        id: 'human-park-call',
-                        name: 'requestHumanInput',
-                        arguments: { signalName: 'human' },
-                      },
-                    ]
-                  : testCase.competingPark === 'wakeup'
-                    ? [{ id: 'wakeup-park-call', name: 'scheduleWakeup', arguments: { in: '1h' } }]
-                    : []),
+                ...(testCase.competingParkOrder === 'competitor-first' ? [competingCall] : []),
+                childCall,
+                ...(testCase.competingParkOrder === 'competitor-first' ? [] : [competingCall]),
               ];
               return {
                 content: 'waiting',
@@ -1283,6 +1289,56 @@ describe('bureau.children across a process restart', () => {
             ) === true
           );
         });
+      }
+      if (testCase.competingPark !== undefined) {
+        const engine = bureau.durableEngine();
+        expect(engine).toBeDefined();
+        const childSignal = `durable-child:${parent.id}:${testCase.childRunId}`;
+        const checkpointStore = createCheckpointStore(
+          textValueStore(pathFixture.storage, { disposeUnderlyingStorage: false }),
+        );
+        if (testCase.competingPark === 'human') {
+          await pollUntil(async () => {
+            const state = await engine?.get(parent.id);
+            return state?.waitingForSignals?.length === 1;
+          });
+          const parkedState = await engine?.get(parent.id);
+          expect(parkedState?.waitingForSignals).toHaveLength(1);
+          const parkedSignal = parkedState?.waitingForSignals?.[0];
+          if (parkedSignal === undefined) throw new Error('missing durable park signal');
+          expect(['human', childSignal]).toContain(parkedSignal);
+        } else {
+          await pollUntil(async () => {
+            const records = await checkpointStore.loadSteps(parent.id, { strict: true });
+            return (
+              records[0]?.results.some((result) => result.callId === 'wakeup-park-call') === true
+            );
+          });
+        }
+        const records = await checkpointStore.loadSteps(parent.id, { strict: true });
+        const parkedStep = records[0];
+        if (parkedStep === undefined) throw new Error('missing first parked step');
+        const refusal = parkedStep.results.find(
+          (result) => result.callId !== 'durable-child-wait-call',
+        );
+        expect(refusal).toBeDefined();
+        expect(refusal?.outcome).toBe('success');
+        const childWaitResult = parkedStep.results.find(
+          (result) => result.callId === 'durable-child-wait-call',
+        );
+        if (childWaitResult === undefined) {
+          expect(refusal?.result).toMatchObject({
+            refused: true,
+            pendingPark: { kind: 'child-wait', childRunId: testCase.childRunId },
+          });
+        } else {
+          expect(parkedStep.results).toContainEqual(
+            expect.objectContaining({
+              callId: 'durable-child-wait-call',
+              result: { parked: false, reason: 'already-parked' },
+            }),
+          );
+        }
       }
       if (testCase.realDuplicateWake) {
         childRelease.resolve();
@@ -1458,19 +1514,29 @@ describe('bureau.children across a process restart', () => {
     });
     expect(outcome.child?.status).toBe('completed');
     expect(outcome.generations).toBe(2);
-    expect(outcome.toolResults).toHaveLength(1);
+    expect(
+      outcome.toolResults.filter(
+        (result) =>
+          typeof result === 'object' &&
+          result !== null &&
+          (result as { callId?: unknown }).callId === 'durable-child-wait-call',
+      ),
+    ).toHaveLength(1);
   });
 
   it('honors one first park when child-wait races human input or a wakeup', async () => {
     for (const competingPark of ['human', 'wakeup'] as const) {
-      const outcome = await runDurableChildWaitCase({
-        childRunId: `child-${competingPark}-race`,
-        childMode: 'running',
-        competingPark,
-        cancelParent: true,
-      });
-      expect(outcome.generations).toBe(1);
-      expect(outcome.toolResults).toHaveLength(0);
+      for (const competingParkOrder of ['child-first', 'competitor-first'] as const) {
+        const outcome = await runDurableChildWaitCase({
+          childRunId: `child-${competingPark}-${competingParkOrder}-race`,
+          childMode: 'running',
+          competingPark,
+          competingParkOrder,
+          cancelParent: true,
+        });
+        expect(outcome.generations).toBe(1);
+        expect(outcome.toolResults).toHaveLength(0);
+      }
     }
   });
 });
