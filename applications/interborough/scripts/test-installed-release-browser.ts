@@ -1,7 +1,5 @@
 import { chromium } from '@playwright/test';
 
-import { MCP_APP_UI_META } from '../src/host/mcp-app-mounts.ts';
-
 type BrowserReferenceHost = {
   readonly mount: (
     html: string,
@@ -13,12 +11,13 @@ type BrowserReferenceHost = {
   readonly handlers: Record<string, (arguments_: Record<string, unknown>) => unknown>;
 };
 
+type InstalledUi = { readonly html: string; readonly ui: { readonly csp: unknown } };
+
 export async function assertInstalledAppsInChromium(
-  url: string,
-  panelHtml: string,
-  inspectorHtml: string,
+  installedUrl: string,
+  panelUrl: string,
+  inspectorUrl: string,
   runId: string,
-  inspection: unknown,
 ): Promise<void> {
   const referenceHost = await Bun.build({
     entrypoints: [new URL('../tests/mcp-apps/reference-host.ts', import.meta.url).pathname],
@@ -29,8 +28,49 @@ export async function assertInstalledAppsInChromium(
     throw new AggregateError(referenceHost.logs, 'Reference host failed to build');
   const hostScript = await referenceHost.outputs[0]!.text();
   const browser = await chromium.launch({ headless: true });
+  const shellErrors: string[] = [];
   try {
     const page = await browser.newPage();
+    page.on('pageerror', (error) => shellErrors.push(error.message));
+    const shell = await page.goto(installedUrl);
+    if (shell?.status() !== 200) throw new Error(`Installed shell returned ${shell?.status()}`);
+    await page.locator('#app').waitFor();
+    await page.waitForFunction(() => document.querySelector('#app')?.children.length !== 0);
+    if (shellErrors.length > 0)
+      throw new Error(`Installed shell JavaScript failed: ${shellErrors.join('; ')}`);
+
+    const panelResponse = await fetch(panelUrl);
+    if (!panelResponse.ok) throw new Error(`Installed panel returned ${panelResponse.status}`);
+    const panelPayload = (await panelResponse.json()) as InstalledUi;
+    if (!panelPayload.html || !panelPayload.ui?.csp)
+      throw new Error('Installed panel omitted UI metadata');
+    const inspectorResponse = await fetch(inspectorUrl);
+    if (!inspectorResponse.ok)
+      throw new Error(`Installed inspector returned ${inspectorResponse.status}`);
+    const inspectorPayload = (await inspectorResponse.json()) as InstalledUi;
+    const inspectionResponse = await fetch(`${installedUrl}/bureau/mcp`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2025-03-26',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 99,
+        method: 'tools/call',
+        params: { name: 'bureau.tasks.inspect', arguments: { taskId: runId } },
+      }),
+    });
+    if (!inspectionResponse.ok)
+      throw new Error(`Installed inspector tool returned ${inspectionResponse.status}`);
+    const inspectionEnvelope = (await inspectionResponse.json()) as {
+      result?: unknown;
+      error?: unknown;
+    };
+    if (inspectionEnvelope.error !== undefined || inspectionEnvelope.result === undefined)
+      throw new Error('Installed inspector tool returned an error');
+
     await page.route('http://reference-host.test/', (route) =>
       route.fulfill({
         contentType: 'text/html',
@@ -47,7 +87,7 @@ export async function assertInstalledAppsInChromium(
           {},
           'Fixture panel',
         ),
-      { html: panelHtml, csp: MCP_APP_UI_META.csp },
+      { html: panelPayload.html, csp: panelPayload.ui.csp },
     );
     if (
       !(await page
@@ -60,17 +100,17 @@ export async function assertInstalledAppsInChromium(
       (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost.teardown(),
     );
     await page.evaluate(
-      async ({ html, csp, inspected }) => {
+      async ({ html, csp, inspection, run }) => {
         const host = (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost;
-        host.handlers['bureau.tasks.inspect'] = () => inspected;
-        return host.mount(html, csp, {
-          taskId:
-            inspected && typeof inspected === 'object' && 'taskId' in inspected
-              ? String(inspected.taskId)
-              : '',
-        });
+        host.handlers['bureau.tasks.inspect'] = () => inspection;
+        return host.mount(html, csp, { taskId: run });
       },
-      { html: inspectorHtml, csp: MCP_APP_UI_META.csp, inspected: inspection },
+      {
+        html: inspectorPayload.html,
+        csp: inspectorPayload.ui.csp,
+        inspection: inspectionEnvelope.result,
+        run: runId,
+      },
     );
     if (
       !(await page

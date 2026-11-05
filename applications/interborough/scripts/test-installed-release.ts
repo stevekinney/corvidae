@@ -144,8 +144,7 @@ async function writeFixture(home: string, executable: string, marker: string): P
     'plugin-runtime',
     'node_modules',
   );
-  const localDependencies = join(plugins, 'node_modules');
-  await symlink(runtime, localDependencies, 'dir');
+  await linkPluginRuntime(home, runtime);
   const fixtureDirectory = join(plugins, 'installed-fixture');
   const fixtureDependency = join(fixtureDirectory, 'node_modules', 'fixture-dependency');
   await mkdir(fixtureDependency, { recursive: true });
@@ -190,6 +189,10 @@ export default definePlugin({ name: 'installed-fixture', version: '1.0.0', descr
     join(plugins, 'broken', 'plugin.ts'),
     `import './missing-installed-import.ts';\nexport default {};\n`,
   );
+}
+
+async function linkPluginRuntime(home: string, runtime: string): Promise<void> {
+  await symlink(runtime, join(home, 'plugins', 'node_modules'), 'dir');
 }
 
 async function mcp(
@@ -293,12 +296,12 @@ async function runInstalled(
   )
     throw new Error('Fixture MCP panel was not mounted');
   const panel = await fetch(`${url}/host/plugins/installed-fixture/apps/fixture-panel`);
-  const panelText = await panel.text();
-  if (!panelText.includes('Installed fixture MCP panel'))
-    throw new Error('Fixture panel text missing');
-  const panelHtml = panelText.startsWith('{')
-    ? ((JSON.parse(panelText) as Record<string, unknown>)['html'] as string)
-    : panelText;
+  const panelPayload = (await panel.json()) as { html?: string; ui?: { csp?: unknown } };
+  if (
+    !panelPayload.html?.includes('Installed fixture MCP panel') ||
+    panelPayload.ui?.csp === undefined
+  )
+    throw new Error('Fixture panel text or UI metadata missing');
   const run = await mcp(url, 2, 'tools/call', {
     name: 'bureau.tasks.inspect',
     arguments: { taskId: agent.runId },
@@ -306,15 +309,15 @@ async function runInstalled(
   if (!run['result'] && !run['error'])
     throw new Error('Built-in inspector did not answer for the fixture run');
   const inspector = await fetch(`${url}/host/plugins/inspectors/apps/run-inspector`);
-  const inspectorText = await inspector.text();
-  const inspectorPage = inspectorText.startsWith('{')
-    ? (((JSON.parse(inspectorText) as Record<string, unknown>)['html'] as string | undefined) ?? '')
-    : inspectorText;
-  if (inspector.status !== 200 || !inspectorPage.includes('<div id="root">'))
-    throw new Error(
-      `Built-in inspector page missing (${inspector.status}): ${inspectorText.slice(0, 200)}`,
-    );
-  await assertInstalledAppsInChromium(url, panelHtml, inspectorPage, agent.runId, run['result']);
+  const inspectorPayload = (await inspector.json()) as { html?: string; ui?: { csp?: unknown } };
+  if (inspector.status !== 200 || !inspectorPayload.html?.includes('<div id="root">'))
+    throw new Error(`Built-in inspector page missing (${inspector.status})`);
+  await assertInstalledAppsInChromium(
+    url,
+    `${url}/host/plugins/installed-fixture/apps/fixture-panel`,
+    `${url}/host/plugins/inspectors/apps/run-inspector`,
+    agent.runId,
+  );
   pass(
     'Chromium rendered the installed shell, fixture MCP panel, and run inspector',
     `chromium ${url}`,
@@ -346,6 +349,11 @@ async function runInstalled(
     throw new Error(`Explicit port changed across restart: ${port} -> ${secondPort}`);
   const second = await waitForHttp(`http://127.0.0.1:${secondPort}`);
   if (!second.ok) throw new Error('Restart did not preserve listener');
+  const restartedAgent = await runFixtureAgent(`http://127.0.0.1:${secondPort}`);
+  if (!restartedAgent.stream.includes('fixture greeted Ada'))
+    throw new Error('Restarted fixture tool output was not deterministic');
+  if ((await readFile(marker, 'utf8')) !== 'fixture-owned-dependency')
+    throw new Error('Restarted fixture tool did not resolve its additional dependency');
   await Bun.sleep(300);
   const output = probe.output();
   const pids = [...output.matchAll(/Started the host \(process (\d+)\)/g)].map((match) =>
@@ -446,6 +454,15 @@ export async function runInstalledRelease(
       await rename(join(root, 'interborough'), join(relocated, 'interborough'));
       const moved = join(relocated, 'interborough', 'bin', 'interborough');
       await rm(join(root, 'home', 'plugins', 'node_modules'), { recursive: true, force: true });
+      const movedRuntime = resolve(
+        dirname(await realpath(moved)),
+        '..',
+        'share',
+        'interborough',
+        'plugin-runtime',
+        'node_modules',
+      );
+      await linkPluginRuntime(join(root, 'home'), movedRuntime);
       await runInstalled(moved, relocated, true, 0, join(root, 'home'));
     }
     const evidenceDirectory = options.evidence ?? DEFAULT_EVIDENCE;
