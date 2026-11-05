@@ -26,6 +26,8 @@ export type SchedulesDependencies = {
   readonly update: BureauSchedules['update'];
   /** {@link BureauSchedules.skipNext}. */
   readonly skipNext: BureauSchedules['skipNext'];
+  /** {@link BureauSchedules.unskip}. */
+  readonly unskip: BureauSchedules['unskip'];
   /** {@link BureauSchedules.runNow}. */
   readonly runNow: BureauSchedules['runNow'];
   /** {@link BureauSchedules.missed}. */
@@ -56,6 +58,7 @@ export function createSchedules(dependencies: SchedulesDependencies): BureauSche
     cancel: dependencies.cancel,
     update: dependencies.update,
     skipNext: dependencies.skipNext,
+    unskip: dependencies.unskip,
     runNow: dependencies.runNow,
     missed: dependencies.missed,
     agentName: dependencies.agentName,

@@ -62,7 +62,7 @@ async function createdBy(opened: OpenedBureau, key: string, extra: object = {}):
 const status = (body: RpcBody) => body.error?.data?.httpStatus;
 
 describe('the operations list', () => {
-  it('serves the ten schedule operations, registered and listed in OpenRPC', async () => {
+  it('serves the eleven schedule operations, registered and listed in OpenRPC', async () => {
     const names = [
       'bureau.schedules.list',
       'bureau.schedules.get',
@@ -72,6 +72,7 @@ describe('the operations list', () => {
       'bureau.schedules.cancel',
       'bureau.schedules.update',
       'bureau.schedules.skipnext',
+      'bureau.schedules.unskip',
       'bureau.schedules.runnow',
       'bureau.schedules.missed',
     ];

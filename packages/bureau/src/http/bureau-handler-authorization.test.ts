@@ -204,6 +204,8 @@ const CONTEXT_COMMAND_PARAMETERS = {
   // Clearing a title the context never had changes nothing, so the rename reaches its own check
   // without altering the title the transcript scan looks for.
   title: null,
+  // A schedule's skip and unskip name the fire they mean.
+  occurrence: '2026-01-01T09:00:00.000Z',
 } as const;
 
 /** Whether `operation`'s `id` names an agent: a definition operation or a versions operation. */

@@ -103,6 +103,7 @@ export const OPERATION_MAP = {
   'bureau.schedules.cancel': { member: 'schedules.cancel' },
   'bureau.schedules.update': { member: 'schedules.update' },
   'bureau.schedules.skipnext': { member: 'schedules.skipNext' },
+  'bureau.schedules.unskip': { member: 'schedules.unskip' },
   'bureau.schedules.runnow': { member: 'schedules.runNow' },
   'bureau.schedules.missed': { member: 'schedules.missed' },
 

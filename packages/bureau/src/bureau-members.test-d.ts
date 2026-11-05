@@ -152,6 +152,7 @@ export type SchedulesMembers = AssertNever<
     | 'cancel'
     | 'update'
     | 'skipNext'
+    | 'unskip'
     | 'runNow'
     | 'missed'
     | 'agentName'

@@ -20790,6 +20790,20 @@ async function constructBureau<const D extends AgentDefinitions>(
     return true;
   }
 
+  async function unskipSchedule(
+    scheduleId: string,
+    occurrence: number,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    await runtime.durable.engine.unskipScheduleOccurrence(scheduleId, {
+      ...scheduleTransitionOptions(guard),
+      occurrence,
+    });
+    return true;
+  }
+
   async function runScheduleNow(
     scheduleId: string,
   ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
@@ -22749,6 +22763,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     cancel: cancelSchedule,
     update: updateSchedule,
     skipNext: skipNextSchedule,
+    unskip: unskipSchedule,
     runNow: runScheduleNow,
     missed: listScheduleMissed,
     agentName: getScheduleAgentName,
