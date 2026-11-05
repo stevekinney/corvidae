@@ -433,3 +433,16 @@ describe('ChatQuestion Change on a moment', () => {
     expect(submitted[0]).toMatch(/^2026-10-29T\d{2}:30:00Z$/);
   });
 });
+
+describe('the pick of a held answer', () => {
+  test('keeps the page’s own text colour on its tint, so the label is never the on-fill white of Cinder’s pressed button', async () => {
+    const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
+    const rule =
+      /\.chat-question-choices :global\(\.chat-question-choice\[data-selected\]\)[^{]*\{([^}]*)\}/u.exec(
+        source,
+      )?.[1];
+
+    expect(rule).toContain('background: var(--cinder-accent-background)');
+    expect(rule).toContain('color: var(--cinder-text-default)');
+  });
+});

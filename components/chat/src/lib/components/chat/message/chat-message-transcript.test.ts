@@ -143,6 +143,16 @@ describe('transcript presentation', () => {
     expect(remove).toHaveBeenCalledWith('m1');
   });
 
+  test('Remove on a queued follow-up is the accent link of the board, at rest and on hover', async () => {
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    const rule =
+      /\.chat-message-line :global\(\.chat-message-remove-queued\),\s*\.chat-message-line :global\(\.chat-message-remove-queued:hover\) \{([^}]*)\}/u.exec(
+        source,
+      )?.[1];
+
+    expect(rule).toContain('color: var(--cinder-accent-text)');
+  });
+
   test('a run’s notes are outside the bubble, and a failed run’s stop note takes the host action', () => {
     const { container, getByRole } = mount({
       message: message({ role: 'assistant', content: 'Order 4398 is' }),

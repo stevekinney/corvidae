@@ -2055,10 +2055,10 @@
           hint={composerHint}
           controls={composerControls}
           header={composerHeader}
-          disabled={streaming && !followUpsEnabled}
+          disabled={streaming && (!followUpsEnabled || composerCompact)}
           paused={disabled}
           sending={composerSending}
-          allowFollowUp={followUpsEnabled}
+          allowFollowUp={followUpsEnabled && !composerCompact}
           compact={composerCompact}
           actions={composerActions}
           toolbar={composerToolbar}

@@ -3,7 +3,7 @@
  * unsaved draft, saves nothing, and ends (the Bureau deletes the chat's context) when the drawer
  * closes, when the person starts over, and when the page is left, however the start is timed.
  */
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -316,5 +316,105 @@ describe('Try it', () => {
     expect(field.getAttribute('placeholder')).toBe(copy.try.messagePlaceholder);
     expect(view.getByText(copy.try.hint)).not.toBeNull();
     expect(view.queryByText('Connect a model provider to chat')).toBeNull();
+  });
+
+  describe('while the first answer is being read', () => {
+    const encoder = new TextEncoder();
+    const frame = (event: unknown) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+    const sse = (events: readonly unknown[], open = false) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const event of events) controller.enqueue(frame(event));
+          if (!open) controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    };
+    const started = { type: 'RUN_STARTED', threadId: 'ctx-1', runId: 'task-1' };
+
+    function tryWith(agUi: NonNullable<Parameters<typeof installBureauStub>[1]['agUi']>) {
+      bureau(
+        {
+          'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+          'bureau.contexts.get': () => ({ id: 'ctx-1' }),
+        },
+        { hostProviders: [{ name: 'anthropic', hasKey: true }], agUi },
+      );
+      return mount();
+    }
+
+    test('Send becomes Stop and the “Send a test message” field is disabled, though the chat takes follow-ups', async () => {
+      const view = tryWith(() =>
+        sse(
+          [
+            started,
+            { type: 'TEXT_MESSAGE_START', messageId: 'run-1:step:0', role: 'assistant' },
+            {
+              type: 'TEXT_MESSAGE_CONTENT',
+              messageId: 'run-1:step:0',
+              delta: 'Category: damaged item, urgency',
+            },
+          ],
+          true,
+        ),
+      );
+      await startChat(view, 'My order 4471 arrived broken.');
+
+      await view.findByText(/Category: damaged item, urgency/);
+      const field = await view.findByRole('textbox', { name: 'Message' });
+      await waitFor(() => expect((field as HTMLTextAreaElement).disabled).toBe(true));
+      expect(view.getByRole('button', { name: 'Stop generating' })).not.toBeNull();
+      expect(view.queryByRole('button', { name: /^Send/ })).toBeNull();
+    });
+
+    test('a tool call under way reads “Using Lookup order…” under the message, beside the partial reply', async () => {
+      const view = tryWith(() =>
+        sse(
+          [
+            started,
+            { type: 'TEXT_MESSAGE_START', messageId: 'run-1:step:0', role: 'assistant' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'run-1:step:0', delta: 'Category: damaged' },
+            { type: 'TEXT_MESSAGE_END', messageId: 'run-1:step:0' },
+            {
+              type: 'TOOL_CALL_START',
+              toolCallId: 'call-1',
+              toolCallName: 'lookup-order',
+              parentMessageId: 'run-1:step:0',
+            },
+            { type: 'TOOL_CALL_ARGS', toolCallId: 'call-1', delta: '{"orderId":"4471"}' },
+            { type: 'TOOL_CALL_END', toolCallId: 'call-1' },
+          ],
+          true,
+        ),
+      );
+      await startChat(view, 'My order 4471 arrived broken.');
+
+      await view.findByText(/Using/);
+      expect(view.container.textContent).toMatch(/Using\s*Lookup order…/);
+      expect(view.container.textContent).toContain('Category: damaged');
+      expect(view.getByText(copy.try.hint)).not.toBeNull();
+    });
+
+    test('a failed answer is a titled danger block under the message, with what failed, that nothing was saved, and Try again', async () => {
+      const view = tryWith(() =>
+        sse([
+          started,
+          {
+            type: 'RUN_ERROR',
+            message: 'The provider answered with an error (429, too many requests).',
+          },
+        ]),
+      );
+      await startChat(view, 'My order 4471 arrived broken.');
+
+      const block = await view.findByTestId('agent-try-answer-failure');
+      expect(block.textContent).toContain(copy.try.failureTitle);
+      expect(block.textContent).toContain('429, too many requests');
+      expect(block.textContent).toContain(copy.try.nothingSaved);
+      expect(
+        block.querySelector('[role="alert"], [data-cinder-variant="danger"], .cinder-alert'),
+      ).not.toBeNull();
+      expect(within(block).getByRole('button', { name: copy.try.tryAgain })).not.toBeNull();
+    });
   });
 });

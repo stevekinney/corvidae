@@ -1575,6 +1575,13 @@
     text-decoration: underline;
   }
 
+  /* Remove on a queued follow-up is a link in the accent colour, the one thing on the bubble's line
+   * the person can do (ChatPage frame s), not a muted action word. */
+  .chat-message-line :global(.chat-message-remove-queued),
+  .chat-message-line :global(.chat-message-remove-queued:hover) {
+    color: var(--cinder-accent-text);
+  }
+
   .chat-message-line :global(.chat-message-action-button:disabled) {
     cursor: not-allowed;
     opacity: 0.5;

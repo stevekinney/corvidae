@@ -1161,8 +1161,10 @@
       role="group"
       aria-label="Composer unavailable"
     >
-      <TriangleAlert class="chat-input-blocked-glyph cinder-icon-sm" aria-hidden="true" />
-      <p class="chat-input-blocked-reason">{blocked.reason}</p>
+      <div class="chat-input-blocked-message">
+        <TriangleAlert class="chat-input-blocked-glyph cinder-icon-sm" aria-hidden="true" />
+        <p class="chat-input-blocked-reason">{blocked.reason}</p>
+      </div>
       {#if blocked.action !== undefined || blocked.link !== undefined}
         <div class="chat-input-blocked-actions">
           {#if blocked.action !== undefined}
@@ -1826,20 +1828,30 @@
     border-color: var(--cinder-control-border);
   }
 
+  /* The glyph and the reason are one unit: the reason wraps beside the glyph, never under it, and
+   * only the actions leave for a line of their own. */
+  .chat-input-blocked-message {
+    display: flex;
+    flex: 1 1 14rem;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
   .chat-input-blocked :global(.chat-input-blocked-glyph) {
     flex: none;
+    margin-block-start: 0.1875rem;
     color: var(--cinder-status-warning-text);
   }
 
   .chat-input-blocked-reason {
-    flex: 1 1 14rem;
+    flex: 1 1 auto;
     min-inline-size: 0;
     margin: 0;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
   }
 
-  /* On a narrow card the actions drop to a second line instead of overlapping the reason. */
   .chat-input-blocked-actions {
     display: flex;
     flex: none;
@@ -1847,6 +1859,25 @@
     align-items: center;
     gap: var(--cinder-space-2);
     margin-inline-start: auto;
+  }
+
+  /* On a phone-width composer the actions drop to a line of their own, at the right, and are touch
+   * targets, instead of overlapping the reason. */
+  @container (max-inline-size: 28rem) {
+    .chat-input-blocked-actions {
+      flex: 1 0 100%;
+      justify-content: flex-end;
+    }
+
+    .chat-input-blocked-actions :global(.cinder-button) {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-input-blocked-actions :global(.cinder-button) {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   .chat-input-editor:focus {

@@ -99,6 +99,31 @@ function approvalConversation(id: string): ConversationHistory {
 }
 
 describe('Chat follow-ups during a run', () => {
+  test('a compact composer (Try it) is disabled while an answer streams, though the adapter takes follow-ups', async () => {
+    const adapter: ChatAdapter = {
+      sendMessage: async () => undefined,
+      sendRunInput: async () => undefined,
+      stopGenerating: async () => undefined,
+    };
+    const conversation = appendAssistantMessage(
+      appendUserMessage(createConversationHistory({ id: 'compact-live' }), 'hello'),
+      'working on it',
+    );
+    const { container } = render(Chat, {
+      id: 'chat-compact-live',
+      conversation,
+      streaming: true,
+      composerCompact: true,
+      adapter,
+    });
+
+    expect(composerOf(container).disabled).toBe(true);
+    expect(container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull();
+    // One Stop in the place of Send, not a Stop beside a Send for a follow-up.
+    expect(container.querySelector('[data-chat-side-stop]')).toBeNull();
+    expect(container.querySelectorAll('button[aria-label="Stop generating"]')).toHaveLength(1);
+  });
+
   test('keeps the composer live with Stop in Send place and submits through sendRunInput', async () => {
     const runInput: Array<{ id: string; content: unknown }> = [];
     const sent: unknown[] = [];

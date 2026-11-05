@@ -706,10 +706,14 @@
     text-align: start;
   }
 
-  /* The pick of a held or sent answer: an accent edge and tint; the others stand back. */
-  .chat-question-choices :global(.chat-question-choice[data-selected]) {
+  /* The pick of a held or sent answer: an accent edge and tint; the others stand back. The pick is
+   * aria-pressed, which Cinder's button draws as a filled accent face with its on-fill label, so
+   * the tint has the page's own text colour with it, or the label would be white on a pale tint. */
+  .chat-question-choices :global(.chat-question-choice[data-selected]),
+  .chat-question-choices :global(.chat-question-choice[data-selected]:hover) {
     border-color: var(--cinder-accent-border);
     background: var(--cinder-accent-background);
+    color: var(--cinder-text-default);
   }
 
   .chat-question-choices :global(.chat-question-choice[aria-disabled='true']) {
