@@ -1,9 +1,10 @@
 import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { createEgressPolicy } from '@lostgradient/weft/a2a';
 
+import { processEnvironment } from './environment-configuration.ts';
 import { startHost, type HostOptions } from './host.ts';
 
-const environment = process.env;
+const environment = processEnvironment();
 const required = [
   'READY_FILE',
   'BOOT_FILE',
