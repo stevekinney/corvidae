@@ -73,7 +73,7 @@
   $effect(() => {
     const uri = resourceUri;
     const load = loadResource;
-    loadAttempt;
+    void loadAttempt;
     const controller = new AbortController();
     untrack(() => {
       resource = undefined;
