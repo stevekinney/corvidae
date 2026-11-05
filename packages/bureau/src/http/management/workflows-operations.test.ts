@@ -85,7 +85,7 @@ describe('the operations list', () => {
   });
 
   it('denies an A2A request at the HTTP boundary without trusting a caller-supplied owner', async () => {
-    const served = await serve(undefined, workspaceBinding());
+    const served = await serve();
     await seed(served);
     const history = await rpc(
       served.keyed,
