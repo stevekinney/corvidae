@@ -820,8 +820,8 @@ describe('plugin configuration audit metadata', () => {
 
 describe('a secret preparation that fails before publication', () => {
   /**
-   * A local home whose `writeSecret` keeps the value and then throws, as Bungalow's does when the
-   * rename lands and the directory sync after it fails: the secret is on disk, the call is an error.
+   * A local fixture whose managed provider refuses preparation before any version can activate.
+   * The separate deployment writer is not used by these managed-secret requests.
    */
   function flakyHome() {
     const stored = new Map<string, string>();

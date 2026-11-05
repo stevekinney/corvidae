@@ -11,7 +11,7 @@ import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { StorageSizeReportedEvent } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, statSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -241,7 +241,9 @@ describe('connecting a provider', () => {
     // A refused request leaves nothing on disk.
     expect(existsSync(join(directory, 'configuration.json'))).toBe(false);
     expect(existsSync(join(directory, 'secrets', 'anthropic-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
     expect(existsSync(join(directory, 'secrets', 'openai-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
   });
 
   test('refuses to write over a configuration that is already invalid, and says which field', async () => {
@@ -257,6 +259,7 @@ describe('connecting a provider', () => {
       '{"catalog":[{"color":"red"}]}',
     );
     expect(existsSync(join(directory, 'secrets', 'openai-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
   });
 
   test('never reports a key: not in the change, the snapshot, the diagnostics, or a warning', async () => {
@@ -1063,5 +1066,6 @@ describe('the provider routes', () => {
 
     expect(response.status).toBe(403);
     expect(existsSync(join(directory, 'secrets', 'anthropic-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
   });
 });
