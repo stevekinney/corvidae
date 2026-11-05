@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from './workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-855 — a human-wait park or a pending tool approval ends the AG-UI run with
  * `RUN_FINISHED` carrying one interrupt per pending review, under the review's
@@ -446,4 +447,39 @@ describe('a thread that is waiting on an answer', () => {
       },
     );
   });
+});
+
+it('attaches to a workspace-authorized human wait with one logical call and one interrupt', async () => {
+  await withHarness(
+    {
+      workspace: workspaceAdministratorDirectory(),
+      script: [askHuman],
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    },
+    async ({ handler, bureau }) => {
+      const started = await readAgUiStream(await handler(startRequest(runAgentInput())));
+      expect(started.at(-1)!.event).toMatchObject({
+        type: EventType.RUN_FINISHED,
+        outcome: { type: 'interrupt' },
+      });
+      const review = bureau.reviews.list()[0]!;
+      const frames = await readAgUiStream(await handler(attachRunRequest(review.runId)));
+      const snapshot = frames.find((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)!
+        .event as {
+        messages: Array<{ toolCalls?: Array<{ id: string }> }>;
+      };
+      const snapshotCalls = snapshot.messages
+        .flatMap((message) => message.toolCalls ?? [])
+        .filter((call) => call.id === 'call-1');
+      const replayedCalls = frames.filter(
+        (frame) =>
+          frame.event.type === EventType.TOOL_CALL_START && frame.event.toolCallId === 'call-1',
+      );
+      expect(snapshotCalls.length + replayedCalls.length).toBe(1);
+      expect(frames.filter((frame) => frame.event.type === EventType.RUN_FINISHED)).toHaveLength(1);
+      expect(frames.at(-1)!.event).toMatchObject({
+        outcome: { type: 'interrupt', interrupts: [{ id: review.id, reason: 'human-wait' }] },
+      });
+    },
+  );
 });

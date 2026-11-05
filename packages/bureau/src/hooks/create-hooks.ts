@@ -1,3 +1,5 @@
+import type { WorkspaceRuntimeAuthority } from '../http/workspace-principal.ts';
+import { captureRunWorkspaceAuthority } from '../run-authority.ts';
 /**
  * `Bureau.hooks` (COR-1939): owner-scoped hooks over the Bureau's published events, each delivered
  * as an HMAC-signed POST that keeps its request, its response, and its attempts on a record, and
@@ -303,6 +305,8 @@ export interface BureauHooks {
 
 /** What {@link createHooks} is built from. */
 export interface HooksDependencies {
+  /** Runtime directory; no credential is persisted in a hook. */
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   /** Workspace privacy projection applied before any delivery is persisted. */
   readonly eventForHookOwner?:
     | ((owner: string, event: HookEventToDeliver) => Promise<HookEventToDeliver | undefined>)
@@ -392,12 +396,18 @@ export interface CreatedHooks {
 }
 
 function viewOf(record: HookRecord): Hook {
-  const { version: _version, ...hook } = record;
+  const { version: _version, workspaceAuthority: _authority, ...hook } = record;
   return hook;
 }
 
 function deliveryViewOf(record: HookDeliveryRecord): HookDelivery {
-  const { version: _version, leaseUntil: _lease, revision: _revision, ...delivery } = record;
+  const {
+    version: _version,
+    workspaceAuthority: _authority,
+    leaseUntil: _lease,
+    revision: _revision,
+    ...delivery
+  } = record;
   return delivery;
 }
 
@@ -837,6 +847,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   };
 
   const deliveries = createHookDeliveries({
+    workspace: dependencies.workspace,
     engine,
     actions: actionRunner,
     store,
@@ -960,7 +971,14 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       assertScopeFits(scope, events);
       await assertActionAllowed(action, owner);
       const now = engine.now();
+      const workspaceAuthority =
+        dependencies.workspace === undefined
+          ? undefined
+          : await captureRunWorkspaceAuthority(dependencies.workspace, owner);
+      if (dependencies.workspace !== undefined && workspaceAuthority === undefined)
+        throw new Error('Workspace authority unavailable.');
       const record: HookRecord = {
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
         version: 1,
         id: dependencies.newId('hook'),
         owner,

@@ -21,6 +21,7 @@ const app = (overrides: Partial<ServedMcpApp> = {}): ServedMcpApp => ({
   uri: 'ui://bureau/run-inspector/v1',
   opensFromTool: 'bureau.tasks.inspect',
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.cancel'],
+  hostOnlyTools: [],
   html: PAGE,
   ...overrides,
 });
@@ -153,6 +154,63 @@ describe('GET the panels the host serves', () => {
 });
 
 describe('POST a panel’s tool call', () => {
+  test('routes a host-only tool through JSON-RPC without adding it to generic MCP', async () => {
+    const bureau = bureauDouble();
+    const response = await call(
+      routes(bureau, [
+        app({
+          name: 'workflow-revision-review',
+          allowedTools: ['bureau.workflows.get', 'bureau.workflows.update'],
+          hostOnlyTools: ['bureau.workflows.update'],
+        }),
+      ]),
+      'call',
+      {
+        path: '/host/plugins/inspectors/apps/workflow-revision-review/tool-calls',
+        body: {
+          name: 'bureau.workflows.update',
+          arguments: { id: 'digest', expectedHash: 'hash', definition: {} },
+        },
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(bureau).toHaveBeenCalledTimes(1);
+    const sent = bureau.mock.calls[0]?.[0] as Request;
+    expect(new URL(sent.url).pathname).toBe('/jsonrpc');
+    expect(await sent.json()).toMatchObject({
+      method: 'bureau.workflows.update',
+      params: { id: 'digest', expectedHash: 'hash' },
+    });
+  });
+
+  test('normalizes a host-only JSON-RPC fault for the panel', async () => {
+    const bureau = bureauDouble({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32000, message: 'Stale revision', data: { currentRevision: 'new-hash' } },
+    });
+    const response = await call(
+      routes(bureau, [
+        app({
+          name: 'workflow-revision-review',
+          allowedTools: ['bureau.workflows.update'],
+          hostOnlyTools: ['bureau.workflows.update'],
+        }),
+      ]),
+      'call',
+      {
+        path: '/host/plugins/inspectors/apps/workflow-revision-review/tool-calls',
+        body: { name: 'bureau.workflows.update' },
+      },
+    );
+    expect(await response.json()).toEqual({
+      content: [{ type: 'text', text: 'Stale revision' }],
+      isError: true,
+      structuredContent: { currentRevision: 'new-hash' },
+      _rpc: { code: -32000 },
+    });
+  });
+
   test('passes a declared Bureau tool to the Bureau in process, as a tools/call, and returns its result untouched', async () => {
     const bureau = bureauDouble();
     const response = await call(routes(bureau), 'call', {

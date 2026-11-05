@@ -1,3 +1,4 @@
+import { OBSERVABLE_SYMBOL } from '../atomic-state-events.ts';
 import {
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
@@ -393,7 +394,8 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
     );
   }
 
-  [Symbol.observable](): {
+  /** Observe workflow events until completion, cancellation, or failure, including an already settled run. */
+  [OBSERVABLE_SYMBOL](): {
     subscribe: (observer: {
       next?: (event: Event) => void;
       complete?: () => void;

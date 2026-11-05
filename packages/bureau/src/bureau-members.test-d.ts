@@ -140,10 +140,11 @@ export type ReviewsMembers = AssertNever<
   Exclude<keyof BureauReviews, 'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf'>
 >;
 
-// `schedules` has exactly the fourteen operations.
+// `schedules` includes revision-checked future authority reassignment.
 export type SchedulesMembers = AssertNever<
   Exclude<
     keyof BureauSchedules,
+    | 'reassign'
     | 'create'
     | 'get'
     | 'list'

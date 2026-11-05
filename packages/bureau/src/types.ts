@@ -2167,6 +2167,15 @@ export interface CreateScheduleOptions {
  * `createBureauHandler` delegate to these members.
  */
 export interface BureauSchedules {
+  /** Reassign only future authority with a revision check; retain history and leave paused. */
+  reassign(
+    scheduleId: string,
+    request: {
+      readonly administrator: string;
+      readonly targetOwner: string;
+      readonly expectedRevision: number;
+    },
+  ): Promise<true | undefined>;
   /**
    * Register a durable recurring schedule via `engine.schedule(...)`.
    * Throws `ScheduleLocatorUnavailableError` when the schedule was created

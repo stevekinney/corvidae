@@ -21,14 +21,22 @@
     entries: readonly ToolCallEntry[];
     /** The decision a call that needs one is shown with, directly under its row. */
     decision?: Snippet<[ToolCallEntry]>;
+    /** An inline plugin panel for a completed tool call. */
+    mcpApp?: Snippet<[ToolCallEntry]>;
   }
 
-  let { id, entries, decision }: ToolCallsProps = $props();
+  let { id, entries, decision, mcpApp }: ToolCallsProps = $props();
 
   let open = $state(false);
   const folded = $derived(entries.length > 1 && !open);
   const visible = $derived(
-    folded ? entries.filter((entry) => entry.state === 'needs-you') : entries,
+    folded
+      ? entries.filter(
+          (entry) =>
+            entry.state === 'needs-you' ||
+            (mcpApp !== undefined && entry.name === 'bureau__workflows-propose-update'),
+        )
+      : entries,
   );
   let detailsOpen = $state<Readonly<Record<string, boolean>>>({});
 
@@ -128,6 +136,9 @@
       {/if}
       {#if entry.state === 'needs-you' && decision !== undefined}
         {@render decision(entry)}
+      {/if}
+      {#if mcpApp !== undefined}
+        {@render mcpApp(entry)}
       {/if}
     </div>
   {/each}

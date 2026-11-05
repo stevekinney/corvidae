@@ -29,6 +29,8 @@
  * @module workflow-schema
  */
 
+import { readRunWorkspaceAuthority } from 'armorer';
+
 import { checkHumanInputSchema, HumanInputSchemaError } from '@lostgradient/operative';
 import {
   type DocumentSchemaChecker,
@@ -97,9 +99,19 @@ export function workflowSchemaIssues(
   }
 }
 
-/** Whether `record` has no key outside `allowed`, so a raw input that merely shares a `kind` is not taken for an envelope. */
+/** Whether `record` contains only the envelope fields and host-owned authority metadata, so raw inputs are not mistaken for envelopes. */
 function onlyKeys(record: Readonly<Record<string, unknown>>, allowed: readonly string[]): boolean {
-  return Object.keys(record).every((key) => allowed.includes(key));
+  if (
+    Object.hasOwn(record, 'workspaceAuthority') &&
+    readRunWorkspaceAuthority(record['workspaceAuthority']) === undefined
+  )
+    return false;
+  if (
+    Object.hasOwn(record, 'authorityHold') &&
+    !['revoked', 'reassigned', 'resuming'].some((hold) => hold === record['authorityHold'])
+  )
+    return false;
+  return Object.keys(record).every((key) => key === 'workspaceAuthority' || allowed.includes(key));
 }
 
 /**
@@ -108,7 +120,7 @@ function onlyKeys(record: Readonly<Record<string, unknown>>, allowed: readonly s
  *
  * Only the exact envelopes Bureau and Weft write are unwrapped: `{ kind: 'manual', input, origin }`,
  * `{ kind: 'signal', name, payload }`, `{ kind: 'schedule', scheduleId, input? }`, and a contributed
- * trigger kind's `{ kind: 'plugin:name', payload }`, each with its required fields and no others. A raw start whose input merely has a `kind` of `manual`, `signal`
+ * trigger kind's `{ kind: 'plugin:name', payload }`, each with its required fields, optional host-owned `workspaceAuthority`, and no other fields (schedules also carry `authorityHold`). A raw start whose input merely has a `kind` of `manual`, `signal`
  * or `schedule` (`{ kind: 'manual', city: 'Oslo' }`) is its own input. A raw input that spells out
  * a whole envelope is indistinguishable from one, which is why the trigger is the one place the
  * envelope's shape is decided.
@@ -133,7 +145,7 @@ export function workflowInputOf(trigger: unknown): unknown {
       // A schedule whose trigger gives an `input` carries it in the envelope; one that gives none,
       // as every schedule did before COR-2009, starts with `null`.
       return typeof record['scheduleId'] === 'string' &&
-        onlyKeys(record, ['kind', 'scheduleId', 'fireId', 'input'])
+        onlyKeys(record, ['kind', 'scheduleId', 'fireId', 'input', 'authorityHold'])
         ? (record['input'] ?? null)
         : trigger;
     default:

@@ -1,0 +1,128 @@
+import type {
+  McpUiHostContext,
+  McpUiStyleVariableKey,
+  McpUiStyles,
+} from '@modelcontextprotocol/ext-apps/app-bridge';
+
+const STYLE_MAP: ReadonlyArray<readonly [McpUiStyleVariableKey, string]> = [
+  ['--color-background-primary', '--cinder-surface-canvas'],
+  ['--color-background-secondary', '--cinder-surface'],
+  ['--color-background-tertiary', '--cinder-surface-raised'],
+  ['--color-background-success', '--cinder-status-success-background'],
+  ['--color-background-danger', '--cinder-status-danger-background'],
+  ['--color-background-warning', '--cinder-status-warning-background'],
+  ['--color-text-primary', '--cinder-text-default'],
+  ['--color-text-secondary', '--cinder-text-secondary'],
+  ['--color-text-tertiary', '--cinder-text-muted'],
+  ['--color-text-success', '--cinder-status-success-text'],
+  ['--color-text-danger', '--cinder-status-danger-text'],
+  ['--color-text-warning', '--cinder-status-warning-text'],
+  ['--color-border-primary', '--cinder-border'],
+  ['--color-border-secondary', '--cinder-border-muted'],
+  ['--color-ring-primary', '--cinder-ring-color'],
+  ['--color-ring-secondary', '--cinder-ring-offset-color'],
+  ['--font-sans', '--cinder-font-sans'],
+  ['--font-mono', '--cinder-font-mono'],
+  ['--font-weight-semibold', '--cinder-font-semibold'],
+  ['--font-text-xs-size', '--cinder-text-xs'],
+  ['--font-text-xs-line-height', '--cinder-leading-normal'],
+  ['--border-radius-sm', '--cinder-radius-sm'],
+  // The MCP contract has one shared width slot for focus affordances. Keep it
+  // aligned with Cinder's public ring token so embedded inspectors reserve the
+  // same 2px focus channel as host controls.
+  ['--border-width-regular', '--cinder-ring-width'],
+];
+
+function themeOf(root: HTMLElement): 'light' | 'dark' {
+  const explicit = root.dataset['theme'];
+  if (explicit === 'dark' || explicit === 'light') return explicit;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/** Translates the host's public Cinder tokens into the ext-apps style contract. */
+export function readMcpHostContext(root: HTMLElement): McpUiHostContext {
+  const computed = getComputedStyle(root);
+  const variables: McpUiStyles = {
+    '--color-background-primary': undefined,
+    '--color-background-secondary': undefined,
+    '--color-background-tertiary': undefined,
+    '--color-background-inverse': undefined,
+    '--color-background-ghost': undefined,
+    '--color-background-info': undefined,
+    '--color-background-danger': undefined,
+    '--color-background-success': undefined,
+    '--color-background-warning': undefined,
+    '--color-background-disabled': undefined,
+    '--color-text-primary': undefined,
+    '--color-text-secondary': undefined,
+    '--color-text-tertiary': undefined,
+    '--color-text-inverse': undefined,
+    '--color-text-ghost': undefined,
+    '--color-text-info': undefined,
+    '--color-text-danger': undefined,
+    '--color-text-success': undefined,
+    '--color-text-warning': undefined,
+    '--color-text-disabled': undefined,
+    '--color-border-primary': undefined,
+    '--color-border-secondary': undefined,
+    '--color-border-tertiary': undefined,
+    '--color-border-inverse': undefined,
+    '--color-border-ghost': undefined,
+    '--color-border-info': undefined,
+    '--color-border-danger': undefined,
+    '--color-border-success': undefined,
+    '--color-border-warning': undefined,
+    '--color-border-disabled': undefined,
+    '--color-ring-primary': undefined,
+    '--color-ring-secondary': undefined,
+    '--color-ring-inverse': undefined,
+    '--color-ring-info': undefined,
+    '--color-ring-danger': undefined,
+    '--color-ring-success': undefined,
+    '--color-ring-warning': undefined,
+    '--font-sans': undefined,
+    '--font-mono': undefined,
+    '--font-weight-normal': undefined,
+    '--font-weight-medium': undefined,
+    '--font-weight-semibold': undefined,
+    '--font-weight-bold': undefined,
+    '--font-text-xs-size': undefined,
+    '--font-text-sm-size': undefined,
+    '--font-text-md-size': undefined,
+    '--font-text-lg-size': undefined,
+    '--font-heading-xs-size': undefined,
+    '--font-heading-sm-size': undefined,
+    '--font-heading-md-size': undefined,
+    '--font-heading-lg-size': undefined,
+    '--font-heading-xl-size': undefined,
+    '--font-heading-2xl-size': undefined,
+    '--font-heading-3xl-size': undefined,
+    '--font-text-xs-line-height': undefined,
+    '--font-text-sm-line-height': undefined,
+    '--font-text-md-line-height': undefined,
+    '--font-text-lg-line-height': undefined,
+    '--font-heading-xs-line-height': undefined,
+    '--font-heading-sm-line-height': undefined,
+    '--font-heading-md-line-height': undefined,
+    '--font-heading-lg-line-height': undefined,
+    '--font-heading-xl-line-height': undefined,
+    '--font-heading-2xl-line-height': undefined,
+    '--font-heading-3xl-line-height': undefined,
+    '--border-radius-xs': undefined,
+    '--border-radius-sm': undefined,
+    '--border-radius-md': undefined,
+    '--border-radius-lg': undefined,
+    '--border-radius-xl': undefined,
+    '--border-radius-full': undefined,
+    '--border-width-regular': undefined,
+    '--shadow-hairline': undefined,
+    '--shadow-sm': undefined,
+    '--shadow-md': undefined,
+    '--shadow-lg': undefined,
+  };
+  for (const [standard, cinder] of STYLE_MAP) {
+    const value = computed.getPropertyValue(cinder).trim();
+    if (value !== '') variables[standard] = value;
+  }
+  return { theme: themeOf(root), styles: { variables } };
+}

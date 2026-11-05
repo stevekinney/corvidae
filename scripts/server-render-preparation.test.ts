@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'bun:test';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
+import { workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
 // Tooling tests under `scripts/` quote render calls inside string literals.
@@ -70,18 +80,42 @@ function unpreparedServerRenders(source: string): string[] {
     .map(({ line, message }) => `line ${line}: ${message}`);
 }
 
-async function testFiles(): Promise<string[]> {
-  const entries = await Array.fromAsync(
-    new Bun.Glob(`${directoryGlob(workspaceParentDirectories)}/**/*.test.ts`).scan({
-      cwd: root,
-      absolute: true,
-      onlyFiles: true,
-    }),
-  );
-  return entries.filter((file) => !file.split('/').some((part) => ignoredPathSegment.test(part)));
+function testFiles(directory = root): string[] {
+  const files: string[] = [];
+  function visit(path: string): void {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      if (ignoredPathSegment.test(entry.name)) continue;
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) visit(child);
+      else if (entry.isFile() && entry.name.endsWith('.test.ts')) files.push(child);
+    }
+  }
+  for (const parent of workspaceParentDirectories) {
+    const path = join(directory, parent);
+    if (existsSync(path)) visit(path);
+  }
+  return files;
 }
 
 describe('server render preparation', () => {
+  test('does not traverse generated directories while discovering source tests', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'server-render-discovery-'));
+    const workspace = join(directory, 'packages', 'example');
+    const coverage = join(workspace, 'coverage');
+    const sourceTest = join(workspace, 'src', 'example.test.ts');
+    mkdirSync(join(workspace, 'src'), { recursive: true });
+    mkdirSync(coverage);
+    writeFileSync(sourceTest, '');
+    // A forbidden traversal fails deterministically, without racing coverage cleanup.
+    chmodSync(coverage, 0);
+    try {
+      expect(testFiles(directory)).toEqual([sourceTest]);
+    } finally {
+      chmodSync(coverage, 0o700);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test('flags a render inside a test body that has no module-scope prepare', () => {
     const source = [
       "const sourcePath = new URL('./a.svelte', import.meta.url).pathname;",
@@ -123,7 +157,7 @@ describe('server render preparation', () => {
   });
 
   test('every workspace test compiles server sources at module scope', async () => {
-    const files = await testFiles();
+    const files = testFiles();
     expect(files.length).toBeGreaterThan(0);
 
     const offenders: string[] = [];

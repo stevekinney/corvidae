@@ -180,6 +180,10 @@ describe('the identity of every request', () => {
     expect(resources.result?.['resources']).toMatchObject([
       { uri: 'ui://bureau/run-inspector/v1', mimeType: 'text/html;profile=mcp-app' },
       { uri: 'ui://bureau/pending-review/v1', mimeType: 'text/html;profile=mcp-app' },
+      {
+        uri: 'ui://bureau/workflow-revision-review/v1',
+        mimeType: 'text/html;profile=mcp-app',
+      },
     ]);
     // The pending-review app opens from the existing `bureau.reviews.list`; it adds no tool name.
     const reviewList = tools.find((tool) => tool.name === 'bureau.reviews.list') as {

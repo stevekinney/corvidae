@@ -4,6 +4,7 @@
     type McpUiHostContext,
   } from '@modelcontextprotocol/ext-apps/app-bridge';
   import { untrack } from 'svelte';
+  import { Button } from '@lostgradient/cinder';
 
   import { buildMcpAppDocument } from './mcp-app-content-security-policy.ts';
   import {
@@ -30,6 +31,7 @@
 
   let resource = $state<McpAppResource>();
   let failed = $state(false);
+  let loadAttempt = $state(0);
   let frame = $state<HTMLIFrameElement>();
   // The height the app last reported; the frame never exceeds `maxHeight`, even when it shrinks.
   let reportedHeight = $state<number>();
@@ -71,6 +73,7 @@
   $effect(() => {
     const uri = resourceUri;
     const load = loadResource;
+    void loadAttempt;
     const controller = new AbortController();
     untrack(() => {
       resource = undefined;
@@ -197,6 +200,7 @@
 >
   {#if failed}
     <p class="mcp-app-error" role="alert">This app could not be loaded.</p>
+    <Button size="sm" variant="secondary" onclick={() => (loadAttempt += 1)}>Retry</Button>
   {:else if resource !== undefined}
     <!-- A change to the effective permissions or the tool-call capability remounts the frame, so
          the app reinitializes against capabilities that match what the host now offers. -->
@@ -213,6 +217,8 @@
         style:min-height={`${Math.min(120, maxHeight)}px`}
       ></iframe>
     {/key}
+  {:else}
+    <p class="mcp-app-loading" role="status" aria-busy="true">Loading app…</p>
   {/if}
 </div>
 
@@ -229,6 +235,13 @@
   }
 
   .mcp-app-error {
+    margin: 0;
+    padding: var(--cinder-space-3);
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  }
+
+  .mcp-app-loading {
     margin: 0;
     padding: var(--cinder-space-3);
     color: var(--cinder-text-muted);

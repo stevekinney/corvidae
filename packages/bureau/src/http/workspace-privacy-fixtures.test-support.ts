@@ -119,3 +119,33 @@ export const WORKSPACE_PRIVATE_READ_CASES = [
     removed: 'membership-denied',
   },
 }));
+
+/** Legacy-scope fixtures resolve the same administrator by credential and durable owner. */
+export function workspaceAdministratorDirectory(): WorkspaceMembershipOptions {
+  const resolveMembership: WorkspaceMembershipOptions['resolveMembership'] = async ({
+    subject,
+    method,
+  }) => ({
+    version: 1,
+    workspaceId: 'workspace-a',
+    actorId: method === 'unauthenticated-local' ? 'local-owner' : (subject ?? 'unknown'),
+    actorKind: method === 'unauthenticated-local' ? 'local' : 'user',
+    owner:
+      method === 'unauthenticated-local' ? 'anonymous:local' : `api-key:${subject ?? 'unknown'}`,
+    membershipRevision: 'revision-1',
+    capabilities:
+      method === 'unauthenticated-local'
+        ? ['workspace:use', 'workspace:manage', 'deployment:operate']
+        : ['workspace:use', 'workspace:manage'],
+  });
+  return {
+    workspaceId: 'workspace-a',
+    resolveMembership,
+    resolveOwnerMembership: async (owner) =>
+      owner === 'anonymous:local'
+        ? resolveMembership({ method: 'unauthenticated-local', subject: undefined })
+        : owner.startsWith('api-key:')
+          ? resolveMembership({ method: 'api-key', subject: owner.slice('api-key:'.length) })
+          : null,
+  };
+}

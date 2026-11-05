@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
@@ -8,7 +9,6 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
-import type { WorkspaceIdentity } from '@lostgradient/weft';
 
 import { waitForCondition } from '../../test';
 import type { BureauHandlerSource } from '../create-bureau-handler.ts';
@@ -83,19 +83,7 @@ describe('bureau.contexts.list', () => {
       {
         ...catalog,
         handlerOptions: {
-          workspace: {
-            workspaceId: 'workspace-a',
-            resolveMembership: async ({ subject }) =>
-              ({
-                version: 1,
-                workspaceId: 'workspace-a',
-                actorId: subject ?? 'unknown',
-                actorKind: 'user',
-                owner: `api-key:${subject ?? 'unknown'}`,
-                membershipRevision: 'revision-1',
-                capabilities: ['workspace:use', 'workspace:manage'],
-              }) satisfies WorkspaceIdentity,
-          },
+          workspace: workspaceAdministratorDirectory(),
         },
       },
       async (opened) => {
