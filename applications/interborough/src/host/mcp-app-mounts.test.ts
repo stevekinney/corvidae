@@ -63,6 +63,36 @@ describe('the MCP apps the host serves', () => {
     });
   });
 
+  it('uses a prebuilt built-in page without changing its HTML digest contract', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mcp-app-prebuilt-'));
+    directories.push(directory);
+    const candidate = await app('one');
+    const html = '<meta charset="utf-8"><div id="root"></div>';
+    await writeFile(
+      join(directory, 'one.json'),
+      JSON.stringify({ html, contentDigest: digestOf(html) }),
+    );
+    const { resources } = await mcpAppMounts(
+      [{ plugin: 'inspectors', version: '1.0.0', app: candidate }],
+      directory,
+    );
+    expect(resources[0]?.text).toBe(html);
+    expect(resources[0]?._meta).toMatchObject({ contentDigest: digestOf(html) });
+  });
+
+  it('falls back to runtime building when the prebuilt page is absent or invalid', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mcp-app-prebuilt-fallback-'));
+    directories.push(directory);
+    const candidate = await app('fallback');
+    await writeFile(join(directory, 'fallback.json'), '{not-json');
+    const { resources } = await mcpAppMounts(
+      [{ plugin: 'inspectors', version: '1.0.0', app: candidate }],
+      directory,
+    );
+    expect(resources[0]?.text).toContain('fallback');
+    expect(resources[0]?.text).not.toBe('{not-json');
+  });
+
   it('declares deny-by-default security on every app', async () => {
     const { resources } = await mcpAppMounts(contributed(await app('one')));
     expect(resources[0]?._meta).toMatchObject({ ui: MCP_APP_UI_META });

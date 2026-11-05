@@ -44,6 +44,9 @@ export const PLUGIN_FOLDER_NAME = 'plugins';
 /** The host's own `node_modules`, which a folder plugin's `node_modules` links to. */
 export const HOST_DEPENDENCIES = join(import.meta.dir, '..', '..', 'node_modules');
 
+/** The archive's dependency directory, supplied by the relocated executable's supervisor. */
+export const PLUGIN_RUNTIME_DIRECTORY_VARIABLE = 'INTERBOROUGH_PLUGIN_RUNTIME_DIRECTORY';
+
 /** A plugin folder that could not be loaded. The host starts without it. */
 export type FolderPluginFailure = {
   /** The folder, absolute. */
