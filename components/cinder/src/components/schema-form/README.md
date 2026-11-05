@@ -51,6 +51,10 @@ Each shape below has exactly one schema rule. A schema that does not match a rul
 
 A `oneOf` with two primitives, with an object branch that has no `properties`, or with more than two branches stays raw JSON. An object that declares `properties`, or whose `additionalProperties` is anything other than `{ "type": "string" }`, is not a record.
 
+## Input variant
+
+`variant="input"` draws the Input block of a page that runs or schedules something. Short fields (strings, numbers, selects) share a row two at a time, and the row falls back to one column when the container is narrow. A boolean is a switch with its description beside it and takes the whole row, as does an array, a group or a JSON field. An array whose items are objects is one JSON editor, not a list of item groups: it starts as `[]`, its status line counts the items ("Valid JSON · array of 1 item"), and Format is in the editor's own toolbar. The default variant keeps checkboxes and item groups.
+
 ## Large schemas
 
 A form with more than eight fields (an object group counts as the fields inside it, and an array, record or choice counts as one) is large. Large forms add:
@@ -73,6 +77,7 @@ A failed submit clears the filter and opens every group that holds an error, so 
 | `jsonEditable` | `boolean` | no | — | Whether a large form offers its own Edit as JSON panel. Defaults to `true`; set `false` when the host already provides a JSON entry point for the same payload, so the page does not show two. Find a field and the other large-form affordances are unaffected. |
 | `name` | `string` | no | — | Name of the hidden serialized output field. Defaults to `value`. |
 | `submitLabel` | `string` | no | — | Label for the built-in submit button. Defaults to `Submit`. |
+| `variant` | `"default"` \| `"input"` | no | `"default"` | How the fields are drawn. `default` is the plain form. `input` is the Input block of a page that runs or schedules something: short fields share a row two at a time (a switch, an array, a group or a JSON field takes the whole row), a boolean is a switch with its description beside it, and an array of objects is one JSON editor whose status line counts the items. |
 | `issues` | `(opaque)` | no | — | Problems the host found with a value this form submitted, such as a server-side validation refusal. Each one is shown on the field its `path` names, as a built-in validation message is, and cleared when that field is edited. Pass a new array to show a new set. Not expressible in JSON Schema; see the component types for the signature. |
 | `onDraftChange` | `(opaque)` | no | — | Called after each edit with the complete current draft, before schema validation. The draft can be schema-invalid and does not change the seed-only `value` contract. In-progress numeric editors and temporarily unparseable JSON fields are reported as their current raw text until the value commits or parses successfully. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSubmit` | `(opaque)` | no | — | Called after validation passes with the schema-conformant output value. Not expressible in JSON Schema; see the component types for the signature. |

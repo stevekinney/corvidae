@@ -102,6 +102,16 @@
     font-weight: var(--cinder-font-semibold);
   }
 
+  .cinder-form-field__warning :where(a, button) {
+    color: var(--cinder-accent-text);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-form-field__warning :where(a) {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
   .cinder-form-field__error :where(a) {
     text-decoration: underline;
     text-underline-offset: 0.15em;

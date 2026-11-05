@@ -173,17 +173,20 @@ test('a schedule made on the new schedule page fires in the zone that was chosen
     page.getByRole('heading', { level: 1, name: SCHEDULE_COPY.create.title }),
   ).toBeVisible();
 
-  // Chosen by typing, from the searchable picker.
-  await page.getByRole('combobox', { name: /^Workflow/ }).fill('inventory');
-  await page.getByRole('option', { name: /Inventory Sync Sweep/ }).click();
-  await expect(page.getByTestId('new-schedule-workflow-description')).toBeVisible();
+  // Chosen from the picker, which shows the workflow's description under its name.
+  await page.getByRole('combobox', { name: /^Workflow/ }).click();
+  await page.getByRole('option', { name: /Inventory sync sweep/ }).click();
+  await expect(page.getByRole('combobox', { name: /^Workflow/ })).toContainText(
+    'Counts the stock of every warehouse.',
+  );
 
   await page.getByLabel('Repeats', { exact: true }).selectOption('daily');
-  await page.getByLabel('At', { exact: true }).fill('09:00');
-  await page.getByRole('combobox', { name: 'Time zone' }).fill('Asia/Tokyo');
-  await page.getByRole('option', { name: 'Asia/Tokyo', exact: true }).click();
-  await page.getByLabel(SCHEDULE_COPY.create.descriptionLabel).fill('Made on the page');
-  await expect(page.getByTestId('new-schedule-summary')).toContainText('Asia/Tokyo');
+  await page.getByLabel('At', { exact: true }).fill('9:00 AM');
+  await page.getByRole('combobox', { name: /^Time zone/ }).click();
+  await page.getByPlaceholder('Search time zones').fill('Tokyo');
+  await page.getByRole('option', { name: /Tokyo/ }).first().click();
+  await page.getByLabel(/^Name/).fill('Made on the page');
+  await expect(page.getByText('Every day at 9:00 AM Japan').first()).toBeVisible();
   await checkA11y('new schedule — a workflow and a zone chosen');
   await page.getByRole('button', { name: SCHEDULE_COPY.create.submit }).click();
 
@@ -201,22 +204,21 @@ test('a schedule made on the new schedule page fires in the zone that was chosen
   }
 });
 
-test('an invalid custom cron field refuses the save, and nothing is made', async ({
+test('an invalid custom cron field moves focus to it on Create, and nothing is made', async ({
   page,
   request,
 }) => {
   await page.goto('/schedules/new');
-  await page.getByRole('combobox', { name: /^Workflow/ }).fill('inventory');
-  await page.getByRole('option', { name: /Inventory Sync Sweep/ }).click();
+  await page.getByRole('combobox', { name: /^Workflow/ }).click();
+  await page.getByRole('option', { name: /Inventory sync sweep/ }).click();
   await page.getByLabel('Repeats', { exact: true }).selectOption('cron');
-  // A field of the expression is typed raw, under its own "Advanced raw expression".
-  await page.getByLabel('Hour pattern').selectOption('advanced');
   await page.getByLabel('Hour', { exact: true }).fill('99');
-  await page.getByLabel(SCHEDULE_COPY.create.descriptionLabel).fill('Refused for its cron');
+  await page.getByLabel(/^Name/).fill('Refused for its cron');
 
   await page.getByRole('button', { name: SCHEDULE_COPY.create.submit }).click();
 
-  await expect(page.getByText(SCHEDULE_COPY.create.invalidCadence)).toBeVisible();
+  // Create stays enabled; focus moves to the field with its message beside it.
+  await expect(page.getByLabel('Hour', { exact: true })).toBeFocused();
   await expect(page).toHaveURL(/\/schedules\/new$/);
   const listed = await request.get('/v1/schedules');
   const body = (await listed.json()) as { items: Array<{ description?: string }> };

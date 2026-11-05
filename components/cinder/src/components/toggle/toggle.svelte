@@ -34,6 +34,7 @@
     disabled,
     readonly = false,
     description,
+    descriptionPlacement = 'inline',
     mutating = false,
     labelVisible = true,
     name,
@@ -142,6 +143,23 @@
     {@render control()}
     {@render descriptionText()}
   {/if}
+{:else if descriptionPlacement === 'below' && description}
+  <span class="cinder-toggle-field" data-cinder-description="below">
+    {@render control()}
+    <span class="cinder-toggle-field__text">
+      <span
+        id={labelId}
+        class="cinder-toggle-field__label"
+        role="presentation"
+        data-hidden={!labelVisible || undefined}
+        data-disabled={resolvedDisabled || staleInert || undefined}
+        onclick={toggle}
+      >
+        {label}
+      </span>
+      {@render descriptionText()}
+    </span>
+  </span>
 {:else}
   <span class="cinder-toggle-field">
     {@render control()}

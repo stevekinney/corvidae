@@ -5,8 +5,10 @@ export default ScheduleBuilder;
 export type {
   ScheduleBuilderProps,
   ScheduleBuilderSchemaProps,
+  ScheduleBuilderVariant,
   ScheduleFire,
   ScheduleIntervalUnit,
+  SchedulePolicyOption,
   ScheduleRepeats,
   ScheduleValue,
   ScheduleValueSchema,

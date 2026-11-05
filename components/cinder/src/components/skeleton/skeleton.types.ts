@@ -2,9 +2,10 @@
  * Shape of a multi-line skeleton group: `'row'` stacks `lines` bars on the surrounding surface,
  * `'card'` draws them inside a bordered card beneath a heading bar, and `'list'` draws `rows`
  * rows of a status-first list (a status column, two text bars and a time bar) in a bordered
- * surface, the shape of a list of stacked list items.
+ * surface, the shape of a list of stacked list items, and `'form'` draws `rows` fields, each a
+ * short label bar above a full-width control bar, the shape of a form that is still loading.
  */
-export type SkeletonVariant = 'row' | 'card' | 'list';
+export type SkeletonVariant = 'row' | 'card' | 'list' | 'form';
 
 /**
  * What stands in for a list row's status in the reserved status column: a short `'bar'` for a
@@ -30,12 +31,13 @@ export type SkeletonProps = {
   lines?: number;
   /**
    * Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the
-   * `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows.
+   * `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws
+   * `rows` fields, a label bar over a control bar each.
    * @default 'row'
    */
   variant?: SkeletonVariant;
   /**
-   * Number of list rows to draw when `variant` is `'list'`. Each row keeps the 8rem status
+   * Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status
    * column reserved, then shows two text bars and a time bar, with no leading circle, so
    * nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.
    * @default 3

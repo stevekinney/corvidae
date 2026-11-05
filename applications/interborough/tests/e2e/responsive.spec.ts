@@ -149,9 +149,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The list prints the long-named schedule's title, which clamps at two lines.
   '/schedules': /ssssssssss/,
   // Before a workflow is chosen, which `reveal` does for the variants, the page prints its lead.
-  '/schedules/new': /A schedule runs a workflow on a timer/,
-  '/schedules/new (chat)': /A schedule runs a workflow on a timer/,
-  '/schedules/new (workflow)': /A schedule runs a workflow on a timer/,
+  '/schedules/new': /Pick what runs, then when, then name it/,
+  '/schedules/new (chat)': /Pick what runs, then when, then name it/,
+  '/schedules/new (workflow)': /Pick what runs, then when, then name it/,
   // The long-named schedule's page prints its next runs and the zone they are shown in.
   '/schedules/:schedule': /Next runs/,
   '/schedules/:schedule/edit': /Description/,
@@ -295,13 +295,8 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
 }
 
 /** Types into a picker and chooses the option with that text, as a person does. */
-async function choosePicker(
-  page: Page,
-  label: RegExp,
-  query: string,
-  option: string,
-): Promise<void> {
-  await page.getByRole('combobox', { name: label }).fill(query);
+async function choosePicker(page: Page, label: RegExp, option: string): Promise<void> {
+  await page.getByRole('combobox', { name: label }).click();
   await page
     .getByRole('option', { name: new RegExp(option) })
     .first()
@@ -325,25 +320,19 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     await page.getByRole('radio', { name: new RegExp(WORKFLOW_COPY.runSetup.schedule) }).click();
     await expect(page.getByRole('combobox', { name: 'Time zone' })).toBeVisible();
   },
-  // The built-in chat asks for an agent and a message, and a chat to continue: the seeded chat whose title is one 300-character word.
+  // The built-in chat asks for an agent, a message and whether to continue one chat.
   '/schedules/new (chat)': async (page) => {
-    await choosePicker(page, /^Workflow/, 'chat', SCHEDULE_COPY.create.chat.label);
+    await choosePicker(page, /^Workflow/, SCHEDULE_COPY.create.chat.label);
     await expect(page.getByTestId('new-schedule-chat-input')).toBeVisible();
-    await choosePicker(
-      page,
-      new RegExp(`^${SCHEDULE_COPY.create.chatLabel}`),
-      'responsive-memory',
-      'responsive-memory',
-    );
-    await expect(page.getByLabel(new RegExp(`^${SCHEDULE_COPY.create.chatLabel}`))).toHaveValue(
-      /responsive-memory/,
-    );
+    await expect(
+      page.getByRole('switch', { name: SCHEDULE_COPY.create.continueLabel }),
+    ).toBeVisible();
   },
-  // A code-defined workflow follows with its input (this host's declares none, so it is an optional JSON field) and the engine's options.
+  // A code-defined workflow follows with its input (this host's declares none, so it is an optional JSON field), then When and the Name.
   '/schedules/new (workflow)': async (page) => {
-    await choosePicker(page, /^Workflow/, 'order', 'Order Processing');
+    await choosePicker(page, /^Workflow/, 'Order processing');
     await expect(page.getByTestId('new-schedule-input')).toBeVisible();
-    await expect(page.getByLabel('Jitter')).toBeVisible();
+    await expect(page.getByLabel(/^Name/)).toHaveValue('Order processing');
   },
   // The file's header carries its four actions; measure the page only once all four are there.
   '/workflows/:workflow (file)': async (page) => {

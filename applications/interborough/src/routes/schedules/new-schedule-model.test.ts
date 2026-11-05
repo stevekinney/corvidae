@@ -1,20 +1,31 @@
+/**
+ * What the new schedule page decides outside the page (COR-2018, rows 74a–75o): the picker's
+ * groups, the draft's problems, the name a schedule starts with, the two requests a valid draft
+ * becomes, the name that is taken, and the footer line with the order of what it says first.
+ */
 import { describe, expect, test } from 'bun:test';
 
 import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
 import type { CatalogRow } from '../../lib/workflow-catalog.ts';
 import {
   agentScheduleInput,
+  defaultNameOf,
   draftErrors,
   emptyDraft,
   emptyInputOf,
   engineScheduleArgs,
+  footerLineOf,
+  isDraftStarted,
   isDraftValid,
+  newChatId,
   optionMatches,
   recentTypes,
-  summaryOf,
+  scheduleTargetOf,
+  takenNameOf,
   takesNoInput,
-  workflowLabel,
   workflowOptions,
+  type FooterState,
   type NewScheduleDraft,
 } from './new-schedule-model.ts';
 
@@ -25,7 +36,7 @@ function row(name: string, overrides: Partial<CatalogRow> = {}): CatalogRow {
     name,
     kind: 'code',
     agent: null,
-    description: `The ${name} workflow.`,
+    description: `${name} description`,
     engine: false,
     runs: null,
     trigger: null,
@@ -36,260 +47,288 @@ function row(name: string, overrides: Partial<CatalogRow> = {}): CatalogRow {
   };
 }
 
+function fileRow(name: string, state: 'ready' | 'invalid', paused = false): CatalogRow {
+  return row(name, {
+    kind: 'agent-authored',
+    description: 'Sorts new messages.',
+    file: {
+      id: name,
+      state,
+      owner: 'o',
+      hash: 'h',
+      title: 'Triage inbox',
+      description: 'Sorts new messages.',
+      agent: null,
+      paused,
+      inputSchema: null,
+      outputSchema: null,
+      version: null,
+      trigger: null,
+      problem: null,
+      runs: null,
+    },
+  });
+}
+
 function chatDraft(overrides: Partial<NewScheduleDraft> = {}): NewScheduleDraft {
   return {
     ...emptyDraft(),
-    workflowType: 'agentRun',
-    agentName: 'reporter',
-    message: 'Send the report',
-    cadence: { cron: '0 9 * * 1-5', timeZone: 'America/Los_Angeles' },
-    ...overrides,
-  };
-}
-
-function workflowDraft(overrides: Partial<NewScheduleDraft> = {}): NewScheduleDraft {
-  return {
-    ...emptyDraft(),
-    workflowType: 'report-gen',
-    cadence: { cron: '0 2 * * *', timeZone: 'UTC' },
+    workflowType: AGENT_RUN_TYPE,
+    agentName: 'Assistant',
+    message: 'Summarize yesterday’s chats and open reviews.',
+    name: 'Daily summary',
     ...overrides,
   };
 }
 
 describe('workflowOptions', () => {
-  test('lists the built-in chat first, then Recent in the order of the newest schedules, then the rest by name', () => {
+  test('lists the chat under Built in, then Recent in the order of the newest schedules, then All workflows by name', () => {
     const options = workflowOptions(
-      [row('alpha'), row('beta'), row('gamma'), row('delta')],
-      ['gamma', 'beta'],
+      [row('release-notes'), row('order-refund'), row('triage-inbox'), row('a-sweep')],
+      ['order-refund', 'release-notes'],
     );
-    expect(options.map((option) => [option.group, option.value])).toEqual([
-      [COPY.groups.builtIn, 'agentRun'],
-      [COPY.groups.recent, 'gamma'],
-      [COPY.groups.recent, 'beta'],
-      [COPY.groups.all, 'alpha'],
-      [COPY.groups.all, 'delta'],
+    expect(options.map((option) => [option.group, option.label])).toEqual([
+      [COPY.groups.builtIn, COPY.chat.label],
+      [COPY.groups.recent, 'Order refund'],
+      [COPY.groups.recent, 'Release notes'],
+      [COPY.groups.all, 'A sweep'],
+      [COPY.groups.all, 'Triage inbox'],
     ]);
+    expect(options[0]?.description).toBe('Send a message to an agent each time it runs.');
   });
 
-  test('holds at most three workflows under Recent', () => {
-    const rows = ['a', 'b', 'c', 'd'].map((name) => row(name));
-    const options = workflowOptions(rows, ['a', 'b', 'c', 'd']);
-    expect(options.filter((option) => option.group === COPY.groups.recent)).toHaveLength(3);
-    expect(options.find((option) => option.value === 'd')?.group).toBe(COPY.groups.all);
+  test('offers a workflow file that loads as one to choose, by the title its file gives, and never a type the Bureau runs for itself', () => {
+    const options = workflowOptions(
+      [fileRow('triage-inbox', 'ready', true), row(AGENT_RUN_TYPE, { engine: true })],
+      [],
+    );
+    expect(options.map((option) => option.label)).toEqual([COPY.chat.label, 'Triage inbox']);
+    expect(options[1]).not.toHaveProperty('disabled');
+    expect(options[1]?.description).toBe('Sorts new messages.');
   });
 
-  test('names a workflow in words, and describes it', () => {
-    const [, option] = workflowOptions([row('order-processing')], []);
-    expect(option).toMatchObject({
-      value: 'order-processing',
-      label: 'Order Processing',
-      description: 'The order-processing workflow.',
+  test('lists a file that cannot load under All workflows, disabled, with the reason in danger text', () => {
+    const [, broken] = workflowOptions([fileRow('order-refund', 'invalid')], ['order-refund']);
+    expect(broken).toMatchObject({
+      group: COPY.groups.all,
+      disabled: true,
+      description: COPY.cannotLoad,
+      descriptionTone: 'danger',
     });
   });
 
-  test('describes a workflow with no description by its identifier', () => {
-    const [, option] = workflowOptions([row('plain', { description: null })], []);
-    expect(option?.description).toBe('plain');
-  });
-
-  test('lists an agent-authored workflow disabled with the reason, and leaves out the types the Bureau runs itself', () => {
-    const options = workflowOptions(
-      [row('digest', { kind: 'agent-authored' }), row('agentRun', { engine: true })],
-      [],
-    );
-    expect(options.map((option) => option.value)).toEqual(['agentRun', 'digest']);
-    expect(options[0]?.label).toBe(COPY.chat.label);
-    expect(options[1]).toMatchObject({ disabled: true, description: COPY.inFile });
-  });
-});
-
-describe('optionMatches', () => {
-  const [, option] = workflowOptions([row('order-processing')], []);
-
-  test('matches the words, the identifier and the description, ignoring case', () => {
-    for (const query of ['order processing', 'ORDER-PRO', 'the order', '  order  ', '']) {
-      expect(optionMatches(option!, query), query).toBe(true);
-    }
-  });
-
-  test('does not match anything else', () => {
-    expect(optionMatches(option!, 'invoice')).toBe(false);
+  test('matches by label, identifier or description, ignoring case', () => {
+    const [chat] = workflowOptions([], []);
+    if (chat === undefined) throw new Error('expected the chat option');
+    expect(optionMatches(chat, 'CHAT')).toBe(true);
+    expect(optionMatches(chat, 'each time')).toBe(true);
+    expect(optionMatches(chat, 'refnud')).toBe(false);
+    expect(optionMatches(chat, '  ')).toBe(true);
   });
 });
 
 describe('recentTypes', () => {
-  test('is the type of each of the newest schedules, newest first, once each', () => {
+  test('is the newest schedule’s type first, once each', () => {
     expect(
       recentTypes([
         { workflowType: 'a', createdAt: 1 },
         { workflowType: 'b', createdAt: 3 },
-        { workflowType: 'a', createdAt: 2 },
+        { workflowType: 'a', createdAt: 4 },
       ]),
-    ).toEqual(['b', 'a']);
+    ).toEqual(['a', 'b']);
   });
 });
 
-describe('workflowLabel', () => {
-  test('names the built-in chat and humanizes a type', () => {
-    expect(workflowLabel('agentRun')).toBe(COPY.chat.label);
-    expect(workflowLabel('inventory-sync-sweep')).toBe('Inventory Sync Sweep');
+describe('no input', () => {
+  test('is said only by a schema that says it', () => {
+    expect(takesNoInput(undefined)).toBe(false);
+    expect(takesNoInput({ type: 'null' })).toBe(true);
+    expect(takesNoInput({ type: 'object', properties: {}, additionalProperties: false })).toBe(
+      true,
+    );
+    expect(takesNoInput({ type: 'object', properties: { a: {} } })).toBe(false);
+    expect(emptyInputOf({ type: 'null' })).toBeNull();
+    expect(emptyInputOf({ type: 'object' })).toEqual({});
+  });
+});
+
+describe('scheduleTargetOf', () => {
+  const file = (state: 'ready' | 'invalid', paused: boolean) => ({
+    kind: 'agent-authored' as const,
+    file: { ...fileRow('triage-inbox', state, paused).file!, text: null, schedule: null },
+    definition: undefined,
+  });
+
+  test('treats a paused file as one that can be scheduled, and a file that cannot load as one that cannot', () => {
+    expect(scheduleTargetOf('triage-inbox', file('ready', true)).status).toBe('ready');
+    expect(scheduleTargetOf('triage-inbox', file('ready', false)).status).toBe('ready');
+    expect(scheduleTargetOf('triage-inbox', file('invalid', false)).status).toBe('invalid');
   });
 });
 
 describe('draftErrors', () => {
-  test('asks for a workflow first', () => {
-    expect(draftErrors(emptyDraft())).toEqual({ workflowType: COPY.workflowRequired });
+  test('asks for a workflow and a name before anything else, with nothing chosen', () => {
+    expect(draftErrors(emptyDraft())).toEqual({
+      workflowType: COPY.required,
+      name: COPY.nameRequired,
+    });
     expect(isDraftValid(emptyDraft())).toBe(false);
   });
 
-  test('asks a chat for an agent and a message', () => {
+  test('asks a chat for an agent and a message, and refuses a message that is too long', () => {
     expect(draftErrors(chatDraft({ agentName: ' ', message: '' }))).toEqual({
       agentName: SCHEDULE_COPY.form.agentRequired,
       message: SCHEDULE_COPY.form.inputRequired,
     });
-    expect(isDraftValid(chatDraft())).toBe(true);
-  });
-
-  test('refuses a message or a description that is too long', () => {
     expect(draftErrors(chatDraft({ message: 'x'.repeat(100_001) })).message).toBe(
       SCHEDULE_COPY.form.inputTooLong,
     );
-    expect(draftErrors(chatDraft({ description: 'x'.repeat(2_001) })).description).toBe(
-      SCHEDULE_COPY.form.descriptionTooLong(2_000),
-    );
+    expect(isDraftValid(chatDraft())).toBe(true);
   });
 
-  test('refuses an overlap of allow for a chat that continues a chat, which the Bureau refuses', () => {
-    expect(draftErrors(chatDraft({ chatId: 'chat-1', overlap: 'allow' })).chat).toBe(
-      SCHEDULE_COPY.form.sessionWithAllow,
-    );
-    expect(draftErrors(chatDraft({ overlap: 'allow' })).chat).toBeUndefined();
-  });
-
-  test('holds a workflow’s jitter to a duration, and a chat to none', () => {
-    expect(draftErrors(workflowDraft({ jitterText: 'soon' })).jitter).toBeDefined();
-    expect(draftErrors(workflowDraft({ jitterText: ' 30s ' })).jitter).toBeUndefined();
-    expect(draftErrors(chatDraft({ jitterText: 'soon' })).jitter).toBeUndefined();
+  test('refuses a name that is blank or too long', () => {
+    expect(draftErrors(chatDraft({ name: '   ' })).name).toBe(COPY.nameRequired);
+    expect(draftErrors(chatDraft({ name: 'n'.repeat(2_001) })).name).toBe(COPY.nameTooLong(2_000));
   });
 });
 
-describe('agentScheduleInput', () => {
-  test('sends a cron schedule in the zone it is read in', () => {
-    expect(agentScheduleInput(chatDraft({ description: '  Daily  ', chatId: 'chat-1' }))).toEqual({
-      agentName: 'reporter',
-      spec: '0 9 * * 1-5',
-      input: 'Send the report',
+describe('the name a schedule starts with', () => {
+  test('is the workflow’s name, the agent’s for a chat, and nothing before a workflow is chosen', () => {
+    expect(defaultNameOf(emptyDraft(), '')).toBe('');
+    expect(defaultNameOf(chatDraft(), 'Chat with an agent')).toBe('Assistant');
+    expect(defaultNameOf({ workflowType: 'release-notes', agentName: '' }, 'Release notes')).toBe(
+      'Release notes',
+    );
+  });
+});
+
+describe('isDraftStarted', () => {
+  test('is true once anything differs from the page as it opened', () => {
+    const opened = emptyDraft();
+    expect(isDraftStarted(emptyDraft(), opened)).toBe(false);
+    expect(isDraftStarted({ ...opened, message: 'x' }, opened)).toBe(true);
+  });
+});
+
+describe('the requests', () => {
+  test('a chat is the Bureau’s, with the name as its description and the zone it was read in', () => {
+    expect(agentScheduleInput(chatDraft(), undefined)).toEqual({
+      agentName: 'Assistant',
+      spec: '0 9 * * *',
+      input: 'Summarize yesterday’s chats and open reviews.',
       overlap: 'skip',
-      description: 'Daily',
-      sessionId: 'chat-1',
-      timeZone: 'America/Los_Angeles',
+      description: 'Daily summary',
+      timeZone: expect.any(String),
     });
   });
 
-  test('sends an interval as a duration, in no zone', () => {
+  test('a chat that continues one carries its chat’s identifier, and never starts a run beside itself', () => {
     const input = agentScheduleInput(
-      chatDraft({
-        cadence: { every: { unit: 'hours', count: 7 }, timeZone: 'America/Los_Angeles' },
-      }),
+      chatDraft({ continueChat: true, overlap: 'allow' }),
+      'schedule-chat-1',
     );
-    expect(input.spec).toBe('7h');
-    expect(input).not.toHaveProperty('timeZone');
-    expect(input).not.toHaveProperty('sessionId');
-  });
-
-  test('reads an overlap the Bureau has no word for as skip', () => {
-    expect(agentScheduleInput(chatDraft({ overlap: 'queue' })).overlap).toBe('skip');
-    expect(agentScheduleInput(chatDraft({ overlap: 'allow' })).overlap).toBe('allow');
-  });
-});
-
-describe('engineScheduleArgs', () => {
-  test('omits the description and jitter when both are blank', () => {
-    expect(engineScheduleArgs(workflowDraft(), { day: 'today' })).toEqual({
-      workflowType: 'report-gen',
-      input: { day: 'today' },
-      spec: { cron: '0 2 * * *' },
-      timeZone: 'UTC',
-      overlap: 'skip',
-      backfill: false,
-      revisionPolicy: 'active-at-fire',
+    expect(input).toMatchObject({ sessionId: 'schedule-chat-1', overlap: 'skip' });
+    expect(agentScheduleInput(chatDraft({ overlap: 'allow' }), 'schedule-chat-1')).toMatchObject({
+      overlap: 'allow',
     });
+    expect(
+      agentScheduleInput(chatDraft({ overlap: 'allow' }), 'schedule-chat-1'),
+    ).not.toHaveProperty('sessionId');
   });
 
-  test('sends the trimmed description and jitter, and the options as chosen', () => {
-    const args = engineScheduleArgs(
-      workflowDraft({
-        description: '  Nightly  ',
-        jitterText: '  30s  ',
-        overlap: 'cancel-running',
-        backfill: true,
-        revisionPolicy: 'pinned',
-        cadence: { every: { unit: 'minutes', count: 5 }, timeZone: 'UTC' },
-      }),
-      undefined,
-    );
-    expect(args).toEqual({
-      workflowType: 'report-gen',
-      input: undefined,
-      spec: { every: 300_000 },
-      overlap: 'cancel-running',
+  test('makes an identifier that carries what it is for, from the random part it is given', () => {
+    expect(newChatId(() => 'abc')).toBe('schedule-chat-abc');
+    expect(newChatId()).toMatch(/^schedule-chat-[0-9a-f-]{36}$/);
+  });
+
+  test('a workflow is the engine’s, with the policy selects, the input and the name', () => {
+    const draft = {
+      ...emptyDraft(),
+      workflowType: 'triage-inbox',
+      name: 'Inbox check',
+      overlap: 'allow' as const,
+      catchUp: true,
+    };
+    expect(engineScheduleArgs(draft, { folder: 'Inbox' })).toMatchObject({
+      workflowType: 'triage-inbox',
+      input: { folder: 'Inbox' },
+      overlap: 'allow',
       backfill: true,
-      revisionPolicy: 'pinned',
-      description: 'Nightly',
-      jitter: '30s',
+      description: 'Inbox check',
     });
   });
+});
 
-  test('is made in the zone that was chosen, and an interval in none', () => {
-    expect(
-      engineScheduleArgs(
-        workflowDraft({ cadence: { cron: '0 9 * * 1-5', timeZone: 'Asia/Tokyo' } }),
-        {},
-      ),
-    ).toMatchObject({ spec: { cron: '0 9 * * 1-5' }, timeZone: 'Asia/Tokyo' });
-    expect(
-      engineScheduleArgs(
-        workflowDraft({ cadence: { every: { unit: 'hours', count: 7 }, timeZone: 'Asia/Tokyo' } }),
-        {},
-      ),
-    ).not.toHaveProperty('timeZone');
+describe('takenNameOf', () => {
+  const schedules = [
+    { id: 's1', description: 'Daily summary' },
+    { id: 's2', description: null },
+  ];
+
+  test('finds a schedule with the same name, ignoring case and the space around it', () => {
+    expect(takenNameOf('  daily SUMMARY ', schedules)).toEqual({ id: 's1', name: 'Daily summary' });
+    expect(takenNameOf('Weekly', schedules)).toBeUndefined();
+    expect(takenNameOf('   ', schedules)).toBeUndefined();
   });
 });
 
-describe('summaryOf', () => {
-  test('says to choose a workflow before one is chosen', () => {
-    expect(summaryOf(emptyDraft())).toBe(COPY.summaryNothing);
-  });
+describe('footerLineOf', () => {
+  const base: FooterState = {
+    draft: emptyDraft(),
+    workflow: '',
+    creating: false,
+    slow: false,
+    waitingForWorkflows: false,
+    waitingForInput: false,
+    blocked: false,
+    problemField: undefined,
+  };
 
-  test('says what a chat and a workflow will do, in the zone they will do it', () => {
-    expect(summaryOf(chatDraft())).toContain('reporter');
-    expect(summaryOf(chatDraft())).toContain('America/Los_Angeles');
-    expect(summaryOf(workflowDraft())).toContain('Report Gen');
-  });
-
-  test('names no zone for an interval', () => {
-    const summary = summaryOf(
-      workflowDraft({ cadence: { every: { unit: 'hours', count: 6 }, timeZone: 'Asia/Tokyo' } }),
+  test('says what to do first, and then what a schedule made now starts', () => {
+    expect(footerLineOf(base)).toBe('Pick a workflow to see what it will start.');
+    expect(footerLineOf({ ...base, draft: chatDraft() })).toBe(
+      'Creates a schedule that starts a chat with Assistant.',
     );
-    expect(summary).not.toContain('Asia/Tokyo');
-  });
-});
-
-describe('takesNoInput and emptyInputOf', () => {
-  const NO_FIELDS = { type: 'object', properties: {}, additionalProperties: false };
-
-  test('only a schema that says it takes no input does, and not a missing or open one', () => {
-    expect(takesNoInput(undefined)).toBe(false);
-    expect(takesNoInput({})).toBe(false);
-    expect(takesNoInput({ type: 'object', properties: {} })).toBe(false);
-    expect(takesNoInput({ type: 'object', properties: { a: { type: 'string' } } })).toBe(false);
-    expect(takesNoInput({ type: 'null' })).toBe(true);
-    expect(takesNoInput(NO_FIELDS)).toBe(true);
-    expect(takesNoInput({ type: 'object', additionalProperties: false })).toBe(true);
+    expect(
+      footerLineOf({
+        ...base,
+        draft: { ...emptyDraft(), workflowType: 'order-refund' },
+        workflow: 'Order refund',
+      }),
+    ).toBe('Creates a schedule that starts Order refund.');
   });
 
-  test('sends the empty value the schema accepts: null for null, an empty object otherwise', () => {
-    expect(emptyInputOf({ type: 'null' })).toBeNull();
-    expect(emptyInputOf(NO_FIELDS)).toEqual({});
+  test('says a schedule will not run without a provider, in place of what it starts', () => {
+    expect(footerLineOf({ ...base, draft: chatDraft(), blocked: true })).toBe(
+      'Won’t run until a provider is connected.',
+    );
+  });
+
+  test('adds what pressing Create does while a field shows a problem', () => {
+    expect(
+      footerLineOf({ ...base, draft: chatDraft(), blocked: true, problemField: 'Day of week' }),
+    ).toBe(
+      'Won’t run until a provider is connected. Create schedule stays enabled; on submit, focus moves to Day of week.',
+    );
+  });
+
+  test('says what it waits for before anything else, the workflow list before the input fields', () => {
+    expect(footerLineOf({ ...base, waitingForWorkflows: true, waitingForInput: true })).toBe(
+      'Waiting for the workflow list',
+    );
+    expect(footerLineOf({ ...base, draft: chatDraft(), waitingForInput: true })).toBe(
+      'Waiting for the workflow’s input fields',
+    );
+  });
+
+  test('says only that it is creating until it has taken ten seconds, and then how to stop it', () => {
+    expect(
+      footerLineOf({ ...base, draft: chatDraft(), creating: true, waitingForInput: true }),
+    ).toBe('Creating the schedule…');
+    expect(
+      footerLineOf({ ...base, draft: chatDraft(), creating: true, slow: true, blocked: true }),
+    ).toBe(
+      'Creating the schedule… Taking longer than usual. Cancel stops the request and keeps the form.',
+    );
   });
 });

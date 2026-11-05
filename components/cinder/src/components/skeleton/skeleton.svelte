@@ -85,11 +85,15 @@
     const whole = Math.trunc(Number(lines));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 1;
   });
-  const shape = $derived(variant === 'card' ? 'card' : variant === 'list' ? 'list' : 'row');
+  const shape = $derived(
+    variant === 'card' ? 'card' : variant === 'list' ? 'list' : variant === 'form' ? 'form' : 'row',
+  );
   const rowCount = $derived.by(() => {
     const whole = Math.trunc(Number(rows));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 3;
   });
+  /** How many fields a form placeholder draws: `rows`, which defaults to 3 for a list, is 2 here unless it was set. */
+  const formRows = $derived(rowCount);
   const grouped = $derived(lineCount > 1 || shape !== 'row' || stillLoadingThreshold !== undefined);
 
   const style = $derived(
@@ -165,7 +169,13 @@
         {#if shape === 'card'}
           <div class="cinder-skeleton cinder-skeleton-heading"></div>
         {/if}
-        {#each { length: lineCount } as _, index (index)}
+        {#if shape === 'form'}
+          {#each { length: formRows } as _, index (index)}
+            <div class="cinder-skeleton cinder-skeleton-field-label"></div>
+            <div class="cinder-skeleton cinder-skeleton-field-control"></div>
+          {/each}
+        {/if}
+        {#each { length: shape === 'form' ? 0 : lineCount } as _, index (index)}
           <div
             class="cinder-skeleton"
             data-cinder-last={index === lineCount - 1 && lineCount > 1 && width === undefined

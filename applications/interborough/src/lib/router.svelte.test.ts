@@ -364,3 +364,67 @@ describe('the key the outlet mounts a route under', () => {
     expect(router.viewKey).not.toBe(fresh);
   });
 });
+
+describe('guardLeaving', () => {
+  beforeEach(() => resetLocation('/schedules/new'));
+
+  test('refuses a navigation its guard says no to, tells the guard where it was going, and leaves the address alone', () => {
+    const asked: string[] = [];
+    const stop = router.guardLeaving((destination) => {
+      asked.push(destination);
+      return false;
+    });
+    try {
+      router.navigate('/schedules');
+      expect(asked).toEqual(['/schedules']);
+      expect(router.pathname).toBe('/schedules/new');
+    } finally {
+      stop();
+    }
+  });
+
+  test('lets a forced navigation through without asking, which is how a guard acts on its own answer', () => {
+    const asked: string[] = [];
+    const stop = router.guardLeaving((destination) => {
+      asked.push(destination);
+      return false;
+    });
+    try {
+      router.navigate('/schedules', { force: true });
+      expect(asked).toEqual([]);
+      expect(router.pathname).toBe('/schedules');
+    } finally {
+      stop();
+    }
+  });
+
+  test('goes where the guard says yes, and stops asking once it is removed', () => {
+    let allow = true;
+    const stop = router.guardLeaving(() => allow);
+    router.navigate('/schedules');
+    expect(router.pathname).toBe('/schedules');
+
+    router.navigate('/schedules/new');
+    allow = false;
+    router.navigate('/agents');
+    expect(router.pathname).toBe('/schedules/new');
+
+    stop();
+    router.navigate('/agents');
+    expect(router.pathname).toBe('/agents');
+  });
+
+  test('puts the address back when a back or forward is refused', () => {
+    router.navigate('/schedules');
+    router.navigate('/schedules/new');
+    const stop = router.guardLeaving(() => false);
+    try {
+      // The browser has already moved by the time `popstate` is heard.
+      window.history.replaceState(null, '', '/schedules');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      expect(window.location.pathname).toBe('/schedules/new');
+    } finally {
+      stop();
+    }
+  });
+});

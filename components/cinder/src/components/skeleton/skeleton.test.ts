@@ -471,3 +471,33 @@ describe('Skeleton list variant timing', () => {
     );
   });
 });
+
+describe('Skeleton form variant', () => {
+  test('draws a label bar over a control bar for each of `rows` fields, and no list rows', () => {
+    const { container } = render(Skeleton, { props: { variant: 'form', rows: 2 } });
+    const group = container.querySelector('.cinder-skeleton-group');
+    expect(group?.getAttribute('data-cinder-variant')).toBe('form');
+    expect(container.querySelectorAll('.cinder-skeleton-field-label')).toHaveLength(2);
+    expect(container.querySelectorAll('.cinder-skeleton-field-control')).toHaveLength(2);
+    expect(container.querySelector('.cinder-skeleton-row')).toBeNull();
+    const bars = [...(container.querySelector('.cinder-skeleton-lines')?.children ?? [])];
+    expect(bars.map((bar) => bar.className.split(' ').at(-1))).toEqual([
+      'cinder-skeleton-field-label',
+      'cinder-skeleton-field-control',
+      'cinder-skeleton-field-label',
+      'cinder-skeleton-field-control',
+    ]);
+  });
+
+  test('keeps its own Still loading status with Cancel', () => {
+    const { container } = render(Skeleton, {
+      props: { variant: 'form', stillLoadingAfter: 0, onCancel: () => undefined },
+    });
+    expect(container.querySelector('.cinder-skeleton-status-label')?.textContent).toContain(
+      'Still loading',
+    );
+    expect(container.querySelector('.cinder-skeleton-status button')?.textContent).toContain(
+      'Cancel',
+    );
+  });
+});

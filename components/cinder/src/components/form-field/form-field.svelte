@@ -25,6 +25,7 @@
     labelVisible = true,
     description,
     warning,
+    warningAction,
     error,
     errorGlyph,
     errorAction,
@@ -44,6 +45,7 @@
   {labelVisible}
   {description}
   {warning}
+  {warningAction}
   {error}
   {errorGlyph}
   {errorAction}

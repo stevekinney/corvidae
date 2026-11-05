@@ -31,15 +31,15 @@ const schema = {
       default: 1,
     },
     variant: {
-      enum: ['row', 'card', 'list'],
+      enum: ['row', 'card', 'list', 'form'],
       description:
-        "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card; `'list'` draws `rows` status-first list rows.",
+        "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws\n`rows` fields, a label bar over a control bar each.",
       default: 'row',
     },
     rows: {
       type: 'number',
       description:
-        "Number of list rows to draw when `variant` is `'list'`. Each row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
+        "Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
       default: 3,
     },
     statusMarker: {

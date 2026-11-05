@@ -22,6 +22,7 @@
     SchemaFormProps,
     SchemaFormSchema,
     SchemaFormSubmitHandler,
+    SchemaFormVariant,
   } from './schema-form.types.ts';
 </script>
 

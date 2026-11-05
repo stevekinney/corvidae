@@ -14,6 +14,11 @@
       "type": "string",
       "description": "Label for the built-in submit button. Defaults to `Submit`."
     },
+    "variant": {
+      "enum": ["default", "input"],
+      "description": "How the fields are drawn. `default` is the plain form. `input` is the Input block of a page\nthat runs or schedules something: short fields share a row two at a time (a switch, an\narray, a group or a JSON field takes the whole row), a boolean is a switch with its\ndescription beside it, and an array of objects is one JSON editor whose status line counts\nthe items.",
+      "default": "default"
+    },
     "class": {
       "type": "string",
       "description": "Custom class merged with `.cinder-schema-form`."

@@ -40,6 +40,13 @@ export type ToggleProps = {
    */
   description?: string;
   /**
+   * Where `description` sits. `inline` is on the label's line, for a few words ("Defined in
+   * workflows/release-notes.json"). `below` stacks it under the label, with the switch beside both,
+   * for a sentence that explains what the switch does.
+   * @default "inline"
+   */
+  descriptionPlacement?: 'inline' | 'below';
+  /**
    * Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:
    * `aria-disabled`, still focusable, ignoring the press, and described by the region's reason.
    * It returns by itself when the region stops being stale.

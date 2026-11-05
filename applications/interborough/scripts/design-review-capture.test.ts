@@ -33,6 +33,7 @@ describe('parseArguments', () => {
       'tests/e2e/shell-states.spec.ts',
       'tests/e2e/schedules-list.spec.ts',
       'tests/e2e/schedules-states.spec.ts',
+      'tests/e2e/schedules-new.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
@@ -67,6 +68,7 @@ describe('parseArguments', () => {
       'tests/e2e/shell-states.spec.ts',
       'tests/e2e/schedules-list.spec.ts',
       'tests/e2e/schedules-states.spec.ts',
+      'tests/e2e/schedules-new.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/first-run.spec.ts',
     ]);
@@ -85,6 +87,7 @@ describe('parseArguments', () => {
       'tests/e2e/shell-states.spec.ts',
       'tests/e2e/schedules-list.spec.ts',
       'tests/e2e/schedules-states.spec.ts',
+      'tests/e2e/schedules-new.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',

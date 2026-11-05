@@ -1285,73 +1285,101 @@ export const SCHEDULE_COPY = {
       'The answer did not come back, so the schedule may exist. Check the list before you create it again.',
     check: 'Check the schedules',
   },
-  /** The page that makes a schedule (`/schedules/new`). */
+  /**
+   * The page that makes a schedule (`/schedules/new`; COR-2018, rows 74a–75o, 06i–06k). It asks in
+   * the order the sentence does: what runs, its input, when, the two policy selects, then a name.
+   */
   create: {
     title: 'New schedule',
-    description:
-      'A schedule runs a workflow on a timer. Choose the workflow, give it its input, then say when.',
-    workflowHeading: 'Workflow',
+    /** The subtitle names the zone the next runs are shown in (the viewer's), as the list's does. */
+    description: (zone: string): string =>
+      `Pick what runs, then when, then name it. Next runs show in ${zone} before you save.`,
+    whatRunsHeading: 'What runs',
     workflowLabel: 'Workflow',
-    workflowPlaceholder: 'Search workflows',
+    workflowPlaceholder: 'Pick a workflow',
+    workflowSearchPlaceholder: 'Search workflows',
+    workflowLoading: 'Loading workflows…',
     groups: { builtIn: 'Built in', recent: 'Recent', all: 'All workflows' },
     chat: {
       label: 'Chat with an agent',
-      description: 'Sends a message to one of your agents on every run.',
+      description: 'Send a message to an agent each time it runs.',
     },
-    /** The reason an agent-authored workflow is listed but cannot be chosen. */
-    inFile: 'Its schedule is the trigger in its file. Change it in the workflow.',
-    noMatch: 'No workflow matches.',
-    createOne: 'Create a workflow',
+    /** The reason a workflow is listed but cannot be chosen: its file does not load, or it is paused. */
+    cannotLoad: 'Can’t load this workflow',
+    paused: 'Paused. Resume it to schedule it.',
+    /** The list's text when a search finds nothing, which keeps the footer's link. */
+    noMatch: (query: string): string => `No workflows match “${query}”.`,
+    noMatchFooter: 'No match?',
+    createOne: 'Create one',
     catalogFailed: {
-      title: 'The workflows could not be listed',
-      description: 'Only the built-in choice is available until they can. Try again.',
+      title: 'Couldn’t load workflows.',
+      description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',
     },
+    required: 'Choose a workflow.',
     checking: 'Reading the workflow',
     workflowFailed: 'The workflow’s input could not be read',
     workflowGone:
       'This workflow no longer exists, or cannot be scheduled from here. Choose another.',
     inputHeading: 'Input',
-    noInput: 'Takes no input.',
-    chatLabel: 'Continue one chat',
-    chatDescription:
-      'Optional. Every run continues this chat. Without one, each run starts a chat.',
-    chatPlaceholder: 'A new chat for each run',
-    chatClear: 'Start a new chat each run',
-    chatUnavailable: 'Chats could not be listed, so each run starts a new chat.',
-    chatUntitled: 'Untitled chat',
-    chatAgent: (agent: string): string => `Agent: ${agent}`,
-    chatFixesAgent: (agent: string): string => `This chat is with ${agent}, so every run is too.`,
-    whenHeading: 'When',
-    whenLabel: 'Schedule',
-    optionsHeading: 'Options',
-    descriptionLabel: 'Description',
-    descriptionDescription: 'Optional. It names the schedule in the list.',
-    overlapLabel: 'If a run is still going when the next one is due',
-    catchUpLabel: 'Run the fires it missed while the host was down',
-    startPausedLabel: 'Start turned off',
-    startPausedDescription: 'Nothing runs until you turn it on.',
-    jitterLabel: 'Jitter',
-    jitterDescription: 'A random delay added to each run.',
-    jitterPlaceholder: '30s',
-    revisionLabel: 'Which version of the workflow each run uses',
-    /** An interval counts elapsed time, so it names no zone. */
-    summaryChat: (agent: string, cadence: string, timeZone: string | undefined): string => {
-      const who = agent === '' ? 'an agent' : agent;
-      return timeZone === undefined
-        ? `Chats with ${who}: ${cadence}.`
-        : `Chats with ${who}: ${cadence}, in ${timeZone}.`;
-    },
-    summaryNothing: 'Choose a workflow to schedule.',
-    submit: 'Create schedule',
-    cancel: 'Cancel',
-    pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
-    invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
+    /** The lead under the Input heading, which names the workflow. */
+    inputLead: (name: string): string => `What ${name} needs each time it runs.`,
+    noInput: (name: string): string => `${name} takes no input.`,
+    messageLabel: 'Message',
+    messageDescription: 'Sent as the first message of each run.',
+    continueLabel: 'Continue one chat',
+    continueDescription:
+      'Each run adds to the same chat, so the agent remembers earlier runs. Off: every run starts a new chat.',
     noAgents: {
       title: 'No agents to chat with',
       description: 'A scheduled chat runs one of your agents. Make an agent first.',
       action: 'New agent',
     },
-    workflowRequired: 'Choose a workflow.',
+    /** The agent needs a model and no provider is connected: the warning, then the link that fixes it. */
+    needsProvider: 'Won’t run until a provider is connected ·',
+    connectProvider: 'Connect a provider',
+    whenHeading: 'When',
+    whenLabel: 'Schedule',
+    catchUpLabel: 'If Interborough was off',
+    nameLabel: 'Name',
+    namePlaceholder: 'For example, Daily summary',
+    nameDescription:
+      'Starts as the workflow’s name (the agent’s name for Chat with an agent); change it if you like. Shown in Schedules and on every run it starts.',
+    nameRequired: 'Give the schedule a name.',
+    nameTooLong: (most: number): string =>
+      `The name is too long: it can be at most ${String(most)} characters.`,
+    nameTaken: 'A schedule with this name already exists.',
+    openSchedule: (name: string): string => `Open ${name}`,
+    /** The footer line, by what the page is waiting for or what it will do. */
+    footer: {
+      nothing: 'Pick a workflow to see what it will start.',
+      chat: (agent: string): string =>
+        `Creates a schedule that starts a chat with ${agent === '' ? 'an agent' : agent}.`,
+      workflow: (workflow: string): string => `Creates a schedule that starts ${workflow}.`,
+      waitingForWorkflows: 'Waiting for the workflow list',
+      waitingForInput: 'Waiting for the workflow’s input fields',
+      blocked: 'Won’t run until a provider is connected.',
+      creating: 'Creating the schedule…',
+      slow: 'Taking longer than usual.',
+      cancelStops: 'Cancel stops the request and keeps the form.',
+      /** Said while a field shows a problem, so the person knows what pressing Create does. */
+      stillEnabled: (field: string): string =>
+        `Create schedule stays enabled; on submit, focus moves to ${field}.`,
+    },
+    submit: 'Create schedule',
+    creating: 'Creating…',
+    cancel: 'Cancel',
+    failed: {
+      title: 'Couldn’t create the schedule.',
+      message: 'Interborough didn’t answer. What you typed is still here.',
+    },
+    pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
+    invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
+    discard: {
+      title: 'Discard this schedule?',
+      description: 'You have started a schedule. If you leave now, what you typed is lost.',
+      keep: 'Keep editing',
+      confirm: 'Discard and leave',
+    },
   },
   form: {
     agentLabel: 'Agent',

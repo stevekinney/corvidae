@@ -36,6 +36,27 @@
     color: var(--cinder-text-muted);
   }
 
+  /* `descriptionPlacement="below"`: the switch beside a label with its explanation stacked under
+ * it. The label reads as a field label (small, semibold) and the switch lines up with its first line. */
+  .cinder-toggle-field[data-cinder-description='below'] {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-toggle-field__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-toggle-field[data-cinder-description='below'] .cinder-toggle-field__label {
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
   /* labelVisible: keep the label as the accessible name, remove it from layout.
  * Same recipe as the global .cinder-sr-only utility, inlined here so the
  * per-component sidecar (dist/components/toggle/toggle.css) is self-sufficient. */

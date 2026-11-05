@@ -602,3 +602,34 @@ describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
     expect(coarse.match(/2\.75rem/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('Toggle description placement', () => {
+  test('stacks a description under the label, with the switch beside both, when it is `below`', () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'continue',
+        label: 'Continue one chat',
+        description: 'Each run adds to the same chat.',
+        descriptionPlacement: 'below',
+      },
+    });
+    const field = container.querySelector('.cinder-toggle-field');
+    expect(field?.getAttribute('data-cinder-description')).toBe('below');
+    const text = container.querySelector('.cinder-toggle-field__text');
+    expect(text?.children[0]?.textContent?.trim()).toBe('Continue one chat');
+    expect(text?.children[1]?.textContent).toBe('Each run adds to the same chat.');
+    const toggle = container.querySelector('button[role="switch"]');
+    expect(toggle?.getAttribute('aria-describedby')).toBe(text?.children[1]?.id);
+    expect(field?.firstElementChild).toBe(toggle);
+  });
+
+  test('keeps the description on the label’s line by default', () => {
+    const { container } = render(Toggle, {
+      props: { id: 'file', label: 'Active', description: 'Defined in release-notes.json' },
+    });
+    expect(container.querySelector('.cinder-toggle-field__text')).toBeNull();
+    expect(
+      container.querySelector('.cinder-toggle-field')?.hasAttribute('data-cinder-description'),
+    ).toBe(false);
+  });
+});

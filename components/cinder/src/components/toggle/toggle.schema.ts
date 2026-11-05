@@ -33,6 +33,12 @@ const schema = {
       description:
         'Short visible text beside the label that describes the switch, such as the file that defines\nit ("Defined in workflows/release-notes.json"). It is wired into `aria-describedby`.',
     },
+    descriptionPlacement: {
+      enum: ['inline', 'below'],
+      description:
+        'Where `description` sits. `inline` is on the label\'s line, for a few words ("Defined in\nworkflows/release-notes.json"). `below` stacks it under the label, with the switch beside both,\nfor a sentence that explains what the switch does.',
+      default: 'inline',
+    },
     mutating: {
       type: 'boolean',
       description:

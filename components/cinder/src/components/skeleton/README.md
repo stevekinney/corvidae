@@ -25,6 +25,20 @@ Animated placeholder shape that fills content areas while data is loading.
 <Skeleton variant="card" lines={3} />
 ```
 
+### Form variant
+
+`variant="form"` draws `rows` fields, each a short label bar over a full-width control bar at the control height, for the input of a form that is still loading. It takes `stillLoadingAfter`, `onCancel` and `label` like the other groups.
+
+```svelte
+<Skeleton
+  variant="form"
+  rows={2}
+  label="Reading the workflow"
+  stillLoadingAfter={10000}
+  onCancel={stop}
+/>
+```
+
 ### List variant
 
 `variant="list"` draws the placeholder for a status-first list in the real layout: a bordered surface of `rows` rows (default 3), each with the 8rem status column reserved, two text bars and a time bar at the right. No leading circle or avatar is drawn, so nothing shifts when the data arrives. `dayBand` adds a tinted day band above the rows for a list grouped by day. On a narrow container the status bar drops under the text bars, as a stacked list item does on a phone.
@@ -77,11 +91,11 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 | `label` | `string` | no | — | Accessible name of the loading region, announced politely once the placeholder appears (for example `'Loading agents'`). The placeholder bars stay hidden from assistive technology and no spinner is drawn. Applies to the grouped variants; omit it when the surrounding region already says what is loading. |
 | `lines` | `number` | no | `1` | Number of text bars to stack. More than one renders a group, and the last bar is shorter unless `width` is set. Clamped to between 1 and 20. |
 | `radius` | `string` | no | — | CSS border-radius value applied as an inline style, overriding the default pill shape (e.g. `'4px'`, `'50%'`). |
-| `rows` | `number` | no | `3` | Number of list rows to draw when `variant` is `'list'`. Each row keeps the 8rem status column reserved, then shows two text bars and a time bar, with no leading circle, so nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants. |
+| `rows` | `number` | no | `3` | Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status column reserved, then shows two text bars and a time bar, with no leading circle, so nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants. |
 | `statusMarker` | `"bar"` \| `"dot"` | no | `"bar"` | What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar where the status word reads; `'dot'` is a small circle where the status dot sits. The column keeps its width either way, so nothing shifts when data arrives. Ignored by other variants. |
 | `stillLoadingAfter` | `number` | no | — | Milliseconds after mounting at which a "Still loading" status replaces silence, with a Cancel button when `onCancel` is set. Counted from mount, not from the end of `delay`. Use `10000` for the Cinder loading rule. Omit to never show the status. |
 | `stillLoadingLabel` | `string` | no | `"Still loading. This is taking longer than usual."` | Text of the "Still loading" status. Pages replace the default with their own noun, for example `'Still loading runs. This is taking longer than usual.'`. |
-| `variant` | `"row"` \| `"card"` \| `"list"` | no | `"row"` | Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows. |
+| `variant` | `"row"` \| `"card"` \| `"list"` \| `"form"` | no | `"row"` | Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws `rows` fields, a label bar over a control bar each. |
 | `width` | `string` | no | — | CSS width value applied as an inline style on the skeleton block (e.g. `'200px'`, `'100%'`). |
 | `onCancel` | `(opaque)` | no | — | Called when the Cancel button in the "Still loading" status is pressed. The button renders only when this is set. Not expressible in JSON Schema; see the component types for the signature. |
 

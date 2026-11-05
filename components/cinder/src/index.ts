@@ -851,8 +851,10 @@ export type { RestartStatePhase, RestartStateProps } from './components/restart-
 export { default as ScheduleBuilder } from './components/schedule-builder/index.ts';
 export type {
   ScheduleBuilderProps,
+  ScheduleBuilderVariant,
   ScheduleFire,
   ScheduleIntervalUnit,
+  SchedulePolicyOption,
   ScheduleRepeats,
   ScheduleValue,
 } from './components/schedule-builder/index.ts';
@@ -869,6 +871,7 @@ export type {
   SchemaFormProps,
   SchemaFormSchema,
   SchemaFormSubmitHandler,
+  SchemaFormVariant,
 } from './components/schema-form/index.ts';
 
 export { default as SchemaView } from './components/schema-view/index.ts';

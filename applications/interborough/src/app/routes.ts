@@ -214,7 +214,7 @@ export const routes: readonly RouteDefinition[] = [
   {
     pattern: '/schedules/new',
     kind: 'form',
-    crumb: 'New',
+    crumb: 'New schedule',
     view: 'schedules',
     load: schedulesArea,
   },

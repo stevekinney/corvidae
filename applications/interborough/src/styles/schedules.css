@@ -168,63 +168,60 @@
   max-width: 28rem;
 }
 
-/* The page that makes a schedule: sections of fields, and a footer that holds the one-line summary and the action. */
+/*
+ * The page that makes a schedule (rows 74a–74i, 06i–06k): one reading column, at most 720px wide,
+ * of sections of fields and a footer that holds the one-line summary and the two actions.
+ */
 .ib-schedule-new {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-6);
   min-width: 0;
+  max-width: 45rem;
+}
+
+/* The form's fields are one fieldset, so a create in flight stops every one taking edits at once. */
+.ib-schedule-new__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .ib-schedule-new__section {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-3);
+  gap: var(--cinder-space-4);
   min-width: 0;
 }
 
-.ib-schedule-new__heading {
-  margin: 0;
-  font-size: var(--cinder-text-lg);
-  font-weight: 600;
-}
-
-.ib-schedule-new__note {
-  margin: 0;
+/* "No match? Create one": the picker's footer, a muted question and an accent link. */
+.ib-schedule-new__picker-footer {
   color: var(--cinder-text-muted);
-  overflow-wrap: anywhere;
 }
 
-.ib-schedule-new__alert-title {
-  margin: 0;
-  font-weight: 600;
-}
-
-.ib-schedule-new__alert-message {
-  margin: var(--cinder-space-1) 0 var(--cinder-space-2);
-  overflow-wrap: anywhere;
+.ib-schedule-new__picker-footer a {
+  color: var(--cinder-accent-text);
+  font-weight: var(--cinder-font-semibold);
+  text-decoration: none;
 }
 
 /* A workflow named by a word no line can break at wraps instead of widening the page. */
-.ib-schedule-new__section :where(p, label, legend, span) {
+.ib-schedule-new :where(p, label, legend, span) {
   overflow-wrap: anywhere;
 }
 
-/* It stays at the foot of the outlet while the form scrolls under it, so the action is always in reach. */
+/* The summary on the left, Cancel then Create schedule on the right. */
 .ib-schedule-new__footer {
-  position: sticky;
-  /* The outlet pads its own bottom edge; reach through it so nothing scrolls under the bar. */
-  bottom: calc(-1 * var(--cinder-space-6));
-  z-index: 1;
-  margin-block-end: calc(-1 * var(--cinder-space-6));
-  padding-block: var(--cinder-space-3);
-  background: var(--cinder-surface-canvas);
-  border-block-start: 1px solid var(--cinder-border);
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-3) var(--cinder-space-4);
   align-items: center;
   justify-content: space-between;
+  padding-block-start: var(--cinder-space-1);
 }
 
 .ib-schedule-new__summary {
@@ -232,13 +229,27 @@
   min-width: 0;
   flex: 1 1 16rem;
   color: var(--cinder-text-muted);
-  overflow-wrap: anywhere;
+  font-size: var(--cinder-text-sm);
+  line-height: var(--cinder-leading-normal);
 }
 
 .ib-schedule-new__actions {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--cinder-space-2);
   align-items: center;
   margin-inline-start: auto;
+}
+
+/* On a phone the summary takes its own line and the actions stack, Create schedule above Cancel. */
+@media (max-width: 639.98px) {
+  .ib-schedule-new__summary {
+    flex-basis: 100%;
+  }
+
+  .ib-schedule-new__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
 }

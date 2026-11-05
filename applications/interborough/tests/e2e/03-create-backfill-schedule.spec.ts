@@ -26,41 +26,33 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await expect(page).toHaveURL(/\/schedules\/new$/);
   await expect(page.getByRole('heading', { level: 1, name: 'New schedule' })).toBeVisible();
 
-  // The picker lists the built-in chat first and the workflows code defines under All workflows;
-  // a search narrows it, and the workflow chosen is named in words with its description.
-  await page.getByRole('combobox', { name: /^Workflow/ }).fill('order');
-  await page.getByRole('option', { name: /Order Processing/ }).click();
-  await expect(page.getByTestId('new-schedule-workflow-description')).toBeVisible();
+  // The picker lists the built-in chat first and the workflows under All workflows; the workflow
+  // chosen is named in words, and the schedule's name starts as that name.
+  await page.getByRole('combobox', { name: /^Workflow/ }).click();
+  await page.getByRole('option', { name: /Order processing/ }).click();
+  await expect(page.getByLabel(/^Name/)).toHaveValue('Order processing');
 
   // ScheduleBuilder reads a schedule as Repeats, At and Time zone. "Every day" at 03:00
   // lowers to `0 3 * * *`; the zone is set explicitly so the cron the detail page shows
   // does not depend on the browser's zone.
   await page.getByLabel('Repeats', { exact: true }).selectOption('daily');
-  await page.getByLabel('At', { exact: true }).fill('03:00');
-  const timeZoneField = page.getByRole('combobox', { name: 'Time zone' });
-  await timeZoneField.fill('UTC');
-  await page.getByRole('option', { name: 'UTC', exact: true }).click();
+  await page.getByLabel('At', { exact: true }).fill('3:00 AM');
+  await page.getByRole('combobox', { name: /^Time zone/ }).click();
+  await page.getByPlaceholder('Search time zones').fill('UTC');
+  await page.getByRole('option', { name: /^UTC/ }).first().click();
   await expect(page.getByText('Every day at 3:00 AM UTC').first()).toBeVisible();
 
-  // `RadioGroup` renders a native `<fieldset>` (implicit `role="group"`,
-  // legend as the accessible name) — distinct from `SegmentedControl`'s
-  // `role="radiogroup"` used for the overall/section review decisions in
-  // `02-approve-review-partial.spec.ts`.
-  await page
-    .getByRole('group', { name: 'If a run is still going when the next one is due' })
-    .getByRole('radio', { name: /Skip/i })
-    .click();
-
-  await page.getByRole('switch', { name: SCHEDULE_COPY.create.catchUpLabel }).click();
+  // The two policy selects: skip a run that is due while one is going, and catch up on what the
+  // host missed while it was off.
+  await page.getByLabel('If a run is still going').selectOption('skip');
+  await page.getByLabel(SCHEDULE_COPY.create.catchUpLabel).selectOption('on');
   await checkA11y('schedules — new schedule page (workflow chosen)');
 
   await page.getByRole('button', { name: 'Create schedule' }).click();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
   // The page is named by what it starts, not by the identifier the engine made.
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Schedule for order-processing' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Order processing' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Next runs' })).toBeVisible();
   await expect(page.getByText('Nothing is coming up')).toHaveCount(0);
   await expect(page.getByTestId('schedule-next-fires').locator('li')).toHaveCount(5);

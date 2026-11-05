@@ -25,6 +25,7 @@ On/off switch input for binary settings, presented as a sliding pill control.
 | `checked` | `boolean` | no | — | Whether the toggle is currently checked. Bindable — defaults to false. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-toggle` on the switch button. |
 | `description` | `string` | no | — | Short visible text beside the label that describes the switch, such as the file that defines it ("Defined in workflows/release-notes.json"). It is wired into `aria-describedby`. |
+| `descriptionPlacement` | `"inline"` \| `"below"` | no | `"inline"` | Where `description` sits. `inline` is on the label's line, for a few words ("Defined in workflows/release-notes.json"). `below` stacks it under the label, with the switch beside both, for a sentence that explains what the switch does. |
 | `disabled` | `boolean` | no | — | Prevents interaction when true. Sets `disabled` attribute. |
 | `form` | `string` | no | — | Associates the hidden checkbox with a form by id, matching the native `form` attribute. Lets the toggle submit with a form it is not nested in. Ignored when `name` is unset. |
 | `id` | `string` | yes | — | Native id placed on the `<button>`; the rendered label uses `aria-labelledby` to name it (label id is derived as `${id}-label`). |

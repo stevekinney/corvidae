@@ -181,6 +181,9 @@ export const queryKeys = {
     /** Which of the agents the rows name need a model, read from each agent's definition. Under `list` for the same reason. */
     modelAgents: (agentIds: readonly string[]) =>
       ['schedules', 'list', 'model-agents', agentIds] as const,
+    /** Whether the agent the new schedule page has chosen needs a model while no provider is connected. */
+    providerBlocked: (agentName: string) =>
+      ['schedules', 'new', 'provider-blocked', agentName] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,

@@ -250,9 +250,9 @@ test.describe('a workflow file’s schedule', () => {
 test.describe('creating a schedule', () => {
   const CREATE = SCHEDULE_COPY.create;
 
-  /** Types into the workflow picker and chooses the option with that text, as a person does. */
-  async function chooseWorkflow(page: Page, query: string, option: string): Promise<void> {
-    await page.getByRole('combobox', { name: /^Workflow/ }).fill(query);
+  /** Opens the workflow picker and chooses the option with that text, as a person does. */
+  async function chooseWorkflow(page: Page, option: string): Promise<void> {
+    await page.getByRole('combobox', { name: /^Workflow/ }).click();
     await page
       .getByRole('option', { name: new RegExp(option) })
       .first()
@@ -268,13 +268,15 @@ test.describe('creating a schedule', () => {
     await expect(page.getByRole('heading', { level: 1, name: CREATE.title })).toBeVisible();
 
     // The built-in choice is a chat with an agent; nothing asks for an agent until it is chosen.
-    await expect(page.getByLabel(SCHEDULE_COPY.form.agentLabel)).toHaveCount(0);
-    await chooseWorkflow(page, 'chat', CREATE.chat.label);
+    await expect(page.getByLabel(new RegExp(`^${SCHEDULE_COPY.form.agentLabel}`))).toHaveCount(0);
+    await chooseWorkflow(page, CREATE.chat.label);
     await page
-      .getByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel })
+      .getByRole('combobox', { name: new RegExp(`^${SCHEDULE_COPY.form.agentLabel}`) })
       .selectOption('demo:assistant');
-    await page.getByLabel(SCHEDULE_COPY.form.inputLabel).fill('Summarize what happened this week.');
-    await page.getByLabel(CREATE.descriptionLabel).fill('Weekly summary');
+    await page
+      .getByLabel(new RegExp(`^${CREATE.messageLabel}`))
+      .fill('Summarize what happened this week.');
+    await page.getByLabel(new RegExp(`^${CREATE.nameLabel}`)).fill('Weekly summary');
     await checkA11y('schedules — creating an agent run');
     await page.getByRole('button', { name: CREATE.submit }).click();
 
@@ -308,6 +310,8 @@ test.describe('creating a schedule', () => {
   async function offered(page: Page): Promise<Array<{ text: string; disabled: boolean }>> {
     await page.goto('/schedules/new');
     const picker = page.getByRole('combobox', { name: /^Workflow/ });
+    // The field does not open while the workflow list loads.
+    await expect(picker).not.toHaveAttribute('aria-busy', 'true');
     await picker.click();
     const listbox = page.getByRole('listbox');
     await expect(listbox.getByRole('option').first()).toBeVisible();
@@ -324,7 +328,7 @@ test.describe('creating a schedule', () => {
     request,
   }) => {
     // The engine's registry holds every type the Bureau's run engine registers. The picker leaves
-    // them out, and lists a workflow file only to say its schedule is the trigger in its file.
+    // them out, and lists a workflow file that loads like any other workflow.
     const registry = await request.post('/jsonrpc', {
       data: { jsonrpc: '2.0', id: 1, method: 'weft.system.registry', params: {} },
     });
@@ -344,15 +348,15 @@ test.describe('creating a schedule', () => {
         reserved,
       ).toBe(false);
     }
-    const file = options.find((option) => option.text.includes('E2e Digest'));
-    expect(file?.disabled).toBe(true);
-    expect(file?.text).toContain(CREATE.inFile);
+    // A workflow file that loads is chosen like any other workflow.
+    const file = options.find((option) => option.text.includes('E2e digest'));
+    expect(file?.disabled).toBe(false);
   });
 
   test.describe('on the host whose console is the fixtures’ engine', () => {
     test.use({ baseURL: E2E_BASE_URL });
 
-    test('offers the code-defined workflow types, and an agent-authored one only to say why it cannot be chosen', async ({
+    test('offers the code-defined workflow types and an agent-authored one that loads', async ({
       page,
     }) => {
       // The picker fills in as the engine's registry arrives, and each read is a fresh page load, so
@@ -362,12 +366,12 @@ test.describe('creating a schedule', () => {
           const options = await offered(page);
           return {
             orderProcessingDisabled: options.find((option) =>
-              option.text.includes('Order Processing'),
+              option.text.includes('Order processing'),
             )?.disabled,
-            digestDisabled: options.find((option) => option.text.includes('E2e Digest'))?.disabled,
+            digestDisabled: options.find((option) => option.text.includes('E2e digest'))?.disabled,
           };
         })
-        .toEqual({ orderProcessingDisabled: false, digestDisabled: true });
+        .toEqual({ orderProcessingDisabled: false, digestDisabled: false });
     });
   });
 });
