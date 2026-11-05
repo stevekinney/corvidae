@@ -132,9 +132,20 @@ export async function stream(
       clearTimeout(timer);
       throw makeCliFailure('The host returned an empty event stream.');
     }
-    const body = response.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({ flush: () => clearTimeout(timer) }),
-    );
+    const source = response.body.getReader();
+    const body = new ReadableStream<Uint8Array>({
+      async pull(streamController) {
+        const next = await source.read();
+        if (next.done) {
+          clearTimeout(timer);
+          streamController.close();
+        } else streamController.enqueue(next.value);
+      },
+      async cancel(reason) {
+        clearTimeout(timer);
+        await source.cancel(reason);
+      },
+    });
     return new Response(body, {
       headers: response.headers,
       status: response.status,
