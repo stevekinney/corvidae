@@ -6,7 +6,7 @@
  */
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -113,8 +113,10 @@ describe('remote mode needs the delegation secret', () => {
     const server = createS3TestServer();
     servers.push(server);
     const port = await freePort();
-    const { INTERBOROUGH_SECRET_DELEGATION_SECRET: _delegation, ...environment }:
-      Record<string, string> = {
+    const {
+      INTERBOROUGH_SECRET_DELEGATION_SECRET: _delegation,
+      ...environment
+    }: Record<string, string> = {
       ...remoteVariables(server),
       INTERBOROUGH_SECRET_APPROVAL_SECRET: 'approval-secret-for-the-test-0123456789',
       INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY: TEST_ANSWER_ENCRYPTION_KEY,
@@ -136,6 +138,20 @@ describe('remote mode needs the delegation secret', () => {
 });
 
 describe('local mode', () => {
+  test('creates and reuses the local delegation secret across restarts', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-local-delegation-'));
+    directories.push(home);
+    const first = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    const secretPath = join(home, 'secrets', 'delegation-secret');
+    const firstSecret = await readFile(secretPath, 'utf8');
+    await first.close();
+    hosts.splice(hosts.indexOf(first), 1);
+
+    const second = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(second);
+    expect(await readFile(secretPath, 'utf8')).toBe(firstSecret);
+  });
+
   test.each([
     ['unset', {}],
     ['empty', { INTERBOROUGH_DATABASE_URL: '', INTERBOROUGH_BUCKET: '' }],
