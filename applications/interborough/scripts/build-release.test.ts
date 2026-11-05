@@ -1,5 +1,6 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
-import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -175,16 +176,18 @@ async function expectRelocatedFailure(
   const output = await mkdtemp(join(tmpdir(), `interborough-release-${runtimeFailure}-`));
   let clock = 0;
   try {
-    await expect(
-      buildRelease(['--version', '0.0.0-test', '--outdir', output], {
-        ...fixture.operations,
-        now: () => clock,
-        sleep: async () => {
-          while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
-          clock += 100;
-        },
-      }),
-    ).rejects.toThrow(message);
+    expect(
+      await throwingRejectionOf(
+        buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+          ...fixture.operations,
+          now: () => clock,
+          sleep: async () => {
+            while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
+            clock += 100;
+          },
+        }),
+      ),
+    ).toThrow(message);
     expect(await Bun.file(marker).text()).toBe('terminated');
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -196,9 +199,11 @@ async function expectRelocatedFailure(
 describe('release arguments', () => {
   test('runs the default command and reports failures', async () => {
     await runCommand([process.execPath, '-e', 'process.stdout.write("ok")']);
-    await expect(
-      runCommand([process.execPath, '-e', 'process.stderr.write("bad"); process.exit(3)']),
-    ).rejects.toThrow('failed (3): bad');
+    expect(
+      await throwingRejectionOf(
+        runCommand([process.execPath, '-e', 'process.stderr.write("bad"); process.exit(3)']),
+      ),
+    ).toThrow('failed (3): bad');
   });
   test('requires a semver and output directory', () => {
     expect(parseReleaseArguments(['--version', '1.2.3', '--outdir', '/tmp/release'])).toEqual({
@@ -232,12 +237,12 @@ describe('release arguments', () => {
   });
 
   test('uses the command boundary defaults', async () => {
-    await expect(
-      runReleaseCommand(undefined, async () => '/tmp/interborough-default.tar.gz', [
+    expect(
+      await runReleaseCommand(undefined, async () => '/tmp/interborough-default.tar.gz', [
         '--version',
         '0.0.0-test',
       ]),
-    ).resolves.toBe('/tmp/interborough-default.tar.gz');
+    ).toBe('/tmp/interborough-default.tar.gz');
   });
 
   test('rejects an existing release output before installing or staging', async () => {
@@ -245,9 +250,9 @@ describe('release arguments', () => {
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-collision-'));
     try {
       await writeFile(join(output, 'interborough-0.0.0-test-darwin-arm64.tar.gz'), 'sentinel');
-      await expect(buildRelease(['--version', '0.0.0-test', '--outdir', output])).rejects.toThrow(
-        'Release output already exists',
-      );
+      expect(
+        await throwingRejectionOf(buildRelease(['--version', '0.0.0-test', '--outdir', output])),
+      ).toThrow('Release output already exists');
       expect(
         await Bun.file(join(output, 'interborough-0.0.0-test-darwin-arm64.tar.gz')).text(),
       ).toBe('sentinel');
@@ -260,20 +265,24 @@ describe('release arguments', () => {
     const marker = join(import.meta.dir, '.release-dirty-input');
     await writeFile(marker, 'dirty');
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release']),
-      ).rejects.toThrow('Release inputs are dirty');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release']),
+        ),
+      ).toThrow('Release inputs are dirty');
     } finally {
       await rm(marker, { force: true });
     }
   });
 
   test('rejects unsupported release targets before reading repository state', async () => {
-    await expect(
-      buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release'], {
-        platform: 'linux',
-      }),
-    ).rejects.toThrow('macOS arm64 is required');
+    expect(
+      await throwingRejectionOf(
+        buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release'], {
+          platform: 'linux',
+        }),
+      ),
+    ).toThrow('macOS arm64 is required');
   });
 
   test('stops a persistent relocated host before reporting a missing runtime link', async () => {
@@ -282,16 +291,18 @@ describe('release arguments', () => {
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-link-'));
     let clock = 0;
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], {
-          ...fixture.operations,
-          now: () => clock,
-          sleep: async () => {
-            while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
-            clock += 100;
-          },
-        }),
-      ).rejects.toThrow('did not create plugin runtime link');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+            ...fixture.operations,
+            now: () => clock,
+            sleep: async () => {
+              while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
+              clock += 100;
+            },
+          }),
+        ),
+      ).toThrow('did not create plugin runtime link');
       expect(await Bun.file(marker).text()).toBe('terminated');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
@@ -305,9 +316,11 @@ describe('release arguments', () => {
     const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'wrong-link' });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-wrong-link-'));
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
-      ).rejects.toThrow('targets the wrong runtime');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+        ),
+      ).toThrow('targets the wrong runtime');
       expect(await Bun.file(marker).text()).toBe('terminated');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
@@ -349,9 +362,11 @@ describe('release arguments', () => {
     const fixture = await releaseFixture({ recursiveDependency: true, missingDependency: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-dependency-'));
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
-      ).rejects.toThrow('Frozen production install cannot resolve fixture-dependency');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+        ),
+      ).toThrow('Frozen production install cannot resolve fixture-dependency');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
@@ -387,9 +402,11 @@ describe('release arguments', () => {
     const fixture = await releaseFixture({ invalidExports: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-invalid-'));
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
-      ).rejects.toThrow('not a runtime TypeScript entry');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+        ),
+      ).toThrow('not a runtime TypeScript entry');
       expect(await Bun.file(join(output, 'interborough')).exists()).toBe(false);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
@@ -401,9 +418,11 @@ describe('release arguments', () => {
     const fixture = await releaseFixture({ invalidExportMap: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-invalid-map-'));
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
-      ).rejects.toThrow('must declare an exports map');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+        ),
+      ).toThrow('must declare an exports map');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
@@ -414,9 +433,11 @@ describe('release arguments', () => {
     const fixture = await releaseFixture({ escapingLink: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-escape-'));
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
-      ).rejects.toThrow('Runtime symlink escapes archive');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+        ),
+      ).toThrow('Runtime symlink escapes archive');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
@@ -427,10 +448,14 @@ describe('release arguments', () => {
     const fixture = await releaseFixture({ commandFailure: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-command-failure-'));
     try {
-      await expect(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
-      ).rejects.toThrow('fixture command failed');
-      expect((await Bun.$`find ${output} -name '.interborough-staging-*'`.text()).trim()).toBe('');
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+        ),
+      ).toThrow('fixture command failed');
+      expect(
+        (await readdir(output)).filter((entry) => entry.startsWith('.interborough-staging-')),
+      ).toEqual([]);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
