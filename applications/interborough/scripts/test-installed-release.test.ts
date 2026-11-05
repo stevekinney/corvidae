@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { validateInspection, validateInstalledUi } from './test-installed-release-browser.ts';
 import { mcp, runFixtureAgent } from './test-installed-release-transport.ts';
 import {
   parseInstalledReleaseArguments,
@@ -104,6 +105,29 @@ describe('installed-release harness arguments', () => {
     };
     await expect(waitForListening(exitedProbe)).rejects.toThrow('exited 1');
     await expect(waitForHttp('http://127.0.0.1:9', 0)).rejects.toThrow('Timed out');
+  });
+
+  test('covers installed UI and inspection validation success/error branches', () => {
+    const response = new Response('{}', { status: 200 });
+    expect(validateInstalledUi(response, { html: '<main />', ui: { csp: {} } }, 'panel').html).toBe(
+      '<main />',
+    );
+    expect(() =>
+      validateInstalledUi(new Response('{}', { status: 503 }), {} as never, 'panel'),
+    ).toThrow('returned 503');
+    expect(() => validateInstalledUi(response, { html: '', ui: { csp: {} } }, 'panel')).toThrow(
+      'omitted UI metadata',
+    );
+    expect(validateInspection(response, { result: { taskId: 'run-1' } })).toEqual({
+      taskId: 'run-1',
+    });
+    expect(() => validateInspection(new Response('{}', { status: 500 }), {})).toThrow(
+      'returned 500',
+    );
+    expect(() => validateInspection(response, { error: { message: 'no' } })).toThrow(
+      'returned an error',
+    );
+    expect(() => validateInspection(response, {})).toThrow('returned an error');
   });
 
   test('orchestrates archive and relocation through injectable process seams', async () => {

@@ -13,6 +13,26 @@ type BrowserReferenceHost = {
 
 type InstalledUi = { readonly html: string; readonly ui: { readonly csp: unknown } };
 
+export function validateInstalledUi(
+  response: Response,
+  payload: InstalledUi,
+  kind: string,
+): InstalledUi {
+  if (!response.ok) throw new Error(`Installed ${kind} returned ${response.status}`);
+  if (!payload.html || !payload.ui?.csp) throw new Error(`Installed ${kind} omitted UI metadata`);
+  return payload;
+}
+
+export function validateInspection(
+  response: Response,
+  envelope: { result?: unknown; error?: unknown },
+): unknown {
+  if (!response.ok) throw new Error(`Installed inspector tool returned ${response.status}`);
+  if (envelope.error !== undefined || envelope.result === undefined)
+    throw new Error('Installed inspector tool returned an error');
+  return envelope.result;
+}
+
 export async function assertInstalledAppsInChromium(
   installedUrl: string,
   panelUrl: string,
@@ -40,14 +60,17 @@ export async function assertInstalledAppsInChromium(
       throw new Error(`Installed shell JavaScript failed: ${shellErrors.join('; ')}`);
 
     const panelResponse = await fetch(panelUrl);
-    if (!panelResponse.ok) throw new Error(`Installed panel returned ${panelResponse.status}`);
-    const panelPayload = (await panelResponse.json()) as InstalledUi;
-    if (!panelPayload.html || !panelPayload.ui?.csp)
-      throw new Error('Installed panel omitted UI metadata');
+    const panelPayload = validateInstalledUi(
+      panelResponse,
+      (await panelResponse.json()) as InstalledUi,
+      'panel',
+    );
     const inspectorResponse = await fetch(inspectorUrl);
-    if (!inspectorResponse.ok)
-      throw new Error(`Installed inspector returned ${inspectorResponse.status}`);
-    const inspectorPayload = (await inspectorResponse.json()) as InstalledUi;
+    const inspectorPayload = validateInstalledUi(
+      inspectorResponse,
+      (await inspectorResponse.json()) as InstalledUi,
+      'inspector',
+    );
     const inspectionResponse = await fetch(`${installedUrl}/bureau/mcp`, {
       method: 'POST',
       headers: {
@@ -62,14 +85,11 @@ export async function assertInstalledAppsInChromium(
         params: { name: 'bureau.tasks.inspect', arguments: { taskId: runId } },
       }),
     });
-    if (!inspectionResponse.ok)
-      throw new Error(`Installed inspector tool returned ${inspectionResponse.status}`);
     const inspectionEnvelope = (await inspectionResponse.json()) as {
       result?: unknown;
       error?: unknown;
     };
-    if (inspectionEnvelope.error !== undefined || inspectionEnvelope.result === undefined)
-      throw new Error('Installed inspector tool returned an error');
+    const inspection = validateInspection(inspectionResponse, inspectionEnvelope);
 
     await page.route('http://reference-host.test/', (route) =>
       route.fulfill({
@@ -100,15 +120,15 @@ export async function assertInstalledAppsInChromium(
       (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost.teardown(),
     );
     await page.evaluate(
-      async ({ html, csp, inspection, run }) => {
+      async ({ html, csp, inspection: inspectionValue, run }) => {
         const host = (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost;
-        host.handlers['bureau.tasks.inspect'] = () => inspection;
+        host.handlers['bureau.tasks.inspect'] = () => inspectionValue;
         return host.mount(html, csp, { taskId: run });
       },
       {
         html: inspectorPayload.html,
         csp: inspectorPayload.ui.csp,
-        inspection: inspectionEnvelope.result,
+        inspection,
         run: runId,
       },
     );
