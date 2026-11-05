@@ -3003,7 +3003,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     current: undefined,
   };
   let childTopologyForWait: ChildTopology | undefined;
-  const childWaitServices = new Map<string, DurableRunDeps>();
   function configureChildWaitServices(services: DurableRunDeps, principal: string): void {
     services.deferredChildCallIds ??= new Set<string>();
     services.childWaitPrincipal = principal;
@@ -3077,8 +3076,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
-      configureDurableRun: (runId, services, principal) => {
-        childWaitServices.set(runId, services);
+      configureDurableRun: (_runId, services, principal) => {
         configureChildWaitServices(services, principal);
       },
       // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
@@ -22480,8 +22478,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (shutdownPromise) return;
         void childTopology.parentCancelled(runId, reason);
       },
-      configureDurableRun: (runId, services, principal) => {
-        childWaitServices.set(runId, services);
+      configureDurableRun: (_runId, services, principal) => {
         configureChildWaitServices(services, principal);
       },
     });

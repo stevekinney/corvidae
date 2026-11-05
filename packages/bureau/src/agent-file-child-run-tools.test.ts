@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MemoryStorage } from '@lostgradient/storage';
-import type { GenerateFunction } from '@lostgradient/operative';
+import type { GenerateContext, GenerateFunction } from '@lostgradient/operative';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { createTool, type Tool, type ToolContext } from 'armorer';
+import { createTool, type Tool } from 'armorer';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -88,7 +88,7 @@ async function open(options: {
   const parentText = agentFileText({
     model: KNOWN_MODEL,
     tools:
-      '[bureau:discover-agents, bureau:child-runs-dispatch, bureau:child-runs-list, bureau:child-runs-get, bureau:child-runs-cancel]',
+      '[bureau:discover-agents, bureau:child-runs-dispatch, bureau:child-runs-list, bureau:child-runs-get, bureau:child-runs-wait, bureau:child-runs-cancel]',
     ...(options.childAgents === undefined ? {} : { childAgents: options.childAgents }),
   }).replace('---\n', `---\n${approval}`);
   await writeFile(join(directory, 'parent.md'), parentText);
@@ -358,7 +358,7 @@ describe('registered child-run tools on file agents', () => {
   it('raises approval for a mutating tool after a real child was dispatched', async () => {
     let dispatched = false;
     let canceledChildRunId: string | undefined;
-    let ownerContext: ToolContext | undefined;
+    let ownerContext: GenerateContext | undefined;
     const { bureau } = await open({
       childAgents: '[worker]',
       rootAuthority: { levels: 2, concurrentChildren: 4 },
