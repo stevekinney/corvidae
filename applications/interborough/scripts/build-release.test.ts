@@ -24,7 +24,8 @@ async function releaseFixture(
       | 'missing-inspector'
       | 'not-running'
       | 'missing-contribution'
-      | 'malformed-html';
+      | 'malformed-html'
+      | 'poll-error';
     readonly markerPath?: string;
   } = {},
 ) {
@@ -92,6 +93,7 @@ if (marker) {
     process.exit(0);
   });
 }
+if (behavior === 'poll-error') await Bun.sleep(100);
 const server = Bun.serve({ port, fetch(request) {
   const pathname = new URL(request.url).pathname;
   if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: behavior === 'not-running' ? 'stopped' : 'running', contributions: behavior === 'missing-contribution' ? [] : [{ kind: 'mcp-app', id: 'runtime-proof:external-proof' }] }] });
@@ -307,6 +309,28 @@ describe('release arguments', () => {
     await expectRelocatedFailure('not-running', 'did not run');
     await expectRelocatedFailure('missing-contribution', 'did not register');
     await expectRelocatedFailure('malformed-html', 'did not contain its generated page');
+  });
+
+  test('retries when the relocated supervisor has not bound its port', async () => {
+    const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
+    const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'poll-error' });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-poll-error-'));
+    let clock = 0;
+    try {
+      const archive = await buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+        ...fixture.operations,
+        now: () => clock,
+        sleep: async () => {
+          await Bun.sleep(10);
+          clock += 100;
+        },
+      });
+      expect(await Bun.file(archive).exists()).toBe(true);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+      await rm(marker, { force: true });
+    }
   });
 
   test('rejects a dependency absent from the frozen production install', async () => {
