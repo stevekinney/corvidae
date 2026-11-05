@@ -287,13 +287,12 @@ async function peerApprovalRecoveryScenario(
         const rawAsset = await assetFixture?.storage.get(KEYS.record(assetId!));
         expect(rawAsset).not.toBeNull();
         const ownerId = (JSON.parse(rawAsset as string) as { ownerId: string }).ownerId;
-        expect(await recoverer.assets?.inspect(assetId!, { id: ownerId })).toMatchObject({
-          owner: ownerId,
+        expect(ownerId).toBe('alice');
+        expect(await recoverer.assets?.inspect(assetId!, { id: 'alice' })).toMatchObject({
+          owner: 'alice',
           state: 'available',
         });
-        const foreign = await rejectionOf(
-          recoverer.assets!.inspect(assetId!, { id: 'foreign-principal' }),
-        );
+        const foreign = await rejectionOf(recoverer.assets!.inspect(assetId!, { id: 'bob' }));
         expect(foreign).toBeInstanceOf(Error);
         expect(JSON.stringify(session?.conversationHistory)).not.toContain(
           base64Of(pngBytes(2, 2)),
