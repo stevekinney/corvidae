@@ -84,6 +84,35 @@ describe('the operations list', () => {
     });
   });
 
+  it('allows a writer-only API key to cancel, while read-only and foreign keys cannot', async () => {
+    const served = await serve();
+    await seed(served);
+    const writer = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'workflows-writer-key',
+    );
+    expect(writer.error).toBeUndefined();
+    expect(writer.result).toMatchObject({ runId: 'digest-run', status: 'cancel-requested' });
+
+    const reader = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'workflows-reader-key',
+    );
+    expect(reader.error?.data?.httpStatus).toBe(404);
+
+    const foreign = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'alice-key',
+    );
+    expect(foreign.error?.data?.httpStatus).toBe(404);
+  });
+
   it('denies an A2A request at the HTTP boundary without trusting a caller-supplied owner', async () => {
     const served = await serve();
     await seed(served);

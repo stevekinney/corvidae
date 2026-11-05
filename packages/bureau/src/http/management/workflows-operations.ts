@@ -961,7 +961,15 @@ export const workflowsRunsCancelOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'run', input.runId);
+    const workflows = workflowsFor(
+      host,
+      principal,
+      principal.method === 'unauthenticated' || principal.workspace === undefined
+        ? 'bureau.workflows:write'
+        : 'bureau.workflows:read',
+      'run',
+      input.runId,
+    );
     if (
       principal.method !== 'unauthenticated' &&
       principal.workspace !== undefined &&
