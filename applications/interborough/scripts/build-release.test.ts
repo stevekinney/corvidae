@@ -193,9 +193,9 @@ async function expectRelocatedFailure(
 describe('release arguments', () => {
   test('runs the default command and reports failures', async () => {
     await runCommand([process.execPath, '-e', 'process.stdout.write("ok")']);
-    await expect(runCommand([process.execPath, '-e', 'process.stderr.write("bad"); process.exit(3)'])).rejects.toThrow(
-      'failed (3): bad',
-    );
+    await expect(
+      runCommand([process.execPath, '-e', 'process.stderr.write("bad"); process.exit(3)']),
+    ).rejects.toThrow('failed (3): bad');
   });
   test('requires a semver and output directory', () => {
     expect(parseReleaseArguments(['--version', '1.2.3', '--outdir', '/tmp/release'])).toEqual({
@@ -293,9 +293,9 @@ describe('release arguments', () => {
     const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'wrong-link' });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-wrong-link-'));
     try {
-      await expect(buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations)).rejects.toThrow(
-        'targets the wrong runtime',
-      );
+      await expect(
+        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+      ).rejects.toThrow('targets the wrong runtime');
       expect(await Bun.file(marker).text()).toBe('terminated');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
