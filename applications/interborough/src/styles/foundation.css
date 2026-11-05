@@ -81,7 +81,9 @@
 
 .weft-shell-sidebar-slot[data-mode='rail'] {
   position: relative;
-  display: block;
+  /* A flex row, so the rail stretches the page's full height and System stays pinned to the
+   * bottom (design row 04a); a block slot would leave it as tall as its content. */
+  display: flex;
   flex: none;
   inline-size: 3.5rem;
 }
@@ -309,6 +311,10 @@
     margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;
+    /* An icon button like the bell and the sliders beside it, so it rests bare (design row 04e);
+     * the resting fill and rule belong to the wide field. */
+    background: transparent;
+    border-color: transparent;
   }
 
   .weft-shell-search-trigger__kbd {

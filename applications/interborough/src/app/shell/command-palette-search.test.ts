@@ -558,6 +558,47 @@ describe('searchConsole by kind and scope', () => {
     }
   });
 
+  test('names a schedule by its description or what it starts, never by its identifier', async () => {
+    const restore = noAgents();
+    try {
+      const client = {
+        listSchedules: async () => ({
+          items: [
+            {
+              id: 'bureau-workflow-schedule:order-refund:1',
+              workflowType: 'order-refund',
+              description: 'Weekly refund audit',
+            },
+            { id: 'bureau-workflow-schedule:refund-digest:1', workflowType: 'refund-digest' },
+          ],
+        }),
+      } as unknown as HttpClient;
+      const results = await searchConsole(client, 'refund', {
+        scheduleReadGate: OPEN,
+        workflowReadGate: LOCKED,
+        reviewReadGate: LOCKED,
+        systemReadGate: LOCKED,
+        readTools: async () => [],
+      });
+
+      expect(results.schedules.map((schedule) => schedule.name)).toEqual([
+        'Weekly refund audit',
+        'Schedule for refund-digest',
+      ]);
+      expect(results.schedules.map((schedule) => schedule.identifiers)).toEqual([
+        [],
+        ['refund-digest'],
+      ]);
+      // The type shows beside a description, and not beside a name that already says it.
+      expect(results.schedules.map((schedule) => schedule.workflowTypeShown)).toEqual([
+        'order-refund',
+        null,
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
   test('reads no workflow, run, review or worker without the scope that lets it', async () => {
     const restore = noAgents();
     const reads: string[] = [];

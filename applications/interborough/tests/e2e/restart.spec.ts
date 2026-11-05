@@ -134,6 +134,61 @@ async function captureAtBothWidths(page: Page, route: string, state: string) {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
+/**
+ * Stands in for the host while Settings restarts it: the sample world holds one change that waits
+ * for a restart, the host goes `down` when asked, and answers again only when the test calls
+ * `comeBack`.
+ */
+async function installSettingsHost(page: Page) {
+  let state: HostState = 'up';
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { method?: string } | null;
+    if (body?.method !== 'bureau.settings.get') {
+      await route.continue();
+      return;
+    }
+    if (state === 'down') {
+      await route.abort('connectionfailed');
+      return;
+    }
+    // The sample world holds the one change that waits for a restart.
+    const response = await route.fetch();
+    const answer = (await response.json()) as {
+      result: { keys: Record<string, { pendingRestart: boolean }> };
+    };
+    const key = answer.result.keys[SETTINGS_KEY];
+    if (key !== undefined) key.pendingRestart = state === 'up';
+    await route.fulfill({ response, json: answer });
+  });
+  await page.route('**/host/restart', async (route) => {
+    if (route.request().method() === 'POST') {
+      state = 'down';
+      await route.fulfill({ status: 202, json: { restarting: true } });
+      return;
+    }
+    await route.fulfill({
+      json: { available: true, launch: { command: 'bun run start', directory: '/home' } },
+    });
+  });
+  return {
+    comeBack: () => {
+      state = 'back';
+    },
+  };
+}
+
+/** Opens Settings, and restarts the host through the summary's button and its confirmation. */
+async function restartFromSettings(page: Page) {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${E2E_SHOWCASE_URL}/settings`);
+  const summary = page.getByTestId('settings-restart-summary');
+  await summary.getByRole('button', { name: RESTART_COPY.confirm.confirm }).click();
+  const question = page.getByRole('dialog', { name: RESTART_COPY.confirm.title });
+  await expect(question).toContainText(RESTART_COPY.confirm.description(1));
+  await question.getByRole('button', { name: RESTART_COPY.confirm.confirm }).click();
+  return summary;
+}
+
 test.describe('Restart', () => {
   test('Disable · failed: says Interborough did not come back, then Keep waiting and the host back up say what became of Web search', async ({
     page,
@@ -187,6 +242,36 @@ test.describe('Restart', () => {
     await expect(back).toHaveCount(0);
   });
 
+  test('Restart · failed: after 8 tries the dialog says Your change was saved, what to check, the launch command and Keep waiting', async ({
+    page,
+    pageErrors,
+  }) => {
+    pageErrors.expectEvery({
+      pattern: /net::ERR_CONNECTION_FAILED/,
+      reason: 'the test holds the host down, so every read of its settings fails',
+    });
+    await page.clock.install();
+    await installSettingsHost(page);
+    await restartFromSettings(page);
+
+    const failed = await untilPhase(page, 'failed');
+    await expect(failed.getByRole('heading')).toHaveText('Interborough didn’t come back');
+    await expect(failed).toContainText(
+      'It didn’t answer after 8 tries. Your change was saved before it stopped, so they apply once it starts.',
+    );
+    await expect(failed).toContainText('What to check');
+    await expect(failed).toContainText(RESTART_COPY.failed.check);
+    await expect(failed.getByText('Show the error details')).toBeVisible();
+    // Row 47y: "Start it again from the terminal", the exact command and Copy.
+    await expect(failed).toContainText('Start it again from the terminal');
+    await expect(failed.locator('.cinder-restart-state__command-text')).toHaveText('bun run start');
+    await expect(failed.getByRole('button', { name: 'Copy' })).toBeVisible();
+    // Row 47z: Keep waiting is the one primary, and there is no way to restart from here.
+    await expect(failed.getByRole('button', { name: 'Keep waiting' })).toBeVisible();
+    await expect(failed.getByRole('button', { name: /restart/i })).toHaveCount(0);
+    await captureAtBothWidths(page, '/settings', 'settings-restart-failed');
+  });
+
   test('Restart · back up: Settings says what applied once Interborough is back', async ({
     page,
     pageErrors,
@@ -196,47 +281,11 @@ test.describe('Restart', () => {
       reason: 'the test holds the host down until it comes back, so reads of its settings fail',
     });
     await page.clock.install();
-    let state: HostState = 'up';
-    await page.route('**/bureau/jsonrpc', async (route) => {
-      const body = route.request().postDataJSON() as { method?: string } | null;
-      if (body?.method !== 'bureau.settings.get') {
-        await route.continue();
-        return;
-      }
-      if (state === 'down') {
-        await route.abort('connectionfailed');
-        return;
-      }
-      // The sample world holds the one change that waits for a restart.
-      const response = await route.fetch();
-      const answer = (await response.json()) as {
-        result: { keys: Record<string, { pendingRestart: boolean }> };
-      };
-      const key = answer.result.keys[SETTINGS_KEY];
-      if (key !== undefined) key.pendingRestart = state === 'up';
-      await route.fulfill({ response, json: answer });
-    });
-    await page.route('**/host/restart', async (route) => {
-      if (route.request().method() === 'POST') {
-        state = 'down';
-        await route.fulfill({ status: 202, json: { restarting: true } });
-        return;
-      }
-      await route.fulfill({
-        json: { available: true, launch: { command: 'bun run start', directory: '/home' } },
-      });
-    });
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(`${E2E_SHOWCASE_URL}/settings`);
-
-    const summary = page.getByTestId('settings-restart-summary');
-    await summary.getByRole('button', { name: RESTART_COPY.confirm.confirm }).click();
-    const question = page.getByRole('dialog', { name: RESTART_COPY.confirm.title });
-    await expect(question).toContainText(RESTART_COPY.confirm.description(1));
-    await question.getByRole('button', { name: RESTART_COPY.confirm.confirm }).click();
+    const host = await installSettingsHost(page);
+    const summary = await restartFromSettings(page);
 
     await untilPhase(page, 'reconnecting');
-    state = 'back';
+    host.comeBack();
     const back = page.getByTestId('restart-back');
     await expect
       .poll(

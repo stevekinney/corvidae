@@ -33,10 +33,15 @@ import {
 } from '../../lib/bureau-client.ts';
 import { listTasks, type TaskState, type TaskView } from '../../lib/bureau-tasks.ts';
 import { scheduleDetailPath } from '../../lib/router.svelte.ts';
+import { kindOf, loadScheduleOverlay } from '../../lib/schedule-kinds.ts';
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 import type { ShortcutAction } from '../../lib/shortcuts.ts';
 import { taskStatusWord } from '../../lib/status.ts';
 import { loadCatalog, type CatalogRow } from '../../lib/workflow-catalog.ts';
+import {
+  scheduleName,
+  scheduleNameIdentifiers,
+} from '../../routes/schedules/schedule-presentation.ts';
 import { PALETTE_COPY, SHORTCUT_COPY } from '../copy.ts';
 import type { NotificationItem } from '../notifications.svelte.ts';
 
@@ -73,6 +78,18 @@ export interface RunMatch {
   readonly waiting: 'approval' | 'answer' | null;
 }
 
+/** One schedule the palette lists, named in the words the Schedules page uses for it. */
+export interface ScheduleMatch {
+  readonly id: string;
+  /** What the schedule is called: its description, else what it starts. Never its identifier. */
+  readonly name: string;
+  /** The parts of `name` that are identifiers, to be set in monospace. */
+  readonly identifiers: string[];
+  readonly workflowType: string;
+  /** The type the schedule starts, for the row's meta, or `null` when the name already says it. */
+  readonly workflowTypeShown: string | null;
+}
+
 export interface ConsoleSearchResults {
   readonly chats: ChatContext[];
   /** The Bureau's runs whose title, agent or identifier matches, most recently changed first. */
@@ -84,7 +101,7 @@ export interface ConsoleSearchResults {
   readonly definitions: CatalogRow[];
   /** Runs, by the start of their identifier. */
   readonly workflows: WorkflowSummary[];
-  readonly schedules: ScheduleSummary[];
+  readonly schedules: ScheduleMatch[];
   readonly workers: { id: string; queue: string }[];
   readonly reviews: ReviewListEntry[];
   /** The tools of the catalog whose name or description matches. */
@@ -110,6 +127,29 @@ export interface ConsoleSearchOptions {
   readonly readWorkflows?: (() => Promise<readonly CatalogRow[]>) | undefined;
   /** Reads the tools of the catalog, likewise. */
   readonly readTools?: (() => Promise<readonly CatalogTool[]>) | undefined;
+}
+
+/**
+ * A schedule as the palette lists it: named as the Schedules page names it (its description, else
+ * the agent or workflow it starts), never by its identifier. The type is shown beside the name only
+ * when the name does not already say it.
+ */
+export function scheduleMatch(
+  schedule: Pick<ScheduleSummary, 'id' | 'workflowType' | 'description'>,
+  overlay: Parameters<typeof kindOf>[1],
+): ScheduleMatch {
+  const kind = kindOf(schedule, overlay);
+  const identifiers = scheduleNameIdentifiers(schedule, kind);
+  return {
+    id: schedule.id,
+    name: scheduleName(schedule, kind),
+    identifiers,
+    workflowType: schedule.workflowType,
+    workflowTypeShown:
+      kind.kind === 'agent-run' || identifiers.includes(schedule.workflowType)
+        ? null
+        : schedule.workflowType,
+  };
 }
 
 /** Where a schedule's own page is. */
@@ -497,18 +537,24 @@ export async function searchConsole(
           )
         : Promise.resolve([] as WorkflowSummary[]),
       options.scheduleReadGate.disabled
-        ? Promise.resolve([] as ScheduleSummary[])
+        ? Promise.resolve([] as ScheduleMatch[])
         : reading(
             failed,
             groups.schedules,
-            client
-              .listSchedules({ limit: 100 })
-              .then((result) =>
+            client.listSchedules({ limit: 100 }).then((result) =>
+              loadScheduleOverlay(client).then((overlay) =>
                 result.items
-                  .filter((schedule) => containsQuery(query, schedule.id))
+                  .map((schedule) => scheduleMatch(schedule, overlay))
+                  .filter(
+                    (schedule) =>
+                      containsQuery(query, schedule.name) ||
+                      containsQuery(query, schedule.id) ||
+                      containsQuery(query, schedule.workflowType),
+                  )
                   .slice(0, RESULTS_PER_GROUP),
               ),
-            [] as ScheduleSummary[],
+            ),
+            [] as ScheduleMatch[],
           ),
       systemGate.disabled
         ? Promise.resolve([] as { id: string; queue: string }[])

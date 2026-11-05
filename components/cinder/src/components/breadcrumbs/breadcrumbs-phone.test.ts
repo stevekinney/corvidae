@@ -141,7 +141,23 @@ describe('Breadcrumbs phone form', () => {
       /\.cinder-breadcrumbs__back\s*\{[^}]*min-block-size:\s*var\(--cinder-touch-target-min\)/,
     );
     expect(stylesheet).toMatch(
-      /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 1 auto/,
+      /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 100 auto/,
+    );
+  });
+
+  test('the back link is not capped, so the current page truncates before the parent does', () => {
+    const rule = /\.cinder-breadcrumbs__back\s*\{([^}]*)\}/.exec(stylesheet)?.[1] ?? '';
+    expect(rule).toMatch(/flex:\s*0 1 auto/);
+    expect(rule).not.toMatch(/max-inline-size/);
+  });
+
+  test('on a tablet trail the current crumb shrinks before any ancestor does', () => {
+    const shrink = (selector: RegExp): number =>
+      Number(
+        new RegExp(`${selector.source}\\s*\\{[^}]*flex-shrink:\\s*(\\d+)`).exec(stylesheet)?.[1],
+      );
+    expect(shrink(/\.cinder-breadcrumbs__item:last-child/)).toBeGreaterThan(
+      shrink(/\.cinder-breadcrumbs__item/),
     );
   });
 });

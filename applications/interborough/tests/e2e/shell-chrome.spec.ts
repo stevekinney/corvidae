@@ -224,6 +224,9 @@ test.describe('on a tablet with a fine pointer', () => {
   }) => {
     await open(page, '/health', 768);
     await expectWidth(sidebar(page), 56);
+    // The rail runs the page's full height, so Settings is pinned to the bottom (04a).
+    const rail = await boxOf(sidebar(page));
+    expect(rail.y + rail.height).toBeGreaterThanOrEqual(page.viewportSize()!.height - 1);
     await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
     const outletBefore = await boxOf(page.locator('main.weft-shell-outlet'));
     await expect(
@@ -351,12 +354,39 @@ test.describe('on a phone', () => {
   }) => {
     await open(page, '/agents/demo:assistant/memories', 375, 812, false);
     const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
-    await expect(trail.getByRole('link', { name: /Back to/ })).toBeVisible();
+    const back = trail.getByRole('link', { name: /Back to/ });
+    await expect(back).toBeVisible();
+    // The leaf truncates first (04f): the parent's label is cut only when the current page is cut
+    // too, never while the current page still shows whole.
+    const cut = (locator: Locator) =>
+      locator.evaluate((element) => element.scrollWidth > element.clientWidth);
+    if (await cut(back.locator('.cinder-breadcrumbs__back-label'))) {
+      expect(await cut(trail.locator('[aria-current="page"]'))).toBe(true);
+    }
     await captureForDesignReview(page, {
       route: '/agents/:agent/memories',
       state: 'back button',
       source: SOURCE,
     });
+  });
+
+  test('on a tablet the current page gives way before the ancestor does, so Runs is never cut to nothing (03l)', async ({
+    page,
+  }) => {
+    await open(page, '/runs', 768);
+    // A run's identifier is long, so its page has the trail's longest leaf.
+    const href = await page.locator('main a[href^="/runs/run-"]').first().getAttribute('href');
+    await page.goto(href ?? '/runs');
+    const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
+    const runs = trail.getByRole('link', { name: 'Runs' });
+    await expect(runs).toBeVisible();
+    expect(await runs.evaluate((link) => link.scrollWidth <= link.clientWidth)).toBe(true);
+    // The leaf is the one that ends in an ellipsis, and it starts inside the trail.
+    const leaf = trail.locator('[aria-current="page"]');
+    expect(await leaf.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    const leafBox = await boxOf(leaf);
+    const trailBox = await boxOf(trail);
+    expect(leafBox.x).toBeGreaterThanOrEqual(trailBox.x);
   });
 
   test('an ancestor that cannot show its first word folds into a "…" menu (S18)', async ({

@@ -1,8 +1,10 @@
 <script lang="ts">
   /**
    * ⌘K search over everything the console holds, and the actions it can run, in one order: what is
-   * waiting on the person, then chats, runs and workflows (with schedules, workers and reviews by
-   * id), then agents and tools under one heading, then the actions with their shortcuts. A query
+   * waiting on the person, then chats, runs, then agents and tools under one heading, then the
+   * workflows, schedules, workers and reviews that match (the board's order is waiting, chats, runs,
+   * agents and tools, actions; these are the kinds it does not draw, so they sit between the last two
+   * and never between its own), then the actions with their shortcuts. A query
    * that starts with `>` is for actions only, and one that starts with `@` for agents only.
    * Choosing a result opens that record, not the collection it belongs to.
    *
@@ -38,6 +40,7 @@
   import type { Snippet } from 'svelte';
 
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import IdentifierText from '../../lib/identifier-text.svelte';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
@@ -298,72 +301,6 @@
       {/snippet}
       {@render section(PALETTE_COPY.groups.runs, runRows)}
     {/if}
-    {#if shown.definitions.length > 0}
-      {#snippet definitionRows()}
-        {#each shown.definitions as workflow (workflow.name)}
-          <CommandItem
-            value={`definition-${workflow.name}`}
-            accessibleLabel={workflow.description === null
-              ? workflow.name
-              : `${workflow.name}, ${workflow.description}`}
-            onSelect={() => goTo(workflowTypePath(workflow.name))}
-          >
-            <code class="ib-identifier">{workflow.name}</code>
-            {#snippet leading()}<Workflow />{/snippet}
-            {#snippet meta()}{#if workflow.description !== null}{workflow.description}{/if}{/snippet}
-          </CommandItem>
-        {/each}
-      {/snippet}
-      {@render section(PALETTE_COPY.groups.workflows, definitionRows)}
-    {/if}
-    {#if shown.schedules.length > 0}
-      {#snippet scheduleRows()}
-        {#each shown.schedules as schedule (schedule.id)}
-          <CommandItem
-            value={`schedule-${schedule.id}`}
-            accessibleLabel={`${schedule.id}, ${schedule.workflowType}`}
-            onSelect={() => goTo(schedulePath(schedule.id))}
-          >
-            <code class="ib-identifier">{schedule.id}</code>
-            {#snippet leading()}<CalendarClock />{/snippet}
-            {#snippet meta()}<code class="ib-identifier">{schedule.workflowType}</code>{/snippet}
-          </CommandItem>
-        {/each}
-      {/snippet}
-      {@render section(PALETTE_COPY.groups.schedules, scheduleRows)}
-    {/if}
-    {#if shown.workers.length > 0}
-      {#snippet workerRows()}
-        {#each shown.workers as worker (worker.id)}
-          <CommandItem
-            value={`worker-${worker.id}`}
-            accessibleLabel={`${worker.id}, ${worker.queue}`}
-            onSelect={() => goTo(workerPath(worker.id))}
-          >
-            <code class="ib-identifier">{worker.id}</code>
-            {#snippet leading()}<Cpu />{/snippet}
-            {#snippet meta()}<code class="ib-identifier">{worker.queue}</code>{/snippet}
-          </CommandItem>
-        {/each}
-      {/snippet}
-      {@render section(PALETTE_COPY.groups.workers, workerRows)}
-    {/if}
-    {#if shown.reviews.length > 0}
-      {#snippet reviewRows()}
-        {#each shown.reviews as review (review.reviewId)}
-          <CommandItem
-            value={`review-${review.reviewId}`}
-            accessibleLabel={`${review.reviewId}, ${review.reviewType}`}
-            onSelect={() => goTo('/reviews')}
-          >
-            <code class="ib-identifier">{review.reviewId}</code>
-            {#snippet leading()}<Inbox />{/snippet}
-            {#snippet meta()}{review.reviewType}{/snippet}
-          </CommandItem>
-        {/each}
-      {/snippet}
-      {@render section(PALETTE_COPY.groups.reviews, reviewRows)}
-    {/if}
     {#if shown.agents.length > 0 || shown.tools.length > 0}
       {#snippet agentAndToolRows()}
         {#each shown.agents as agent (agent.name)}
@@ -405,6 +342,76 @@
         {/each}
       {/snippet}
       {@render section(PALETTE_COPY.groups.agentsAndTools, agentAndToolRows)}
+    {/if}
+    {#if shown.definitions.length > 0}
+      {#snippet definitionRows()}
+        {#each shown.definitions as workflow (workflow.name)}
+          <CommandItem
+            value={`definition-${workflow.name}`}
+            accessibleLabel={workflow.description === null
+              ? workflow.name
+              : `${workflow.name}, ${workflow.description}`}
+            onSelect={() => goTo(workflowTypePath(workflow.name))}
+          >
+            <code class="ib-identifier">{workflow.name}</code>
+            {#snippet leading()}<Workflow />{/snippet}
+            {#snippet meta()}{#if workflow.description !== null}{workflow.description}{/if}{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.workflows, definitionRows)}
+    {/if}
+    {#if shown.schedules.length > 0}
+      {#snippet scheduleRows()}
+        {#each shown.schedules as schedule (schedule.id)}
+          <CommandItem
+            value={`schedule-${schedule.id}`}
+            accessibleLabel={schedule.workflowTypeShown === null
+              ? schedule.name
+              : `${schedule.name}, ${schedule.workflowTypeShown}`}
+            onSelect={() => goTo(schedulePath(schedule.id))}
+          >
+            <IdentifierText text={schedule.name} identifiers={schedule.identifiers} />
+            {#snippet leading()}<CalendarClock />{/snippet}
+            {#snippet meta()}{#if schedule.workflowTypeShown !== null}<code class="ib-identifier"
+                  >{schedule.workflowTypeShown}</code
+                >{/if}{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.schedules, scheduleRows)}
+    {/if}
+    {#if shown.workers.length > 0}
+      {#snippet workerRows()}
+        {#each shown.workers as worker (worker.id)}
+          <CommandItem
+            value={`worker-${worker.id}`}
+            accessibleLabel={`${worker.id}, ${worker.queue}`}
+            onSelect={() => goTo(workerPath(worker.id))}
+          >
+            <code class="ib-identifier">{worker.id}</code>
+            {#snippet leading()}<Cpu />{/snippet}
+            {#snippet meta()}<code class="ib-identifier">{worker.queue}</code>{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.workers, workerRows)}
+    {/if}
+    {#if shown.reviews.length > 0}
+      {#snippet reviewRows()}
+        {#each shown.reviews as review (review.reviewId)}
+          <CommandItem
+            value={`review-${review.reviewId}`}
+            accessibleLabel={`${review.reviewId}, ${review.reviewType}`}
+            onSelect={() => goTo('/reviews')}
+          >
+            <code class="ib-identifier">{review.reviewId}</code>
+            {#snippet leading()}<Inbox />{/snippet}
+            {#snippet meta()}{review.reviewType}{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.reviews, reviewRows)}
     {/if}
     {#if actions.length > 0 || shown.newChats.length > 0 || topic !== undefined}
       {#snippet actionRows()}

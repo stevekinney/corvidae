@@ -240,7 +240,8 @@ describe('the command palette', () => {
   });
 
   test('opens the selected schedule, not the list of schedules', async () => {
-    await choose('schedule-7', /^schedule-7/);
+    // A schedule is named in words, not by its identifier (design row 03g); it is still found by it.
+    await choose('schedule-7', /^Schedule for order/);
     await waitFor(() => expect(router.pathname).toBe(schedulePath('schedule-7')));
   });
 
@@ -448,7 +449,7 @@ describe('every kind of result, in order', () => {
     await waitFor(() => expect(router.pathname).toBe('/chats/session-refund'));
   });
 
-  test('groups a search for "refund" as waiting, chats, runs, workflows, agents and tools, then actions', async () => {
+  test('groups a search for "refund" as waiting, chats, runs, agents and tools, workflows, then actions', async () => {
     const store = memoryStore();
     store.setActivity([WAITING]);
     const { registry } = shellRegistry();
@@ -456,13 +457,14 @@ describe('every kind of result, in order', () => {
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
 
     await waitFor(() => expect(groups(view)).toContain('Agents and tools'));
-    // The five groups of row 03g keep their order; the workflow type sits between runs and tools.
+    // The five groups of row 03g keep their order; the workflow type, which the board does not
+    // draw, sits after them and before the actions, never between two of the board's groups.
     expect(groups(view)).toEqual([
       'Waiting on you',
       'Chats',
       'Runs',
-      'Workflows',
       'Agents and tools',
+      'Workflows',
       'Actions',
     ]);
     const label = (index: number) => view.getAllByRole('option')[index]?.getAttribute('aria-label');

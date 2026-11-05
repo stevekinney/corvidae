@@ -23,7 +23,7 @@
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
  *
  * `--data` chooses the content: `showcase` runs only the showcase specifications, `stress` runs the
- * responsive and view-states specifications, and `both` (the default) runs all six. `--specs`
+ * responsive and view-states specifications, and `both` (the default) runs every one of them. `--specs`
  * narrows the stress data to one of its two specifications, so it means `--data stress` when
  * `--data` is not given, and is refused with `--data showcase`.
  *
@@ -52,13 +52,16 @@ const SPECIFICATIONS = {
 
 /**
  * The specifications that hold believable content, which `--data showcase` runs alone: every route
- * on the sample world, the shell's chrome in each form it takes and each width it is drawn at, and
- * Home on a fresh installation (`first-run.spec.ts`, whose own host holds no provider, agent or chat).
+ * on the sample world, the shell's chrome in each form it takes and each width it is drawn at, its
+ * search, its not-found and forbidden pages, the restart flow (the failed dialog and the back-up
+ * confirmations), and Home on a fresh installation (`first-run.spec.ts`, whose own host holds no provider, agent or chat).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/showcase.spec.ts',
   'tests/e2e/shell-chrome.spec.ts',
   'tests/e2e/shell-search.spec.ts',
+  'tests/e2e/shell-states.spec.ts',
+  'tests/e2e/restart.spec.ts',
   'tests/e2e/first-run.spec.ts',
 ] as const;
 
