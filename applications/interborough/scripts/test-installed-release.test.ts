@@ -1,5 +1,6 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -53,40 +54,48 @@ describe('installed-release harness arguments', () => {
   });
 
   test('covers MCP JSON, SSE, HTTP, and malformed responses', async () => {
-    const request = async (_url: string, _init?: RequestInit) =>
+    const request = async (_url: string | URL | Request, _init?: RequestInit) =>
       new Response('{"result":{"ok":true}}', { status: 200 });
-    await expect(mcp('http://host', 1, 'tools/list', {}, request)).resolves.toEqual({
+    expect(await mcp('http://host', 1, 'tools/list', {}, request)).toEqual({
       result: { ok: true },
     });
-    await expect(
-      mcp(
+    expect(
+      await mcp(
         'http://host',
         1,
         'tools/list',
         {},
         async () => new Response('data: {"result":{"ok":true}}\n\n', { status: 200 }),
       ),
-    ).resolves.toEqual({ result: { ok: true } });
-    await expect(
-      mcp('http://host', 1, 'tools/list', {}, async () => new Response('no', { status: 500 })),
-    ).rejects.toThrow('returned 500');
-    await expect(
-      mcp('http://host', 1, 'tools/list', {}, async () => new Response('no', { status: 200 })),
-    ).rejects.toThrow('no JSON');
+    ).toEqual({ result: { ok: true } });
+    expect(
+      await throwingRejectionOf(
+        mcp('http://host', 1, 'tools/list', {}, async () => new Response('no', { status: 500 })),
+      ),
+    ).toThrow('returned 500');
+    expect(
+      await throwingRejectionOf(
+        mcp('http://host', 1, 'tools/list', {}, async () => new Response('no', { status: 200 })),
+      ),
+    ).toThrow('no JSON');
   });
 
   test('covers fixture agent success, HTTP failure, and malformed RUN_STARTED', async () => {
     const request = async () =>
       new Response('data: {"type":"RUN_STARTED","runId":"run-1"}\n\n', { status: 200 });
-    await expect(runFixtureAgent('http://host', request)).resolves.toMatchObject({
+    expect(await runFixtureAgent('http://host', request)).toMatchObject({
       runId: 'run-1',
     });
-    await expect(
-      runFixtureAgent('http://host', async () => new Response('failed', { status: 503 })),
-    ).rejects.toThrow('did not start');
-    await expect(
-      runFixtureAgent('http://host', async () => new Response('data: {}\n\n', { status: 200 })),
-    ).rejects.toThrow('RUN_STARTED');
+    expect(
+      await throwingRejectionOf(
+        runFixtureAgent('http://host', async () => new Response('failed', { status: 503 })),
+      ),
+    ).toThrow('did not start');
+    expect(
+      await throwingRejectionOf(
+        runFixtureAgent('http://host', async () => new Response('data: {}\n\n', { status: 200 })),
+      ),
+    ).toThrow('RUN_STARTED');
   });
 
   test('covers readiness success, child exit, and HTTP timeout branches', async () => {
@@ -96,15 +105,52 @@ describe('installed-release harness arguments', () => {
       stdout: Promise.resolve(''),
       stderr: Promise.resolve(''),
     };
-    await expect(waitForListening(readyProbe)).resolves.toMatchObject({ port: 43210 });
+    expect(await waitForListening(readyProbe)).toMatchObject({ port: 43210 });
     const exitedProbe = {
       process: { exitCode: 1 } as ReturnType<typeof Bun.spawn>,
       output: () => 'failed',
       stdout: Promise.resolve(''),
       stderr: Promise.resolve('stderr'),
     };
-    await expect(waitForListening(exitedProbe)).rejects.toThrow('exited 1');
-    await expect(waitForHttp('http://127.0.0.1:9', 0)).rejects.toThrow('Timed out');
+    expect(await throwingRejectionOf(waitForListening(exitedProbe))).toThrow('exited 1');
+    expect(await throwingRejectionOf(waitForHttp('http://127.0.0.1:9', 0))).toThrow('Timed out');
+  });
+
+  test('waits for HTTP readiness and times out without draining a live child', async () => {
+    let requests = 0;
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      routes: {
+        '/': () =>
+          new Response(++requests === 1 ? 'pending' : 'ready', {
+            status: requests === 1 ? 503 : 200,
+          }),
+        '/pending': new Response('pending', { status: 503 }),
+      },
+    });
+    try {
+      const ready = await waitForHttp(`http://127.0.0.1:${server.port}`);
+      expect(ready.status).toBe(200);
+      expect(
+        await throwingRejectionOf(waitForHttp(`http://127.0.0.1:${server.port}/pending`, 0)),
+      ).toThrow('Timed out');
+      expect(
+        await throwingRejectionOf(
+          waitForListening(
+            {
+              process: { exitCode: null } as ReturnType<typeof Bun.spawn>,
+              output: () => '',
+              stdout: Promise.resolve(''),
+              stderr: new Promise(() => {}),
+            },
+            0,
+          ),
+        ),
+      ).toThrow('did not listen');
+    } finally {
+      await server.stop(true);
+    }
   });
 
   test('covers installed UI and inspection validation success/error branches', () => {
@@ -144,11 +190,12 @@ describe('installed-release harness arguments', () => {
               recursive: true,
             });
             await writeFile(executable, 'fixture');
-            return executable;
+            return { executable, sha256: 'fixture-hash' };
           },
           runInstalled: async (executable, prefix, relocated) => {
             await mkdir(`${prefix}/home/plugins`, { recursive: true });
             calls.push(`${relocated ? 'relocated' : 'initial'}:${executable}:${prefix}`);
+            return [];
           },
         },
       );
@@ -175,15 +222,47 @@ describe('installed-release harness arguments', () => {
       output: () => '',
     };
     try {
-      await expect(
-        runInstalled('/bin/true', root, false, 0, root, {
-          spawn: () => probe,
-          waitForListening: async () => ({ port: 43123, text: 'listening' }),
-          waitForHttp: async () => {
-            throw new Error('shell readiness failed');
-          },
-        }),
-      ).rejects.toThrow('shell readiness failed');
+      expect(
+        await throwingRejectionOf(
+          runInstalled('/bin/true', root, false, 0, root, {
+            spawn: () => probe,
+            waitForListening: async () => ({ port: 43123, text: 'listening' }),
+            waitForHttp: async () => {
+              throw new Error('shell readiness failed');
+            },
+          }),
+        ),
+      ).toThrow('shell readiness failed');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('creates the real fixture and exercises the default process spawn', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'installed-release-default-process-'));
+    const executable = join(root, 'bin', 'interborough');
+    try {
+      await mkdir(join(root, 'share/interborough/plugin-runtime/node_modules'), {
+        recursive: true,
+      });
+      await mkdir(join(root, 'bin'), { recursive: true });
+      await writeFile(
+        executable,
+        '#!/bin/sh\necho "Interborough is listening on http://127.0.0.1:43124"\n',
+      );
+      await chmod(executable, 0o755);
+      expect(
+        await throwingRejectionOf(
+          runInstalled(executable, root, false, 0, undefined, {
+            waitForHttp: async () => {
+              throw new Error('fixture startup ended');
+            },
+          }),
+        ),
+      ).toThrow('fixture startup ended');
+      expect(await Bun.file(join(root, 'home/plugins/installed-fixture/plugin.ts')).exists()).toBe(
+        true,
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -211,7 +290,7 @@ describe('installed-release harness arguments', () => {
     const fetcher = async (input: string | URL | Request) => {
       const url = input instanceof Request ? input.url : input.toString();
       if (url.startsWith('http://127.0.0.1:') && new URL(url).pathname === '/')
-        return response({}, 404);
+        throw new TypeError('connection refused');
       if (url.includes('/ag-ui/')) {
         await writeFile(marker, 'fixture-owned-dependency');
         return response(

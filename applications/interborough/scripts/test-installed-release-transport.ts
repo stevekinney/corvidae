@@ -1,3 +1,5 @@
+export type InstalledFetch = (...arguments_: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
+
 export function parseRunStartedRunId(stream: string): string {
   const runId = stream.match(/"type":"RUN_STARTED"[^\n]*"runId":"([^"]+)"/)?.[1];
   if (runId === undefined) throw new Error('The AG-UI stream did not contain RUN_STARTED');
@@ -9,7 +11,7 @@ export async function mcp(
   id: number,
   method: string,
   params: Record<string, unknown>,
-  fetcher: typeof fetch = fetch,
+  fetcher: InstalledFetch = fetch,
 ): Promise<Record<string, unknown>> {
   const response = await fetcher(`${url}/bureau/mcp`, {
     method: 'POST',
@@ -29,7 +31,7 @@ export async function mcp(
 
 export async function runFixtureAgent(
   url: string,
-  fetcher: typeof fetch = fetch,
+  fetcher: InstalledFetch = fetch,
 ): Promise<{ stream: string; runId: string }> {
   const response = await fetcher(`${url}/bureau/ag-ui/agents/installed-fixture%3Aassistant/run`, {
     method: 'POST',

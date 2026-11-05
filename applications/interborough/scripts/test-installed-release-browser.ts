@@ -1,4 +1,6 @@
-import { chromium } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
+
+import type { InstalledFetch } from './test-installed-release-transport.ts';
 
 type BrowserPage = {
   on(event: 'pageerror', listener: (error: Error) => void): void;
@@ -12,17 +14,25 @@ type BrowserPage = {
     }) => Promise<void>,
   ): Promise<void>;
   addScriptTag(options: { content: string; type: string }): Promise<void>;
-  evaluate<T>(callback: (value: any) => Promise<T>, value?: any): Promise<T>;
+  exposeFunction(
+    name: string,
+    callback: (toolArguments: Record<string, unknown>) => Promise<unknown>,
+  ): Promise<void>;
+  evaluate: Page['evaluate'];
   frameLocator(selector: string): {
-    getByText(text: string): { count(): Promise<number> };
-    getByRole(role: string, options: { level: number; name: string }): { count(): Promise<number> };
+    getByText(text: string): { waitFor(): Promise<void> };
+    getByRole(role: string, options: { level: number; name: string }): { waitFor(): Promise<void> };
   };
 };
 type BrowserSession = { newPage(): Promise<BrowserPage>; close(): Promise<void> };
 export type InstalledBrowserOperations = {
-  readonly build?: (options: Parameters<typeof Bun.build>[0]) => Promise<any>;
+  readonly build?: (options: Parameters<typeof Bun.build>[0]) => Promise<{
+    success: boolean;
+    logs: unknown[];
+    outputs: { text(): Promise<string> }[];
+  }>;
   readonly launch?: (options: { headless: true }) => Promise<BrowserSession>;
-  readonly fetch?: typeof fetch;
+  readonly fetch?: InstalledFetch;
 };
 
 type BrowserReferenceHost = {
@@ -33,10 +43,14 @@ type BrowserReferenceHost = {
     title?: string,
   ) => Promise<void>;
   readonly teardown: () => Promise<void>;
-  readonly handlers: Record<string, (arguments_: Record<string, unknown>) => unknown>;
+  readonly handlers: Record<string, (toolArguments: Record<string, unknown>) => unknown>;
 };
 
 type InstalledUi = { readonly html: string; readonly ui: { readonly csp: unknown } };
+type InstalledBrowserWindow = {
+  referenceHost: BrowserReferenceHost;
+  installedInspectorCall: (toolArguments: Record<string, unknown>) => Promise<unknown>;
+};
 
 export function validateInstalledUi(
   response: Response,
@@ -76,7 +90,7 @@ export async function assertInstalledAppsInChromium(
   if (!referenceHost.success)
     throw new AggregateError(referenceHost.logs, 'Reference host failed to build');
   const hostScript = await referenceHost.outputs[0]!.text();
-  const browser = await launch({ headless: true });
+  const browser: BrowserSession = await launch({ headless: true });
   const shellErrors: string[] = [];
   try {
     const page = await browser.newPage();
@@ -84,7 +98,7 @@ export async function assertInstalledAppsInChromium(
     const shell = await page.goto(installedUrl);
     if (shell?.status() !== 200) throw new Error(`Installed shell returned ${shell?.status()}`);
     await page.locator('#app').waitFor();
-    await page.waitForFunction(() => document.querySelector('#app')?.children.length !== 0);
+    await page.waitForFunction(() => (document.querySelector('#app')?.children.length ?? 0) > 0);
     if (shellErrors.length > 0)
       throw new Error(`Installed shell JavaScript failed: ${shellErrors.join('; ')}`);
 
@@ -100,25 +114,26 @@ export async function assertInstalledAppsInChromium(
       (await inspectorResponse.json()) as InstalledUi,
       'inspector',
     );
-    const inspectionResponse = await fetcher(`${installedUrl}/bureau/mcp`, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json, text/event-stream',
-        'content-type': 'application/json',
-        'mcp-protocol-version': '2025-03-26',
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 99,
-        method: 'tools/call',
-        params: { name: 'bureau.tasks.inspect', arguments: { taskId: runId } },
-      }),
+    const inspectionCalls = new Set<string>();
+    await page.exposeFunction('installedInspectorCall', async (call) => {
+      const name = call['name'];
+      if (name !== 'bureau.tasks.inspect' && name !== 'bureau.tasks.events')
+        throw new Error('Inspector requested an unsupported tool');
+      const toolArguments = call['arguments'] as Record<string, unknown>;
+      if (toolArguments['taskId'] !== runId) throw new Error('Inspector requested the wrong task');
+      const response = await fetcher(`${inspectorUrl}/tool-calls`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, arguments: toolArguments }),
+      });
+      const result = (await response.json()) as { structuredContent?: unknown; isError?: boolean };
+      const inspection = validateInspection(response, {
+        result: result.structuredContent,
+        ...(result.isError ? { error: result } : {}),
+      });
+      inspectionCalls.add(name);
+      return inspection;
     });
-    const inspectionEnvelope = (await inspectionResponse.json()) as {
-      result?: unknown;
-      error?: unknown;
-    };
-    const inspection = validateInspection(inspectionResponse, inspectionEnvelope);
 
     await page.route('http://reference-host.test/', (route) =>
       route.fulfill({
@@ -130,7 +145,7 @@ export async function assertInstalledAppsInChromium(
     await page.addScriptTag({ content: hostScript, type: 'module' });
     await page.evaluate(
       async ({ html, csp }) =>
-        (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost.mount(
+        (window as unknown as InstalledBrowserWindow).referenceHost.mount(
           html,
           csp,
           {},
@@ -138,38 +153,37 @@ export async function assertInstalledAppsInChromium(
         ),
       { html: panelPayload.html, csp: panelPayload.ui.csp },
     );
-    if (
-      !(await page
-        .frameLocator('iframe[title="Fixture panel"]')
-        .getByText('Installed fixture MCP panel')
-        .count())
-    )
-      throw new Error('Chromium did not render fixture panel through AppBridge');
+    await page
+      .frameLocator('iframe[title="Fixture panel"]')
+      .getByText('Installed fixture MCP panel')
+      .waitFor();
     await page.evaluate(() =>
-      (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost.teardown(),
+      (window as unknown as InstalledBrowserWindow).referenceHost.teardown(),
     );
     await page.evaluate(
-      async ({ html, csp, inspection: inspectionValue, run }) => {
-        const host = (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost;
-        host.handlers['bureau.tasks.inspect'] = () => inspectionValue;
+      async ({ html, csp, run }) => {
+        const browserWindow = window as unknown as InstalledBrowserWindow;
+        const host = browserWindow.referenceHost;
+        for (const name of ['bureau.tasks.inspect', 'bureau.tasks.events']) {
+          host.handlers[name] = (toolArguments) =>
+            browserWindow.installedInspectorCall({ name, arguments: toolArguments });
+        }
         return host.mount(html, csp, { taskId: run });
       },
       {
         html: inspectorPayload.html,
         csp: inspectorPayload.ui.csp,
-        inspection,
         run: runId,
       },
     );
-    if (
-      !(await page
-        .frameLocator('iframe[title="Run inspector"]')
-        .getByRole('heading', { level: 1, name: `Run ${runId}` })
-        .count())
-    )
-      throw new Error(`Chromium did not mount inspector through AppBridge for ${runId}`);
+    await page
+      .frameLocator('iframe[title="Run inspector"]')
+      .getByRole('heading', { level: 1, name: `Run ${runId}` })
+      .waitFor();
+    if (inspectionCalls.size !== 2)
+      throw new Error('Inspector did not call the installed tool route');
     await page.evaluate(() =>
-      (window as Window & { referenceHost: BrowserReferenceHost }).referenceHost.teardown(),
+      (window as unknown as InstalledBrowserWindow).referenceHost.teardown(),
     );
   } finally {
     await browser.close();
