@@ -39,6 +39,7 @@ import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
 import type { Bureau, RecoverableStartedApproval } from '../types';
+import type { BureauAssetOptions } from '../index';
 import type { AgentDefinitions } from '../agent-catalog';
 import { createSqliteStorageFixture } from './storage-fixtures';
 
@@ -209,6 +210,7 @@ export interface HarnessBureauOptions {
   readonly recoverableStartedApprovals?: ReadonlyMap<string, RecoverableStartedApproval>;
   readonly requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
   readonly runtime?: RuntimeServices;
+  readonly assets?: BureauAssetOptions;
   /** Wires `requestHumanInput` into the run (the COR-1409 park scenario). */
 }
 
@@ -226,6 +228,7 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
     },
     storage: options.storage,
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+    ...(options.assets === undefined ? {} : { assets: options.assets }),
     durable: true,
     requestAuthorityValidator: options.requestAuthorityValidator ?? (() => true),
     ...(options.recoverableStartedApprovals === undefined

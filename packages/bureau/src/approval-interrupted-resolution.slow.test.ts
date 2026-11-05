@@ -19,6 +19,8 @@ import {
 import { describe, expect, it } from 'bun:test';
 import { createSessionStore } from '@lostgradient/operative';
 import { textValueStore } from '@lostgradient/storage';
+import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
+import { base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 
 import {
   CLAIM_TTL_MS,
@@ -100,7 +102,8 @@ type PeerRecoveryVariant =
   | 'invalid-authority'
   | 'invalid-binding'
   | 'ordinary-error'
-  | 'malformed-callback';
+  | 'malformed-callback'
+  | 'ordinary-media';
 
 const PEER_RECOVERY_SCENARIOS: ReadonlyArray<{
   readonly variant: PeerRecoveryVariant;
@@ -115,9 +118,14 @@ const PEER_RECOVERY_SCENARIOS: ReadonlyArray<{
   { variant: 'invalid-binding', childVariant: 'invalid-binding', expectedAttach: 0 },
   { variant: 'ordinary-error', expectedAttach: 1 },
   { variant: 'malformed-callback', expectedAttach: 1 },
+  { variant: 'ordinary-media', expectedAttach: 1 },
 ];
 
-const PEER_RECOVERY_COMMIT_VARIANTS = new Set<PeerRecoveryVariant>(['normal', 'ordinary-error']);
+const PEER_RECOVERY_COMMIT_VARIANTS = new Set<PeerRecoveryVariant>([
+  'normal',
+  'ordinary-error',
+  'ordinary-media',
+]);
 
 async function peerApprovalRecoveryScenario(
   scope: ScenarioScope,
@@ -130,6 +138,8 @@ async function peerApprovalRecoveryScenario(
   const toolRunsPath = join(directory, 'tool-runs.txt');
   const store = createSqliteStorageFixture({ path: storagePath });
   const secondStore = createSqliteStorageFixture({ path: storagePath });
+  const assetFixture =
+    scenario.variant === 'ordinary-media' ? createMemoryAssetStorageFixture() : undefined;
   let recoverer: Bureau | undefined;
   let secondRecoverer: Bureau | undefined;
   scope.onHang(async () => {
@@ -194,6 +204,7 @@ async function peerApprovalRecoveryScenario(
         if (scenario.variant === 'malformed-callback') {
           return { callId: input.callId, toolCallId: input.callId, toolName: 'ask-peer' } as never;
         }
+        const media = scenario.variant === 'ordinary-media';
         return {
           callId: input.callId,
           toolCallId: input.callId,
@@ -202,6 +213,22 @@ async function peerApprovalRecoveryScenario(
             scenario.variant === 'ordinary-error' ? ('error' as const) : ('success' as const),
           content: scenario.variant === 'ordinary-error' ? 'peer failed' : 'peer answer',
           result: scenario.variant === 'ordinary-error' ? 'peer failed' : 'peer answer',
+          ...(media
+            ? {
+                parts: [
+                  { type: 'text' as const, text: 'peer answer' },
+                  {
+                    type: 'image' as const,
+                    mimeType: 'image/png',
+                    source: {
+                      kind: 'inline' as const,
+                      data: base64Of(pngBytes(2, 2)),
+                      encoding: 'base64' as const,
+                    },
+                  },
+                ],
+              }
+            : {}),
         };
       },
     };
@@ -211,9 +238,10 @@ async function peerApprovalRecoveryScenario(
       recoverableStartedApprovals: new Map([[marker.revision, attach]]),
       requestAuthorityValidator:
         scenario.variant === 'invalid-authority' ? async () => false : async () => true,
+      ...(assetFixture === undefined ? {} : { assets: { storage: assetFixture.storage } }),
     };
     recoverer = await createHarnessBureau({ ...options, storage: store.storage });
-    if (scenario.variant === 'malformed-callback') {
+    if (scenario.variant === 'malformed-callback' || scenario.variant === 'ordinary-media') {
       await recoverer.recovery();
     } else {
       secondRecoverer = await createHarnessBureau({ ...options, storage: secondStore.storage });
@@ -238,6 +266,26 @@ async function peerApprovalRecoveryScenario(
     );
     if (scenario.variant !== 'malformed-callback') {
       const session = await recoverer.contexts.get(marker.sessionId);
+      const toolResult = session?.conversationHistory.ids
+        .map((id) => session.conversationHistory.messages[id])
+        .find((message) => message?.role === 'tool-result')?.toolResult;
+      if (scenario.variant === 'normal' || scenario.variant === 'ordinary-error') {
+        expect(toolResult?.outcome).toBe(
+          scenario.variant === 'ordinary-error' ? 'error' : 'success',
+        );
+      }
+      if (scenario.variant === 'ordinary-media') {
+        const image = toolResult?.parts?.find((part) => part.type === 'image');
+        expect(image).toMatchObject({ source: { kind: 'managed-asset' } });
+        const assetId =
+          image?.type === 'image' && image.source.kind === 'managed-asset'
+            ? image.source.assetId
+            : undefined;
+        expect(assetId).toBeDefined();
+        expect(JSON.stringify(session?.conversationHistory)).not.toContain(
+          base64Of(pngBytes(2, 2)),
+        );
+      }
       expect(JSON.stringify(session?.conversationHistory)).toContain(
         !expectedCommit
           ? 'action_required'
@@ -262,6 +310,7 @@ async function peerApprovalRecoveryScenario(
     if (secondRecoverer !== undefined) await Promise.allSettled([secondRecoverer.shutdown()]);
     await store.dispose();
     await secondStore.dispose();
+    await assetFixture?.dispose();
     removeTemporaryPath(directory);
   }
 }
