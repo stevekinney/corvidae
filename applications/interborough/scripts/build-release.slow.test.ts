@@ -31,5 +31,6 @@ describe('the signed release archive', () => {
     } finally {
       await rm(output, { recursive: true, force: true });
     }
+  // load-proof: real signed archive build deterministically verifies relocated host artifacts.
   }, 30_000);
 });
