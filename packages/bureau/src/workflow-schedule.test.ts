@@ -415,8 +415,10 @@ describe('reconciling workflow schedules', () => {
   });
 });
 
-it('persists revoked and reassigned holds across rescans and input generation replacement', async () => {
-  await using engine = await engineWith('digest');
+it('persists authority holds across peers, rescans and input generation replacement', async () => {
+  const storage = new MemoryStorage();
+  await using engine = new Engine({ storage, ownership: 'none', backgroundTasks: 'manual' });
+  await registerWorkflowDocuments(engine, host, { active: [document('digest')] });
   let member: WorkspaceMembership | null = {
     version: 1,
     workspaceId: 'workspace-a',
@@ -451,14 +453,18 @@ it('persists revoked and reassigned holds across rescans and input generation re
     authorityHold: 'revoked',
     workspaceAuthority: { actorId: 'local-actor' },
   });
-  const snapshot = (await engine.getSchedule(replacement))!;
-  const input = (await inputOf(engine, replacement)) as Record<string, unknown>;
-  await engine.replaceScheduleInput(
-    replacement,
-    { ...input, authorityHold: 'reassigned' },
-    { expectedRevision: snapshot.revision },
-  );
-  await reconcileWorkflowSchedules(engine, desired, new Set(), files);
-  expect(await statusOf(engine, replacement)).toBe('paused');
-  expect(await inputOf(engine, replacement)).toMatchObject({ authorityHold: 'reassigned' });
+  await using peer = new Engine({ storage, ownership: 'none', backgroundTasks: 'manual' });
+  await registerWorkflowDocuments(peer, host, { active: [document('digest')] });
+  for (const authorityHold of ['reassigned', 'resuming'] as const) {
+    const snapshot = (await engine.getSchedule(replacement))!;
+    const input = (await inputOf(engine, replacement)) as Record<string, unknown>;
+    await engine.replaceScheduleInput(
+      replacement,
+      { ...input, authorityHold },
+      { expectedRevision: snapshot.revision },
+    );
+    await reconcileWorkflowSchedules(peer, desired, new Set(), files);
+    expect(await statusOf(peer, replacement)).toBe('paused');
+    expect(await inputOf(peer, replacement)).toMatchObject({ authorityHold });
+  }
 });

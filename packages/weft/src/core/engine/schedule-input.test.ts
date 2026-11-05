@@ -134,3 +134,40 @@ it('replaces persisted schedule input before the reopened engine catalog has ini
     input: { actor: 'replacement' },
   });
 });
+
+it('preserves the caller condition error callback while snapshotting input replacement', async () => {
+  const storage = new MemoryStorage();
+  using engine = new Engine({ storage, ownership: 'none' });
+  registerWorkflow(engine, 'report', async function* () {
+    return 'done';
+  });
+  await engine.schedule('report', { actor: 'original' }, { every: '24h' }, { id: 'report' });
+  await storage.put('caller:guard', new Uint8Array([1]));
+  const conflict = new Error('Caller guard changed');
+  const failure = await engine
+    .replaceScheduleInput(
+      'report',
+      { actor: 'new' },
+      {
+        expectedRevision: 1,
+        extraConditions: [{ key: 'caller:guard', expectedValue: null }],
+        onExtraConditionsLost: () => conflict,
+      },
+    )
+    .then(
+      () => null,
+      (error: unknown) => error,
+    );
+  expect(failure).toBe(conflict);
+  expect(await engine.getSchedule('report')).toMatchObject({ revision: 1 });
+  await engine.replaceScheduleInput(
+    'report',
+    { actor: 'new' },
+    {
+      expectedRevision: 1,
+      extraConditions: [{ key: 'caller:guard', expectedValue: new Uint8Array([1]) }],
+      onExtraConditionsLost: () => conflict,
+    },
+  );
+  expect(await engine.getSchedule('report')).toMatchObject({ revision: 2, status: 'paused' });
+});

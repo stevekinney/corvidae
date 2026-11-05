@@ -90,7 +90,7 @@ export const DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE = 'UTC';
 /** The trigger a fire starts its instance with: Weft fixes a schedule's input when it is created. */
 export interface WorkflowScheduleTrigger {
   readonly workspaceAuthority?: RunWorkspaceAuthority;
-  readonly authorityHold?: 'revoked' | 'reassigned';
+  readonly authorityHold?: 'revoked' | 'reassigned' | 'resuming';
   readonly kind: 'schedule';
   /** The schedule that fired. */
   readonly scheduleId: string;
@@ -120,7 +120,7 @@ export function workflowScheduleBinding(
   const workspaceAuthority = readRunWorkspaceAuthority(value);
   if (
     (value !== undefined && workspaceAuthority === undefined) ||
-    (hold !== undefined && hold !== 'revoked' && hold !== 'reassigned')
+    (hold !== undefined && hold !== 'revoked' && hold !== 'reassigned' && hold !== 'resuming')
   )
     throw new Error('Invalid workflow schedule authority');
   return {

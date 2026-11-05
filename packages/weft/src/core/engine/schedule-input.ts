@@ -25,7 +25,11 @@ export async function replaceScheduleInput(
   if (options.status !== undefined && options.status !== 'active' && options.status !== 'paused')
     throw new TypeError('Schedule input replacement status must be active or paused');
   const snapshot = structuredClone(input);
-  const transition = structuredClone(options);
+  const { onExtraConditionsLost, ...serializableOptions } = options;
+  const transition = {
+    ...structuredClone(serializableOptions),
+    ...(onExtraConditionsLost === undefined ? {} : { onExtraConditionsLost }),
+  };
   assertCallerOwnedTransitionKeys(id, transition);
   await runScheduleTransition(internals, id, revision, async (state, readConditions) => {
     if (state.status === 'cancelled')

@@ -81,8 +81,8 @@ export interface ScheduledAgentRunInput {
   principal?: string | undefined;
   /** Stable authorizing actor for future fires, independent of historic schedule ownership. */
   workspaceAuthority?: RunWorkspaceAuthority | undefined;
-  /** A revocation or reassignment requires explicit resume. */
-  authorityHold?: 'revoked' | 'reassigned';
+  /** Revocation, reassignment, or an interrupted resume stays paused until explicit resume. */
+  authorityHold?: 'revoked' | 'reassigned' | 'resuming';
 }
 
 /**
@@ -104,7 +104,8 @@ export function isScheduledAgentRunInput(value: unknown): value is ScheduledAgen
   const scheduleId = candidate['scheduleId'];
   if (scheduleId !== undefined && typeof scheduleId !== 'string') return false;
   const hold = candidate['authorityHold'];
-  if (hold !== undefined && hold !== 'revoked' && hold !== 'reassigned') return false;
+  if (hold !== undefined && hold !== 'revoked' && hold !== 'reassigned' && hold !== 'resuming')
+    return false;
   const principal = candidate['principal'];
   if (principal !== undefined && typeof principal !== 'string') return false;
   if (

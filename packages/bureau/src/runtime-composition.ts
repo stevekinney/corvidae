@@ -60,6 +60,8 @@ import type {
 } from '@lostgradient/operative';
 import {
   appendAgentInput,
+  readBackendDescriptors,
+  withBackendDescriptors,
   MEMORY_EVIDENCE_METADATA_KEY,
   createAgentSession,
   createCheckpointStore,
@@ -595,26 +597,26 @@ function withDefaultToolboxRequestContext(
         requestContext: executeOptions?.requestContext ?? requestContext,
       };
       const inheritedValidation = options.revalidateAuthority;
-      options.revalidateAuthority = async (candidate) => {
-        const inherited =
-          inheritedValidation === undefined ? candidate : await inheritedValidation(candidate);
-        if (inherited === undefined) return undefined;
-        const validator = requestAuthorityValidator();
-        const revision = inherited.authority.authorizationRevision;
-        const required =
-          validator !== undefined ||
-          inherited.authority.workspace !== undefined ||
-          (revision !== 'bureau:1' && revision !== 'bureau:scheduler:1');
-        if (
-          required &&
-          (!validator ||
-            !(await raceRequestAuthorityValidation(validator(inherited), options, runtimeServices)))
-        )
-          return undefined;
-        return inherited;
-      };
-      if ((await options.revalidateAuthority(options.requestContext!)) === undefined)
-        throw new Error('Request authority is no longer current.');
+      const revision = options.requestContext!.authority.authorizationRevision;
+      const requiresValidation =
+        options.requestContext!.authority.workspace !== undefined ||
+        (revision !== 'bureau:1' && revision !== 'bureau:scheduler:1');
+      if (requiresValidation) {
+        options.revalidateAuthority = async (candidate) => {
+          const inherited =
+            inheritedValidation === undefined ? candidate : await inheritedValidation(candidate);
+          if (inherited === undefined) return undefined;
+          const validator = requestAuthorityValidator();
+          if (
+            !validator ||
+            !(await raceRequestAuthorityValidation(validator(inherited), options, runtimeServices))
+          )
+            return undefined;
+          return inherited;
+        };
+        if ((await options.revalidateAuthority(options.requestContext!)) === undefined)
+          throw new Error('Request authority is no longer current.');
+      }
       return Array.isArray(input) ? inner.execute(input, options) : inner.execute(input, options);
     }) as AnyToolbox['execute'];
 
@@ -3475,7 +3477,7 @@ async function buildRuntimeComposition(
         requestAuthorityValidator === undefined || (await requestAuthorityValidator(candidate))
       );
     };
-    const generate: GenerateFunction = async (context) => {
+    const generate: GenerateFunction = withBackendDescriptors(async (context) => {
       const revision = requestContext?.authority.authorizationRevision;
       const required =
         options.workspace !== undefined ||
@@ -3487,7 +3489,7 @@ async function buildRuntimeComposition(
         throw new Error('Request authority is no longer current.');
       }
       return underlyingGenerate(context);
-    };
+    }, readBackendDescriptors(underlyingGenerate));
 
     // Clone the toolbox for this run so concurrent runs do not share a single
     // CompletableEventTarget emitter. A shared emitter would route every tool.*
@@ -5216,12 +5218,17 @@ async function buildRuntimeComposition(
           options.workspace === undefined || recoveredScheduleId === undefined
             ? undefined
             : async () => {
-                const current = workflowScheduleBinding(
-                  await storedScheduleInput(durable!.engine, recoveredScheduleId),
-                );
-                const admitted =
-                  current.authorityHold === undefined &&
-                  current.workspaceAuthority?.actorId === scheduleAuthority?.actorId;
+                let admitted = false;
+                try {
+                  const current = workflowScheduleBinding(
+                    await storedScheduleInput(durable!.engine, recoveredScheduleId),
+                  );
+                  admitted =
+                    current.authorityHold === undefined &&
+                    current.workspaceAuthority?.actorId === scheduleAuthority?.actorId;
+                } catch {
+                  // Unreadable or malformed durable authority must request the same pause.
+                }
                 if (!admitted) dependencies.onScheduleAuthorityDenied?.(recoveredScheduleId);
                 return admitted;
               },

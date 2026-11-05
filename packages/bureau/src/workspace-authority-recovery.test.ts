@@ -1,3 +1,11 @@
+import { MemoryStorage } from '@lostgradient/storage';
+import { decode, encode, KEYS } from '@lostgradient/weft';
+import type { DurableRunDeps } from '@lostgradient/operative';
+import {
+  createModelCatalog,
+  readBackendDescriptors,
+  withBackendDescriptors,
+} from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
 import {
   createTool,
@@ -12,6 +20,7 @@ import { describe, expect, it } from 'bun:test';
 import type { WorkspaceMembership } from './http/workspace-principal.ts';
 import {
   captureRunWorkspaceAuthority,
+  guardWorkspaceRunOptions,
   recoverRunWorkspaceAuthority,
   validateRunWorkspaceAuthority,
 } from './run-authority.ts';
@@ -232,4 +241,121 @@ it('settles an already admitted provider effect but refuses the next request aft
   );
   expect(denied).toBeInstanceOf(Error);
   expect(calls).toBe(1);
+});
+
+it('retains provider media descriptors through session and catalog admission guards', async () => {
+  const source = directory();
+  const authority = await captureRunWorkspaceAuthority(source.workspace, 'owner-a');
+  if (authority === undefined) throw new Error('Fixture membership missing');
+  const context: ToolRequestContext = {
+    authority: {
+      principalId: 'owner-a',
+      ownerId: 'owner-a',
+      tenantId: 'workspace-a',
+      authorizationRevision: 'bureau:1',
+      capabilities: ['tools:execute'],
+      workspace: authority,
+    },
+  };
+  const descriptors = createModelCatalog()
+    .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
+    .slice(0, 1);
+  expect(descriptors.length).toBe(1);
+  const generate = withBackendDescriptors(
+    async () => ({ content: 'seen', toolCalls: [] }),
+    descriptors,
+  );
+  const toolbox = createToolbox([]);
+  const runtime = await createRuntimeComposition({
+    workspace: source.workspace,
+    generate,
+    toolbox,
+  });
+  const run = await runtime.createRunRuntime({
+    sessionId: 'session',
+    runId: 'run',
+    message: 'test',
+    requestContext: context,
+  });
+  const catalog = guardWorkspaceRunOptions(
+    source.workspace,
+    {
+      generate,
+      toolbox,
+      conversation: new Conversation(),
+      runId: 'catalog-run',
+      sessionId: 'catalog-session',
+    },
+    context,
+  );
+  expect(readBackendDescriptors(run.generate)).toEqual(descriptors);
+  expect(readBackendDescriptors(catalog.generate)).toEqual(descriptors);
+});
+
+it('denies dispatch and requests a pause when persisted schedule authority becomes malformed', async () => {
+  const source = directory();
+  const authority = await captureRunWorkspaceAuthority(source.workspace, 'owner-a');
+  const storage = new MemoryStorage();
+  const denied: string[] = [];
+  let effects = 0;
+  const runtime = await createRuntimeComposition(
+    {
+      workspace: source.workspace,
+      storage,
+      durable: true,
+      durableOwnership: { ownership: 'none' },
+      generate: async () => {
+        effects++;
+        return { content: 'effect', toolCalls: [] };
+      },
+      toolbox: createToolbox([]),
+    },
+    {
+      onScheduleAuthorityDenied: (id) => {
+        denied.push(id);
+      },
+    },
+  );
+  try {
+    const input = {
+      agentName: 'worker',
+      input: 'test',
+      scheduleId: 'scheduled',
+      principal: 'owner-a',
+      workspaceAuthority: authority,
+    };
+    await runtime.durable!.engine.schedule(
+      'agentRun',
+      input,
+      { every: '24h' },
+      { id: 'scheduled', initialStatus: 'paused' },
+    );
+    const resolution = await runtime.buildScheduledRunServices(
+      { workflowId: 'fire', workflowType: 'agentRun', input, schedule: { id: 'scheduled' } },
+      runtime.sessionStore!,
+    );
+    if (resolution.status !== 'available') throw new Error(resolution.reason);
+    const stored = decode((await storage.get(KEYS.schedule('scheduled')))!) as Record<
+      string,
+      unknown
+    >;
+    await storage.put(
+      KEYS.schedule('scheduled'),
+      encode({ ...stored, input: { ...input, workspaceAuthority: { version: 99 } } }),
+    );
+    const options = (resolution.services as DurableRunDeps).options;
+    if (!(options.conversation instanceof Conversation))
+      throw new Error('Expected live conversation');
+    const failure = await options
+      .generate({ conversation: options.conversation, toolbox: options.toolbox, step: 0 })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(Error);
+    expect(effects).toBe(0);
+    expect(denied).toEqual(['scheduled']);
+  } finally {
+    runtime.durable?.engine[Symbol.dispose]();
+  }
 });

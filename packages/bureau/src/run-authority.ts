@@ -1,3 +1,4 @@
+import { readBackendDescriptors, withBackendDescriptors } from '@lostgradient/operative';
 import type {
   ContentSourceResolver,
   RunOptions,
@@ -189,11 +190,11 @@ export function guardWorkspaceRunOptions(
   };
   return {
     ...options,
-    generate: async (input) => {
+    generate: withBackendDescriptors(async (input) => {
       if ((await revalidate(context)) === undefined)
         throw new Error('Workspace authority unavailable.');
       return generate(input);
-    },
+    }, readBackendDescriptors(generate)),
     executeOptions: {
       ...options.executeOptions,
       requestContext: context,

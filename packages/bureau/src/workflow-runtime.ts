@@ -1747,37 +1747,80 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         undefined,
         id,
       ),
-    resume: async (id, guard) => {
-      if (options.workspace !== undefined && !(await options.resumeAdministrator?.(guard.actor)))
+    resume: async (id, providedGuard) => {
+      const guard = { ...providedGuard };
+      const workspace = options.workspace;
+      if (workspace !== undefined && !(await options.resumeAdministrator?.(guard.actor)))
         throw options.createError('Workspace administrator required.', 'CONFLICT');
-      const schedule = await liveSchedule(id);
-      const snapshot = schedule == null ? null : await engine.getSchedule(schedule.id);
-      const input = schedule == null ? undefined : await storedScheduleInput(engine, schedule.id);
-      const result = await write(
+      return write(
         'workflow.resumed',
         guard,
         guard.expectedHash,
-        (onWritten) => catalog.setPaused(id, false, { ...guard, onWritten }),
-        undefined,
+        (onWritten) =>
+          exclusive(async () => {
+            if (workspace === undefined)
+              return catalog.setPaused(id, false, { ...guard, onWritten });
+            const schedule = await liveSchedule(id);
+            if (schedule == null) return catalog.setPaused(id, false, { ...guard, onWritten });
+            const snapshot = await engine.getSchedule(schedule.id);
+            const input = await storedScheduleInput(engine, schedule.id);
+            let binding: ReturnType<typeof workflowScheduleBinding>;
+            try {
+              binding = workflowScheduleBinding(input);
+            } catch {
+              throw options.createError('Workspace authority unavailable.', 'CONFLICT');
+            }
+            if (
+              snapshot === null ||
+              typeof input !== 'object' ||
+              input === null ||
+              (await validateRunWorkspaceAuthority(workspace, binding.workspaceAuthority)) ===
+                undefined
+            )
+              throw options.createError('Workspace authority unavailable.', 'CONFLICT');
+            let expectedRevision = snapshot.revision;
+            // Persist the hold before publishing the unpaused file. Other hosts and crash
+            // recovery must keep the schedule paused until this invocation activates it.
+            if (binding.authorityHold === undefined) {
+              await engine.replaceScheduleInput(
+                schedule.id,
+                { ...input, authorityHold: 'resuming' },
+                {
+                  expectedRevision,
+                  status: 'paused',
+                },
+              );
+              expectedRevision++;
+            }
+            const result = await catalog.setPaused(id, false, { ...guard, onWritten });
+            const { authorityHold: _hold, ...resumed } = input as Record<string, unknown>;
+            try {
+              await engine.replaceScheduleInput(schedule.id, resumed, {
+                expectedRevision,
+                status: 'active',
+              });
+            } catch (error) {
+              if (result.hash !== guard.expectedHash) {
+                try {
+                  await catalog.setPaused(id, true, {
+                    ...guard,
+                    expectedHash: result.hash,
+                    onWritten,
+                  });
+                } catch (restoreError) {
+                  throw new AggregateError(
+                    [error, restoreError],
+                    'Workflow resume failed and its catalog pause could not be restored.',
+                    { cause: restoreError },
+                  );
+                }
+              }
+              throw error;
+            }
+            return result;
+          }),
         id,
       );
-      if (schedule != null && options.workspace !== undefined) {
-        const binding = workflowScheduleBinding(input);
-        if (
-          (await validateRunWorkspaceAuthority(options.workspace, binding.workspaceAuthority)) ===
-            undefined ||
-          snapshot === null ||
-          typeof input !== 'object' ||
-          input === null
-        )
-          throw options.createError('Workspace authority unavailable.', 'CONFLICT');
-        const { authorityHold: _hold, ...resumed } = input as Record<string, unknown>;
-        await engine.replaceScheduleInput(schedule.id, resumed, {
-          expectedRevision: snapshot.revision,
-          status: 'active',
-        });
-      }
-      return result;
     },
     delete: (id, guard) =>
       write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
