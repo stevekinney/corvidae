@@ -177,7 +177,7 @@ async function attemptWorkflowStateUpdate(
 
   const state = decodeWorkflowState(bytes);
   if (updateIsRefused(state, options, decided)) {
-    return refusalFor(state, decided) ?? { kind: 'refused', state, reason: 'replaced' };
+    return refusalFor(state, decided);
   }
 
   const updatedAt = internals.options.getNow();
