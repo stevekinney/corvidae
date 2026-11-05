@@ -6,6 +6,7 @@ import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
 import { request } from './cli-client-transport.ts';
+import { executeDefinitions } from './cli-definitions.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
 /** Version of the CLI JSON envelope. */
 export const CLI_SCHEMA_VERSION = 1;
@@ -105,6 +106,8 @@ export const CLI_OPERATION_INVENTORY = [
   'api.list',
   'api.describe',
   'api.call',
+  'agents.*',
+  'workflows.*',
 ] as const;
 
 const optionNames = new Set([
@@ -164,6 +167,10 @@ const optionNames = new Set([
   'since',
   'until',
   'step',
+  'if-revision',
+  'revision',
+  'include-runs',
+  'signal-id',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -290,6 +297,43 @@ const commandOptions: Record<string, readonly string[]> = {
     'cursor',
     'limit',
   ],
+  agents: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'input',
+    'input-file',
+    'limit',
+    'offset',
+    'if-revision',
+    'expected-revision',
+    'revision',
+    'message',
+  ],
+  workflows: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'input',
+    'input-file',
+    'limit',
+    'offset',
+    'if-revision',
+    'expected-revision',
+    'revision',
+    'wait',
+    'include-runs',
+    'signal-name',
+    'signal-id',
+  ],
 };
 
 const helpText: Record<string, string> = {
@@ -308,6 +352,10 @@ const helpText: Record<string, string> = {
   events:
     'Usage: interborough events watch [options]\n\n  --kind task|workflow  Required for watch',
   audit: 'Usage: interborough audit list [options]',
+  agents:
+    'Usage: interborough agents <list|get|create|update|delete|duplicate|models|versions|try> [options]',
+  workflows:
+    'Usage: interborough workflows <list|get|create|update|validate|start|signal|history> [options]',
 };
 const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
@@ -339,7 +387,9 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     if (!optionNames.has(name) || !allowed.has(name)) return usage(`Unknown option --${name}.`);
     if (values.has(name)) return usage(`Duplicate option --${name}.`);
     const inline = equals === -1 ? undefined : argument.slice(equals + 1);
-    const booleanOption = ['all', 'help', 'no-input', 'yes'].includes(name);
+    const booleanOption =
+      ['all', 'help', 'no-input', 'yes'].includes(name) ||
+      ((name === 'wait' || name === 'include-runs') && command === 'workflows');
     if (booleanOption) {
       if (inline !== undefined) return usage(`Option --${name} does not take a value.`);
       values.set(name, true);
@@ -497,6 +547,8 @@ async function execute(
       ? executeRuns(resolved, parsed, dependencies)
       : executeReviewsOrRuns(resolved, parsed, dependencies);
   if (parsed.command === 'audit') return executeAudit(resolved, parsed, dependencies);
+  if (parsed.command === 'agents' || parsed.command === 'workflows')
+    return executeDefinitions(resolved, parsed, dependencies);
   if (parsed.command === 'restart') {
     if (parsed.options.get('yes') !== true)
       throw makeCliFailure(
