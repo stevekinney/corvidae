@@ -140,6 +140,25 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
     execute: async (input, context) => {
       const calling = await caller(host, context);
       if (calling === undefined) return { status: 'not-found' as const };
+      const child = await calling.children.get({
+        ...input,
+        parentRunId: calling.parentRunId,
+        ...(calling.principal === undefined ? {} : { principal: calling.principal }),
+      });
+      if (child === undefined) return { status: 'not-found' as const };
+      if (child.status !== 'running') {
+        const settled = await calling.children.wait(
+          {
+            ...input,
+            parentRunId: calling.parentRunId,
+            ...(calling.principal === undefined ? {} : { principal: calling.principal }),
+          },
+          { signal: AbortSignal.abort() },
+        );
+        return settled.outcome === 'not-found'
+          ? { status: 'not-found' as const }
+          : { status: settled.outcome, child: settled.child };
+      }
       const toolCallId = context?.meta?.callId;
       const durableChildWait = context?.executionContext?.['durableChildWait'];
       if (typeof durableChildWait !== 'function' || toolCallId === undefined) {

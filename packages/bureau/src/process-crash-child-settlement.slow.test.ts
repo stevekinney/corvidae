@@ -61,25 +61,27 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       agents: {},
       agentSource: agentFileDirectory(agentsPath),
       models: {
-        generate: () => async ({ step, conversation }) => {
-          generations += 1;
-          nextGenerationToolResults = conversation
-            .getMessages()
-            .filter((message) => message.role === 'tool-result')
-            .map((message) => message.toolResult);
-          return step === 0
-            ? {
-                content: 'unexpected replay',
-                toolCalls: [
-                  {
-                    id: CHILD_WAIT_CALL_ID,
-                    name: 'bureau:child-runs-wait',
-                    arguments: { childRunId },
-                  },
-                ],
-              }
-            : { content: 'recovered', toolCalls: [] };
-        },
+        generate:
+          () =>
+          async ({ step, conversation }) => {
+            generations += 1;
+            nextGenerationToolResults = conversation
+              .getMessages()
+              .filter((message) => message.role === 'tool-result')
+              .map((message) => message.toolResult);
+            return step === 0
+              ? {
+                  content: 'unexpected replay',
+                  toolCalls: [
+                    {
+                      id: CHILD_WAIT_CALL_ID,
+                      name: 'bureau:child-runs-wait',
+                      arguments: { childRunId },
+                    },
+                  ],
+                }
+              : { content: 'recovered', toolCalls: [] };
+          },
       },
       storage: fixture.open(),
       durable: true,

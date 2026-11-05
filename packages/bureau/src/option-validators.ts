@@ -230,6 +230,18 @@ export function validateChildrenOption(
   if (root !== undefined && (!Number.isInteger(root.levels) || root.levels < 1)) {
     badRequest('"options.children.delegation.rootAuthority.levels" must be a positive integer');
   }
+  if (root?.budget !== undefined) {
+    for (const [dimension, value] of Object.entries(root.budget)) {
+      if (
+        value !== undefined &&
+        (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
+      ) {
+        badRequest(
+          `"options.children.delegation.rootAuthority.budget.${dimension}" must be a finite non-negative number`,
+        );
+      }
+    }
+  }
 }
 
 /** `children.delegation.defaultTimeToLiveMilliseconds`: a positive, finite number when given. */

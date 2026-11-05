@@ -564,23 +564,25 @@ async function childWaitParked(): Promise<void> {
     },
     agentSource: agentFileDirectory(agentsPath),
     models: {
-      generate: () => async ({ step }) => {
-        if (step === 0) {
-          parentReady.resolve();
-          await allowParent.promise;
-          return {
-            content: 'waiting',
-            toolCalls: [
-              {
-                id: childWaitCallId,
-                name: 'bureau:child-runs-wait',
-                arguments: { childRunId: 'child-1' },
-              },
-            ],
-          };
-        }
-        return { content: 'recovered', toolCalls: [] };
-      },
+      generate:
+        () =>
+        async ({ step }) => {
+          if (step === 0) {
+            parentReady.resolve();
+            await allowParent.promise;
+            return {
+              content: 'waiting',
+              toolCalls: [
+                {
+                  id: childWaitCallId,
+                  name: 'bureau:child-runs-wait',
+                  arguments: { childRunId: 'child-1' },
+                },
+              ],
+            };
+          }
+          return { content: 'recovered', toolCalls: [] };
+        },
     },
     storage:
       backend === 'lmdb'
