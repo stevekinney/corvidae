@@ -156,7 +156,8 @@ async function run(arguments_: string[]): Promise<number> {
       },
     });
     process.removeListener('SIGINT', onInterrupt);
-    if (result.stdout !== '') process.stdout.write(`${result.stdout}\n`);
+    if (result.stdoutBytes !== undefined) process.stdout.write(result.stdoutBytes);
+    else if (result.stdout !== '') process.stdout.write(`${result.stdout}\n`);
     if (result.stderr !== '') console.error(result.stderr);
     return result.exitCode;
   }

@@ -2,12 +2,14 @@ import { readFile } from 'node:fs/promises';
 
 import { createCatalogSnapshot } from '@lostgradient/weft';
 
+import { executeAssets } from './cli-assets.ts';
 import { executeAutomation } from './cli-automation.ts';
 import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
 import { request } from './cli-client-transport.ts';
 import { executeDefinitions } from './cli-definitions.ts';
+import { executeMemory } from './cli-memory.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
 /** Version of the CLI JSON envelope. */
 export const CLI_SCHEMA_VERSION = 1;
@@ -28,6 +30,8 @@ export type CliResult = {
   readonly stderr: string;
   /** Stable scripting exit code. */
   readonly exitCode: CliExitCode;
+  /** Binary payload reserved for explicit asset stdout mode. */
+  readonly stdoutBytes?: Uint8Array;
 };
 
 /** Metadata for one locally configured management connection. */
@@ -174,6 +178,11 @@ const optionNames = new Set([
   'signal-id',
   'occurrence',
   'secret-output',
+  'output-file',
+  'media-type',
+  'content',
+  'query',
+  'overwrite',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -337,6 +346,33 @@ const commandOptions: Record<string, readonly string[]> = {
     'signal-name',
     'signal-id',
   ],
+  memory: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'agent',
+    'query',
+    'content',
+    'kind',
+    'limit',
+    'offset',
+    'yes',
+  ],
+  assets: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'media-type',
+    'output-file',
+    'overwrite',
+  ],
   schedules: [
     'help',
     'output',
@@ -399,6 +435,8 @@ const helpText: Record<string, string> = {
     'Usage: interborough agents <list|get|create|update|delete|duplicate|models|versions|try> [options]',
   workflows:
     'Usage: interborough workflows <list|get|create|update|validate|start|signal|history> [options]',
+  memory: 'Usage: interborough memory <list|search|get|remember|correct|forget|export> [options]',
+  assets: 'Usage: interborough assets <upload|download> [options]',
   schedules:
     'Usage: interborough schedules <list|get|create|update|pause|resume|run|skip-next> [options]',
   goals: 'Usage: interborough goals <list|get|create|cancel> [options]',
@@ -436,7 +474,7 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     if (values.has(name)) return usage(`Duplicate option --${name}.`);
     const inline = equals === -1 ? undefined : argument.slice(equals + 1);
     const booleanOption =
-      ['all', 'help', 'no-input', 'yes'].includes(name) ||
+      ['all', 'help', 'no-input', 'yes', 'overwrite'].includes(name) ||
       ((name === 'wait' || name === 'include-runs') && command === 'workflows');
     if (booleanOption) {
       if (inline !== undefined) return usage(`Option --${name} does not take a value.`);
@@ -597,6 +635,8 @@ async function execute(
   if (parsed.command === 'audit') return executeAudit(resolved, parsed, dependencies);
   if (parsed.command === 'agents' || parsed.command === 'workflows')
     return executeDefinitions(resolved, parsed, dependencies);
+  if (parsed.command === 'memory') return executeMemory(resolved, parsed, dependencies);
+  if (parsed.command === 'assets') return executeAssets(resolved, parsed, dependencies);
   if (parsed.command === 'schedules' || parsed.command === 'goals' || parsed.command === 'hooks')
     return executeAutomation(resolved, parsed, dependencies);
   if (parsed.command === 'restart') {
@@ -817,12 +857,17 @@ export async function executeCli(
     }
     return {
       stdout:
-        result.metadata?.['streamed'] === true &&
-        (parsed.output === 'text' || parsed.output === 'jsonl')
+        result.metadata?.['binaryStdout'] instanceof Uint8Array
           ? ''
-          : render(parsed, result),
+          : result.metadata?.['streamed'] === true &&
+              (parsed.output === 'text' || parsed.output === 'jsonl')
+            ? ''
+            : render(parsed, result),
       stderr: '',
       exitCode: 0,
+      ...(result.metadata?.['binaryStdout'] instanceof Uint8Array
+        ? { stdoutBytes: result.metadata['binaryStdout'] }
+        : {}),
     };
   } catch (error) {
     const status =
@@ -830,6 +875,9 @@ export async function executeCli(
     const usageError = isRecord(error) && error['usage'] === true;
     const mutation =
       parsed.command === 'restart' ||
+      (parsed.command === 'memory' &&
+        ['remember', 'correct', 'forget'].includes(parsed.arguments[0] ?? '')) ||
+      (parsed.command === 'assets' && parsed.arguments[0] === 'upload') ||
       (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
       (parsed.command === 'runs' && parsed.arguments[0] === 'cancel') ||
       (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
