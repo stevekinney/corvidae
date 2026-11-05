@@ -23,6 +23,7 @@ test('runs the installed release journey from the built archive and npm bin link
       join(output, 'evidence'),
     ]);
     expect(archiveEvidence).toMatch(/installed-release-.*\.json$/);
+    console.info(await Bun.file(archiveEvidence).text());
     const extracted = await runWithHangGuard(['tar', '-xzf', archive, '-C', commandRoot]);
     expect(extracted.exitCode).toBe(0);
     const npmBin = join(commandRoot, 'node_modules', '.bin');
@@ -38,6 +39,7 @@ test('runs the installed release journey from the built archive and npm bin link
       join(output, 'evidence'),
     ]);
     expect(commandEvidence).toMatch(/installed-release-.*\.json$/);
+    console.info(await Bun.file(commandEvidence).text());
   } finally {
     await rm(output, { recursive: true, force: true });
     await rm(commandRoot, { recursive: true, force: true });

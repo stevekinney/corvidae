@@ -30,10 +30,10 @@ function operations(
       const inspect = this.handlers['bureau.tasks.inspect'] as
         ((args: unknown) => unknown) | undefined;
       if (!options.skipTool) {
-        await inspect?.({ taskId: options.wrongTask ? 'wrong' : input.taskId });
+        await inspect?.({ taskId: options.wrongTask ? 'wrong' : input['taskId'] });
         const events = this.handlers['bureau.tasks.events'] as
           ((args: unknown) => unknown) | undefined;
-        await events?.({ taskId: input.taskId });
+        await events?.({ taskId: input['taskId'] });
       }
       if (options.unsupportedTool)
         await browserWindow.installedInspectorCall({ name: 'unknown', arguments: {} });

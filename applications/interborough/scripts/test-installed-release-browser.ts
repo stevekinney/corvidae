@@ -2,28 +2,18 @@ import { chromium, type Page } from '@playwright/test';
 
 import type { InstalledFetch } from './test-installed-release-transport.ts';
 
-type BrowserPage = {
-  on(event: 'pageerror', listener: (error: Error) => void): void;
-  goto(url: string): Promise<{ status(): number } | null>;
-  locator(selector: string): { waitFor(): Promise<void> };
-  waitForFunction(callback: () => boolean): Promise<void>;
-  route(
-    url: string,
-    handler: (route: {
-      fulfill(options: { contentType: string; body: string }): Promise<void>;
-    }) => Promise<void>,
-  ): Promise<void>;
-  addScriptTag(options: { content: string; type: string }): Promise<void>;
-  exposeFunction(
-    name: string,
-    callback: (toolArguments: Record<string, unknown>) => Promise<unknown>,
-  ): Promise<void>;
-  evaluate: Page['evaluate'];
-  frameLocator(selector: string): {
-    getByText(text: string): { waitFor(): Promise<void> };
-    getByRole(role: string, options: { level: number; name: string }): { waitFor(): Promise<void> };
-  };
-};
+type BrowserPage = Pick<
+  Page,
+  | 'on'
+  | 'goto'
+  | 'locator'
+  | 'waitForFunction'
+  | 'route'
+  | 'addScriptTag'
+  | 'exposeFunction'
+  | 'evaluate'
+  | 'frameLocator'
+>;
 type BrowserSession = { newPage(): Promise<BrowserPage>; close(): Promise<void> };
 export type InstalledBrowserOperations = {
   readonly build?: (options: Parameters<typeof Bun.build>[0]) => Promise<{
@@ -115,7 +105,7 @@ export async function assertInstalledAppsInChromium(
       'inspector',
     );
     const inspectionCalls = new Set<string>();
-    await page.exposeFunction('installedInspectorCall', async (call) => {
+    await page.exposeFunction('installedInspectorCall', async (call: Record<string, unknown>) => {
       const name = call['name'];
       if (name !== 'bureau.tasks.inspect' && name !== 'bureau.tasks.events')
         throw new Error('Inspector requested an unsupported tool');
