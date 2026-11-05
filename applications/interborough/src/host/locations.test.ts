@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import {
@@ -14,6 +15,7 @@ import {
   describeContent,
   disposeHostStorage,
   hostPathsReport,
+  hostWriteLocks,
   redactDatabase,
 } from './locations.ts';
 
@@ -51,10 +53,11 @@ describe('the backend report', () => {
     'postgresql://app-user:s3cret-p%40ss@db.example.com:5432/interborough?sslmode=require&password=s3cret-p%40ss';
   const home = {
     mode: 'remote' as const,
+    workspaceId: 'locations-fixture',
+    configurationWriteCapability: 'read-only' as const,
+    secretProvider: fixtureSecretProvider('locations-fixture', { secrets: new Map() }, false),
     database: { kind: 'postgres' as const, url: URL_WITH_CREDENTIALS },
     configurationLocation: 's3://state/prod/configuration.json',
-    secretLocation: (key: string) =>
-      `INTERBOROUGH_SECRET_${key.toUpperCase().replaceAll('-', '_')}`,
   };
 
   test('names the mode, the database server, and the content, and no credential', () => {
@@ -73,7 +76,9 @@ describe('the backend report', () => {
       workflowDirectory: 's3://state/prod/workflows/',
       configurationFile: 's3://state/prod/configuration.json',
       locked: { configuration: 'deployment', providerKeys: 'deployment' },
-      providers: [{ name: 'anthropic', secretFile: 'INTERBOROUGH_SECRET_ANTHROPIC_API_KEY' }],
+      providers: [
+        { name: 'anthropic', secretFile: 'workspace:locations-fixture/anthropic-api-key' },
+      ],
     });
     const text = JSON.stringify(report);
     for (const secret of ['app-user', 's3cret', 'p%40ss', 'sslmode']) {
@@ -87,6 +92,9 @@ describe('the backend report', () => {
         {
           ...home,
           mode: 'local',
+          workspaceId: 'locations-fixture',
+          configurationWriteCapability: 'writable' as const,
+          secretProvider: fixtureSecretProvider('locations-fixture', { secrets: new Map() }, true),
           database: { kind: 'sqlite', path: '/home/database.sqlite' },
           configurationLocation: '/home/configuration.json',
         },
@@ -179,3 +187,22 @@ describe('the skill source of a plugin’s shipped content', () => {
     ).toBeUndefined();
   });
 });
+
+for (const prepare of [false, true]) {
+  for (const transitions of [false, true]) {
+    for (const configurationWriteCapability of ['writable', 'read-only', 'unsupported'] as const) {
+      test(`credential publication lock reflects prepare=${prepare}, transitions=${transitions}, configuration=${configurationWriteCapability}`, () => {
+        const provider = fixtureSecretProvider('locations-fixture', { secrets: new Map() }, true);
+        const report = hostWriteLocks({
+          configurationWriteCapability,
+          secretProvider: { ...provider, capabilities: { read: true, prepare, transitions } },
+        });
+        expect(report.providerKeys).toBe(
+          prepare && transitions && configurationWriteCapability === 'writable'
+            ? undefined
+            : 'deployment',
+        );
+      });
+    }
+  }
+}

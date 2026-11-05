@@ -41,7 +41,7 @@ async function prepareHome(files: Readonly<Record<string, string>> = {}): Promis
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
-    bungalow.writeSecret('anthropic-api-key', FIXTURE_KEY);
+    await bungalow.deploymentSecrets.write('anthropic-api-key', FIXTURE_KEY);
   } finally {
     bungalow.close();
   }

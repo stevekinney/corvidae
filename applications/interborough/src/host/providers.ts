@@ -299,7 +299,10 @@ export async function loadProviders(input: {
   readonly configurationLocation: string;
   /** The configuration's text, or `undefined` when none exists: Bungalow's `readConfiguration`. */
   readonly readConfiguration: () => Promise<string | undefined>;
-  readonly readSecret: (key: string) => string | undefined;
+  readonly readSecret: (
+    key: string,
+    snapshot: { text: string | undefined; revision: string | null },
+  ) => Promise<string | undefined>;
   readonly warn: (message: string) => void;
   /** The providers the loaded plugins contribute. */
   readonly providers: readonly ContributedProvider[];
@@ -327,8 +330,11 @@ export async function loadProviders(input: {
   const apiKeys = new Map<string, string>();
   const missing: ContributedProvider[] = [];
   for (const provider of input.providers) {
-    const key =
-      provider.secretKey === undefined ? undefined : input.readSecret(provider.secretKey)?.trim();
+    const stored =
+      provider.secretKey === undefined
+        ? undefined
+        : await input.readSecret(provider.secretKey, { text, revision: null });
+    const key = stored?.trim();
     if (key === undefined || key === '') missing.push(provider);
     else apiKeys.set(provider.name, key);
   }

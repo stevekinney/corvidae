@@ -36,7 +36,7 @@ export async function writeProviderHome(
       join(home, 'configuration.json'),
       JSON.stringify({ plugins: { anthropic: { configuration: { models } } } }),
     );
-    bungalow.writeSecret('anthropic-api-key', FIXTURE_PROVIDER_KEY);
+    await bungalow.deploymentSecrets.write('anthropic-api-key', FIXTURE_PROVIDER_KEY);
   } finally {
     bungalow.close();
   }

@@ -59,7 +59,7 @@ test('the configured rows are the Bureau’s catalog from its first revision', a
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: home },
   });
-  bungalow.writeSecret('gemini-api-key', 'fixture-gemini-key');
+  await bungalow.deploymentSecrets.write('gemini-api-key', 'fixture-gemini-key');
   bungalow.close();
 
   seenWhenCreated.length = 0;
