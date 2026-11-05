@@ -112,6 +112,15 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
   emptyLabel?: string;
   /** The file name Download JSON saves a payload over `maxBytes` as. Defaults to "payload.json". */
   downloadFilename?: string;
+  /**
+   * Draws the payload without its card, for a pane that already is one: no border, no divider under
+   * the header, and no count or Copy button, since the pane carries its own Copy. The Fields view is
+   * always one label and value per row with a quiet rule between rows, never the inline or grid
+   * layouts, so a person reads a record as a list. The Fields / JSON switch sits at the end of the
+   * header row, across from the label.
+   * @default false
+   */
+  bare?: boolean;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };
@@ -197,6 +206,15 @@ export type PayloadInspectorSchemaProps = {
   emptyLabel?: string;
   /** The file name Download JSON saves a payload over `maxBytes` as. Defaults to "payload.json". */
   downloadFilename?: string;
+  /**
+   * Draws the payload without its card, for a pane that already is one: no border, no divider under
+   * the header, and no count or Copy button, since the pane carries its own Copy. The Fields view is
+   * always one label and value per row with a quiet rule between rows, never the inline or grid
+   * layouts, so a person reads a record as a list. The Fields / JSON switch sits at the end of the
+   * header row, across from the label.
+   * @default false
+   */
+  bare?: boolean;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };

@@ -106,6 +106,7 @@ Pass a `parse` function to support alternative serialization formats:
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `bare` | `boolean` | no | `false` | Draws the payload without its card, for a pane that already is one: no border, no divider under the header, and no count or Copy button, since the pane carries its own Copy. The Fields view is always one label and value per row with a quiet rule between rows, never the inline or grid layouts, so a person reads a record as a list. The Fields / JSON switch sits at the end of the header row, across from the label. |
 | `class` | `string` | no | — | Additional CSS classes applied to the root element. |
 | `downloadFilename` | `string` | no | — | The file name Download JSON saves a payload over `maxBytes` as. Defaults to "payload.json". |
 | `emptyLabel` | `string` | no | — | The muted line shown when there is no payload. Defaults to "No payload". |

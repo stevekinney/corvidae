@@ -249,6 +249,21 @@
     return width === undefined && !resizable ? undefined : boundedColumnWidth(column, width ?? 150);
   }
 
+  /**
+   * The inline style of a column's body cells: its width, when it has one, and, for a truncating
+   * column given a `maxWidth`, the widest its text grows before it ends with an ellipsis.
+   */
+  function cellStyle(column: DataTableColumn<Row>): string | undefined {
+    const width = columnWidth(column);
+    const truncateSize =
+      column.truncate && Number.isFinite(column.maxWidth)
+        ? `--_cinder-table-truncate-size: ${Math.max(0, column.maxWidth!)}px`
+        : undefined;
+    const declarations = [width === undefined ? undefined : `width: ${width}px`, truncateSize];
+    const style = declarations.filter((declaration) => declaration !== undefined).join('; ');
+    return style === '' ? undefined : style;
+  }
+
   $effect(() => {
     const externalColumnWidths = new Map(
       columns.map((column) => [column.key, column.width] as const),
@@ -647,7 +662,7 @@
               {...column.sortable ? { column: column.key } : {}}
               sortable={column.sortable ?? false}
               align={mapAlign(column.align) ?? 'left'}
-              style={columnWidth(column) ? `width: ${columnWidth(column)}px` : undefined}
+              style={cellStyle(column)}
             >
               {column.label}
               {#snippet actions()}
@@ -672,7 +687,7 @@
               {...column.sortable ? { column: column.key } : {}}
               sortable={column.sortable ?? false}
               align={mapAlign(column.align) ?? 'left'}
-              style={columnWidth(column) ? `width: ${columnWidth(column)}px` : undefined}
+              style={cellStyle(column)}
             >
               {column.label}
             </TableHeaderCell>
@@ -764,7 +779,7 @@
               controls={column.controls ?? false}
               data-cinder-monospace={column.monospace || undefined}
               title={column.truncate ? truncatedTitle(virtualRow.row[column.key]) : undefined}
-              style={columnWidth(column) ? `width: ${columnWidth(column)}px` : undefined}
+              style={cellStyle(column)}
             >
               {#if cell}
                 {@render cell({

@@ -1404,7 +1404,7 @@ describe('PayloadInspector tree styling', () => {
   test('draws the selected view as a quiet accent tint with accent text', () => {
     const css = readCss();
     const selected =
-      /__header \.cinder-segmented-control-option\[data-cinder-selected\][^{]*\{([^}]*)\}/.exec(
+      /:not\(\[data-cinder-bare\]\)\s+\.cinder-payload-inspector__header\s+\.cinder-segmented-control-option\[data-cinder-selected\][^{]*\{([^}]*)\}/.exec(
         css,
       );
 

@@ -62,8 +62,15 @@ export type DataTableColumn<Row extends DataTableRow = DataTableRow> = {
    * paths.
    */
   monospace?: boolean;
+  /** The column's starting width in pixels, for a resizable table. */
   width?: number;
+  /** The narrowest a resizable column can be dragged to, in pixels. */
   minWidth?: number;
+  /**
+   * The widest a resizable column can be dragged to, in pixels. For a `truncate` column it is also
+   * the widest its text grows before it ends with an ellipsis, so one long value cannot take the
+   * room the other columns need.
+   */
   maxWidth?: number;
 };
 
