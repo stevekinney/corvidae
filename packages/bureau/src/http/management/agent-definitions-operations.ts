@@ -52,6 +52,7 @@ import type { BureauAgents } from '../../types.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   agentAllowedSkillsSchema,
+  agentChildAgentsSchema,
   agentDefaultEffortSchema,
   agentCompactionSchema,
   agentCostBudgetSchema,
@@ -202,6 +203,7 @@ const definitionOutputSchema = z.object({
   skillDescriptors: z.array(agentSkillDescriptorSchema),
   /** The executable skills a run may activate, by name (COR-1975); `null` when the file lists none and the agent has no skills. */
   allowedSkills: agentAllowedSkillsSchema.nullable(),
+  childAgents: agentChildAgentsSchema.nullable(),
   a2a: z.boolean(),
   /** The most steps one run may take; `null` when the file sets none and Operative's default applies. */
   stepLimit: z.number().int().nullable(),
@@ -282,6 +284,7 @@ const definitionInputSchema = z
      * none and an update keeps the file's; `null` removes the file's.
      */
     allowedSkills: agentAllowedSkillsSchema.nullable().optional(),
+    childAgents: agentChildAgentsSchema.nullable().optional(),
     /** Whether the agent opts into A2A. Omitted, a create is `false` and an update keeps the file's value. */
     a2a: z.boolean().optional(),
     /**
@@ -418,6 +421,7 @@ function definitionView(definition: AgentFileDefinition) {
     tools: [...definition.tools],
     skillDescriptors: definition.skillDescriptors.map(skillView),
     allowedSkills: definition.allowedSkills === undefined ? null : [...definition.allowedSkills],
+    childAgents: definition.childAgents === undefined ? null : [...definition.childAgents],
     a2a: definition.a2a,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry === undefined ? null : { ...definition.retry },

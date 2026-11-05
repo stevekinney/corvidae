@@ -7,7 +7,7 @@
  * and never resolves a lazy agent.
  */
 
-import { createTool } from 'armorer';
+import { createTool, type ToolContext } from 'armorer';
 import { z } from 'zod';
 
 import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
@@ -38,6 +38,14 @@ type DiscoverableAgent = {
  */
 export function createAgentDiscoveryTool<D extends AgentDefinitions>(
   catalog: Pick<BureauAgentCatalog<D>, 'entries' | 'list' | 'find'>,
+  access?: {
+    readonly runAgent?: (runId: string) => Promise<string | undefined>;
+    readonly agentDetail?: (
+      id: string,
+    ) => Promise<
+      { readonly definition?: { readonly childAgents?: readonly string[] } | null } | undefined
+    >;
+  },
 ) {
   return createTool({
     name: 'discover-agents',
@@ -58,7 +66,7 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
           "Search text to match (case-insensitively) against agent names and descriptions, and each skill's name, description, and tags.",
         ),
     }),
-    execute: ({ text }) => {
+    execute: async ({ text }, context: ToolContext) => {
       const lowerText = text?.toLowerCase();
       const agents: DiscoverableAgent[] = catalog.entries();
       const taken = new Set(agents.map(({ name }) => name));
@@ -69,7 +77,17 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
         const agent = catalog.find(listing.id);
         if (agent !== undefined) agents.push({ name: listing.id, agent });
       }
-      const matches = agents.filter(({ name, agent }) => {
+      let visible = agents;
+      const runId = context.executionContext?.['parentRunId'] ?? context.runId;
+      if (access?.runAgent !== undefined && typeof runId === 'string') {
+        const caller = await access.runAgent(runId);
+        const detail = caller === undefined ? undefined : await access.agentDetail?.(caller);
+        if (detail?.definition?.childAgents !== undefined) {
+          const allowed = new Set(detail.definition.childAgents);
+          visible = agents.filter(({ name }) => allowed.has(name));
+        }
+      }
+      const matches = visible.filter(({ name, agent }) => {
         if (!lowerText) {
           return true;
         }
@@ -90,16 +108,14 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
           (value) => typeof value === 'string' && value.toLowerCase().includes(lowerText),
         );
       });
-      return Promise.resolve(
-        JSON.stringify(
-          matches.map(({ name, agent }) => ({
-            name,
-            ...(agent.description === undefined ? {} : { description: agent.description }),
-            ...(agent.skillDescriptors === undefined
-              ? {}
-              : { skillDescriptors: agent.skillDescriptors }),
-          })),
-        ),
+      return JSON.stringify(
+        matches.map(({ name, agent }) => ({
+          name,
+          ...(agent.description === undefined ? {} : { description: agent.description }),
+          ...(agent.skillDescriptors === undefined
+            ? {}
+            : { skillDescriptors: agent.skillDescriptors }),
+        })),
       );
     },
   });

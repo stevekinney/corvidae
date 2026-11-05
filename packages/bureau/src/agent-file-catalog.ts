@@ -965,6 +965,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     }
     const resources = checkResources(definition);
     if ('problem' in resources) return resources;
+    const childProblem = childAgentsProblem(id, definition);
+    if (childProblem !== undefined) return { problem: childProblem };
     if (definition.compaction?.enabled === true && options.models.summarizer() === undefined) {
       const message =
         'Compaction is enabled, but the deployment has no summarizer model. Set the context.summarizerModel setting to a model in the catalog, or turn compaction off.';
@@ -977,6 +979,37 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       };
     }
     return resources;
+  }
+
+  /** Validates the durable child-agent allowlist against code and ready file agents. */
+  function childAgentsProblem(
+    id: string,
+    definition: AgentFileDefinition,
+  ): AgentFileProblem | undefined {
+    const names = definition.childAgents;
+    if (names === undefined) return undefined;
+    const available = new Set(options.reservedIdentifiers);
+    for (const entry of directoryWatcher?.entries().values() ?? []) {
+      if (entry.id !== id && entry.problem === undefined) available.add(entry.id);
+    }
+    const issues = names.flatMap((name, index) => {
+      const message =
+        name === id
+          ? `Agent "${id}" cannot dispatch itself.`
+          : available.has(name)
+            ? undefined
+            : `Agent "${name}" is not a code agent or ready file agent.`;
+      return message === undefined
+        ? []
+        : [{ path: `childAgents.${index}`, message, reference: name }];
+    });
+    return issues.length === 0
+      ? undefined
+      : {
+          code: 'invalid-frontmatter',
+          message: `The definition cannot dispatch ${issues.map((issue) => issue.message).join('; ')}.`,
+          issues,
+        };
   }
 
   /** What a run needs to compact its conversation, or nothing when the file does not ask for it. */
@@ -1458,6 +1491,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     }
     // A document no agent names any more is not kept.
     for (const key of referenceCache.keys()) if (!referenced.has(key)) referenceCache.delete(key);
+    // Child references are resolved only after every file has been loaded, so deleting or restoring
+    // a referenced file updates the referrer's state in the same catalog rebuild.
+    for (const [id, entry] of settled) {
+      if (entry.definition === undefined || entry.problem?.code === 'invalid-frontmatter') continue;
+      const problem = childAgentsProblem(id, entry.definition);
+      if (problem !== undefined) {
+        const { agent: _agent, ...withoutAgent } = entry;
+        settled.set(id, { ...withoutAgent, problem });
+      }
+    }
     return settled;
   }
 

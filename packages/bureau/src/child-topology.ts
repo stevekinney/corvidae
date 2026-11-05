@@ -291,6 +291,11 @@ export interface BureauChildDelegationOptions {
   readonly policyVersion?: string | undefined;
   /** Defaults to one hour. */
   readonly defaultTimeToLiveMilliseconds?: number | undefined;
+  /** Optional limits for each root run. `levels` counts levels below the root. */
+  readonly rootAuthority?: {
+    readonly levels: number;
+    readonly budget?: DelegationBudget | undefined;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -956,7 +961,14 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     }
     const { chain } = loaded;
     const parentGrant = chain[0];
-    const authority = request.authority;
+    const authority =
+      parentGrant === undefined && options.rootAuthority !== undefined
+        ? {
+            ...(request.authority ?? {}),
+            depth: options.rootAuthority.levels - 1,
+            budget: options.rootAuthority.budget ?? request.authority?.budget,
+          }
+        : request.authority;
     if (parentGrant) {
       if (parentGrant.depth === 0) {
         return {

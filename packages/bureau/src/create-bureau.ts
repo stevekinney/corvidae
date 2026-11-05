@@ -169,6 +169,7 @@ import {
 import { bureauOwnTools, withAgentsBuiltFromBureauTools } from './agents-with-bureau-tools';
 import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
+import { createChildRunTools } from './child-run-tools';
 import { createPluginRegistry } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
@@ -2737,10 +2738,28 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1890: the built-in `bureau` plugin contributes Bureau's own tools through the plugin API.
   // The tools read the Bureau when they are called, which is after construction has finished.
   const bureauTools = [
-    createAgentDiscoveryTool({
-      entries: () => agentCatalog.entries(),
-      list: () => agentCatalog.list(),
-      find: (name) => agentCatalog.find(name),
+    createAgentDiscoveryTool(
+      {
+        entries: () => agentCatalog.entries(),
+        list: () => agentCatalog.list(),
+        find: (name) => agentCatalog.find(name),
+      },
+      {
+        runAgent: async (runId) => runAttribution.get(runId)?.agentName,
+        agentDetail: (id) => agentCatalog.detail(id),
+      },
+    ),
+    ...createChildRunTools({
+      children: () => childTopologyForWait?.children,
+      agentDetail: (id) => agentCatalog.detail(id),
+      runAgent: async (runId) => runAttribution.get(runId)?.agentName,
+      requestWait: ({ parentRunId, childRunId, toolCallId, principal }) =>
+        childWaitServices.get(parentRunId)?.requestChildWait?.({
+          parentRunId,
+          childRunId,
+          toolCallId,
+          principal: principal ?? ownerOrLocal(runAttribution.get(parentRunId)?.principal),
+        }) ?? { parked: false, reason: 'unavailable' },
     }),
     ...(options.workflowSource === undefined
       ? []
@@ -2991,6 +3010,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     current: undefined,
   };
   let childTopologyForWait: ChildTopology | undefined;
+  const childWaitServices = new Map<string, DurableRunDeps>();
   function configureChildWaitServices(services: DurableRunDeps, principal: string): void {
     services.deferredChildCallIds ??= new Set<string>();
     services.childWaitPrincipal = principal;
@@ -3064,7 +3084,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
-      configureDurableRun: (_runId, services, principal) => {
+      configureDurableRun: (runId, services, principal) => {
+        childWaitServices.set(runId, services);
         configureChildWaitServices(services, principal);
       },
       // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
@@ -22466,7 +22487,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (shutdownPromise) return;
         void childTopology.parentCancelled(runId, reason);
       },
-      configureDurableRun: (_runId, services, principal) => {
+      configureDurableRun: (runId, services, principal) => {
+        childWaitServices.set(runId, services);
         configureChildWaitServices(services, principal);
       },
     });

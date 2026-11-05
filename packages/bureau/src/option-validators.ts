@@ -226,6 +226,10 @@ export function validateChildrenOption(
     badRequest('"options.children.delegation.secret" must be a non-empty string');
   }
   validateDelegationTimeToLive(delegation.defaultTimeToLiveMilliseconds, badRequest);
+  const root = delegation.rootAuthority;
+  if (root !== undefined && (!Number.isInteger(root.levels) || root.levels < 1)) {
+    badRequest('"options.children.delegation.rootAuthority.levels" must be a positive integer');
+  }
 }
 
 /** `children.delegation.defaultTimeToLiveMilliseconds`: a positive, finite number when given. */

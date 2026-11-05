@@ -82,6 +82,7 @@ const definitionSchema = z.object({
   skillDescriptors: z.array(skillSchema),
   /** The executable skills a run may activate; `null` when the file lists none, and the agent has none. */
   allowedSkills: z.array(z.string()).nullable().default(null),
+  childAgents: z.array(z.string()).nullable().optional(),
   a2a: z.boolean(),
   /** The most steps one run may take; `null` when the file sets none. */
   stepLimit: z.number().int().nullable().default(null),
@@ -308,6 +309,7 @@ export type AgentDefinitionInput = {
    * `null` removes it, and an empty list grants none.
    */
   readonly allowedSkills?: readonly string[] | null;
+  readonly childAgents?: readonly string[] | null;
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
   readonly a2a?: boolean;
   /** The most steps a run may take. `null` removes the limit; left out, an update keeps the file's. */
