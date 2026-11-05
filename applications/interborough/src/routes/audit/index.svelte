@@ -28,7 +28,6 @@
     EmptyState,
     Input,
     ListDetail,
-    PageHeader,
     SelectableRow,
     Select,
     Skeleton,
@@ -44,6 +43,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
+  import HealthFrame from '../health/health-frame.svelte';
   import AuditDetail from './audit-detail.svelte';
   import {
     auditExportFilename,
@@ -222,9 +222,9 @@
   );
 </script>
 
-<section class="ib-audit" aria-label={VIEW_COPY.audit.label} data-page="audit">
-  <PageHeader title={VIEW_COPY.audit.label} description={copy.description}>
-    {#snippet actions()}
+<HealthFrame active="audit">
+  <section class="ib-audit" aria-label={VIEW_COPY.audit.label} data-page="audit">
+    <div class="ib-audit__export">
       <Button
         variant="secondary"
         loading={exportMutation.isPending}
@@ -233,176 +233,176 @@
         {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
         {exportMutation.isPending ? copy.exporting : copy.exportAction}
       </Button>
-    {/snippet}
-  </PageHeader>
+    </div>
 
-  {#if exportMutation.isError}
-    <Alert variant="danger">
-      <p class="ib-audit__alert-title">{copy.exportFailed.title}</p>
-      <p class="ib-audit__alert-body">{copy.exportFailed.description}</p>
-      <Button variant="secondary" onclick={() => exportMutation.mutate()}>{RETRY_LABEL}</Button>
-    </Alert>
-  {/if}
-
-  <form class="ib-audit__search" role="search" aria-label={copy.searchLabel} onsubmit={search}>
-    <DatePicker
-      id="ib-audit-since"
-      label={copy.sinceLabel}
-      labelVisible={false}
-      placeholder={copy.sincePlaceholder}
-      granularity="minute"
-      bind:value={since}
-    />
-    <Select
-      id="ib-audit-type"
-      label={copy.typeLabel}
-      labelVisible={false}
-      class="ib-audit__identifier"
-      options={typeOptions}
-      value={typeChoice}
-      onchange={(event) => (typeChoice = event.currentTarget.value)}
-    />
-    {#if typeChoice === OTHER_TYPE}
-      <Input
-        id="ib-audit-type-other"
-        label={copy.otherTypeLabel}
-        labelVisible={false}
-        placeholder={copy.otherTypePlaceholder}
-        bind:value={otherType}
-      />
+    {#if exportMutation.isError}
+      <Alert variant="danger">
+        <p class="ib-audit__alert-title">{copy.exportFailed.title}</p>
+        <p class="ib-audit__alert-body">{copy.exportFailed.description}</p>
+        <Button variant="secondary" onclick={() => exportMutation.mutate()}>{RETRY_LABEL}</Button>
+      </Alert>
     {/if}
-    <Select
-      id="ib-audit-who"
-      label={copy.whoLabel}
-      labelVisible={false}
-      options={whoOptions}
-      value={who}
-      onchange={(event) => (who = event.currentTarget.value)}
-    />
-    <Select
-      id="ib-audit-resource-kind"
-      label={copy.resourceLabel}
-      labelVisible={false}
-      options={kindOptions}
-      value={resourceKind}
-      onchange={(event) => (resourceKind = kindOf(event.currentTarget.value))}
-    />
-    {#if resourceKind !== ''}
-      <Input
-        id="ib-audit-resource"
-        label={copy.resourceIdLabel}
+
+    <form class="ib-audit__search" role="search" aria-label={copy.searchLabel} onsubmit={search}>
+      <DatePicker
+        id="ib-audit-since"
+        label={copy.sinceLabel}
         labelVisible={false}
-        placeholder={copy.resourceIdPlaceholder}
+        placeholder={copy.sincePlaceholder}
+        granularity="minute"
+        bind:value={since}
+      />
+      <Select
+        id="ib-audit-type"
+        label={copy.typeLabel}
+        labelVisible={false}
         class="ib-audit__identifier"
-        bind:value={resourceId}
+        options={typeOptions}
+        value={typeChoice}
+        onchange={(event) => (typeChoice = event.currentTarget.value)}
       />
+      {#if typeChoice === OTHER_TYPE}
+        <Input
+          id="ib-audit-type-other"
+          label={copy.otherTypeLabel}
+          labelVisible={false}
+          placeholder={copy.otherTypePlaceholder}
+          bind:value={otherType}
+        />
+      {/if}
+      <Select
+        id="ib-audit-who"
+        label={copy.whoLabel}
+        labelVisible={false}
+        options={whoOptions}
+        value={who}
+        onchange={(event) => (who = event.currentTarget.value)}
+      />
+      <Select
+        id="ib-audit-resource-kind"
+        label={copy.resourceLabel}
+        labelVisible={false}
+        options={kindOptions}
+        value={resourceKind}
+        onchange={(event) => (resourceKind = kindOf(event.currentTarget.value))}
+      />
+      {#if resourceKind !== ''}
+        <Input
+          id="ib-audit-resource"
+          label={copy.resourceIdLabel}
+          labelVisible={false}
+          placeholder={copy.resourceIdPlaceholder}
+          class="ib-audit__identifier"
+          bind:value={resourceId}
+        />
+      {/if}
+      <div class="ib-audit__actions">
+        <Button type="submit" variant="primary">{copy.searchAction}</Button>
+        <Button type="button" variant="secondary" onclick={clear}>{copy.clearAction}</Button>
+      </div>
+    </form>
+
+    {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
+      <Alert variant="info">
+        <p class="ib-audit__alert-body">
+          {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
+        </p>
+      </Alert>
     {/if}
-    <div class="ib-audit__actions">
-      <Button type="submit" variant="primary">{copy.searchAction}</Button>
-      <Button type="button" variant="secondary" onclick={clear}>{copy.clearAction}</Button>
-    </div>
-  </form>
 
-  {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
-    <Alert variant="info">
-      <p class="ib-audit__alert-body">
-        {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
-      </p>
-    </Alert>
-  {/if}
-
-  {#if trail.isError}
-    <Alert variant="danger">
-      <p class="ib-audit__alert-title">{copy.failed.title}</p>
-      <p class="ib-audit__alert-body">{copy.failed.description}</p>
-      <Button variant="secondary" onclick={() => void trail.refetch()}>{RETRY_LABEL}</Button>
-    </Alert>
-  {:else if trail.isPending}
-    <div role="status" aria-busy="true" aria-label={copy.loadingLabel}>
-      <Skeleton height="1.5rem" width="40%" />
-      <Skeleton height="12rem" />
-    </div>
-  {:else if rows.length === 0 && !trail.hasNextPage}
-    {#if filtered}
-      <EmptyState
-        kind="filtered"
-        headingLevel={2}
-        title={copy.noMatches.title}
-        description={copy.noMatches.description}
-        clearFiltersLabel={copy.noMatches.clear}
-        onClearFilters={clear}
-      />
+    {#if trail.isError}
+      <Alert variant="danger">
+        <p class="ib-audit__alert-title">{copy.failed.title}</p>
+        <p class="ib-audit__alert-body">{copy.failed.description}</p>
+        <Button variant="secondary" onclick={() => void trail.refetch()}>{RETRY_LABEL}</Button>
+      </Alert>
+    {:else if trail.isPending}
+      <div role="status" aria-busy="true" aria-label={copy.loadingLabel}>
+        <Skeleton height="1.5rem" width="40%" />
+        <Skeleton height="12rem" />
+      </div>
+    {:else if rows.length === 0 && !trail.hasNextPage}
+      {#if filtered}
+        <EmptyState
+          kind="filtered"
+          headingLevel={2}
+          title={copy.noMatches.title}
+          description={copy.noMatches.description}
+          clearFiltersLabel={copy.noMatches.clear}
+          onClearFilters={clear}
+        />
+      {:else}
+        <EmptyState
+          kind="first-use"
+          headingLevel={2}
+          title={VIEW_COPY.audit.empty?.title ?? ''}
+          description={VIEW_COPY.audit.empty?.description ?? ''}
+        />
+      {/if}
     {:else}
-      <EmptyState
-        kind="first-use"
-        headingLevel={2}
-        title={VIEW_COPY.audit.empty?.title ?? ''}
-        description={VIEW_COPY.audit.empty?.description ?? ''}
-      />
+      <div class="ib-audit__frame" data-shortcut-region="list-detail">
+        <ListDetail
+          items={rows}
+          key={(row: Row) => row.key}
+          label={copy.caption}
+          detailLabel={copy.detailLabel}
+          emptyTitle={copy.emptyDetailTitle}
+          emptyDescription={copy.emptyDetailDescription}
+          selectionParameter="record"
+          {selectionLocation}
+          storageKey="interborough-audit"
+        >
+          {#snippet header()}
+            <div class="ib-audit__list-bar">
+              <p class="ib-audit__count" data-testid="audit-count">
+                {copy.count(rows.length, trail.hasNextPage)}
+              </p>
+              {#if trail.hasNextPage}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={trail.isFetchingNextPage}
+                  onclick={() => void trail.fetchNextPage()}>{copy.loadMore}</Button
+                >
+              {/if}
+            </div>
+          {/snippet}
+          {#snippet list(row, state)}
+            <SelectableRow
+              selected={state.selected}
+              selectedState="current"
+              onclick={state.open}
+              data-record={row.record.sequence ?? ''}
+            >
+              {#snippet title()}<span class="ib-audit__type">{row.record.type}</span>{/snippet}
+              {#snippet description()}
+                <span class="ib-audit__who">{row.record.principal ?? copy.noActor}</span>
+                <span class="ib-audit__resource">{row.record.resource}</span>
+              {/snippet}
+              {#snippet meta()}
+                <time datetime={row.record.timestamp}>{timeOf(row.record.timestamp)}</time>
+              {/snippet}
+            </SelectableRow>
+          {/snippet}
+          {#snippet listEmpty()}
+            <EmptyState
+              kind="filtered"
+              size="compact"
+              headingLevel={3}
+              title={copy.noLoadedMatches.title}
+              description={copy.noLoadedMatches.description}
+              clearFiltersLabel={copy.noLoadedMatches.clear}
+              onClearFilters={clear}
+            />
+          {/snippet}
+          {#snippet detail(row)}
+            <AuditDetail record={row.record} />
+          {/snippet}
+        </ListDetail>
+      </div>
     {/if}
-  {:else}
-    <div class="ib-audit__frame" data-shortcut-region="list-detail">
-      <ListDetail
-        items={rows}
-        key={(row: Row) => row.key}
-        label={copy.caption}
-        detailLabel={copy.detailLabel}
-        emptyTitle={copy.emptyDetailTitle}
-        emptyDescription={copy.emptyDetailDescription}
-        selectionParameter="record"
-        {selectionLocation}
-        storageKey="interborough-audit"
-      >
-        {#snippet header()}
-          <div class="ib-audit__list-bar">
-            <p class="ib-audit__count" data-testid="audit-count">
-              {copy.count(rows.length, trail.hasNextPage)}
-            </p>
-            {#if trail.hasNextPage}
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={trail.isFetchingNextPage}
-                onclick={() => void trail.fetchNextPage()}>{copy.loadMore}</Button
-              >
-            {/if}
-          </div>
-        {/snippet}
-        {#snippet list(row, state)}
-          <SelectableRow
-            selected={state.selected}
-            selectedState="current"
-            onclick={state.open}
-            data-record={row.record.sequence ?? ''}
-          >
-            {#snippet title()}<span class="ib-audit__type">{row.record.type}</span>{/snippet}
-            {#snippet description()}
-              <span class="ib-audit__who">{row.record.principal ?? copy.noActor}</span>
-              <span class="ib-audit__resource">{row.record.resource}</span>
-            {/snippet}
-            {#snippet meta()}
-              <time datetime={row.record.timestamp}>{timeOf(row.record.timestamp)}</time>
-            {/snippet}
-          </SelectableRow>
-        {/snippet}
-        {#snippet listEmpty()}
-          <EmptyState
-            kind="filtered"
-            size="compact"
-            headingLevel={3}
-            title={copy.noLoadedMatches.title}
-            description={copy.noLoadedMatches.description}
-            clearFiltersLabel={copy.noLoadedMatches.clear}
-            onClearFilters={clear}
-          />
-        {/snippet}
-        {#snippet detail(row)}
-          <AuditDetail record={row.record} />
-        {/snippet}
-      </ListDetail>
-    </div>
-  {/if}
-</section>
+  </section>
+</HealthFrame>
 
 <style>
   .ib-audit {
@@ -425,6 +425,11 @@
   .ib-audit__search > :global(*) {
     flex: 0 1 12rem;
     min-width: 0;
+  }
+
+  .ib-audit__export {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .ib-audit__actions {

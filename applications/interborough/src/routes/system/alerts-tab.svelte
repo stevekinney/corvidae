@@ -153,7 +153,7 @@
   };
 
   function detailsHref(row: AlertRow): string {
-    return row.workflowId ? workflowDetailPath(row.workflowId) : '/health?tab=alerts';
+    return row.workflowId ? workflowDetailPath(row.workflowId) : '/health?advanced=alerts';
   }
 
   function formatTime(atMs: number): string {

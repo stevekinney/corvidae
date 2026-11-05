@@ -2200,59 +2200,6 @@ export const PLUGINS_COPY = {
   },
 } as const;
 
-/** The words of the diagnostics the Health page carries below the engine overview. */
-export const HEALTH_DIAGNOSTICS_COPY = {
-  title: 'Diagnostics',
-  sections: 'Diagnostic sections',
-} as const;
-
-/** The words of the Health overview: its health line, its four counts, and the recent-activity window. */
-export const HEALTH_OVERVIEW_COPY = {
-  /** The accessible name of the four counts. */
-  countsLabel: 'Health counts',
-  workingNow: 'Working now',
-  needsYou: 'Needs you',
-  failedIn24Hours: 'Failed in 24h',
-  schedules: 'Schedules',
-  /** The value of a count that could not be read. */
-  unavailable: '—',
-  /** The health line when nothing needs attention. */
-  allClear: 'All clear. Nothing needs attention.',
-  /**
-   * The health line when a read it depends on failed and nothing it could read needs attention:
-   * the line cannot say all is clear about what it never saw.
-   */
-  lineUnavailable:
-    'Health could not be fully read. Nothing was reported, but that is not all clear.',
-  /** The note beside the chips when one of the line's reads failed. */
-  lineReadFailed: 'Some checks could not be read',
-  /** The chip for each alert rule that is firing now: what crossed its warning level, and the reading. */
-  firingAlert: {
-    storage: (size: string): string => `Storage is over its warning level · ${size}`,
-    failureRate: (rate: string): string =>
-      `Workflow failure rate is over its warning level · ${rate}`,
-    activityDuration: (duration: string): string =>
-      `Slowest steps are over their warning level · ${duration}`,
-    /** A rule this app has no sentence for yet: the metric's own name, which is still true. */
-    other: (metric: string): string => `${metric} is over its warning level`,
-  },
-  /** The health line when something does: how many things, and each one below it. */
-  needsAttention: (count: number): string =>
-    count === 1 ? '1 thing needs attention' : `${String(count)} things need attention`,
-  activity: {
-    title: 'Recent activity',
-    /** What the empty window says: the engine has not reported anything yet. */
-    emptyTitle: 'Nothing has happened yet',
-    emptyDescription: 'Events from runs, schedules and reviews appear here as they happen.',
-    /** The footer link to the whole trail. */
-    auditLink: 'Open the audit log',
-    /** The accessible name of the live window. */
-    windowLabel: 'Recent activity. Updates pause while you are reading.',
-    /** A line that stands for several in a row, such as `Workflow completed ×3`. */
-    repeated: (title: string, count: number): string => `${title} ×${String(count)}`,
-  },
-} as const;
-
 /** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
 export const MODEL_POLICY_COPY = {
   intro:
@@ -4786,9 +4733,17 @@ export const STORAGE_COPY = {
   searchPlaceholder: 'Search keys',
   /** The accessible name of the table of keys. */
   tableLabel: 'Keys',
-  columns: { key: 'Key', group: 'Group', size: 'Size' },
+  columns: {
+    key: 'Key',
+    group: 'Group',
+    size: 'Size',
+    /** The column of write times, which names the zone they are read in. */
+    updated: (zone: string): string => `Updated (${zone})`,
+  },
   /** A key that is in no group, because its name has no prefix. */
   noGroup: 'None',
+  /** The Updated column of a key whose backend records no write time. */
+  noUpdated: '—',
   /** How many keys are loaded, as a sentence. */
   count: (count: number, more: boolean): string =>
     `${String(count)} ${count === 1 ? 'key' : 'keys'}${more ? ' so far' : ''}`,

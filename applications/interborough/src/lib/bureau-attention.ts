@@ -114,3 +114,99 @@ export async function readScheduleAttention(options?: {
   }
   return { missedRuns, noProvider };
 }
+
+/** The check a problem counts under, in the order the Bureau lists the checks. */
+export const ATTENTION_AREAS = [
+  'storage',
+  'schedules',
+  'providers',
+  'hooks',
+  'plugins',
+  'runs',
+] as const;
+
+/** One of {@link ATTENTION_AREAS}. */
+export type AttentionArea = (typeof ATTENTION_AREAS)[number];
+
+const area = z.enum(ATTENTION_AREAS);
+
+const attentionItemSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('alert'),
+    area,
+    at: z.number(),
+    metric: z.string(),
+    currentValue: z.number(),
+    threshold: z.number(),
+  }),
+  z.object({
+    kind: z.literal('missed-runs'),
+    area,
+    at: z.number(),
+    scheduleId: z.string(),
+    scheduleName: z.string().nullable(),
+    count: z.number().int(),
+    since: z.number(),
+    occurrences: z.array(z.object({ occurrence: z.number(), count: z.number().int() })),
+  }),
+  z.object({
+    kind: z.literal('hook-failed'),
+    area,
+    at: z.number(),
+    hookId: z.string(),
+    hookName: z.string().nullable(),
+    gaveUp: z.boolean(),
+    status: z.number().int().nullable(),
+    host: z.string().nullable(),
+    attempts: z.number().int(),
+    error: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal('plugin-not-loaded'),
+    area,
+    at: z.number().nullable(),
+    plugin: z.string(),
+    problems: z.array(z.string()),
+  }),
+  z.object({
+    kind: z.literal('no-provider'),
+    area,
+    at: z.number().nullable(),
+    provider: z.string().nullable(),
+  }),
+]);
+
+/** One problem that needs attention, as `bureau.health.attention` lists it. */
+export type AttentionItem = z.infer<typeof attentionItemSchema>;
+
+/** What `bureau.health.attention` answers: the problems, most recent first, and the same problems counted by area. */
+export interface Attention {
+  /** Every problem, most recent first; one with no known time first. */
+  readonly items: readonly AttentionItem[];
+  /** The same items counted by area; only an area with a problem is listed. */
+  readonly checks: readonly { readonly area: AttentionArea; readonly count: number }[];
+}
+
+const attentionSchema = z.object({
+  items: z.array(z.looseObject({ kind: z.string() })),
+  checks: z.array(z.object({ area, count: z.number().int().positive() })),
+});
+
+/**
+ * Everything on the attention list, in the order the Bureau gives it, and the checks that count it
+ * by area. An item of a kind this build does not know is left out of `items`. A caller without
+ * `bureau.diagnostics:read` is refused with a fault, which the caller lets through.
+ */
+export async function readAttention(options?: {
+  readonly signal?: AbortSignal;
+  readonly fetch?: Fetcher;
+}): Promise<Attention> {
+  const parsed = attentionSchema.parse(await callBureau('bureau.health.attention', {}, options));
+  return {
+    items: parsed.items.flatMap((item) => {
+      const known = attentionItemSchema.safeParse(item);
+      return known.success ? [known.data] : [];
+    }),
+    checks: parsed.checks,
+  };
+}

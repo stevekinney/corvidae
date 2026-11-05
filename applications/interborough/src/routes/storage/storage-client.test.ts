@@ -200,6 +200,29 @@ describe('storageDelete', () => {
   });
 });
 
+describe('storageScan write times', () => {
+  test('reads when each key was last written, and null for a backend that records none', async () => {
+    scripted = new ScriptedFetch();
+    scripted.respondWith(
+      new Response(
+        [
+          JSON.stringify({ key: 'a', value: 'AQ==', updatedAt: 1_793_637_900_000 }),
+          JSON.stringify({ key: 'b', value: 'Ag==', updatedAt: null }),
+          JSON.stringify({ key: 'c', value: 'Aw==' }),
+        ].join('\n'),
+      ),
+    );
+
+    const page = await storageScan(connection, { prefix: '' });
+
+    expect(page.entries.map((entry) => [entry.key, entry.updatedAt])).toEqual([
+      ['a', 1_793_637_900_000],
+      ['b', null],
+      ['c', null],
+    ]);
+  });
+});
+
 describe('a body the server should not have sent', () => {
   test('a scan row without a string key and value is an error, not a row of nothing', async () => {
     scripted = new ScriptedFetch();

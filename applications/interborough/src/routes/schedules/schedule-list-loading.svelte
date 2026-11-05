@@ -58,6 +58,7 @@
   // The skeleton keeps its own time, so the filter bar waits the same delay beside it.
   let revealed = $state(false);
   $effect(() => {
+    // poll-reason: timer
     const timer = setTimeout(() => {
       revealed = true;
     }, LIST_LOADING_DELAY_MILLISECONDS);

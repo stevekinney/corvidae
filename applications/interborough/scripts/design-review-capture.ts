@@ -66,6 +66,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/schedules-new.spec.ts',
   'tests/e2e/schedules-edit.spec.ts',
   'tests/e2e/schedules-detail.spec.ts',
+  'tests/e2e/health-overview.spec.ts',
   'tests/e2e/restart.spec.ts',
   'tests/e2e/first-run.spec.ts',
 ] as const;

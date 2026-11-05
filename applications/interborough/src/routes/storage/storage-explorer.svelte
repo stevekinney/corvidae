@@ -8,13 +8,18 @@
    *
    * A key under a prefix the application manages carries a lock, and its pane offers no Edit or
    * Delete (`key-detail.svelte`). The scan carries each key's write time (`updatedAt`, null for a
-   * backend that records none), which `storage-client.ts` does not read, so the table has no Updated
-   * column. Storage keeps no count per group, so the select lists the groups without one.
+   * backend that records none), which the Updated column words absolutely, in Central time
+   * ("Today, 10:44 AM"). Storage keeps no count per group, so the select lists the groups without
+   * one. The table scrolls sideways inside its own bordered box when its columns do not fit, with a
+   * visible scrollbar and a fade at the end, so the page never scrolls sideways; the key's pane
+   * drops below it where the page is too narrow for both.
    */
   import {
     Alert,
     Button,
     EmptyState,
+    formatDateTime,
+    formatTimeZoneLabel,
     SearchField,
     Select,
     Skeleton,
@@ -97,6 +102,7 @@
   const scanned = $derived(pages.reduce((sum, page) => sum + page.scanned, 0));
   const selected = $derived(entries.find((entry) => entry.key === selectedKey));
   const filtered = $derived(group !== '' || search !== '');
+  const zoneLabel = formatTimeZoneLabel(Date.now(), { style: 'long' });
 
   const groupOptions = $derived([
     { value: '', label: copy.allGroups },
@@ -213,6 +219,9 @@
               <Table.HeaderCell align="right" class="ib-storage__size-column">
                 {copy.columns.size}
               </Table.HeaderCell>
+              <Table.HeaderCell class="ib-storage__updated-column">
+                {copy.columns.updated(zoneLabel)}
+              </Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -242,6 +251,11 @@
                 </Table.Cell>
                 <Table.Cell align="right" class="ib-storage__size-column">
                   {formatBytes(entry.value.byteLength)}
+                </Table.Cell>
+                <Table.Cell class="ib-storage__updated-column">
+                  {entry.updatedAt === null
+                    ? copy.noUpdated
+                    : formatDateTime(entry.updatedAt, { dayWords: 'today' })}
                 </Table.Cell>
               </Table.Row>
             {/each}
@@ -312,6 +326,13 @@
     flex: 0 1 16rem;
   }
 
+  /* On a narrow page the group select takes the whole row, and the search the next. */
+  @container (max-width: 39.99rem) {
+    .ib-storage__filters > :global(.ib-storage__group-select) {
+      flex: 1 1 100%;
+    }
+  }
+
   :global(.ib-storage__group-select select) {
     font-family: var(--cinder-font-mono);
   }
@@ -355,10 +376,12 @@
   }
 
   /* A fixed layout, so the key column takes the width the others leave and cuts a long key short
-   * with an ellipsis; the whole key is in the pane. */
+   * with an ellipsis; the whole key is in the pane. The table is never narrower than its columns
+   * need, so a narrow page scrolls it inside its own box instead of squeezing the key. */
   :global(.ib-storage__table) {
     table-layout: fixed;
     inline-size: 100%;
+    min-inline-size: 38rem;
   }
 
   :global(.ib-storage__group-column) {
@@ -369,10 +392,9 @@
     inline-size: 5.5rem;
   }
 
-  @container (max-width: 39.99rem) {
-    :global(.ib-storage__group-column) {
-      display: none;
-    }
+  :global(.ib-storage__updated-column) {
+    inline-size: 11.5rem;
+    white-space: nowrap;
   }
 
   :global(.ib-storage__key-cell) {

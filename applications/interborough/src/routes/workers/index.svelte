@@ -32,7 +32,8 @@
    * `weft.workers.list` snapshot; nothing here ever synthesizes a
    * client-side "disconnected" row).
    */
-  import { Alert, PageHeader, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
+  import HealthFrame from '../health/health-frame.svelte';
+  import { Alert, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -434,210 +435,212 @@
   const diagnosticsErrorValue = $derived(diagnosticsTabQuery.error ?? null);
 </script>
 
-<div class="weft-workers-route">
-  <PageHeader headingLevel={1} title="Workers" />
-  {#if !inProcessOnly}
-    <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
-  {/if}
+<HealthFrame active="workers">
+  <div class="weft-workers-route">
+    {#if !inProcessOnly}
+      <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
+    {/if}
 
-  {#if drainRefusal !== null}
-    <Alert variant="warning" dismissible onDismiss={() => (drainRefusal = null)}
-      >{drainRefusal}</Alert
-    >
-  {/if}
+    {#if drainRefusal !== null}
+      <Alert variant="warning" dismissible onDismiss={() => (drainRefusal = null)}
+        >{drainRefusal}</Alert
+      >
+    {/if}
 
-  {#if clearRefusal !== null}
-    <Alert variant="warning" dismissible onDismiss={() => (clearRefusal = null)}
-      >{clearRefusal}</Alert
-    >
-  {/if}
+    {#if clearRefusal !== null}
+      <Alert variant="warning" dismissible onDismiss={() => (clearRefusal = null)}
+        >{clearRefusal}</Alert
+      >
+    {/if}
 
-  {#if retryRefusal !== null}
-    <Alert variant="warning" dismissible onDismiss={() => (retryRefusal = null)}
-      >{retryRefusal}</Alert
-    >
-  {/if}
+    {#if retryRefusal !== null}
+      <Alert variant="warning" dismissible onDismiss={() => (retryRefusal = null)}
+        >{retryRefusal}</Alert
+      >
+    {/if}
 
-  {#if locked}
-    <Alert variant="warning">{scopeReason('system:read')} to read the workers.</Alert>
-  {:else if fleetSettling}
-    <div
-      class="weft-workers-route__skeleton"
-      role="status"
-      aria-busy="true"
-      aria-label="Loading fleet"
-    >
-      <Skeleton height="1.5rem" width="40%" />
-      <Skeleton height="8rem" />
-    </div>
-  {:else if inProcessOnly}
-    <InProcessNotice />
-  {:else}
-    <Tabs value={activeTab} onValueChange={(next) => selectTab(next)}>
-      <TabList label="Workers views">
-        {#each TAB_IDS as id (id)}
-          <Tab value={id}>{TAB_LABELS[id]}</Tab>
-        {/each}
-      </TabList>
+    {#if locked}
+      <Alert variant="warning">{scopeReason('system:read')} to read the workers.</Alert>
+    {:else if fleetSettling}
+      <div
+        class="weft-workers-route__skeleton"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading fleet"
+      >
+        <Skeleton height="1.5rem" width="40%" />
+        <Skeleton height="8rem" />
+      </div>
+    {:else if inProcessOnly}
+      <InProcessNotice />
+    {:else}
+      <Tabs value={activeTab} onValueChange={(next) => selectTab(next)}>
+        <TabList label="Workers views">
+          {#each TAB_IDS as id (id)}
+            <Tab value={id}>{TAB_LABELS[id]}</Tab>
+          {/each}
+        </TabList>
 
-      <TabPanel value="workers">
-        {#if fleetError}
-          <QueryFaultBanner error={fleetError} onRetry={() => void workersQuery.refetch()} />
-        {:else}
-          <WorkersListDetail
-            workers={workersQuery.data?.items ?? []}
-            summary={workersSummaryLine({
-              workers: workersQuery.data?.items ?? [],
-              waiting: queuesQuery.data?.items.reduce((total, queue) => total + queue.backlog, 0),
-              failedForGood: diagnosticsQuery.data?.summary.deadLettered,
-            })}
-            {adminGate}
-            onDrain={(worker) => openDrainDialog({ kind: 'worker', id: worker.id })}
-            onResume={resumeWorkerById}
-            onDrainDeployment={(name) => openDrainDialog({ kind: 'deployment', name })}
-            onResumeDeployment={resumeDeploymentByName}
-            onInspectTask={selectTask}
-            manifestDiagnostics={manifestQuery.data}
-            registrationRejections={rejectionsQuery.data ?? []}
-            manifestLoading={manifestQuery.isPending || rejectionsQuery.isPending}
-            manifestRefreshing={(manifestQuery.isFetching && manifestQuery.data !== undefined) ||
-              (rejectionsQuery.isFetching && rejectionsQuery.data !== undefined)}
-            manifestError={manifestQuery.error ?? rejectionsQuery.error ?? null}
-            workerManifestLoading={manifestQuery.isPending}
-            workerManifestRefreshing={manifestQuery.isFetching && manifestQuery.data !== undefined}
-            workerManifestError={manifestQuery.error ?? null}
-            registry={registryQuery.data}
-            registryLoading={registryQuery.isPending}
-            registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}
-            registryError={registryQuery.error ?? null}
-          />
-        {/if}
-      </TabPanel>
-
-      <TabPanel value="queues">
-        {#if queuesError}
-          <QueryFaultBanner error={queuesError} onRetry={() => void queuesQuery.refetch()} />
-        {:else if selectedQueue}
-          {#await loadQueueDetailView()}
-            <div role="status" aria-busy="true" aria-label="Loading task queue detail">
-              <Skeleton height="12rem" />
-            </div>
-          {:then { default: QueueDetailView }}
-            <QueueDetailView
-              queue={selectedQueue}
-              routingPolicy={workersQuery.data?.routingPolicy ?? 'least-loaded'}
-              workersOnQueue={workersOnSelectedQueue}
-              deadLetteredItems={deadLetteredOnSelectedQueue}
-              diagnosticItems={diagnosticsOnSelectedQueue}
+        <TabPanel value="workers">
+          {#if fleetError}
+            <QueryFaultBanner error={fleetError} onRetry={() => void workersQuery.refetch()} />
+          {:else}
+            <WorkersListDetail
+              workers={workersQuery.data?.items ?? []}
+              summary={workersSummaryLine({
+                workers: workersQuery.data?.items ?? [],
+                waiting: queuesQuery.data?.items.reduce((total, queue) => total + queue.backlog, 0),
+                failedForGood: diagnosticsQuery.data?.summary.deadLettered,
+              })}
               {adminGate}
-              {retryingOperationId}
-              onRetryDeadLetter={(operationId) =>
-                openRetryDialog(
-                  'diagnostics',
-                  deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId),
-                )}
-              onClearDeadLetter={(operationId) =>
-                openClearDialog(
-                  'diagnostics',
-                  deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId),
-                )}
+              onDrain={(worker) => openDrainDialog({ kind: 'worker', id: worker.id })}
+              onResume={resumeWorkerById}
+              onDrainDeployment={(name) => openDrainDialog({ kind: 'deployment', name })}
+              onResumeDeployment={resumeDeploymentByName}
               onInspectTask={selectTask}
+              manifestDiagnostics={manifestQuery.data}
+              registrationRejections={rejectionsQuery.data ?? []}
+              manifestLoading={manifestQuery.isPending || rejectionsQuery.isPending}
+              manifestRefreshing={(manifestQuery.isFetching && manifestQuery.data !== undefined) ||
+                (rejectionsQuery.isFetching && rejectionsQuery.data !== undefined)}
+              manifestError={manifestQuery.error ?? rejectionsQuery.error ?? null}
+              workerManifestLoading={manifestQuery.isPending}
+              workerManifestRefreshing={manifestQuery.isFetching &&
+                manifestQuery.data !== undefined}
+              workerManifestError={manifestQuery.error ?? null}
+              registry={registryQuery.data}
+              registryLoading={registryQuery.isPending}
+              registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}
+              registryError={registryQuery.error ?? null}
             />
-          {/await}
-        {:else}
-          <QueueListView
-            queues={queuesQuery.data?.items ?? []}
-            diagnostics={diagnosticsQuery.data?.items ?? []}
-          />
-        {/if}
-      </TabPanel>
-
-      <TabPanel value="diagnostics">
-        {#if !selectedTaskId}
-          <DiagnosticsFilterBar
-            filters={provenanceFilters}
-            onApply={applyProvenanceFilters}
-            onClear={() => applyProvenanceFilters({})}
-          />
-        {/if}
-        {#if diagnosticsLoading}
-          <div
-            class="weft-workers-route__skeleton"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading diagnostics"
-          >
-            <Skeleton height="1.5rem" width="40%" />
-            <Skeleton height="8rem" />
-          </div>
-        {:else if diagnosticsErrorValue}
-          <QueryFaultBanner
-            error={diagnosticsErrorValue}
-            onRetry={() => void diagnosticsTabQuery.refetch()}
-          />
-        {:else if selectedTaskId}
-          {#await loadTaskLedgerDetailView()}
-            <div role="status" aria-busy="true" aria-label="Loading task ledger view">
-              <Skeleton height="12rem" />
-            </div>
-          {:then { default: TaskLedgerPanel }}
-            <TaskLedgerPanel
-              loading={taskDetailQuery.isPending}
-              error={taskDetailQuery.error ?? null}
-              task={taskDetailQuery.data}
-              now={Date.now()}
-              refreshing={taskDetailQuery.isFetching}
-              staleHeartbeatAfterMs={TASK_HEARTBEAT_STALE_AFTER_MS}
-              onRetry={() => void taskDetailQuery.refetch()}
-            />
-          {/await}
-          {#if taskDetailQuery.data}
-            <TaskDeliveryHistory operationId={selectedTaskId} />
-            {#if taskDetailQuery.data.state === 'deadLettered'}
-              <TaskDeadLetterPanel
-                task={taskDetailQuery.data}
-                retrying={retryingOperationId === taskDetailQuery.data.operationId}
-                onRetryDeadLetter={(target) => openRetryDialog('ledger', target)}
-                onClearDeadLetter={(target) => openClearDialog('ledger', target)}
-              />
-            {/if}
           {/if}
-        {:else}
-          {#await loadDiagnosticsView()}
-            <div role="status" aria-busy="true" aria-label="Loading diagnostics view">
-              <Skeleton height="12rem" />
-            </div>
-          {:then { default: DiagnosticsView }}
-            <DiagnosticsView
-              filtered={hasProvenanceFilters(provenanceFilters)}
-              items={diagnosticsTabQuery.data?.items ?? []}
-              summary={diagnosticsTabQuery.data?.summary ?? {
-                stuckQueued: 0,
-                staleInflight: 0,
-                retryStorms: 0,
-                allWorkersAtCapacity: 0,
-                deadLettered: 0,
-                delayed: 0,
-                unadoptedTerminal: 0,
-              }}
-              now={Date.now()}
-              onInspectTask={selectTask}
-              onClearFilters={() => applyProvenanceFilters({})}
+        </TabPanel>
+
+        <TabPanel value="queues">
+          {#if queuesError}
+            <QueryFaultBanner error={queuesError} onRetry={() => void queuesQuery.refetch()} />
+          {:else if selectedQueue}
+            {#await loadQueueDetailView()}
+              <div role="status" aria-busy="true" aria-label="Loading task queue detail">
+                <Skeleton height="12rem" />
+              </div>
+            {:then { default: QueueDetailView }}
+              <QueueDetailView
+                queue={selectedQueue}
+                routingPolicy={workersQuery.data?.routingPolicy ?? 'least-loaded'}
+                workersOnQueue={workersOnSelectedQueue}
+                deadLetteredItems={deadLetteredOnSelectedQueue}
+                diagnosticItems={diagnosticsOnSelectedQueue}
+                {adminGate}
+                {retryingOperationId}
+                onRetryDeadLetter={(operationId) =>
+                  openRetryDialog(
+                    'diagnostics',
+                    deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId),
+                  )}
+                onClearDeadLetter={(operationId) =>
+                  openClearDialog(
+                    'diagnostics',
+                    deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId),
+                  )}
+                onInspectTask={selectTask}
+              />
+            {/await}
+          {:else}
+            <QueueListView
+              queues={queuesQuery.data?.items ?? []}
+              diagnostics={diagnosticsQuery.data?.items ?? []}
             />
-          {/await}
-        {/if}
-      </TabPanel>
+          {/if}
+        </TabPanel>
 
-      <TabPanel value="deployments">
-        <DeploymentsPanel workers={workersQuery.data?.items ?? []} />
-      </TabPanel>
+        <TabPanel value="diagnostics">
+          {#if !selectedTaskId}
+            <DiagnosticsFilterBar
+              filters={provenanceFilters}
+              onApply={applyProvenanceFilters}
+              onClear={() => applyProvenanceFilters({})}
+            />
+          {/if}
+          {#if diagnosticsLoading}
+            <div
+              class="weft-workers-route__skeleton"
+              role="status"
+              aria-busy="true"
+              aria-label="Loading diagnostics"
+            >
+              <Skeleton height="1.5rem" width="40%" />
+              <Skeleton height="8rem" />
+            </div>
+          {:else if diagnosticsErrorValue}
+            <QueryFaultBanner
+              error={diagnosticsErrorValue}
+              onRetry={() => void diagnosticsTabQuery.refetch()}
+            />
+          {:else if selectedTaskId}
+            {#await loadTaskLedgerDetailView()}
+              <div role="status" aria-busy="true" aria-label="Loading task ledger view">
+                <Skeleton height="12rem" />
+              </div>
+            {:then { default: TaskLedgerPanel }}
+              <TaskLedgerPanel
+                loading={taskDetailQuery.isPending}
+                error={taskDetailQuery.error ?? null}
+                task={taskDetailQuery.data}
+                now={Date.now()}
+                refreshing={taskDetailQuery.isFetching}
+                staleHeartbeatAfterMs={TASK_HEARTBEAT_STALE_AFTER_MS}
+                onRetry={() => void taskDetailQuery.refetch()}
+              />
+            {/await}
+            {#if taskDetailQuery.data}
+              <TaskDeliveryHistory operationId={selectedTaskId} />
+              {#if taskDetailQuery.data.state === 'deadLettered'}
+                <TaskDeadLetterPanel
+                  task={taskDetailQuery.data}
+                  retrying={retryingOperationId === taskDetailQuery.data.operationId}
+                  onRetryDeadLetter={(target) => openRetryDialog('ledger', target)}
+                  onClearDeadLetter={(target) => openClearDialog('ledger', target)}
+                />
+              {/if}
+            {/if}
+          {:else}
+            {#await loadDiagnosticsView()}
+              <div role="status" aria-busy="true" aria-label="Loading diagnostics view">
+                <Skeleton height="12rem" />
+              </div>
+            {:then { default: DiagnosticsView }}
+              <DiagnosticsView
+                filtered={hasProvenanceFilters(provenanceFilters)}
+                items={diagnosticsTabQuery.data?.items ?? []}
+                summary={diagnosticsTabQuery.data?.summary ?? {
+                  stuckQueued: 0,
+                  staleInflight: 0,
+                  retryStorms: 0,
+                  allWorkersAtCapacity: 0,
+                  deadLettered: 0,
+                  delayed: 0,
+                  unadoptedTerminal: 0,
+                }}
+                now={Date.now()}
+                onInspectTask={selectTask}
+                onClearFilters={() => applyProvenanceFilters({})}
+              />
+            {/await}
+          {/if}
+        </TabPanel>
 
-      <TabPanel value="conformance">
-        <ConformancePanel />
-      </TabPanel>
-    </Tabs>
-  {/if}
-</div>
+        <TabPanel value="deployments">
+          <DeploymentsPanel workers={workersQuery.data?.items ?? []} />
+        </TabPanel>
+
+        <TabPanel value="conformance">
+          <ConformancePanel />
+        </TabPanel>
+      </Tabs>
+    {/if}
+  </div>
+</HealthFrame>
 
 {#if drainTarget}
   <DrainDialog

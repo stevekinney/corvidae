@@ -74,8 +74,9 @@ describe('the gate', () => {
     expect(view.getByText('Storage access requires storage:admin')).not.toBeNull();
     expect(view.getByText('Requires storage:admin')).not.toBeNull();
     expect(view.queryByRole('table')).toBeNull();
-    expect(view.queryByTestId('storage-backend')).toBeNull();
-    expect(server?.calls).toHaveLength(0);
+    // The heading's line still says where the installation runs, without what the storage can do.
+    expect(view.queryByRole('button', { name: 'Storage details' })).toBeNull();
+    expect(server?.calls.filter((call) => call.method === 'POST')).toHaveLength(0);
   });
 });
 
@@ -92,6 +93,7 @@ describe('the key table', () => {
       'Key',
       'Group',
       'Size',
+      expect.stringMatching(/^Updated \(.+\)$/),
     ]);
   });
 
@@ -495,7 +497,7 @@ describe('Edit', () => {
 
   test('a storage that cannot write conditionally takes a plain put', async () => {
     const view = await open({ conditionalBatch: false });
-    await view.findByRole('button', { name: /SQLite/ });
+    await view.findByRole('button', { name: 'Storage details' });
     // The capability arrives with the page; wait for the view to have read it before saving.
     const pane = await startEditing(view, 'app:notes');
     await waitFor(() =>
@@ -742,11 +744,8 @@ describe('Delete', () => {
 describe('the storage line', () => {
   test('names a local SQLite file, and opens the six facts the storage reports', async () => {
     const view = await open();
-    const line = await view.findByRole('button', {
-      name: /SQLite · \/home\/me\/\.interborough\/database\.sqlite/,
-    });
-
-    await fireEvent.click(line);
+    expect(await view.findByText('Running on SQLite in ~/.interborough')).not.toBeNull();
+    await fireEvent.click(await view.findByRole('button', { name: 'Storage details' }));
 
     expect(await view.findByText('Persistence')).not.toBeNull();
     for (const term of [
@@ -763,9 +762,7 @@ describe('the storage line', () => {
   test('names Postgres and S3 for a remote installation', async () => {
     const view = await open({ mode: 'remote' });
     expect(
-      await view.findByRole('button', {
-        name: /Postgres and S3 · db\.example\.test:5432\/interborough/,
-      }),
+      await view.findByText('Running on Postgres and S3 in db.example.test:5432/interborough'),
     ).not.toBeNull();
   });
 });

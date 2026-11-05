@@ -9,7 +9,7 @@
  * `workers-route-test-harness.test-harness.svelte`).
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { fireEvent, render, within } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
@@ -21,6 +21,7 @@ import {
   parseJsonObject,
   realClient,
   ScriptedFetch,
+  workersTabs,
 } from './workers-route-test-support.test-support.ts';
 
 import { diagnosticsBody, NOW, routing, version } from './deployments-test-support.test-support.ts';
@@ -91,10 +92,10 @@ describe('Workers route — locked', () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
 
-    const { findByText, queryByRole } = await renderWorkersRoute([]);
+    const view = await renderWorkersRoute([]);
 
-    expect(await findByText(/to read the workers/)).not.toBeNull();
-    expect(queryByRole('tab', { name: 'Workers' })).toBeNull();
+    expect(await view.findByText(/to read the workers/)).not.toBeNull();
+    expect(workersTabs(view)).toHaveLength(0);
   });
 });
 
@@ -110,13 +111,20 @@ describe('Workers route — the Workers list', () => {
       diagnosticsSummary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 2 },
     });
 
-    const { findByTestId, findByRole, queryByText } = await renderWorkersRoute();
+    const view = await renderWorkersRoute();
+    const { findByTestId, queryByText } = view;
 
     const summary = await findByTestId('workers-summary');
     expect(summary.textContent).toBe(
       '2 of 2 connected · 2 running · 12 waiting · 2 failed for good',
     );
-    expect(await findByRole('tab', { name: 'Workers', selected: true })).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        workersTabs(view)
+          .find((tab) => tab.textContent?.trim() === 'Workers')
+          ?.getAttribute('aria-selected'),
+      ).toBe('true'),
+    );
     expect(queryByText('Total workers')).toBeNull();
     expect(queryByText('Fleet overview')).toBeNull();
   });

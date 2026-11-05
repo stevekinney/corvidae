@@ -66,9 +66,9 @@ test.describe('storage', () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/health/storage');
-    const line = page.getByTestId('storage-backend').getByRole('button');
-    await expect(line).toContainText('SQLite');
-    await line.click();
+    const backend = page.getByTestId('storage-backend');
+    await expect(backend).toContainText('Running on SQLite in');
+    await backend.getByRole('button', { name: 'Storage details' }).click();
     await expect(page.getByText('Persistence', { exact: true })).toBeVisible();
     await expect(page.getByText('Conditional batch', { exact: true })).toBeVisible();
   });

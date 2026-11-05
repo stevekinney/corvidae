@@ -1,7 +1,8 @@
 /**
  * The engine-run counts on the Health overview, each defined once as a list filter. The count is
- * made with the filter (`weft.workflows.aggregate`) and its link opens the run list on the same
- * filter (`engine-runs-link.ts`), so the number a person reads and the rows they land on agree.
+ * made with the filter (`weft.workflows.aggregate`), and the engine's run list (`/health/runs`,
+ * `weft.workflows.list`) takes the same filter, so the number a person reads and the rows they
+ * would land on agree.
  * Words are the engine's own statuses, never a second vocabulary.
  */
 import type { WorkflowStatus } from '@lostgradient/weft';

@@ -31,6 +31,8 @@ export type StorageConnection = Pick<HttpClient, 'baseUrl' | 'headers'>;
 export interface StorageScanEntry {
   readonly key: string;
   readonly value: Uint8Array;
+  /** When the key was last written, in epoch milliseconds; `null` for a backend that records none. */
+  readonly updatedAt: number | null;
 }
 
 export interface StorageScanOptions {
@@ -241,7 +243,11 @@ function parseNdjsonScanEntries(text: string): StorageScanEntry[] {
     if (!isRecord(row) || typeof row['key'] !== 'string' || typeof row['value'] !== 'string') {
       throw new Error('Malformed storage scan row');
     }
-    entries.push({ key: row['key'], value: decodeBase64ToBytes(row['value']) });
+    entries.push({
+      key: row['key'],
+      value: decodeBase64ToBytes(row['value']),
+      updatedAt: typeof row['updatedAt'] === 'number' ? row['updatedAt'] : null,
+    });
   }
   return entries;
 }

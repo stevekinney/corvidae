@@ -18,7 +18,11 @@ import {
 } from './index-actions.test-support.ts';
 import WorkersRoute from './index.svelte';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
-import { realClient, ScriptedFetch } from './workers-route-test-support.test-support.ts';
+import {
+  realClient,
+  ScriptedFetch,
+  workersTabs,
+} from './workers-route-test-support.test-support.ts';
 
 const SENTENCE = 'This server runs its work in-process';
 
@@ -63,8 +67,8 @@ describe('Workers route with no connected worker', () => {
     const view = renderRoute();
 
     expect(await view.findByText(SENTENCE)).not.toBeNull();
-    expect(view.getByRole('heading', { level: 1, name: 'Workers' })).not.toBeNull();
-    expect(view.queryAllByRole('tab').length).toBe(0);
+    expect(view.getByRole('heading', { level: 1, name: 'Health' })).not.toBeNull();
+    expect(workersTabs(view).length).toBe(0);
     expect(view.queryByText('Total workers')).toBeNull();
     expect(view.queryByText('No workers connected')).toBeNull();
     expect(view.queryByLabelText('Live')).toBeNull();
@@ -120,10 +124,10 @@ describe('Workers route while the lists are being read', () => {
     await waitFor(() => expect(asked('weft.workers.list')).toBe(true));
     await quietFor(20);
     expect(view.getByLabelText('Loading fleet')).not.toBeNull();
-    expect(view.queryAllByRole('tab').length).toBe(0);
+    expect(workersTabs(view).length).toBe(0);
 
     queuesGate.resolve({ items: [queue()] });
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
+    await waitFor(() => expect(workersTabs(view).length).toBe(5));
   });
 
   test('stays the loading skeleton, not the sentence, until the diagnostics have been read', async () => {
@@ -140,7 +144,7 @@ describe('Workers route while the lists are being read', () => {
       items: [],
       summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
     });
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
+    await waitFor(() => expect(workersTabs(view).length).toBe(5));
   });
 });
 
@@ -151,7 +155,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
+    await waitFor(() => expect(workersTabs(view).length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -161,7 +165,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
+    await waitFor(() => expect(workersTabs(view).length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -171,7 +175,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
+    await waitFor(() => expect(workersTabs(view).length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -186,7 +190,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
+    await waitFor(() => expect(workersTabs(view).length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -212,7 +216,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
+    await waitFor(() => expect(workersTabs(view).length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 });

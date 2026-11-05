@@ -5,7 +5,6 @@
  * live server. Mirrors the `ScriptedFetch`/`realClient` pattern already
  * established independently per-track (`src/lib/live-source/fleet-event-source.test.ts`,
  * `src/routes/system/system-test-support.test-support.ts`,
- * `src/routes/dashboard/dashboard-test-support.test-support.ts`,
  * `src/routes/workflows/list/workflow-test-support.test-support.ts`) rather
  * than importing another track's copy across the owned-paths boundary.
  */
@@ -202,4 +201,14 @@ export class ScriptedFetch {
 /** A real `HttpClient` instance for component tests that call `client.operations[...]` — pair with `ScriptedFetch` to script its responses. */
 export function realClient(baseUrl = 'http://weft.test/api'): HttpClient {
   return new HttpClient({ baseUrl });
+}
+
+/**
+ * The tabs of the Workers page's own tab bar, which sits inside the Health frame's: the frame
+ * carries its own four (Overview, Workers, Storage, Audit log), and a test of the Workers page asks
+ * about the page's views (Workers, Task queues, Deployments, Conformance, Diagnostics).
+ */
+export function workersTabs(view: { readonly container: HTMLElement }): HTMLElement[] {
+  const list = view.container.querySelector('[role="tablist"][aria-label="Workers views"]');
+  return list === null ? [] : [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
 }

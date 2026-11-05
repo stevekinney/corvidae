@@ -235,6 +235,8 @@ export const queryKeys = {
     count: () => ['bureau-attention', 'count'] as const,
     /** The rules that are firing, for the notification bell. */
     alerts: () => ['bureau-attention', 'alerts'] as const,
+    /** The whole list and its checks, for the Health page. */
+    list: () => ['bureau-attention', 'list'] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {

@@ -342,6 +342,7 @@
       slow = false;
       return;
     }
+    // poll-reason: timer
     const handle = setTimeout(() => {
       slow = true;
     }, SLOW_CREATE_MS);

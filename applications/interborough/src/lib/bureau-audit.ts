@@ -26,6 +26,8 @@ export type AuditRecord = z.infer<typeof recordSchema>;
 const pageSchema = z.object({
   records: z.array(recordSchema),
   nextCursor: z.string().nullable(),
+  /** How many records match the filter, present only when the query asked for it. */
+  total: z.number().int().nonnegative().optional(),
 });
 
 /** One page of the trail, and the cursor for the next, or `null` on the last. */
@@ -46,14 +48,25 @@ type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 /** The most records one page holds. */
 export const AUDIT_PAGE_SIZE = 50;
 
-/** One page of the trail for `filter`, from `cursor` when it is given. An empty filter field is not sent. */
+/**
+ * One page of the trail for `filter`, from `cursor` when it is given. An empty filter field is not
+ * sent. `order: 'newest'` reads the latest records first (a cursor then continues into older
+ * ones), and `includeTotal` also answers how many records the filter matches, which reads the
+ * whole matching trail, so ask for it once.
+ */
 export async function queryAudit(
   filter: AuditFilter,
   cursor: string | undefined,
-  options?: Options & { readonly limit?: number },
+  options?: Options & {
+    readonly limit?: number;
+    readonly order?: 'oldest' | 'newest';
+    readonly includeTotal?: boolean;
+  },
 ): Promise<AuditPage> {
   const params: Record<string, unknown> = {
     limit: options?.limit ?? AUDIT_PAGE_SIZE,
+    ...(options?.order === undefined ? {} : { order: options.order }),
+    ...(options?.includeTotal === true ? { includeTotal: true } : {}),
     ...(filter.since === undefined ? {} : { since: filter.since }),
     ...(filter.type === undefined || filter.type === '' ? {} : { type: filter.type }),
     ...(filter.resource === undefined || filter.resource === '' ? {} : { runId: filter.resource }),
