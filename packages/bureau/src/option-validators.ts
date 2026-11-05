@@ -231,10 +231,10 @@ export function validateChildrenOption(
     badRequest('"options.children.delegation.rootAuthority.levels" must be a positive integer');
   }
   if (root?.budget !== undefined) {
-    for (const [dimension, value] of Object.entries(root.budget)) {
+    for (const [dimension, budgetValue] of Object.entries(root.budget)) {
       if (
-        value !== undefined &&
-        (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
+        budgetValue !== undefined &&
+        (typeof budgetValue !== 'number' || !Number.isFinite(budgetValue) || budgetValue < 0)
       ) {
         badRequest(
           `"options.children.delegation.rootAuthority.budget.${dimension}" must be a finite non-negative number`,
