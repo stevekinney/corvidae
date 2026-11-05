@@ -1,3 +1,4 @@
+import type { ConfigurationWriteCondition, ConfigurationWriteResult } from '@lostgradient/bungalow';
 /**
  * A home that holds its configuration and secrets in memory and fails the way a test says, for the
  * tool-source manager tests (COR-1930).
@@ -20,12 +21,23 @@ export function memoryHome(mode: 'local' | 'remote' = 'local') {
   const bungalow = {
     mode,
     configurationLocation: '/home/configuration.json',
-    readConfiguration: async () => state.configuration,
-    writeConfiguration: (text: string) => {
-      if (state.configurationFailure === 'before-replacing') throw new Error('disk full');
+    readConfiguration: async () => ({
+      text: state.configuration,
+      revision: state.configuration === undefined ? null : Bun.hash(state.configuration).toString(),
+    }),
+    writeConfiguration: async (
+      text: string,
+      condition: ConfigurationWriteCondition,
+    ): Promise<ConfigurationWriteResult> => {
+      if (
+        condition.expectedRevision !==
+        (state.configuration === undefined ? null : Bun.hash(state.configuration).toString())
+      )
+        return { outcome: 'conflict' };
+      if (state.configurationFailure === 'before-replacing') return { outcome: 'unavailable' };
       state.configuration = text;
-      if (state.configurationFailure === 'after-replacing')
-        throw new Error('directory sync failed');
+      if (state.configurationFailure === 'after-replacing') return { outcome: 'unknown' };
+      return { outcome: 'committed' };
     },
     readSecret: (key: string) => state.secrets.get(key),
     writeSecret: (key: string, value: string) => {

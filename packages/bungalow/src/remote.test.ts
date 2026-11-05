@@ -566,9 +566,11 @@ describe('remote mode: the handle', () => {
   test('reads the configuration from the bucket, or undefined when absent', async () => {
     const server = startServer();
     using bungalow = await openRemote(server.endpoint);
-    expect(await bungalow.readConfiguration()).toBeUndefined();
+    const configurationSnapshot1 = await bungalow.readConfiguration();
+    expect(configurationSnapshot1.text).toBeUndefined();
     server.put(CONFIGURATION_KEY, '{"providers":[]}');
-    expect(await bungalow.readConfiguration()).toBe('{"providers":[]}');
+    const configurationSnapshot2 = await bungalow.readConfiguration();
+    expect(configurationSnapshot2.text).toBe('{"providers":[]}');
   });
 
   test('a 500 reading the configuration names only the operation', async () => {
@@ -606,15 +608,9 @@ describe('remote mode: the handle', () => {
   test('refuses to write the configuration, naming neither the text nor the location', async () => {
     const server = startServer();
     using bungalow = await openRemote(server.endpoint);
-    let thrown: unknown;
-    try {
-      bungalow.writeConfiguration('sentinel-configuration-text');
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(BungalowStateError);
-    expect((thrown as Error).message).not.toContain('sentinel-configuration-text');
-    expect((thrown as Error).message).not.toContain(bungalow.configurationLocation);
+    expect(
+      await bungalow.writeConfiguration('sentinel-configuration-text', { expectedRevision: null }),
+    ).toEqual({ outcome: 'read-only' });
   });
 
   test('secrets are read from the environment as it was when the open began', async () => {
