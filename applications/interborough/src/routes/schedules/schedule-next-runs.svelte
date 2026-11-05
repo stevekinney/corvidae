@@ -14,7 +14,6 @@
     formatInZone,
     scheduleZone,
     upcomingFires,
-    zoneLabel,
     type ScheduleTiming,
   } from './schedule-time.ts';
 
@@ -45,12 +44,7 @@
 </script>
 
 <section class="ib-schedule__section" aria-labelledby="ib-schedule-next-heading">
-  <div class="ib-schedule__section-head">
-    <h2 id="ib-schedule-next-heading" class="ib-records__subheading">{copy.nextRunsHeading}</h2>
-    <p class="ib-records__muted" data-testid="schedule-zone">
-      {copy.nextRunsCaption(zoneLabel(zone))}
-    </p>
-  </div>
+  <h3 id="ib-schedule-next-heading" class="ib-records__subheading">{copy.nextRunsHeading}</h3>
   {#if fires.length === 0}
     <EmptyState
       kind="done"

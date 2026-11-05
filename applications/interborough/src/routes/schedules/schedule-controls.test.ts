@@ -141,26 +141,21 @@ describe('Skip the next one, for an agent run', () => {
 });
 
 describe('Run now, for an agent run', () => {
-  test('goes through the Bureau and links to the task it started, and the notice can be dismissed', async () => {
-    const { findByRole, findByTestId, queryByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
+  test('goes through the Bureau and says so in a toast that opens the task it started', async () => {
+    const { findByRole, findByText } = open(`/schedules/${AGENT_SCHEDULE}`);
 
     await fireEvent.click(await findByRole('button', { name: 'Run now' }));
 
-    const result = await findByTestId('schedule-run-now');
-    expect(result.getAttribute('data-outcome')).toBe('started');
-    expect(within(result).getByRole('link', { name: 'View the run' }).getAttribute('href')).toBe(
-      `/runs/task-run-now-${AGENT_SCHEDULE}`,
-    );
+    await findByText('Started Daily summary.');
     expect(stub?.callsTo('bureau.schedules.runnow')[0]?.params).toEqual({
       scheduleId: AGENT_SCHEDULE,
     });
-
-    await fireEvent.click(within(result).getByRole('button', { name: /dismiss/i }));
-    await waitFor(() => expect(queryByTestId('schedule-run-now')?.outerHTML ?? null).toBeNull());
+    await fireEvent.click(await findByRole('button', { name: 'Open run' }));
+    await waitFor(() => expect(router.pathname).toBe(`/runs/task-run-now-${AGENT_SCHEDULE}`));
   });
 
   test('says when the run was queued behind the one going, and when it was skipped for it', async () => {
-    const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
+    const { findByRole, findByText, queryByRole } = open(`/schedules/${AGENT_SCHEDULE}`);
     const answers = [
       { outcome: 'queued', taskId: 'task-queued' },
       { outcome: 'skipped', blockingTaskId: null },
@@ -168,10 +163,8 @@ describe('Run now, for an agent run', () => {
     stub?.on('bureau.schedules.runnow', () => answers.shift());
 
     await fireEvent.click(await findByRole('button', { name: 'Run now' }));
-    const queued = await findByTestId('schedule-run-now');
-    expect(queued.getAttribute('data-outcome')).toBe('queued');
-    expect(queued.textContent).toContain(SCHEDULE_COPY.detail.runNowOutcome.queued);
-    expect(within(queued).getByRole('link', { name: 'View the run' })).not.toBeNull();
+    await findByText(SCHEDULE_COPY.detail.runNowOutcome.queued);
+    expect(await findByRole('button', { name: 'Open run' })).not.toBeNull();
 
     await waitFor(() =>
       expect(
@@ -179,28 +172,34 @@ describe('Run now, for an agent run', () => {
       ).toBe(false),
     );
     await fireEvent.click(await findByRole('button', { name: 'Run now' }));
-    await waitFor(() =>
-      expect(
-        document.querySelector('[data-testid="schedule-run-now"]')?.getAttribute('data-outcome'),
-      ).toBe('skipped'),
-    );
-    const skipped = await findByTestId('schedule-run-now');
-    expect(within(skipped).queryByRole('link', { name: 'View the run' })).toBeNull();
+    await findByText(SCHEDULE_COPY.detail.runNowOutcome.skipped);
+    // Only the queued toast links to a run: a skipped one started nothing.
+    expect(queryByRole('button', { name: 'Open run' })?.closest('[role="alert"]')).toBeNull();
   });
 });
 
 describe('a workflow file’s schedule', () => {
-  test('offers neither Skip the next one nor Run now, because only its file changes it', async () => {
-    const { findByRole, queryByRole } = open(`/schedules/${FILE_SCHEDULE}`);
+  test('offers no Skip the next one, and Run now starts the file with what its trigger sends', async () => {
+    const { findByRole, findByText, queryByRole } = open(`/schedules/${FILE_SCHEDULE}`, {
+      files: [
+        readyFile('digest', {
+          trigger: { kind: 'schedule', spec: '0 6 * * *', input: { branch: 'main' } },
+        }),
+      ],
+    });
 
-    await findByRole('switch', { name: 'On' });
+    await findByRole('switch', { name: 'Active, Workflow digest schedule' });
     expect(queryByRole('button', { name: 'Skip the next one' })).toBeNull();
-    expect(queryByRole('button', { name: 'Run now' })).toBeNull();
+
+    await fireEvent.click(await findByRole('button', { name: 'Run now' }));
+
+    await findByText('Started Workflow digest.');
+    expect(stub?.world.startedRuns).toEqual([{ id: 'digest', input: { branch: 'main' } }]);
   });
 });
 
 describe('the details of a schedule', () => {
-  test('say its jitter, the revision it is pinned to, and that it catches up after downtime', async () => {
+  test('say the revision it is pinned to, and that it catches up after downtime', async () => {
     const { findByTestId } = open(`/schedules/${CODE_SCHEDULE}`, {
       schedules: [
         scheduleFixture(CODE_SCHEDULE, 'order-processing', {
@@ -213,10 +212,9 @@ describe('the details of a schedule', () => {
       ],
     });
 
-    const rail = within(await findByTestId('schedule-rail'));
-    await rail.findByText('±30000ms');
-    expect(rail.getByText('Pinned (rev-1)')).not.toBeNull();
-    expect(rail.getByText(SCHEDULE_COPY.detail.rail.catchUpOn)).not.toBeNull();
+    const card = within(await findByTestId('schedule-details'));
+    await card.findByText('Pinned to rev-1');
+    expect(card.getByText(SCHEDULE_COPY.detail.card.catchUpOn)).not.toBeNull();
   });
 });
 

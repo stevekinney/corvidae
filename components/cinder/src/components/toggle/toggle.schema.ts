@@ -33,6 +33,12 @@ const schema = {
       description:
         'Short visible text beside the label that describes the switch, such as the file that defines\nit ("Defined in workflows/release-notes.json"). It is wired into `aria-describedby`.',
     },
+    descriptionVisible: {
+      type: 'boolean',
+      description:
+        'Whether `description` is drawn. Set `false` for a description that only a screen reader needs,\nsuch as the consequence of flipping a switch whose reason the page already says in words: it\nstays wired into `aria-describedby` and is visually hidden.',
+      default: true,
+    },
     descriptionPlacement: {
       enum: ['inline', 'below'],
       description:
@@ -44,6 +50,11 @@ const schema = {
       description:
         "Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, ignoring the press, and described by the region's reason.\nIt returns by itself when the region stops being stale.",
       default: false,
+    },
+    nameDetail: {
+      type: 'string',
+      description:
+        'Words that follow the visible label in the accessible name only, such as the thing the switch\nbelongs to ("Daily summary schedule" makes the name "Active, Daily summary schedule"). The\nvisible label stays first, so the name keeps WCAG 2.5.3 (Label in Name). The name is then the\nswitch\'s `aria-label`, written as one string so every platform reads it alike.',
     },
     labelVisible: {
       type: 'boolean',

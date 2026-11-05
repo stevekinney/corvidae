@@ -18,15 +18,26 @@
   color: var(--cinder-status-warning-text);
 }
 
-.ib-schedule__sentence {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
+/* The sentence under the heading, and the line under it that says when the schedule runs next. */
+.ib-schedule__sentence,
+.ib-schedule__summary {
   margin: 0;
-  color: var(--cinder-text-muted);
+  color: var(--cinder-text-default);
   font-size: var(--cinder-text-md);
   overflow-wrap: anywhere;
+}
+
+/* A second line about the same schedule sits close under the sentence it adds to. */
+.ib-schedule__sentence + .ib-schedule__sentence {
+  margin-block-start: calc(-1 * var(--cinder-space-3));
+}
+
+.ib-schedule__summary {
+  margin-block: var(--cinder-space-1);
+}
+
+.ib-schedule__summary-part[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
 }
 
 .ib-schedule__alert {
@@ -34,10 +45,15 @@
   font-weight: 600;
 }
 
-/* The On switch is a control of the header, so it sits with the buttons and keeps its own height. */
+/* The Active switch sits in the heading row beside the status, with a hairline between them. */
 .ib-schedule__switch {
   display: inline-flex;
   align-items: center;
+}
+
+.ib-schedule__status-divider {
+  align-self: center;
+  block-size: 1rem;
 }
 
 /* The runs and the details beside them; below the wide breakpoint the details follow the runs. */
@@ -55,8 +71,7 @@
   }
 }
 
-.ib-schedule__main,
-.ib-schedule__rail {
+.ib-schedule__main {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-5);
@@ -81,8 +96,7 @@
   margin: 0;
 }
 
-.ib-schedule__fires,
-.ib-schedule__queue {
+.ib-schedule__fires {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-1);
@@ -103,25 +117,6 @@
 .ib-schedule__fire[data-skipped='true'] time {
   color: var(--cinder-text-muted);
   text-decoration: line-through;
-}
-
-/* The details: a label above its value, one fact to a row, as the page's facts are. */
-.ib-schedule__facts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
-  margin: 0;
-}
-
-.ib-schedule__facts .ib-facts__item dt {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-schedule__facts .ib-facts__item dd {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 /* A kind, an agent or a workflow, and the link to it, wrap instead of widening the page. */
@@ -252,4 +247,115 @@
     inline-size: 100%;
     margin-inline-start: 0;
   }
+}
+
+/* ── The details card beside a schedule's runs ───────────────────────────────── */
+
+.ib-schedule-card {
+  min-width: 0;
+}
+
+.ib-schedule-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-width: 0;
+}
+
+.ib-schedule-card__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-schedule-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cinder-space-2);
+}
+
+.ib-schedule-card__title {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  font-weight: var(--cinder-font-semibold);
+  color: var(--cinder-text-default);
+}
+
+.ib-schedule-card__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
+}
+
+/* One fact to a row: the label in muted text at the start, its value at the end, a hairline between rows. */
+.ib-schedule-card__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.ib-schedule-card__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--cinder-space-3);
+  padding-block: var(--cinder-space-2);
+  border-block-end: 1px solid var(--cinder-border-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-schedule-card__row:last-child {
+  border-block-end: 0;
+}
+
+.ib-schedule-card__row dt {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-1);
+  color: var(--cinder-text-muted);
+}
+
+.ib-schedule-card__row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-schedule-card__aside {
+  color: var(--cinder-text-muted);
+}
+
+.ib-schedule-card__note {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-schedule-card__created {
+  margin: 0;
+  padding-block-start: var(--cinder-space-3);
+  border-block-start: 1px solid var(--cinder-border-muted);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-schedule-card__queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The info icon beside a label: a button so the keyboard reaches the tooltip it carries. */
+.ib-schedule-card__info {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cinder-text-muted);
+  cursor: help;
 }

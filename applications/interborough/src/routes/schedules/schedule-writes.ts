@@ -19,7 +19,12 @@ import {
   type RunNowOutcome,
 } from '../../lib/bureau-schedules.ts';
 import { AGENT_RUN_TYPE, type ScheduleKind } from '../../lib/schedule-kinds.ts';
-import { pauseWorkflowFile, resumeWorkflowFile } from '../../lib/workflow-files.ts';
+import {
+  pauseWorkflowFile,
+  resumeWorkflowFile,
+  startWorkflowFile,
+} from '../../lib/workflow-files.ts';
+import { triggerInput } from './schedule-detail-model.ts';
 import {
   cancelSchedule,
   listScheduleMissed,
@@ -43,7 +48,11 @@ export type ScheduleActions = {
   readonly cancel: boolean;
   /** Skip the next fire: an active schedule an owner writes. */
   readonly skipNext: boolean;
-  /** Start one run now: a schedule that is not cancelled, paused included. */
+  /**
+   * Start one run now: a schedule that is not cancelled, paused included. A workflow file's
+   * schedule starts the file with the values its trigger sends, which it refuses while the file
+   * cannot load.
+   */
   readonly runNow: boolean;
   readonly edit: boolean;
   /** Where its cadence is edited when that is not here: the workflow's editor. */
@@ -86,7 +95,7 @@ export function actionsOf(target: ScheduleTarget): ScheduleActions {
         resume: writable && status === 'paused',
         cancel: false,
         skipNext: false,
-        runNow: false,
+        runNow: true,
         edit: false,
         editInWorkflow: true,
       };
@@ -237,7 +246,16 @@ export async function runNowTarget(
       return runNowAgentSchedule(target.schedule.id);
     case 'code':
       return runNowSchedule(client, target.schedule.id);
-    case 'workflow-file':
+    case 'workflow-file': {
+      if (target.kind.file.state !== 'ready')
+        throw new Error('The workflow’s file cannot load, so it cannot be started.');
+      // A file's schedule has no run-now of its own: the file is started with what its trigger sends.
+      const { runId } = await startWorkflowFile(
+        target.kind.file.id,
+        triggerInput(target.kind.file) ?? {},
+      );
+      return { outcome: 'started', runId };
+    }
     case 'unknown':
       return refuse(target, 'run now');
   }

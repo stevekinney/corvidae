@@ -66,7 +66,7 @@
 </script>
 
 <section class="ib-schedule__section" aria-labelledby="ib-schedule-past-heading">
-  <h2 id="ib-schedule-past-heading" class="ib-records__subheading">{copy.pastRunsHeading}</h2>
+  <h3 id="ib-schedule-past-heading" class="ib-records__subheading">{copy.pastRunsHeading}</h3>
   {#if runs.isPending && missed.isPending}
     <Skeleton height="2.5rem" />
   {:else}

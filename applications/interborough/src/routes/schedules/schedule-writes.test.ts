@@ -78,7 +78,7 @@ describe('what a schedule can be asked to do', () => {
       resume: false,
       cancel: false,
       skipNext: false,
-      runNow: false,
+      runNow: true,
       edit: false,
       editInWorkflow: true,
     });
@@ -134,15 +134,20 @@ describe('a write that no service owns', () => {
 });
 
 describe('the controls that skip and run', () => {
-  test('are refused for a workflow file’s schedule and for one of no known kind', async () => {
+  test('skipping is refused for a workflow file’s schedule and for one of no known kind', async () => {
     for (const kind of [{ kind: 'workflow-file', file: FILE }, { kind: 'unknown' }] as const) {
       expect(await throwingRejectionOf(skipNextTarget(client, target(kind), OCCURRENCE))).toThrow(
         'cannot be skipped',
       );
-      expect(await throwingRejectionOf(runNowTarget(client, target(kind)))).toThrow(
-        'cannot be run now',
-      );
     }
+  });
+
+  test('run now is refused for a schedule of no known kind, and for a file that cannot load', async () => {
+    expect(await throwingRejectionOf(runNowTarget(client, target({ kind: 'unknown' })))).toThrow(
+      'cannot be run now',
+    );
+    const broken = { kind: 'workflow-file', file: { ...FILE, state: 'invalid' as const } } as const;
+    expect(await throwingRejectionOf(runNowTarget(client, target(broken)))).toThrow('cannot load');
   });
 });
 

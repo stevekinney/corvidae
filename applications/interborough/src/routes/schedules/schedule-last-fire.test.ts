@@ -49,6 +49,32 @@ function frame(kind: string, workflowId?: string): FleetEventFrame {
   };
 }
 
+describe('ScheduleLastFire in the summary line of a schedule’s page', () => {
+  test('says Last ran with the date and how it ended: done, failed, and Never run', async () => {
+    const history = { runs: [run('run-1', 'completed', 1_000)] };
+    const { container, rerender } = render(ScheduleLastFireHarness, {
+      props: {
+        client: clientListing(history),
+        scheduleId: 'nightly',
+        lastFireAt: 1_000,
+        summary: true,
+      },
+    });
+    await waitFor(() =>
+      expect(textOf(container)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2}, done$/),
+    );
+
+    history.runs = [run('run-2', 'failed', 2_000), run('run-1', 'completed', 1_000)];
+    await rerender({ lastFireAt: 2_000 });
+    await waitFor(() =>
+      expect(textOf(container)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2}, failed$/),
+    );
+
+    await rerender({ lastFireAt: undefined });
+    expect(textOf(container)).toBe('Never run');
+  });
+});
+
 describe('ScheduleLastFire as the schedule fires again', () => {
   test('shows the outcome of the newest run, not the run it showed when it first rendered', async () => {
     const history = { runs: [run('run-1', 'completed', 1_000)] };

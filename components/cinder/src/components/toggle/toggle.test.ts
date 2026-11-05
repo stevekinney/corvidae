@@ -633,3 +633,46 @@ describe('Toggle description placement', () => {
     ).toBe(false);
   });
 });
+
+describe('Toggle name detail and hidden description', () => {
+  test('nameDetail follows the visible label in the accessible name, which starts with the visible label', () => {
+    const { container } = render(Toggle, {
+      props: { id: 'active', label: 'Active', nameDetail: 'Daily summary schedule' },
+    });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+    const label = requiredInstance(container.querySelector('#active-label'), HTMLElement);
+
+    expect(control.getAttribute('aria-label')).toBe('Active, Daily summary schedule');
+    expect(control.hasAttribute('aria-labelledby')).toBe(false);
+    // Only the visible label is drawn: the detail is for the name.
+    expect(label.textContent?.trim()).toBe('Active');
+  });
+
+  test('without nameDetail the visible label names the switch', () => {
+    const { container } = render(Toggle, { props: { id: 'plain', label: 'Active' } });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+
+    expect(control.getAttribute('aria-labelledby')).toBe('plain-label');
+    expect(control.hasAttribute('aria-label')).toBe(false);
+  });
+
+  test('descriptionVisible false keeps the description in aria-describedby and hides it', () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'paused',
+        label: 'Active',
+        description: 'Resuming would schedule runs that will not start.',
+        descriptionVisible: false,
+      },
+    });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+    const description = requiredInstance(
+      container.querySelector('#paused-description'),
+      HTMLElement,
+    );
+
+    expect(control.getAttribute('aria-describedby')).toBe('paused-description');
+    expect(description.classList.contains('cinder-sr-only')).toBe(true);
+    expect(description.classList.contains('cinder-toggle-field__description')).toBe(false);
+  });
+});

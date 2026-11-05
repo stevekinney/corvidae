@@ -848,10 +848,14 @@ export {
 } from './components/restart-state/index.ts';
 export type { RestartStatePhase, RestartStateProps } from './components/restart-state/index.ts';
 
-export { default as ScheduleBuilder } from './components/schedule-builder/index.ts';
+export {
+  default as ScheduleBuilder,
+  describeScheduleFields,
+} from './components/schedule-builder/index.ts';
 export type {
   ScheduleBuilderProps,
   ScheduleBuilderVariant,
+  ScheduleFieldSummary,
   ScheduleFire,
   ScheduleIntervalUnit,
   SchedulePolicyOption,

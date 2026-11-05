@@ -33,12 +33,15 @@ export type ScheduleNotice = {
   readonly scheduleId: string;
 };
 
-export function createScheduleActions() {
+export function createScheduleActions(
+  options: {
+    /** Told what a run now did, so the page can say so and link to the run. */
+    readonly onRunNow?: (outcome: RunNowOutcome, target: ScheduleTarget) => void;
+  } = {},
+) {
   const client = getClient();
   const queryClient = useQueryClient();
   let notice = $state<ScheduleNotice | null>(null);
-  /** What the last run now did, for the page to say and to link to the run. */
-  let runNowResult = $state.raw<(RunNowOutcome & { readonly scheduleId: string }) | null>(null);
 
   /** Reads every schedule query again: the list, the page, its runs, and what the Bureau knows. */
   function reload(): void {
@@ -88,10 +91,9 @@ export function createScheduleActions() {
     mutationFn: (target: ScheduleTarget) => runNowTarget(client, target),
     onMutate: () => {
       notice = null;
-      runNowResult = null;
     },
     onSuccess: (outcome: RunNowOutcome, target: ScheduleTarget) => {
-      runNowResult = { ...outcome, scheduleId: target.schedule.id };
+      options.onRunNow?.(outcome, target);
       reload();
     },
     onError: (error: unknown, target: ScheduleTarget) =>
@@ -104,12 +106,6 @@ export function createScheduleActions() {
     cancel,
     skipNext,
     runNow,
-    get runNowResult(): (RunNowOutcome & { readonly scheduleId: string }) | null {
-      return runNowResult;
-    },
-    dismissRunNow(): void {
-      runNowResult = null;
-    },
     get notice(): ScheduleNotice | null {
       return notice;
     },

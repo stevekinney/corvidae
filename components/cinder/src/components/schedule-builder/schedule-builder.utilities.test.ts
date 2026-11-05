@@ -15,6 +15,7 @@ import {
   defaultScheduleValue,
   describeCronFieldError,
   describeSchedule,
+  describeScheduleFields,
   draftFromValue,
   formatClockTime,
   joinCron,
@@ -631,5 +632,58 @@ describe('schedule-builder utilities', () => {
       Intl.supportedValuesOf = () => ['America/Los_Angeles'];
       expect(availableTimeZones()).toEqual(['UTC', 'America/Los_Angeles']);
     });
+  });
+});
+
+describe('describeScheduleFields', () => {
+  test('a daily schedule is Repeats, At and Time zone in the builder’s words', () => {
+    expect(describeScheduleFields({ cron: '0 9 * * *', timeZone: 'UTC' })).toEqual([
+      { label: 'Repeats', value: 'Every day' },
+      { label: 'At', value: '9:00 AM' },
+      { label: 'Time zone', value: 'UTC' },
+    ]);
+  });
+
+  test('weekdays and weekends keep At and name the zone as the builder does', () => {
+    expect(describeScheduleFields({ cron: '30 14 * * 1-5', timeZone: 'America/Chicago' })).toEqual([
+      { label: 'Repeats', value: 'Weekdays' },
+      { label: 'At', value: '2:30 PM' },
+      { label: 'Time zone', value: 'Central time' },
+    ]);
+    expect(describeScheduleFields({ cron: '0 8 * * 0,6', timeZone: 'UTC' })[0]?.value).toBe(
+      'Weekends',
+    );
+  });
+
+  test('custom days name the days, and a monthly schedule names the day of the month', () => {
+    expect(describeScheduleFields({ cron: '0 11 * * 5', timeZone: 'UTC' })).toEqual([
+      { label: 'Repeats', value: 'Custom days' },
+      { label: 'Days', value: 'Fridays' },
+      { label: 'At', value: '11:00 AM' },
+      { label: 'Time zone', value: 'UTC' },
+    ]);
+    expect(describeScheduleFields({ cron: '0 9 15 * *', timeZone: 'UTC' })).toEqual([
+      { label: 'Repeats', value: 'Monthly on a day' },
+      { label: 'Day of month', value: '15' },
+      { label: 'At', value: '9:00 AM' },
+      { label: 'Time zone', value: 'UTC' },
+    ]);
+  });
+
+  test('an interval has no zone of its own, and a custom cron is shown as code', () => {
+    expect(
+      describeScheduleFields({ every: { unit: 'hours', count: 7 }, timeZone: 'America/Chicago' }),
+    ).toEqual([
+      { label: 'Repeats', value: 'Every few minutes or hours' },
+      { label: 'Every', value: '7 hours' },
+    ]);
+    expect(
+      describeScheduleFields({ every: { unit: 'minutes', count: 1 }, timeZone: 'UTC' })[1]?.value,
+    ).toBe('1 minute');
+    expect(describeScheduleFields({ cron: '*/7 * * * *', timeZone: 'UTC' })).toEqual([
+      { label: 'Repeats', value: 'Custom cron' },
+      { label: 'Cron expression', value: '*/7 * * * *', code: true },
+      { label: 'Time zone', value: 'UTC' },
+    ]);
   });
 });

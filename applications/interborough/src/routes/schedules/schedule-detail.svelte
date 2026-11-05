@@ -1,70 +1,91 @@
 <script lang="ts">
   /**
-   * One schedule (`/schedules/:schedule`): named by what it does ("Daily summary"), with its status
-   * word and a sentence that says what it runs and when ("Runs assistant every day at 09:00 in
-   * America/Los Angeles"). Under it are the next runs in the zone the schedule is read in with
-   * "Skip the next one", the past runs (the runs it started and the fires it missed, from what the
-   * engine persisted) and, beside them, the details: the workflow, the input, how it repeats, what
-   * happens when a run overlaps, and whether it catches up. The header has the On switch, Run now
-   * and Edit. A schedule that is the trigger in a workflow's file is edited in the workflow, and can
-   * be switched on and off but not run or skipped from here.
+   * One schedule (`/schedules/:schedule`; COR-2018, the heading, its actions and the details card
+   * of `ScheduleDetail`): named by what it does ("Daily summary"), with the Active switch and its
+   * one status word ("Missed runs · 4", "Paused") beside the name, and the sentence that says what
+   * it runs and when ("Runs Chat with an agent with Assistant every day at 3:00 AM (9:00 AM
+   * UTC)."), then the line that says when it runs next and when it last ran. Under them are its
+   * runs, and beside them the details card: what runs, its input, when, and how it behaves.
+   *
+   * The heading's actions are Edit, Run now and a menu that holds Delete schedule. A schedule that
+   * is the trigger in a workflow file whose values it fixes is changed in the file, so it offers
+   * Open file and Run now and nothing else. Run now is off, with its reason as its description,
+   * while the workflow cannot load or a model agent has no provider; Pause and resume are the
+   * Active switch's alone.
    *
    * The page refreshes the moment a `schedule:fired` or `schedule:missed-fire` event arrives. Every
    * write is made against the revision (or file hash) the page read, and one that was refused for
    * being stale says so and reads the schedule again.
    */
   import {
-    Alert,
     Button,
     ConfirmDialog,
+    Divider,
     Dropdown,
     EmptyState,
     ErrorState,
+    formatTimeZoneLabel,
+    Link,
     PageHeader,
     Skeleton,
+    StatusDot,
     Toggle,
     VisuallyHidden,
   } from '@lostgradient/cinder';
-  import { CircleX, Copy, Ellipsis, Pencil, Play } from '@lucide/svelte';
+  import { Ellipsis, ExternalLink, Pencil, Play, Trash2 } from '@lucide/svelte';
 
-  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import NotFoundState from '../../app/not-found-state.svelte';
+  import { showFault, showToast } from '../../app/toast-host.svelte';
+  import { agentLabel } from '../../lib/agent-label.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
-  import { formatRelativeTime } from '../../lib/format/index.ts';
+  import { followLinks } from '../../lib/follow-links.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
-  import { router, scheduleEditPath, workflowDetailPath } from '../../lib/router.svelte.ts';
-  import { kindOf } from '../../lib/schedule-kinds.ts';
+  import {
+    router,
+    scheduleDetailPath,
+    scheduleEditPath,
+    workflowDetailPath,
+  } from '../../lib/router.svelte.ts';
+  import { AGENT_RUN_TYPE, kindOf } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
-  import { scheduleStatusWord } from '../../lib/status.ts';
-  import StatusLabel from '../../lib/status-label.svelte';
-  import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
-  import { copyScheduleId } from './copy-schedule-id.ts';
+  import { resumeWorkflowFile } from '../../lib/workflow-files.ts';
+  import {
+    internalWorkflowsPath,
+    workflowEditPath,
+    workflowTypePath,
+  } from '../../lib/workflow-type-paths.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
+  import ScheduleDetailsCard from './schedule-details-card.svelte';
+  import {
+    isFileDefined,
+    nextSummary,
+    runNowOffReason,
+    scheduleInput,
+    sentenceCadence,
+  } from './schedule-detail-model.ts';
+  import ScheduleLastFire from './schedule-last-fire.svelte';
   import ScheduleNextRuns from './schedule-next-runs.svelte';
   import ScheduleNotice from './schedule-notice.svelte';
   import SchedulePastRuns from './schedule-past-runs.svelte';
-  import {
-    cadenceIdentifiers,
-    scheduleName,
-    scheduleNameIdentifiers,
-    scheduleSentence,
-  } from './schedule-presentation.ts';
+  import { cadenceIdentifiers, scheduleNameIdentifiers } from './schedule-presentation.ts';
   import {
     fetchScheduleDetail,
     scheduleDetailQueryKey,
     scheduleMissedQueryKey,
     scheduleRunHistoryQueryKey,
   } from './schedule-queries.ts';
-  import ScheduleRail from './schedule-rail.svelte';
-  import ScheduleTarget from './schedule-target.svelte';
-  import { scheduleZone, sentenceZone } from './schedule-time.ts';
+  import { createScheduleRowQueries } from './schedule-row-queries.svelte.ts';
+  import { scheduleZone } from './schedule-time.ts';
   import { actionsOf, type ScheduleTarget as Target } from './schedule-writes.ts';
 
   interface Props {
@@ -114,15 +135,65 @@
   // nothing is written to it.
   const overlay = createQuery(() => scheduleOverlayOptions(client));
 
-  const actions = createScheduleActions();
+  const schedule = $derived(detailQuery.data ?? null);
+  // The clock the next run is counted from, read again whenever the schedule is.
+  const now = $derived.by(() => {
+    void detailQuery.dataUpdatedAt;
+    return Date.now();
+  });
+  // The row the list shows for this schedule: its name, its one status word, why it will not start.
+  const rowQueries = createScheduleRowQueries({
+    schedules: () => (schedule === null ? [] : [schedule]),
+    overlay: () => overlay.data,
+    now: () => now,
+  });
+  const row = $derived(schedule === null ? undefined : rowQueries.rows[0]);
+  const target = $derived(
+    schedule === null
+      ? undefined
+      : ({ schedule, kind: kindOf(schedule, overlay.data) } satisfies Target),
+  );
+  const name = $derived(row?.title ?? '');
 
-  let cancelDialogOpen = $state(false);
+  // The breadcrumb names the schedule while this page is open, not the identifier in the address.
+  usePageLabel(() => ({ path: scheduleDetailPath(id), label: row?.title }));
+
+  const actions = createScheduleActions({
+    onRunNow(outcome) {
+      if (outcome.outcome === 'skipped') {
+        showToast(copy.runNowOutcome.skipped, { variant: 'warning' });
+        return;
+      }
+      const path = workflowDetailPath(outcome.runId);
+      showToast(
+        outcome.outcome === 'queued' ? copy.runNowOutcome.queued : copy.runNowStarted(name),
+        {
+          variant: 'success',
+          action: { label: copy.openRun, onAction: () => router.navigate(path) },
+        },
+      );
+    },
+  });
+
+  /** Resumes the workflow whose file is paused, which a paused schedule on it is waiting for. */
+  const resumeWorkflow = createMutation(() => ({
+    mutationFn: (file: { readonly id: string; readonly hash: string }) =>
+      resumeWorkflowFile(file.id, file.hash),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['schedules'] }),
+    onError: (error: unknown) =>
+      showFault({
+        ...faultTreatment(error),
+        message: `${copy.workflowPaused.failed}. ${faultTreatment(error).message}`,
+      }),
+  }));
+
+  let deleteDialogOpen = $state(false);
   /**
-   * What the operator was shown when they asked to cancel, revision included. The page reads the
-   * schedule again while the confirmation is open, so cancel sends this snapshot, not the newest
+   * What the operator was shown when they asked to delete, revision included. The page reads the
+   * schedule again while the confirmation is open, so delete sends this snapshot, not the newest
    * read: a schedule that moved on is refused as stale.
    */
-  let cancelTarget = $state.raw<Target | null>(null);
+  let deleteTarget = $state.raw<Target | null>(null);
 
   /**
    * The switch writes, and Cinder's Toggle passes no `data-*` attribute on to its button, so the
@@ -137,17 +208,14 @@
   function backToList(): void {
     router.navigate('/schedules');
   }
-
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
-<section class="ib-records ib-schedule" aria-label={SCHEDULE_COPY.title} data-page="schedule">
+<section
+  class="ib-records ib-schedule"
+  aria-label={SCHEDULE_COPY.title}
+  data-page="schedule"
+  {@attach followLinks}
+>
   {#if readGate.disabled}
     <EmptyState kind="first-use" title={copy.locked.title} description={readGate.title ?? ''}>
       {#snippet action()}
@@ -168,59 +236,56 @@
       retryLabel={RETRY_LABEL}
       onRetry={() => void detailQuery.refetch()}
     />
-  {:else if detailQuery.data === null}
+  {:else if schedule === null || target === undefined || row === undefined}
     <NotFoundState
       title={copy.notFound.title}
       description={copy.notFound.description}
       view="schedules"
     />
   {:else}
-    {@const schedule = detailQuery.data}
-    {@const target = { schedule, kind: kindOf(schedule, overlay.data) } satisfies Target}
     {@const allowed = actionsOf(target)}
-    {@const name = scheduleName(schedule, target.kind)}
-    {@const sentence = scheduleSentence(schedule, target.kind)}
-    {@const zone = sentenceZone(schedule)}
-    {@const input = overlay.data?.inputs?.get(schedule.id)}
-    {@const switchable = allowed.pause || allowed.resume}
+    {@const kind = target.kind}
+    {@const file = overlay.data?.files?.get(schedule.workflowType)}
+    {@const fileDefined = kind.kind === 'workflow-file' && isFileDefined(kind.file)}
+    {@const input = scheduleInput(schedule, overlay.data?.inputs?.get(schedule.id), file)}
+    {@const switchWritable = !fileDefined && (allowed.pause || allowed.resume)}
+    {@const switchable = switchWritable || kind.kind === 'workflow-file'}
+    {@const runNowReason = runNowOffReason(row)}
+    {@const workflowPaused = row.status === 'paused' && file?.paused === true}
+    {@const writable = !writeGate.disabled && !actions.busy}
+    {@const agentNames = fileDefined ? [] : row.agentIds}
+    {@const workflowPath =
+      schedule.workflowType === AGENT_RUN_TYPE
+        ? internalWorkflowsPath()
+        : workflowTypePath(schedule.workflowType)}
 
     {#if actions.notice !== null}
       <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
-    {/if}
-    {#if actions.runNowResult !== null && actions.runNowResult.scheduleId === schedule.id}
-      {@const result = actions.runNowResult}
-      <Alert
-        variant={result.outcome === 'skipped' ? 'warning' : 'success'}
-        dismissible
-        onDismiss={actions.dismissRunNow}
-        data-testid="schedule-run-now"
-        data-outcome={result.outcome}
-      >
-        <p class="ib-schedule__alert">{copy.runNowOutcome[result.outcome]}</p>
-        {#if result.outcome !== 'skipped'}
-          {@const path = workflowDetailPath(result.runId)}
-          <a href={router.href(path)} onclick={(event) => go(event, path)}
-            >{copy.runNowOutcome.viewRun}</a
-          >
-        {/if}
-      </Alert>
     {/if}
     {#if overlay.data?.failed}
       <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
     {/if}
 
     {#snippet heading()}
-      <IdentifierText text={name} identifiers={scheduleNameIdentifiers(schedule, target.kind)} />
+      <IdentifierText text={name} identifiers={scheduleNameIdentifiers(schedule, kind)} />
     {/snippet}
-    {#snippet headerActions()}
+    {#snippet status()}
       {#if switchable}
         <span class="ib-schedule__switch" bind:this={switchHost}>
           <Toggle
             {...{ 'data-changes': true }}
             id="ib-schedule-on"
             label={copy.onSwitch}
-            checked={schedule.status === 'active'}
+            nameDetail={copy.onSwitchName(name)}
+            checked={row.status === 'active'}
             disabled={writeGate.disabled || actions.busy}
+            readonly={!switchWritable}
+            {...workflowPaused
+              ? {
+                  description: copy.pausedWorkflowSwitch(row.workflowLabel),
+                  descriptionVisible: false,
+                }
+              : {}}
             onValueChangeRequest={() => {
               if (schedule.status === 'paused') actions.resume.mutate(target);
               else actions.pause.mutate(target);
@@ -229,21 +294,17 @@
             }}
           />
         </span>
+        <Divider orientation="vertical" decorative class="ib-schedule__status-divider" />
       {/if}
-      {#if allowed.runNow}
-        <Button
-          data-changes
-          variant="secondary"
-          size="sm"
-          disabled={writeGate.disabled || actions.busy}
-          title={writeGate.title}
-          onclick={() => actions.runNow.mutate(target)}
-        >
-          <Play aria-hidden="true" size={14} />
-          {copy.runNow}
+      <StatusDot word={row.statusWord} data-status-word={row.statusWord} />
+    {/snippet}
+    {#snippet headerActions()}
+      {#if fileDefined && kind.kind === 'workflow-file'}
+        <Button variant="secondary" size="sm" href={router.href(workflowEditPath(kind.file.id))}>
+          <ExternalLink aria-hidden="true" size={14} />
+          {copy.openFile}
         </Button>
-      {/if}
-      {#if allowed.edit}
+      {:else if allowed.edit}
         <Button
           variant="secondary"
           size="sm"
@@ -254,66 +315,129 @@
           <Pencil aria-hidden="true" size={14} />
           {copy.edit}
         </Button>
-      {/if}
-      {#if allowed.editInWorkflow}
+      {:else if allowed.editInWorkflow}
         <Button
           variant="secondary"
           size="sm"
           href={router.href(workflowEditPath(schedule.workflowType))}
-          onclick={(event) => go(event, workflowEditPath(schedule.workflowType))}
         >
           <Pencil aria-hidden="true" size={14} />
-          {SCHEDULE_COPY.editWorkflowAction}
+          {copy.edit}
         </Button>
       {/if}
-      <Dropdown id="ib-schedule-actions" placement="bottom-end">
-        <Dropdown.Trigger caretVisible={false}>
-          <Ellipsis aria-hidden="true" size={16} />
-          <VisuallyHidden>{SCHEDULE_COPY.moreActions}</VisuallyHidden>
-        </Dropdown.Trigger>
-        <Dropdown.Menu>
-          <Dropdown.Item onclick={() => void copyScheduleId(schedule.id)}>
-            <Copy aria-hidden="true" size={14} />
-            {SCHEDULE_COPY.copyId}
-          </Dropdown.Item>
-          {#if allowed.cancel}
+      {#if allowed.runNow}
+        <!-- A reason it is off keeps the button in the tab order, so the reason is read where it is felt. -->
+        <Button
+          data-changes
+          variant="secondary"
+          size="sm"
+          disabled={runNowReason === null && !writable}
+          title={writeGate.title}
+          {...runNowReason === null
+            ? {}
+            : { 'aria-disabled': 'true', 'aria-describedby': 'ib-schedule-run-now-reason' }}
+          onclick={() => {
+            if (runNowReason === null) actions.runNow.mutate(target);
+          }}
+        >
+          <Play aria-hidden="true" size={14} />
+          {copy.runNow}
+        </Button>
+        {#if runNowReason !== null}
+          <VisuallyHidden id="ib-schedule-run-now-reason">{runNowReason}</VisuallyHidden>
+        {/if}
+      {/if}
+      {#if !fileDefined && kind.kind !== 'unknown'}
+        <Dropdown id="ib-schedule-actions" placement="bottom-end">
+          <Dropdown.Trigger caretVisible={false}>
+            <Ellipsis aria-hidden="true" size={16} />
+            <VisuallyHidden>{SCHEDULE_COPY.moreActions}</VisuallyHidden>
+          </Dropdown.Trigger>
+          <Dropdown.Menu>
             <Dropdown.Item
               data-changes
               variant="danger"
-              disabled={writeGate.disabled || actions.busy}
+              disabled={!allowed.cancel || !writable}
+              title={allowed.cancel ? undefined : copy.deleteInFile}
               onclick={() => {
-                cancelTarget = target;
-                cancelDialogOpen = true;
+                deleteTarget = target;
+                deleteDialogOpen = true;
               }}
             >
-              <CircleX aria-hidden="true" size={14} /> Cancel
+              <Trash2 aria-hidden="true" size={14} />
+              {copy.deleteAction}
             </Dropdown.Item>
-          {/if}
-        </Dropdown.Menu>
-      </Dropdown>
+          </Dropdown.Menu>
+        </Dropdown>
+      {/if}
     {/snippet}
 
-    <PageHeader headingLevel={1} title={heading} actions={headerActions} />
+    <PageHeader
+      headingLevel={1}
+      title={heading}
+      titleText={name}
+      {status}
+      statusPlacement="inline"
+      actions={headerActions}
+    />
 
     <p class="ib-schedule__sentence" data-testid="schedule-status-line">
-      <StatusLabel word={scheduleStatusWord(schedule.status)} />
-      <span>
-        {sentence.verb}
-        <ScheduleTarget {schedule} kind={target.kind} inSentence />
-        <IdentifierText text={sentence.clause} identifiers={cadenceIdentifiers(schedule)} />
-        {#if zone !== null}{SCHEDULE_COPY.inZone(zone)}{/if}
-      </span>
-      {#if schedule.missedFireCount > 0}
-        <span class="ib-records__muted" data-testid="schedule-missed-count">
-          {SCHEDULE_COPY.missed(schedule.missedFireCount)}{schedule.lastMissedFireAt !== undefined
-            ? `, ${SCHEDULE_COPY.lastMissed(formatRelativeTime(schedule.lastMissedFireAt))}`
-            : ''}
-        </span>
+      {copy.sentence.runs}
+      <Link underline="always" href={router.href(workflowPath)}
+        >{#if row.blockers.some((blocker) => blocker.kind === 'cannot-load')}<code
+            class="ib-identifier">{row.workflowType}</code
+          >{:else}{row.workflowLabel}{/if}</Link
+      >
+      {#if agentNames.length > 0}
+        {copy.sentence.with}
+        {#each agentNames as agent, index (agent)}
+          {#if index > 0}{index === agentNames.length - 1 ? ' and ' : ', '}{/if}<Link
+            underline="always"
+            href={router.href(agentPath(agent))}>{agentLabel(agent, rowQueries.agents)}</Link
+          >
+        {/each}
       {/if}
+      <IdentifierText
+        text={sentenceCadence(schedule, now)}
+        identifiers={cadenceIdentifiers(schedule)}
+      />.
+    </p>
+    {#if workflowPaused && file !== undefined}
+      <p class="ib-schedule__sentence" data-testid="schedule-workflow-paused">
+        {copy.workflowPaused.text(row.workflowLabel)}
+        {#if file.hash !== null}
+          {@const resumable = { id: file.id, hash: file.hash }}
+          <Link
+            underline="always"
+            href="#resume-workflow"
+            role="button"
+            data-changes
+            onclick={(event: MouseEvent) => {
+              event.preventDefault();
+              resumeWorkflow.mutate(resumable);
+            }}>{copy.workflowPaused.resume}</Link
+          >
+        {/if}
+      </p>
+    {/if}
+    <p class="ib-schedule__summary" data-testid="schedule-summary">
+      {#each nextSummary(schedule, row, now) as part, index (index)}
+        {#if index > 0}{' · '}{/if}
+        {#if part.tone !== undefined}<span class="ib-schedule__summary-part" data-tone={part.tone}
+            >{part.text}</span
+          >{:else}{part.text}{/if}
+      {/each}
+      {' · '}<ScheduleLastFire scheduleId={schedule.id} lastFireAt={schedule.lastFireAt} summary />
     </p>
 
     <div class="ib-schedule__layout">
-      <div class="ib-schedule__main">
+      <section class="ib-schedule__main" aria-labelledby="ib-schedule-runs-heading">
+        <div class="ib-schedule__section-head">
+          <h2 id="ib-schedule-runs-heading" class="ib-records__subheading">{copy.runsHeading}</h2>
+          <p class="ib-records__muted" data-testid="schedule-zone">
+            {copy.runsNote(formatTimeZoneLabel(now, { style: 'long' }))}
+          </p>
+        </div>
         <ScheduleNextRuns
           {schedule}
           canSkip={allowed.skipNext && !writeGate.disabled}
@@ -321,18 +445,27 @@
           onSkip={(occurrence) => actions.skipNext.mutate({ target, occurrence })}
         />
         <SchedulePastRuns {schedule} zone={scheduleZone(schedule)} />
-      </div>
-      <ScheduleRail {schedule} kind={target.kind} {input} />
+      </section>
+      <ScheduleDetailsCard
+        {schedule}
+        {row}
+        {input}
+        agents={rowQueries.agents}
+        editPath={allowed.edit ? scheduleEditPath(schedule.id) : undefined}
+        {now}
+      />
     </div>
 
     <ConfirmDialog
-      bind:open={cancelDialogOpen}
-      title={SCHEDULE_COPY.cancelDialog.title}
-      description={SCHEDULE_COPY.cancelDialog.description(name)}
-      confirmLabel={SCHEDULE_COPY.cancelDialog.confirm}
+      bind:open={deleteDialogOpen}
+      title={copy.deleteDialog.title(name)}
+      description={copy.deleteDialog.description}
+      confirmLabel={copy.deleteDialog.confirm}
       destructive
       onConfirm={() => {
-        if (cancelTarget !== null) actions.cancel.mutate(cancelTarget);
+        if (deleteTarget !== null) {
+          actions.cancel.mutate(deleteTarget, { onSuccess: backToList });
+        }
       }}
     />
   {/if}

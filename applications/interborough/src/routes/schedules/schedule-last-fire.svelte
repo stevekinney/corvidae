@@ -6,6 +6,8 @@
    * the schedule's page shows as its recent runs, so the two share one cache entry. A run that
    * succeeded, that is still going, or that the engine no longer lists is said by its date alone.
    * A phone's third line says "Last ran Oct 24" and has nothing to say of a schedule that never ran.
+   * The schedule's own page says it in the summary line, "Last ran Oct 29, done" or "Never run", so
+   * a run that succeeded is "done" there.
    */
   import { formatDate } from '@lostgradient/cinder';
 
@@ -20,9 +22,11 @@
     lastFireAt: number | undefined;
     /** Say "Last ran" and nothing for a schedule that never ran, as a phone's third line does. */
     phone?: boolean;
+    /** Say it as the summary line of the schedule's page does: "Last ran Oct 29, done", and "Never run". */
+    summary?: boolean;
   }
 
-  let { scheduleId, lastFireAt, phone = false }: Props = $props();
+  let { scheduleId, lastFireAt, phone = false, summary = false }: Props = $props();
 
   const client = getClient();
   const history = createQuery(() => ({
@@ -47,7 +51,13 @@
     }
   });
   const ending = $derived(
-    outcome === 'failed' ? ', failed' : outcome === 'canceled' ? ', canceled' : '',
+    outcome === 'failed'
+      ? ', failed'
+      : outcome === 'canceled'
+        ? ', canceled'
+        : summary && outcome === 'succeeded'
+          ? ', done'
+          : '',
   );
 </script>
 
@@ -55,7 +65,7 @@
   {#if !phone}<span data-testid="schedule-last-fire" data-outcome="never">Never run</span>{/if}
 {:else}
   <span data-testid="schedule-last-fire" data-outcome={outcome ?? 'unknown'}
-    >{phone ? 'Last ran' : 'Last run'}
+    >{phone || summary ? 'Last ran' : 'Last run'}
     {formatDate(lastFireAt, 'en-US', { month: 'short', day: 'numeric' })}{ending}</span
   >
 {/if}

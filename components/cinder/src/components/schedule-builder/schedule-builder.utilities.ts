@@ -555,3 +555,48 @@ export function describeSchedule(value: ScheduleValue): string {
   if (draft.repeats === 'cron') return `Cron ${draft.cron} in ${zone}`;
   return `${describeDays(draft)} at ${formatClockTime(draft.time)} ${zone}`;
 }
+
+/** One field of a schedule read back as the builder's own fields name it: its label and its value. */
+export type ScheduleFieldSummary = {
+  /** The label the builder's field carries: `Repeats`, `At`, `Time zone`. */
+  label: string;
+  /** The value that field shows, such as `Every day`, `9:00 AM` or `Central time`. */
+  value: string;
+  /** Whether the value is code (a cron expression), which a page sets in monospace. */
+  code?: boolean;
+};
+
+/**
+ * A schedule read as the fields the builder asks it in, so a page that shows a saved schedule says
+ * it in the builder's words: `Repeats` (`Every day`), then the field that choice asks next (`At`,
+ * `Days`, `Day of month`, `Every`, `Cron expression`), then `Time zone` for every choice that is
+ * read in one. An interval has no zone of its own, so it has no `Time zone` row.
+ */
+export function describeScheduleFields(value: ScheduleValue): ScheduleFieldSummary[] {
+  const draft = draftFromValue(value);
+  const repeats = REPEATS_OPTIONS.find((option) => option.value === draft.repeats)?.label ?? '';
+  const rows: ScheduleFieldSummary[] = [{ label: 'Repeats', value: repeats }];
+  switch (draft.repeats) {
+    case 'interval':
+      rows.push({
+        label: 'Every',
+        value: `${draft.intervalCount} ${draft.intervalCount === 1 ? draft.intervalUnit.slice(0, -1) : draft.intervalUnit}`,
+      });
+      return rows;
+    case 'cron':
+      rows.push({ label: 'Cron expression', value: draft.cron, code: true });
+      break;
+    case 'custom-days':
+      rows.push({ label: 'Days', value: listDays(draft.days) });
+      rows.push({ label: 'At', value: formatClockTime(draft.time) });
+      break;
+    case 'monthly':
+      rows.push({ label: 'Day of month', value: String(draft.dayOfMonth) });
+      rows.push({ label: 'At', value: formatClockTime(draft.time) });
+      break;
+    default:
+      rows.push({ label: 'At', value: formatClockTime(draft.time) });
+  }
+  rows.push({ label: 'Time zone', value: timeZoneDisplayName(value.timeZone) });
+  return rows;
+}

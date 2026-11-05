@@ -81,6 +81,11 @@ export type ScheduleRow = {
   /** The first occurrence it missed, in milliseconds, when the Bureau said. */
   readonly missedSince: number | undefined;
   readonly blockers: readonly RowBlocker[];
+  /**
+   * Every reason it will not start, not only the first: the workflow's file that cannot load and
+   * the missing provider are both said on the schedule's own page, in that order.
+   */
+  readonly allBlockers: readonly RowBlocker[];
   /** The agents the schedule runs, by identifier. */
   readonly agentIds: readonly string[];
   /** The workflow type it starts, which the Workflow filter reads. */
@@ -343,6 +348,7 @@ export function scheduleRowOf(schedule: ScheduleSummary, context: ScheduleRowCon
     missedCount: missed.count,
     missedSince: missed.since,
     blockers,
+    allBlockers: phoneBlockers,
     agentIds,
     workflowType: type,
     workflowLabel,

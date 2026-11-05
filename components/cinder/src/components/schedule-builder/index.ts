@@ -13,4 +13,6 @@ export type {
   ScheduleValue,
   ScheduleValueSchema,
 } from './schedule-builder.types.ts';
+export { describeScheduleFields } from './schedule-builder.utilities.ts';
+export type { ScheduleFieldSummary } from './schedule-builder.utilities.ts';
 export { ScheduleBuilder };

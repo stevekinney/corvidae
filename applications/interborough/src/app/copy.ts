@@ -1199,8 +1199,90 @@ export const SCHEDULE_COPY = {
       title: 'This schedule doesn’t exist',
       description: NOT_FOUND_COPY.description,
     },
-    onSwitch: 'On',
-    onSwitchLabel: 'Schedule on',
+    /** The switch's visible label; its accessible name adds the schedule after it ("Active, Daily summary schedule"). */
+    onSwitch: 'Active',
+    onSwitchName: (name: string): string => `${name} schedule`,
+    /** Why flipping the switch of a schedule whose workflow is paused would not start anything. */
+    pausedWorkflowSwitch: (workflow: string): string =>
+      `Resuming this schedule would schedule runs that won’t start, because ${workflow} is paused. Resume workflow, beside the status, resumes it.`,
+    /** The line under the heading of a schedule whose workflow is paused, and the link that resumes the workflow. */
+    workflowPaused: {
+      text: (workflow: string): string => `${workflow} is paused, so this schedule won’t run it.`,
+      resume: 'Resume workflow',
+      failed: 'The workflow was not resumed',
+    },
+    /** The sentence under the heading: what the schedule runs, with which agent, and when. */
+    sentence: { runs: 'Runs', with: 'with' },
+    /** The line that says when it runs next and when it last ran. */
+    summary: {
+      next: (day: string, relative: string): string => `Next ${day} (${relative})`,
+      due: (day: string, relative: string): string => `Due ${day} (${relative})`,
+      wontStart: 'won’t start',
+      pausedNext: 'No next run while paused',
+      noNext: 'No next run',
+      neverRun: 'Never run',
+    },
+    runsHeading: 'Runs',
+    runsNote: (zone: string): string => `Upcoming above, past below · times in ${zone}`,
+    /** Why Run now is off, said as the description of the disabled button. */
+    runNowOff: {
+      cannotLoad: (workflow: string): string => `${workflow} can’t load.`,
+      deleted: (workflow: string): string => `${workflow} was deleted.`,
+      provider: 'No model provider is connected.',
+    },
+    openFile: 'Open file',
+    deleteAction: 'Delete schedule',
+    /** Why Delete schedule is off for a schedule that is the trigger in a workflow's file. */
+    deleteInFile: 'This schedule is the trigger in its workflow’s file. Remove the trigger there.',
+    deleteDialog: {
+      title: (name: string): string => `Delete ${name}?`,
+      description:
+        'It stops running and its upcoming runs are removed. Past runs stay on Runs. This can’t be undone.',
+      confirm: 'Delete schedule',
+    },
+    runNowStarted: (name: string): string => `Started ${name}.`,
+    openRun: 'Open run',
+    /** The details card beside the runs. */
+    card: {
+      label: 'Schedule details',
+      whatRuns: 'What runs',
+      workflow: 'Workflow',
+      builtIn: '(built in)',
+      agent: 'Agent',
+      agents: 'Agents',
+      input: 'Input',
+      inputView: 'Input view',
+      fields: 'Fields',
+      json: 'JSON',
+      copyInput: 'Copy input',
+      messageLabel: 'Message',
+      when: 'When',
+      whenEdit: 'Edit',
+      viewerClock: (time: string, zone: string): string => `That is ${time} in ${zone}.`,
+      behaviour: 'Behaviour',
+      overlap: 'If a run is still going',
+      /** What each policy is called, as the New schedule form words it. */
+      overlapValue: {
+        skip: 'Skip this one',
+        queue: 'Queue this one',
+        'cancel-running': 'Cancel the run that is going',
+        allow: 'Start another run',
+      },
+      catchUp: 'If Interborough was off',
+      catchUpOn: 'Catch up on missed runs',
+      catchUpOff: 'Don’t catch up on missed runs',
+      revision: 'Workflow version',
+      revisionLatest: 'Latest',
+      revisionPinned: (revision: string): string => `Pinned to ${revision}`,
+      revisionInfoLabel: 'About the workflow version',
+      revisionInfo:
+        'Scheduled runs start on the latest version of the workflow. A run that is already going keeps the version it started on.',
+      revisionInfoPinned:
+        'Every scheduled run starts on the version this schedule was pinned to. A run that is already going keeps the version it started on.',
+      runningNow: 'Running now',
+      queued: 'Queued',
+      created: (date: string): string => `Created ${date}`,
+    },
     runNow: 'Run now',
     edit: 'Edit',
     sends: 'Sends',
@@ -1232,26 +1314,6 @@ export const SCHEDULE_COPY = {
     missedCount: (count: number): string => `${String(count)} missed`,
     runsFailed: 'Past runs could not be loaded',
     missedFailed: 'Missed fires could not be loaded',
-    railHeading: 'Details',
-    rail: {
-      workflow: 'Workflow',
-      agent: 'Agent',
-      input: 'Input',
-      noInput: 'None',
-      repeats: 'Repeats',
-      zone: 'Time zone',
-      overlap: 'If a run is still going',
-      catchUp: 'Catch up after downtime',
-      catchUpOn: 'Runs the fires it missed',
-      catchUpOff: 'Skips the fires it missed',
-      jitter: 'Jitter',
-      noJitter: 'None',
-      revision: 'Workflow version',
-      runningNow: 'Running now',
-      queued: 'Queued',
-      nothingRunning: 'Nothing is running',
-      created: 'Created',
-    },
     runNowOutcome: {
       started: 'Started a run.',
       queued: 'A run is going, so this one is queued behind it.',
@@ -1309,13 +1371,6 @@ export const SCHEDULE_COPY = {
       title: 'Discard these changes?',
       description: 'You have changed this schedule. If you leave now, what you changed is lost.',
     },
-  },
-  /** One line that says what happens when a fire is due while a run is still going. */
-  overlapLine: {
-    skip: 'Skips a fire if the previous run is still going',
-    queue: 'Queues a fire if the previous run is still going',
-    'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
-    allow: 'Starts a fire even if the previous run is still going',
   },
   /** The answer to making a schedule was lost, so it may exist. */
   lost: {
