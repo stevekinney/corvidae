@@ -1130,10 +1130,23 @@ export const SCHEDULE_COPY = {
     status: 'Status',
     actions: 'Actions',
   },
-  noMatch: {
-    title: 'No matching schedules',
-    description: 'No schedule matches the current filters. Clear a filter to see more.',
+  /** Nothing has been scheduled yet: the empty state that is the whole page. */
+  empty: {
+    title: 'No schedules yet',
+    description:
+      'A schedule starts a chat or a workflow on a timetable, such as every weekday at 9:00 AM. Create one and its next runs show here.',
   },
+  /** The schedules could not be read, and there are none from before to show. */
+  loadFailed: {
+    title: 'Couldn’t load schedules',
+    description:
+      'Interborough didn’t answer, so nothing changed. Schedules keep their timetable while Interborough is off, and missed runs are listed when it returns. New schedule is off until it answers.',
+  },
+  noMatch: { title: 'No schedules match these filters' },
+  /** Why the header's "+" does nothing while the list could not be read at all. */
+  newActionOffReason: 'New schedule is off until Interborough answers.',
+  /** The status line under the placeholders when the list is slow to load. */
+  stillLoading: 'Still loading schedules. This is taking longer than usual.',
   actionsFor: (name: string): string => `Actions for ${name}`,
   copyId: 'Copy ID',
   idCopied: 'Schedule ID copied',
@@ -4462,15 +4475,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   schedules: {
     label: 'Schedules',
     loading: { title: 'Loading schedules', description: 'Reading the schedules.' },
-    empty: {
-      title: 'No schedules yet',
-      description: 'Create a schedule to start a workflow on a timetable.',
-      action: { label: 'Create a schedule', href: '/schedules/new' },
-    },
-    error: {
-      title: 'Schedules are unavailable',
-      description: 'The server did not answer. Check that the host is running, then try again.',
-    },
+    // The page draws its own empty and failed states under its own header (`ownsStates` in
+    // `views.ts`) in the words `SCHEDULE_COPY` holds, so the frame and the page never say them two
+    // ways.
+    empty: { ...SCHEDULE_COPY.empty, action: { label: 'New schedule', href: '/schedules/new' } },
+    error: SCHEDULE_COPY.loadFailed,
     forbidden: { title: FORBIDDEN_COPY.title('Schedules') },
   },
   reviews: {

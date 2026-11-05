@@ -116,6 +116,15 @@
     width: 4rem;
   }
 
+  /* A list whose rows lead with a status dot: a dot in the same column, so the text lines up with
+   * the real rows. The 1px nudge centres it on the first line of the title. */
+  .cinder-skeleton-status-bar[data-cinder-marker='dot'] {
+    height: 0.5rem;
+    width: 0.5rem;
+    margin-block-start: 1px;
+    border-radius: var(--cinder-radius-full);
+  }
+
   .cinder-skeleton-title-bar {
     height: 0.625rem;
     width: 55%;

@@ -6,6 +6,12 @@
  */
 export type SkeletonVariant = 'row' | 'card' | 'list';
 
+/**
+ * What stands in for a list row's status in the reserved status column: a short `'bar'` for a
+ * status word ("Running"), or a small `'dot'` for a list whose rows lead with a status dot.
+ */
+export type SkeletonStatusMarker = 'bar' | 'dot';
+
 /** Props for the Skeleton component. */
 export type SkeletonProps = {
   /** CSS width value applied as an inline style on the skeleton block (e.g. `'200px'`, `'100%'`). */
@@ -35,6 +41,13 @@ export type SkeletonProps = {
    * @default 3
    */
   rows?: number;
+  /**
+   * What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar
+   * where the status word reads; `'dot'` is a small circle where the status dot sits. The column
+   * keeps its width either way, so nothing shifts when data arrives. Ignored by other variants.
+   * @default 'bar'
+   */
+  statusMarker?: SkeletonStatusMarker;
   /**
    * Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`,
    * the placeholder for a list that groups its rows by day. Ignored by other variants.

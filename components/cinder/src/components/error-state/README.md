@@ -78,6 +78,7 @@ Flat — no disc and no padding of its own, for a card or tab whose container al
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `bordered` | `boolean` | no | `false` | Draws the state inside a bordered, rounded box, for a list or page body that has no container of its own. Leave it off when a card or panel already surrounds the state. It applies to the centred layout; the `'flat'` variant has no box. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-error-state` root element. |
 | `description` | `string` | yes | — | Secondary descriptive text rendered as a paragraph below the title. |
 | `detail` | `string` | no | — | Optional technical detail, such as a fault code. It sits behind a disclosure labelled `detailsLabel`, so the plain-words description stays the first thing a person reads. |

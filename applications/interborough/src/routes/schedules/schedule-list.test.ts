@@ -382,7 +382,10 @@ describe('the filters', () => {
     expect(segment(view, 'Active', 1)).not.toBeNull();
     expect(segment(view, 'Paused', 0)).not.toBeNull();
     // Paused with Tool runner matches nothing: the filtered empty state, which clears the filters.
-    expect(await view.findByText('No matching schedules')).not.toBeNull();
+    expect(await view.findByText('No schedules match these filters')).not.toBeNull();
+    expect(
+      view.getByText('Tool runner has no paused schedules. Try another status or agent.'),
+    ).not.toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Clear filters' }));
     await waitFor(() => expect(window.location.search).toBe(''));
   });

@@ -80,6 +80,15 @@ export type ViewDefinition = {
    * content for that location instead of the empty state it just came from.
    */
   readonly creating?: (search: URLSearchParams) => boolean;
+  /**
+   * Whether the page draws its own loading, empty, failed and refresh-failed states under its own
+   * header, which a list page needs (its heading, its filter bar and its "+" stay in every state).
+   * The frame still probes and still says what it learned in `data-state`, and it still refuses
+   * (forbidden, not found), but it renders the page in every other state instead of replacing it,
+   * and it draws no refresh error above it. The page reads its words from `VIEW_COPY`, so the
+   * frame and the page never say them two ways.
+   */
+  readonly ownsStates?: boolean;
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
@@ -109,6 +118,7 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   schedules: {
     scopes: ['schedules:read'],
     canBeEmpty: true,
+    ownsStates: true,
   },
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because

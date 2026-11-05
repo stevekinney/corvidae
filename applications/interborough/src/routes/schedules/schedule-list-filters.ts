@@ -82,3 +82,58 @@ export function isFiltered(filters: ScheduleListFilters): boolean {
     filters.workflow !== undefined
   );
 }
+
+/** The names the filtered-to-nothing sentence calls the agent and the workflow by. */
+export type NoMatchLabels = {
+  /** The agent the Agent chip names, as a person reads it ("Tool runner"). */
+  readonly agent?: string | undefined;
+  /** The workflow the Workflow chip names, as a person reads it ("Release notes"). */
+  readonly workflow?: string | undefined;
+};
+
+/** Joins the facets a person could change: "status", "status or agent", "status, agent or workflow". */
+function orList(items: readonly string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} or ${items.at(-1) ?? ''}`;
+}
+
+/**
+ * The sentence under "No schedules match these filters": who has none of what, then what to change.
+ * "Tool runner has no paused schedules. Try another status or agent." The agent comes first as the
+ * subject, then the workflow, and a list with neither says what no schedule is ("No schedules are
+ * paused."). The hint names only the facets that are applied, and the Missed runs chip alone has
+ * none to name, so it says "Try another filter."
+ */
+export function noMatchDescription(
+  filters: ScheduleListFilters,
+  labels: NoMatchLabels = {},
+): string {
+  const status = filters.status === 'all' ? undefined : filters.status;
+  const subject = filters.agent === undefined ? undefined : (labels.agent ?? filters.agent);
+  const workflow =
+    filters.workflow === undefined ? undefined : (labels.workflow ?? filters.workflow);
+  const kind = [status, 'schedules'].filter((word) => word !== undefined).join(' ');
+
+  let sentence: string;
+  if (subject !== undefined) {
+    const qualifier = filters.missed ? ' that missed runs' : '';
+    const forWorkflow = workflow === undefined ? '' : ` for ${workflow}`;
+    sentence = `${subject} has no ${kind}${qualifier}${forWorkflow}.`;
+  } else if (workflow !== undefined) {
+    const qualifier = filters.missed ? ' that missed runs' : '';
+    sentence = `${workflow} has no ${kind}${qualifier}.`;
+  } else if (filters.missed) {
+    sentence = `No ${kind} have missed runs.`;
+  } else if (status !== undefined) {
+    sentence = `No schedules are ${status}.`;
+  } else {
+    sentence = 'No schedules match.';
+  }
+
+  const hints = [
+    ...(status === undefined ? [] : ['status']),
+    ...(filters.agent === undefined ? [] : ['agent']),
+    ...(filters.workflow === undefined ? [] : ['workflow']),
+  ];
+  return `${sentence} Try another ${hints.length === 0 ? 'filter' : orList(hints)}.`;
+}

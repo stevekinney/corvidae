@@ -42,6 +42,12 @@ const schema = {
         "Number of list rows to draw when `variant` is `'list'`. Each row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
       default: 3,
     },
+    statusMarker: {
+      enum: ['bar', 'dot'],
+      description:
+        "What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar\nwhere the status word reads; `'dot'` is a small circle where the status dot sits. The column\nkeeps its width either way, so nothing shifts when data arrives. Ignored by other variants.",
+      default: 'bar',
+    },
     dayBand: {
       type: 'boolean',
       description:

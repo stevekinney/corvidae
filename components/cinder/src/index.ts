@@ -959,7 +959,11 @@ export type {
 } from './utilities/sortable-controller.types.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
-export type { SkeletonProps, SkeletonVariant } from './components/skeleton/index.ts';
+export type {
+  SkeletonProps,
+  SkeletonStatusMarker,
+  SkeletonVariant,
+} from './components/skeleton/index.ts';
 
 export { default as SkipLink } from './components/skip-link/index.ts';
 export type { SkipLinkProps, SkipLinkSchemaProps } from './components/skip-link/index.ts';

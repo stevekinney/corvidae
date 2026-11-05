@@ -11,28 +11,36 @@
    * shared. A row is one link to the schedule, whose own page pauses, edits and deletes it, so the
    * rows carry no actions. The header's "+" makes a schedule, and is gated on `schedules:write`.
    *
-   * Whether there is nothing to list, or the server is failing or refusing, is the view frame's to
-   * say (`app/view-probes.ts`).
+   * The page keeps its header in every state, so it draws its own (`ownsStates` in `app/views.ts`):
+   * nothing yet is an empty state that is the page, with no filter bar and the one primary "New
+   * schedule"; filters that match nothing keep the filter bar over a "Clear filters" state; a read
+   * in progress shows placeholders after 300 ms; a read that failed with nothing to show is a full
+   * error state with the header's "+" inert, and one that failed over old data is a banner above
+   * the rows. The frame still says whether the caller may see the view at all, forbidden or not.
    */
   import {
+    Banner,
+    Button,
     EmptyState,
+    ErrorState,
     FilterBar,
     formatTimeZoneLabel,
     PageHeader,
-    Skeleton,
     DataList,
+    StaleRegion,
     type AppliedFilter,
     type FacetDefinition,
   } from '@lostgradient/cinder';
+  import { Calendar, Plus, Search } from '@lucide/svelte';
 
   import type { ScheduleSummary } from '@lostgradient/weft';
 
-  import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+  import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { getConnection } from '../../app/connection.svelte.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -41,12 +49,13 @@
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
+  import ScheduleListLoading from './schedule-list-loading.svelte';
   import ScheduleListRow from './schedule-list-row.svelte';
   import {
     countRows,
     filtersFromSearch,
-    isFiltered,
     narrowByFacets,
+    noMatchDescription,
     narrowByView,
     type ScheduleSegment,
   } from './schedule-list-filters.ts';
@@ -64,7 +73,9 @@
   } from './schedule-row-model.ts';
 
   const client = getClient();
+  const queryClient = useQueryClient();
   const principal = getPrincipalStore();
+  const connection = getConnection();
 
   const filters = $derived(filtersFromSearch(router.current.search));
 
@@ -89,6 +100,20 @@
     queryFn: () => fetchScheduleList(client, {}),
     enabled: !readGate.disabled,
   }));
+
+  // A read that failed with nothing to show replaces the list; one that failed over schedules
+  // already read leaves them in place under a banner. A server that gives no answer at all is the
+  // shell's to say, in its own banner above the page, which also holds the header's "+".
+  const failedFirstLoad = $derived(listQuery.isError && listQuery.data === undefined);
+  const refreshFailed = $derived(
+    listQuery.isRefetchError && listQuery.data !== undefined && !connection.unreachable,
+  );
+
+  /** Reads the list again, and the frame's own probe of it, so what the frame says follows. */
+  function retry(): void {
+    void listQuery.refetch();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('schedules', null) });
+  }
 
   // What the Bureau knows of these schedules: which start an agent, which agent, and the workflow
   // files. Until it answers a schedule is of no known kind.
@@ -231,66 +256,133 @@
     return row.id;
   }
 
+  // Nothing to list at all, as opposed to filters that match nothing. A cancelled schedule is not
+  // listed, so a list of only those is as empty as one with none.
+  const nothingYet = $derived(allRows.length === 0);
+  const noMatchSentence = $derived(
+    noMatchDescription(filters, {
+      agent:
+        filters.agent === undefined ? undefined : agentLabel(filters.agent, sources.data?.agents),
+      workflow:
+        filters.workflow === undefined
+          ? undefined
+          : workflowOptions.find((option) => option.value === filters.workflow)?.label,
+    }),
+  );
+  const newActionReason = $derived(
+    failedFirstLoad ? SCHEDULE_COPY.newActionOffReason : writeGate.title,
+  );
+
   const zone = $derived(formatTimeZoneLabel(now, { style: 'long' }));
   const phone = $derived(phoneViewport.current);
 </script>
 
 <section class="ib-records" aria-label={SCHEDULE_COPY.title} data-page="schedules">
-  <PageHeader
-    title={SCHEDULE_COPY.title}
-    description={SCHEDULE_COPY.subtitle(zone)}
-    headingLevel={1}
-    createAction={{
-      label: SCHEDULE_COPY.newAction,
-      onclick: () => router.navigate(scheduleCreatePath()),
-      ...(writeGate.disabled && writeGate.title !== undefined
-        ? { inertReason: writeGate.title }
-        : {}),
-    }}
-  />
-
-  <FilterBar
-    aria-label={SCHEDULE_COPY.filtersLabel}
-    searchVisible={false}
-    {segments}
-    segmentValue={filters.status}
-    {facets}
-    {appliedFilters}
-    onSegmentChange={(value) => setFilter('status', value as ScheduleSegment)}
-    onFacetChange={changeFacet}
-    onFilterRemove={(key) => setFilter(key, undefined)}
-  />
-
-  {#if overlay.data?.failed}
-    <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
-  {/if}
-
-  {#if listQuery.isPending}
-    <div role="status" aria-busy="true" aria-label={SCHEDULE_COPY.loading}>
-      <Skeleton height="3.5rem" />
-      <Skeleton height="3.5rem" />
-    </div>
-  {:else if listQuery.isError}
-    <FaultBanner
-      treatment={faultTreatment(listQuery.error)}
-      onRetry={() => void listQuery.refetch()}
+  <!-- While the server gives no answer the shell holds every control that changes something; this
+       region is how the header's "+" (and the empty state's button) join them. -->
+  <StaleRegion stale={connection.unreachable} reason={CONNECTION_COPY.changesOff}>
+    <PageHeader
+      title={SCHEDULE_COPY.title}
+      description={SCHEDULE_COPY.subtitle(zone)}
+      headingLevel={1}
+      error={failedFirstLoad}
+      createAction={{
+        label: SCHEDULE_COPY.newAction,
+        onclick: () => router.navigate(scheduleCreatePath()),
+        ...((writeGate.disabled || failedFirstLoad) && newActionReason !== undefined
+          ? { inertReason: newActionReason }
+          : {}),
+      }}
     />
-  {:else if visibleRows.length === 0 && isFiltered(filters)}
-    <EmptyState
-      kind="filtered"
-      title={SCHEDULE_COPY.noMatch.title}
-      description={SCHEDULE_COPY.noMatch.description}
-      headingLevel={2}
-      clearFiltersLabel={SCHEDULE_COPY.clearFilters}
-      onClearFilters={clearFilters}
-    />
-  {:else}
-    <div {@attach followLinks}>
-      <DataList items={visibleRows} key={rowKey} statusColumn aria-label={SCHEDULE_COPY.rowsLabel}>
-        {#snippet children(row)}
-          <ScheduleListRow {row} {phone} />
+
+    {#if refreshFailed}
+      <Banner preset="refresh-failed" dataUpdatedAt={listQuery.dataUpdatedAt} onRetry={retry} />
+    {/if}
+
+    {#if failedFirstLoad}
+      <ErrorState
+        bordered
+        title={SCHEDULE_COPY.loadFailed.title}
+        description={SCHEDULE_COPY.loadFailed.description}
+        headingLevel={2}
+        retryLabel={RETRY_LABEL}
+        onRetry={retry}
+      />
+    {:else if listQuery.isPending}
+      <ScheduleListLoading
+        {segments}
+        segmentValue={filters.status}
+        {facets}
+        {appliedFilters}
+        onSegmentChange={(value) => setFilter('status', value as ScheduleSegment)}
+        onFacetChange={changeFacet}
+        onFilterRemove={(key) => setFilter(key, undefined)}
+      />
+    {:else if nothingYet}
+      <EmptyState
+        bordered
+        kind="first-use"
+        title={SCHEDULE_COPY.empty.title}
+        description={SCHEDULE_COPY.empty.description}
+        headingLevel={2}
+      >
+        {#snippet icon()}<Calendar aria-hidden="true" />{/snippet}
+        {#snippet action()}
+          <Button
+            variant="primary"
+            label={SCHEDULE_COPY.newAction}
+            aria-disabled={writeGate.disabled ? 'true' : undefined}
+            title={writeGate.title}
+            onclick={() => router.navigate(scheduleCreatePath())}
+            mutating
+          >
+            {#snippet leadingIcon()}<Plus />{/snippet}
+          </Button>
         {/snippet}
-      </DataList>
-    </div>
-  {/if}
+      </EmptyState>
+    {:else}
+      <FilterBar
+        aria-label={SCHEDULE_COPY.filtersLabel}
+        searchVisible={false}
+        {segments}
+        segmentValue={filters.status}
+        {facets}
+        {appliedFilters}
+        onSegmentChange={(value) => setFilter('status', value as ScheduleSegment)}
+        onFacetChange={changeFacet}
+        onFilterRemove={(key) => setFilter(key, undefined)}
+      />
+
+      {#if overlay.data?.failed}
+        <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
+      {/if}
+
+      {#if visibleRows.length === 0}
+        <EmptyState
+          bordered
+          kind="filtered"
+          title={SCHEDULE_COPY.noMatch.title}
+          description={noMatchSentence}
+          headingLevel={2}
+          clearFiltersLabel={SCHEDULE_COPY.clearFilters}
+          onClearFilters={clearFilters}
+        >
+          {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+        </EmptyState>
+      {:else}
+        <div {@attach followLinks}>
+          <DataList
+            items={visibleRows}
+            key={rowKey}
+            statusColumn
+            aria-label={SCHEDULE_COPY.rowsLabel}
+          >
+            {#snippet children(row)}
+              <ScheduleListRow {row} {phone} />
+            {/snippet}
+          </DataList>
+        </div>
+      {/if}
+    {/if}
+  </StaleRegion>
 </section>

@@ -74,6 +74,13 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Draws the state inside a bordered, rounded box, for a list or page body that has no
+   * container of its own. Leave it off when a card or panel already surrounds the state. It
+   * applies to the centred layout; the `'flat'` variant has no box.
+   * @default false
+   */
+  bordered?: boolean;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 };
@@ -127,6 +134,13 @@ export interface ErrorStateSchemaProps {
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Draws the state inside a bordered, rounded box, for a list or page body that has no
+   * container of its own. Leave it off when a card or panel already surrounds the state. It
+   * applies to the centred layout; the `'flat'` variant has no box.
+   * @default false
+   */
+  bordered?: boolean;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 }

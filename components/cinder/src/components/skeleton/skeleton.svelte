@@ -12,7 +12,7 @@
    * @avoidWhen Communicating that a view has no data at all — use empty-state.
    * @related spinner, empty-state, progress
    */
-  export type { SkeletonProps, SkeletonVariant } from './skeleton.types.ts';
+  export type { SkeletonProps, SkeletonStatusMarker, SkeletonVariant } from './skeleton.types.ts';
 </script>
 
 <script lang="ts">
@@ -29,6 +29,7 @@
     lines = 1,
     variant = 'row',
     rows = 3,
+    statusMarker = 'bar',
     dayBand = false,
     label,
     delay = 0,
@@ -136,7 +137,10 @@
         {#each { length: rowCount } as _, index (index)}
           <div class="cinder-skeleton-row">
             <div class="cinder-skeleton-row-status">
-              <div class="cinder-skeleton cinder-skeleton-status-bar"></div>
+              <div
+                class="cinder-skeleton cinder-skeleton-status-bar"
+                data-cinder-marker={statusMarker === 'dot' ? 'dot' : undefined}
+              ></div>
             </div>
             <div class="cinder-skeleton-row-text">
               <div class="cinder-skeleton cinder-skeleton-title-bar"></div>

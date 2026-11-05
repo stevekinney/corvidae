@@ -327,3 +327,33 @@ describe('ErrorState neutral tone', () => {
     expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
   });
 });
+
+describe('ErrorState bordered', () => {
+  test('is off by default and marks the centred root when on', async () => {
+    const { container } = render(ErrorState, { props: { title: 'Failed', description: 'Nope.' } });
+    expect(
+      container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-bordered'),
+    ).toBe(false);
+    cleanup();
+    const bordered = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', bordered: true },
+    });
+    expect(
+      bordered.container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-bordered'),
+    ).toBe(true);
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const rule = declarationsFor(css, '.cinder-error-state[data-cinder-bordered]');
+    expect(rule.get('border')).toBe('1px solid var(--cinder-border)');
+    expect(rule.get('border-radius')).toBe('var(--cinder-radius-lg)');
+    expect(rule.get('padding-inline')).toBe('var(--cinder-space-8)');
+  });
+
+  test('draws no box on the flat variant, which sits inside a container of its own', () => {
+    const { container } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', bordered: true, variant: 'flat' },
+    });
+    expect(
+      container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-bordered'),
+    ).toBe(false);
+  });
+});

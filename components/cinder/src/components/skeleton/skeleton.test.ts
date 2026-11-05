@@ -3,6 +3,7 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
@@ -329,6 +330,25 @@ describe('Skeleton list variant', () => {
     const band = banded.container.querySelector('.cinder-skeleton-day-band');
     expect(band?.querySelectorAll('.cinder-skeleton')).toHaveLength(1);
     expect(band?.nextElementSibling?.classList.contains('cinder-skeleton-row')).toBe(true);
+  });
+
+  test('statusMarker is a bar by default, and a dot in the same column when asked', () => {
+    const plain = render(Skeleton, { props: { variant: 'list', rows: 2 } });
+    for (const bar of plain.container.querySelectorAll('.cinder-skeleton-status-bar')) {
+      expect(bar.hasAttribute('data-cinder-marker')).toBe(false);
+    }
+    cleanup();
+    const dotted = render(Skeleton, { props: { variant: 'list', rows: 2, statusMarker: 'dot' } });
+    const dots = dotted.container.querySelectorAll(
+      '.cinder-skeleton-row-status > .cinder-skeleton-status-bar[data-cinder-marker="dot"]',
+    );
+    expect(dots).toHaveLength(2);
+    const rule = declarationsFor(
+      skeletonCss,
+      ".cinder-skeleton-status-bar[data-cinder-marker='dot']",
+    );
+    expect(rule.get('width')).toBe('0.5rem');
+    expect(rule.get('border-radius')).toBe('var(--cinder-radius-full)');
   });
 
   test('label is announced through a visually hidden polite status outside the hidden rows', () => {

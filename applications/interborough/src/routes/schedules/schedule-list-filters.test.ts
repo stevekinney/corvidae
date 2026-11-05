@@ -10,6 +10,7 @@ import {
   isFiltered,
   narrowByFacets,
   narrowByView,
+  noMatchDescription,
 } from './schedule-list-filters.ts';
 import type { ScheduleRow } from './schedule-row-model.ts';
 
@@ -91,5 +92,60 @@ describe('narrowing', () => {
     expect(
       isFiltered({ status: 'paused', missed: false, agent: undefined, workflow: undefined }),
     ).toBe(true);
+  });
+});
+
+describe('the sentence under "No schedules match these filters"', () => {
+  const none = { status: 'all', missed: false, agent: undefined, workflow: undefined } as const;
+
+  test('names the agent and the segment, and what to change (row 70r)', () => {
+    expect(
+      noMatchDescription(
+        { ...none, status: 'paused', agent: 'tool-runner' },
+        { agent: 'Tool runner' },
+      ),
+    ).toBe('Tool runner has no paused schedules. Try another status or agent.');
+  });
+
+  test('says whose schedules there are none of, by the agent first and then the workflow', () => {
+    expect(noMatchDescription({ ...none, agent: 'tool-runner' }, { agent: 'Tool runner' })).toBe(
+      'Tool runner has no schedules. Try another agent.',
+    );
+    expect(
+      noMatchDescription({ ...none, workflow: 'release-notes' }, { workflow: 'Release notes' }),
+    ).toBe('Release notes has no schedules. Try another workflow.');
+    expect(
+      noMatchDescription(
+        { ...none, status: 'active', agent: 'tool-runner', workflow: 'release-notes' },
+        { agent: 'Tool runner', workflow: 'Release notes' },
+      ),
+    ).toBe(
+      'Tool runner has no active schedules for Release notes. Try another status, agent or workflow.',
+    );
+  });
+
+  test('says what no schedule is when no agent or workflow is chosen', () => {
+    expect(noMatchDescription({ ...none, status: 'paused' })).toBe(
+      'No schedules are paused. Try another status.',
+    );
+    expect(noMatchDescription({ ...none, missed: true })).toBe(
+      'No schedules have missed runs. Try another filter.',
+    );
+    expect(noMatchDescription({ ...none, status: 'paused', missed: true })).toBe(
+      'No paused schedules have missed runs. Try another status.',
+    );
+  });
+
+  test('keeps the Missed runs chip in the sentence beside an agent', () => {
+    expect(noMatchDescription({ ...none, missed: true, agent: 'assistant' })).toBe(
+      'assistant has no schedules that missed runs. Try another agent.',
+    );
+  });
+
+  test('falls back to the identifier when the agent has no label, and never says nothing', () => {
+    expect(noMatchDescription({ ...none, agent: 'gone' })).toBe(
+      'gone has no schedules. Try another agent.',
+    );
+    expect(noMatchDescription(none)).toBe('No schedules match. Try another filter.');
   });
 });
