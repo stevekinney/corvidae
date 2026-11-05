@@ -70,7 +70,7 @@ function workspaceBinding(): WorkspaceMembershipOptions {
 }
 
 describe('the operations list', () => {
-  it('serves the sixteen workflow operations, with their scopes registered', () => {
+  it('serves the eighteen workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -85,6 +85,8 @@ describe('the operations list', () => {
       'bureau.workflows.impact',
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
+      'bureau.workflows.runs.cancel',
+      'bureau.workflows.runs.history',
       'bureau.workflows.start',
       'bureau.workflows.internal.get',
       'bureau.workflows.signal',
@@ -123,6 +125,16 @@ const CALLS: readonly Call[] = [
   },
   { method: 'bureau.workflows.runs.list', params: () => ({}), scope: 'read' },
   { method: 'bureau.workflows.runs.get', params: () => ({ runId: 'digest-run' }), scope: 'read' },
+  {
+    method: 'bureau.workflows.runs.cancel',
+    params: () => ({ runId: 'digest-run' }),
+    scope: 'write',
+  },
+  {
+    method: 'bureau.workflows.runs.history',
+    params: () => ({ runId: 'digest-run' }),
+    scope: 'read',
+  },
   {
     method: 'bureau.workflows.create',
     params: () => ({ id: 'another', definition: DEFINITION }),

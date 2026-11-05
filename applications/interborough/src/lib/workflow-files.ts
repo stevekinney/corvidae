@@ -266,6 +266,10 @@ const runSummarySchema = z.object({
   ]),
   createdAt: z.string(),
   updatedAt: z.string(),
+  origin: z
+    .object({ kind: z.literal('agent-run'), runId: z.string(), agentId: z.string() })
+    .nullable()
+    .default(null),
 });
 
 /** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */

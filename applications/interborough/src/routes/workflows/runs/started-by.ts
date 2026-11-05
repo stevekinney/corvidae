@@ -18,6 +18,7 @@ export const STARTED_BY_LABELS = {
   schedule: 'A schedule',
   api: 'The API',
   agent: 'An agent',
+  'agent-run': "An agent's tool call",
   goal: 'A goal',
   parent: 'A workflow',
   // COR-2009: Interborough's own runs, such as the schedule tick.

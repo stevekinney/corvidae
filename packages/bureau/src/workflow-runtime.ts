@@ -35,6 +35,7 @@ import {
   type WorkflowCompatibilityVerdict,
   type WorkflowDocument,
   type WorkflowState,
+  type WorkflowEvent,
   type WorkflowStatus,
 } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -142,6 +143,7 @@ export interface WorkflowRunSummary {
   readonly status: WorkflowStatus;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly origin: TaskOrigin | null;
 }
 
 /** One instance with what started it and how it ended. */
@@ -162,6 +164,13 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
    * other versions are (COR-1874). The instance is never resumed on another version.
    */
   readonly unresumable?: WorkflowRunPinProblem;
+}
+
+export interface WorkflowRunHistoryEvent {
+  readonly type: string;
+  readonly timestamp: string;
+  readonly step: string | null;
+  readonly summary: string;
 }
 
 /** What {@link BureauWorkflows.start} started. */
@@ -194,6 +203,8 @@ export interface WorkflowStartOptions {
    * action marks the instance it starts, so the Bureau can tell that a hook started it.
    */
   readonly tags?: readonly string[] | undefined;
+  /** Origin recorded on a run started by an agent tool. */
+  readonly origin?: TaskOrigin | undefined;
 }
 
 /**
@@ -343,6 +354,7 @@ export interface WorkflowSignalResult {
 
 /** The audit entry types a write to a workflow file appends. */
 export type WorkflowAuditType =
+  | 'workflow.started'
   | 'workflow.created'
   | 'workflow.updated'
   | 'workflow.paused'
@@ -353,7 +365,12 @@ export type WorkflowAuditType =
 export interface WorkflowAuditEntry {
   readonly runId: string;
   readonly type: WorkflowAuditType;
-  readonly detail: { readonly id: string; readonly hash: string; readonly previousHash?: string };
+  readonly detail: {
+    readonly id: string;
+    readonly hash: string;
+    readonly previousHash?: string;
+    readonly runId?: string;
+  };
   readonly principal?: string;
 }
 
@@ -420,6 +437,15 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
+  readonly cancel: (
+    runId: string,
+  ) => Promise<{ readonly runId: string; readonly status: 'cancel-requested' }>;
+  readonly historyRuns: (
+    runId: string,
+    limit: number,
+  ) => Promise<
+    { readonly events: readonly WorkflowRunHistoryEvent[]; readonly truncated: boolean } | undefined
+  >;
   /**
    * The counts of `id`'s instances, read from the engine's own totals, or `null` when the engine
    * could not be read (the failure is reported through the Bureau's diagnostics).
@@ -1273,7 +1299,13 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     version: string;
     createdAt: number;
     updatedAt: number;
+    input?: unknown;
   }): WorkflowRunSummary {
+    const input = state.input;
+    const origin =
+      typeof input === 'object' && input !== null && 'origin' in input
+        ? (input.origin as TaskOrigin | null)
+        : null;
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),
@@ -1281,6 +1313,45 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       status: state.status,
       createdAt: new Date(state.createdAt).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
+      origin,
+    };
+  }
+
+  const HISTORY_EVENT_TYPES = new Set([
+    'file-workflow:step-started',
+    'file-workflow:step-completed',
+    'file-workflow:activity-started',
+    'file-workflow:activity-completed',
+    'file-workflow:signal-waiting',
+    'file-workflow:signal-received',
+    'file-workflow:run-terminal',
+  ]);
+
+  function boundedSummary(value: unknown): string {
+    const text = typeof value === 'string' ? value : value === undefined ? '' : String(value);
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.byteLength <= 256) return text;
+    return new TextDecoder().decode(bytes.slice(0, 256));
+  }
+
+  function historyEventOf(event: WorkflowEvent): WorkflowRunHistoryEvent | undefined {
+    if (!HISTORY_EVENT_TYPES.has(event.type)) return undefined;
+    const data = event.data;
+    const stepValue = data['step'];
+    const step =
+      typeof stepValue === 'number' || typeof stepValue === 'string' ? String(stepValue) : null;
+    const summaryField = event.type.includes('activity')
+      ? data['handler']
+      : event.type.includes('signal')
+        ? data['signal']
+        : event.type === 'file-workflow:run-terminal'
+          ? (data['message'] ?? data['status'])
+          : data['kind'];
+    return {
+      type: event.type,
+      timestamp: new Date(event.timestamp).toISOString(),
+      step,
+      summary: boundedSummary(summaryField),
     };
   }
 
@@ -1847,8 +1918,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             offset,
           });
           for (const run of page.items) {
-            if (filter.mayReadRun === undefined || (await filter.mayReadRun(run.id)))
-              found.push(summarize(run));
+            if (filter.mayReadRun !== undefined && !(await filter.mayReadRun(run.id))) continue;
+            const state = await engine.get(run.id);
+            found.push(summarize({ ...run, input: state?.input }));
           }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
@@ -1926,6 +1998,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           version: state.versionTuple.workflowVersion,
           createdAt: state.createdAt,
           updatedAt: state.updatedAt,
+          input: state.input,
         }),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
@@ -1933,6 +2006,35 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         finishReason: state.status === 'failed' ? finishReasonOf(state.errorStack) : null,
         ...(cancellation?.pin === undefined ? {} : { unresumable: cancellation.pin }),
       };
+    },
+
+    async cancel(runId) {
+      const state = await engine.get(runId);
+      if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
+        throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
+      }
+      const outcome = await engine.cancel(runId);
+      if (outcome.status === 'already-terminal') {
+        return { runId, status: 'cancel-requested' as const };
+      }
+      return { runId, status: 'cancel-requested' as const };
+    },
+
+    async historyRuns(runId, limit) {
+      const state = await engine.get(runId);
+      if (state === null || state === undefined || !(await isWorkflowType(state.type)))
+        return undefined;
+      const projected = (await engine.getEvents(runId))
+        .map(historyEventOf)
+        .filter((event): event is WorkflowRunHistoryEvent => event !== undefined);
+      const selected = projected.slice(Math.max(0, projected.length - limit));
+      let events = selected;
+      let truncated = selected.length < projected.length;
+      while (JSON.stringify({ events }).length > 64 * 1024 && events.length > 0) {
+        events = events.slice(1);
+        truncated = true;
+      }
+      return { events, truncated };
     },
 
     async refresh() {
@@ -2018,7 +2120,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-      const origin: TaskOrigin = {
+      const origin: TaskOrigin = startOptions.origin ?? {
         kind: 'person',
         principal: starter,
         surface: surface ?? 'api',
@@ -2029,6 +2131,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         tags: [taskOriginTag(origin), ...extraTags],
         ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
       });
+      if (options.audit !== undefined && origin.kind === 'agent-run') {
+        try {
+          await options.audit({
+            runId: auditTrailWorkflowOwnerId(id),
+            type: 'workflow.started',
+            detail: { id, hash: file.hash, runId: handle.id },
+            principal: `agent-run:${origin.runId}`,
+          });
+        } catch (error) {
+          options.diagnose(`Could not record the workflow.started audit entry for "${id}".`, error);
+        }
+      }
       // The revision the run is pinned to is the engine's to say: the catalog can already hold a
       // newer file than the one the engine registered (COR-1927). A run the engine cannot read
       // back is reported on the catalog's revision, the one it was started from.

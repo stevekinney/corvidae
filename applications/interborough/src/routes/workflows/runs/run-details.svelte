@@ -39,6 +39,11 @@
     workflow?: WorkflowState | undefined;
     /** The workflow a run of a workflow file belongs to, from the Bureau's record of it. */
     recordWorkflow?: string | undefined;
+    workflowOrigin?: {
+      readonly kind: 'agent-run';
+      readonly runId: string;
+      readonly agentId: string;
+    } | null;
     /** When the run started and last changed, in milliseconds. */
     startedAt?: number | undefined;
     updatedAt?: number | undefined;
@@ -54,6 +59,7 @@
     engine,
     workflow,
     recordWorkflow,
+    workflowOrigin,
     startedAt,
     updatedAt,
     over = false,
@@ -116,7 +122,7 @@
 
   const items = $derived.by((): DescriptionListItem[] => {
     const list: DescriptionListItem[] = [];
-    if (task !== undefined || goal !== undefined) {
+    if (task !== undefined || goal !== undefined || workflowOrigin !== undefined) {
       list.push({
         id: 'started-by',
         term: RUN_PAGE_COPY.facts.startedBy,
@@ -188,9 +194,17 @@
 </script>
 
 {#snippet startedBy()}
-  <ol class="ib-run-lineage" data-testid="run-lineage">
-    <RunLineage {runId} {task} {goal} {chat} />
-  </ol>
+  {#if workflowOrigin?.kind === 'agent-run'}
+    <span data-testid="run-lineage"
+      >An agent's tool call · <code>{workflowOrigin.agentId}</code> ·
+      <a href={router.href(`/runs/${workflowOrigin.runId}`)}><code>{workflowOrigin.runId}</code></a
+      ></span
+    >
+  {:else}
+    <ol class="ib-run-lineage" data-testid="run-lineage">
+      <RunLineage {runId} {task} {goal} {chat} />
+    </ol>
+  {/if}
 {/snippet}
 
 {#snippet workflowLink()}

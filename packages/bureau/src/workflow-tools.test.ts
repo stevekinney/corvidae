@@ -98,6 +98,12 @@ describe('which agents are offered the tools', () => {
       'workflows-get',
       'workflows-revisions-list',
       'workflows-revisions-get',
+      'workflows-start',
+      'workflows-signal',
+      'workflows-runs-cancel',
+      'workflows-runs-list',
+      'workflows-runs-get',
+      'workflows-runs-history',
     ]);
     const harness = await start();
     await harness.callTool('bureau__workflows-list', {});

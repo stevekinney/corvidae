@@ -42,6 +42,11 @@
     readonly status: Parameters<typeof workflowStatusBadge>[0];
     readonly createdAt: number;
     readonly updatedAt: number;
+    readonly origin: {
+      readonly kind: 'agent-run';
+      readonly runId: string;
+      readonly agentId: string;
+    } | null;
   };
 
   const runs = createQuery(
@@ -55,6 +60,7 @@
             status: run.status,
             createdAt: Date.parse(run.createdAt),
             updatedAt: Date.parse(run.updatedAt),
+            origin: run.origin,
           }));
         }
         const page = await client.list({ type, limit: RECENT_LIMIT });
@@ -63,6 +69,7 @@
           status: run.status,
           createdAt: run.createdAt,
           updatedAt: run.updatedAt,
+          origin: null,
         }));
       },
       retry: false,
@@ -155,6 +162,7 @@
             {status.label}
           </a>
           <span>{formatRelativeTime(run.createdAt)}</span>
+          <span>{run.origin === null ? 'Not recorded' : "An agent's tool call"}</span>
           {#if took !== undefined}<span class="ib-workflow__muted"
               >{copy.page.runDuration(took)}</span
             >{/if}
