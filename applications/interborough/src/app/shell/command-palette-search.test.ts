@@ -197,15 +197,20 @@ describe('the chat and agent matches', () => {
     expect(matchChats(many, 'echo')).toHaveLength(5);
   });
 
-  test('an agent matches on its name, display name, or description', () => {
+  test('an agent matches on its name or display name, and never on a description its row does not show', () => {
     const named = agent({ name: 'tool-runner', displayName: 'Tool runner' });
     expect(matchAgents([named, ECHO_AGENT], 'ech').map((match) => match.name)).toEqual(['echo']);
     expect(matchAgents([named, ECHO_AGENT], 'runner').map((match) => match.name)).toEqual([
       'tool-runner',
     ]);
-    expect(matchAgents([named, ECHO_AGENT], 'last message').map((match) => match.name)).toEqual([
-      'echo',
-    ]);
+    // ECHO_AGENT's description reads "Repeats the last message it was sent."
+    expect(matchAgents([named, ECHO_AGENT], 'last message')).toEqual([]);
+    const refunds = agent({
+      name: 'tool-runner',
+      displayName: 'Tool runner',
+      description: 'Helps with orders and refunds.',
+    });
+    expect(matchAgents([refunds], 'refund')).toEqual([]);
   });
 
   test('offers a new chat with every agent, whether or not it opts into A2A, by the words of the command', () => {
@@ -494,6 +499,34 @@ describe('runs (row 03g)', () => {
     ]);
     expect(matchRuns(tasks, [refundChat], names, 'run-2').map((run) => run.id)).toEqual(['run-2']);
     expect(matchRuns(tasks, [refundChat], names, 'zzz')).toEqual([]);
+  });
+
+  test('an identifier finds its run from its start, never from its middle (row 03g)', () => {
+    const goalAttempt = task({
+      id: 'goal-abc-sample-goal-summarize-open-refunds-a1',
+      contextId: 'goal-attempt',
+      kind: 'catalog',
+      status: 'canceled',
+      openWaits: [],
+    });
+    expect(matchRuns([goalAttempt], [], names, 'refund')).toEqual([]);
+    expect(matchRuns([goalAttempt], [], names, 'goal-abc').map((run) => run.id)).toEqual([
+      goalAttempt.id,
+    ]);
+  });
+
+  test('only the newest run of a chat is called after the chat; an earlier one is called after its agent (row 03g)', () => {
+    const tasks = [
+      task({ id: 'run-new' }),
+      task({ id: 'run-old', status: 'completed', openWaits: [] }),
+    ];
+    expect(matchRuns(tasks, [refundChat], names, 'refund').map((run) => run.id)).toEqual([
+      'run-new',
+    ]);
+    expect(matchRuns(tasks, [refundChat], names, 'Tool runner')).toEqual([
+      expect.objectContaining({ id: 'run-new', title: 'Refund order 4471' }),
+      expect.objectContaining({ id: 'run-old', title: 'Tool runner' }),
+    ]);
   });
 
   test('a run row says its agent, then how it stands, and never names its agent twice', () => {

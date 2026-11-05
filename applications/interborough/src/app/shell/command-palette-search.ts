@@ -189,7 +189,11 @@ export function matchChats(contexts: readonly ChatContext[], query: string): Cha
     .slice(0, RESULTS_PER_GROUP);
 }
 
-/** The agents whose name, display name or description holds `query`, in the order given. */
+/**
+ * The agents whose name or display name holds `query`, in the order given. An agent's description
+ * is not searched: its row never shows it, so a match on it would be a row that does not say why it
+ * is there (a search for "refund" listing Tool runner because its prompt mentions refunds, row 03g).
+ */
 export function matchAgents(
   agents: readonly AgentSummary[],
   query: string,
@@ -200,8 +204,7 @@ export function matchAgents(
       (agent) =>
         containsQuery(query, agent.name) ||
         containsQuery(query, agent.displayName) ||
-        containsQuery(query, agentLabel(agent.name, agents)) ||
-        containsQuery(query, agent.description),
+        containsQuery(query, agentLabel(agent.name, agents)),
     )
     .slice(0, limit);
 }
@@ -356,9 +359,16 @@ function waitingOn(task: TaskView): RunMatch['waiting'] {
 }
 
 /**
- * The runs (Bureau tasks, most recently changed first) whose title, agent or identifier holds
- * `query`. `chats` name what began each run, and `agentNames` read an agent's identifier as the
- * name a person knows it by.
+ * The runs (Bureau tasks, most recently changed first) whose title or agent holds `query`, or whose
+ * identifier starts with it (a pasted identifier finds its run; a fragment in the middle of one does
+ * not, because the row never shows an identifier, so "refund" must not list a goal attempt whose
+ * identifier happens to say it). `chats` name what began each run, and `agentNames` read an agent's
+ * identifier as the name a person knows it by.
+ *
+ * A chat's title is the start of its latest message, so only the newest run of a chat is called
+ * after it; an earlier run of the same chat is called after its agent, because its own message is
+ * not recorded here and the chat's title would name the wrong order (row 03g: the finished 4472
+ * refund is not "Refund order 4471").
  */
 export function matchRuns(
   tasks: readonly TaskView[],
@@ -368,16 +378,19 @@ export function matchRuns(
   limit: number = RESULTS_PER_GROUP,
 ): RunMatch[] {
   const chatsById = new Map(chats.map((chat) => [chat.id, chat] as const));
+  const named = new Set<string>();
   const found: RunMatch[] = [];
   for (const task of tasks) {
     const agentText =
       task.agentName === null ? undefined : (agentNames.get(task.agentName) ?? task.agentName);
-    const title = runTitle(chatsById.get(task.contextId), agentText);
+    const chat = named.has(task.contextId) ? undefined : chatsById.get(task.contextId);
+    if (chat !== undefined) named.add(task.contextId);
+    const title = runTitle(chat, agentText);
     if (
       containsQuery(query, title) ||
       containsQuery(query, agentText) ||
       containsQuery(query, task.agentName) ||
-      containsQuery(query, task.id)
+      task.id.toLowerCase().startsWith(query.toLowerCase())
     ) {
       found.push({
         id: task.id,
