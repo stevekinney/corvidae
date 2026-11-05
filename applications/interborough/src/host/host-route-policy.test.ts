@@ -3,6 +3,9 @@ import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createAgentSchedule, listBureauSchedules } from '../lib/bureau-schedules.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
+import { pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { inventoryHostRoutes } from './host-route-policy.ts';
 import { startHost } from './host.ts';
 
@@ -66,6 +69,55 @@ test('fully composed host captures its routes and its engine discovery catalog',
         .map((operation) => operation.name),
     ].sort();
     expect(live).toEqual(expected);
+  } finally {
+    await host.close();
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test('browser schedule parsing accepts the real workspace host create and list responses', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'interborough-schedule-contract-'));
+  await enableDemoPlugin(home);
+  const host = await startHost({
+    environment: { INTERBOROUGH_HOME: home },
+    port: 0,
+    plugins: pluginsWithUnseededDemo(),
+  });
+  try {
+    const options = {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(
+          input instanceof Request
+            ? new Request(new URL(input.url, host.url), input)
+            : new URL(input, host.url),
+          init,
+        ),
+    };
+    const created = await createAgentSchedule(
+      { agentName: 'demo:assistant', spec: '24h', input: 'PRIVATE-SCHEDULE-CONTRACT-c75a' },
+      options,
+    );
+    expect(created.inputPreview).toBe('PRIVATE-SCHEDULE-CONTRACT-c75a');
+    expect(created.lastFireAt).toBeNull();
+    expect(created.missedFireCount).toBe(0);
+    expect(created.skippedCount).toBe(0);
+    const foreign = await host.bureau.schedules.create({
+      agentName: 'demo:assistant',
+      spec: '24h',
+      input: 'PRIVATE-OTHER-OWNER-a137',
+      principal: 'workspace:another-owner',
+    });
+    expect(foreign).toBeDefined();
+    const listed = await listBureauSchedules(options);
+    expect(listed).toHaveLength(2);
+    expect(listed.find((entry) => entry.id === created.id)).toEqual(created);
+    expect(listed.find((entry) => entry.id === foreign?.id)).toMatchObject({
+      inputPreview: null,
+      lastFireAt: null,
+      missedFireCount: null,
+      skippedCount: null,
+    });
+    expect(JSON.stringify(listed)).not.toContain('PRIVATE-OTHER-OWNER-a137');
   } finally {
     await host.close();
     await rm(home, { recursive: true, force: true });

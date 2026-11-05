@@ -131,8 +131,10 @@ export function workspaceOwnerAuthority(
   return async (owner) => {
     if (!workspace.capabilities.includes('workspace:use')) return false;
     if (owner === workspace.owner) return true;
+    if (workspace.actorKind === 'service') return false;
     if (options === undefined || options.workspaceId !== workspace.workspaceId) return false;
-    return (await resolveWorkspaceOwner(options, owner)) !== undefined;
+    const target = await resolveWorkspaceOwner(options, owner);
+    return target !== undefined && target.actorKind !== 'service';
   };
 }
 
@@ -165,7 +167,11 @@ export function runtimeWorkspaceOwnerAuthority(
 ): WorkspaceOwnerAuthority | undefined {
   if (options === undefined) return undefined;
   return async (otherOwner) => {
-    if ((await resolveWorkspaceOwner(options, owner)) === undefined) return false;
-    return otherOwner === owner || (await resolveWorkspaceOwner(options, otherOwner)) !== undefined;
+    const current = await resolveWorkspaceOwner(options, owner);
+    if (current === undefined) return false;
+    if (otherOwner === owner) return true;
+    if (current.actorKind === 'service') return false;
+    const target = await resolveWorkspaceOwner(options, otherOwner);
+    return target !== undefined && target.actorKind !== 'service';
   };
 }

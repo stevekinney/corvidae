@@ -1,4 +1,7 @@
-import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+import {
+  authorizeWorkspaceOperation,
+  authorizeWorkspaceClass,
+} from '../workspace-authorization.ts';
 
 /**
  * `bureau.health.attention`: what needs attention now (COR-2009), through `Bureau.attention()`.
@@ -143,7 +146,7 @@ export const healthAttentionOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ host, principal }) => {
     const attention = await host.attention();
-    if (principal.method !== 'unauthenticated' && principal.workspace !== undefined) {
+    if (!authorizeWorkspaceClass('deployment-operator', principal).allowed) {
       const items = attention.items
         .filter((entry) => entry.kind === 'plugin-not-loaded' || entry.kind === 'no-provider')
         .map(wireItem);

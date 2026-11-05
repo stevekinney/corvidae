@@ -1,10 +1,17 @@
+import { rejectionOf } from '@lostgradient/testing';
+import {
+  runtimeWorkspaceOwnerAuthority,
+  type WorkspaceMembership,
+  type WorkspaceMembershipOptions,
+} from './workspace-principal.ts';
 import { WORKSPACE_MOUNT_CONFORMANCE } from './workspace-conformance.test-support.ts';
 import { expect, test } from 'bun:test';
 import { base64Of, pngBytes } from '../testing/asset-fixtures.test-support.ts';
-import { as } from './management/management-fixtures.test-support.ts';
+import { as, openBureau } from './management/management-fixtures.test-support.ts';
 import {
   openWorkspacePrivacyBureau,
   workspacePrivacyCall,
+  workspacePrivacyAuthentication,
   WORKSPACE_PRIVACY_ACTORS,
   type WorkspacePrivacyActor,
 } from './workspace-privacy-fixtures.test-support.ts';
@@ -142,6 +149,68 @@ test('asset metadata and HTTP bytes honor only the owner and explicit current-me
         );
       }
     }
+  } finally {
+    await opened.dispose();
+  }
+});
+
+test('a service cannot spend a persisted cross-owner asset grant over HTTP or runtime reads', async () => {
+  const owner: WorkspaceMembership = {
+    version: 1,
+    workspaceId: 'workspace-a',
+    actorId: 'alice',
+    actorKind: 'user',
+    owner: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+    membershipRevision: '1',
+    capabilities: ['workspace:use'],
+  };
+  const service: WorkspaceMembership = {
+    ...owner,
+    actorId: 'service',
+    actorKind: 'service',
+    owner: WORKSPACE_PRIVACY_ACTORS.grantee.owner,
+  };
+  const workspace: WorkspaceMembershipOptions = {
+    workspaceId: 'workspace-a',
+    resolveMembership: async ({ subject }) =>
+      subject === 'alice' ? owner : subject === 'assets-reader' ? service : null,
+    resolveOwnerMembership: async (identifier) =>
+      identifier === owner.owner ? owner : identifier === service.owner ? service : null,
+  };
+  const opened = await openBureau({
+    authentication: workspacePrivacyAuthentication,
+    handlerOptions: { workspace },
+  });
+  try {
+    // Trusted fixture writes a pre-existing grant; callers cannot supply directory authority.
+    const shared = await opened.bureau.assets!.admit(
+      { source: { kind: 'inline', bytes }, readers: [service.owner] },
+      { id: owner.owner },
+    );
+    await shared.work.result();
+    const result = await workspacePrivacyCall(opened, 'grantee', 'bureau.assets.get', {
+      assetId: shared.assetId,
+    });
+    expect(result.body?.error?.data?.httpStatus).toBe(404);
+    const response = await opened.handler(
+      new Request(`http://localhost/assets/${shared.assetId}/content`, {
+        headers: as(WORKSPACE_PRIVACY_ACTORS.grantee.key),
+      }),
+    );
+    expect(response.status).toBe(404);
+    const principal = {
+      id: service.owner,
+      workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, service.owner),
+    };
+    expect(
+      await rejectionOf(opened.bureau.assets!.inspect(shared.assetId, principal)),
+    ).toMatchObject({ name: 'AssetNotFoundError' });
+    const own = await opened.bureau.assets!.admit({ source: { kind: 'inline', bytes } }, principal);
+    await own.work.result();
+    const ownResult = await workspacePrivacyCall(opened, 'grantee', 'bureau.assets.get', {
+      assetId: own.assetId,
+    });
+    expect(ownResult.body?.error).toBeUndefined();
   } finally {
     await opened.dispose();
   }

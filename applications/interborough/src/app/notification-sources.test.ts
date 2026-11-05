@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { installBureauStub, type BureauStub } from '../lib/bureau-stub.test-support.ts';
-import { loadChats, loadScheduleNames } from './notification-sources.ts';
+import { loadChats, loadMissedFires, loadScheduleNames } from './notification-sources.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -114,4 +114,21 @@ describe('loadScheduleNames', () => {
 
     expect(names.size).toBe(0);
   });
+});
+
+test('redacted schedule counters do not trigger private missed-fire lookups', async () => {
+  stub = installBureauStub({
+    'bureau.schedules.list': () => ({
+      schedules: [
+        {
+          ...schedule('private', 'Shared automation', 'assistant'),
+          missedFireCount: null,
+          skippedCount: null,
+        },
+      ],
+      nextOffset: null,
+    }),
+  });
+  expect(await loadMissedFires()).toEqual([]);
+  expect(stub.callsTo('bureau.schedules.missed')).toHaveLength(0);
 });

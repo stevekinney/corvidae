@@ -23,7 +23,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * What a schedule's views carry of its input, which is the prompt each fire runs: `inputPreview`,
  * its start, at most 500 characters and ending in `…` when cut, so a schedule can be told by what it
  * says (`null` for a workflow file's schedule and for an input of media alone). It is served to
- * whoever may see the schedule, as `bureau.contexts` serves `title` and `lastMessagePreview`; the
+ * its exact owner within a workspace; shared administrator views redact it and private fire counters. The
  * rest of the input, and its session, stay in storage. A view also names the agent each fire runs
  * (`agentName`, `null` for a workflow file's schedule, which runs none), because that names a
  * resource and carries no content.
@@ -166,12 +166,15 @@ function viewOf(
   blocker: WorkflowScheduleBlocker | undefined,
   principal: Principal,
 ): z.infer<typeof scheduleViewSchema> {
-  const workspace = principal.method !== 'unauthenticated' && principal.workspace !== undefined;
+  const redactPrivateProjection =
+    principal.method !== 'unauthenticated' &&
+    principal.workspace !== undefined &&
+    ownerOfPrincipal(principal) !== owner;
   return {
     id: summary.id,
     owner,
     agentName: agentName ?? null,
-    inputPreview: workspace ? null : (inputPreview ?? null),
+    inputPreview: redactPrivateProjection ? null : (inputPreview ?? null),
     workflowType: summary.workflowType,
     description: summary.description ?? null,
     cronExpression: summary.cronExpression ?? null,
@@ -182,9 +185,9 @@ function viewOf(
     revision: summary.revision,
     nextFireAt: iso(summary.nextFireAt),
     skipUntil: iso(summary.skipUntil),
-    lastFireAt: workspace ? null : iso(summary.lastFireAt),
-    missedFireCount: workspace ? null : summary.missedFireCount,
-    skippedCount: workspace ? null : summary.skippedCount,
+    lastFireAt: redactPrivateProjection ? null : iso(summary.lastFireAt),
+    missedFireCount: redactPrivateProjection ? null : summary.missedFireCount,
+    skippedCount: redactPrivateProjection ? null : summary.skippedCount,
     createdAt: iso(summary.createdAt)!,
     updatedAt: iso(summary.updatedAt)!,
     blocker:

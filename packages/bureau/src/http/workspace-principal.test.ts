@@ -3,6 +3,7 @@ import { principalFromApiKey, type OperationHandlerAuthenticate } from '@lostgra
 import {
   withWorkspaceMembership,
   workspaceOwnerAuthority,
+  runtimeWorkspaceOwnerAuthority,
   type WorkspaceMembership,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
@@ -315,4 +316,33 @@ describe('workspace membership after credential verification', () => {
     expect(outcome.status).toBe(503);
     expect(await outcome.text()).not.toContain('secret-sentinel');
   });
+});
+
+test('request and runtime sharing authorities keep service actors confined to their own resources', async () => {
+  const identities: WorkspaceMembership[] = [
+    member(),
+    { ...member(), owner: 'user-b', actorId: 'user-b' },
+    { ...member(), owner: 'service-a', actorId: 'service-a', actorKind: 'service' },
+    { ...member(), owner: 'service-b', actorId: 'service-b', actorKind: 'service' },
+  ];
+  const directory = new Map(identities.map((identity) => [identity.owner, identity]));
+  const options: WorkspaceMembershipOptions = {
+    workspaceId: 'workspace-a',
+    resolveMembership: async () => null,
+    resolveOwnerMembership: async (owner) => directory.get(owner) ?? null,
+  };
+  for (const caller of identities) {
+    const requestAuthority = workspaceOwnerAuthority(options, {
+      ...principalFromApiKey({ subject: caller.actorId, scopes: [] }),
+      workspace: caller,
+    })!;
+    const runtimeAuthority = runtimeWorkspaceOwnerAuthority(options, caller.owner)!;
+    for (const target of identities) {
+      const allowed =
+        caller.owner === target.owner ||
+        (caller.actorKind !== 'service' && target.actorKind !== 'service');
+      expect(await requestAuthority(target.owner)).toBe(allowed);
+      expect(await runtimeAuthority(target.owner)).toBe(allowed);
+    }
+  }
 });

@@ -528,3 +528,51 @@ it('workspace attention six-actor projections hide private hook alerts and recom
     await opened.dispose();
   }
 });
+
+it('trusted local deployment operators retain full attention while local members remain redacted', async () => {
+  const report = await readAttention(sampleWorld());
+  for (const deploymentOperator of [false, true]) {
+    const opened = await openBureau({
+      localAccess: true,
+      bureauOptions: { attention: async () => report.items },
+      handlerOptions: {
+        workspace: {
+          workspaceId: 'workspace-a',
+          resolveMembership: async () => ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: 'local-owner',
+            actorKind: 'local',
+            owner: 'anonymous:local',
+            membershipRevision: '1',
+            capabilities: deploymentOperator
+              ? ['workspace:use', 'workspace:manage', 'deployment:operate']
+              : ['workspace:use', 'workspace:manage'],
+          }),
+        },
+      },
+    });
+    try {
+      const response = await opened.handler(
+        new Request('http://localhost/jsonrpc', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'bureau.health.attention',
+            params: {},
+          }),
+        }),
+      );
+      const body = (await response.json()) as { result: typeof report };
+      if (deploymentOperator) expect(body.result).toEqual(report);
+      else {
+        expect(body.result.items).toEqual([NO_PROVIDER]);
+        expect(body.result.count).toBe(1);
+      }
+    } finally {
+      await opened.dispose();
+    }
+  }
+});

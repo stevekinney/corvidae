@@ -44,7 +44,8 @@ for (const row of cases) {
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
         else if (actor === (row.privateExecution ? 'owner' : 'administrator')) {
           expect(result.body?.error).toBeUndefined();
-          expect(result.text).not.toContain(sentinel);
+          if (row.operation === 'bureau.schedules.create') expect(result.text).toContain(sentinel);
+          else expect(result.text).not.toContain(sentinel);
           if (row.operation === 'bureau.schedules.get')
             expect(result.body?.result).toMatchObject({
               inputPreview: null,

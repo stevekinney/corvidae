@@ -780,6 +780,12 @@ it('workspace administrators manage shared configuration without private schedul
   const opened = await serve(workspace);
   const id = await createdBy(opened, 'alice-key');
   const handler = opened.handler;
+  const owned = await rpc(handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+  expect(owned.result).toMatchObject({
+    inputPreview: NEW_SCHEDULE.input,
+    missedFireCount: 0,
+    skippedCount: 0,
+  });
   const read = await rpc(handler, 'bureau.schedules.get', { scheduleId: id }, 'bob-key');
   expect(read.result).toMatchObject({
     id,
