@@ -1,8 +1,8 @@
 /**
  * The tool calls of a transcript as a person reads them. A step of a run that calls a tool is one
  * row of the conversation, and a turn that calls several has a row for each, back to back. They
- * are shown as one group: a line saying how many tools were used, which, and how many need a
- * decision, which opens to a row per call. A call that needs a decision is never inside the fold.
+ * are shown as one group: a rail with a row per call, which Cinder's tool call rail folds from
+ * three calls. A call that needs a decision, failed or was interrupted is never inside the fold.
  */
 import {
   pairToolCallsWithResults,
@@ -10,15 +10,34 @@ import {
   type ToolCallPair,
 } from '@lostgradient/chat';
 
+import type { ToolCallRailCall } from '@lostgradient/cinder';
+
+import { CHAT_COPY } from '../../app/copy.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
 
-/** Where one call stands. */
-export type ToolCallState = 'running' | 'needs-you' | 'done' | 'failed' | 'denied';
+/**
+ * Where one call stands. `interrupted` is a call with no answer that nothing is working on any more:
+ * the run ended while it was under way, so how it ended is not known.
+ */
+export type ToolCallState = 'running' | 'needs-you' | 'done' | 'failed' | 'denied' | 'interrupted';
+
+/** What the tool catalog says of a tool: its name for a person, and what it may do. */
+export type ToolInfo = {
+  readonly title: string | null;
+  readonly tier: 'read-only' | 'mutating' | 'dangerous' | null;
+};
 
 export type ToolCallEntry = {
   /** The tool call's identifier, which an approval names. */
   readonly callId: string;
+  /** The tool's identifier ("lookup-order"), which is its name when the catalog gives it no title. */
   readonly name: string;
+  /** The tool's name for a person ("Lookup order"), from the catalog; absent when it has none. */
+  readonly title?: string | undefined;
+  /** What the tool may do, from the catalog; absent when the catalog does not list the tool. */
+  readonly tier?: ToolInfo['tier'] | undefined;
+  /** The call's key input, the first scalar it was given ("4471"); empty when it was given none. */
+  readonly input?: string | undefined;
   readonly arguments: unknown;
   readonly state: ToolCallState;
   /** One line about the answer, empty while there is none. */
@@ -61,24 +80,51 @@ function refusalReason(pair: ToolCallPair): string | undefined {
  * Where a call stands, from its result: none yet is still running, and a parked one needs a
  * person. A call the person refused is denied and not failed: it did what was asked of it.
  */
-export function toolCallState(pair: ToolCallPair): ToolCallState {
+export function toolCallState(pair: ToolCallPair, runActive = true): ToolCallState {
   const outcome = pair.result?.outcome;
-  if (outcome === undefined) return 'running';
+  if (outcome === undefined) return runActive ? 'running' : 'interrupted';
   if (outcome === 'action_required') return 'needs-you';
   if (outcome !== 'error') return 'done';
   return refusalReason(pair) === undefined ? 'failed' : 'denied';
 }
 
-function entryOf(pair: ToolCallPair): ToolCallEntry {
-  const state = toolCallState(pair);
+/** The first scalar a call was given, which usually names what it acted on, on one line. */
+export function keyInput(args: unknown): string {
+  if (typeof args === 'string') return args.replaceAll(/\s+/g, ' ').trim();
+  if (typeof args !== 'object' || args === null) return '';
+  for (const value of Object.values(args)) {
+    if (typeof value === 'string' && value.trim() !== '')
+      return value.replaceAll(/\s+/g, ' ').trim();
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  }
+  return '';
+}
+
+/** A tool's identifier as a person reads it when the catalog gives no title: "lookup-order" is "Lookup order". */
+export function toolDisplayName(identifier: string, title?: string | null): string {
+  if (title !== undefined && title !== null && title.trim() !== '') return title;
+  const words = identifier.replaceAll(/[-_]+/g, ' ').trim();
+  return words === '' ? identifier : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+function entryOf(
+  pair: ToolCallPair,
+  runActive: boolean,
+  tools: ReadonlyMap<string, ToolInfo>,
+): ToolCallEntry {
+  const state = toolCallState(pair, runActive);
   const failure = pair.result?.error?.message;
+  const info = tools.get(pair.call.name);
   return {
     callId: pair.call.id,
     name: pair.call.name,
+    title: toolDisplayName(pair.call.name, info?.title),
+    tier: info?.tier,
+    input: keyInput(pair.call.arguments),
     arguments: pair.call.arguments,
     state,
     summary:
-      state === 'needs-you' || state === 'running'
+      state === 'needs-you' || state === 'running' || state === 'interrupted'
         ? ''
         : state === 'denied'
           ? (refusalReason(pair) ?? '')
@@ -89,34 +135,49 @@ function entryOf(pair: ToolCallPair): ToolCallEntry {
   };
 }
 
-/** The tools a group used, each name once in the order of its first call, with `×N` when it was called more than once. */
-function toolNames(entries: readonly ToolCallEntry[]): string {
-  const counts = new Map<string, number>();
-  for (const entry of entries) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
-  return [...counts]
-    .map(([name, count]) => (count > 1 ? `${name} ×${String(count)}` : name))
-    .join(', ');
+/** Whether a tool may change things: the catalog says so, or says nothing, which is treated the same way. */
+export function mayChange(tier: ToolInfo['tier'] | undefined): boolean {
+  return tier !== 'read-only';
 }
 
-/**
- * What a group's line says: how many tools were used, which ones (with how many calls of each), and
- * how many of them need a decision, failed or were denied. It carries no elapsed time: neither a
- * tool call nor its result records one, and the rows of a conversation are stamped when the page
- * builds them, so a duration read from them would be the page's and not the tool's.
- */
-export function groupSummary(entries: readonly ToolCallEntry[]): string {
-  const needing = entries.filter((entry) => entry.state === 'needs-you').length;
-  const failed = entries.filter((entry) => entry.state === 'failed').length;
-  const used = `Used ${String(entries.length)} ${entries.length === 1 ? 'tool' : 'tools'}`;
-  const named = [used, toolNames(entries)];
-  if (needing > 0)
-    return [...named, `${String(needing)} ${needing === 1 ? 'needs' : 'need'} you`].join(' · ');
-  const denied = entries.filter((entry) => entry.state === 'denied').length;
-  return [
-    ...named,
-    ...(failed > 0 ? [`${String(failed)} failed`] : []),
-    ...(denied > 0 ? [`${String(denied)} denied`] : []),
-  ].join(' · ');
+/** The words of an interrupted call's row, keyed to what its tool may do. */
+export function interruptedWords(entry: Pick<ToolCallEntry, 'tier'>): string {
+  return mayChange(entry.tier)
+    ? CHAT_COPY.tools.interruptedChanges
+    : CHAT_COPY.tools.interruptedReads;
+}
+
+/** One call as a row of the rail. */
+export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCall {
+  const named = {
+    id: entry.callId,
+    name: entry.title ?? entry.name,
+    identifier: entry.name,
+    ...(entry.input === undefined || entry.input === '' ? {} : { input: entry.input }),
+    nested,
+  };
+  switch (entry.state) {
+    case 'running':
+      return { ...named, status: 'running' };
+    case 'needs-you':
+      return { ...named, status: 'waiting' };
+    case 'interrupted':
+      return { ...named, status: 'interrupted', result: interruptedWords(entry) };
+    case 'denied':
+      return { ...named, status: 'denied', result: entry.summary || CHAT_COPY.tools.denied };
+    case 'failed':
+      return {
+        ...named,
+        status: 'failed',
+        ...(entry.summary === '' ? {} : { result: entry.summary }),
+      };
+    case 'done':
+      return {
+        ...named,
+        status: 'done',
+        ...(entry.summary === '' ? {} : { result: entry.summary }),
+      };
+  }
 }
 
 /**
@@ -124,7 +185,10 @@ export function groupSummary(entries: readonly ToolCallEntry[]): string {
  * ids of the later rows, which render nothing. A row that is hidden, or that only carries a result,
  * does not break a run of tool rows.
  */
-export function toolGroups(conversation: ConversationHistory): {
+export function toolGroups(
+  conversation: ConversationHistory,
+  options: { readonly runActive?: boolean; readonly tools?: ReadonlyMap<string, ToolInfo> } = {},
+): {
   readonly groups: ReadonlyMap<string, ToolGroup>;
   readonly absorbed: ReadonlySet<string>;
 } {
@@ -156,7 +220,7 @@ export function toolGroups(conversation: ConversationHistory): {
     const pair = pairs.get(call.id) ?? { call };
     current ??= { ids: [], entries: [] };
     current.ids.push(id);
-    current.entries.push(entryOf(pair));
+    current.entries.push(entryOf(pair, options.runActive ?? true, options.tools ?? new Map()));
   }
   close();
   return { groups, absorbed };

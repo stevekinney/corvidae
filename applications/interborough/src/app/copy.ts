@@ -2559,16 +2559,36 @@ export const CHAT_COPY = {
   approvalTitle: 'Needs your approval',
   /** The tool calls of a turn. */
   tools: {
-    /** The chevron on a folded group of calls, which opens its rows. */
-    show: 'Show tool calls',
-    hide: 'Hide tool calls',
-    /** The chevron on one call, which opens the arguments it was given and what it answered. */
-    detailsFor: (name: string): string => `Details for ${name}`,
-    running: 'Running',
-    waitingForApproval: 'Waiting for your approval',
+    /** The accessible name of the rail of one turn's calls. */
+    railLabel: 'Tool calls',
+    /** The words of the arguments and result a chosen call opens. */
     resultPrefix: 'Result:',
     /** A call the person refused reads Denied: it did not fail. */
     denied: 'Denied',
+    /**
+     * A call the run ended on. A tool that only reads can say it did not finish; one that changes
+     * things, or that nothing classifies, may have run, and a line that says nothing changed would
+     * be a guess.
+     */
+    interruptedReads: 'Interrupted · didn’t finish',
+    interruptedChanges: 'Interrupted · may have run',
+    /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
+    runFinishedNoReply: 'Run finished · no reply',
+  },
+  /**
+   * The status line under a reply that stopped, in danger text with a Retry beside it. It is the
+   * product speaking, not the agent. `cause` is why the run stopped, without its full stop.
+   */
+  stopLine: {
+    partway: (cause: string): string => `The reply stopped partway: ${cause}.`,
+    whileRunning: (tool: string, cause: string): string =>
+      `The reply stopped while ${tool} was running: ${cause}.`,
+    /** Added for an interrupted tool that only reads. */
+    didNotFinish: (tool: string): string => `${tool} didn’t finish and nothing was changed.`,
+    /** Added for an interrupted tool that changes things, or that nothing classifies. */
+    mayHaveRun: (tool: string): string =>
+      `${tool} may have run. Check the result before retrying. Retry goes back through the approval.`,
+    retry: 'Retry',
   },
   /** The chat's header and its strip of runs. */
   strip: {
@@ -2827,7 +2847,25 @@ export const CHAT_COPY = {
     unavailable: 'Context unavailable',
   },
   /** Branching a chat from one of an agent's replies. */
+  /** What a message that was not sent says in the popover its red icon opens. */
+  notSent: {
+    online: 'Not sent. Interborough couldn’t deliver this message. Your message is kept.',
+    unreachable: 'Not sent. Interborough can’t be reached. Your message is kept.',
+    retryNote: 'Retries when you’re back online.',
+  },
+  /** The chat's status beside its title. */
+  status: {
+    waiting: 'Waiting on you',
+    running: 'Running',
+    failed: 'Failed',
+    ended: 'Ended',
+    done: 'Done',
+  },
   branch: {
+    /** The visible words of the action on a message, which is named `action` for assistive technology. */
+    short: 'Branch',
+    /** The name of Branch on a message the person sent, which branches from just before it. */
+    before: 'Branch before this message',
     /** The action on a reply that ends a completed turn. */
     action: 'Branch from here',
     /** What a branch's header says, before the link to the chat it came from. */
@@ -2929,7 +2967,14 @@ export const CHAT_COPY = {
     image: (position: number) => `Image ${position}`,
     audio: (position: number) => `Audio ${position}`,
     video: (position: number) => `Video ${position}`,
-    download: (mediaType: string) => `Download file (${mediaType})`,
+    /** A file's name and size ("settings-page.png · 182 KB"), or "Download file" when the row carries neither; never its media type. */
+    download: (name?: string, size?: number): string => {
+      const facts = [name, size === undefined ? undefined : formatBytes(size)].filter(
+        (fact): fact is string => fact !== undefined && fact !== '',
+      );
+      if (name !== undefined && name !== '') return facts.join(' · ');
+      return facts.length === 0 ? 'Download file' : `Download file · ${facts.join(' · ')}`;
+    },
   },
   /**
    * What a person is told when a file cannot be attached or sent. An upload fault shows on the

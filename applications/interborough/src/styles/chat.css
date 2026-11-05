@@ -442,3 +442,9 @@
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+
+/* "Reply details" is a link-like disclosure in the line under a reply. */
+.weft-reply-details__trigger {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

@@ -88,8 +88,11 @@ describe('a chat opened again', () => {
   test('says why its last run stopped', async () => {
     const { findByText } = open();
 
-    const reason = await findByText('Budget exceeded: max calls 1');
-    expect(reason.closest('[data-kind="stopped"]')?.textContent).toContain('Stopped');
+    // A run that failed is a status line in danger text, worded as the product's own.
+    const reason = await findByText(/budget exceeded: max calls 1/i);
+    const line = reason.closest('[data-kind="stopped"]');
+    expect(line?.hasAttribute('data-failed')).toBe(true);
+    expect(line?.textContent).toContain('The reply stopped partway');
   });
 
   test('says what the agent remembered, and the link opens its memory without leaving the app', async () => {

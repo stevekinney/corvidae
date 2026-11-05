@@ -41,7 +41,14 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { Alert, Button, ConfirmDialog, EmptyState, PageHeader } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Button,
+    ConfirmDialog,
+    EmptyState,
+    PageHeader,
+    StatusDot,
+  } from '@lostgradient/cinder';
   import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
   import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -67,7 +74,7 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
-  import { getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import { getAgentCatalog, getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { getProviders } from '../../lib/host-providers.ts';
@@ -115,7 +122,8 @@
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
   import { replyStepOf } from './reply-details.ts';
-  import { toolGroups } from './tool-activity.ts';
+  import { toolGroups, type ToolInfo } from './tool-activity.ts';
+  import { hasFailedStop, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -295,6 +303,25 @@
     undefined,
   );
   const agentUnavailable = $derived(definition.data?.state === 'unavailable');
+  // What the catalog says of each tool, for its name as a person reads it and for what an
+  // interrupted call may have done. A catalog that cannot be read leaves the identifiers as names and
+  // treats every tool as one that may change things.
+  const catalog = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.catalog(),
+      queryFn: ({ signal }) => getAgentCatalog({ signal }),
+      enabled: !choosing,
+      retry: false,
+    }),
+    undefined,
+  );
+  const toolInfo = $derived(
+    new Map<string, ToolInfo>(
+      (catalog.data?.tools ?? []).map(
+        (tool) => [tool.name, { title: tool.title, tier: tool.tier }] as const,
+      ),
+    ),
+  );
   const plugins = createQuery(
     () => ({
       queryKey: queryKeys.hostPlugins(),
@@ -541,8 +568,18 @@
 
   // Chat lays out the conversation without the Bureau's files in it; they are shown under their
   // rows (`chat-assets.svelte`). An answer to a question is shown as it was typed (`answer-rows.ts`).
+  // The status line under a reply that stopped is worded here, from what the run was in the middle
+  // of, so it is drawn on the row it belongs to (`withStopLine`).
   const shown = $derived(
-    withoutAssetParts(withTypedAnswers(session.conversation, session.schemaOfAnswer)),
+    withoutAssetParts(
+      withTypedAnswers(
+        withStopLine(session.conversation, {
+          tools: toolInfo,
+          liveFailure: runGoing ? undefined : session.runFailure,
+        }),
+        session.schemaOfAnswer,
+      ),
+    ),
   );
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
@@ -570,6 +607,34 @@
   const branchCommands = createPendingCommandKey();
   // The reply the More menu's Branch branches from: the last one a branch can be made from.
   const lastBranchTarget = $derived(lastBranchPoint(session.conversation, branchPoints));
+
+  /**
+   * Where Branch on a message branches: a reply branches from itself, and a message the person sent
+   * from just before it. `undefined` where the Bureau offers no branch (a run is going, or the
+   * message follows no finished reply).
+   */
+  function branchTargetOf(message: { readonly id: string; readonly role: string }) {
+    if (choosing || gone) return undefined;
+    if (message.role === 'assistant') {
+      return branchPoints.has(message.id) ? { messageId: message.id } : undefined;
+    }
+    if (message.role !== 'user') return undefined;
+    const before = editForkPoint(session.conversation, message.id, branchPoints);
+    return before === undefined ? undefined : { messageId: before };
+  }
+
+  // The model the chat runs on, by its name for a person: what it was last switched to, else the
+  // agent's default. The Bureau does not record the model of each reply, so this is the chat's.
+  const effectiveModel = $derived(context.data?.model ?? models.data?.default ?? null);
+  const modelLabel = $derived(
+    effectiveModel === null
+      ? undefined
+      : models.data?.models.find(
+          (choice) =>
+            choice.model === effectiveModel.model &&
+            (effectiveModel.provider === null || choice.provider === effectiveModel.provider),
+        )?.displayName,
+  );
 
   /** What a refused or failed branch says: the Bureau's reason when it gave one, else `fault`. */
   function branchFailureText(error: unknown, fault: string): string {
@@ -740,7 +805,52 @@
   const approvalsByCall = $derived(
     new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
-  const activity = $derived(toolGroups(session.conversation));
+  // A call with no answer that nothing is working on any more was interrupted.
+  // A failure the transcript already says, on the row it belongs to, is not said again above it: a
+  // message that was not sent is marked "Not sent", and a run that stopped has its status line.
+  const failureShownInTranscript = $derived(
+    session.runFailure !== undefined ||
+      (session.failureWasTransport &&
+        Object.values(session.conversation.messages).some(
+          (row) => row.metadata['_deliveryStatus'] === 'failed',
+        )),
+  );
+  const lastRowId = $derived(
+    shown.ids.findLast((rowId) => shown.messages[rowId]?.hidden === false),
+  );
+  /** Whether a group of calls is the end of a turn that finished with no reply, so its rail closes with the run's end state. */
+  function endsTheTurn(group: {
+    readonly entries: readonly { readonly state: string }[];
+    readonly messageIds: readonly string[];
+  }): boolean {
+    return (
+      !runGoing &&
+      approvals.length === 0 &&
+      shownRequests.length === 0 &&
+      session.failure === undefined &&
+      group.messageIds.at(-1) === lastRowId &&
+      group.entries.every((entry) => entry.state === 'done' || entry.state === 'denied')
+    );
+  }
+  // The chat's state beside its title, in the shared status words: a person's turn first, then a
+  // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
+  const chatStatus = $derived.by(() => {
+    if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
+    if (context.data?.endReason === 'host-stopped') return CHAT_COPY.status.ended;
+    if (
+      approvals.length > 0 ||
+      shownRequests.length > 0 ||
+      context.data?.activity === 'awaiting-input'
+    ) {
+      return CHAT_COPY.status.waiting;
+    }
+    if (runGoing) return CHAT_COPY.status.running;
+    if (session.runFailure !== undefined || hasFailedStop(shown)) return CHAT_COPY.status.failed;
+    return CHAT_COPY.status.done;
+  });
+  const activity = $derived(
+    toolGroups(session.conversation, { runActive: runGoing, tools: toolInfo }),
+  );
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -902,6 +1012,12 @@
   {/if}
 {/snippet}
 
+{#snippet headerStatus()}
+  {#if chatStatus !== undefined}
+    <StatusDot word={chatStatus} />
+  {/if}
+{/snippet}
+
 {#snippet headerActions()}
   <ContextWindowRing report={contextWindow.data} failed={contextWindow.isError} />
   <ChatMoreMenu
@@ -927,13 +1043,15 @@
       headingLevel={1}
       description={details}
       actions={headerActions}
+      status={headerStatus}
+      statusPlacement="inline"
     />
   {/if}
   {#if !choosing}
     <SessionTasks {sessionId} streaming={session.streaming} />
   {/if}
 
-  {#if session.failure !== undefined}
+  {#if session.failure !== undefined && !failureShownInTranscript}
     <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
       <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
       <p class="weft-chat-approval__message">{session.failure}</p>
@@ -1008,6 +1126,14 @@
       adapter={session.chatAdapter}
       streaming={session.streaming}
       surfaceMode="transparent"
+      variant="transcript"
+      notSent={connection.unreachable
+        ? {
+            summary: CHAT_COPY.notSent.unreachable,
+            retryDisabled: true,
+            retryNote: CHAT_COPY.notSent.retryNote,
+          }
+        : { summary: CHAT_COPY.notSent.online }}
       disabled={session.disconnected || gone || answerHeld}
       composerPlaceholder={answering
         ? pickable
@@ -1021,8 +1147,9 @@
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
         attachments: attachable && !gone,
-        // A new chat has no context to branch yet, and a deleted one has none to branch from.
-        editing: !session.attaching && !choosing && !gone,
+        // The transcript offers Branch on a message and no Edit: editing a sent message is a
+        // fork, which Branch on that message is.
+        editing: false,
         quote: true,
       }}
       uploadAttachment={upload}
@@ -1095,34 +1222,56 @@
       {/snippet}
       {#snippet messageActions({ message })}
         {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
+        {@const branchAt = branchTargetOf(message)}
         {#if replyStep !== undefined && !session.streaming}
+          {#if modelLabel !== undefined}
+            <span class="weft-chat-model">· {modelLabel}</span>
+          {/if}
           <ReplyDetails
             runId={replyStep.runId}
             step={replyStep.step}
             usage={session.usage.get(replyStep.runId)}
           />
         {/if}
-        {#if branchPoints.has(message.id)}
+        {#if branchAt !== undefined}
           <Button
             data-changes
             type="button"
             class="chat-message-action-button"
             size="xs"
             variant="ghost"
-            iconOnly
-            label={CHAT_COPY.branch.action}
+            aria-label={message.role === 'user'
+              ? CHAT_COPY.branch.before
+              : CHAT_COPY.branch.action}
             disabled={branching}
-            onclick={() => void branchThrough(message.id)}
+            onclick={() => void branchThrough(branchAt.messageId)}
           >
             <GitBranch class="cinder-icon-xs" />
+            {CHAT_COPY.branch.short}
           </Button>
         {/if}
+      {/snippet}
+      {#snippet noteAction()}
+        <Button
+          data-changes
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={!session.canRetryTurn || connection.unreachable}
+          onclick={() => void session.retryTurn()}
+        >
+          {CHAT_COPY.stopLine.retry}
+        </Button>
       {/snippet}
       {#snippet row({ message }, renderDefault)}
         {@const group = activity.groups.get(message.id)}
         {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
         {#if group !== undefined}
-          <ToolCalls id={`tools-${message.id}`} entries={group.entries}>
+          <ToolCalls
+            id={`tools-${message.id}`}
+            entries={group.entries}
+            endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
+          >
             {#snippet decision(entry)}
               {@const asked = approvalsByCall.get(entry.callId)}
               {#if asked !== undefined}
@@ -1140,10 +1289,10 @@
           </ToolCalls>
           <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
           {#each group.messageIds as rowId (rowId)}
-            {@const held = session.conversation.messages[rowId]}
+            {@const held = shown.messages[rowId]}
             {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
             {#each notes as note (note.id)}
-              <ChatNote {note} />
+              <ChatNote {note} action={note.kind === 'stopped' ? noteAction : undefined} />
             {/each}
           {/each}
         {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}

@@ -384,7 +384,7 @@ describe('why the last run stopped', () => {
     );
 
     expect(notesOn(stopped, 'a2')).toEqual([
-      { kind: 'stopped', id: 'stopped', reason: 'Over budget' },
+      { kind: 'stopped', id: 'stopped', reason: 'Over budget', failed: true },
     ]);
     const held = conversation();
     expect(withStopReason(held, task('completed', null))).toBe(held);

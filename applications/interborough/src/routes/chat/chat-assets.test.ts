@@ -72,10 +72,27 @@ describe('chat-assets.svelte shows each kind of asset', () => {
       const link = container.querySelector('a.cinder-link');
       expect(link?.getAttribute('href')).toBe('/bureau/assets/asset-1/content');
       expect(link?.hasAttribute('download')).toBe(true);
-      expect(link?.textContent).toContain(mediaType);
+      // A download says what the file is called and how big it is, never its media type.
+      expect(link?.textContent?.trim()).toBe('Download file');
+      expect(link?.textContent).not.toContain(mediaType);
       expect(container.querySelector('img, audio, video')).toBeNull();
     },
   );
+
+  test('a download names the file and its size when the row carries them', () => {
+    const { container } = render(ChatAssets, {
+      assets: [
+        { assetId: 'a1', mediaType: 'image/svg+xml', name: 'settings-page.svg', size: 182 * 1024 },
+        { assetId: 'a2', mediaType: 'application/pdf', name: 'refund-policy.pdf' },
+        { assetId: 'a3', mediaType: 'application/pdf', size: 2048 },
+      ],
+      role: 'assistant',
+    });
+
+    expect(Array.from(container.querySelectorAll('a'), (link) => link.textContent?.trim())).toEqual(
+      ['settings-page.svg · 182 KB', 'refund-policy.pdf', 'Download file · 2.0 KB'],
+    );
+  });
 
   test('an asset id with a character a path cannot hold is encoded', () => {
     const { container } = render(ChatAssets, {

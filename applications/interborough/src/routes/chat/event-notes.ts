@@ -477,7 +477,17 @@ export function withStopReason(
   const reason = task === undefined ? undefined : stopReasonOf(task);
   if (reason === undefined) return conversation;
   return (
-    putNote(conversation, { kind: 'stopped', id: 'stopped', reason }, undefined) ?? conversation
+    putNote(
+      conversation,
+      {
+        kind: 'stopped',
+        id: 'stopped',
+        reason,
+        // A run that failed is a status line in danger text; one a person stopped is a plain line.
+        ...(task?.status === 'failed' ? { failed: true } : {}),
+      },
+      undefined,
+    ) ?? conversation
   );
 }
 

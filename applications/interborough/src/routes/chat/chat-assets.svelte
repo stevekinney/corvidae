@@ -39,7 +39,7 @@
         {:else if kind === 'video'}
           <VideoPlayer src={source} label={CHAT_COPY.assets.video(index + 1)} />
         {:else}
-          <Link href={source} download>{CHAT_COPY.assets.download(asset.mediaType)}</Link>
+          <Link href={source} download>{CHAT_COPY.assets.download(asset.name, asset.size)}</Link>
         {/if}
       </li>
     {/each}

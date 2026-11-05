@@ -82,7 +82,7 @@ function branchOffers(container: HTMLElement): Array<readonly [string, boolean]>
     if (text === '') continue;
     // The message's actions sit beside its article, under the element that holds both.
     const offered = [...(row.parentElement?.querySelectorAll('button') ?? [])].some(
-      (button) => button.textContent?.trim() === CHAT_COPY.branch.action,
+      (button) => button.getAttribute('aria-label') === CHAT_COPY.branch.action,
     );
     offers.push([text, offered]);
   }
@@ -94,10 +94,13 @@ const BRANCH = { name: CHAT_COPY.branch.action };
 describe('Branch from here', () => {
   test('is offered on the final agent message of each completed turn, and on no other message', async () => {
     serve();
-    const { findByText, findAllByRole } = mount();
+    const { findByText, container } = mount();
     await findByText('Second answer');
 
-    const buttons = await findAllByRole('button', BRANCH);
+    // A person's own message offers Branch too (from just before it); this is about the replies.
+    const buttons = container.querySelectorAll(
+      `[data-role="assistant"] button[aria-label="${CHAT_COPY.branch.action}"]`,
+    );
     expect(buttons.length).toBe(2);
   });
 

@@ -111,6 +111,22 @@ export class ChatSessionState {
    * again is told again.
    */
   failure = $state<string | undefined>(undefined);
+
+  /**
+   * Why the last run stopped when this page watched it fail after its message was delivered. The
+   * page says so as a status line under the turn, with a Retry (`retryTurn`), instead of an alert,
+   * because it is a fact about the reply and not about the page. A message that could not be sent is
+   * not a stopped run: its row says "Not sent". It clears when the next turn begins.
+   */
+  runFailure = $state<string | undefined>(undefined);
+
+  /**
+   * Whether the last send failed because the request never got an answer (the network, or a server
+   * that could not be reached), as opposed to an answer that refused it. A message that did not go
+   * through for that reason says "Not sent" on its row and nothing more; a refusal has a reason of
+   * its own, which the page keeps saying.
+   */
+  failureWasTransport = $state(false);
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -243,7 +259,10 @@ export class ChatSessionState {
           // turn that reads a run the page joins is nobody's attempt: it is how the page finds out
           // what to say next, and must not wipe what the refusal before it said.
           if (streaming) {
-            if (!this.attaching) this.failure = undefined;
+            if (!this.attaching) {
+              this.failure = undefined;
+              this.runFailure = undefined;
+            }
           }
           // A turn that ended in an error or a stop has no history to carry the assets it
           // announced, so they are put on their rows here, as a completed turn's are.
@@ -265,6 +284,14 @@ export class ChatSessionState {
           // A busy thread is not told when it refused a resume: the next send repeats it. A start
           // refused as busy, and every other refusal, is.
           if (refusal?.resume !== true || !refusal.busy) this.failure = failure;
+          this.failureWasTransport = error instanceof TypeError;
+          const undelivered = Object.values(this.conversation.messages).some(
+            (row) => row.metadata['_deliveryStatus'] === 'failed',
+          );
+          // Only a run that got as far as a partial reply or a call is a reply that stopped: a start
+          // the Bureau refused has said nothing, and its words stay in the alert.
+          if (!undelivered && refusal === undefined && this.#turnLeftRows())
+            this.runFailure = failure;
           if (this.#attachedRun && !this.#readerAbort?.signal.aborted)
             this.#scheduleReconnect(error);
         },
@@ -477,6 +504,57 @@ export class ChatSessionState {
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;
+    this.runFailure = undefined;
+  }
+
+  /**
+   * Runs the last turn again: the reply that stopped (and the calls it made) is dropped from the
+   * transcript, and the person's message is sent as a turn of its own, so the new reply replaces the
+   * old one and nothing of the failed attempt is kept. It never resumes a call the run was in the
+   * middle of: the agent decides again, and a tool that asks goes back through its approval, so a
+   * refund cannot be issued twice. A last message with files, or one that is not plain text, is not
+   * offered again here (`canRetryTurn`).
+   */
+  retryTurn(): Promise<void> {
+    const id = this.#lastUserRowId();
+    const row = id === undefined ? undefined : this.conversation.messages[id];
+    const text = row === undefined ? undefined : retryText(row);
+    if (id === undefined || text === undefined) return Promise.resolve();
+    const index = this.conversation.ids.indexOf(id);
+    this.conversation = this.conversation.ids
+      .slice(index)
+      .reduce(
+        (current, rowId) =>
+          current.messages[rowId] === undefined ? current : removeMessage(current, rowId),
+        this.conversation,
+      );
+    this.failure = undefined;
+    this.runFailure = undefined;
+    return this.send(text);
+  }
+
+  /** Whether the last turn can be run again here: its message is plain text and nothing is going. */
+  get canRetryTurn(): boolean {
+    if (this.streaming || this.attaching) return false;
+    const id = this.#lastUserRowId();
+    const row = id === undefined ? undefined : this.conversation.messages[id];
+    return row !== undefined && retryText(row) !== undefined;
+  }
+
+  /** Whether the last person's message has a reply, or a call, after it: the run said something. */
+  #turnLeftRows(): boolean {
+    const id = this.#lastUserRowId();
+    if (id === undefined) return false;
+    return this.conversation.ids
+      .slice(this.conversation.ids.indexOf(id) + 1)
+      .some((rowId) => this.conversation.messages[rowId]?.hidden === false);
+  }
+
+  #lastUserRowId(): string | undefined {
+    return this.conversation.ids.findLast((rowId) => {
+      const row = this.conversation.messages[rowId];
+      return row !== undefined && row.role === 'user' && !row.hidden;
+    });
   }
 
   /** Reopens an interrupted attach, preserving the last SSE cursor in the wiring. */
@@ -621,4 +699,9 @@ export class ChatSessionState {
     this.controller.dispose();
     void this.#wiring.discardAttach();
   }
+}
+
+/** What a turn's message says when it is plain text, which is what a retry sends again; files are not repeated. */
+function retryText(row: ConversationHistory['messages'][string]): string | undefined {
+  return typeof row.content === 'string' && row.content.trim() !== '' ? row.content : undefined;
 }
