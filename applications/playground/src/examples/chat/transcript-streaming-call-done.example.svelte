@@ -13,7 +13,18 @@
     updateStreamingMessage,
     type ChatAdapter,
   } from '@lostgradient/chat';
-  import { ToolCallRail } from '@lostgradient/cinder';
+  import { ToolCallRail, type ToolCallRailCall } from '@lostgradient/cinder';
+
+  const CALLS: ToolCallRailCall[] = [
+    {
+      id: 'call-1',
+      name: 'Lookup order',
+      input: '4398',
+      result: '$27.25, delivered Friday',
+      duration: '0.4s',
+      status: 'done',
+    },
+  ];
 
   const adapter: ChatAdapter = {
     sendMessage: async () => undefined,
@@ -34,21 +45,7 @@
   );
 </script>
 
-<div
-  style="display: grid; gap: 0.5rem; block-size: 24rem; grid-template-rows: auto minmax(0, 1fr);"
->
-  <ToolCallRail
-    calls={[
-      {
-        id: 'call-1',
-        name: 'Lookup order',
-        input: '4398',
-        result: '$27.25, delivered Friday',
-        duration: '0.4s',
-        status: 'done',
-      },
-    ]}
-  />
+<div style="block-size: 24rem;">
   <Chat
     id="transcript-streaming-call-done"
     {conversation}
@@ -58,5 +55,13 @@
     capabilities={{ editing: false }}
     composerPlaceholder="Message Tool runner…"
     {adapter}
-  />
+  >
+    <!-- The call sits under the message that asked for it and above the reply, as the board draws it. -->
+    {#snippet row(context, renderDefault)}
+      {@render renderDefault()}
+      {#if context.message.role === 'user'}
+        <ToolCallRail calls={CALLS} />
+      {/if}
+    {/snippet}
+  </Chat>
 </div>

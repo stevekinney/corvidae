@@ -708,11 +708,16 @@
 
   /* The pick of a held or sent answer: an accent edge and tint; the others stand back. The pick is
    * aria-pressed, which Cinder's button draws as a filled accent face with its on-fill label, so
-   * the tint has the page's own text colour with it, or the label would be white on a pale tint. */
+   * the tint has the page's own text colour with it, or the label would be white on a pale tint.
+   * On a dark surface the soft tint is nearly the unpicked choice's raised face, so the pick takes
+   * a stronger tint and the full accent edge: it reads as picked once focus has left it. */
   .chat-question-choices :global(.chat-question-choice[data-selected]),
   .chat-question-choices :global(.chat-question-choice[data-selected]:hover) {
-    border-color: var(--cinder-accent-border);
-    background: var(--cinder-accent-background);
+    border-color: light-dark(var(--cinder-accent-border), var(--cinder-accent-solid));
+    background: light-dark(
+      var(--cinder-accent-background),
+      color-mix(in oklch, var(--cinder-accent-solid) 32%, var(--cinder-surface))
+    );
     color: var(--cinder-text-default);
   }
 

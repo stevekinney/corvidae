@@ -442,7 +442,23 @@ describe('the pick of a held answer', () => {
         source,
       )?.[1];
 
-    expect(rule).toContain('background: var(--cinder-accent-background)');
+    expect(rule).toContain('var(--cinder-accent-background)');
     expect(rule).toContain('color: var(--cinder-text-default)');
+  });
+
+  test('is told from the unpicked choice in a dark theme by a stronger tint and the full accent edge, and keeps the soft tint in a light one', async () => {
+    const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
+    const rule =
+      /\.chat-question-choices :global\(\.chat-question-choice\[data-selected\]\)[^{]*\{([^}]*)\}/u.exec(
+        source,
+      )?.[1];
+
+    // `light-dark()` keeps the light value the board draws and gives a dark theme its own.
+    expect(rule).toMatch(
+      /border-color: light-dark\(var\(--cinder-accent-border\), var\(--cinder-accent-solid\)\)/u,
+    );
+    expect(rule).toMatch(
+      /background: light-dark\(\s*var\(--cinder-accent-background\),\s*color-mix\(in oklch, var\(--cinder-accent-solid\) 3\d%, var\(--cinder-surface\)\)\s*\)/u,
+    );
   });
 });
