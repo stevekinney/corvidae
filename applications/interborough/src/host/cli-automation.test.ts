@@ -329,6 +329,7 @@ test('compiled hook output redacts a generated secret unless explicitly written'
   ]);
   expect(result.exitCode).toBe(0);
   expect(result.stdout.toString()).not.toContain('secret-value');
+  expect(result.stderr.toString()).not.toContain('secret-value');
   expect(await Bun.file(secretOutput).text()).toBe('secret-value\n');
   const secretStatus = await stat(secretOutput);
   expect(secretStatus.mode & 0o777).toBe(0o600);
@@ -343,4 +344,37 @@ test('compiled hook output redacts a generated secret unless explicitly written'
     url,
   ]);
   expect(refused.exitCode).not.toBe(0);
+
+  const replacementOutput = join(directory, 'replacement-secret.txt');
+  const replacement = await invoke([
+    'hooks',
+    'replace-secret',
+    'hook-1',
+    '--if-revision',
+    '2',
+    '--secret-output',
+    replacementOutput,
+    '--url',
+    url,
+  ]);
+  expect(replacement.exitCode).toBe(0);
+  expect(replacement.stdout.toString()).not.toContain('secret-value');
+  expect(replacement.stderr.toString()).not.toContain('secret-value');
+  expect(await Bun.file(replacementOutput).text()).toBe('secret-value\n');
+  const replacementStatus = await stat(replacementOutput);
+  expect(replacementStatus.mode & 0o777).toBe(0o600);
+  const replacementBytes = await Bun.file(replacementOutput).bytes();
+  const replacementRefused = await invoke([
+    'hooks',
+    'replace-secret',
+    'hook-1',
+    '--if-revision',
+    '2',
+    '--secret-output',
+    replacementOutput,
+    '--url',
+    url,
+  ]);
+  expect(replacementRefused.exitCode).not.toBe(0);
+  expect(await Bun.file(replacementOutput).bytes()).toEqual(replacementBytes);
 });
