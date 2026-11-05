@@ -304,6 +304,7 @@ const runSummarySchema = z.object({
 
 /** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */
 type ParsedWorkflowFileRun = z.infer<typeof runSummarySchema>;
+/** One workflow-file run summary returned by the Bureau list operation. */
 export type WorkflowFileRun = Omit<ParsedWorkflowFileRun, 'origin'> & {
   /** Older fixtures and Bureau versions omit this field; the decoder defaults it to `null`. */
   readonly origin?: ParsedWorkflowFileRun['origin'];
@@ -319,6 +320,7 @@ const runDetailSchema = runSummarySchema.extend({
 
 /** One instance of a workflow file with what started it and how it ended (`bureau.workflows.runs.get`). */
 type ParsedWorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
+/** One workflow-file run detail returned by the Bureau get operation. */
 export type WorkflowFileRunDetail = Omit<ParsedWorkflowFileRunDetail, 'origin'> & {
   readonly origin?: ParsedWorkflowFileRunDetail['origin'];
 };

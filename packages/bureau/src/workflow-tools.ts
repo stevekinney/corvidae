@@ -815,7 +815,10 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       const result = await calling.workflows.signal(input.name, input.payload ?? null, {
         signalId: input.signalId,
         owner: calling.owner,
-        maySignalRun: async (runId) => (await host.runIdentity(runId)).owner === calling.owner,
+        maySignalRun: async (runId) => {
+          const identity = await host.runIdentity(runId);
+          return identity.owner === calling.owner;
+        },
       });
       return {
         status: 'ok' as const,
@@ -849,7 +852,10 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         status: input.status as never,
         limit: input.limit ?? 50,
         offset: input.offset ?? 0,
-        mayReadRun: async (runId) => (await host.runIdentity(runId)).owner === calling.owner,
+        mayReadRun: async (runId) => {
+          const identity = await host.runIdentity(runId);
+          return identity.owner === calling.owner;
+        },
       });
       return { status: 'ok' as const, runs: page.runs, nextOffset: page.nextOffset };
     },
@@ -868,7 +874,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     execute: async (input, context) => {
       const calling = await caller(context, input.runId, 'bureau.workflows:read');
       if ('refusal' in calling) return calling.refusal;
-      if ((await host.runIdentity(input.runId)).owner !== calling.owner)
+      const identity = await host.runIdentity(input.runId);
+      if (identity.owner !== calling.owner)
         return { status: 'not-found' as const, id: input.runId };
       const run = await calling.workflows.getRun(input.runId);
       return run === undefined
@@ -890,7 +897,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     execute: async (input, context) => {
       const calling = await caller(context, input.runId, 'bureau.workflows:write');
       if ('refusal' in calling) return calling.refusal;
-      if ((await host.runIdentity(input.runId)).owner !== calling.owner)
+      const identity = await host.runIdentity(input.runId);
+      if (identity.owner !== calling.owner)
         return { status: 'not-found' as const, id: input.runId };
       try {
         await calling.workflows.cancel(input.runId);
@@ -919,7 +927,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     execute: async (input, context) => {
       const calling = await caller(context, input.runId, 'bureau.workflows:read');
       if ('refusal' in calling) return calling.refusal;
-      if ((await host.runIdentity(input.runId)).owner !== calling.owner)
+      const identity = await host.runIdentity(input.runId);
+      if (identity.owner !== calling.owner)
         return { status: 'not-found' as const, id: input.runId };
       const history = await calling.workflows.historyRuns(input.runId, input.limit ?? 100);
       return history === undefined

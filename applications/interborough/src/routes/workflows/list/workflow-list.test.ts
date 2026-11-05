@@ -115,14 +115,18 @@ describe('WorkflowList', () => {
     await waitFor(() =>
       expect(container.textContent).toContain("An agent's tool call · assistant"),
     );
-    expect(fetchScript.calls.some((call) => call.init?.body?.toString().includes('runs.get'))).toBe(
-      true,
-    );
+    expect(
+      fetchScript.calls.some(
+        (call) => typeof call.init?.body === 'string' && call.init.body.includes('runs.get'),
+      ),
+    ).toBe(true);
     expect(getByRole('link', { name: 'Calling run' }).getAttribute('href')).toBe(
       '/runs/calling-run-older',
     );
     expect(
-      fetchScript.calls.filter((call) => call.init?.body?.toString().includes('runs.list')),
+      fetchScript.calls.filter(
+        (call) => typeof call.init?.body === 'string' && call.init.body.includes('runs.list'),
+      ),
     ).toHaveLength(0);
   });
 

@@ -143,6 +143,7 @@ export interface WorkflowRunSummary {
   readonly status: WorkflowStatus;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** What started the instance, when the runtime recorded an origin. */
   readonly origin: TaskOrigin | null;
 }
 
@@ -437,9 +438,11 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
+  /** Request cancellation of one workflow-file run, returning once the request is recorded. */
   readonly cancel: (
     runId: string,
   ) => Promise<{ readonly runId: string; readonly status: 'cancel-requested' }>;
+  /** Read a bounded, sanitized history projection for one workflow-file run. */
   readonly historyRuns: (
     runId: string,
     limit: number,
@@ -1328,7 +1331,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   ]);
 
   function boundedSummary(value: unknown): string {
-    const text = typeof value === 'string' ? value : value === undefined ? '' : String(value);
+    const text =
+      typeof value === 'string'
+        ? value
+        : typeof value === 'number'
+          ? value.toString()
+          : typeof value === 'boolean'
+            ? value
+              ? 'true'
+              : 'false'
+            : '';
     const bytes = new TextEncoder().encode(text);
     if (bytes.byteLength <= 256) return text;
     return new TextDecoder().decode(bytes.slice(0, 256));
@@ -2024,7 +2036,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const state = await engine.get(runId);
       if (state === null || state === undefined || !(await isWorkflowType(state.type)))
         return undefined;
-      const projected = (await engine.getEvents(runId))
+      const history = await engine.getEvents(runId);
+      const projected = history
         .map(historyEventOf)
         .filter((event): event is WorkflowRunHistoryEvent => event !== undefined);
       const selected = projected.slice(Math.max(0, projected.length - limit));

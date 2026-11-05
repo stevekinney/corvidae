@@ -338,6 +338,11 @@ describe('the newest instances of a file', () => {
       }),
     );
     const runs = await listWorkflowFileRuns('one', 10);
-    expect(runs.map((run) => run.origin?.kind).toSorted()).toEqual(['agent', 'chat', 'person']);
+    const kinds = runs.map((run) => run.origin?.kind).filter((kind) => kind !== undefined);
+    expect(kinds.toSorted((left, right) => left.localeCompare(right))).toEqual([
+      'agent',
+      'chat',
+      'person',
+    ]);
   });
 });

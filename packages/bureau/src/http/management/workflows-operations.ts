@@ -67,10 +67,10 @@ import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
   resourceNotFound,
+  taskOriginSchema,
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
-import { taskOriginSchema } from './management-schemas.ts';
 
 /** What the workflow operations read from the handler's `host`. */
 export type BureauWorkflowsOperationHost = BureauOwnershipHost & {

@@ -1098,16 +1098,23 @@ describe('who the tools act for', () => {
   it('keeps the run tools owner-only, with an empty signal response for a foreign A2A caller', async () => {
     const foreign = await withWorkflow();
     const principal = { principal: 'api-key:a2a' } as const;
-    expect((await foreign.callTool('bureau__workflows-list', {}, principal)).result).toEqual({
+    const listCall = await foreign.callTool('bureau__workflows-list', {}, principal);
+    expect(listCall.result).toEqual({
       status: 'ok',
       workflows: [],
     });
-    expect(
-      (await foreign.callTool('bureau__workflows-signal', { name: 'go' }, principal)).result,
-    ).toEqual({ status: 'ok', started: [], delivered: [], rejected: [] });
-    expect(
-      (await foreign.callTool('bureau__workflows-start', { id: 'digest' }, principal)).result,
-    ).toEqual({ status: 'not-found', id: 'digest' });
+    const signalCall = await foreign.callTool(
+      'bureau__workflows-signal',
+      { name: 'go' },
+      principal,
+    );
+    expect(signalCall.result).toEqual({ status: 'ok', started: [], delivered: [], rejected: [] });
+    const startCall = await foreign.callTool(
+      'bureau__workflows-start',
+      { id: 'digest' },
+      principal,
+    );
+    expect(startCall.result).toEqual({ status: 'not-found', id: 'digest' });
     for (const tool of [
       'workflows-runs-list',
       'workflows-runs-get',
@@ -1115,7 +1122,8 @@ describe('who the tools act for', () => {
       'workflows-runs-history',
     ] as const) {
       const input = tool === 'workflows-runs-list' ? {} : { runId: 'missing-run' };
-      expect((await foreign.callTool(`bureau__${tool}`, input, principal)).result, tool).toEqual(
+      const call = await foreign.callTool(`bureau__${tool}`, input, principal);
+      expect(call.result, tool).toEqual(
         tool === 'workflows-runs-list'
           ? { status: 'ok', runs: [], nextOffset: null }
           : { status: 'not-found', id: 'missing-run' },
