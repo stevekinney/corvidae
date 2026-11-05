@@ -7,6 +7,9 @@
    * ends is `steer-change.ts`'s. The request carries the `configVersion` the page last read, so a
    * session changed somewhere else is refused and read again.
    *
+   * It is a ghost listbox select inside the composer: no border or fill at rest, the setting's name
+   * in muted words before its value ("Effort Medium"), and a help line under an option that has one.
+   *
    * Every setting of a session shares one revision, so while one of them is being changed the
    * others wait (`locked`): a second change sent before the first is read back would be refused as
    * stale and silently undone.
@@ -22,7 +25,12 @@
     id: string;
     /** The control's accessible name. */
     label: string;
-    options: readonly { readonly value: string; readonly label: string }[];
+    options: readonly {
+      readonly value: string;
+      readonly label: string;
+      /** The help line drawn under the option in the list. */
+      readonly description?: string;
+    }[];
     /** What the session has: `null` before any was set, `undefined` until the session is read. */
     current: string | null | undefined;
     /** What the select says while `current` is `null`; a setting that always has a value names none. */
@@ -40,8 +48,8 @@
     unavailable?: string | undefined;
     /** Called as a change starts and as it ends. */
     onBusyChange: (busy: boolean) => void;
-    /** Called when the Bureau took a change. */
-    onApplied: () => void;
+    /** Called when the Bureau took a change, with the words of the option it took. */
+    onApplied: (label: string) => void;
   }
 
   let {
@@ -68,10 +76,12 @@
   const commands = createPendingCommandKey();
 
   // Until the session is read there is nothing to select, which is no value, not an empty one.
-  const shown = $derived(pending ?? (current === undefined ? undefined : (current ?? '')));
+  // A listbox takes an empty value for no selection, so the agent's own setting has a value of its own.
+  const UNSET = 'agent-default';
+  const shown = $derived(pending ?? (current === undefined ? undefined : (current ?? UNSET)));
   const shownOptions = $derived([
     ...(current === null && pending === undefined && unsetLabel !== undefined
-      ? [{ value: '', label: unsetLabel, disabled: true }]
+      ? [{ value: UNSET, label: unsetLabel, disabled: true }]
       : []),
     ...options,
   ]);
@@ -99,7 +109,7 @@
       });
       notice = result.notice;
       if (!result.applied || result.reloaded) pending = undefined;
-      if (result.applied) onApplied();
+      if (result.applied) onApplied(options.find((entry) => entry.value === next)?.label ?? next);
     } finally {
       busy = false;
       onBusyChange(false);
@@ -113,9 +123,13 @@
   class="weft-chat-setting"
   {label}
   labelVisible={false}
+  valuePrefix={label}
+  variant="ghost"
+  presentation="listbox"
+  size="sm"
   options={shownOptions}
   {...shown === undefined ? {} : { value: shown }}
-  onchange={(event) => void choose(event.currentTarget.value)}
+  onValueChange={(next) => void choose(next)}
   disabled={busy || locked || unavailable !== undefined || revision === undefined}
   title={unavailable}
   {...notice === undefined ? {} : { error: notice }}

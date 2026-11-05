@@ -401,3 +401,41 @@ function callStart(toolCallId: string) {
     parentMessageId: 'step-1',
   };
 }
+
+test('counts the failed reads while it retries, for the composer’s reconnect line, and stops at zero once it gives up', async () => {
+  jest.useFakeTimers();
+  const session = open(async () => {
+    throw new TypeError('offline');
+  });
+  expect(session.reconnectAttempt).toBe(0);
+
+  await session.attach();
+  expect(session.reconnectAttempt).toBe(1);
+  for (const expected of [2, 3]) {
+    jest.runOnlyPendingTimers();
+    await settle();
+    expect(session.reconnectAttempt).toBe(expected);
+  }
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    jest.runOnlyPendingTimers();
+    await settle();
+  }
+  expect(session.disconnected).toBe(true);
+  // A session that has given up is not reconnecting: it offers Reconnect instead.
+  expect(session.reconnectAttempt).toBe(0);
+});
+
+test('a manual reconnect starts the count over', async () => {
+  jest.useFakeTimers();
+  const session = open(async () => {
+    throw new TypeError('offline');
+  });
+  await session.attach();
+  jest.runOnlyPendingTimers();
+  await settle();
+  expect(session.reconnectAttempt).toBe(2);
+
+  await session.reconnect();
+
+  expect(session.reconnectAttempt).toBe(1);
+});

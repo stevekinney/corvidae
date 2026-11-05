@@ -123,6 +123,17 @@ export class ChatSessionState {
    */
   disconnected = $state(false);
   /**
+   * Which reconnect attempt is under way: the number of failed reads in a row while the page is
+   * still retrying, `0` when the stream is up or the page has given up (`disconnected`). The
+   * composer says "Reconnecting… attempt N" while it is above zero.
+   */
+  reconnectAttempt = $state(0);
+  /**
+   * How many follow-ups the Bureau has accepted that the run has not yet taken: they are delivered
+   * at the run's next step, and none is left once the run ends. The composer says one is queued.
+   */
+  queuedFollowUps = $state(0);
+  /**
    * What each run this page watched end reported it used, by the run's Bureau identifier. A run the
    * page did not watch end has no entry, and its reply details say nothing of usage.
    */
@@ -175,11 +186,12 @@ export class ChatSessionState {
         options.onRunStarted?.();
       },
       onFrame: () => {
-        this.#retryFailures = 0;
+        this.#setRetryFailures(0);
         this.disconnected = false;
       },
       onTerminal: () => {
         this.#attachedRun = false;
+        this.queuedFollowUps = 0;
       },
       ...(options.onGrantNotLoosened === undefined
         ? {}
@@ -218,7 +230,9 @@ export class ChatSessionState {
           { id: messageId, payload: inputPayload(message) },
           { signal: this.#abort.signal },
         );
-        return assertRunInputAccepted(result.receipt);
+        const accepted = assertRunInputAccepted(result.receipt);
+        this.queuedFollowUps += 1;
+        return accepted;
       },
       hooks: {
         resolveToolApproval: (toolCallId, resolution) =>
@@ -235,6 +249,7 @@ export class ChatSessionState {
           // announced, so they are put on their rows here, as a completed turn's are.
           else {
             this.stopping = false;
+            this.queuedFollowUps = 0;
             this.#stampAnnouncedAssets();
             this.#dropSettledAnswerRows();
             this.#readAgainAfterRefusal();
@@ -471,7 +486,7 @@ export class ChatSessionState {
     this.#readerAbort?.abort();
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;
-    this.#retryFailures = 0;
+    this.#setRetryFailures(0);
     this.failure = undefined;
     await this.#activeTurn;
     if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return false;
@@ -556,6 +571,12 @@ export class ChatSessionState {
     this.conversation = carryLiveNotes(this.conversation, restored);
   }
 
+  /** Counts the failed reads in a row, and says so to the composer's reconnect line. */
+  #setRetryFailures(failures: number): void {
+    this.#retryFailures = failures;
+    this.reconnectAttempt = failures;
+  }
+
   #scheduleReconnect(error: unknown): void {
     if (this.#abort.signal.aborted) return;
     // A session that has given up is retried by the person, once per press: a `reconnect()` that
@@ -563,11 +584,13 @@ export class ChatSessionState {
     if (this.disconnected) return;
     if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) {
       this.disconnected = true;
+      this.reconnectAttempt = 0;
       return;
     }
-    this.#retryFailures += 1;
+    this.#setRetryFailures(this.#retryFailures + 1);
     if (this.#retryFailures >= MAX_RECONNECT_ATTEMPTS) {
       this.disconnected = true;
+      this.reconnectAttempt = 0;
       return;
     }
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);

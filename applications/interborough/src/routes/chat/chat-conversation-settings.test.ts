@@ -1,8 +1,8 @@
 /**
- * The conversation page's header and composer controls for the chat's settings, over a stubbed
- * Bureau: the model, effort and permission mode are always shown, each is changed from the
- * composer, the note says when a change takes effect, and the context-window ring reads
- * `bureau.contexts.window`.
+ * The conversation page's composer controls for the chat's settings, over a stubbed Bureau: the
+ * model, effort and permission mode are ghost selects on the composer's control row, each is
+ * changed from there, the line under the composer says when a change takes effect, and the
+ * context meter and the header's ring read `bureau.contexts.window`.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -12,6 +12,12 @@ import { CHAT_COPY } from '../../app/copy.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import type { Principal } from '../../lib/scopes.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
+import {
+  chooseOption,
+  optionDescriptions,
+  shownLabel,
+  shownPrefix,
+} from './listbox.test-support.ts';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -102,20 +108,46 @@ function mount(principal?: Principal) {
 }
 
 const control = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLSelectElement>(`#${id}`);
-const shown = (container: HTMLElement, setting: string) =>
-  container.querySelector(`[data-setting="${setting}"]`)?.textContent;
+  container.querySelector<HTMLButtonElement>(`[role="combobox"]#${id}`);
+const shown = (container: HTMLElement, id: string) =>
+  control(container, id) === null ? undefined : shownLabel(container, id);
+const hint = (container: HTMLElement) =>
+  container.querySelector('.chat-input-hint')?.textContent?.trim() ?? '';
 const note = (container: HTMLElement) =>
-  container.querySelector('[data-testid="chat-settings-note"]')?.textContent?.trim();
+  container.querySelector('.chat-input-status')?.textContent?.trim() ?? '';
 
-describe('the header', () => {
-  test('always shows the model, the effort and the permission mode the chat runs with', async () => {
+describe('the composer’s settings', () => {
+  test('always shows the model, the effort and the permission mode the chat runs with, named before their values', async () => {
     serve();
     const { container } = mount();
 
-    await waitFor(() => expect(shown(container, 'model')).toBe('Claude Sonnet 5'));
-    expect(shown(container, 'effort')).toBe(SETTINGS.agentDefault);
-    expect(shown(container, 'permission')).toBe('Ask on changes');
+    await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Sonnet 5'));
+    expect(shown(container, 'weft-chat-effort')).toBe(SETTINGS.agentDefault);
+    expect(shown(container, 'weft-chat-permission')).toBe('On changes asks');
+    expect(shownPrefix(container, 'weft-chat-model')).toBe('Model');
+    expect(shownPrefix(container, 'weft-chat-effort')).toBe('Effort');
+    expect(shownPrefix(container, 'weft-chat-permission')).toBe('Permissions');
+    for (const id of ['weft-chat-model', 'weft-chat-effort', 'weft-chat-permission']) {
+      expect(
+        control(container, id)
+          ?.closest('.cinder-select-field')
+          ?.getAttribute('data-cinder-variant'),
+      ).toBe('ghost');
+    }
+  });
+
+  test('puts them in the composer’s control row, before the meter and Send', async () => {
+    serve();
+    const { container } = mount();
+    await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Sonnet 5'));
+
+    const left = container.querySelector('.chat-input-footer-left')!;
+    for (const id of ['weft-chat-model', 'weft-chat-effort', 'weft-chat-permission']) {
+      expect(left.contains(control(container, id))).toBe(true);
+    }
+    expect(
+      container.querySelector('.chat-input-settings, [data-testid="chat-settings"]'),
+    ).toBeNull();
   });
 
   test('shows the model and the settings the chat was steered to', async () => {
@@ -130,9 +162,9 @@ describe('the header', () => {
     });
     const { container } = mount();
 
-    await waitFor(() => expect(shown(container, 'model')).toBe('Claude Haiku 4.5'));
-    expect(shown(container, 'effort')).toBe('Extra high');
-    expect(shown(container, 'permission')).toBe('Read-only');
+    await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Haiku 4.5'));
+    expect(shown(container, 'weft-chat-effort')).toBe('Extra high');
+    expect(shown(container, 'weft-chat-permission')).toBe('Read-only');
   });
 
   test('shows the model of an agent that allows one, or names none, though it offers no choice', async () => {
@@ -141,39 +173,38 @@ describe('the header', () => {
     });
     const { container } = mount();
 
-    await waitFor(() => expect(shown(container, 'model')).toBe('Claude Sonnet 5'));
+    await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Sonnet 5'));
     expect(control(container, 'weft-chat-model')?.disabled).toBe(true);
     cleanup();
     restore?.();
 
     serve({ 'bureau.agents.models': () => ({ selectable: true, models: [], default: null }) });
     const other = mount();
-    await waitFor(() => expect(shown(other.container, 'model')).toBe(SETTINGS.agentDefault));
-  });
-
-  test('says what a permission mode other than the default means, as the Bureau defines it', async () => {
-    serve({
-      'bureau.contexts.get': () => ({ ...CONTEXT, permissionMode: 'allow-all', configVersion: 2 }),
-    });
-    const { container } = mount();
-
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="permission-description"]')).not.toBeNull(),
+      expect(shown(other.container, 'weft-chat-model')).toBe(SETTINGS.agentDefault),
     );
-    expect(note(container)).toBe(SETTINGS.permissionDescriptions['allow-all']);
-    expect(note(container)).toContain('always ask still asks');
-    expect(note(container)).toContain('child agent keeps its own stricter mode');
   });
 
-  test('says nothing of the default mode', async () => {
+  test('says what each permission mode means, as the Bureau defines it, under its option', async () => {
     serve();
     const { container } = mount();
-    await waitFor(() => expect(shown(container, 'permission')).toBe('Ask on changes'));
+    await waitFor(() => expect(shown(container, 'weft-chat-permission')).toBe('On changes asks'));
 
-    expect(note(container)).toBe('');
+    expect(await optionDescriptions(container, 'weft-chat-permission')).toEqual(
+      SETTINGS.permissionOptions.map((option) => option.description),
+    );
   });
 
-  test('holds no field: the controls are in the composer, and the header has the title and the ring', async () => {
+  test('says nothing under the composer of a setting the chat has not changed', async () => {
+    serve();
+    const { container } = mount();
+    await waitFor(() => expect(shown(container, 'weft-chat-permission')).toBe('On changes asks'));
+
+    expect(note(container)).toBe('');
+    expect(hint(container)).toBe('Enter to send · Shift and Enter for a new line');
+  });
+
+  test('holds no field: the header has the title and the ring', async () => {
     serve();
     const { container, findByRole } = mount();
 
@@ -181,6 +212,37 @@ describe('the header', () => {
     expect(heading.textContent).toBe('Plan the week');
     const header = container.querySelector('[data-testid="chat-header"]');
     expect(header?.querySelector('input, select')).toBeNull();
+    expect(container.querySelector('[data-testid="chat-settings"]')).toBeNull();
+  });
+
+  test('draws a scripted agent’s composer with Permissions only', async () => {
+    serve({
+      'bureau.agents.models': () => ({ selectable: false, models: [], default: null }),
+      'bureau.agents.list': () => ({ agents: [{ ...AGENT, media: null }] }),
+    });
+    const { container } = mount();
+
+    // Until the agent is read, the composer cannot tell a scripted agent from a model's.
+    await waitFor(() => expect(control(container, 'weft-chat-model')).toBeNull());
+    expect(control(container, 'weft-chat-effort')).toBeNull();
+    expect(control(container, 'weft-chat-permission')).not.toBeNull();
+  });
+});
+
+describe('the context meter', () => {
+  test('reads how full the window is, named Context 42%, with the tokens behind it as a tooltip', async () => {
+    serve();
+    const { container } = mount();
+
+    const meter = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('.weft-context-meter [role="meter"]');
+      if (found === null) throw new Error('The meter did not render.');
+      return found;
+    });
+    expect(meter.getAttribute('aria-label')).toBe('Context 42%');
+    expect(container.querySelector('.weft-context-meter__reading')?.textContent).toBe('42%');
+    expect(container.querySelector('.chat-input-footer-right .weft-context-meter')).not.toBeNull();
+    expect(document.body.textContent).toContain('84K of 200K tokens');
   });
 });
 
@@ -229,27 +291,31 @@ describe('the context-window ring', () => {
       },
     });
     const { container } = mount();
-    await waitFor(() => expect(control(container, 'weft-chat-model')?.options.length).toBe(2));
+    await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Sonnet 5'));
     const windowReads = () =>
       served.calls.filter((call) => call.method === 'bureau.contexts.window').length;
     const before = windowReads();
-    const model = control(container, 'weft-chat-model');
-    const haiku = [...(model?.options ?? [])].find((option) => option.value.endsWith('haiku-4-5'));
-    if (model === null || haiku === undefined) throw new Error('The model picker did not render.');
 
-    await fireEvent.change(model, { target: { value: haiku.value } });
+    await chooseOption(container, 'Claude Haiku 4.5', 'weft-chat-model');
 
     await waitFor(() => expect(windowReads()).toBeGreaterThan(before));
-    await waitFor(() => expect(shown(container, 'model')).toBe('Claude Haiku 4.5'));
+    await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Haiku 4.5'));
   });
 });
 
 describe('changing a setting from the composer', () => {
+  const PERMISSION_LABELS: Record<string, string> = Object.fromEntries(
+    SETTINGS.permissionOptions.map((option) => [option.value, option.label]),
+  );
+
   async function changePermission(container: HTMLElement, value: string): Promise<void> {
     await waitFor(() => expect(control(container, 'weft-chat-permission')?.disabled).toBe(false));
-    const select = control(container, 'weft-chat-permission');
-    if (select === null) throw new Error('The permission select did not render.');
-    await fireEvent.change(select, { target: { value } });
+    await chooseOption(container, PERMISSION_LABELS[value] ?? value, 'weft-chat-permission');
+  }
+
+  async function changeEffort(container: HTMLElement, label: string): Promise<void> {
+    await waitFor(() => expect(control(container, 'weft-chat-effort')?.disabled).toBe(false));
+    await chooseOption(container, label, 'weft-chat-effort');
   }
 
   test('sets the permission mode with the revision it read, and shows it once the chat is read again', async () => {
@@ -266,18 +332,17 @@ describe('changing a setting from the composer', () => {
       },
     });
     const { container } = mount();
-    await waitFor(() => expect(shown(container, 'permission')).toBe('Ask on changes'));
+    await waitFor(() => expect(shown(container, 'weft-chat-permission')).toBe('On changes asks'));
 
     await changePermission(container, 'read-only');
 
-    await waitFor(() => expect(shown(container, 'permission')).toBe('Read-only'));
+    await waitFor(() => expect(shown(container, 'weft-chat-permission')).toBe('Read-only'));
     const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
     expect(steer?.params).toMatchObject({
       contextId: 'session-1',
       permissionMode: 'read-only',
       expectedRevision: 1,
     });
-    expect(control(container, 'weft-chat-permission')?.value).toBe('read-only');
   });
 
   test('says an idle chat takes a change for its next run', async () => {
@@ -286,7 +351,9 @@ describe('changing a setting from the composer', () => {
 
     await changePermission(container, 'always');
 
-    await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.nextRun));
+    await waitFor(() =>
+      expect(note(container)).toBe(SETTINGS.applies.nextRun('Permissions', 'Always asks')),
+    );
   });
 
   test('says a running chat takes a mode from its next tool call, and an effort or model from its next step', async () => {
@@ -298,14 +365,12 @@ describe('changing a setting from the composer', () => {
     await tick();
 
     await changePermission(container, 'always');
-    await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.toolCall));
+    await waitFor(() =>
+      expect(note(container)).toBe(SETTINGS.applies.toolCall('Permissions', 'Always asks')),
+    );
 
-    await waitFor(() => expect(control(container, 'weft-chat-effort')?.disabled).toBe(false));
-    const effort = control(container, 'weft-chat-effort');
-    if (effort === null) throw new Error('The effort select did not render.');
-    await fireEvent.change(effort, { target: { value: 'high' } });
-    await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.step));
-    expect(note(container)).not.toContain(SETTINGS.applies.toolCall);
+    await changeEffort(container, 'High');
+    await waitFor(() => expect(note(container)).toBe(SETTINGS.applies.step('Effort', 'High')));
   });
 
   describe('a run parked on an approval or a question', () => {
@@ -322,38 +387,30 @@ describe('changing a setting from the composer', () => {
 
       await changePermission(container, 'allow-all');
 
-      await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.toolCall));
-      expect(note(container)).not.toContain(SETTINGS.applies.nextRun);
+      await waitFor(() =>
+        expect(note(container)).toBe(SETTINGS.applies.toolCall('Permissions', 'Allow all')),
+      );
     });
 
     test('takes an effort from its next step', async () => {
       serve(parked());
       const { container } = mount();
-      await waitFor(() => expect(control(container, 'weft-chat-effort')?.disabled).toBe(false));
-      const effort = control(container, 'weft-chat-effort');
-      if (effort === null) throw new Error('The effort select did not render.');
 
-      await fireEvent.change(effort, { target: { value: 'high' } });
+      await changeEffort(container, 'High');
 
-      await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.step));
-      expect(note(container)).not.toContain(SETTINGS.applies.nextRun);
+      await waitFor(() => expect(note(container)).toBe(SETTINGS.applies.step('Effort', 'High')));
     });
 
     test('takes a model from its next step', async () => {
       serve(parked());
       const { container } = mount();
-      await waitFor(() => expect(control(container, 'weft-chat-model')?.options.length).toBe(2));
-      const model = control(container, 'weft-chat-model');
-      const haiku = [...(model?.options ?? [])].find((option) =>
-        option.value.endsWith('haiku-4-5'),
+      await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Sonnet 5'));
+
+      await chooseOption(container, 'Claude Haiku 4.5', 'weft-chat-model');
+
+      await waitFor(() =>
+        expect(note(container)).toBe(SETTINGS.applies.step('Model', 'Claude Haiku 4.5')),
       );
-      if (model === null || haiku === undefined)
-        throw new Error('The model picker did not render.');
-
-      await fireEvent.change(model, { target: { value: haiku.value } });
-
-      await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.step));
-      expect(note(container)).not.toContain(SETTINGS.applies.nextRun);
     });
   });
 
@@ -369,7 +426,7 @@ describe('changing a setting from the composer', () => {
         'bureau.contexts.get': () => ({ ...CONTEXT, owner: 'api-key:other', configVersion: 1 }),
       });
       const { container } = mount(local);
-      await waitFor(() => expect(control(container, 'weft-chat-model')?.options.length).toBe(2));
+      await waitFor(() => expect(shown(container, 'weft-chat-model')).toBe('Claude Sonnet 5'));
 
       for (const id of ['weft-chat-model', 'weft-chat-effort', 'weft-chat-permission']) {
         expect(control(container, id)?.disabled).toBe(true);
@@ -399,5 +456,6 @@ describe('changing a setting from the composer', () => {
 
     expect(await findByText(SETTINGS.permissionNotices.denied)).not.toBeNull();
     expect(note(container)).toBe('');
+    expect(hint(container)).toBe('Enter to send · Shift and Enter for a new line');
   });
 });

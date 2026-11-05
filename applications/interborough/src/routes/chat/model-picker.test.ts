@@ -3,7 +3,7 @@
  * when it is hidden, and what each way a switch can end does to the selection and what it says.
  */
 import type { QueryClient } from '@tanstack/svelte-query';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
@@ -14,6 +14,14 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
+import {
+  chooseOption,
+  listboxTrigger,
+  optionDisabled,
+  optionLabels,
+  shownLabel,
+  shownPrefix,
+} from './listbox.test-support.ts';
 import ModelPicker from './model-picker.svelte';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -131,20 +139,12 @@ async function modelsListed(): Promise<void> {
   await modelsAnswered(mounted);
 }
 
-function picker(container: HTMLElement): HTMLSelectElement {
-  const select = container.querySelector('select');
-  if (select === null) throw new Error('The picker did not render.');
-  return select;
-}
+const picker = (container: HTMLElement): HTMLButtonElement => listboxTrigger(container);
 
-/** The picker's value as a model name, which is the part of its value after the provider. */
-const shownModel = (container: HTMLElement) => picker(container).value.split('\n')[1];
+/** The model the picker shows, by the words it is listed with: a model's own name in these tests. */
+const shownModel = (container: HTMLElement) => shownLabel(container);
 
-async function chooseModel(container: HTMLElement, model: string): Promise<void> {
-  const option = [...picker(container).options].find((entry) => entry.value.endsWith(`\n${model}`));
-  if (option === undefined) throw new Error(`The picker lists no ${model}.`);
-  await fireEvent.change(picker(container), { target: { value: option.value } });
-}
+const chooseModel = (container: HTMLElement, model: string) => chooseOption(container, model);
 
 describe('which models the picker offers', () => {
   test('lists exactly the models the agent allows, with the agent’s default selected for a session never switched', async () => {
@@ -152,10 +152,7 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: null });
 
     await modelsListed();
-    expect([...picker(container).options].map((option) => option.textContent)).toEqual([
-      'claude-sonnet-5',
-      'claude-haiku-4-5',
-    ]);
+    expect(await optionLabels(container)).toEqual(['claude-sonnet-5', 'claude-haiku-4-5']);
     expect(shownModel(container)).toBe('claude-sonnet-5');
   });
 
@@ -164,12 +161,11 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: null });
 
     await modelsListed();
-    const options = [...picker(container).options];
-    expect(options.map((option) => option.textContent)).toEqual([
+    expect(await optionLabels(container)).toEqual([
       'claude-sonnet-5',
       `claude-haiku-4-5 (${COPY.unpriced})`,
     ]);
-    expect(options.map((option) => option.disabled)).toEqual([false, true]);
+    expect(await optionDisabled(container)).toEqual([false, true]);
   });
 
   test('shows a model the model policy forbids as disabled, and says why', async () => {
@@ -177,12 +173,11 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: null });
 
     await modelsListed();
-    const options = [...picker(container).options];
-    expect(options.map((option) => option.textContent)).toEqual([
+    expect(await optionLabels(container)).toEqual([
       'claude-sonnet-5',
       `claude-haiku-4-5 (${COPY.policyDenied})`,
     ]);
-    expect(options.map((option) => option.disabled)).toEqual([false, true]);
+    expect(await optionDisabled(container)).toEqual([false, true]);
   });
 
   test('names the policy, not the price, for a model that is both forbidden and unpriced', async () => {
@@ -190,7 +185,7 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: null });
 
     await modelsListed();
-    expect([...picker(container).options].map((option) => option.textContent)).toEqual([
+    expect(await optionLabels(container)).toEqual([
       'claude-sonnet-5',
       `claude-haiku-4-5 (${COPY.policyDenied})`,
     ]);
@@ -202,6 +197,17 @@ describe('which models the picker offers', () => {
 
     await modelsListed();
     expect(shownModel(container)).toBe('claude-haiku-4-5');
+  });
+
+  test('is a ghost listbox that names the setting before the model', async () => {
+    serve();
+    const { container } = mount({ current: null });
+
+    await modelsListed();
+    expect(shownPrefix(container)).toBe(COPY.label);
+    expect(container.querySelector('.cinder-select')?.getAttribute('data-cinder-variant')).toBe(
+      'ghost',
+    );
   });
 
   test('asks for the models of the session’s agent', async () => {
@@ -220,9 +226,7 @@ describe('which models the picker offers', () => {
 
     await modelsAnswered(client);
 
-    expect([...picker(container).options].map((option) => option.textContent)).toEqual([
-      'claude-sonnet-5',
-    ]);
+    // A select with one model to show opens to nothing, so it only shows the model.
     expect(shownModel(container)).toBe('claude-sonnet-5');
     expect(picker(container).disabled).toBe(true);
   });
@@ -243,14 +247,14 @@ describe('which models the picker offers', () => {
 
     await modelsAnswered(client);
 
-    expect(picker(container).selectedOptions[0]?.textContent).toBe(COPY.agentDefault);
+    expect(shownLabel(container)).toBe(COPY.agentDefault);
     expect(picker(container).disabled).toBe(true);
   });
 
   test('takes no choice while another setting of the session is being changed', async () => {
     serve();
     const { container } = mount({ locked: true });
-    await waitFor(() => expect(picker(container).options).toHaveLength(2));
+    await modelsListed();
 
     expect(picker(container).disabled).toBe(true);
   });
@@ -262,7 +266,7 @@ describe('which models the picker offers', () => {
       onBusyChange: (busy) => events.push(busy ? 'busy' : 'idle'),
       onApplied: () => events.push('applied'),
     });
-    await waitFor(() => expect(picker(container).options).toHaveLength(2));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
 
@@ -275,7 +279,8 @@ describe('which models the picker offers', () => {
 
     await modelsListed();
     expect(shownModel(container)).toBe('claude-retired-1');
-    expect(picker(container).selectedOptions[0]?.disabled).toBe(true);
+    const disabled = await optionDisabled(container);
+    expect(disabled[0]).toBe(true);
   });
 
   test('matches a model the session was switched to without a provider by its name', async () => {
@@ -291,7 +296,7 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: null });
 
     await modelsListed();
-    expect(picker(container).selectedOptions[0]?.textContent).toBe(COPY.agentDefault);
+    expect(shownLabel(container)).toBe(COPY.agentDefault);
   });
 });
 

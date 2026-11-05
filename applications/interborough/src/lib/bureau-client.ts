@@ -55,6 +55,17 @@ export const chatContextSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   activity: z.enum(['running', 'awaiting-input', 'idle']),
+  /**
+   * Why the chat's last run ended when the host stopped it: `host-stopped`, a run that a restart
+   * aborted, which can no longer continue (COR-2009). `null` for a chat whose run ended on its own
+   * or ran again since, and absent from a Bureau that does not say; a reason this client does not know
+   * reads `other`.
+   */
+  endReason: z
+    .enum(['host-stopped'])
+    .nullable()
+    .or(z.unknown().transform((): 'other' => 'other'))
+    .optional(),
 });
 
 /**

@@ -180,6 +180,43 @@ describe('a follow-up', () => {
     await turn;
   });
 
+  test('counts as queued once the Bureau has accepted it, until the run ends', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { outcome: 'admitted', receipt: { id: 'row', state: 'accepted' } },
+      }),
+    );
+    let finish: (() => void) | undefined;
+    const open$ = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encode = (event: unknown) =>
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+        encode(started);
+        finish = () => {
+          encode(finished);
+          controller.close();
+        };
+      },
+    });
+    const session = open(
+      async () => new Response(open$, { headers: { 'content-type': 'text/event-stream' } }),
+    );
+    const turn = session.controller.adapter.sendMessage({ role: 'user', content: 'Start' }, []);
+    await until(() => session.streaming);
+    expect(session.queuedFollowUps).toBe(0);
+
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    expect(session.queuedFollowUps).toBe(1);
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'Again' }, []);
+    expect(session.queuedFollowUps).toBe(2);
+
+    finish?.();
+    await turn;
+    expect(session.queuedFollowUps).toBe(0);
+  });
+
   test('sent during a run stays between the replies the Bureau saw it between, after the Bureau’s snapshot', async () => {
     restore = installFetchImplementation(async () =>
       Response.json({

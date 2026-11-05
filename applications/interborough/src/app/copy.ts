@@ -2628,8 +2628,6 @@ export const CHAT_COPY = {
    * picker, `modelPicker`), the reasoning effort and the permission mode.
    */
   settings: {
-    /** The header's summary of the settings. */
-    summaryLabel: 'Chat settings',
     model: 'Model',
     effort: 'Effort',
     permission: 'Permissions',
@@ -2642,26 +2640,37 @@ export const CHAT_COPY = {
       { value: 'xhigh', label: 'Extra high' },
       { value: 'max', label: 'Max' },
     ],
-    /** The modes, in the order of how much they ask. */
+    /** The modes, in the order of how much they ask, each with the help line under its option. */
     permissionOptions: [
-      { value: 'always', label: 'Always ask' },
-      { value: 'on-changes', label: 'Ask on changes' },
-      { value: 'allow-all', label: 'Allow all' },
-      { value: 'read-only', label: 'Read-only' },
+      { value: 'always', label: 'Always asks', description: 'Every tool call asks first.' },
+      {
+        value: 'on-changes',
+        label: 'On changes asks',
+        description: 'Tools set to On changes ask before they run.',
+      },
+      {
+        value: 'allow-all',
+        label: 'Allow all',
+        description:
+          'Skips the On changes asks for this chat. Tools set to Always still ask; Blocked tools stay blocked.',
+      },
+      {
+        value: 'read-only',
+        label: 'Read-only',
+        description: 'Every tool that is not read-only is denied.',
+      },
     ],
-    /** What each mode does, as `bureau.contexts.steer` defines it. */
-    permissionDescriptions: {
-      'on-changes': 'Tools ask as each tool’s own setting says.',
-      always: 'Every tool call asks first.',
-      'allow-all':
-        'Skips the asks that Ask on changes would raise. A tool set to always ask still asks, a tool that declares no setting of its own still asks, a blocked tool is still refused, and a child agent keeps its own stricter mode.',
-      'read-only': 'Every tool that is not read-only is denied.',
-    },
-    /** When a change takes effect. A mode is read at each tool call; the model and effort at each step. */
+    /**
+     * The line under the composer after a change, saying when it takes effect: a mode is read at each
+     * tool call, the model and the effort at each step, and with no run going, at the next run.
+     */
     applies: {
-      step: 'Applies from the run’s next step.',
-      toolCall: 'Applies from the run’s next tool call.',
-      nextRun: 'Applies to the next run.',
+      step: (setting: string, value: string): string =>
+        `${setting} ${value} applies from the next step.`,
+      toolCall: (setting: string, value: string): string =>
+        `${setting} ${value} applies from the next tool call.`,
+      nextRun: (setting: string, value: string): string =>
+        `${setting} ${value} applies to the next run.`,
     },
     /** Why the controls are disabled for a chat this principal did not start. */
     notYours: 'Only the person who started this chat can change its settings.',
@@ -2763,6 +2772,40 @@ export const CHAT_COPY = {
     },
     category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
     unavailable: 'Context window unavailable',
+  },
+  /** What the composer says in place of its text box, and the line under it. */
+  composer: {
+    /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
+    placeholder: (agent: string): string => `Message ${agent}…`,
+    unreachable: 'Sending is off until Interborough is reachable',
+    restarting: 'Sending resumes when Interborough is back.',
+    pluginDisabled: (agent: string, plugin: string): string =>
+      `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,
+    enableAndRestart: 'Enable and restart',
+    /** The confirmation that enables the plugin: what it does to work that is running. */
+    enableDialog: {
+      title: (plugin: string): string => `Enable the ${plugin} plugin and restart?`,
+      description: 'Running work picks up where it stopped; reviews stay waiting.',
+      confirm: 'Enable and restart',
+    },
+    ended: 'This chat has ended. The server stopped it when it restarted.',
+    newChat: 'New chat',
+    noProvider: 'Connect a model provider to chat',
+    connectProvider: 'Connect a provider',
+    useAssistant: 'Use Assistant',
+  },
+  /** The context meter in the composer: a bar and a reading of how full the window is. */
+  contextMeter: {
+    /** The meter's accessible name; `percent` is `null` when the model's window is not known. */
+    label: (percent: number | null, used: string) =>
+      percent === null ? `Context ${used} tokens` : `Context ${String(percent)}%`,
+    /** The visible reading beside the bar. */
+    reading: (percent: number | null, used: string) =>
+      percent === null ? used : `${String(percent)}%`,
+    /** The tooltip: tokens in use of the window, as short numbers. */
+    tooltip: (used: string, max: string | null) =>
+      max === null ? `About ${used} tokens` : `${used} of ${max} tokens`,
+    unavailable: 'Context unavailable',
   },
   /** Branching a chat from one of an agent's replies. */
   branch: {

@@ -105,6 +105,19 @@ function press(key: string): boolean {
 
 const CHOICES = { type: 'string', enum: ['staging', 'production'] };
 
+describe('the composer while a question waits', () => {
+  test('is in answer mode: the placeholder says to choose above or type your own, and Answer replaces Send', async () => {
+    serve(ask(CHOICES));
+    const { findByRole, container } = await open();
+    await findByRole('button', { name: 'production' });
+
+    const box = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    expect(box.placeholder).toBe('Choose an answer above, or type your own…');
+    expect(container.querySelector('button[aria-label="Answer"]')?.textContent).toContain('Answer');
+    expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
+  });
+});
+
 describe('a question with choices', () => {
   test('draws them as buttons under the question, and the one pressed is the answer', async () => {
     const { bodies } = serve(ask(CHOICES));

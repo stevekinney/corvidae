@@ -16,41 +16,23 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* The chat's settings under its title: what each is now, and when a change takes effect. */
-.weft-chat-settings {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-}
-
-.weft-chat-settings__list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-1) var(--cinder-space-4);
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-chat-settings__item {
-  display: flex;
-  gap: var(--cinder-space-1);
-}
-
-.weft-chat-settings__item dt {
-  color: var(--cinder-text-muted);
-}
-
-.weft-chat-settings__item dd {
-  margin: 0;
-}
-
-/* The composer's three controls: they wrap under each other on a narrow screen. */
-.weft-chat-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+/* The composer's context meter: a short bar and its percentage, on the control row beside Send. */
+.weft-context-meter {
+  display: inline-flex;
+  align-items: center;
   gap: var(--cinder-space-2);
-  min-width: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.weft-context-meter__bar {
+  inline-size: 2.25rem;
+}
+
+.weft-context-meter__unavailable {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
 }
 
 /* The context window's ring: a button with a ring and a reading. */

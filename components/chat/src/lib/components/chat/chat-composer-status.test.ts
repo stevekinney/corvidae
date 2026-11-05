@@ -122,6 +122,19 @@ describe('Chat composer status and approval row', () => {
     expect(container.querySelector('.chat-input-hint')).toBeNull();
   });
 
+  test('a reconnecting stream keeps Stop, though nothing is streaming into the transcript', () => {
+    const { container } = render(Chat, {
+      id: 'chat-status-reconnecting-stop',
+      conversation: appendUserMessage(createConversationHistory({ id: 'rs' }), 'hi'),
+      adapter: { sendMessage: async () => undefined, sendRunInput: async () => undefined },
+      composerStatus: { kind: 'reconnecting', attempt: 3 },
+    });
+
+    expect(container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
+    expect(statusLine(container)).toBe('Reconnecting… attempt 3');
+  });
+
   test.each([
     [{ kind: 'steering' }, 'A message now steers the run.'],
     [

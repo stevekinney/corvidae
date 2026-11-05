@@ -41,7 +41,14 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Button,
+    Combobox,
+    ConfirmDialog,
+    EmptyState,
+    PageHeader,
+  } from '@lostgradient/cinder';
   import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
   import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -68,7 +75,10 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
+  import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
+  import { getProviders } from '../../lib/host-providers.ts';
   import { answerUndoMilliseconds } from '../../lib/answer-undo.ts';
   import { uploadAsset } from '../../lib/bureau-assets.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
@@ -85,7 +95,6 @@
   import { downloadText } from '../audit/audit-export.ts';
   import BranchOrigin from './branch-origin.svelte';
   import { branchPointIds } from './branch-points.ts';
-  import { agentModel } from './agent-model.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
   import ChatAssets from './chat-assets.svelte';
   import {
@@ -95,14 +104,18 @@
     hasExportableText,
   } from './chat-export.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
+  import ContextMeter from './context-meter.svelte';
   import ContextWindowRing from './context-window-ring.svelte';
   import SettingSelect from './setting-select.svelte';
+  import RestartDialog from '../settings/plugins/restart-dialog.svelte';
+  import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
   import type { GrantNotLoosened } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
+  import { composerStatusOf } from './composer-state.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
@@ -247,37 +260,80 @@
     }),
     undefined,
   );
-  const shownModel = $derived.by(() => {
-    if (context.data === undefined) return undefined;
-    const name = context.data.model ?? agentModel(models.data);
-    if (name === null) return SETTINGS.agentDefault;
-    const listed = models.data?.models.find(
-      (choice) =>
-        choice.model === name.model &&
-        (name.provider === null || choice.provider === name.provider),
-    );
-    return listed?.displayName ?? name.model;
+  // Whether the agent runs on a model, which is what needs a provider and what Model and Effort
+  // change. A scripted agent names none (`media` is null) and offers no model to switch to, so its
+  // composer has Permissions only.
+  const agentSummary = $derived(agents.data?.find((entry) => entry.name === agent));
+  const usesModel = $derived(
+    agentSummary === undefined ||
+      agentSummary.media !== null ||
+      (models.data?.models.length ?? 0) > 0,
+  );
+  // Whether any provider holds a key, the rule the first-run checklist states. Until the host has
+  // answered, the composer is not blocked.
+  const providers = createQuery(
+    () => ({
+      queryKey: queryKeys.hostProviders(),
+      queryFn: ({ signal }) => getProviders({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const noProvider = $derived(
+    usesModel &&
+      providers.data !== undefined &&
+      !providers.data.providers.some((provider) => provider.hasKey),
+  );
+
+  // An agent that a disabled plugin ships (`plugin:name`) cannot run, and the composer says so with
+  // the way back: enable the plugin and restart the host.
+  const definition = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.definition(agent),
+      queryFn: ({ signal }) => getAgentDefinition(agent, { signal }),
+      enabled: !choosing && agent.includes(':'),
+      retry: false,
+    }),
+    undefined,
+  );
+  const agentUnavailable = $derived(definition.data?.state === 'unavailable');
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      enabled: agentUnavailable,
+      retry: false,
+    }),
+    undefined,
+  );
+  const pluginName = $derived(agent.split(':')[0] ?? agent);
+  const pluginTitle = $derived(
+    plugins.data?.plugins.find((entry) => entry.descriptor.name === pluginName)?.descriptor.title ??
+      /^Plugin (.+) is disabled$/.exec(definition.data?.unavailable?.message ?? '')?.[1] ??
+      pluginName,
+  );
+  const restart = new RestartFlow();
+  let confirmingEnable = $state(false);
+  // Once the host answers again the plugin is on, so the agent is available and the chat reads the
+  // host again.
+  $effect(() => {
+    if (restart.phase !== 'back') return;
+    untrack(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(agent) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() });
+    });
   });
-  const shownEffort = $derived(
-    context.data === undefined
-      ? undefined
-      : (SETTINGS.effortOptions.find((option) => option.value === context.data?.effort)?.label ??
-          SETTINGS.agentDefault),
-  );
-  const shownPermission = $derived(
-    SETTINGS.permissionOptions.find((option) => option.value === context.data?.permissionMode)
-      ?.label,
-  );
-  const permissionDescription = $derived(
-    context.data === undefined || context.data.permissionMode === 'on-changes'
-      ? undefined
-      : SETTINGS.permissionDescriptions[context.data.permissionMode],
-  );
 
   // The settings share one revision, so while one is being changed the others wait for it.
   let steering = $state(false);
-  // When the change the person made takes effect, which depends on whether a run is going.
+  // When the change the person made takes effect, as the line under the composer says it: which
+  // setting, which value, and from when, which depends on whether a run is going.
   let appliesNote = $state<string | undefined>(undefined);
+  // How many rows the transcript held when the note was made. A step of the run adds rows, and
+  // the note is out of date once the next one does.
+  let notedRows = 0;
+  const rowCount = $derived(Object.keys(session.conversation.messages).length);
   // A run is going while it streams, and also while it is parked on an approval or a question: it
   // streams nothing then, but it resumes into the same run, which reads a mode at each tool call
   // and the model and effort at each step. Only the Bureau's reading of the chat says it is parked
@@ -288,9 +344,47 @@
     void runGoing;
     untrack(() => (appliesNote = undefined));
   });
-  function noted(setting: 'step' | 'toolCall'): void {
-    appliesNote = runGoing ? SETTINGS.applies[setting] : SETTINGS.applies.nextRun;
+  $effect(() => {
+    // ...and once the next step has started, which adds to the transcript.
+    const rows = rowCount;
+    untrack(() => {
+      if (appliesNote !== undefined && rows > notedRows) appliesNote = undefined;
+    });
+  });
+  function noted(setting: 'step' | 'toolCall', name: string, value: string): void {
+    notedRows = untrack(() => rowCount);
+    appliesNote = runGoing
+      ? SETTINGS.applies[setting](name, value)
+      : SETTINGS.applies.nextRun(name, value);
   }
+
+  const composerStatus = $derived(
+    composerStatusOf({
+      unreachable: connection.unreachable,
+      restarting: restart.running,
+      unavailable: agentUnavailable
+        ? {
+            agent: definition.data?.name ?? agent,
+            plugin: pluginTitle,
+            enable: () => (confirmingEnable = true),
+          }
+        : undefined,
+      ended: context.data?.endReason === 'host-stopped',
+      noProvider,
+      connectHref: router.href('/settings/models'),
+      useAssistant:
+        choosing &&
+        agent !== 'assistant' &&
+        agents.data?.some((entry) => entry.name === 'assistant')
+          ? () => chooseAgent('assistant')
+          : undefined,
+      newChatHref: router.href('/chats/new'),
+      reconnectAttempt: session.reconnectAttempt,
+      queuedFollowUps: session.queuedFollowUps,
+      note: appliesNote,
+      working: session.streaming,
+    }),
+  );
 
   // Steering admits only the chat's own principal (`bureau.contexts.steer`). The page knows who that
   // is only for the one local caller, whose subject is the owner of every chat it started; for any
@@ -672,6 +766,7 @@
     if (edited !== undefined) void session.send(edited).catch(() => undefined);
     return () => {
       for (const remove of removals) remove();
+      restart.dispose();
       session.dispose();
     };
   });
@@ -715,33 +810,6 @@
       actions={headerActions}
     />
   {/if}
-  {#if !choosing}
-    <div class="weft-chat-settings" data-testid="chat-settings">
-      {#if context.data !== undefined}
-        <dl class="weft-chat-settings__list" aria-label={SETTINGS.summaryLabel}>
-          <div class="weft-chat-settings__item">
-            <dt>{SETTINGS.model}</dt>
-            <dd data-setting="model">{shownModel}</dd>
-          </div>
-          <div class="weft-chat-settings__item">
-            <dt>{SETTINGS.effort}</dt>
-            <dd data-setting="effort">{shownEffort}</dd>
-          </div>
-          <div class="weft-chat-settings__item">
-            <dt>{SETTINGS.permission}</dt>
-            <dd data-setting="permission">{shownPermission}</dd>
-          </div>
-        </dl>
-      {/if}
-      <p class="weft-chat-strip" role="status" data-testid="chat-settings-note">
-        {#if appliesNote !== undefined}{appliesNote}{/if}
-        {#if permissionDescription !== undefined}
-          <span data-testid="permission-description">{permissionDescription}</span>
-        {/if}
-      </p>
-    </div>
-  {/if}
-
   {#if !choosing}
     <SessionTasks {sessionId} streaming={session.streaming} />
   {/if}
@@ -821,7 +889,10 @@
       adapter={session.chatAdapter}
       streaming={session.streaming}
       surfaceMode="transparent"
-      disabled={connection.unreachable || session.disconnected || gone || answerHeld}
+      disabled={session.disconnected || gone || answerHeld}
+      composerPlaceholder={CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
+      {composerStatus}
+      composerAnswering={(session.humanRequests.length > 0 && !session.streaming) || answerHeld}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
         attachments: attachable && !gone,
@@ -885,7 +956,7 @@
           />
         {/if}
       {/snippet}
-      {#snippet composerActions()}
+      {#snippet composerControls()}
         {#if choosing}
           <div class="ib-agent-pill">
             <Combobox
@@ -899,7 +970,7 @@
             />
           </div>
         {:else}
-          <div class="weft-chat-controls">
+          {#if usesModel}
             <ModelPicker
               {sessionId}
               agentName={agent}
@@ -909,7 +980,7 @@
               locked={steering}
               unavailable={cannotSteer}
               onBusyChange={(busy) => (steering = busy)}
-              onApplied={() => noted('step')}
+              onApplied={(value) => noted('step', SETTINGS.model, value)}
             />
             <SettingSelect
               {sessionId}
@@ -931,30 +1002,35 @@
               locked={steering}
               unavailable={cannotSteer}
               onBusyChange={(busy) => (steering = busy)}
-              onApplied={() => noted('step')}
+              onApplied={(value) => noted('step', SETTINGS.effort, value)}
             />
-            <SettingSelect
-              {sessionId}
-              id="weft-chat-permission"
-              label={SETTINGS.permission}
-              options={SETTINGS.permissionOptions}
-              current={context.data?.permissionMode}
-              revision={context.data?.configVersion}
-              send={(value, commandId, expectedRevision) =>
-                steerContext({
-                  contextId: sessionId,
-                  commandId,
-                  expectedRevision,
-                  permissionMode: value as PermissionMode,
-                })}
-              notices={SETTINGS.permissionNotices}
-              reload={reloadContext}
-              locked={steering}
-              unavailable={cannotSteer}
-              onBusyChange={(busy) => (steering = busy)}
-              onApplied={() => noted('toolCall')}
-            />
-          </div>
+          {/if}
+          <SettingSelect
+            {sessionId}
+            id="weft-chat-permission"
+            label={SETTINGS.permission}
+            options={SETTINGS.permissionOptions}
+            current={context.data?.permissionMode}
+            revision={context.data?.configVersion}
+            send={(value, commandId, expectedRevision) =>
+              steerContext({
+                contextId: sessionId,
+                commandId,
+                expectedRevision,
+                permissionMode: value as PermissionMode,
+              })}
+            notices={SETTINGS.permissionNotices}
+            reload={reloadContext}
+            locked={steering}
+            unavailable={cannotSteer}
+            onBusyChange={(busy) => (steering = busy)}
+            onApplied={(value) => noted('toolCall', SETTINGS.permission, value)}
+          />
+        {/if}
+      {/snippet}
+      {#snippet composerActions()}
+        {#if !choosing && usesModel}
+          <ContextMeter report={contextWindow.data} failed={contextWindow.isError} />
         {/if}
       {/snippet}
       {#snippet messageActions({ message })}
@@ -1024,4 +1100,12 @@
       {/snippet}
     </Chat>
   </div>
+  <ConfirmDialog
+    bind:open={confirmingEnable}
+    title={CHAT_COPY.composer.enableDialog.title(pluginTitle)}
+    description={CHAT_COPY.composer.enableDialog.description}
+    confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
+    onConfirm={() => void restart.run([{ name: pluginName, enabled: true }])}
+  />
+  <RestartDialog flow={restart} />
 </section>

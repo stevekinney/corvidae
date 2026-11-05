@@ -1224,6 +1224,9 @@
     }
     return composerAnswering ? 'Choose an answer above, or type your own…' : undefined;
   });
+  // A dropped stream is a run that is still going on the server: while the host says it is
+  // reconnecting, the composer keeps Stop, though nothing is streaming into the transcript now.
+  const composerSending = $derived(streaming || composerStatus?.kind === 'reconnecting');
   const handleRetry = commandActions.handleRetry;
   const handleEdit = commandActions.handleEdit;
   const handleApprovalResolve = commandActions.resolveToolApproval;
@@ -2041,7 +2044,7 @@
           controls={composerControls}
           disabled={streaming && !followUpsEnabled}
           paused={disabled}
-          sending={streaming}
+          sending={composerSending}
           allowFollowUp={followUpsEnabled}
           actions={composerActions}
           toolbar={composerToolbar}
@@ -2049,7 +2052,7 @@
           markdownStyling={composerMarkdownStyling}
           status={resolvedComposerStatus}
           {allowAttachments}
-          onstop={streaming ? handleStopGenerating : undefined}
+          onstop={composerSending ? handleStopGenerating : undefined}
           {onComposerInput}
           {oncomposerkeydown}
           {oncomposerselectionchange}

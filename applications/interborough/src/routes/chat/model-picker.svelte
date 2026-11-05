@@ -41,8 +41,8 @@
     unavailable?: string | undefined;
     /** Called as a change starts and as it ends, so the other settings wait for the new revision. */
     onBusyChange?: (busy: boolean) => void;
-    /** Called when the Bureau took a switch. */
-    onApplied?: () => void;
+    /** Called when the Bureau took a switch, with the name of the model it switched to. */
+    onApplied?: (label: string) => void;
   }
 
   let {
@@ -69,6 +69,9 @@
   );
   const choices = $derived(models.data?.models ?? []);
 
+  // A listbox takes an empty value for no selection, so "the agent's default" has a value of its own.
+  const UNSET = 'agent-default';
+
   /** A model as an option's value. Neither a provider nor a model name holds a newline. */
   const keyOf = (name: { readonly provider: string | null; readonly model: string }): string =>
     `${name.provider ?? ''}\n${name.model}`;
@@ -84,7 +87,7 @@
 
   const known = $derived(current ?? agentModel(models.data));
   const knownKey = $derived.by(() => {
-    if (known === null) return '';
+    if (known === null) return UNSET;
     const choice = listed(known);
     return choice === undefined ? keyOf(known) : keyOf(choice);
   });
@@ -104,8 +107,8 @@
 
   const options = $derived([
     // A session with no model of its own, on an agent that names no default, has nothing to show.
-    ...(knownKey === '' && pending === undefined
-      ? [{ value: '', label: COPY.agentDefault, disabled: true }]
+    ...(knownKey === UNSET && pending === undefined
+      ? [{ value: UNSET, label: COPY.agentDefault, disabled: true }]
       : []),
     // The model the session runs on may no longer be one the agent lists.
     ...(known !== null && listed(known) === undefined
@@ -159,7 +162,7 @@
       notice = result.notice;
       // Until the session is read again the admitted choice stays on screen.
       if (!result.applied || result.reloaded) pending = undefined;
-      if (result.applied) onApplied?.();
+      if (result.applied) onApplied?.(choice.displayName);
     } finally {
       busy = false;
       onBusyChange?.(false);
@@ -173,9 +176,13 @@
   class="weft-chat-model"
   label={COPY.label}
   labelVisible={false}
+  valuePrefix={COPY.label}
+  variant="ghost"
+  presentation="listbox"
+  size="sm"
   {options}
   value={shown}
-  onchange={(event) => void choose(event.currentTarget.value)}
+  onValueChange={(next) => void choose(next)}
   disabled={busy ||
     locked ||
     unavailable !== undefined ||

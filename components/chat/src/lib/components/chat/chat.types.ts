@@ -199,13 +199,13 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   /** Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. */
   composerActions?: Snippet;
   /** Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet takes no arguments and stays interactive while a run streams; the caller owns the semantics inside it. */
-  composerControls?: Snippet;
+  composerControls?: Snippet | undefined;
   /** The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`. */
-  composerPlaceholder?: string;
+  composerPlaceholder?: string | undefined;
   /** Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode, its button reads `Answer`, and its placeholder reads `Choose an answer above, or type your own…`. Chat sets this itself while a question it draws is open in the composer. Default `false`. */
   composerAnswering?: boolean;
   /** The line of help under the composer while no status shows. Default `Enter to send · Shift and Enter for a new line`; `false` hides it. */
-  composerHint?: string | false;
+  composerHint?: string | false | undefined;
   /** Toolbar slot at the start of the composer footer, given a `format` command for the composer's selection. */
   composerToolbar?: Snippet<[ChatComposerToolbarContext]>;
   /** Show the composer's Bold, Italic, Code, Link, and List buttons. Default `false`. */
@@ -213,7 +213,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   /** Style Markdown in place in the composer while it still sends Markdown. Default `true`. */
   composerMarkdownStyling?: boolean;
   /** The line under the composer, such as a reconnect, queued follow-ups or the host's own note; or, with `kind: 'blocked'`, the whole composer: one compact row that says why sending is off, in place of the text box and the controls. When omitted, the composer shows its hint. */
-  composerStatus?: ChatComposerStatus;
+  composerStatus?: ChatComposerStatus | undefined;
   empty?: Snippet;
   /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
   trailing?: Snippet;

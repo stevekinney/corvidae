@@ -18,7 +18,7 @@
     { value: 'sonnet', label: 'Claude Sonnet 5.5' },
     { value: 'haiku', label: 'Claude Haiku 5' },
   ];
-  const highS = [
+  const EFFORTS = [
     { value: 'low', label: 'Low' },
     { value: 'medium', label: 'Medium' },
     { value: 'high', label: 'High' },
