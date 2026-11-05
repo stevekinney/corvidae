@@ -326,6 +326,11 @@ const schema = {
       description:
         'Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM".',
     },
+    outcomeLabel: {
+      type: 'string',
+      description:
+        'Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request\'s question is then the sentence beneath, with no tool named.',
+    },
     footnote: {
       type: 'string',
       description:

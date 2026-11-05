@@ -269,7 +269,12 @@ describe('PayloadInspector', () => {
         '8 fields',
       );
       expect(readCss()).toMatch(
-        /\[data-cinder-layout='grid'\]\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*14rem\),\s*max-content\)\)/s,
+        /\[data-cinder-layout='grid'\]\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*10rem\),\s*max-content\)\)/s,
+      );
+      // Two columns fit a ~436px card (406px inside its padding): two 10rem floors and a 1.5rem gap
+      // are 344px, three are 528px.
+      expect(readCss()).toMatch(
+        /\[data-cinder-layout='grid'\]\s*\{[^}]*column-gap:\s*var\(--cinder-space-6\)/s,
       );
     });
 

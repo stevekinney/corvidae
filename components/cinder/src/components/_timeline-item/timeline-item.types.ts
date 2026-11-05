@@ -28,6 +28,12 @@ export type TimelineItemProps = Omit<HTMLAttributes<HTMLLIElement>, 'class' | 'c
   expandLabel?: string | undefined;
   /** For a `band`: the text of the button that closes it. @default "Hide" */
   collapseLabel?: string | undefined;
+  /**
+   * Draws the marker and `children` alone, with no timestamp or title header and no body wrapper:
+   * the row's whole content is what `children` draws. For the `rows` variant of Timeline.
+   * @default false
+   */
+  bare?: boolean | undefined;
   /** Whether to draw the connector to the following event. @default "visible" */
   connectorAfter?: 'visible' | 'hidden' | undefined;
   /** Optional adjacent group heading rendered inside this list item before the event body. */
@@ -62,6 +68,8 @@ export interface TimelineItemSchemaProps {
   expandLabel?: string | undefined;
   /** For a `band`: the text of the button that closes it. @default "Hide" */
   collapseLabel?: string | undefined;
+  /** Draws the marker and `children` alone, with no timestamp or title header. For the `rows` variant of Timeline. @default false */
+  bare?: boolean | undefined;
   /** Whether to draw the connector to the following event. @default "visible" */
   connectorAfter?: 'visible' | 'hidden' | undefined;
   /** Optional adjacent group heading rendered inside this list item before the event body. */

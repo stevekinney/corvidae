@@ -811,6 +811,12 @@
     font-size: inherit;
   }
 
+  /* "Can't be undone." leads the consequence line in semibold, as the board sets it. */
+  .cinder-approval-card__detail-risk .cinder-approval-card__undone {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
   /* What the source said when it asked: a collapsed line that opens in place to the whole text. */
   .cinder-approval-card__said {
     display: flex;

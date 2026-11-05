@@ -293,11 +293,12 @@
     font-weight: var(--cinder-font-semibold);
   }
 
-  /* Many short pairs: a wrapping key and value grid sized to its content, never stretched across the card. */
+  /* Many short pairs: a wrapping key and value grid sized to its content, never stretched across the
+   * card. The 10rem floor and the 1.5rem gap let a ~436px card hold two columns, as the board does. */
   .cinder-payload-inspector__fields[data-cinder-layout='grid'] {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), max-content));
-    column-gap: var(--cinder-space-8);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), max-content));
+    column-gap: var(--cinder-space-6);
     row-gap: var(--cinder-space-1-5);
   }
 

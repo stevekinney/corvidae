@@ -252,6 +252,8 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     result?: string;
     /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
     decidedIn?: string;
+    /** Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. */
+    outcomeLabel?: string;
     /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */
     footnote?: string;
     /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */
@@ -344,6 +346,8 @@ export type ApprovalCardSchemaProps = {
   result?: string;
   /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
   decidedIn?: string;
+  /** Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. */
+  outcomeLabel?: string;
   /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */
   footnote?: string;
   /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */

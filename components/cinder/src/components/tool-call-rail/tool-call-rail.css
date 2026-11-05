@@ -1,12 +1,15 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-/* The rail's running marker and summary spinner are Spinner arcs, so the styles travel with it. */
+/* The rail's running marker and summary spinner are Spinner arcs, and its rows sit on Timeline's
+ * `rows` variant, so the styles travel with it. */
 @import '../spinner/spinner.css';
+@import '../timeline/timeline.css';
 @layer cinder.components {
   /* ========================================
  * TOOL CALL RAIL
  * One turn's tool calls: a rail of one-line rows, the first and last few with the middle folded
- * behind a dashed button, and the calls that failed or need a person always in view. It draws
- * Timeline's marker column and connector around rows that have no timestamp to lead with.
+ * behind a dashed button, and the calls that failed or need a person always in view. Its rows are
+ * entries of Timeline's `rows` variant, which draws the marker column and the connector and leaves
+ * the content of each row to the rail, because a tool call has no timestamp to lead with.
  * ======================================== */
 
   .cinder-tool-call-rail {
@@ -107,23 +110,13 @@
  * The rail and its rows
  * ---------------------------------------- */
 
-  .cinder-tool-call-rail__list {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-0-5);
-    margin: 0;
-    padding: 0;
-    list-style: none;
+  /* One or two calls are plain rows: Timeline still draws their markers, with no connector. */
+  .cinder-tool-call-rail[data-cinder-plain] .cinder-timeline-item__event::before {
+    display: none;
   }
 
-  /* The connector runs from the first marker to the last, behind them. One or two calls have none. */
-  .cinder-tool-call-rail:not([data-cinder-plain]) .cinder-tool-call-rail__list::before {
-    content: '';
-    position: absolute;
-    inset-inline-start: calc(var(--_cinder-tool-call-rail-marker-size) / 2 - 0.5px);
-    inset-block: 0.8125rem;
-    inline-size: 1px;
+  /* The connector runs behind the markers in the rail's quiet colour. */
+  .cinder-tool-call-rail .cinder-timeline-item__event::before {
     background: var(--cinder-fill-disabled);
   }
 
@@ -131,23 +124,27 @@
     position: relative;
   }
 
-  /* A row is one line that never wraps: marker, name, key input, result and duration. It bleeds
-     past the rail on both sides so a selected row's tint and ring wrap the marker too. */
+  /* A row is one line that never wraps: name, key input, result and duration, with the marker
+     Timeline draws in the column before it. The row bleeds past the rail on both sides and back over
+     the marker column, so a selected row's tint and ring wrap the marker too. */
   .cinder-tool-call-rail__row {
     box-sizing: border-box;
     display: grid;
     grid-template-columns:
-      var(--_cinder-tool-call-rail-marker-size)
       var(--cinder-tool-call-rail-name-width, 7.75rem)
       var(--cinder-tool-call-rail-input-width, 7.25rem)
       minmax(0, 1fr)
       var(--cinder-tool-call-rail-duration-width, 3rem);
     column-gap: var(--cinder-space-2-5);
     align-items: center;
-    inline-size: calc(100% + 2 * var(--_cinder-tool-call-rail-bleed));
+    inline-size: calc(
+      100% + var(--_cinder-tool-call-rail-indent) + 2 * var(--_cinder-tool-call-rail-bleed)
+    );
     min-block-size: 1.625rem;
-    margin: 0 calc(-1 * var(--_cinder-tool-call-rail-bleed));
-    padding: 0 var(--_cinder-tool-call-rail-bleed);
+    margin: 0 calc(-1 * var(--_cinder-tool-call-rail-bleed)) 0
+      calc(-1 * (var(--_cinder-tool-call-rail-indent) + var(--_cinder-tool-call-rail-bleed)));
+    padding: 0 var(--_cinder-tool-call-rail-bleed) 0
+      calc(var(--_cinder-tool-call-rail-indent) + var(--_cinder-tool-call-rail-bleed));
     border: 0;
     border-radius: var(--cinder-radius-sm);
     background: transparent;
@@ -173,7 +170,6 @@
   }
 
   .cinder-tool-call-rail__marker {
-    grid-column: 1;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -219,7 +215,7 @@
   }
 
   .cinder-tool-call-rail__name {
-    grid-column: 2;
+    grid-column: 1;
     min-inline-size: 0;
     overflow: hidden;
     color: var(--cinder-text-default);
@@ -242,12 +238,12 @@
   }
 
   .cinder-tool-call-rail__input {
-    grid-column: 3;
+    grid-column: 2;
     color: var(--cinder-text-subtle);
   }
 
   .cinder-tool-call-rail__result {
-    grid-column: 4;
+    grid-column: 3;
     color: var(--cinder-text-muted);
   }
 
@@ -264,7 +260,7 @@
   }
 
   .cinder-tool-call-rail__duration {
-    grid-column: 5;
+    grid-column: 4;
     color: var(--cinder-text-subtle);
     font-size: var(--cinder-text-xs);
     font-variant-numeric: tabular-nums;
@@ -281,7 +277,7 @@
     flex-direction: column;
     align-items: flex-start;
     gap: var(--cinder-space-0-5) 0.875rem;
-    margin: 0 0 var(--cinder-space-1) var(--_cinder-tool-call-rail-indent);
+    margin: 0 0 var(--cinder-space-1);
     color: var(--cinder-status-danger-text);
     font-size: var(--cinder-text-sm);
     line-height: 1.1875rem;
@@ -328,7 +324,7 @@
 
   /* What sits under a row: the approval a waiting call is waiting on. */
   .cinder-tool-call-rail__nested {
-    margin: var(--cinder-space-1) 0 var(--cinder-space-1) var(--_cinder-tool-call-rail-indent);
+    margin: var(--cinder-space-1) 0;
     min-inline-size: 0;
   }
 
@@ -336,12 +332,10 @@
  * A folded group: one dashed button and what it hides, counted from this turn only
  * ---------------------------------------- */
 
+  /* The dashed button sits level with the marker Timeline draws beside it, 0.8125rem down. */
   .cinder-tool-call-rail__group {
-    display: grid;
-    grid-template-columns: var(--_cinder-tool-call-rail-marker-size) minmax(0, 1fr);
-    column-gap: var(--cinder-space-2-5);
-    align-items: center;
     min-block-size: 1.875rem;
+    padding-block-start: 0.0625rem;
   }
 
   .cinder-tool-call-rail__group-body {
@@ -425,51 +419,51 @@
  * ---------------------------------------- */
 
   @container cinder-tool-call-rail (max-width: 28rem) {
-    .cinder-tool-call-rail:not([data-cinder-plain]) .cinder-tool-call-rail__list::before,
+    .cinder-tool-call-rail .cinder-timeline-item__event::before,
     .cinder-tool-call-rail__summary-duration,
     .cinder-tool-call-rail__summary-separator[data-cinder-duration],
     .cinder-tool-call-rail__failure {
       display: none;
     }
 
+    /* Timeline's rows are 1.625rem tall with the marker 0.375rem down, which is a one-line row. A
+       phone's rows are two lines whose first line is centred 1rem down, so the marker moves to
+       0.5625rem and the hairline between rows replaces the gap. */
     .cinder-tool-call-rail__list {
-      gap: 0;
+      /* @runtime-state */
+      --cinder-timeline-row-gap: 0px;
+      /* @runtime-state */
+      --cinder-timeline-row-marker-offset: 0.5625rem;
     }
 
-    .cinder-tool-call-rail__item,
-    .cinder-tool-call-rail__group {
+    .cinder-tool-call-rail .cinder-timeline-item {
       border-block-end: 1px solid var(--cinder-border-muted);
     }
 
-    .cinder-tool-call-rail__item:last-child,
-    .cinder-tool-call-rail__group:last-child {
+    .cinder-tool-call-rail .cinder-timeline-item:last-child {
       border-block-end: 0;
     }
 
     .cinder-tool-call-rail__row {
-      grid-template-columns: var(--_cinder-tool-call-rail-marker-size) minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       row-gap: 0;
       min-block-size: var(--cinder-touch-target-min);
       padding-block: var(--cinder-space-1-5);
     }
 
-    .cinder-tool-call-rail__marker {
-      grid-row: 1;
-    }
-
     .cinder-tool-call-rail__name {
-      grid-column: 2;
+      grid-column: 1;
       grid-row: 1;
     }
 
     .cinder-tool-call-rail__duration {
-      grid-column: 3;
+      grid-column: 2;
       grid-row: 1;
     }
 
     .cinder-tool-call-rail__detail {
       display: block;
-      grid-column: 2 / 4;
+      grid-column: 1 / 3;
       grid-row: 2;
       min-inline-size: 0;
       overflow: hidden;
@@ -499,6 +493,7 @@
 
     .cinder-tool-call-rail__group {
       min-block-size: var(--cinder-touch-target-min);
+      padding-block-start: 0;
     }
 
     .cinder-tool-call-rail__group-summary-long {
@@ -512,14 +507,10 @@
     .cinder-tool-call-rail__more {
       block-size: 2rem;
     }
-
-    .cinder-tool-call-rail__nested {
-      margin-inline-start: var(--_cinder-tool-call-rail-indent);
-    }
   }
 
   @media (forced-colors: active) {
-    .cinder-tool-call-rail__list::before {
+    .cinder-tool-call-rail .cinder-timeline-item__event::before {
       background: ButtonText;
     }
 

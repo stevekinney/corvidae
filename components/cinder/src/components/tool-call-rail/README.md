@@ -2,7 +2,7 @@
 
 One turn's tool calls on a rail. Each call is one line that never wraps: the tool's name as a person reads it (its identifier is a tooltip), the muted key input, `→ result`, and the duration at the end. A long turn keeps its first and last few calls and folds the middle behind one dashed button that says what it hides. A call that failed, was denied, is waiting on a person or is still running never folds, and a failed call carries one danger line with its consequence and quiet links instead of a filled error block.
 
-Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply leads and the calls follow. Use `RunStepTimeline` for the steps of a run with their own timing, retries and branches, and `Timeline` for dated events. The rail draws Timeline's marker column and connector, because run pages and chat read the same kind of sequence, but a tool call has no timestamp to lead with, so its rows are not Timeline entries.
+Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply leads and the calls follow. Use `RunStepTimeline` for the steps of a run with their own timing, retries and branches, and `Timeline` for dated events. The rail is built on `Timeline`'s `rows` variant, because run pages and chat read the same kind of sequence: Timeline draws the marker column and the connector, and the rail draws what sits in each row, since a tool call has no timestamp to lead with. A folded group is one entry of its own.
 
 ## Usage
 

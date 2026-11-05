@@ -11,7 +11,7 @@
    * @useWhen Opening a call's details in a side panel from a selectable row, with a failed call's next steps on the rail.
    * @avoidWhen Showing the steps of a run with their own timing, retries and branches — use run-step-timeline.
    * @avoidWhen Listing dated events — use timeline.
-   * @rationale Nearest alternative: Timeline — a tool call has no timestamp to lead with, so the rail draws Timeline's marker column and connector around rows of name, key input, result and duration.
+   * @rationale Nearest alternative: Timeline — the rail is built on its `rows` variant, which keeps the marker column and connector and leaves each row's content (name, key input, result and duration, with no timestamp to lead with) to the rail.
    * @related timeline, run-step-timeline, approval-card, status-dot
    */
   export type {
@@ -37,6 +37,8 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { planFold, summarizeFoldedNames } from '../../utilities/fold-middle.ts';
   import Spinner from '../spinner/spinner.svelte';
+  import Timeline from '../timeline/timeline.svelte';
+  import type { TimelineEntry } from '../timeline/timeline.types.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
   import type { ToolCallRailCall, ToolCallRailProps } from './tool-call-rail.types.ts';
 
@@ -107,6 +109,38 @@
     plan.some((entry) => entry.kind === 'group' && openedGroups.has(entry.items[0]?.id ?? '')),
   );
 
+  /** What one Timeline entry draws: a call, or the dashed button that folds a run of them. */
+  type RailRow =
+    | { kind: 'call'; id: string; call: ToolCallRailCall }
+    | { kind: 'group'; id: string; items: readonly ToolCallRailCall[] };
+
+  // Every row of the rail in order, as Timeline entries: an opened group is its calls in time order,
+  // a folded one is a single row.
+  const rows = $derived.by((): RailRow[] =>
+    plan.flatMap((entry): RailRow[] => {
+      if (entry.kind === 'item') return [{ kind: 'call', id: entry.item.id, call: entry.item }];
+      if (openedGroups.has(entry.items[0]?.id ?? '')) {
+        return entry.items.map((call): RailRow => ({ kind: 'call', id: call.id, call }));
+      }
+      return [{ kind: 'group', id: `group-${entry.items[0]?.id}`, items: entry.items }];
+    }),
+  );
+  // What one entry draws is looked up as a list of none or one, which an each block reads in step
+  // with the rows, where a lookup held in a snippet's own constant could be read after the rows moved.
+  const callsFor = (id: string): ToolCallRailCall[] =>
+    rows.flatMap((row) => (row.kind === 'call' && row.id === id ? [row.call] : []));
+  const groupsFor = (id: string): (readonly ToolCallRailCall[])[] =>
+    rows.flatMap((row) => (row.kind === 'group' && row.id === id ? [row.items] : []));
+  // A rail has nothing dated to say, so the entries carry only their identity and a name.
+  const entries = $derived(
+    rows.map((row): TimelineEntry => ({
+      id: row.id,
+      datetime: '',
+      timestamp: '',
+      title: row.kind === 'call' ? row.call.name : words.foldedShort(row.items.length),
+    })),
+  );
+
   // The row elements, so each row's tooltip can anchor to its row and show on hover and on focus.
   const rowElements = new SvelteMap<string, HTMLElement>();
   const trackRow =
@@ -169,7 +203,6 @@
 {/snippet}
 
 {#snippet cells(call: ToolCallRailCall)}
-  {@render marker(call)}
   <span class="cinder-tool-call-rail__name">
     {#if statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
       >{' '}{/if}{call.name}
@@ -185,9 +218,9 @@
   <span class="cinder-tool-call-rail__duration">{call.duration ?? ''}</span>
 {/snippet}
 
-{#snippet row(call: ToolCallRailCall)}
+{#snippet callRow(call: ToolCallRailCall)}
   {@const selected = selectedId === call.id}
-  <li
+  <div
     class="cinder-tool-call-rail__item"
     data-cinder-status={call.status}
     data-cinder-selected={selected ? '' : undefined}
@@ -260,7 +293,52 @@
     {#if call.nested && children}
       <div class="cinder-tool-call-rail__nested">{@render children(call)}</div>
     {/if}
-  </li>
+  </div>
+{/snippet}
+
+{#snippet foldedGroup(items: readonly ToolCallRailCall[])}
+  <div class="cinder-tool-call-rail__group">
+    <span class="cinder-tool-call-rail__group-body">
+      <button
+        type="button"
+        class="cinder-tool-call-rail__more"
+        aria-expanded="false"
+        onclick={() => toggleGroup(items[0]?.id ?? '')}
+      >
+        <ChevronRight class="cinder-tool-call-rail__more-chevron" aria-hidden="true" />
+        {words.showMore(items.length)}
+      </button>
+      <span class="cinder-tool-call-rail__group-summary">
+        <span class="cinder-tool-call-rail__group-summary-long">
+          {words.folded(items.length, summarizeFoldedNames(items.map((call) => call.name)))}
+        </span>
+        <span class="cinder-tool-call-rail__group-summary-short">
+          {words.foldedShort(items.length)}
+        </span>
+      </span>
+    </span>
+  </div>
+{/snippet}
+
+<!-- Timeline draws the marker column and the connector; the rail draws what sits in each row. -->
+{#snippet railMarker(entry: TimelineEntry)}
+  {#each callsFor(entry.id) as call (call.id)}
+    {@render marker(call)}
+  {/each}
+  {#if groupsFor(entry.id).length > 0}
+    <span class="cinder-tool-call-rail__marker" aria-hidden="true">
+      <span class="cinder-tool-call-rail__dot" data-cinder-faint=""></span>
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet railRow(entry: TimelineEntry)}
+  {#each callsFor(entry.id) as call (call.id)}
+    {@render callRow(call)}
+  {/each}
+  {#each groupsFor(entry.id) as items (entry.id)}
+    {@render foldedGroup(items)}
+  {/each}
 {/snippet}
 
 <section
@@ -320,46 +398,15 @@
       </button>
     {/if}
   {/if}
-  {#if plan.length > 0}
-    <ol id={listId} class="cinder-tool-call-rail__list">
-      {#each plan as entry (entry.kind === 'group' ? `group-${entry.items[0]?.id}` : entry.item.id)}
-        {#if entry.kind === 'item'}
-          {@render row(entry.item)}
-        {:else if openedGroups.has(entry.items[0]?.id ?? '')}
-          {#each entry.items as call (call.id)}
-            {@render row(call)}
-          {/each}
-        {:else}
-          <li class="cinder-tool-call-rail__group">
-            <span class="cinder-tool-call-rail__marker" aria-hidden="true">
-              <span class="cinder-tool-call-rail__dot" data-cinder-faint=""></span>
-            </span>
-            <span class="cinder-tool-call-rail__group-body">
-              <button
-                type="button"
-                class="cinder-tool-call-rail__more"
-                aria-expanded="false"
-                onclick={() => toggleGroup(entry.items[0]?.id ?? '')}
-              >
-                <ChevronRight class="cinder-tool-call-rail__more-chevron" aria-hidden="true" />
-                {words.showMore(entry.items.length)}
-              </button>
-              <span class="cinder-tool-call-rail__group-summary">
-                <span class="cinder-tool-call-rail__group-summary-long">
-                  {words.folded(
-                    entry.items.length,
-                    summarizeFoldedNames(entry.items.map((call) => call.name)),
-                  )}
-                </span>
-                <span class="cinder-tool-call-rail__group-summary-short">
-                  {words.foldedShort(entry.items.length)}
-                </span>
-              </span>
-            </span>
-          </li>
-        {/if}
-      {/each}
-    </ol>
+  {#if rows.length > 0}
+    <Timeline
+      id={listId}
+      class="cinder-tool-call-rail__list"
+      variant="rows"
+      {entries}
+      marker={railMarker}
+      children={railRow}
+    />
   {/if}
   {#if anyGroupOpen}
     <div class="cinder-tool-call-rail__fewer">

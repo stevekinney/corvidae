@@ -114,6 +114,7 @@
     notice,
     result,
     decidedIn,
+    outcomeLabel,
     footnote,
     inputLabel,
     context,
@@ -198,7 +199,7 @@
   const outcomeBase = $derived(
     effectiveState === 'pending' || effectiveState === 'unavailable'
       ? undefined
-      : `${STATE_LABELS[effectiveState]}${decidedBy === undefined ? '' : ` by ${decidedBy}`}${decidedIn === undefined ? '' : ` in ${decidedIn}`}`,
+      : `${outcomeLabel ?? STATE_LABELS[effectiveState]}${decidedBy === undefined ? '' : ` by ${decidedBy}`}${decidedIn === undefined ? '' : ` in ${decidedIn}`}`,
   );
   const outcomeText = $derived(
     outcomeBase !== undefined && decidedIn !== undefined && outcomeTime !== undefined
@@ -237,8 +238,14 @@
   const answeredElsewhere = $derived(
     layout === 'card' && decidedIn !== undefined && isDecidedState && outcomeText !== undefined,
   );
+  // A question answered elsewhere has no tool to name, so its sentence is the question itself.
   const elsewhereSentence = $derived(
-    [`${rowQuestion.replace(/\?$/, '')} · ${tool.label ?? tool.name}.`, notice]
+    [
+      outcomeLabel === undefined
+        ? `${rowQuestion.replace(/\?$/, '')} · ${tool.label ?? tool.name}.`
+        : rowQuestion,
+      notice,
+    ]
       .filter((part) => part !== undefined && part !== '')
       .join(' '),
   );
@@ -254,6 +261,9 @@
     outcomeText !== undefined &&
       (decidedBy !== undefined || decidedAt !== undefined || decidedIn !== undefined),
   );
+  // The Done detail is the record of a decision: eyebrow, question, who decided and when, the input
+  // and the result. What the tool is and what approving would do are asked only while it is open.
+  const detailDone = $derived(layout === 'detail' && isDecidedState && showCardOutcome);
   // A read-only approval says why only when there is something to say: the outcome line already
   // names a decision, so a sentence repeating the state would just be noise.
   const readonlySummary = $derived(
@@ -573,13 +583,15 @@
       {#if context !== undefined}
         <div class="cinder-approval-card__context">{@render context()}</div>
       {/if}
-      <p class="cinder-approval-card__detail-tool">
-        {toolPrefix ?? 'It wants to run'}{' '}{#if tool.label !== undefined}<span
-            class="cinder-approval-card__tool-label">{tool.label}</span
-          >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
-        >{'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-        <span class="cinder-approval-card__risk-word">{riskWord}</span>
-      </p>
+      {#if !detailDone}
+        <p class="cinder-approval-card__detail-tool">
+          {toolPrefix ?? 'It wants to run'}{' '}{#if tool.label !== undefined}<span
+              class="cinder-approval-card__tool-label">{tool.label}</span
+            >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
+          >{'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+          <span class="cinder-approval-card__risk-word">{riskWord}</span>
+        </p>
+      {/if}
     </header>
 
     <div class="cinder-approval-card__detail-body">
@@ -587,7 +599,7 @@
       {@render filesTouchedSection()}
       {@render argumentsPreviewSection()}
 
-      {#if tool.irreversible || consequence !== undefined}
+      {#if !detailDone && (tool.irreversible || consequence !== undefined)}
         <p class="cinder-approval-card__detail-risk">
           <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
           <span>

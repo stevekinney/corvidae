@@ -237,7 +237,12 @@ describe('ToolCallRail rows', () => {
     const { container } = render(ToolCallRail, { props: { calls } });
     const byId = (id: string): HTMLElement =>
       requiredInstance(container.querySelector(`[data-cinder-tool-call-row="${id}"]`), HTMLElement);
-    expect(byId('run').querySelector('.cinder-spinner')).not.toBeNull();
+    // Timeline draws the marker in the entry's own column, beside the row.
+    const markerOf = (id: string): HTMLElement =>
+      requiredInstance(byId(id).closest('li'), HTMLElement);
+    expect(
+      markerOf('run').querySelector('.cinder-timeline-item__marker .cinder-spinner'),
+    ).not.toBeNull();
     expect(text(byId('run').querySelector('.cinder-tool-call-rail__result'))).toBe('Running…');
     expect(text(byId('wait').querySelector('.cinder-tool-call-rail__result'))).toBe(
       'Waiting on you',
@@ -245,10 +250,10 @@ describe('ToolCallRail rows', () => {
     expect(text(byId('deny').querySelector('.cinder-tool-call-rail__result'))).toBe(
       'Denied by you',
     );
-    expect(byId('deny').querySelector('.lucide-ban')).not.toBeNull();
+    expect(markerOf('deny').querySelector('.lucide-ban')).not.toBeNull();
     expect(text(byId('fail').querySelector('.cinder-tool-call-rail__name'))).toBe('Failed: D');
     expect(text(byId('fail').querySelector('.cinder-tool-call-rail__result'))).toBe('→ Boom');
-    expect(byId('ok').querySelector('[data-cinder-status="approved"]')).not.toBeNull();
+    expect(markerOf('ok').querySelector('[data-cinder-status="approved"]')).not.toBeNull();
     // A decision is the person's words, so it has no arrow.
     expect(text(byId('ok').querySelector('.cinder-tool-call-rail__result'))).toBe(
       'Approved by you 10:33 AM',
@@ -361,7 +366,9 @@ describe('ToolCallRail rows', () => {
       'true',
       'false',
     ]);
-    expect(container.querySelector('li[data-cinder-selected]')).not.toBeNull();
+    expect(
+      container.querySelector('li .cinder-tool-call-rail__item[data-cinder-selected]'),
+    ).not.toBeNull();
     await fireEvent.click(requiredInstance(buttons[2], HTMLElement));
     expect(onSelect).toHaveBeenCalledWith('call-2');
   });
@@ -420,6 +427,57 @@ describe('ToolCallRail rows', () => {
     expect(container.querySelector('ol')?.id).toBe(
       summary(container)?.getAttribute('aria-controls') ?? 'none',
     );
+  });
+});
+
+describe('ToolCallRail on Timeline', () => {
+  test('the rows are entries of the rows variant, so Timeline draws the marker column', () => {
+    const { container } = render(ToolCallRail, { props: { calls: turn(4) } });
+
+    const list = requiredInstance(container.querySelector('ol'), HTMLOListElement);
+    expect(list.classList.contains('cinder-timeline')).toBe(true);
+    expect(list.getAttribute('data-cinder-variant')).toBe('rows');
+    const items = [...list.querySelectorAll(':scope > li.cinder-timeline-item')];
+    expect(items.length).toBe(4);
+    for (const item of items) {
+      expect(
+        item.querySelector(':scope > .cinder-timeline-item__event > .cinder-timeline-item__marker'),
+      ).not.toBeNull();
+    }
+    // Four calls on a rail: the connector joins every marker and ends at the last.
+    expect(items.map((item) => item.getAttribute('data-cinder-connector-after'))).toEqual([
+      'visible',
+      'visible',
+      'visible',
+      'hidden',
+    ]);
+  });
+
+  test('a folded group is one Timeline entry with its own marker', () => {
+    const { container } = render(ToolCallRail, { props: { calls: turn(12) } });
+
+    const group = requiredInstance(
+      container.querySelector('.cinder-tool-call-rail__group'),
+      HTMLElement,
+    );
+    const item = requiredInstance(group.closest('li.cinder-timeline-item'), HTMLElement);
+    expect(item.querySelector('.cinder-timeline-item__marker [data-cinder-faint]')).not.toBeNull();
+  });
+
+  test('the rail draws no marker column or connector of its own', () => {
+    expect(cssText).toContain("@import '../timeline/timeline.css';");
+    expect(cssText).not.toContain('.cinder-tool-call-rail__list::before');
+    expect(cssText).not.toMatch(/\.cinder-tool-call-rail__marker \{[^}]*grid-column/);
+  });
+
+  test('a narrow container moves the marker down to the first line and drops the connector', () => {
+    const narrow =
+      /@container cinder-tool-call-rail \(max-width: 28rem\) \{(.*)\n {2}\}\n/s.exec(
+        cssText,
+      )?.[1] ?? '';
+    expect(narrow).toMatch(/--cinder-timeline-row-marker-offset:\s*0\.5625rem/);
+    expect(narrow).toMatch(/--cinder-timeline-row-gap:\s*0px/);
+    expect(narrow).toMatch(/\.cinder-timeline-item__event::before[^{]*\{[^}]*display:\s*none/s);
   });
 });
 
