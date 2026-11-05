@@ -580,7 +580,7 @@ describe('the hook editor', () => {
           revision: 1,
           timeZone: 'UTC',
           nextFireAt: null,
-          skipUntil: null,
+          skippedOccurrences: [],
           lastFireAt: null,
           missedFireCount: 0,
           skippedCount: 0,

@@ -530,7 +530,7 @@ describe('ScheduleDetail', () => {
     }
   });
 
-  test('Skip skips exactly the next run, crosses its time out, says so, and takes the button away', async () => {
+  test('Skip on a later run skips exactly that run, crosses its time out, offers Undo in its place, and Undo takes the skip back', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -543,27 +543,45 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, getByTestId, queryByRole } = render(ScheduleDetailHarness, {
+      const { getAllByRole, getByRole, getByTestId, queryByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'skip-probe' },
       });
+      const struck = () =>
+        Array.from(
+          getByTestId('schedule-runs').querySelectorAll('li[data-cinder-tone="pending"] time'),
+          (time) => time.hasAttribute('data-cinder-struck'),
+        );
 
-      // One Skip, on the run the engine would skip: the nearest, which is the last upcoming row.
-      await fireEvent.click(await waitFor(() => getByRole('button', { name: /^Skip / })));
+      // Every upcoming run offers Skip; the middle one is the run after the next.
+      const skips = await waitFor(() => {
+        const found = getAllByRole('button', { name: /^Skip / });
+        expect(found).toHaveLength(3);
+        return found;
+      });
+      await fireEvent.click(skips[1]!);
 
       await waitFor(async () => {
         const schedule = await client.getSchedule('skip-probe');
-        expect(schedule?.skipUntil).toBeDefined();
+        expect(schedule?.skippedOccurrences).toHaveLength(1);
+        expect(schedule?.skippedOccurrences?.[0]).toBeGreaterThan(schedule?.nextFireAt ?? 0);
       });
+      await waitFor(() => expect(struck()).toEqual([false, true, false]));
       const list = getByTestId('schedule-runs');
-      await waitFor(() =>
-        expect(
-          Array.from(list.querySelectorAll('li[data-cinder-tone="pending"] time'), (time) =>
-            time.hasAttribute('data-cinder-struck'),
-          ),
-        ).toEqual([false, false, true]),
-      );
       expect(within(list).getByText('Skipped')).not.toBeNull();
-      expect(queryByRole('button', { name: /^Skip / })).toBeNull();
+      expect(getAllByRole('button', { name: /^Skip / })).toHaveLength(2);
+      const undo = getByRole('button', { name: /^Undo skipping / });
+      // Undo sits on the row only: the page raises no toast beside it.
+      expect(queryByRole('status', { name: /skipped/i })).toBeNull();
+
+      await fireEvent.click(undo);
+
+      await waitFor(async () => {
+        const schedule = await client.getSchedule('skip-probe');
+        expect(schedule?.skippedOccurrences).toBeUndefined();
+      });
+      await waitFor(() => expect(struck()).toEqual([false, false, false]));
+      expect(queryByRole('button', { name: /^Undo skipping / })).toBeNull();
+      expect(getAllByRole('button', { name: /^Skip / })).toHaveLength(3);
     } finally {
       await server.stop();
     }
@@ -581,18 +599,18 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, findByTestId } = render(ScheduleDetailHarness, {
+      const { getAllByRole, findByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'stale-probe' },
       });
-      const skip = await waitFor(() => getByRole('button', { name: /^Skip / }));
+      const skip = await waitFor(() => getAllByRole('button', { name: /^Skip / }).at(-1));
       // Another caller changes the cadence after the page read the schedule.
       await client.updateSchedule('stale-probe', { cron: '0 10 * * *' });
-      await fireEvent.click(skip);
+      await fireEvent.click(skip!);
 
       const notice = await findByTestId('schedule-notice');
       expect(notice.getAttribute('data-notice')).toBe('stale');
       const after = await client.getSchedule('stale-probe');
-      expect(after?.skipUntil).toBeUndefined();
+      expect(after?.skippedOccurrences).toBeUndefined();
     } finally {
       await server.stop();
     }

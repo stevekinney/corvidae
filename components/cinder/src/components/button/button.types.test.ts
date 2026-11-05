@@ -34,7 +34,7 @@ import type { ButtonProps } from './button.types.ts';
 // future accidental change to the real type is still caught here.
 
 type _SnapshotVariant =
-  'primary' | 'secondary' | 'soft' | 'danger' | 'soft-danger' | 'ghost' | 'ghost-danger';
+  'primary' | 'secondary' | 'soft' | 'danger' | 'soft-danger' | 'ghost' | 'ghost-danger' | 'link';
 
 type _SnapshotSize = 'xs' | 'sm' | 'md' | 'lg';
 

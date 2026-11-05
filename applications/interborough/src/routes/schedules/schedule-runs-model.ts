@@ -34,8 +34,6 @@ export type UpcomingRow = {
   readonly relative: string;
   /** Whether a person asked to skip it. */
   readonly skipped: boolean;
-  /** Whether "Skip" is offered on it: the run the engine would skip, the next that would start one. */
-  readonly skippable: boolean;
   /** The second line of a run that will not start: "won't start · Order refund can't load · no provider". */
   readonly note: string | undefined;
 };
@@ -62,8 +60,9 @@ function blockerNote(blockers: readonly RowBlocker[]): string {
 }
 
 /**
- * The runs a schedule has coming, farthest first. An occurrence that is due and will not start
- * says why on a second line, because skipping it still prevents the start once things are fixed.
+ * The runs a schedule has coming, farthest first. Any of them can be skipped, and a skipped one
+ * taken back. An occurrence that is due and will not start says why on a second line, because
+ * skipping it still prevents the start once things are fixed.
  */
 export function upcomingRows(
   schedule: ScheduleSummary,
@@ -77,8 +76,6 @@ export function upcomingRows(
   const fires = upcomingFires({ ...schedule, status: 'active' }, UPCOMING_RUN_LIMIT, now).filter(
     (fire, index) => index === 0 || fire.at - now <= UPCOMING_HORIZON_MS,
   );
-  const firstRunnable = fires.find((fire) => !fire.skipped);
-  const anySkipped = fires.some((fire) => fire.skipped);
   const wontStart = row.allBlockers.length > 0;
   return fires
     .map((fire, index) => ({
@@ -86,9 +83,6 @@ export function upcomingRows(
       absolute: formatDateTime(fire.at, { dayWords: false, now }),
       relative: relativeOf(fire.at, now),
       skipped: fire.skipped,
-      // The engine skips one run at a time, the next that would start: one that is skipped already
-      // leaves nothing else to skip until it has passed.
-      skippable: fire === firstRunnable && !anySkipped,
       // Only the run that is due next is said to be held, the one the blockers keep from starting.
       note: wontStart && index === 0 && !fire.skipped ? blockerNote(row.allBlockers) : undefined,
     }))

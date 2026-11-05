@@ -329,7 +329,7 @@ for (const width of WIDTHS) {
     await openSchedule(page, 'Daily summary');
     const list = runsList(page);
 
-    // Upcoming runs are listed farthest first, with how far away each is; Skip is on the next one.
+    // Upcoming runs are listed farthest first, with how far away each is; each offers Skip.
     const upcoming = list.locator('li[data-cinder-tone="pending"]');
     await expect(upcoming).toHaveCount(3);
     await expect(upcoming.nth(0)).toContainText('Thu Nov 5, 3:00 AM');
@@ -337,8 +337,10 @@ for (const width of WIDTHS) {
     await expect(upcoming.nth(1)).toContainText('Wed Nov 4, 3:00 AM');
     await expect(upcoming.nth(2)).toContainText('Tue Nov 3, 3:00 AM');
     await expect(upcoming.nth(2)).toContainText('in 16 hours');
-    await expect(list.getByRole('button', { name: /^Skip / })).toHaveCount(1);
-    await expect(upcoming.nth(2).getByRole('button', { name: /^Skip / })).toBeVisible();
+    await expect(list.getByRole('button', { name: /^Skip / })).toHaveCount(3);
+    for (let index = 0; index < 3; index += 1) {
+      await expect(upcoming.nth(index).getByRole('button', { name: /^Skip / })).toBeVisible();
+    }
 
     // The Now marker splits upcoming from past, with the time the page reads.
     const now = list.locator('li[data-cinder-kind="now"]');
@@ -403,6 +405,97 @@ for (const width of WIDTHS) {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 }
+
+for (const width of WIDTHS) {
+  test(`a skipped occurrence is struck through, says Skipped and offers Undo on its row, and Undo restores it, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await openSchedule(page, 'Daily summary');
+    const list = runsList(page);
+    const upcoming = list.locator('li[data-cinder-tone="pending"]');
+    await expect(upcoming).toHaveCount(3);
+    const undo = list.getByRole('button', { name: 'Undo skipping Tue Nov 3, 3:00 AM' });
+    try {
+      await upcoming.nth(2).getByRole('button', { name: 'Skip Tue Nov 3, 3:00 AM' }).click();
+
+      // The Tue Nov 3 run is struck through and says Skipped, with Undo in place of its Skip.
+      await expect(upcoming.nth(2).locator('time')).toHaveAttribute('data-cinder-struck', '');
+      await expect(upcoming.nth(2).getByTestId('schedule-skipped')).toHaveText('Skipped');
+      await expect(upcoming.nth(2)).toContainText('in 16 hours');
+      await expect(undo).toBeVisible();
+      await expect(undo).toHaveText('Undo');
+      await expect(undo.locator('svg')).toHaveCount(1);
+      await expect(upcoming.nth(2).getByRole('button', { name: /^Skip / })).toHaveCount(0);
+      // The Thu Nov 5 and Wed Nov 4 rows keep Skip, and nothing but the row says so: no toast.
+      await expect(
+        upcoming.nth(0).getByRole('button', { name: 'Skip Thu Nov 5, 3:00 AM' }),
+      ).toBeVisible();
+      await expect(
+        upcoming.nth(1).getByRole('button', { name: 'Skip Wed Nov 4, 3:00 AM' }),
+      ).toBeVisible();
+      await expect(list.locator('time[data-cinder-struck]')).toHaveCount(1);
+      await expect(page.locator('[data-cinder-toast-id]')).toHaveCount(0);
+      // The heading, its status and the Now marker are as the main frame draws them.
+      await expect(
+        page.getByRole('switch', { name: 'Active, Daily summary schedule' }),
+      ).toBeChecked();
+      await expect(page.locator('main')).toContainText('Missed runs · 4');
+      await expect(list.locator('li[data-cinder-kind="now"]')).toContainText('Mon Nov 2, 10:46 AM');
+      // The pointer leaves the row, so the capture shows Undo at rest rather than hovered.
+      await page.mouse.move(0, 0);
+      await captureForDesignReview(page, {
+        route: '/schedules/:schedule',
+        state: 'skipped occurrence',
+        source: SOURCE,
+      });
+      await checkA11y(`schedule detail, skipped occurrence at ${width}px`);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+
+      // The skip is the engine's, so it is there after a reload.
+      await page.reload();
+      await expect(undo).toBeVisible();
+
+      await undo.click();
+      await expect(list.locator('time[data-cinder-struck]')).toHaveCount(0);
+      await expect(list.getByRole('button', { name: /^Skip / })).toHaveCount(3);
+      await expect(undo).toHaveCount(0);
+    } finally {
+      // Leave the world as every other specification reads it.
+      if ((await undo.count()) > 0) await undo.click();
+      await expect(list.locator('time[data-cinder-struck]')).toHaveCount(0);
+    }
+  });
+}
+
+test('Weekly refund audit, held for its workflow, skips a run and takes the skip back', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSchedule(page, 'Weekly refund audit');
+  const upcoming = runsList(page).locator('li[data-cinder-tone="pending"]');
+  await expect(upcoming).toHaveCount(2);
+  const undo = upcoming.nth(0).getByRole('button', { name: 'Undo skipping Mon Nov 9, 11:00 AM' });
+  try {
+    await upcoming.nth(0).getByRole('button', { name: 'Skip Mon Nov 9, 11:00 AM' }).click();
+    await expect(upcoming.nth(0).locator('time')).toHaveAttribute('data-cinder-struck', '');
+    await expect(upcoming.nth(0).getByTestId('schedule-skipped')).toHaveText('Skipped');
+    // The run that is due keeps its note and its Skip.
+    await expect(upcoming.nth(1).getByTestId('schedule-fire-note')).toBeVisible();
+    await expect(upcoming.nth(1).getByRole('button', { name: /^Skip / })).toBeVisible();
+
+    await undo.click();
+    await expect(runsList(page).locator('time[data-cinder-struck]')).toHaveCount(0);
+    await expect(runsList(page).getByRole('button', { name: /^Skip / })).toHaveCount(2);
+  } finally {
+    if ((await undo.count()) > 0) await undo.click();
+    await expect(runsList(page).locator('time[data-cinder-struck]')).toHaveCount(0);
+  }
+});
 
 test('Run once now starts one run, not one per miss', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
@@ -528,6 +621,13 @@ for (const width of WIDTHS) {
     await expect(upcoming.nth(1).getByTestId('schedule-fire-note')).toHaveText(
       'won’t start · Order refund can’t load · no provider',
     );
+    // Both keep Skip, because skipping one prevents its start once things are fixed.
+    await expect(
+      upcoming.nth(0).getByRole('button', { name: 'Skip Mon Nov 9, 11:00 AM' }),
+    ).toBeVisible();
+    await expect(
+      upcoming.nth(1).getByRole('button', { name: 'Skip Mon Nov 2, 11:00 AM' }),
+    ).toBeVisible();
     await expect(list.locator('li[data-cinder-kind="now"]')).toContainText('Mon Nov 2, 10:46 AM');
 
     // Below Now, a compact empty state says why nothing has run.

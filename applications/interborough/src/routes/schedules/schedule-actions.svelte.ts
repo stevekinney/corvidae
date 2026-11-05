@@ -1,5 +1,5 @@
 /**
- * Pause, resume, skip next, run now, and cancel for the schedules list and a schedule's page, sharing one way of
+ * Pause, resume, skip a run or undo the skip, run now, and cancel for the schedules list and a schedule's page, sharing one way of
  * answering a write that did not go through. Called while a component initialises, because it
  * creates mutations.
  *
@@ -24,6 +24,7 @@ import {
   runNowTarget,
   skipNextTarget,
   StaleScheduleError,
+  unskipTarget,
   type ScheduleTarget,
 } from './schedule-writes.ts';
 
@@ -76,17 +77,25 @@ export function createScheduleActions(
   const pause = writer(pauseTarget, SCHEDULE_COPY.pauseFailed);
   const resume = writer(resumeTarget, SCHEDULE_COPY.resumeFailed);
   const cancel = writer(cancelTarget, SCHEDULE_COPY.cancelFailed);
-  /** A skip names the run the person saw, which the server compares inside its own write. */
-  const skipNext = createMutation(() => ({
-    mutationFn: ({ target, occurrence }: { target: ScheduleTarget; occurrence: number }) =>
-      skipNextTarget(client, target, occurrence),
-    onMutate: () => {
-      notice = null;
-    },
-    onSuccess: reload,
-    onError: (error: unknown, { target }: { target: ScheduleTarget; occurrence: number }) =>
-      answer(error, target, SCHEDULE_COPY.skipFailed),
-  }));
+  /**
+   * A skip, or its undoing, names the run the person saw, which the server compares inside its own
+   * write.
+   */
+  function occurrenceWriter(write: typeof skipNextTarget, title: string) {
+    return createMutation(() => ({
+      mutationFn: ({ target, occurrence }: { target: ScheduleTarget; occurrence: number }) =>
+        write(client, target, occurrence),
+      onMutate: () => {
+        notice = null;
+      },
+      onSuccess: reload,
+      onError: (error: unknown, { target }: { target: ScheduleTarget; occurrence: number }) =>
+        answer(error, target, title),
+    }));
+  }
+
+  const skip = occurrenceWriter(skipNextTarget, SCHEDULE_COPY.skipFailed);
+  const unskip = occurrenceWriter(unskipTarget, SCHEDULE_COPY.unskipFailed);
   const runNow = createMutation(() => ({
     mutationFn: (target: ScheduleTarget) => runNowTarget(client, target),
     onMutate: () => {
@@ -104,7 +113,8 @@ export function createScheduleActions(
     pause,
     resume,
     cancel,
-    skipNext,
+    skip,
+    unskip,
     runNow,
     get notice(): ScheduleNotice | null {
       return notice;
@@ -117,7 +127,8 @@ export function createScheduleActions(
         pause.isPending ||
         resume.isPending ||
         cancel.isPending ||
-        skipNext.isPending ||
+        skip.isPending ||
+        unskip.isPending ||
         runNow.isPending
       );
     },

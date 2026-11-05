@@ -44,6 +44,16 @@ describe('Button rendering', () => {
     );
   });
 
+  test('supports the link variant, which stays a button', () => {
+    const { container } = render(Button, {
+      props: { label: 'Undo', variant: 'link', size: 'sm' },
+    });
+
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('data-cinder-variant')).toBe('link');
+    expect(button?.getAttribute('type')).toBe('button');
+  });
+
   test('loading button is aria-disabled and aria-busy, and stays focusable (no native disabled)', () => {
     const { container } = render(Button, { props: { label: 'sending', loading: true } });
     const button = container.querySelector('button');

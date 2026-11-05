@@ -18,8 +18,8 @@ export type ScheduleTiming = {
   readonly nextFireAt?: number | null | undefined;
   /** The most recent occurrence that started a run, in milliseconds. */
   readonly lastFireAt?: number | undefined;
-  /** The fire a person asked to skip, in milliseconds. */
-  readonly skipUntil?: number | undefined;
+  /** The upcoming fires a person asked to skip, in milliseconds. */
+  readonly skippedOccurrences?: readonly number[] | undefined;
 };
 
 /** One run the schedule has coming: when, and whether a person asked to skip it. */
@@ -129,8 +129,8 @@ function occurrenceAnchor(
  * The next `count` runs of an active schedule, soonest first, counted from the engine's
  * `nextFireAt` (a cron's are the expression read in its zone after it, an interval's are each
  * interval after it) so the list changes only when the schedule does. A time the engine does not
- * fire at, such as one inside a daylight-saving gap, is left out. Only the run at `skipUntil` is
- * marked skipped. A paused or cancelled schedule has none, and an expression that cannot be read
+ * fire at, such as one inside a daylight-saving gap, is left out. The runs in `skippedOccurrences`
+ * are marked skipped. A paused or cancelled schedule has none, and an expression that cannot be read
  * has none either. `now` stands in for `nextFireAt` only when the schedule carries none.
  */
 export function upcomingFires(
@@ -158,6 +158,6 @@ export function upcomingFires(
         (Math.floor((anchor.from - (timing.nextFireAt ?? 0)) / step) + 1) * step;
     times = Array.from({ length: count }, (_, index) => first + index * step);
   }
-  const skipUntil = timing.skipUntil;
-  return times.map((at) => ({ at, skipped: skipUntil !== undefined && at === skipUntil }));
+  const skipped = new Set(timing.skippedOccurrences);
+  return times.map((at) => ({ at, skipped: skipped.has(at) }));
 }

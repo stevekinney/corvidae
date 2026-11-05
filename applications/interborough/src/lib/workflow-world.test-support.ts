@@ -94,8 +94,8 @@ export type ScheduleFixture = {
   lastMissedFireAt?: number;
   skippedCount: number;
   nextFireAt: number | null;
-  /** The fire a person asked to skip, set by the Bureau's skip next. */
-  skipUntil?: number;
+  /** The fires a person asked to skip, set by the Bureau's skip and unskip, soonest first. */
+  skippedOccurrences?: number[];
   queuedRuns: unknown[];
 };
 
@@ -470,7 +470,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     overlap: schedule.overlap,
     revision: schedule.revision,
     nextFireAt: iso(schedule.nextFireAt),
-    skipUntil: iso(schedule.skipUntil ?? null),
+    skippedOccurrences: (schedule.skippedOccurrences ?? []).map((at) => iso(at)),
     lastFireAt: iso(schedule.lastFireAt ?? null),
     missedFireCount: schedule.missedFireCount,
     skippedCount: schedule.skippedCount,
@@ -595,17 +595,28 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     },
     'bureau.schedules.skipnext': (params) => {
       const schedule = bureauGuarded(params);
-      if (schedule.status !== 'active') throw workflowFaults.notFound('an active schedule');
-      // A skip that names a run is refused when it is neither the next run nor the one already
-      // skipped, as the Bureau does inside its write.
-      const occurrence = params['occurrence'];
-      if (
-        typeof occurrence === 'string' &&
-        Date.parse(occurrence) !== (schedule.skipUntil ?? schedule.nextFireAt)
-      ) {
+      if (schedule.status === 'cancelled') throw workflowFaults.notFound('a schedule to skip');
+      // A skip that names a run is refused when it is before the next run, as the Bureau does
+      // inside its write; any upcoming run after it can be skipped.
+      const named = params['occurrence'];
+      const occurrence = typeof named === 'string' ? Date.parse(named) : schedule.nextFireAt;
+      if (occurrence === null) return receipt(schedule);
+      if (schedule.nextFireAt !== null && occurrence < schedule.nextFireAt) {
         throw workflowFaults.occurrenceNotNext();
       }
-      if (schedule.nextFireAt !== null) schedule.skipUntil = schedule.nextFireAt;
+      const skipped = new Set([...(schedule.skippedOccurrences ?? []), occurrence]);
+      schedule.skippedOccurrences = [...skipped].toSorted((left, right) => left - right);
+      return receipt(schedule);
+    },
+    'bureau.schedules.unskip': (params) => {
+      const schedule = bureauGuarded(params);
+      const occurrence = Date.parse(String(params['occurrence']));
+      if (schedule.nextFireAt !== null && occurrence < schedule.nextFireAt) {
+        throw workflowFaults.occurrenceNotNext();
+      }
+      const kept = (schedule.skippedOccurrences ?? []).filter((at) => at !== occurrence);
+      if (kept.length === 0) delete schedule.skippedOccurrences;
+      else schedule.skippedOccurrences = kept;
       return receipt(schedule);
     },
     'bureau.schedules.runnow': (params) => {

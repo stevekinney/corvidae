@@ -15,6 +15,7 @@ import {
   resumeAgentSchedule,
   runNowAgentSchedule,
   skipNextAgentSchedule,
+  unskipAgentSchedule,
   type MissedFire,
   type RunNowOutcome,
 } from '../../lib/bureau-schedules.ts';
@@ -32,6 +33,7 @@ import {
   resumeSchedule,
   runNowSchedule,
   skipNextSchedule,
+  unskipSchedule,
   type ScheduleControlClient,
 } from './schedule-queries.ts';
 
@@ -46,8 +48,12 @@ export type ScheduleActions = {
   readonly pause: boolean;
   readonly resume: boolean;
   readonly cancel: boolean;
-  /** Skip the next fire: an active schedule an owner writes. */
-  readonly skipNext: boolean;
+  /**
+   * Skip an upcoming run, or take a skip back: a schedule that is not cancelled. A paused one lists
+   * no upcoming runs, except a workflow file's schedule the Bureau holds while its file cannot
+   * load, whose runs are still coming and can be skipped.
+   */
+  readonly skip: boolean;
   /**
    * Start one run now: a schedule that is not cancelled, paused included. A workflow file's
    * schedule starts the file with the values its trigger sends, which it refuses while the file
@@ -69,7 +75,7 @@ export function actionsOf(target: ScheduleTarget): ScheduleActions {
     pause: false,
     resume: false,
     cancel: false,
-    skipNext: false,
+    skip: false,
     runNow: false,
     edit: false,
     editInWorkflow: false,
@@ -83,7 +89,7 @@ export function actionsOf(target: ScheduleTarget): ScheduleActions {
         pause: status === 'active',
         resume: status === 'paused',
         cancel: true,
-        skipNext: status === 'active',
+        skip: true,
         runNow: true,
         edit: true,
         editInWorkflow: false,
@@ -95,8 +101,9 @@ export function actionsOf(target: ScheduleTarget): ScheduleActions {
         resume: writable && status === 'paused',
         cancel: false,
         // A skip is bookkeeping on the engine's schedule, not a change to the file, so a file's
-        // schedule can have its next run skipped as any other.
-        skipNext: status === 'active',
+        // schedule can have its runs skipped as any other, the one held while its file cannot
+        // load included.
+        skip: true,
         runNow: true,
         edit: false,
         editInWorkflow: true,
@@ -202,10 +209,10 @@ async function assertUnchanged(
 }
 
 /**
- * Skips the run the person saw (`occurrence`, in milliseconds since the epoch), through the service
- * that owns the schedule. A fire moves neither the revision nor the status, so the server compares
- * the run inside its own write; a skip it refuses because that run is no longer the next one is
- * raised as a {@link StaleScheduleError}, and the page reads the schedule again.
+ * Skips the run the person saw (`occurrence`, in milliseconds since the epoch), the next or a later
+ * one, through the service that owns the schedule. A fire moves neither the revision nor the status,
+ * so the server compares the run inside its own write; a skip it refuses because that run is no
+ * longer upcoming is raised as a {@link StaleScheduleError}, and the page reads the schedule again.
  */
 export async function skipNextTarget(
   client: HttpClient,
@@ -235,6 +242,42 @@ export async function skipNextTarget(
       return;
     case 'unknown':
       return refuse(target, 'skipped');
+  }
+}
+
+/**
+ * Takes back the skip of the run the person saw (`occurrence`), so it starts after all, through
+ * the service that owns the schedule. A run that has passed since the page read it is refused by
+ * the server, and is raised as a {@link StaleScheduleError}, so the page reads the schedule again.
+ */
+export async function unskipTarget(
+  client: HttpClient,
+  target: ScheduleTarget,
+  occurrence: number,
+): Promise<void> {
+  switch (target.kind.kind) {
+    case 'agent-run':
+      try {
+        await unskipAgentSchedule(target.schedule.id, target.schedule.revision, occurrence);
+      } catch (error) {
+        if (isOccurrenceNotNext(error)) throw new StaleScheduleError(target.schedule.id);
+        throw error;
+      }
+      return;
+    case 'code':
+    case 'workflow-file':
+      await assertUnchanged(client, target);
+      try {
+        await unskipSchedule(client, target.schedule.id, occurrence);
+      } catch (error) {
+        if (isWeftFault(error, 'ScheduleOccurrenceNotNextError')) {
+          throw new StaleScheduleError(target.schedule.id);
+        }
+        throw error;
+      }
+      return;
+    case 'unknown':
+      return refuse(target, 'unskipped');
   }
 }
 

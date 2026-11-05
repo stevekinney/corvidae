@@ -470,9 +470,10 @@
           {schedule}
           {row}
           {now}
-          canSkip={allowed.skipNext && !writeGate.disabled}
+          canSkip={allowed.skip && !writeGate.disabled}
           busy={actions.busy}
-          onSkip={(occurrence) => actions.skipNext.mutate({ target, occurrence })}
+          onSkip={(occurrence) => actions.skip.mutate({ target, occurrence })}
+          onUnskip={(occurrence) => actions.unskip.mutate({ target, occurrence })}
           runOnce={allowed.runNow
             ? {
                 reason: runNowReason,

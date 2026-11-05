@@ -1,6 +1,6 @@
 /**
  * What the controls of a schedule's page do for each kind of schedule, driven against
- * `installWorkflowWorld` as `schedule-owners.test.ts` is: Skip the next one and Run now go through
+ * `installWorkflowWorld` as `schedule-owners.test.ts` is: Skip, Undo and Run now go through
  * the service that owns the schedule (the Bureau, naming the revision the page read, for an agent
  * run), a workflow file's schedule offers neither, a run now says what the overlap policy did, and
  * the fires a schedule missed are listed among its past runs from the service that recorded them.
@@ -74,7 +74,7 @@ function open(
   return render(IndexHarness, { props: { client: stub.client, externalBureau: true } });
 }
 
-describe('Skip the next one, for an agent run', () => {
+describe('Skip and Undo, for an agent run', () => {
   test('goes through the Bureau naming the revision and the run the page read, and marks the skipped run', async () => {
     const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
 
@@ -90,6 +90,34 @@ describe('Skip the next one, for an agent run', () => {
     await waitFor(() => expect(list.querySelector('time[data-cinder-struck]')).not.toBeNull());
   });
 
+  test('Undo goes through the Bureau naming the revision and the skipped run, and the run is skipped no more', async () => {
+    const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`, {
+      schedules: [
+        scheduleFixture(AGENT_SCHEDULE, 'agentRun', {
+          description: 'Daily summary',
+          revision: 3,
+          cronExpression: '0 9 * * *',
+          nextFireAt: NEXT_FIRE,
+          skippedOccurrences: [NEXT_FIRE],
+        }),
+      ],
+    });
+
+    await fireEvent.click(await findByRole('button', { name: /^Undo skipping / }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.unskip')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.schedules.unskip')[0]?.params).toEqual({
+      scheduleId: AGENT_SCHEDULE,
+      occurrence: '2030-01-01T09:00:00.000Z',
+      expectedRevision: 3,
+    });
+    const list = await findByTestId('schedule-runs');
+    await waitFor(() =>
+      expect(list.querySelector('time[data-cinder-struck]')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(await findByRole('button', { name: /^Skip / })).not.toBeNull();
+  });
+
   test('is refused as stale when the schedule changed after the page read it, and writes nothing', async () => {
     const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
     const skip = await findByRole('button', { name: /^Skip / });
@@ -101,7 +129,7 @@ describe('Skip the next one, for an agent run', () => {
 
     const notice = await findByTestId('schedule-notice');
     expect(notice.getAttribute('data-notice')).toBe('stale');
-    expect(schedule.skipUntil).toBeUndefined();
+    expect(schedule.skippedOccurrences).toBeUndefined();
   });
 
   test('is refused as stale when a fire moved the next run after the page read it, and the page reads the schedule again', async () => {
@@ -118,7 +146,7 @@ describe('Skip the next one, for an agent run', () => {
 
     const notice = await findByTestId('schedule-notice');
     expect(notice.getAttribute('data-notice')).toBe('stale');
-    expect(schedule.skipUntil).toBeUndefined();
+    expect(schedule.skippedOccurrences).toBeUndefined();
     const list = await findByTestId('schedule-runs');
     // The nearest run is the last upcoming row, against the Now marker.
     await waitFor(() =>
@@ -182,8 +210,8 @@ describe('Run now, for an agent run', () => {
 });
 
 describe('a workflow file’s schedule', () => {
-  test('offers Skip on its next run, and Run now starts the file with what its trigger sends', async () => {
-    const { findByRole, findByText } = open(`/schedules/${FILE_SCHEDULE}`, {
+  test('offers Skip on its upcoming runs, and Run now starts the file with what its trigger sends', async () => {
+    const { findAllByRole, findByRole, findByText } = open(`/schedules/${FILE_SCHEDULE}`, {
       files: [
         readyFile('digest', {
           trigger: { kind: 'schedule', spec: '0 6 * * *', input: { branch: 'main' } },
@@ -192,7 +220,8 @@ describe('a workflow file’s schedule', () => {
     });
 
     await findByRole('switch', { name: 'Active, Workflow digest schedule' });
-    expect(await findByRole('button', { name: /^Skip / })).not.toBeNull();
+    const skips = await findAllByRole('button', { name: /^Skip / });
+    expect(skips.length).toBeGreaterThan(0);
 
     await fireEvent.click(await findByRole('button', { name: 'Run now' }));
 

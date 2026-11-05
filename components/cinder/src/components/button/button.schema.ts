@@ -5,7 +5,16 @@ const schema = {
   type: 'object',
   properties: {
     variant: {
-      enum: ['primary', 'secondary', 'soft', 'danger', 'soft-danger', 'ghost', 'ghost-danger'],
+      enum: [
+        'primary',
+        'secondary',
+        'soft',
+        'danger',
+        'soft-danger',
+        'ghost',
+        'ghost-danger',
+        'link',
+      ],
       description: 'Visual style.',
       default: 'secondary',
     },

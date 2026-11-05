@@ -189,21 +189,46 @@ export interface ScheduleControlClient {
 
 /**
  * `POST /api/v1/schedules/:id/skip-next` ('weft.schedules.skipnext'): skips the run the caller
- * read. A fire moves neither the revision nor the status, so the body names that run
- * (`occurrence`, in milliseconds since the epoch, the `nextFireAt` the page showed), and the engine
- * refuses the skip when it is no longer the schedule's next run, as `ScheduleOccurrenceNotNextError`
- * (`isWeftFault(error, 'ScheduleOccurrenceNotNextError')`). It answers `204` with no body, which the
- * JSON-RPC operation client reads as an invalid response, so this is the REST call, made with the
- * client's own address and headers. A refusal is an `HttpClientError`, as every other write of the
- * client raises, carrying the `weftCode` the body names.
+ * read, the next or any upcoming one after it. A fire moves neither the revision nor the status, so
+ * the body names that run (`occurrence`, in milliseconds since the epoch, as the page showed it),
+ * and the engine refuses the skip when it is no longer an upcoming run, as
+ * `ScheduleOccurrenceNotNextError` (`isWeftFault(error, 'ScheduleOccurrenceNotNextError')`). It
+ * answers `204` with no body, which the JSON-RPC operation client reads as an invalid response, so
+ * this is the REST call, made with the client's own address and headers. A refusal is an
+ * `HttpClientError`, as every other write of the client raises, carrying the `weftCode` the body
+ * names.
  */
-export async function skipNextSchedule(
+export function skipNextSchedule(
   client: Pick<HttpClient, 'baseUrl' | 'headers'>,
   id: string,
   occurrence: number,
 ): Promise<void> {
+  return postOccurrence(client, id, 'skip-next', occurrence);
+}
+
+/**
+ * `POST /api/v1/schedules/:id/unskip` ('weft.schedules.unskip'): takes back the skip of the run the
+ * caller read, so it starts after all. The engine refuses a run that has already passed as
+ * `ScheduleOccurrenceNotNextError`, and changes nothing for one that is not skipped. The REST call,
+ * for the reason {@link skipNextSchedule} gives.
+ */
+export function unskipSchedule(
+  client: Pick<HttpClient, 'baseUrl' | 'headers'>,
+  id: string,
+  occurrence: number,
+): Promise<void> {
+  return postOccurrence(client, id, 'unskip', occurrence);
+}
+
+/** Posts `{ occurrence }` to one of a schedule's occurrence controls, raising a refusal as an `HttpClientError`. */
+async function postOccurrence(
+  client: Pick<HttpClient, 'baseUrl' | 'headers'>,
+  id: string,
+  control: 'skip-next' | 'unskip',
+  occurrence: number,
+): Promise<void> {
   const response = await fetch(
-    `${client.baseUrl}/v1/schedules/${encodeURIComponent(id)}/skip-next`,
+    `${client.baseUrl}/v1/schedules/${encodeURIComponent(id)}/${control}`,
     {
       method: 'POST',
       headers: { ...client.headers, 'Content-Type': 'application/json' },

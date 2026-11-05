@@ -13,6 +13,8 @@
     now: number;
     canSkip?: boolean;
     onSkip?: (occurrence: number) => void;
+    onUnskip?: (occurrence: number) => void;
+    busy?: boolean;
     runOnce?: {
       readonly reason: string | null;
       readonly disabled: boolean;
@@ -27,12 +29,14 @@
     now,
     canSkip = true,
     onSkip = () => undefined,
+    onUnskip = () => undefined,
+    busy = false,
     runOnce = null,
   }: Props = $props();
 </script>
 
 <SchedulesTestHarness {client}>
   {#snippet children()}
-    <ScheduleRuns {schedule} {row} {now} {canSkip} busy={false} {onSkip} {runOnce} />
+    <ScheduleRuns {schedule} {row} {now} {canSkip} {busy} {onSkip} {onUnskip} {runOnce} />
   {/snippet}
 </SchedulesTestHarness>

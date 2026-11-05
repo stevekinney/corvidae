@@ -114,11 +114,11 @@ export function engineUpdateOf(
   return { spec: state.cadenceSpec, options: state.toUpdateOptions() };
 }
 
-/** Whether saving would change the cadence or the zone, which ends a skipped run. */
+/** Whether saving would change the cadence or the zone while runs are skipped, which ends the skips the new cadence does not keep. */
 export function endsSkippedRun(
   target: EditTarget,
   draft: NewScheduleDraft,
   opened: NewScheduleDraft,
 ): boolean {
-  return target.schedule.skipUntil !== undefined && cadenceChanged(draft, opened);
+  return (target.schedule.skippedOccurrences?.length ?? 0) > 0 && cadenceChanged(draft, opened);
 }

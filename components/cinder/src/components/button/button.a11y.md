@@ -75,5 +75,6 @@ A button that is a toggle carries `aria-pressed="true"` or `"false"` and keeps t
 - `danger`: high-emphasis destructive action.
 - `ghost`: low-emphasis, transparent background.
 - `ghost-danger`: low-emphasis destructive action.
+- `link`: an action that reads as a text link (accent text, underlined on hover), such as Undo beside a row's state. It stays a `<button>`, so it is announced and activated as one; use `Link` for navigation.
 
 Icon-only `ghost` and `ghost-danger` buttons keep a subtle resting border/background because there is no visible text label to provide the clickable affordance.

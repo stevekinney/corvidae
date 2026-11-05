@@ -86,7 +86,7 @@ for (const width of WIDTHS) {
   });
 }
 
-test('Skip skips exactly the next run, crosses its time out, and the mark survives a reload', async ({
+test('Skip skips exactly the run it sits beside, crosses its time out, the mark survives a reload, and Undo takes it back', async ({
   page,
   request,
 }) => {
@@ -94,30 +94,45 @@ test('Skip skips exactly the next run, crosses its time out, and the mark surviv
   const pending = page.getByTestId('schedule-runs').locator('li[data-cinder-tone="pending"]');
   await expect(pending).toHaveCount(3);
 
-  // The skip names the run the page showed, the nearest, which sits against the Now marker, so a
-  // fire between the read and the write cannot make it take a different one.
+  // The skip names the run the page showed, the one after the next, so a fire between the read
+  // and the write cannot make it take a different one.
   const shown = Date.parse(
-    (await pending.last().locator('time').getAttribute('datetime')) ?? 'not a time',
+    (await pending.nth(1).locator('time').getAttribute('datetime')) ?? 'not a time',
   );
   const skipRequest = page.waitForRequest(
     (candidate) => candidate.method() === 'POST' && candidate.url().endsWith('/skip-next'),
   );
-  await page.getByRole('button', { name: /^Skip / }).click();
+  await pending
+    .nth(1)
+    .getByRole('button', { name: /^Skip / })
+    .click();
   const sent = await skipRequest;
   expect(sent.postDataJSON()).toEqual({ occurrence: shown });
 
   const struck = page.getByTestId('schedule-runs').locator('time[data-cinder-struck]');
   await expect(struck).toHaveCount(1);
-  await expect(pending.last().locator('time')).toHaveAttribute('data-cinder-struck', '');
+  await expect(pending.nth(1).locator('time')).toHaveAttribute('data-cinder-struck', '');
   await expect(page.getByTestId('schedule-skipped')).toHaveText('Skipped');
-  await expect(page.getByRole('button', { name: /^Skip / })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Skip / })).toHaveCount(2);
   const read = await request.get(`/v1/schedules/${SCHEDULE_ID}`);
-  const schedule = (await read.json()) as { skipUntil?: number };
-  expect(schedule.skipUntil).toBe(shown);
+  const schedule = (await read.json()) as { skippedOccurrences?: number[] };
+  expect(schedule.skippedOccurrences).toEqual([shown]);
 
   await page.reload();
   await expect(struck).toHaveCount(1);
-  await expect(page.getByRole('button', { name: /^Skip / })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Skip / })).toHaveCount(2);
+
+  const unskipRequest = page.waitForRequest(
+    (candidate) => candidate.method() === 'POST' && candidate.url().endsWith('/unskip'),
+  );
+  await page.getByRole('button', { name: /^Undo skipping / }).click();
+  const unskipSent = await unskipRequest;
+  expect(unskipSent.postDataJSON()).toEqual({ occurrence: shown });
+  await expect(struck).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Skip / })).toHaveCount(3);
+  const after = await request.get(`/v1/schedules/${SCHEDULE_ID}`);
+  const undone = (await after.json()) as { skippedOccurrences?: number[] };
+  expect(undone.skippedOccurrences).toBeUndefined();
 });
 
 test('Run now starts one run, links to it, and lists it under past runs after a reload', async ({

@@ -5,11 +5,11 @@
    * newest nearest the marker. It is Cinder's Timeline, so the rows, the marker, the band and the
    * labelled break where the clock changed are Cinder's.
    *
-   * Upcoming runs are listed farthest first, so the nearest sits against Now. "Skip" is offered on
-   * the one the engine would skip, the next that would start a run; a skipped run keeps its row
-   * with its time crossed out and says so, until its time has passed. A run that is due and will
-   * not start says why on a second line, and keeps its Skip because skipping it prevents the start
-   * once things are fixed. The band opens to each missed fire, in the viewer's zone, with "Run once
+   * Upcoming runs are listed farthest first, so the nearest sits against Now. Every one offers
+   * "Skip"; a skipped run keeps its row with its time crossed out, says so, and offers "Undo" in
+   * place of Skip, on the row and nowhere else, until its time has passed. A run that is due and
+   * will not start says why on a second line, and keeps its Skip because skipping it prevents the
+   * start once things are fixed. The band opens to each missed fire, in the viewer's zone, with "Run once
    * now", which starts one run and not one per miss. A run is a status-first row that links to it;
    * one that is going or that failed says on a second line how it started and where it is or
    * stopped. A schedule that has not run says so below Now, and why it will not start.
@@ -22,7 +22,7 @@
     Timeline,
     type TimelineEntry,
   } from '@lostgradient/cinder';
-  import { Clock, SkipForward } from '@lucide/svelte';
+  import { Clock, SkipForward, Undo2 } from '@lucide/svelte';
   import type { ScheduleSummary } from '@lostgradient/weft';
   import { createQueries, createQuery } from '@tanstack/svelte-query';
 
@@ -54,12 +54,14 @@
     row: Pick<ScheduleRow, 'status' | 'allBlockers' | 'workflowLabel'>;
     /** The clock the page counts from, read again whenever the schedule is. */
     now: number;
-    /** Whether the person may skip: the schedule is one an owner writes, and the scope is held. */
+    /** Whether the person may skip, or undo a skip: the schedule is one an owner writes, and the scope is held. */
     canSkip: boolean;
     /** A write is in flight. */
     busy: boolean;
     /** Skips the run the button sits beside, named by its time in milliseconds since the epoch. */
     onSkip: (occurrence: number) => void;
+    /** Takes back the skip of the run the button sits beside, named as {@link onSkip} names it. */
+    onUnskip: (occurrence: number) => void;
     /**
      * Starts one run now. `reason` is why that is off, said as the description of the button,
      * which stays focusable so the reason can be found; `null` when it is on. `null` for a
@@ -72,7 +74,7 @@
     } | null;
   }
 
-  let { schedule, row, now, canSkip, busy, onSkip, runOnce }: Props = $props();
+  let { schedule, row, now, canSkip, busy, onSkip, onUnskip, runOnce }: Props = $props();
 
   const copy = SCHEDULE_COPY.detail.runs;
   const client = getClient();
@@ -310,7 +312,22 @@
       {@const fire = skipTarget(entry)}
       {#if fire?.skipped}
         <span class="ib-schedule__skipped" data-testid="schedule-skipped">{copy.skipped}</span>
-      {:else if fire?.skippable && canSkip}
+        {#if canSkip}
+          <Button
+            data-changes
+            mutating
+            variant="link"
+            size="sm"
+            disabled={busy}
+            aria-label={copy.undoLabel(fire.absolute)}
+            data-testid="schedule-undo-skip"
+            onclick={() => onUnskip(fire.at)}
+          >
+            <Undo2 aria-hidden="true" size={14} />
+            {copy.undo}
+          </Button>
+        {/if}
+      {:else if fire !== undefined && canSkip}
         <Button
           data-changes
           mutating

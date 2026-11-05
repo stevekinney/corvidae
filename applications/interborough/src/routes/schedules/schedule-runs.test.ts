@@ -10,6 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import type { HttpClient, ScheduleSummary, WorkflowSummary } from '@lostgradient/weft';
 
 import type { MissedFire } from '../../lib/bureau-schedules.ts';
+import type { RowBlocker } from './schedule-row-model.ts';
 import ScheduleRunsHarness from './schedule-runs-test-harness.test-harness.svelte';
 
 afterEach(cleanup);
@@ -112,10 +113,10 @@ describe('a run that is going and a run that failed (rows 73f and 73k)', () => {
   });
 });
 
-describe('Skip, and a skipped run (rows 72k, 73g and 73p)', () => {
-  test('is on the next run only, and names the run it skips', async () => {
+describe('Skip, and a skipped run (rows 72k, 73a, 73g and 73p)', () => {
+  test('is on every upcoming run, and names the run it skips', async () => {
     const skipped: number[] = [];
-    const { findByRole, container } = render(ScheduleRunsHarness, {
+    const { findAllByRole, container } = render(ScheduleRunsHarness, {
       props: {
         client: client({}),
         schedule: schedule(),
@@ -125,19 +126,26 @@ describe('Skip, and a skipped run (rows 72k, 73g and 73p)', () => {
       },
     });
 
-    const skip = await findByRole('button', { name: /^Skip Tue Nov 3/ });
-    expect(container.querySelectorAll('button')).toHaveLength(1);
-    await fireEvent.click(skip);
-    expect(skipped).toEqual([Date.parse('2026-11-03T09:00:00.000Z')]);
+    const skips = await findAllByRole('button', { name: /^Skip / });
+    expect(skips.map((button) => button.getAttribute('aria-label'))).toEqual([
+      expect.stringMatching(/^Skip Thu Nov 5/),
+      expect.stringMatching(/^Skip Wed Nov 4/),
+      expect.stringMatching(/^Skip Tue Nov 3/),
+    ]);
+    expect(container.querySelectorAll('button')).toHaveLength(3);
+    await fireEvent.click(skips[1]!);
+    expect(skipped).toEqual([Date.parse('2026-11-04T09:00:00.000Z')]);
   });
 
-  test('crosses the skipped run out and says Skipped where its button was, with no Undo and no other Skip', async () => {
-    const { container, findByText, queryByRole } = render(ScheduleRunsHarness, {
+  test('crosses the skipped run out, says Skipped and offers Undo where its Skip was, and keeps Skip on the others', async () => {
+    const unskipped: number[] = [];
+    const { container, findByText, getAllByRole, getByRole } = render(ScheduleRunsHarness, {
       props: {
         client: client({}),
-        schedule: schedule({ skipUntil: Date.parse('2026-11-03T09:00:00.000Z') }),
+        schedule: schedule({ skippedOccurrences: [Date.parse('2026-11-03T09:00:00.000Z')] }),
         row: ACTIVE,
         now: NOW,
+        onUnskip: (occurrence: number) => unskipped.push(occurrence),
       },
     });
 
@@ -145,17 +153,72 @@ describe('Skip, and a skipped run (rows 72k, 73g and 73p)', () => {
     const struck = container.querySelectorAll('time[data-cinder-struck]');
     expect(struck).toHaveLength(1);
     expect(struck[0]?.getAttribute('datetime')).toBe('2026-11-03T09:00:00.000Z');
-    expect(queryByRole('button', { name: /^Skip / })).toBeNull();
-    expect(queryByRole('button', { name: /Undo/ })).toBeNull();
+    expect(
+      getAllByRole('button', { name: /^Skip / }).map((button) => button.getAttribute('aria-label')),
+    ).toEqual([expect.stringMatching(/^Skip Thu Nov 5/), expect.stringMatching(/^Skip Wed Nov 4/)]);
+    const undo = getByRole('button', { name: /^Undo skipping Tue Nov 3/ });
+    expect(undo.textContent?.trim()).toBe('Undo');
+    expect(undo.getAttribute('data-cinder-variant')).toBe('link');
+    expect(undo.querySelector('svg')).not.toBeNull();
+    await fireEvent.click(undo);
+    expect(unskipped).toEqual([Date.parse('2026-11-03T09:00:00.000Z')]);
   });
 
-  test('is not offered without the scope to write', async () => {
+  test('keeps Skip on both runs of a schedule held for its workflow, the one that will not start included', async () => {
+    const blockers: RowBlocker[] = [
+      { kind: 'cannot-load', workflowType: 'order-refund', label: 'Order refund' },
+      { kind: 'provider' },
+    ];
+    const { findAllByRole } = render(ScheduleRunsHarness, {
+      props: {
+        client: client({}),
+        schedule: schedule({
+          status: 'paused',
+          cronExpression: '0 17 * * 1',
+          nextFireAt: Date.parse('2026-11-02T17:00:00.000Z'),
+        }),
+        row: { status: 'active', allBlockers: blockers, workflowLabel: 'Order refund' },
+        now: NOW,
+      },
+    });
+
+    const skips = await findAllByRole('button', { name: /^Skip / });
+    expect(skips.map((button) => button.getAttribute('aria-label'))).toEqual([
+      expect.stringMatching(/^Skip Mon Nov 9/),
+      expect.stringMatching(/^Skip Mon Nov 2/),
+    ]);
+  });
+
+  test('is not offered, nor is Undo, without the scope to write', async () => {
     const { findByText, queryByRole } = render(ScheduleRunsHarness, {
-      props: { client: client({}), schedule: schedule(), row: ACTIVE, now: NOW, canSkip: false },
+      props: {
+        client: client({}),
+        schedule: schedule({ skippedOccurrences: [Date.parse('2026-11-03T09:00:00.000Z')] }),
+        row: ACTIVE,
+        now: NOW,
+        canSkip: false,
+      },
     });
 
     await findByText('Now');
     expect(queryByRole('button', { name: /^Skip / })).toBeNull();
+    expect(queryByRole('button', { name: /^Undo / })).toBeNull();
+  });
+
+  test('turns Skip and Undo off while a write is in flight', async () => {
+    const { findAllByRole, getByRole } = render(ScheduleRunsHarness, {
+      props: {
+        client: client({}),
+        schedule: schedule({ skippedOccurrences: [Date.parse('2026-11-03T09:00:00.000Z')] }),
+        row: ACTIVE,
+        now: NOW,
+        busy: true,
+      },
+    });
+
+    const skips = await findAllByRole('button', { name: /^Skip / });
+    expect(skips.every((button) => button.hasAttribute('disabled'))).toBe(true);
+    expect(getByRole('button', { name: /^Undo / }).hasAttribute('disabled')).toBe(true);
   });
 });
 

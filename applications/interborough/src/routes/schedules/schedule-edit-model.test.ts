@@ -134,7 +134,7 @@ describe('the requests a change becomes', () => {
   });
 
   test('a changed cadence ends a skipped run, and an unchanged one keeps it', () => {
-    const skipped = { ...ENGINE, schedule: summary({ skipUntil: 5 }) };
+    const skipped = { ...ENGINE, schedule: summary({ skippedOccurrences: [5] }) };
     const opened = editDraftOf(skipped);
     expect(endsSkippedRun(skipped, opened, opened)).toBe(false);
     const moved = { ...opened, cadence: { cron: '0 5 * * *', timeZone: 'UTC' } };

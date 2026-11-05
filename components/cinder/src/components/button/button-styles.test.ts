@@ -94,6 +94,22 @@ describe('Button sizes', () => {
   });
 });
 
+describe('Button link variant CSS contract', () => {
+  test('a link button rests as accent text with no fill or border, and underlines on hover', () => {
+    const source = readButtonSource();
+
+    const block = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='link']");
+    expectDeclaration(block, 'background', 'transparent');
+    expectDeclaration(block, 'border-color', 'transparent');
+    expectDeclaration(block, 'color', 'var(--cinder-accent-text)');
+    const hover = readCssRuleBlock(
+      source,
+      ".cinder-button[data-cinder-variant='link']:hover:not(:disabled):not([aria-disabled='true'])",
+    );
+    expectDeclaration(hover, 'text-decoration', 'underline');
+  });
+});
+
 describe('Button icon-only ghost CSS contract', () => {
   test('non-icon ghost variants remain transparent at rest', () => {
     const source = readButtonSource();

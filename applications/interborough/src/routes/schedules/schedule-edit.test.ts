@@ -178,7 +178,7 @@ describe('ScheduleEdit', () => {
     });
     await server.engine.skipNextScheduleOccurrence('skip-then-edit');
     const skipped = await server.engine.getSchedule('skip-then-edit');
-    expect(skipped?.skipUntil).toBeDefined();
+    expect(skipped?.skippedOccurrences).toHaveLength(1);
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     let closed = false;
@@ -195,13 +195,13 @@ describe('ScheduleEdit', () => {
       // The skip names a run the save leaves next, so the save does not restore it.
       const saved = await server.engine.getSchedule('skip-then-edit');
       expect(saved?.description).toBe('Renamed');
-      expect(saved?.skipUntil).toBe(skipped?.skipUntil);
+      expect(saved?.skippedOccurrences).toEqual(skipped?.skippedOccurrences);
     } finally {
       await server.stop();
     }
   });
 
-  test('says a save restores the run that was skipped when the cadence changes, because the skip ends with it (COR-1985)', async () => {
+  test('says a save ends the skips the new cadence no longer runs at, when the cadence changes (COR-1985)', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -212,7 +212,7 @@ describe('ScheduleEdit', () => {
     });
     await server.engine.skipNextScheduleOccurrence('skip-then-move');
     const skipped = await server.engine.getSchedule('skip-then-move');
-    expect(skipped?.skipUntil).toBeDefined();
+    expect(skipped?.skippedOccurrences).toHaveLength(1);
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     let closed = false;
@@ -238,10 +238,10 @@ describe('ScheduleEdit', () => {
       );
       await fireEvent.click(getByRole('button', { name: SAVE }));
       await waitFor(() => expect(closed).toBe(true));
-      // The warning is true: a new cadence ends the skip.
+      // The warning is true: a new cadence ends a skip it no longer runs at.
       const saved = await server.engine.getSchedule('skip-then-move');
       expect(saved?.cronExpression).toBe('0 5 * * *');
-      expect(saved?.skipUntil).toBeUndefined();
+      expect(saved?.skippedOccurrences).toBeUndefined();
     } finally {
       await server.stop();
     }

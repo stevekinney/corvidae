@@ -60,18 +60,17 @@ describe('upcomingRows', () => {
     expect(rows.every((row) => /^[A-Z][a-z]{2} Nov \d, /.test(row.absolute))).toBe(true);
   });
 
-  test('offers Skip on the next run only: the engine skips one run, the next that would start', () => {
-    const rows = upcomingRows(schedule(), ACTIVE, NOW);
+  test('marks every skipped run, the next or a later one, and only those', () => {
+    const later = Date.parse('2026-11-04T09:00:00.000Z');
+    const rows = upcomingRows(schedule({ skippedOccurrences: [later] }), ACTIVE, NOW);
 
-    expect(rows.map((row) => row.skippable)).toEqual([false, false, true]);
-  });
-
-  test('a skipped run keeps its row, marked, and nothing else is skippable until it passes', () => {
-    const skipped = Date.parse('2026-11-03T09:00:00.000Z');
-    const rows = upcomingRows(schedule({ skipUntil: skipped }), ACTIVE, NOW);
-
-    expect(rows.find((row) => row.at === skipped)?.skipped).toBe(true);
-    expect(rows.filter((row) => row.skippable)).toEqual([]);
+    expect(rows.map((row) => row.skipped)).toEqual([false, true, false]);
+    const both = upcomingRows(
+      schedule({ skippedOccurrences: [Date.parse('2026-11-03T09:00:00.000Z'), later] }),
+      ACTIVE,
+      NOW,
+    );
+    expect(both.map((row) => row.skipped)).toEqual([false, true, true]);
   });
 
   test('leaves out a run further off than the horizon, so a weekly schedule lists this week and next', () => {
@@ -113,7 +112,7 @@ describe('upcomingRows', () => {
     expect(upcomingRows(held, ACTIVE, NOW)).toHaveLength(3);
   });
 
-  test('says on the run that is due why it will not start, and keeps its Skip', () => {
+  test('says on the run that is due why it will not start', () => {
     const blockers: RowBlocker[] = [
       { kind: 'cannot-load', workflowType: 'order-refund', label: 'Order refund' },
       { kind: 'provider' },
@@ -128,7 +127,6 @@ describe('upcomingRows', () => {
       undefined,
       'won’t start · Order refund can’t load · no provider',
     ]);
-    expect(rows.at(-1)?.skippable).toBe(true);
   });
 
   test('says no relative time for a run so far off that its date would be said twice', () => {

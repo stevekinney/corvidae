@@ -34,8 +34,8 @@ const viewSchema = z.object({
   /** The IANA zone a cron cadence is read in; `UTC` for an interval and for a schedule made without one. */
   timeZone: z.string(),
   nextFireAt: z.string().nullable(),
-  /** The fire a person asked to skip, or `null` when none is. */
-  skipUntil: z.string().nullable(),
+  /** The upcoming fires a person asked to skip, as ISO 8601 instants, soonest first. */
+  skippedOccurrences: z.array(z.string()),
   lastFireAt: z.string().nullable(),
   missedFireCount: z.number().int(),
   skippedCount: z.number().int(),
@@ -227,10 +227,10 @@ export async function updateAgentSchedule(
 }
 
 /**
- * Skips the fire the caller read (`bureau.schedules.skipnext`), guarded by the revision the caller
- * read. A fire moves neither the revision nor the status, so the call also names the fire
- * (`occurrence`, in milliseconds since the epoch, sent as the ISO 8601 instant the Bureau takes):
- * when that is no longer the schedule's next fire the Bureau answers a `Conflict` whose
+ * Skips the fire the caller read (`bureau.schedules.skipnext`), the next or a later one, guarded by
+ * the revision the caller read. A fire moves neither the revision nor the status, so the call also
+ * names the fire (`occurrence`, in milliseconds since the epoch, sent as the ISO 8601 instant the
+ * Bureau takes): when that is no longer an upcoming fire the Bureau answers a `Conflict` whose
  * `data.reason` is `occurrence-not-next` ({@link isOccurrenceNotNext}) and writes nothing.
  */
 export async function skipNextAgentSchedule(
@@ -247,7 +247,27 @@ export async function skipNextAgentSchedule(
   return receiptSchema.parse(await callBureau('bureau.schedules.skipnext', params, options));
 }
 
-/** Whether `error` is the Bureau's answer to a skip that named a fire that is no longer the next one. */
+/**
+ * Takes back the skip of the fire the caller read (`bureau.schedules.unskip`), guarded by the
+ * revision the caller read, so it starts a task after all. A fire that has passed since is a
+ * `Conflict` whose `data.reason` is `occurrence-not-next` ({@link isOccurrenceNotNext}), and
+ * nothing is written.
+ */
+export async function unskipAgentSchedule(
+  scheduleId: string,
+  expectedRevision: number | undefined,
+  occurrence: number,
+  options?: Options,
+): Promise<BureauScheduleReceipt> {
+  const params = {
+    scheduleId,
+    occurrence: new Date(occurrence).toISOString(),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+  };
+  return receiptSchema.parse(await callBureau('bureau.schedules.unskip', params, options));
+}
+
+/** Whether `error` is the Bureau's answer to a skip or an unskip that named a fire that is no longer upcoming. */
 export function isOccurrenceNotNext(error: unknown): boolean {
   return (
     error instanceof HttpClientError &&

@@ -1182,7 +1182,8 @@ export const SCHEDULE_COPY = {
   pauseFailed: 'The schedule was not paused',
   resumeFailed: 'The schedule was not resumed',
   cancelFailed: 'The schedule was not cancelled',
-  skipFailed: 'The next run was not skipped',
+  skipFailed: 'The run was not skipped',
+  unskipFailed: 'The skip was not undone',
   runNowFailed: 'The schedule was not run',
   cancelDialog: {
     title: 'Cancel this schedule?',
@@ -1233,6 +1234,8 @@ export const SCHEDULE_COPY = {
       skip: 'Skip',
       skipLabel: (when: string): string => `Skip ${when}`,
       skipped: 'Skipped',
+      undo: 'Undo',
+      undoLabel: (when: string): string => `Undo skipping ${when}`,
       now: 'Now',
       wontStart: 'won’t start',
       noteCannotLoad: (workflow: string): string => `${workflow} can’t load`,
@@ -1367,7 +1370,7 @@ export const SCHEDULE_COPY = {
     loading: 'Loading schedule',
     startOver: 'Start over from the current schedule',
     skipPending:
-      'The next run is skipped. Saving this change to the cadence or time zone restores that run, and it starts as usual.',
+      'An upcoming run is skipped. After this change to the cadence or time zone, a skip stays only on a run the new cadence still has.',
     /** The footer line: what the page does, then what it is doing. */
     footer: {
       saves: (name: string): string => `Saves changes to ${name}.`,

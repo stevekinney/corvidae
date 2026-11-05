@@ -18,10 +18,14 @@ import type {
  * `primary`/`danger`. Background is `color-mix(in oklch, accent, transparent 88%)` so it
  * resolves against the current theme's accent/danger color in both light and dark modes.
  *
+ * `link` reads as an inline text link: the accent text with no fill or border, underlined on
+ * hover, for an action that sits beside a row's state as a word, such as Undo beside "Skipped".
+ * It is still a button, so it acts and is announced as one.
+ *
  * @default `"secondary"`
  */
 export type ButtonVariant =
-  'primary' | 'secondary' | 'soft' | 'danger' | 'soft-danger' | 'ghost' | 'ghost-danger';
+  'primary' | 'secondary' | 'soft' | 'danger' | 'soft-danger' | 'ghost' | 'ghost-danger' | 'link';
 
 /**
  * Size of the button. All sizes use compact visual heights; see button.a11y.md for touch-target guidance.

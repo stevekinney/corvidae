@@ -40,6 +40,7 @@ const VARIANTS: ButtonVariant[] = [
   'soft-danger',
   'ghost',
   'ghost-danger',
+  'link',
 ];
 
 function isInsideMedia(rule: Rule): boolean {

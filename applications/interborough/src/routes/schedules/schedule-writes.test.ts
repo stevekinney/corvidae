@@ -20,6 +20,7 @@ import {
   runNowTarget,
   skipNextTarget,
   StaleScheduleError,
+  unskipTarget,
   type ScheduleTarget,
 } from './schedule-writes.ts';
 
@@ -56,16 +57,16 @@ describe('what a schedule can be asked to do', () => {
         pause: true,
         resume: false,
         cancel: true,
-        skipNext: true,
+        skip: true,
         runNow: true,
         edit: true,
         editInWorkflow: false,
       });
-      // A paused schedule has no next fire to skip, and can still be run.
+      // A paused schedule lists no runs, but its skips can be changed, and it can still be run.
       expect(actionsOf(target(kind, 'paused'))).toMatchObject({
         pause: false,
         resume: true,
-        skipNext: false,
+        skip: true,
         runNow: true,
       });
     }
@@ -77,15 +78,16 @@ describe('what a schedule can be asked to do', () => {
       pause: true,
       resume: false,
       cancel: false,
-      skipNext: true,
+      skip: true,
       runNow: true,
       edit: false,
       editInWorkflow: true,
     });
+    // The Bureau holds a file's schedule paused while its file cannot load; its runs can be skipped.
     expect(actionsOf(target(file, 'paused'))).toMatchObject({
       pause: false,
       resume: true,
-      skipNext: false,
+      skip: true,
     });
     for (const unwritable of [
       { ...FILE, state: 'invalid' as const },
@@ -105,7 +107,7 @@ describe('what a schedule can be asked to do', () => {
       pause: false,
       resume: false,
       cancel: false,
-      skipNext: false,
+      skip: false,
       runNow: false,
       edit: false,
       editInWorkflow: false,
@@ -142,6 +144,9 @@ describe('the controls that skip and run', () => {
     expect(
       await throwingRejectionOf(skipNextTarget(client, target({ kind: 'unknown' }), OCCURRENCE)),
     ).toThrow('cannot be skipped');
+    expect(
+      await throwingRejectionOf(unskipTarget(client, target({ kind: 'unknown' }), OCCURRENCE)),
+    ).toThrow('cannot be unskipped');
   });
 
   test('run now is refused for a schedule of no known kind, and for a file that cannot load', async () => {
@@ -231,6 +236,31 @@ describe('a write to an engine schedule that moved on after it was read', () => 
     expect(seen).toEqual([JSON.stringify({ occurrence: OCCURRENCE })]);
   });
 
+  test('takes a skip back through the engine for a workflow file’s schedule, naming the run, at its unskip address', async () => {
+    // The Bureau holds the schedule paused while its file cannot load, and its runs still come.
+    const held = {
+      getSchedule: () => Promise.resolve({ revision: 3, status: 'paused', nextFireAt: 1000 }),
+      baseUrl: 'http://localhost/api',
+      headers: {},
+    } as unknown as HttpClient;
+    const seen: Array<{ url: string; body: unknown }> = [];
+    const restore = installFetchImplementation((input, init) => {
+      seen.push({ url: input instanceof Request ? input.url : input.toString(), body: init?.body });
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    try {
+      await unskipTarget(held, target({ kind: 'workflow-file', file: FILE }, 'paused'), OCCURRENCE);
+    } finally {
+      restore();
+    }
+    expect(seen).toEqual([
+      {
+        url: 'http://localhost/api/v1/schedules/s-1/unskip',
+        body: JSON.stringify({ occurrence: OCCURRENCE }),
+      },
+    ]);
+  });
+
   test('is written when the schedule is the one that was read', async () => {
     const same = engineAt({ revision: 3, status: 'active' });
     await pauseTarget(same.client, target({ kind: 'code' }));
@@ -273,6 +303,31 @@ describe('a skip the server refuses because the run it named is no longer the ne
     expect(
       await rejectionOf(
         skipNextTarget(
+          { ...engine, baseUrl: 'http://localhost/api', headers: {} } as unknown as HttpClient,
+          target({ kind: 'code' }),
+          OCCURRENCE,
+        ),
+      ),
+    ).toBeInstanceOf(StaleScheduleError);
+  });
+
+  test('is raised as stale for an unskip of a run that has passed', async () => {
+    restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json(
+          {
+            error: 'Schedule "s-1" has no upcoming run.',
+            weftCode: 'ScheduleOccurrenceNotNextError',
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+
+    expect(
+      await rejectionOf(
+        unskipTarget(
           { ...engine, baseUrl: 'http://localhost/api', headers: {} } as unknown as HttpClient,
           target({ kind: 'code' }),
           OCCURRENCE,

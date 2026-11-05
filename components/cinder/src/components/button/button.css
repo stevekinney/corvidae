@@ -258,6 +258,23 @@
     border-color: transparent;
   }
 
+  /* link — an action that reads as a text link: the accent text with no fill or border, for an
+ * action that sits beside a row's state as a word (Undo beside "Skipped"). It keeps the size's
+ * height, so it lines up with a button beside it, and a tighter inline padding. */
+  .cinder-button[data-cinder-variant='link'] {
+    background: transparent;
+    color: var(--cinder-accent-text);
+    border-color: transparent;
+    padding-inline: var(--cinder-space-1);
+  }
+
+  .cinder-button[data-cinder-variant='link']:disabled:not([data-cinder-loading]),
+  .cinder-button[data-cinder-variant='link'][aria-disabled='true']:not([data-cinder-loading]) {
+    background: transparent;
+    color: var(--cinder-text-disabled);
+    border-color: transparent;
+  }
+
   .cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'] {
     background: var(--cinder-surface);
     background: color-mix(in oklch, var(--cinder-surface), var(--cinder-text-default) 4%);
@@ -419,6 +436,11 @@
       background: var(--cinder-status-danger-background);
       border-color: var(--cinder-status-danger-border);
       color: var(--cinder-status-danger-text);
+    }
+
+    .cinder-button[data-cinder-variant='link']:hover:not(:disabled):not([aria-disabled='true']) {
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
     }
 
     .cinder-button[data-cinder-variant='soft']:hover:not(:disabled):not([aria-disabled='true']) {
