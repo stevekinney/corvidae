@@ -9,7 +9,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import {
@@ -31,6 +31,7 @@ import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test
 import type { Bureau, RecoverableStartedApprovalInput } from './types';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
+import { reviewDecisionKey } from './review-decision-record';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -98,7 +99,8 @@ type PeerRecoveryVariant =
   | 'invalid-journal'
   | 'invalid-authority'
   | 'invalid-binding'
-  | 'ordinary-error';
+  | 'ordinary-error'
+  | 'malformed-callback';
 
 const PEER_RECOVERY_SCENARIOS: ReadonlyArray<{
   readonly variant: PeerRecoveryVariant;
@@ -112,7 +114,10 @@ const PEER_RECOVERY_SCENARIOS: ReadonlyArray<{
   { variant: 'invalid-authority', expectedAttach: 0 },
   { variant: 'invalid-binding', childVariant: 'invalid-binding', expectedAttach: 0 },
   { variant: 'ordinary-error', expectedAttach: 1 },
+  { variant: 'malformed-callback', expectedAttach: 1 },
 ];
+
+const PEER_RECOVERY_COMMIT_VARIANTS = new Set<PeerRecoveryVariant>(['normal', 'ordinary-error']);
 
 async function peerApprovalRecoveryScenario(
   scope: ScenarioScope,
@@ -186,6 +191,9 @@ async function peerApprovalRecoveryScenario(
       version: 1 as const,
       attach: async (input: RecoverableStartedApprovalInput) => {
         appendFileSync(callbackPath, `${input.journalEntry.taskId}\n`, 'utf8');
+        if (scenario.variant === 'malformed-callback') {
+          return { callId: input.callId, toolCallId: input.callId, toolName: 'ask-peer' } as never;
+        }
         return {
           callId: input.callId,
           toolCallId: input.callId,
@@ -204,11 +212,13 @@ async function peerApprovalRecoveryScenario(
       requestAuthorityValidator:
         scenario.variant === 'invalid-authority' ? async () => false : async () => true,
     };
-    [recoverer, secondRecoverer] = await Promise.all([
-      createHarnessBureau({ ...options, storage: store.storage }),
-      createHarnessBureau({ ...options, storage: secondStore.storage }),
-    ]);
-    await Promise.all([recoverer.recovery(), secondRecoverer.recovery()]);
+    recoverer = await createHarnessBureau({ ...options, storage: store.storage });
+    if (scenario.variant === 'malformed-callback') {
+      await recoverer.recovery();
+    } else {
+      secondRecoverer = await createHarnessBureau({ ...options, storage: secondStore.storage });
+      await Promise.all([recoverer.recovery(), secondRecoverer.recovery()]);
+    }
     if (scenario.expectedAttach === 1) {
       await waitUntil(
         () =>
@@ -222,20 +232,23 @@ async function peerApprovalRecoveryScenario(
       : 0;
     expect(callbackCount).toBe(scenario.expectedAttach);
     expect(existsSync(toolRunsPath)).toBe(false);
+    const expectedCommit = PEER_RECOVERY_COMMIT_VARIANTS.has(scenario.variant);
     expect(recoverer.reviews.list().some((review) => review.id === marker.reviewId)).toBe(
-      scenario.expectedAttach === 0,
+      !expectedCommit,
     );
-    const session = await recoverer.contexts.get(marker.sessionId);
-    expect(JSON.stringify(session?.conversationHistory)).toContain(
-      scenario.expectedAttach === 0
-        ? 'action_required'
-        : scenario.variant === 'ordinary-error'
-          ? 'peer failed'
-          : 'peer answer',
-    );
+    if (scenario.variant !== 'malformed-callback') {
+      const session = await recoverer.contexts.get(marker.sessionId);
+      expect(JSON.stringify(session?.conversationHistory)).toContain(
+        !expectedCommit
+          ? 'action_required'
+          : scenario.variant === 'ordinary-error'
+            ? 'peer failed'
+            : 'peer answer',
+      );
+    }
     const audit = await recoverer.internals.auditTrail?.query({ runId: marker.runId });
     expect(audit?.filter((record) => record.type === 'review.tool-approval.approved')).toHaveLength(
-      scenario.expectedAttach,
+      expectedCommit ? 1 : 0,
     );
     const persisted = await recoverer.internals.sessionStore?.load(marker.sessionId);
     const decisions = persisted?.metadata['resolvedReviewDecisions'];
@@ -243,7 +256,7 @@ async function peerApprovalRecoveryScenario(
       decisions !== null && typeof decisions === 'object' && !Array.isArray(decisions)
         ? Object.prototype.hasOwnProperty.call(decisions, marker.reviewId)
         : false,
-    ).toBe(scenario.expectedAttach === 1);
+    ).toBe(expectedCommit);
   } finally {
     if (recoverer !== undefined) await Promise.allSettled([recoverer.shutdown()]);
     if (secondRecoverer !== undefined) await Promise.allSettled([secondRecoverer.shutdown()]);
@@ -328,77 +341,6 @@ async function peerRecoveryAttachCrashScenario(scope: ScenarioScope): Promise<vo
     removeTemporaryPath(directory);
   }
 }
-
-async function peerRecoveryPostCommitCrashDiagnostic(scope: ScenarioScope): Promise<void> {
-  const directory = createTemporaryDirectory('corvidae-peer-approval-post-commit');
-  const storagePath = join(directory, 'bureau');
-  const markerPath = join(directory, 'marker.json');
-  const callbackPath = join(directory, 'attach-callbacks.txt');
-  const store = createSqliteStorageFixture({ path: storagePath });
-  let recoverer: Bureau | undefined;
-  scope.onHang(async () => {
-    await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
-    await store.dispose();
-    removeTemporaryPath(directory);
-  });
-  try {
-    const seed = spawnWithHangGuard(
-      ['bun', CHILD, 'peer-approval-then-crash', 'sqlite', storagePath, markerPath],
-      { stdout: 'pipe', stderr: 'pipe' },
-    );
-    scope.onHang(() => seed.kill());
-    await seed.exited;
-    expect(seed.signalCode).toBe('SIGKILL');
-    const marker = readChildJson<{
-      runId: string;
-      sessionId: string;
-      reviewId: string;
-      revision: string;
-    }>(markerPath);
-    await quietFor(CLAIM_TTL_MS * 10);
-    const postCommit = spawnWithHangGuard(
-      ['bun', CHILD, 'peer-recovery-post-commit-then-crash', 'sqlite', storagePath, markerPath],
-      { stdout: 'pipe', stderr: 'pipe' },
-    );
-    scope.onHang(() => postCommit.kill());
-    await postCommit.exited;
-    expect(postCommit.signalCode).toBe('SIGKILL');
-    const attach = {
-      version: 1 as const,
-      attach: async (input: RecoverableStartedApprovalInput) => {
-        appendFileSync(callbackPath, `${input.journalEntry.taskId}\n`, 'utf8');
-        return {
-          callId: input.callId,
-          toolCallId: input.callId,
-          toolName: 'ask-peer',
-          outcome: 'success' as const,
-          content: 'peer answer',
-          result: 'peer answer',
-        };
-      },
-    };
-    recoverer = await createHarnessBureau({
-      storage: store.storage,
-      generate: async () => ({ content: 'recovered', toolCalls: [] }),
-      toolbox: createPeerApprovalToolbox(),
-      recoverableStartedApprovals: new Map([[marker.revision, attach]]),
-    });
-    await recoverer.recovery();
-    expect(readFileSync(callbackPath, 'utf8')).not.toContain('peer-task-1');
-    const audit = await recoverer.internals.auditTrail?.query({ runId: marker.runId });
-    expect(audit?.filter((record) => record.type === 'review.tool-approval.approved')).toHaveLength(
-      1,
-    );
-    const persisted = await recoverer.internals.sessionStore?.load(marker.sessionId);
-    expect(persisted?.metadata['resolvedReviewIds']).toContain(marker.reviewId);
-  } finally {
-    if (recoverer !== undefined) await Promise.allSettled([recoverer.shutdown()]);
-    await store.dispose();
-    removeTemporaryPath(directory);
-  }
-}
-
-void peerRecoveryPostCommitCrashDiagnostic;
 
 async function peerRecoveryLeaseReplacementScenario(scope: ScenarioScope): Promise<void> {
   const directory = createTemporaryDirectory('corvidae-peer-approval-lease-replacement');
@@ -568,12 +510,17 @@ async function peerRecoveryPostCommitCrashScenario(scope: ScenarioScope): Promis
         };
       },
     };
+    const recoveryRuntime = createManualRuntimeServices({ origin: new Date().toISOString() });
     recoverer = await createHarnessBureau({
       storage: store.storage,
+      runtime: recoveryRuntime,
       generate: async () => ({ content: 'recovered', toolCalls: [] }),
       toolbox: createPeerApprovalToolbox(),
       recoverableStartedApprovals: new Map([[marker.revision, attach]]),
     });
+    const pendingBeforeRecovery = await recoverer.internals.sessionStore?.outbox.pending();
+    expect(pendingBeforeRecovery).toHaveLength(1);
+    expect(pendingBeforeRecovery?.[0]?.claim).toBeDefined();
     await recoverer.recovery();
     expect(existsSync(callbackPath)).toBe(false);
     const audit = await recoverer.internals.auditTrail?.query({ runId: marker.runId });
@@ -582,6 +529,19 @@ async function peerRecoveryPostCommitCrashScenario(scope: ScenarioScope): Promis
     );
     const persisted = await recoverer.internals.sessionStore?.load(marker.sessionId);
     expect(persisted?.metadata['resolvedReviewIds']).toContain(marker.reviewId);
+    await recoveryRuntime.advance(31_000);
+    await recoverer.maintain();
+    const finalAudit = await recoverer.internals.auditTrail?.query({ runId: marker.runId });
+    await recoverer.shutdown();
+    recoverer = undefined;
+    const recorded = await store.storage.get(reviewDecisionKey(marker.reviewId, 0));
+    expect(recorded).not.toBeNull();
+    expect(JSON.parse(new TextDecoder().decode(recorded as Uint8Array))).toMatchObject({
+      recorded: true,
+    });
+    expect(
+      finalAudit?.filter((record) => record.type === 'review.tool-approval.approved'),
+    ).toHaveLength(1);
   } finally {
     if (recoverer !== undefined) await Promise.allSettled([recoverer.shutdown()]);
     await store.dispose();

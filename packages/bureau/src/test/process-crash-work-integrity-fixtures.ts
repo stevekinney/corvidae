@@ -24,6 +24,7 @@ import {
   createTestEmbedders,
 } from '@lostgradient/memory';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { type Storage, textValueStore } from '@lostgradient/storage';
 import {
   type AnyToolbox,
@@ -207,6 +208,7 @@ export interface HarnessBureauOptions {
   readonly memory?: GovernedMemory;
   readonly recoverableStartedApprovals?: ReadonlyMap<string, RecoverableStartedApproval>;
   readonly requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
+  readonly runtime?: RuntimeServices;
   /** Wires `requestHumanInput` into the run (the COR-1409 park scenario). */
 }
 
@@ -223,6 +225,7 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
       }),
     },
     storage: options.storage,
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     durable: true,
     requestAuthorityValidator: options.requestAuthorityValidator ?? (() => true),
     ...(options.recoverableStartedApprovals === undefined

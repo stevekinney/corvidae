@@ -20,8 +20,12 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { createCheckpointStore, stopWhen, createAgent } from '@lostgradient/operative';
-import { createSessionStore } from '@lostgradient/operative';
+import {
+  createCheckpointStore,
+  stopWhen,
+  createAgent,
+  createSessionStore,
+} from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
