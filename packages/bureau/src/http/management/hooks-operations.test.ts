@@ -10,7 +10,7 @@ import { waitForCondition } from '../../test';
 import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
 import { HOOK_DELIVERY_KEY_PREFIX } from '../../hooks/hook-store.ts';
 import type { HookDeliveryRecord, HookSecretStore } from '../../hooks/hook-types.ts';
-import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
 import { bureauHooksOperations } from './hooks-operations.ts';
 import { openBureau, type OpenedBureau, rpc } from './management-fixtures.test-support.ts';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
@@ -764,4 +764,42 @@ it('workspace administration cannot retarget private hooks or bypass the secret 
   expect(secret.error?.data?.httpStatus).toBe(403);
   const testForeign = await rpc(handler, 'bureau.hooks.test', { hookId }, 'bob-observer-key');
   expect(testForeign.error?.data?.httpStatus).toBe(404);
+});
+
+it('projects hook delivery summaries for their owner and trusted local operator, but not a foreign administrator', async () => {
+  const workspace: WorkspaceMembershipOptions = {
+    workspaceId: 'workspace-a',
+    resolveMembership: async ({ subject, method }) => ({
+      version: 1,
+      workspaceId: 'workspace-a',
+      actorId: subject ?? 'local-owner',
+      actorKind: method === 'unauthenticated-local' ? 'local' : 'user',
+      owner: method === 'unauthenticated-local' ? 'anonymous:local' : `api-key:${subject}`,
+      membershipRevision: '1',
+      capabilities:
+        method === 'unauthenticated-local'
+          ? ['workspace:use', 'workspace:manage', 'deployment:operate']
+          : ['workspace:use', 'workspace:manage'],
+    }),
+  };
+  const { opened } = await open({ workspace });
+  const hook = await wire(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+  await wire(opened, 'bureau.hooks.test', { hookId: hook.id }, 'alice-key');
+  const own = await wire(opened, 'bureau.hooks.list', {}, 'alice-key');
+  expect(own.hooks[0].lastDelivery).toMatchObject({ kind: 'hook.test', status: 'delivered' });
+  const foreign = await wire(opened, 'bureau.hooks.list', {}, 'bob-observer-key');
+  expect(foreign.hooks[0].lastDelivery).toBeNull();
+  const local = createBureauHandler(opened.bureau, { workspace, unauthenticatedAccess: 'allow' });
+  const response = await local(
+    new Request('http://localhost/jsonrpc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.hooks.list', params: {} }),
+    }),
+  );
+  const result = (await response.json()) as { result: { hooks: Array<{ lastDelivery: unknown }> } };
+  expect(result.result.hooks[0]?.lastDelivery).toMatchObject({
+    kind: 'hook.test',
+    status: 'delivered',
+  });
 });

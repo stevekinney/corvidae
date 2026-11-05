@@ -1,4 +1,7 @@
-import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+import {
+  authorizeWorkspaceClass,
+  authorizeWorkspaceOperation,
+} from '../workspace-authorization.ts';
 
 /**
  * `bureau.workflows.*`: the agent-authored workflow files of a Bureau (COR-1527), written, read,
@@ -708,7 +711,7 @@ export const workflowsListOperation = defineOperation<
           ...listingView(listing),
           // A file the Bureau cannot use is never registered, so it has had no instance to count.
           runs:
-            (principal.method === 'unauthenticated' || principal.workspace === undefined) &&
+            authorizeWorkspaceClass('deployment-operator', principal).allowed &&
             input.includeRuns === true &&
             listing.state === 'ready'
               ? await workflows.runCounts(listing.id)
@@ -780,7 +783,7 @@ export const workflowsRevisionsOperation = defineOperation<
     const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
     const revisions = await workflows.revisions(
       input.id,
-      principal.method === 'unauthenticated' || principal.workspace === undefined
+      authorizeWorkspaceClass('deployment-operator', principal).allowed
         ? undefined
         : async (runId) => {
             const owner = ownerOfPrincipal(principal);
@@ -1309,10 +1312,9 @@ export const workflowsHistoryOperation = defineOperation<
         previousVersion: entry.previousVersion,
         changes: entry.changes.map((change) => ({ ...change })),
         compatibility: entry.compatibility,
-        runs:
-          principal.method === 'unauthenticated' || principal.workspace === undefined
-            ? { ...entry.runs }
-            : null,
+        runs: authorizeWorkspaceClass('deployment-operator', principal).allowed
+          ? { ...entry.runs }
+          : null,
       })),
     };
   },
@@ -1369,10 +1371,9 @@ export const workflowsImpactOperation = defineOperation<
         previousVersion: impact.previousVersion,
         changes: impact.changes.map((change) => ({ ...change })),
         compatibility: impact.compatibility,
-        inFlight:
-          principal.method === 'unauthenticated' || principal.workspace === undefined
-            ? impact.inFlight
-            : null,
+        inFlight: authorizeWorkspaceClass('deployment-operator', principal).allowed
+          ? impact.inFlight
+          : null,
       };
     } catch (error) {
       return faultOf(error, input.id);

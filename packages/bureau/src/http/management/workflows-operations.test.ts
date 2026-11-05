@@ -46,15 +46,26 @@ const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP
 function workspaceBinding(): WorkspaceMembershipOptions {
   return {
     workspaceId: 'workspace-a',
-    resolveMembership: async ({ subject }) => ({
-      version: 1,
-      workspaceId: 'workspace-a',
-      actorId: subject ?? 'unknown',
-      actorKind: 'user',
-      owner: `api-key:${subject ?? 'unknown'}`,
-      membershipRevision: 'revision-1',
-      capabilities: ['workspace:use', 'workspace:manage'],
-    }),
+    resolveMembership: async ({ subject, method }) =>
+      method === 'unauthenticated-local'
+        ? {
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: 'local-owner',
+            actorKind: 'local',
+            owner: 'anonymous:local',
+            membershipRevision: 'revision-1',
+            capabilities: ['workspace:use', 'workspace:manage', 'deployment:operate'],
+          }
+        : {
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: subject ?? 'unknown',
+            actorKind: 'user',
+            owner: `api-key:${subject ?? 'unknown'}`,
+            membershipRevision: 'revision-1',
+            capabilities: ['workspace:use', 'workspace:manage'],
+          },
   };
 }
 
@@ -230,7 +241,8 @@ describe('the owner predicate, with several principals', () => {
 
 describe('results', () => {
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
-    const served = await serve(undefined, workspaceBinding());
+    const binding = workspaceBinding();
+    const served = await serve(undefined, binding);
     await served.bureau.workflows!.create('digest', DEFINITION);
     const workspace = served.keyed;
     const listed = await rpc(
@@ -330,6 +342,30 @@ describe('results', () => {
     const historyRevisions = revisionsValue as Array<{ runs: unknown }>;
     expect(historyRevisions.length).toBeGreaterThan(0);
     expect(historyRevisions.every((revision) => revision.runs === null)).toBe(true);
+    const local = createBureauHandler(served.bureau, {
+      workspace: binding,
+      unauthenticatedAccess: 'allow',
+    });
+    const localList = await ownerRpc(local, 'bureau.workflows.list', { includeRuns: true });
+    expect(localList.result?.['workflows']).toMatchObject([
+      { id: 'digest', runs: { last24Hours: 3 } },
+    ]);
+    const localHistory = await ownerRpc(local, 'bureau.workflows.history', { id: 'digest' });
+    expect(localHistory.result?.['revisions']).toMatchObject([{ runs: { count: 3 } }]);
+    const localRevisions = await ownerRpc(local, 'bureau.workflows.revisions', { id: 'digest' });
+    expect(localRevisions.result?.['revisions']).toHaveLength(1);
+    const localImpact = await ownerRpc(local, 'bureau.workflows.impact', {
+      id: 'digest',
+      definition: DEFINITION,
+    });
+    expect(localImpact.result?.['inFlight']).toBeNumber();
+    const memberImpact = await rpc(
+      workspace,
+      'bureau.workflows.impact',
+      { id: 'digest', definition: DEFINITION },
+      'operator-key',
+    );
+    expect(memberImpact.result?.['inFlight']).toBeNull();
   });
 
   it('signals only the caller-owned waiting runs and starts new runs with the caller owner', async () => {

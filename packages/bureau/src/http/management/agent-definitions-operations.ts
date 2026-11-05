@@ -1,4 +1,7 @@
-import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+import {
+  authorizeWorkspaceClass,
+  authorizeWorkspaceOperation,
+} from '../workspace-authorization.ts';
 
 /**
  * `bureau.agents.definitions.*` and `bureau.agents.catalog`: the agent definitions of a Bureau
@@ -950,7 +953,7 @@ export const agentDefinitionsRevisionsOperation = defineOperation<
     const definitions = requireAccess(host, principal, 'bureau.agents:read', input.id);
     const revisions = await definitions.agents.revisions(
       input.id,
-      principal.method === 'unauthenticated' || principal.workspace === undefined
+      authorizeWorkspaceClass('deployment-operator', principal).allowed
         ? undefined
         : async (runId) => {
             const owner = ownerOfPrincipal(principal);

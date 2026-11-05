@@ -1,4 +1,7 @@
-import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+import {
+  authorizeWorkspaceClass,
+  authorizeWorkspaceOperation,
+} from '../workspace-authorization.ts';
 
 /**
  * `bureau.hooks.*` (COR-1939, COR-1940): user-defined hooks over the Bureau's published events,
@@ -940,7 +943,8 @@ export const hooksListOperation = defineOperation<
     return {
       hooks: listed.map((hook) => ({
         ...listedHookViewOf(hook),
-        ...(principal.method !== 'unauthenticated' && principal.workspace !== undefined
+        ...(!authorizeWorkspaceClass('deployment-operator', principal).allowed &&
+        ownerOfPrincipal(principal) !== hook.owner
           ? { lastDelivery: null }
           : {}),
       })),
