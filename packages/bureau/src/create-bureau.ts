@@ -573,6 +573,7 @@ import {
   type PersistedSessionInput,
   readSessionInputReceipt,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
+  SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
   SESSION_INPUT_RETRACTED_REASON,
 } from './session-input-durability';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
@@ -16054,12 +16055,23 @@ async function constructBureau<const D extends AgentDefinitions>(
       commandId,
       reason: SESSION_INPUT_RETRACTED_REASON,
     });
-    const receipt = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
-    // `requested` is a command a step boundary holds: the turn is being appended, and the
-    // cancellation closes the command after it commits. The run has the input.
-    if (receipt.state === 'promoted' || cancellation.status === 'requested') {
-      return { outcome: 'delivered', receipt };
+    // `requested` is a command a step boundary holds. The boundary honors a cancellation that
+    // landed before its last check by rejecting the command, so it is never appended; one that
+    // landed after is closed once the turn commits, and the run has the input. Which one it is
+    // shows in whether the command settles promptly: a rejection does, an appended turn does not.
+    let settled = cancellation.status !== 'requested';
+    if (!settled) {
+      const cleanup = await sessionMailbox
+        .awaitCleanup({
+          commandId,
+          timeoutMs: SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
+          pollIntervalMs: 10,
+        })
+        .catch(() => undefined);
+      settled = cleanup?.status === 'settled';
     }
+    const receipt = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
+    if (receipt.state === 'promoted' || !settled) return { outcome: 'delivered', receipt };
     return { outcome: 'retracted', receipt };
   }
 
