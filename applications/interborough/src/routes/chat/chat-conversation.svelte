@@ -121,6 +121,7 @@
   import ModelPicker from './model-picker.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
+  import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
   import { toolGroups, type ToolInfo } from './tool-activity.ts';
   import { hasFailedStop, withStopLine } from './stop-line.ts';
@@ -620,18 +621,16 @@
     return before === undefined ? undefined : { messageId: before };
   }
 
-  // The model the chat runs on, by its name for a person: what it was last switched to, else the
-  // agent's default. The Bureau does not record the model of each reply, so this is the chat's.
-  const effectiveModel = $derived(context.data?.model ?? models.data?.default ?? null);
-  const modelLabel = $derived(
-    effectiveModel === null
+  /**
+   * The model a reply was written by, by its name for a person: the one the Bureau recorded on the
+   * reply's row, never the one the chat runs on now. `undefined` for a reply that records none.
+   */
+  function replyModelName(metadata: Readonly<Record<string, unknown>>): string | undefined {
+    const replyModel = replyModelOf(metadata);
+    return replyModel === undefined
       ? undefined
-      : models.data?.models.find(
-          (choice) =>
-            choice.model === effectiveModel.model &&
-            (effectiveModel.provider === null || choice.provider === effectiveModel.provider),
-        )?.displayName,
-  );
+      : replyModelLabel(replyModel, models.data?.models ?? []);
+  }
 
   /** What a refused or failed branch says: the Bureau's reason when it gave one, else `fault`. */
   function branchFailureText(error: unknown, fault: string): string {
@@ -844,9 +843,35 @@
     if (hasFailedStop(shown)) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
+  // The Bureau's time, which a running call's duration counts to. It moves only while a call runs,
+  // a tenth of a second at a time, which is the precision the rail prints.
+  const RUNNING_CALL_TICK_MILLISECONDS = 100;
+  let bureauNow = $state(session.clock.now());
   const activity = $derived(
-    toolGroups(session.conversation, { runActive: runGoing, tools: toolInfo }),
+    toolGroups(session.conversation, {
+      runActive: runGoing,
+      tools: toolInfo,
+      timing: {
+        now: bureauNow,
+        callStarts: session.callStarts,
+        ...(session.stoppedAt === undefined ? {} : { stoppedAt: session.stoppedAt }),
+      },
+    }),
   );
+  const callRunning = $derived(
+    [...activity.groups.values()].some((group) =>
+      group.entries.some((entry) => entry.state === 'running'),
+    ),
+  );
+  $effect(() => {
+    if (!callRunning) return;
+    bureauNow = untrack(() => session.clock.now());
+    // poll-reason: clock
+    const timer = setInterval(() => {
+      bureauNow = session.clock.now();
+    }, RUNNING_CALL_TICK_MILLISECONDS);
+    return () => clearInterval(timer);
+  });
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -1220,8 +1245,9 @@
         {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
         {@const branchAt = branchTargetOf(message)}
         {#if replyStep !== undefined && !session.streaming}
-          {#if modelLabel !== undefined}
-            <span class="weft-chat-model">· {modelLabel}</span>
+          {@const replyModel = replyModelName(message.metadata)}
+          {#if replyModel !== undefined}
+            <span class="weft-chat-model">· {replyModel}</span>
           {/if}
           <ReplyDetails
             runId={replyStep.runId}

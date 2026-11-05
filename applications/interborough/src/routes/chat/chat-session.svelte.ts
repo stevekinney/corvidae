@@ -31,6 +31,7 @@ import {
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import { sendContextInput, wireCodeOf, type Fetcher } from '../../lib/bureau-client.ts';
+import { BureauClock } from '../../lib/bureau-clock.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { AgUiHttpError } from './ag-ui-events.ts';
 import { questionKeyOf } from './answer-rows.ts';
@@ -72,6 +73,8 @@ export type ChatSessionOptions = {
   readonly onNotFound?: () => void;
   /** Told when a grant the person asked for did not loosen the tool (see the run wiring). */
   readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
+  /** The Bureau's clock as the page reads it; a fresh one when omitted, for tests to replace. */
+  readonly clock?: BureauClock;
 };
 
 /** Whether `error` is the Bureau, or the AG-UI door, saying it has no such thread. */
@@ -146,6 +149,18 @@ export class ChatSessionState {
    * page did not watch end has no entry, and its reply details say nothing of usage.
    */
   usage = $state.raw<ReadonlyMap<string, RunUsage>>(new Map());
+  /**
+   * The Bureau's clock as this page reads it (`bureau-clock.ts`): the times a message the page
+   * wrote carries, and how long a running call has been going, are read off it.
+   */
+  readonly clock: BureauClock;
+  /**
+   * When each call this page watched begin started, on the Bureau's clock, by call identifier: a
+   * running call's duration counts from it.
+   */
+  callStarts = $state.raw<ReadonlyMap<string, number>>(new Map());
+  /** When the last run ended, on the Bureau's clock: a call it left without an answer stopped then. */
+  stoppedAt = $state<number | undefined>(undefined);
 
   readonly controller: ChatSessionController;
   /**
@@ -187,8 +202,17 @@ export class ChatSessionState {
     this.#closed = options.closed;
     this.#onNotFound = options.onNotFound;
     this.conversation = createConversationHistory({ id: options.sessionId });
+    const clock = (this.clock = options.clock ?? new BureauClock());
     this.#wiring = createChatRunWiring({
       conversation: () => this.conversation,
+      clock,
+      onCallStarted: (callId, at) => {
+        if (!this.callStarts.has(callId))
+          this.callStarts = new Map(this.callStarts).set(callId, at);
+      },
+      onRunStopped: (at) => {
+        this.stoppedAt = at;
+      },
       onRunStarted: () => {
         this.#attachedRun = true;
         options.onRunStarted?.();
@@ -224,6 +248,8 @@ export class ChatSessionState {
     });
     this.controller = createChatSessionController({
       executionOwner: 'server',
+      // A message the person writes is stamped with the Bureau's time, as the Bureau stamps it.
+      now: () => clock.nowISO(),
       getConversation: () => this.conversation,
       setConversation: (next) => {
         this.conversation = next;

@@ -54,12 +54,30 @@ export interface AppendToolResultOptions {
 }
 
 /**
- * Row ids for a batch append. `messageIds[i]` becomes the id of the i-th row,
- * in input order, instead of a minted one. The array must be exactly as long as
- * the batch, and every id must be new to the conversation.
+ * Row ids, and row metadata, for a batch append.
  */
 export interface AppendBatchOptions {
+  /**
+   * `messageIds[i]` becomes the id of the i-th row, in input order, instead of
+   * a minted one. The array must be exactly as long as the batch, and every id
+   * must be new to the conversation.
+   */
   readonly messageIds?: ReadonlyArray<string> | undefined;
+  /**
+   * `metadata[i]` becomes the metadata of the i-th row, in input order, such
+   * as when a tool call ran. A missing or `undefined` entry leaves that row
+   * with none.
+   */
+  readonly metadata?: ReadonlyArray<Record<string, JSONValue> | undefined> | undefined;
+}
+
+/** The metadata the batch gives its `index`-th row, as append options for that row. */
+function batchRowOptions(
+  batch: AppendBatchOptions | undefined,
+  index: number,
+): AppendToolResultOptions | undefined {
+  const metadata = batch?.metadata?.[index];
+  return metadata === undefined ? undefined : { metadata };
 }
 
 export interface ToolInteraction {
@@ -154,7 +172,10 @@ export function appendToolResults(
   const messageIds = requireBatchMessageIds(batch, toolResults.length, 'appendToolResults');
 
   const messageInputs = materializeToolResults(toolResults).map((toolResult, index) =>
-    withBatchMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
+    withBatchMessageId(
+      createToolResultMessageInput(toolResult, batchRowOptions(batch, index)),
+      messageIds?.[index],
+    ),
   );
 
   return appendMessages(conversation, ...messageInputs, environment);
@@ -199,7 +220,10 @@ export async function appendToolResultsAsync(
   const normalizedToolResults = await materializeToolResultsAsync(toolResults, { signal });
 
   const messageInputs = normalizedToolResults.map((toolResult, index) =>
-    withBatchMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
+    withBatchMessageId(
+      createToolResultMessageInput(toolResult, batchRowOptions(batch, index)),
+      messageIds?.[index],
+    ),
   );
 
   return appendMessages(conversation, ...messageInputs, environment);

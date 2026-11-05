@@ -293,6 +293,8 @@ export type {
   GenerationSelectionRecord,
   ToolEventStamp,
 } from './events';
+// COR-2014 — when each tool call ran, on its result row
+export { TOOL_TIMING_METADATA_KEY, type ToolTiming } from './tool-timing';
 // COR-581 — effective-context epochs
 export {
   MEMORY_EVIDENCE_METADATA_KEY,

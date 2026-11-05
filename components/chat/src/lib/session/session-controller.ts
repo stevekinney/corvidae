@@ -35,6 +35,7 @@ import {
 import { createSessionRunner } from './session-controller-run.ts';
 import {
   cleanIncompleteToolRows,
+  ownRowEnvironment,
   pruneMessageAttachments,
   type ChatHistoryToken,
   type ChatSessionController,
@@ -197,7 +198,7 @@ export function createChatSessionController(
     const current = options.getConversation();
     const cleaned = cleanIncompleteToolRows(current);
     if (cleaned !== current) update(cleaned);
-    const next = appendMessages(cleaned, message);
+    const next = appendMessages(cleaned, message, ownRowEnvironment(options));
     update(next);
     const userMessageId = next.ids.at(-1);
     if (userMessageId) {

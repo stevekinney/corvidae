@@ -218,10 +218,26 @@ export type ChatSessionControllerOptions = {
    * as before.
    */
   sendRunInput?: ChatSessionRunInput;
+  /**
+   * The time a row the person writes is stamped with, as an ISO 8601 string: a turn's message and
+   * a follow-up. A host whose server keeps its own clock passes that clock, so the transcript reads
+   * one clock throughout. Omitted, the browser's clock.
+   */
+  now?: () => string;
   executionOwner?: ChatExecutionOwner;
   maxContinuationTurns?: number;
   hooks?: ChatSessionHooks;
 };
+/**
+ * The environment a row the person writes is appended under: the host's clock when it gave one
+ * (`ChatSessionControllerOptions.now`), else the default.
+ */
+export function ownRowEnvironment(
+  options: Pick<ChatSessionControllerOptions, 'now'>,
+): { now: () => string } | undefined {
+  return options.now === undefined ? undefined : { now: options.now };
+}
+
 export type ChatSessionController = {
   adapter: ChatAdapter;
   stop: () => Promise<void>;

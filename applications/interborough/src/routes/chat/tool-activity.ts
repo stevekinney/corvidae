@@ -15,6 +15,9 @@ import type { ToolCallRailCall } from '@lostgradient/cinder';
 import { CHAT_COPY } from '../../app/copy.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
 
+/** One row of a conversation. */
+type Message = ConversationHistory['messages'][string];
+
 /**
  * Where one call stands. `interrupted` is a call with no answer that nothing is working on any more:
  * the run ended while it was under way, so how it ended is not known.
@@ -44,7 +47,92 @@ export type ToolCallEntry = {
   readonly summary: string;
   /** The answer, for the details. */
   readonly result: unknown;
+  /**
+   * How long the call ran, in milliseconds: from its start to its end as the Bureau recorded them,
+   * so far for a call still running, and to when the run stopped for an interrupted one. Absent
+   * when nothing recorded says (a call that waits on a person, or one whose start is not known).
+   */
+  readonly durationMilliseconds?: number | undefined;
 };
+
+/** Where a `tool-result` row keeps when its call ran: Operative's `TOOL_TIMING_METADATA_KEY`. */
+export const TOOL_TIMING_METADATA_KEY = 'toolTiming';
+
+/**
+ * What a call's duration is read against, every time on the Bureau's clock in epoch milliseconds,
+ * never the page's: the Bureau's time now (for a call still running), when each call the page
+ * watched start started, and when the run the transcript ends on stopped.
+ */
+export type ToolTimingContext = {
+  /** The Bureau's time now (`bureau-clock.ts`). */
+  readonly now: number;
+  /**
+   * When each call the page watched begin started, from its `TOOL_CALL_START`. A call read from
+   * the stored thread has its row's recorded time instead.
+   */
+  readonly callStarts?: ReadonlyMap<string, number> | undefined;
+  /** When the last run stopped, for a call it left without an answer; absent while unknown. */
+  readonly stoppedAt?: number | undefined;
+};
+
+/** A time as epoch milliseconds, or `undefined` for one that is not a date. */
+function epochOf(value: unknown): number | undefined {
+  if (typeof value !== 'string') return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** The start and end a result row records for its call, under {@link TOOL_TIMING_METADATA_KEY}. */
+export function recordedTiming(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): { readonly startedAt: number; readonly endedAt: number } | undefined {
+  const value = metadata?.[TOOL_TIMING_METADATA_KEY];
+  if (typeof value !== 'object' || value === null) return undefined;
+  const start = epochOf(Reflect.get(value, 'startedAt'));
+  const end = epochOf(Reflect.get(value, 'endedAt'));
+  return start === undefined || end === undefined || end < start
+    ? undefined
+    : { startedAt: start, endedAt: end };
+}
+
+/** The rows a call's times are read from: its own row, and its result's when it has one. */
+type CallRows = {
+  readonly call: Message;
+  readonly result?: Message | undefined;
+};
+
+/**
+ * How long a call ran, from the times the Bureau recorded: the result row's start and end, or for
+ * a call with no answer, from its start (the page's sight of `TOOL_CALL_START`, else its row's
+ * recorded time) to the Bureau's now while it runs, or to the run's stop once it was interrupted.
+ */
+function durationOf(
+  state: ToolCallState,
+  rows: CallRows,
+  timing: ToolTimingContext | undefined,
+): number | undefined {
+  if (timing === undefined || state === 'needs-you') return undefined;
+  const recorded = recordedTiming(rows.result?.metadata);
+  if (recorded !== undefined) return recorded.endedAt - recorded.startedAt;
+  const start =
+    timing.callStarts?.get(rows.call.toolCall?.id ?? '') ?? epochOf(rows.call.createdAt);
+  if (start === undefined) return undefined;
+  const end =
+    state === 'running'
+      ? timing.now
+      : state === 'interrupted'
+        ? timing.stoppedAt
+        : epochOf(rows.result?.createdAt);
+  return end === undefined ? undefined : Math.max(0, end - start);
+}
+
+/** A call's duration as the rail prints it: `0.4s`, `12s`, `1m 5s`. */
+export function formatCallDuration(milliseconds: number): string {
+  if (milliseconds < 10_000) return `${(Math.max(0, milliseconds) / 1000).toFixed(1)}s`;
+  const seconds = Math.round(milliseconds / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
 
 /** The calls of one turn's run of tool rows, and the rows of the conversation they came from. */
 export type ToolGroup = {
@@ -111,11 +199,15 @@ function entryOf(
   pair: ToolCallPair,
   runActive: boolean,
   tools: ReadonlyMap<string, ToolInfo>,
+  rows?: CallRows,
+  timing?: ToolTimingContext,
 ): ToolCallEntry {
   const state = toolCallState(pair, runActive);
   const failure = pair.result?.error?.message;
   const info = tools.get(pair.call.name);
+  const durationMilliseconds = rows === undefined ? undefined : durationOf(state, rows, timing);
   return {
+    ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
     callId: pair.call.id,
     name: pair.call.name,
     title: toolDisplayName(pair.call.name, info?.title),
@@ -155,6 +247,9 @@ export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCal
     identifier: entry.name,
     ...(entry.input === undefined || entry.input === '' ? {} : { input: entry.input }),
     nested,
+    ...(entry.durationMilliseconds === undefined
+      ? {}
+      : { duration: formatCallDuration(entry.durationMilliseconds) }),
   };
   switch (entry.state) {
     case 'running':
@@ -187,7 +282,12 @@ export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCal
  */
 export function toolGroups(
   conversation: ConversationHistory,
-  options: { readonly runActive?: boolean; readonly tools?: ReadonlyMap<string, ToolInfo> } = {},
+  options: {
+    readonly runActive?: boolean;
+    readonly tools?: ReadonlyMap<string, ToolInfo>;
+    /** What each call's duration is read against; without it no call has one. */
+    readonly timing?: ToolTimingContext | undefined;
+  } = {},
 ): {
   readonly groups: ReadonlyMap<string, ToolGroup>;
   readonly absorbed: ReadonlySet<string>;
@@ -197,6 +297,12 @@ export function toolGroups(
       (pair) => [pair.call.id, pair] as const,
     ),
   );
+  // Each call's answer row, which records when the call ran.
+  const resultRows = new Map<string, Message>();
+  for (const id of conversation.ids) {
+    const row = conversation.messages[id];
+    if (row?.toolResult !== undefined) resultRows.set(row.toolResult.callId, row);
+  }
   const groups = new Map<string, ToolGroup>();
   const absorbed = new Set<string>();
   let current: { ids: string[]; entries: ToolCallEntry[] } | undefined;
@@ -220,7 +326,15 @@ export function toolGroups(
     const pair = pairs.get(call.id) ?? { call };
     current ??= { ids: [], entries: [] };
     current.ids.push(id);
-    current.entries.push(entryOf(pair, options.runActive ?? true, options.tools ?? new Map()));
+    current.entries.push(
+      entryOf(
+        pair,
+        options.runActive ?? true,
+        options.tools ?? new Map(),
+        { call: message, result: resultRows.get(call.id) },
+        options.timing,
+      ),
+    );
   }
   close();
   return { groups, absorbed };

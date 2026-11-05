@@ -9,7 +9,10 @@ import type { ConversationHistory, MessageInput } from '../components/chat/conve
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
 import { getOwn } from '../utilities/get-own.ts';
 import type { SessionRunState } from './session-controller-history.ts';
-import type { ChatSessionControllerOptions } from './session-controller-support.ts';
+import {
+  ownRowEnvironment,
+  type ChatSessionControllerOptions,
+} from './session-controller-support.ts';
 
 /** How a run ended, which decides what happens to the follow-ups still waiting. */
 export type RunOutcome = 'completed' | 'failed' | 'stopped';
@@ -251,7 +254,7 @@ export function createFollowUpQueue({
       attachments: ChatAttachment[],
     ): Promise<void> | undefined {
       // No `startSubmission`: that would retire the very run the input is for.
-      const appended = appendMessages(options.getConversation(), input);
+      const appended = appendMessages(options.getConversation(), input, ownRowEnvironment(options));
       const id = appended.ids.at(-1);
       if (!id) return undefined;
       messageAttachments.set(id, [...attachments]);

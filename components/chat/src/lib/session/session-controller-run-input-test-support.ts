@@ -79,6 +79,8 @@ export type HarnessOptions = {
   turns?: Array<TurnScript | undefined>;
   hooks?: ChatSessionHooks;
   executionOwner?: 'browser' | 'server';
+  /** The host's clock for the rows the person writes; the browser's when omitted. */
+  now?: () => string;
 };
 
 /**
@@ -128,6 +130,7 @@ export function createHarness(options: HarnessOptions = {}) {
       return eventsOf([{ type: 'text', text: 'reply' }]);
     },
     ...(sendRunInput ? { sendRunInput } : {}),
+    ...(options.now === undefined ? {} : { now: options.now }),
     hooks: { ...options.hooks, onError: (error) => errors.push(error) },
   });
   const startRun = async (attachments: ChatAttachment[] = []) => {

@@ -72,6 +72,7 @@ import {
   type AssetPartReference,
 } from '../../lib/bureau-assets.ts';
 import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-client.ts';
+import type { BureauClock } from '../../lib/bureau-clock.ts';
 import { getLastRun, getTask, listChildRuns, type TaskView } from '../../lib/bureau-tasks.ts';
 import { readEvents } from './ag-ui-events.ts';
 import {
@@ -189,6 +190,22 @@ export type ChatRunWiringOptions = {
    * announcement, as a retried resume sends, does not tell again.
    */
   readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
+  /**
+   * The Bureau's clock as the page reads it: every event a run's stream carries is shown to it,
+   * because the Bureau stamps each with its own time (`bureau-clock.ts`).
+   */
+  readonly clock?: BureauClock;
+  /**
+   * Told when a call this page watched begin started: its `TOOL_CALL_START`, with the Bureau's
+   * time on it. A call the conversation already held (one replayed after an approval) is not told.
+   */
+  readonly onCallStarted?: (callId: string, at: number) => void;
+  /**
+   * Told when a run ended, with the Bureau's time it ended at: a stream's `RUN_FINISHED` or
+   * `RUN_ERROR`, or, for a thread read again, its last run's record when that run failed or was
+   * stopped. A call the run left without an answer was interrupted then.
+   */
+  readonly onRunStopped?: (at: number) => void;
 };
 
 /** What the page is told when a grant the person asked for did not loosen the tool. */
@@ -394,6 +411,16 @@ function isCallEventFor(event: unknown, held: ReadonlySet<string>): boolean {
   if (!isRecord(event) || !CALL_EVENT_TYPES.has(event['type'])) return false;
   const callId = event['toolCallId'];
   return typeof callId === 'string' && held.has(callId);
+}
+
+/** The call a `TOOL_CALL_START` begins, and the Bureau's time on it; `undefined` for any other event. */
+function callStartOf(event: unknown): { readonly callId: string; readonly at: number } | undefined {
+  if (!isRecord(event) || event['type'] !== 'TOOL_CALL_START') return undefined;
+  const callId = event['toolCallId'];
+  const at = event['timestamp'];
+  return typeof callId === 'string' && typeof at === 'number' && Number.isFinite(at)
+    ? { callId, at }
+    : undefined;
 }
 
 /** The identifiers of the tool calls a thread's snapshot holds. */
@@ -1082,6 +1109,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         if (generation !== transportGeneration) return;
         let liveChildAnnouncement: NoteAnnouncement | undefined;
         gate?.arrived();
+        options.clock?.observe(event);
         nativeRunId ??= nativeRunIdOf(event);
         // A Stop before this event is acted on here, now that the run it began has a name: the
         // run is cancelled below, and nothing of the turn is shown.
@@ -1112,8 +1140,17 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         }
         const usage = usageOfTerminal(event);
         if (usage !== undefined && nativeRunId !== undefined) options.onUsage?.(nativeRunId, usage);
-        if (isRecord(event) && (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR'))
+        if (
+          isRecord(event) &&
+          (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR')
+        ) {
           options.onTerminal?.();
+          // A refusal before any run began ends no run.
+          const at = event['timestamp'];
+          if (nativeRunId !== undefined && typeof at === 'number' && Number.isFinite(at)) {
+            options.onRunStopped?.(at);
+          }
+        }
         if (isRecord(event) && event['type'] === 'MESSAGES_SNAPSHOT') {
           // A snapshot holds the rows' assets, and not the lines a run announced: a wakeup or a
           // child run is not in the thread, so an unusable cursor must not drop them.
@@ -1137,6 +1174,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // A run that follows an approval shows the call it was waiting on again, for a client that
         // did not watch it run. This conversation holds the call, and holds it only once.
         if (isCallEventFor(event, held)) continue;
+        const callStart = callStartOf(event);
+        if (callStart !== undefined) options.onCallStarted?.(callStart.callId, callStart.at);
         yield event;
         // Apply the live note after the mapped frame for this event has been consumed. Otherwise
         // ChatSession's controller can immediately write its pre-snapshot conversation back over
@@ -1457,6 +1496,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         },
       );
       const started = await events.next();
+      // Even a thread with no run to attach to answers with an event the Bureau stamped.
+      if (started.done !== true) options.clock?.observe(started.value);
       if (
         started.done === true ||
         !isRecord(started.value) ||
@@ -1552,6 +1593,11 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         fetch: send,
         ...(signal === undefined ? {} : { signal }),
       }).catch(() => undefined);
+      const stoppedAt =
+        lastRun === undefined || (lastRun.status !== 'failed' && lastRun.status !== 'canceled')
+          ? undefined
+          : Date.parse(lastRun.updatedAt);
+      if (stoppedAt !== undefined && Number.isFinite(stoppedAt)) options.onRunStopped?.(stoppedAt);
       const noted = await withTaskNotes(thread, lastRun, {
         fetch: send,
         ...(signal === undefined ? {} : { signal }),
