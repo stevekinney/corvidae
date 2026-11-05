@@ -89,4 +89,36 @@ describe('Chat disabled', () => {
     await tick();
     expect(sent).toHaveLength(1);
   });
+
+  test('says why beside Send while paused, names it on Send, and drops it when the pause ends', async () => {
+    const conversation = appendUserMessage(createConversationHistory({ id: 'why' }), 'hello');
+    const { container, rerender } = render(Chat, {
+      id: 'why',
+      conversation,
+      pausedReason: 'Off until it’s back',
+    });
+    await tick();
+    // Not paused: nothing to explain, so the reason stays hidden even though the host passed one.
+    expect(container.querySelector('.chat-input-paused-reason')).toBeNull();
+
+    await rerender({ disabled: true });
+    await tick();
+    const reason = container.querySelector<HTMLElement>('.chat-input-paused-reason');
+    expect(reason?.textContent).toBe('Off until it’s back');
+    const send = container.querySelector<HTMLButtonElement>('button.chat-input-send')!;
+    expect(send.disabled).toBe(true);
+    expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(reason!.id);
+
+    await rerender({ disabled: false });
+    await tick();
+    expect(container.querySelector('.chat-input-paused-reason')).toBeNull();
+    expect(send.getAttribute('aria-describedby')).not.toContain('paused-reason');
+  });
+
+  test('paused without a reason shows no reason text', async () => {
+    const conversation = appendUserMessage(createConversationHistory({ id: 'quiet' }), 'hello');
+    const { container } = render(Chat, { id: 'quiet', conversation, disabled: true });
+    await tick();
+    expect(container.querySelector('.chat-input-paused-reason')).toBeNull();
+  });
 });

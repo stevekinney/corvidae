@@ -13,8 +13,7 @@ import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Placeholder from '../../routes/placeholder/index.svelte';
 import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../copy.ts';
-import { routes } from '../routes.ts';
-import { VIEWS } from '../views.ts';
+import { routes, type RouteDefinition } from '../routes.ts';
 import { CHUNK_RELOAD_KEY } from './chunk-reload.ts';
 import Harness from './route-outlet.test-harness.svelte';
 
@@ -64,15 +63,14 @@ describe('the route outlet', () => {
     expect(frame?.getAttribute('data-state')).toBe('empty');
   });
 
-  test('carries its view’s density and its kind of page’s width, so a page chooses neither', async () => {
+  test('carries its kind of page’s width and no density, so a page chooses neither', async () => {
     restore = installFetchImplementation(emptyTrail());
     landAt('/health/audit');
     const { findByRole, container } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
     const outlet = container.querySelector('main.weft-shell-outlet');
-    expect(outlet?.getAttribute('data-density')).toBe(VIEWS.audit.density);
+    expect(outlet?.hasAttribute('data-density')).toBe(false);
     expect(outlet?.getAttribute('data-width')).toBe('full');
-    expect(VIEWS.audit.density).toBe('compact');
   });
 
   test('reads like a reading page where no view owns the path', async () => {
@@ -81,7 +79,6 @@ describe('the route outlet', () => {
     const { findByText, container } = mount();
     await findByText(NOT_FOUND_ROUTE_COPY.title);
     const outlet = container.querySelector('main.weft-shell-outlet');
-    expect(outlet?.getAttribute('data-density')).toBe('comfortable');
     expect(outlet?.getAttribute('data-width')).toBe('reading');
   });
 
@@ -95,18 +92,23 @@ describe('the route outlet', () => {
     const frame = container.querySelector('.weft-view');
     expect(frame?.getAttribute('data-view')).toBe('not-found');
     expect(frame?.getAttribute('data-state')).toBe('not-found');
-    expect(container.textContent).toContain('/nowhere');
     expect(container.textContent).toContain(NOT_FOUND_ROUTE_COPY.description);
   });
 
-  test('offers a way back to the chat list from an address no route owns', async () => {
+  test('offers two secondary buttons, a way back to Home and search, and no primary one', async () => {
     restore = installFetchImplementation(async () => Response.json({}));
     landAt('/nowhere');
-    const { findByRole } = mount();
-    const link = await findByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label });
-    expect(link.getAttribute('href')).toBe('/chats');
+    const { container, findByRole } = mount();
+    const link = await findByRole('link', { name: 'Back to Home' });
+    expect(link.getAttribute('href')).toBe('/');
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Back to Home',
+      'Search everything',
+    ]);
+    expect(container.querySelector('[data-cinder-variant="primary"]')).toBeNull();
     link.click();
-    await waitFor(() => expect(router.pathname).toBe('/chats'));
+    await waitFor(() => expect(router.pathname).toBe('/'));
   });
 
   test('is the page’s one main landmark, whatever the route renders', async () => {
@@ -235,20 +237,6 @@ describe('a route whose chunk is gone after a rebuild', () => {
 });
 
 describe('a route that redirects', () => {
-  const context = (id: string) => ({
-    id,
-    owner: 'anonymous:local',
-    agentName: 'assistant',
-    title: 'Hello',
-    lastMessagePreview: null,
-    parentContextId: null,
-    forkedFromMessageId: null,
-    messageCount: 2,
-    createdAt: '2026-10-19T00:00:00.000Z',
-    updatedAt: '2026-10-19T00:00:00.000Z',
-    activity: 'idle',
-  });
-
   /** The pages the redirect lands on are not what these tests are about, so they render a stub. */
   function stubLandingPages(): void {
     for (const pattern of ['/chats', '/chats/:chat']) {
@@ -260,31 +248,31 @@ describe('a route that redirects', () => {
   }
 
   const spies: Array<{ mockRestore: () => void }> = [];
+  const added: RouteDefinition[] = [];
   afterEach(() => {
     for (const spy of spies.splice(0)) spy.mockRestore();
+    // The route table is a plain array, so a test's own routes leave it as they came.
+    for (const route of added.splice(0)) {
+      (routes as RouteDefinition[]).splice((routes as RouteDefinition[]).indexOf(route), 1);
+    }
   });
 
-  /** The Bureau as the redirect asks it. */
-  function bureau(contexts: unknown[]): void {
-    restore = installFetchImplementation(async (_input, init) => {
-      const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
-      const method = typeof body === 'object' && body !== null ? Reflect.get(body, 'method') : '';
-      const result =
-        method === 'bureau.contexts.list'
-          ? { contexts, nextOffset: null }
-          : method === 'bureau.contexts.get'
-            ? context('session-9')
-            : {};
-      return method === 'broken'
-        ? new Response('no', { status: 500 })
-        : Response.json({ jsonrpc: '2.0', id: method, result });
-    });
+  /** Adds a route that redirects, which the table no longer holds one of. */
+  function redirectRoute(pattern: string, redirect: RouteDefinition['redirect']): void {
+    const route: RouteDefinition = {
+      pattern,
+      kind: 'reading',
+      load: () => Promise.resolve({ default: Placeholder }),
+      ...(redirect === undefined ? {} : { redirect }),
+    };
+    added.push(route);
+    (routes as RouteDefinition[]).push(route);
   }
 
-  test('replaces its own history entry with the newest session', async () => {
+  test('replaces its own history entry with the address it resolves', async () => {
     stubLandingPages();
-    bureau([context('session-9')]);
-    landAt('/');
+    redirectRoute('/moved', () => Promise.resolve('/chats/session-9'));
+    landAt('/moved');
     const length = window.history.length;
 
     mount();
@@ -293,20 +281,10 @@ describe('a route that redirects', () => {
     expect(window.history.length).toBe(length);
   });
 
-  test('goes to the chat list when there is no session', async () => {
+  test('goes to the chat list, which says what is wrong, when it cannot say where', async () => {
     stubLandingPages();
-    bureau([]);
-    landAt('/');
-
-    mount();
-
-    await waitFor(() => expect(router.pathname).toBe('/chats'));
-  });
-
-  test('goes to the chat list, which says what is wrong, when the Bureau cannot say', async () => {
-    stubLandingPages();
-    restore = installFetchImplementation(async () => new Response('down', { status: 500 }));
-    landAt('/');
+    redirectRoute('/broken', () => Promise.reject(new Error('down')));
+    landAt('/broken');
 
     mount();
 

@@ -1,6 +1,7 @@
 /**
- * The command palette's search: chats, workflows (the types, then runs by id), schedules, workers
- * and reviews via each domain's list operation, then agents and tools. What is waiting on the
+ * The command palette's search: chats, runs (the Bureau's tasks by title, agent or identifier, then
+ * a workflow run by the start of its identifier), workflows, schedules, workers and reviews via
+ * each domain's list operation, then agents and tools. What is waiting on the
  * person and the actions (the registry's shortcuts, and "New chat with <agent>") are not searched
  * here: the palette lists them from the notification store and the shortcut registry.
  *
@@ -23,17 +24,25 @@ import type {
 } from '@lostgradient/weft';
 
 import { getAgentCatalog, type AgentCatalog } from '../../lib/agent-definitions.ts';
+import { agentLabel } from '../../lib/agent-label.ts';
 import {
   listAgents,
   listContexts,
   type AgentSummary,
   type ChatContext,
 } from '../../lib/bureau-client.ts';
+import { listTasks, type TaskState, type TaskView } from '../../lib/bureau-tasks.ts';
 import { scheduleDetailPath } from '../../lib/router.svelte.ts';
+import { kindOf, loadScheduleOverlay } from '../../lib/schedule-kinds.ts';
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 import type { ShortcutAction } from '../../lib/shortcuts.ts';
+import { taskStatusWord } from '../../lib/status.ts';
 import { loadCatalog, type CatalogRow } from '../../lib/workflow-catalog.ts';
-import { PALETTE_COPY } from '../copy.ts';
+import {
+  scheduleName,
+  scheduleNameIdentifiers,
+} from '../../routes/schedules/schedule-presentation.ts';
+import { PALETTE_COPY, SHORTCUT_COPY } from '../copy.ts';
 import type { NotificationItem } from '../notifications.svelte.ts';
 
 /** One tool of the catalog, as the palette lists it. */
@@ -57,14 +66,42 @@ export function parseQuery(query: string): ParsedQuery {
   return { mode: 'all', text: query.trim() };
 }
 
+/** One run the palette lists: a Bureau task, in the words the Runs page uses for it. */
+export interface RunMatch {
+  readonly id: string;
+  /** What the run is called: the start of the chat that began it, condensed, else its agent. */
+  readonly title: string;
+  /** The agent that ran, as its identifier, or `null` for a task recorded with none. */
+  readonly agentName: string | null;
+  readonly status: TaskState;
+  /** What a run that waits on the person is waiting for, else `null`. */
+  readonly waiting: 'approval' | 'answer' | null;
+}
+
+/** One schedule the palette lists, named in the words the Schedules page uses for it. */
+export interface ScheduleMatch {
+  readonly id: string;
+  /** What the schedule is called: its description, else what it starts. Never its identifier. */
+  readonly name: string;
+  /** The parts of `name` that are identifiers, to be set in monospace. */
+  readonly identifiers: string[];
+  readonly workflowType: string;
+  /** The type the schedule starts, for the row's meta, or `null` when the name already says it. */
+  readonly workflowTypeShown: string | null;
+}
+
 export interface ConsoleSearchResults {
   readonly chats: ChatContext[];
+  /** The Bureau's runs whose title, agent or identifier matches, most recently changed first. */
+  readonly runs: RunMatch[];
+  /** Each agent's identifier and the name a person reads, so a row names "Tool runner" and not `tool-runner`. */
+  readonly agentNames: ReadonlyMap<string, string>;
   readonly agents: AgentSummary[];
   /** The workflow types whose name or description matches. */
   readonly definitions: CatalogRow[];
   /** Runs, by the start of their identifier. */
   readonly workflows: WorkflowSummary[];
-  readonly schedules: ScheduleSummary[];
+  readonly schedules: ScheduleMatch[];
   readonly workers: { id: string; queue: string }[];
   readonly reviews: ReviewListEntry[];
   /** The tools of the catalog whose name or description matches. */
@@ -90,6 +127,29 @@ export interface ConsoleSearchOptions {
   readonly readWorkflows?: (() => Promise<readonly CatalogRow[]>) | undefined;
   /** Reads the tools of the catalog, likewise. */
   readonly readTools?: (() => Promise<readonly CatalogTool[]>) | undefined;
+}
+
+/**
+ * A schedule as the palette lists it: named as the Schedules page names it (its description, else
+ * the agent or workflow it starts), never by its identifier. The type is shown beside the name only
+ * when the name does not already say it.
+ */
+export function scheduleMatch(
+  schedule: Pick<ScheduleSummary, 'id' | 'workflowType' | 'description'>,
+  overlay: Parameters<typeof kindOf>[1],
+): ScheduleMatch {
+  const kind = kindOf(schedule, overlay);
+  const identifiers = scheduleNameIdentifiers(schedule, kind);
+  return {
+    id: schedule.id,
+    name: scheduleName(schedule, kind),
+    identifiers,
+    workflowType: schedule.workflowType,
+    workflowTypeShown:
+      kind.kind === 'agent-run' || identifiers.includes(schedule.workflowType)
+        ? null
+        : schedule.workflowType,
+  };
 }
 
 /** Where a schedule's own page is. */
@@ -129,7 +189,11 @@ export function matchChats(contexts: readonly ChatContext[], query: string): Cha
     .slice(0, RESULTS_PER_GROUP);
 }
 
-/** The agents whose name, display name or description holds `query`, in the order given. */
+/**
+ * The agents whose name or display name holds `query`, in the order given. An agent's description
+ * is not searched: its row never shows it, so a match on it would be a row that does not say why it
+ * is there (a search for "refund" listing Tool runner because its prompt mentions refunds, row 03g).
+ */
 export function matchAgents(
   agents: readonly AgentSummary[],
   query: string,
@@ -140,7 +204,7 @@ export function matchAgents(
       (agent) =>
         containsQuery(query, agent.name) ||
         containsQuery(query, agent.displayName) ||
-        containsQuery(query, agent.description),
+        containsQuery(query, agentLabel(agent.name, agents)),
     )
     .slice(0, limit);
 }
@@ -164,8 +228,8 @@ const LOCAL_RESULTS = 8;
 
 /**
  * What is waiting on the person (an approval, a question) whose sentence or chat holds `query`,
- * oldest first, because the one waiting longest is the one to answer first. An empty `query`
- * matches all of them.
+ * newest first, in the order the bell lists them (design rows 03c, 03g: the refund approval from
+ * 4 minutes ago leads the question from an hour ago). An empty `query` matches all of them.
  */
 export function matchWaiting(
   items: readonly NotificationItem[],
@@ -176,15 +240,24 @@ export function matchWaiting(
     .filter(
       (item) =>
         (item.kind === 'approval' || item.kind === 'question') &&
-        (containsQuery(query, item.title) || containsQuery(query, item.detail)),
+        (containsQuery(query, item.title) ||
+          containsQuery(query, item.detail) ||
+          containsQuery(query, item.chat)),
     )
-    .toSorted((left, right) => left.emittedAtMs - right.emittedAtMs)
+    .toSorted((left, right) => right.emittedAtMs - left.emittedAtMs)
     .slice(0, limit);
 }
 
 /** The words a waiting item is found by and read as: the sentence, then what it is about. */
 export function waitingLabel(item: NotificationItem): string {
-  return item.detail === '' ? item.title : `${item.title}${item.joiner}${item.detail}`;
+  return item.detail === '' ? item.title : `${item.title} · ${item.detail}`;
+}
+
+/** What a waiting item's row says after its sentence: the kind of wait ("Approval · waiting", "Question"). */
+export function waitingMeta(item: NotificationItem): string {
+  return item.kind === 'approval'
+    ? PALETTE_COPY.waitingMeta.approval
+    : PALETTE_COPY.waitingMeta.question;
 }
 
 /**
@@ -196,7 +269,39 @@ export function matchActions(
   query: string,
   limit: number = LOCAL_RESULTS,
 ): ShortcutAction[] {
-  return actions.filter((action) => containsQuery(query, action.label)).slice(0, limit);
+  return actions
+    .filter((action) => containsQuery(query, action.label))
+    .toSorted((left, right) => actionRank(left) - actionRank(right))
+    .slice(0, limit);
+}
+
+/**
+ * Where an action sits in the list: the "Go to" rows first, then New chat, then the rest, with the
+ * shortcut map last (design row 03c: navigation rows, then New chat). The sort is stable, so
+ * actions of one rank keep the order they were registered in.
+ */
+function actionRank(action: ShortcutAction): number {
+  switch (action.group) {
+    case SHORTCUT_COPY.navigationGroup:
+      return 0;
+    case SHORTCUT_COPY.chatGroup:
+      return 1;
+    case SHORTCUT_COPY.generalGroup:
+      return 3;
+    default:
+      return 2;
+  }
+}
+
+/** The topic a "New chat about" action starts with: what was typed, trimmed. Nothing when nothing was. */
+export function newChatTopic(query: string): string | undefined {
+  const topic = query.trim();
+  return topic === '' ? undefined : topic;
+}
+
+/** Where "New chat about <topic>" goes: a new chat whose box already holds the topic. */
+export function newChatAboutPath(topic: string): string {
+  return `/chats/new?about=${encodeURIComponent(topic)}`;
 }
 
 /** The workflow types a person starts or edits (not the ones the Bureau runs itself) whose name or description holds `query`. */
@@ -215,6 +320,7 @@ export function matchTools(tools: readonly CatalogTool[], query: string): Catalo
     .filter(
       (tool) =>
         containsQuery(query, tool.name) ||
+        containsQuery(query, tool.title) ||
         containsQuery(query, tool.shortDescription ?? tool.description),
     )
     .slice(0, RESULTS_PER_GROUP);
@@ -225,9 +331,110 @@ export function toolPath(name: string): string {
   return `/capabilities?tool=${encodeURIComponent(name)}`;
 }
 
+/**
+ * What a run is called in the palette: the first clause of the chat that began it, so "Please
+ * refund order 4471, it arrived damaged." reads "Refund order 4471" (design row 03g). A run no
+ * chat began is called after its agent, and a task with neither is just "Run".
+ */
+export function runTitle(
+  chat: Pick<ChatContext, 'title'> | undefined,
+  agentName: string | undefined,
+): string {
+  const clause = (chat?.title ?? '')
+    .split(/[,;:\n]|[.!?](?:\s|$)/)[0]
+    ?.trim()
+    .replace(/^please\s+/i, '');
+  if (clause !== undefined && clause !== '') {
+    return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
+  }
+  return agentName ?? PALETTE_COPY.untitledRun;
+}
+
+/** What a task waits on, from its open waits. */
+function waitingOn(task: TaskView): RunMatch['waiting'] {
+  if (task.status !== 'input-required') return null;
+  const wait = task.openWaits[0];
+  if (wait === undefined) return null;
+  return wait.kind === 'tool-approval' ? 'approval' : 'answer';
+}
+
+/**
+ * The runs (Bureau tasks, most recently changed first) whose title or agent holds `query`, or whose
+ * identifier starts with it (a pasted identifier finds its run; a fragment in the middle of one does
+ * not, because the row never shows an identifier, so "refund" must not list a goal attempt whose
+ * identifier happens to say it). `chats` name what began each run, and `agentNames` read an agent's
+ * identifier as the name a person knows it by.
+ *
+ * A chat's title is the start of its latest message, so only the newest run of a chat is called
+ * after it; an earlier run of the same chat is called after its agent, because its own message is
+ * not recorded here and the chat's title would name the wrong order (row 03g: the finished 4472
+ * refund is not "Refund order 4471").
+ */
+export function matchRuns(
+  tasks: readonly TaskView[],
+  chats: readonly ChatContext[],
+  agentNames: ReadonlyMap<string, string>,
+  query: string,
+  limit: number = RESULTS_PER_GROUP,
+): RunMatch[] {
+  const chatsById = new Map(chats.map((chat) => [chat.id, chat] as const));
+  const named = new Set<string>();
+  const found: RunMatch[] = [];
+  for (const task of tasks) {
+    const agentText =
+      task.agentName === null ? undefined : (agentNames.get(task.agentName) ?? task.agentName);
+    const chat = named.has(task.contextId) ? undefined : chatsById.get(task.contextId);
+    if (chat !== undefined) named.add(task.contextId);
+    const title = runTitle(chat, agentText);
+    if (
+      containsQuery(query, title) ||
+      containsQuery(query, agentText) ||
+      containsQuery(query, task.agentName) ||
+      task.id.toLowerCase().startsWith(query.toLowerCase())
+    ) {
+      found.push({
+        id: task.id,
+        title,
+        agentName: task.agentName,
+        status: task.status,
+        waiting: waitingOn(task),
+      });
+      if (found.length === limit) break;
+    }
+  }
+  return found;
+}
+
+/** Each agent's identifier and the name a person reads for it ("tool-runner" reads "Tool runner"). */
+function agentNamesOf(agents: readonly AgentSummary[]): ReadonlyMap<string, string> {
+  return new Map(agents.map((agent) => [agent.name, agentLabel(agent.name, agents)] as const));
+}
+
+/** What a run says of how it stands: what it waits on, or its state in a word ("waiting for approval", "done"). */
+export function runStanding(run: Pick<RunMatch, 'status' | 'waiting'>): string {
+  return run.waiting === null
+    ? taskStatusWord(run.status).toLowerCase()
+    : PALETTE_COPY.runWaiting[run.waiting];
+}
+
+/**
+ * What a run's row says after its title: the agent that ran, then how it stands ("Tool runner ·
+ * waiting for approval"). A run called after its agent does not name the agent twice.
+ */
+export function runMeta(run: RunMatch, agentText: string | undefined): string {
+  return agentText === undefined || agentText === run.title
+    ? runStanding(run)
+    : `${agentText} · ${runStanding(run)}`;
+}
+
+/** How many of the newest runs the palette reads to search them. */
+const RUNS_SEARCHED = 100;
+
 /** Nothing found: what a query that reads nothing returns. */
 export const NO_RESULTS: ConsoleSearchResults = {
   chats: [],
+  runs: [],
+  agentNames: new Map(),
   agents: [],
   definitions: [],
   workflows: [],
@@ -286,7 +493,12 @@ export async function searchConsole(
     const failed: string[] = [];
     const agents = await reading(failed, PALETTE_COPY.groups.agents, listAgents(), []);
     return mode === 'agents'
-      ? { ...NO_RESULTS, agents: matchAgents(agents, query, NARROWED_RESULTS), failed }
+      ? {
+          ...NO_RESULTS,
+          agents: matchAgents(agents, query, NARROWED_RESULTS),
+          agentNames: agentNamesOf(agents),
+          failed,
+        }
       : { ...NO_RESULTS, newChats: matchNewChats(agents, query, NARROWED_RESULTS), failed };
   }
   if (query.length === 0) return NO_RESULTS;
@@ -299,7 +511,7 @@ export async function searchConsole(
 
   const failed: string[] = [];
   const groups = PALETTE_COPY.groups;
-  const [contexts, agents, definitions, tools, workflows, schedules, workers, reviews] =
+  const [contexts, agents, definitions, tools, workflows, schedules, workers, reviews, tasks] =
     await Promise.all([
       // Chats a person started: a goal's or a schedule's session is reached from its run.
       reading(
@@ -338,18 +550,24 @@ export async function searchConsole(
           )
         : Promise.resolve([] as WorkflowSummary[]),
       options.scheduleReadGate.disabled
-        ? Promise.resolve([] as ScheduleSummary[])
+        ? Promise.resolve([] as ScheduleMatch[])
         : reading(
             failed,
             groups.schedules,
-            client
-              .listSchedules({ limit: 100 })
-              .then((result) =>
+            client.listSchedules({ limit: 100 }).then((result) =>
+              loadScheduleOverlay(client).then((overlay) =>
                 result.items
-                  .filter((schedule) => containsQuery(query, schedule.id))
+                  .map((schedule) => scheduleMatch(schedule, overlay))
+                  .filter(
+                    (schedule) =>
+                      containsQuery(query, schedule.name) ||
+                      containsQuery(query, schedule.id) ||
+                      containsQuery(query, schedule.workflowType),
+                  )
                   .slice(0, RESULTS_PER_GROUP),
               ),
-            [] as ScheduleSummary[],
+            ),
+            [] as ScheduleMatch[],
           ),
       systemGate.disabled
         ? Promise.resolve([] as { id: string; queue: string }[])
@@ -377,9 +595,18 @@ export async function searchConsole(
               ),
             [] as ReviewListEntry[],
           ),
+      reading(
+        failed,
+        groups.runs,
+        listTasks({ limit: RUNS_SEARCHED }).then((page) => page.tasks),
+        [] as readonly TaskView[],
+      ),
     ]);
+  const agentNames = agentNamesOf(agents);
   return {
     chats: matchChats(contexts, query),
+    runs: matchRuns(tasks, contexts, agentNames, query),
+    agentNames,
     agents: matchAgents(agents, query),
     definitions: matchDefinitions(definitions, query),
     workflows,

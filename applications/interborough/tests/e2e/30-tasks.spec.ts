@@ -220,8 +220,10 @@ test.describe('the runs of a caller who may not read the engine', () => {
     await expect(page.getByRole('button', { name: 'Send a signal' })).toHaveCount(0);
 
     await page.goto('/runs?view=start');
-    await expect(page.getByRole('heading', { level: 1, name: 'Runs are locked' })).toBeVisible();
-    await expect(page.getByText('Requires workflows:read')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Your sign-in can’t open Runs' }),
+    ).toBeVisible();
+    await expect(page.getByText('requires workflows:read')).toBeVisible();
   });
 });
 

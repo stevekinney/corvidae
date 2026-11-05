@@ -10,6 +10,10 @@
 
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
   import { provideFleetEventSource } from '../engine-status.svelte.ts';
+  import {
+    KeyboardPreferences,
+    provideKeyboardPreferences,
+  } from '../keyboard-preferences.svelte.ts';
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
   import { provideClient } from '../../lib/client.ts';
@@ -30,9 +34,11 @@
     bureauEvents?: BureauEventSource;
     /** The shell's engine feed, provided to the views and applied to the cache. */
     fleetEvents?: FleetEventSource;
+    /** The keyboard preference Settings changes, which the shell provides; a fresh one when omitted. */
+    keyboard?: KeyboardPreferences;
   }
 
-  let { client, scopes, bureauEvents, fleetEvents }: RouteOutletHarnessProps = $props();
+  let { client, scopes, bureauEvents, fleetEvents, keyboard }: RouteOutletHarnessProps = $props();
 
   void routeComponents;
 
@@ -40,6 +46,9 @@
   provideToastHost();
 
   provideClient(untrack(() => client));
+  provideKeyboardPreferences(
+    untrack(() => keyboard) ?? new KeyboardPreferences(window.localStorage),
+  );
   providePrincipalStore().setPrincipal({
     scopes: untrack(() => scopes),
     subject: 'tester',

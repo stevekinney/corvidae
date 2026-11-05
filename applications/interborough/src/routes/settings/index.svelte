@@ -5,12 +5,16 @@
    * (`settings-frame.svelte`). Below the form the host's own paths are shown, read-only: they are
    * set by the host and are not settings.
    */
+  import { Toggle } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { SETTINGS_COPY, VIEW_COPY } from '../../app/copy.ts';
+  import { getKeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import SettingsFrame from './settings-frame.svelte';
+
+  const keyboard = getKeyboardPreferences();
 
   const hostPaths = createQuery(
     () => ({
@@ -36,6 +40,20 @@
   page="settings"
 >
   {#snippet after()}
+    {#if keyboard !== undefined}
+      <section class="weft-settings__keyboard" aria-labelledby="weft-settings-keyboard-title">
+        <h2 id="weft-settings-keyboard-title" class="weft-settings__paths-title">
+          {SETTINGS_COPY.keyboard.title}
+        </h2>
+        <Toggle
+          id="weft-settings-single-key-shortcuts"
+          label={SETTINGS_COPY.keyboard.singleKeyLabel}
+          description={SETTINGS_COPY.keyboard.singleKeyDescription}
+          checked={keyboard.singleKeyShortcuts}
+          onValueChange={(enabled) => keyboard.setSingleKeyShortcuts(enabled)}
+        />
+      </section>
+    {/if}
     <section class="weft-settings__paths" aria-labelledby="weft-settings-paths-title">
       <h2 id="weft-settings-paths-title" class="weft-settings__paths-title">
         {words.title}
@@ -72,6 +90,7 @@
     font-size: var(--cinder-text-sm);
   }
 
+  .weft-settings__keyboard,
   .weft-settings__paths {
     display: flex;
     flex-direction: column;

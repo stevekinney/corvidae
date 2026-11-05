@@ -28,12 +28,18 @@
   import Popover from '../popover/popover.svelte';
   import type { BreadcrumbsProps } from './breadcrumbs.types.ts';
 
+  // 24rem at the default 16px root: the container width under which only one ancestor shows.
+  const NARROW_CONTAINER_PIXELS = 384;
+
   let {
     items,
     separator = '/',
     label = 'Breadcrumb',
     collapseBelow = PHONE_VIEWPORT_BREAKPOINT,
     backLabel = 'Back to {label}',
+    maxVisible,
+    overflowLabel = 'Show earlier pages',
+    onOverflowNavigate,
     class: className,
     ...rest
   }: BreadcrumbsProps = $props();
@@ -54,6 +60,29 @@
     parent === undefined ? undefined : backLabel.replaceAll('{label}', parent.label),
   );
 
+  // The trail's own width, which a container query cannot report to script. Unset until measured,
+  // so server markup and the first paint show every ancestor.
+  let trailWidth = $state<number | undefined>(undefined);
+  const visibleAncestors = $derived.by(() => {
+    if (maxVisible !== undefined) {
+      if (!Number.isInteger(maxVisible) || maxVisible < 0) {
+        throw new Error('Breadcrumbs maxVisible must be a whole number of zero or more.');
+      }
+      return maxVisible;
+    }
+    return trailWidth !== undefined && trailWidth > 0 && trailWidth < NARROW_CONTAINER_PIXELS
+      ? 1
+      : Number.POSITIVE_INFINITY;
+  });
+  // The ancestors that fold away are the earliest ones: the nearest keep their place.
+  const hiddenCount = $derived(
+    Math.max(0, shownItems.length - 1 - Math.min(visibleAncestors, shownItems.length - 1)),
+  );
+  const hiddenItems = $derived(shownItems.slice(0, hiddenCount));
+  const visibleItems = $derived(shownItems.slice(hiddenCount));
+  let overflowOpen = $state(false);
+  let overflowTrigger = $state<HTMLButtonElement | null>(null);
+
   // The current entry opens a popover when it asks for one, such as a long title's full text.
   let popoverOpen = $state(false);
   let triggerElement = $state<HTMLButtonElement | null>(null);
@@ -64,6 +93,7 @@
   class={classNames('cinder-breadcrumbs', className)}
   aria-label={label}
   data-cinder-collapsed={collapsed ? '' : undefined}
+  bind:clientWidth={trailWidth}
 >
   {#if collapsed && parent?.href !== undefined}
     <a class="cinder-breadcrumbs__back" href={parent.href} aria-label={backName}>
@@ -80,8 +110,46 @@
       including two entries that legitimately share an `href` (e.g. repeated
       section-landing links) or the href-less current-page entry.
     -->
-    {#each shownItems as item, index (`${index}:${item.href ?? item.label}`)}
-      {@const isLast = index === shownItems.length - 1}
+    {#if hiddenItems.length > 0}
+      <li class="cinder-breadcrumbs__item cinder-breadcrumbs__item--overflow">
+        <button
+          type="button"
+          bind:this={overflowTrigger}
+          class="cinder-breadcrumbs__overflow"
+          aria-label={overflowLabel}
+          aria-haspopup="true"
+          aria-expanded={overflowOpen}
+          onclick={() => (overflowOpen = !overflowOpen)}
+        >
+          <span aria-hidden="true">…</span>
+        </button>
+        <Popover bind:open={overflowOpen} triggerRef={overflowTrigger} label={overflowLabel}>
+          <ul class="cinder-breadcrumbs__overflow-list">
+            {#each hiddenItems as hidden (`${hidden.href ?? hidden.label}`)}
+              <li>
+                <a
+                  class="cinder-breadcrumbs__overflow-link"
+                  href={hidden.href}
+                  onclick={(event) => {
+                    overflowOpen = false;
+                    onOverflowNavigate?.(hidden, event);
+                  }}>{hidden.label}</a
+                >
+              </li>
+            {/each}
+          </ul>
+        </Popover>
+        <span class="cinder-breadcrumbs__separator" aria-hidden="true">
+          {#if typeof separator === 'string'}
+            {separator}
+          {:else}
+            {@render separator()}
+          {/if}
+        </span>
+      </li>
+    {/if}
+    {#each visibleItems as item, index (`${hiddenCount + index}:${item.href ?? item.label}`)}
+      {@const isLast = index === visibleItems.length - 1}
       <li class="cinder-breadcrumbs__item">
         {#if isLast && item.popover !== undefined}
           <!-- Current page with a popover: the label truncates inside the button, so the full

@@ -35,6 +35,13 @@ export type CommandPaletteProps = {
    */
   sheetBelow?: string | false;
   /**
+   * The key hint at the end of the search field, drawn as a `Kbd` ("esc"), which says how to close
+   * the palette. `false` leaves it out. The bottom sheet shows a Close button instead and never
+   * the hint.
+   * @default "esc"
+   */
+  escapeHint?: string | false;
+  /**
    * Accessible name and visible text of the Close button the sheet form shows beside the search
    * field.
    * @default "Close"

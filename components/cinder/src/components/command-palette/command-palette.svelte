@@ -29,6 +29,7 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
   import Button from '../button/button.svelte';
+  import Kbd from '../kbd/kbd.svelte';
   import { setCommandListContext } from '../_internal/command-list-context.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import { createSlidingDialogState } from '../_internal/create-sliding-dialog-state.svelte.ts';
@@ -45,6 +46,7 @@
     footer,
     sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     closeLabel = 'Close',
+    escapeHint = 'esc',
     class: className,
   }: CommandPaletteProps = $props();
 
@@ -246,6 +248,10 @@
               label={closeLabel}
               onclick={() => dialogState.requestClose()}
             />
+          {:else if escapeHint !== false}
+            <span class="cinder-command-palette__escape" aria-hidden="true">
+              <Kbd size="sm" label={escapeHint} />
+            </span>
           {/if}
         </div>
 

@@ -1,7 +1,7 @@
 /**
  * The shell as a person meets it: one loopback origin, no sign-in, and one local caller. The top
  * bar holds no principal and no scope count (Settings › API reference › Your scopes names that caller from
- * `weft.system.principal`), the sidebar holds one ordered list, Chat is the home screen, the palette
+ * `weft.system.principal`), the sidebar groups Home, Work, Build and System, Home is the page at `/`, the palette
  * searches chats and agents first, and Bureau answers beside the engine on the same origin. The
  * notification bell is about the person: what is waiting on them, and what finished.
  */
@@ -23,11 +23,12 @@ const WIDTHS = [
 ] as const;
 
 const DESTINATIONS = [
+  'Home',
   'Chat',
   'Reviews',
+  'Runs',
   'Agents',
   'Workflows',
-  'Runs',
   'Schedules',
   'Goals',
   'Capabilities',
@@ -87,7 +88,7 @@ test.describe('the notification bell, about the person and not the engine', () =
   }) => {
     await page.goto('/agents');
     await expect(bell(page, 'Notifications')).toBeVisible();
-    await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(0);
 
     await bell(page, 'Notifications').click();
     await expect(page.getByText(NOTIFICATION_COPY.empty.title)).toBeVisible();
@@ -95,7 +96,7 @@ test.describe('the notification bell, about the person and not the engine', () =
     await checkA11y('the empty notification panel');
   });
 
-  test('after one echo chat, one approval and one question there are three items and a badge of 2', async ({
+  test('after one echo chat, one approval and one question there are two items and a badge of 2', async ({
     page,
     request,
     checkA11y,
@@ -127,37 +128,36 @@ test.describe('the notification bell, about the person and not the engine', () =
 
     // Not a chat: opening a chat reads its items.
     await page.goto('/agents');
-    await expect(bell(page, 'Notifications, 2 need you')).toBeVisible();
-    await expect(page.locator('.weft-notification-bell__count')).toHaveText('2');
+    await expect(bell(page, 'Notifications, 2 unread')).toBeVisible();
+    await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(1);
 
-    await bell(page, 'Notifications, 2 need you').click();
-    await expect(rows(page)).toHaveCount(3);
+    await bell(page, 'Notifications, 2 unread').click();
+    await expect(rows(page)).toHaveCount(2);
     const panel = page.locator('.weft-notification-panel');
+    await expect(panel.getByRole('heading', { name: 'Notifications · 2 unread' })).toBeVisible();
+    // A review is what it asks, then whose wait it is. The echo chat finished and nothing waits on
+    // the person in it, so it is not listed.
     await expect(
-      panel.getByRole('link', {
-        name: /^demo:tool-runner needs your approval in Refund order 1234/,
-      }),
+      panel.getByRole('link').filter({ hasText: /Waiting for your approval · .*Tool runner/i }),
     ).toHaveCount(1);
     await expect(
-      panel.getByRole('link', {
-        name: /^demo:request-human-input asked a question in Ship the release/,
-      }),
+      panel
+        .getByRole('link')
+        .filter({ hasText: /Waiting for your answer · .*Request human input/i }),
     ).toHaveCount(1);
-    await expect(
-      panel.getByRole('link', { name: /^demo:echo answered in Hello echo, say this back/ }),
-    ).toHaveCount(1);
+    await expect(panel.getByRole('link').filter({ hasText: /answered/i })).toHaveCount(0);
 
     // The engine's own events, and its run identifiers, stay out of the panel.
     const text = (await panel.textContent()) ?? '';
     expect(text).not.toMatch(/run-\d/);
     expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
     expect(text).not.toMatch(/Workflow (started|completed)|Waiting for signal|Signal received/);
-    await checkA11y('the notification panel with three items');
+    await checkA11y('the notification panel with two items');
   });
 
   test('approving from the chat clears that item and brings the badge down', async ({ page }) => {
     await page.goto('/agents');
-    await expect(bell(page, 'Notifications, 2 need you')).toBeVisible();
+    await expect(bell(page, 'Notifications, 2 unread')).toBeVisible();
 
     await page.goto(`/chats/${approvalThread}`);
     const approval = page.locator('.ib-decision');
@@ -167,41 +167,37 @@ test.describe('the notification bell, about the person and not the engine', () =
 
     // Within the default five-second expectation: the decision refreshes the bell at once, and its
     // poll would after five seconds anyway.
-    await expect(bell(page, 'Notifications, 1 needs you')).toBeVisible();
-    await bell(page, 'Notifications, 1 needs you').click();
-    // The question, the echo's answer, and the run's own answer. The approval is gone, and the
-    // answer that landed in the chat that is open was read on arrival, so it is not new on leaving.
-    await expect(rows(page)).toHaveCount(3);
+    await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
+    await bell(page, 'Notifications, 1 unread').click();
+    // Only the question is left: the approval is gone, and the chat it was decided in finished, which
+    // nothing waits on the person for.
+    await expect(rows(page)).toHaveCount(1);
     await expect(
-      page.getByRole('link', { name: /^demo:tool-runner needs your approval/ }),
+      page.getByRole('link').filter({ hasText: 'Waiting for your approval' }),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole('link', { name: /^demo:tool-runner answered in Refund order 1234/ }),
-    ).toHaveAttribute('data-read', 'true');
   });
 
   test('opening an item goes to its chat and reads it', async ({ page }) => {
     await page.goto('/agents');
-    await bell(page, 'Notifications, 1 needs you').click();
+    await bell(page, 'Notifications, 1 unread').click();
     await page
       .locator('.weft-notification-panel')
-      .getByRole('link', { name: /^demo:request-human-input asked a question/ })
+      .getByRole('link')
+      .filter({ hasText: 'Waiting for your answer' })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/chats/${questionThread}$`));
     await expect(bell(page, 'Notifications')).toBeVisible();
-    await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(0);
   });
 
-  test('a finished run is listed once the chat is left, and never counts', async ({ page }) => {
+  test('a finished run is not listed, once the chat is left or ever', async ({ page }) => {
     await page.goto('/agents');
-    // A fresh page has read nothing, so the question still counts, and the two answers do not.
-    await expect(bell(page, 'Notifications, 1 needs you')).toBeVisible();
-    await bell(page, 'Notifications, 1 needs you').click();
-    await expect(rows(page)).toHaveCount(3);
-    await expect(
-      page.getByRole('link', { name: /^demo:tool-runner answered in Refund order 1234/ }),
-    ).toHaveCount(1);
+    // A fresh page has read nothing, so the question still counts, and it is the only item.
+    await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
+    await bell(page, 'Notifications, 1 unread').click();
+    await expect(rows(page)).toHaveCount(1);
+    await expect(page.getByRole('link').filter({ hasText: /answered/i })).toHaveCount(0);
   });
 
   test('the panel fits a phone and passes axe', async ({ page, checkA11y }) => {
@@ -251,12 +247,12 @@ test('the palette lists the chat before the agent a few letters name, and the ac
   await search.fill('ech');
 
   const options = page.getByRole('option');
-  await expect(page.getByRole('option', { name: /^demo:echo, / })).toHaveCount(1);
+  await expect(page.getByRole('option', { name: /^Echo, demo:echo, agent$/ })).toHaveCount(1);
   const names = await options.evaluateAll((elements) =>
     elements.map((element) => element.getAttribute('aria-label') ?? ''),
   );
   const chatIndex = names.findIndex((label) => label.startsWith('Hello echo, say this back'));
-  const agentIndex = names.findIndex((label) => label.startsWith('demo:echo, '));
+  const agentIndex = names.findIndex((label) => /^Echo, demo:echo, agent$/.test(label));
   expect(chatIndex).toBeGreaterThanOrEqual(0);
   expect(agentIndex).toBeGreaterThan(chatIndex);
   // Chats come before agents, and the actions (New chat with demo:echo) after both.
@@ -265,8 +261,8 @@ test('the palette lists the chat before the agent a few letters name, and the ac
     .getByRole('group')
     .evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-label')));
   expect(groups.indexOf('Chats')).toBeGreaterThanOrEqual(0);
-  expect(groups.indexOf('Agents')).toBeGreaterThan(groups.indexOf('Chats'));
-  expect(groups.indexOf('Actions')).toBeGreaterThan(groups.indexOf('Agents'));
+  expect(groups.indexOf('Agents and tools')).toBeGreaterThan(groups.indexOf('Chats'));
+  expect(groups.indexOf('Actions')).toBeGreaterThan(groups.indexOf('Agents and tools'));
   await checkA11y('the palette');
 });
 
@@ -280,7 +276,7 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
   await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Aecho$/);
 });
 
-test('g then a letter opens a view, and the sidebar names the keys', async ({ page }) => {
+test('g then a letter opens a view', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
   await page.keyboard.press('g');
@@ -289,19 +285,25 @@ test('g then a letter opens a view, and the sidebar names the keys', async ({ pa
   await page.keyboard.press('g');
   await page.keyboard.press('c');
   await expect(page).toHaveURL(/\/chats$/);
-  await expect(page.getByRole('link', { name: /^Agents/ })).toHaveAttribute(
-    'title',
-    'Agents (g a)',
-  );
+  await page.keyboard.press('g');
+  await page.keyboard.press('h');
+  await expect(page).toHaveURL(/\/$/);
 });
 
-test('the engine status is a dot on Health, with its words in the link’s name', async ({
+test('Health carries a dot, and the words of what it says are in the link’s name', async ({
   page,
 }) => {
   await page.goto('/');
-  const engine = page.getByRole('link', { name: /^Health\s*Server (healthy|connecting)/ });
-  await expect(engine).toHaveCount(1);
-  await expect(engine.locator('.cinder-status-dot')).toHaveCount(1);
+  const health = page
+    .getByRole('navigation', { name: 'Views' })
+    .getByRole('link', { name: /^Health, (\d+ need attention|nothing needs attention)$/ });
+  await expect(health).toHaveCount(1);
+  await expect(health.locator('.cinder-status-dot')).toHaveCount(1);
+  // The dot is decoration over the name.
+  await expect(health.locator('.cinder-side-navigation-item__dot')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
 });
 
 test('an uncredentialed JSON-RPC call is served as that same caller', async ({ request }) => {
@@ -322,34 +324,51 @@ test('Bureau answers beside the engine on the same origin', async ({ request }) 
   expect(reviews.ok()).toBe(true);
 });
 
-test('the sidebar holds one ordered list, with Settings pinned to the bottom', async ({ page }) => {
+test('the sidebar groups Home, Work, Build and System, with System pinned to the bottom', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: 'Views' });
-  await expect(navigation.locator('.cinder-side-navigation-group')).toHaveCount(0);
   const links = navigation.getByRole('link');
   await expect(links).toHaveCount(DESTINATIONS.length);
   for (const [index, label] of DESTINATIONS.entries()) {
     await expect(links.nth(index)).toHaveAccessibleName(new RegExp(`^${label}`));
   }
-  // Settings sits below the rest, with the space between them.
-  const capabilities = await links.nth(7).boundingBox();
-  const hooks = await links.nth(8).boundingBox();
-  const health = await links.nth(9).boundingBox();
-  const settings = await links.nth(10).boundingBox();
-  expect((settings?.y ?? 0) - (health?.y ?? 0)).toBeGreaterThan(
+  await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveText([
+    'Work',
+    'Build',
+    'System',
+  ]);
+  // System sits below the rest, with the space between them.
+  const capabilities = await links.nth(8).boundingBox();
+  const hooks = await links.nth(9).boundingBox();
+  const health = await links.nth(10).boundingBox();
+  const settings = await links.nth(11).boundingBox();
+  expect((health?.y ?? 0) - (hooks?.y ?? 0)).toBeGreaterThan(
     ((hooks?.y ?? 0) - (capabilities?.y ?? 0)) * 2,
   );
+  expect((settings?.y ?? 0) - (health?.y ?? 0)).toBeLessThan(40);
 });
 
-test('Chat is the home screen, and a session lives under /chats/:chat', async ({ page }) => {
-  // The sidebar's item, not the top bar's breadcrumb, which links to the chats from a session.
-  const chat = page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Chat/ });
+test('Home is the page at /, and a chat session lives under /chats/:chat', async ({ page }) => {
+  const navigation = page.getByRole('navigation', { name: 'Views' });
   await page.goto('/');
-  await expect(page.locator('[data-view="chat"]')).toBeVisible();
-  await expect(chat).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('[data-view="home"]')).toBeVisible();
+  await expect(navigation.getByRole('link', { name: /^Home/ })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(navigation.getByRole('link', { name: /^Chat/ })).not.toHaveAttribute(
+    'aria-current',
+    'page',
+  );
   await page.goto('/chats/session-1');
   await expect(page.locator('[data-view="chat"]')).toBeVisible();
-  await expect(chat).toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('link', { name: /^Chat/ })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 });
 
 test('runs live at /runs and /runs/:run, and /workflows is the catalog of definitions', async ({

@@ -19,9 +19,8 @@
     gap: var(--cinder-space-2);
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
-    /* Single-line stopgap: clip a long trail with an ellipsis instead of
-     wrapping to a second row. True earliest-first priority needs the deferred
-     `maxVisible` prop. */
+    /* A long trail never wraps to a second row: earlier ancestors fold into the "…" menu
+     (`maxVisible`), and what is left clips with an ellipsis. */
     overflow: hidden;
     white-space: nowrap;
   }
@@ -30,20 +29,24 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-2);
-    /* Ancestor crumbs shrink hard (high factor) so they absorb the overflow and
-     ellipsize first. */
+    /* Ancestor crumbs keep their words: they shrink slowly (factor 1), so a narrow trail never
+     reduces one to nothing or to a stray fragment. */
     min-width: 0;
-    flex-shrink: 100;
+    flex-shrink: 1;
   }
 
-  /* The last item holds the current crumb. It still shrinks — so a lone long
-   current crumb ellipsizes against the container instead of hard-clipping —
-   but with a far lower factor than the ancestors, so they always yield first.
-   Plain flex cannot express strict source-order priority; the lopsided shrink
-   factors approximate "current crumb is the priority" while guaranteeing it can
-   never overflow the container without its own ellipsis engaging. */
+  /* The last item holds the current crumb, and it gives way first (design rows 03l and 04f). It
+   shrinks so much faster than the ancestors that a long title ellipsizes while the ancestors keep
+   every pixel of their words, and it stops at a floor of four characters, enough for a glyph or two
+   and an ellipsis; only then do the ancestors shrink. Plain flex cannot express strict
+   source-order priority, and a proportional ratio such as 100 to 1 still takes a fraction of a pixel
+   from an ancestor, which is enough for its ellipsis to engage on a label that fits. So the ratio
+   is lopsided enough (100000 to 1, here and on the phone trail's list) that the fraction is below
+   what layout resolves, while the leaf still never overflows the container without its own
+   ellipsis. */
   .cinder-breadcrumbs__item:last-child {
-    flex-shrink: 1;
+    flex-shrink: 100000;
+    min-inline-size: min(4ch, 100%);
   }
 
   .cinder-breadcrumbs__link {
@@ -172,13 +175,16 @@
     min-inline-size: 0;
   }
 
+  /* The back link keeps its whole label while there is room: the current page, with its far higher
+   shrink factor, truncates first (design row 04f), and the link shrinks only once that is at its
+   floor. */
   .cinder-breadcrumbs__back {
     box-sizing: border-box;
     display: inline-flex;
-    flex: none;
+    flex: 0 1 auto;
+    min-inline-size: 0;
     align-items: center;
     min-block-size: var(--cinder-touch-target-min);
-    max-inline-size: 50%;
     padding-inline: var(--cinder-space-1) var(--cinder-space-2);
     border-radius: var(--cinder-radius-sm);
     color: var(--cinder-accent-text);
@@ -220,8 +226,8 @@
   }
 
   .cinder-breadcrumbs[data-cinder-collapsed] .cinder-breadcrumbs__list {
-    flex: 1 1 auto;
-    min-inline-size: 0;
+    flex: 1 100000 auto;
+    min-inline-size: 3rem;
     font-size: var(--cinder-text-base);
   }
 
@@ -238,5 +244,61 @@
     .cinder-breadcrumbs__item:not(:first-child):not(:last-child) .cinder-breadcrumbs__link {
       max-inline-size: 100%;
     }
+  }
+
+  /* The "…" button that stands for the ancestors folded out of a narrow trail. It is the width
+   * of its glyph, so it never shrinks to a fragment. */
+  .cinder-breadcrumbs__item--overflow {
+    flex-shrink: 0;
+  }
+
+  .cinder-breadcrumbs__overflow {
+    appearance: none;
+    min-inline-size: 1.5rem;
+    padding-block: 0;
+    padding-inline: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    font: inherit;
+    line-height: inherit;
+    background: transparent;
+    border: none;
+    border-radius: var(--cinder-radius-sm);
+    cursor: pointer;
+  }
+
+  .cinder-breadcrumbs__overflow:hover {
+    color: var(--cinder-text-default);
+    background-color: var(--cinder-surface-hover);
+  }
+
+  .cinder-breadcrumbs__overflow:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-breadcrumbs__overflow-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-breadcrumbs__overflow-link {
+    display: block;
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    color: var(--cinder-text-default);
+    text-decoration: none;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-breadcrumbs__overflow-link:hover {
+    background-color: var(--cinder-surface-hover);
+  }
+
+  .cinder-breadcrumbs__overflow-link:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 }

@@ -1,5 +1,5 @@
 /**
- * The route table: Chat is the home screen, sessions live under `/chats/:chat`, runs moved
+ * The route table: Home is the page at `/`, sessions live under `/chats/:chat`, runs moved
  * from `/workflows` to `/runs`, and `/workflows` is the catalog of definitions.
  *
  * These tests check the table's wiring and never import a route's component. Importing one
@@ -72,22 +72,16 @@ describe('the route table', () => {
     for (const route of routes) expect(VIEW_NAMES).toContain(route.view as never);
   });
 
-  test('loads a component file that exists for every route that renders, and names a path for the one that redirects', () => {
+  test('loads a component file that exists for every route', () => {
     for (const route of routes) {
-      if (route.redirect !== undefined) continue;
       const path = componentPathOfRoute(route);
       expect(path, route.pattern).toEndWith('.svelte');
       expect(existsSync(path), `${route.pattern} loads ${path}`).toBe(true);
     }
-    expect(
-      routes.filter((route) => route.redirect !== undefined).map((route) => route.pattern),
-    ).toEqual(['/']);
   });
 
-  test('gives the route that redirects a component file too, which the outlet never mounts', () => {
-    const home = routes.find((route) => route.redirect !== undefined);
-    expect(home?.pattern).toBe('/');
-    expect(existsSync(componentPathOfRoute(home!))).toBe(true);
+  test('has no route that redirects: pre-release, every address renders its own page', () => {
+    expect(routes.filter((route) => route.redirect !== undefined)).toEqual([]);
   });
 
   test('registers /chats/new before /chats/:chat, because the first match wins', () => {
@@ -120,9 +114,10 @@ describe('the route table', () => {
     expect(new Set(patterns).size).toBe(patterns.length);
   });
 
-  test('makes Chat the home screen, with sessions under /chats/:chat', () => {
+  test('makes Home the page at /, with Chat sessions under /chats/:chat', () => {
     expect(matchRoute('/')).toEqual({ pattern: '/', params: {} });
-    expect(routes.find((route) => route.pattern === '/')?.view).toBe('chat');
+    expect(routes.find((route) => route.pattern === '/')?.view).toBe('home');
+    expect(routes.find((route) => route.pattern === '/')?.redirect).toBeUndefined();
     expect(matchRoute('/chats')?.pattern).toBe('/chats');
     expect(matchRoute('/chats/session-1')).toEqual({
       pattern: '/chats/:chat',

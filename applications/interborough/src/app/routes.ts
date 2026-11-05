@@ -1,6 +1,5 @@
 import type { Component } from 'svelte';
 
-import { chatHomePath } from '../routes/chat/chat-home.ts';
 import { SETTINGS_SECTION_COPY, VIEW_COPY, WORKFLOW_COPY } from './copy.ts';
 import type { PageKind, ViewName } from './views.ts';
 
@@ -36,16 +35,21 @@ export interface RouteDefinition {
   redirect?: (match: { params: Readonly<Record<string, string | undefined>> }) => Promise<string>;
 }
 
-const placeholder = () => import('../routes/placeholder/index.svelte');
 const agentEditor = () => import('../routes/agent-editor/index.svelte');
 const workflowArea = () => import('../routes/workflow-definitions/index.svelte');
 const runArea = () => import('../routes/workflows/index.svelte');
 const schedulesArea = () => import('../routes/schedules/index.svelte');
 
 export const routes: readonly RouteDefinition[] = [
-  // Chat is the home screen. Sessions live under `/chats/:chat`.
-  // `/` opens the most recently updated session, or `/chats` when there is none.
-  { pattern: '/', kind: 'reading', view: 'chat', load: placeholder, redirect: chatHomePath },
+  // Home is the page at `/`, the first item in the sidebar. It has no crumb: the trail for `/` is
+  // the view's name.
+  {
+    pattern: '/',
+    kind: 'reading',
+    view: 'home',
+    load: () => import('../routes/home/index.svelte'),
+  },
+  // Chat sessions live under `/chats/:chat`.
   {
     pattern: '/chats',
     kind: 'list-detail',

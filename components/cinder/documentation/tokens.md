@@ -849,7 +849,7 @@ Component-owned custom-property theming surfaces, one section per component (bes
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-side-navigation-list-gap` | `var(--cinder-space-1)` | Gap between top-level navigation items. |
+| `--cinder-side-navigation-list-gap` | `var(--cinder-space-0-5)` | Gap between top-level navigation items: 2px, so a 30px row sits on a 32px pitch. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

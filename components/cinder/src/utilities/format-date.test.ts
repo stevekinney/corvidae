@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 
 import { environmentConfiguration } from '../../scripts/environment-configuration.ts';
 import {
+  formatCompactAge,
   formatDate,
   formatDateTime,
   formatDayAndTime,
@@ -375,5 +376,53 @@ describe('COR-2010 board forms', () => {
     test('leaves the compact default untouched', () => {
       expect(formatRelativeTime(nowCentral + 2 * 3_600_000, options)).toBe('in 2 h');
     });
+  });
+});
+
+describe('formatCompactAge', () => {
+  const now = Date.parse('2026-11-02T16:46:00Z');
+
+  test('reads now under a minute, and for a moment in the future', () => {
+    expect(formatCompactAge(now - 59_000, { now })).toBe('now');
+    expect(formatCompactAge(now + 5_000, { now })).toBe('now');
+  });
+
+  test('reads minutes to the nearest minute, so 3 minutes 40 seconds is 4 min, and never says ago', () => {
+    expect(formatCompactAge(now - 220_000, { now })).toBe('4 min');
+    expect(formatCompactAge(now - 60_000, { now })).toBe('1 min');
+    expect(formatCompactAge(now - 59 * 60_000, { now })).toBe('59 min');
+  });
+
+  test('reads a count of minutes that rounds up to an hour as 1 h', () => {
+    expect(formatCompactAge(now - 59.6 * 60_000, { now })).toBe('1 h');
+    expect(formatCompactAge(now - 3_600_000, { now })).toBe('1 h');
+  });
+
+  test('reads whole hours under a day, so 7 hours 46 minutes is 7 h', () => {
+    expect(formatCompactAge(now - (7 * 60 + 46) * 60_000, { now })).toBe('7 h');
+    expect(formatCompactAge(now - 23 * 3_600_000, { now })).toBe('23 h');
+  });
+
+  test('reads the weekday under a week, in the zone it is asked for', () => {
+    const sundayNoon = Date.parse('2026-11-01T12:00:00Z');
+    expect(formatCompactAge(sundayNoon, { now })).toBe('Sun');
+    // Noon UTC on Sunday is already Monday 1:00 AM in Auckland.
+    expect(formatCompactAge(sundayNoon, { now, timeZone: 'Pacific/Auckland' })).toBe('Mon');
+  });
+
+  test('reads the date after a week, with the year only when it is not this one', () => {
+    expect(formatCompactAge(Date.parse('2026-10-24T12:00:00Z'), { now })).toBe('Oct 24');
+    expect(formatCompactAge(Date.parse('2025-12-24T12:00:00Z'), { now })).toBe('Dec 24, 2025');
+  });
+
+  test('accepts an ISO string, and says so for a date that is not one', () => {
+    expect(formatCompactAge('2026-11-02T16:42:00Z', { now })).toBe('4 min');
+    expect(formatCompactAge('not a date', { now })).toBe('Invalid date');
+  });
+
+  test('another language reads the relative time the locale words', () => {
+    expect(formatCompactAge(now - 4 * 60_000, { now, locale: 'fr' })).toBe(
+      formatRelativeTime(now - 4 * 60_000, { now, locale: 'fr' }),
+    );
   });
 });

@@ -18,6 +18,7 @@ import {
   MODELS_COPY,
   VIEW_COPY,
 } from '../../src/app/copy.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -82,6 +83,36 @@ for (const width of [375, 1280] as const) {
     await checkA11y(`Chat on a fresh installation at ${width}px`);
   });
 }
+
+test('Home on a fresh installation shows the grouped sidebar with no Reviews count (14f)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  const navigation = page.getByRole('navigation', { name: 'Views' });
+  await expect(navigation.getByRole('link')).toHaveCount(12);
+  await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveText([
+    'Work',
+    'Build',
+    'System',
+  ]);
+  await expect(page.locator('.weft-shell-sidebar__name')).toHaveText('Interborough');
+  // Nothing is waiting on the person, so Reviews carries no count and its name is its label.
+  await expect(navigation.getByRole('link', { name: 'Reviews', exact: true })).toBeVisible();
+  await expect(
+    navigation.getByRole('link', { name: 'Reviews', exact: true }).locator('.cinder-badge'),
+  ).toHaveCount(0);
+  const bar = page.getByRole('banner');
+  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Home');
+  const search = bar.getByRole('button', { name: /^Search everything/ });
+  await expect(search).toContainText('Search everything');
+  await expect(search).toContainText('⌘K');
+  await captureForDesignReview(page, {
+    route: '/',
+    state: 'first run fresh installation',
+    source: 'first-run.spec.ts',
+  });
+});
 
 test('dismissing the steps keeps the choice in this browser, across a reload', async ({ page }) => {
   await page.goto('/chats');

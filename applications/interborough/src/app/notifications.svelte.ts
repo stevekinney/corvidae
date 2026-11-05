@@ -1,13 +1,13 @@
 /**
  * The notification bell's store. What it holds is about the person, not the engine: a tool waiting
- * for an approval, a question an agent asked, a run that failed, and an answer that arrived
- * (`./notification-items.ts` builds them from the Bureau's reviews, tasks and notifications, the
+ * for an approval, a question an agent asked, a run that failed, a schedule that missed its time
+ * (`./notification-items.ts` builds them from the Bureau's reviews and notifications, the
  * last of which the Bureau keeps and marks read for every browser). The host's own problem is the one other thing it holds: an unreachable or stale engine
  * (`reportEngineStatus`). The engine's event feed (a run started, a signal arrived) is not here;
  * the Engine view's activity feed shows it.
  *
  * The badge counts the items that need the person: approvals, questions, failures, and the host's
- * problem. An answer is listed but never counts. Which items were read is the person's, so it is
+ * problem. A standing item (a firing rule) is listed but never counts. Which items were read is the person's, so it is
  * kept apart from the derived items and survives each refresh, and a reload.
  */
 import type { LiveSourceStatus } from '../lib/live-source/index.ts';
@@ -92,7 +92,7 @@ export class NotificationStore {
     const entries = this.#engineProblem === undefined ? [] : [this.#engineProblem];
     return [...entries, ...this.#activity].map((entry) => ({
       ...entry,
-      read: read.has(entry.id) || entry.serverRead === true,
+      read: read.has(entry.id) || entry.serverRead === true || entry.standing === true,
     }));
   });
 
@@ -101,7 +101,7 @@ export class NotificationStore {
     return this.#items;
   }
 
-  /** How many unread items need the person; an answer never counts. */
+  /** How many unread items need the person; a standing item never counts. */
   get unreadCount(): number {
     return this.items.filter((item) => !item.read && item.tier !== 'info').length;
   }
@@ -139,7 +139,7 @@ export class NotificationStore {
     this.#remote = remote;
   }
 
-  /** Replaces the items derived from the Bureau's reviews, tasks and notifications. */
+  /** Replaces the items derived from the Bureau's reviews and notifications. */
   setActivity(entries: readonly NotificationEntry[]): void {
     this.#activity = [...entries];
   }
@@ -163,8 +163,6 @@ export class NotificationStore {
     this.#engineProblem = {
       id: ENGINE_STATUS_ITEM_ID,
       kind: 'engine',
-      identifiers: [],
-      joiner: ': ',
       href: '/health',
       emittedAtMs: nowMs,
       ...problem,
@@ -190,7 +188,7 @@ export class NotificationStore {
   }
 
   /**
-   * Opening a chat reads what is about it: its approval, its question, its answer. An item the
+   * Opening a chat reads what is about it: its approval, its question, its failure. An item the
    * Bureau refused is left alone: this runs from an effect that tracks the items, so trying it
    * again would loop; only an explicit read ({@link markRead}, {@link markAllRead}) tries again.
    */

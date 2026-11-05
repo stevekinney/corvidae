@@ -60,6 +60,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
   const runSetupFile = encodeURIComponent(seed.runSetupFile);
   const run = encodeURIComponent(seed.run);
   return {
+    '/': '/',
     '/chats': '/chats',
     '/chats/new': '/chats/new',
     '/chats/:chat': `/chats/${encodeURIComponent(seed.chat)}`,

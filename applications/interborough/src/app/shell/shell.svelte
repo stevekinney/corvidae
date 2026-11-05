@@ -12,13 +12,14 @@
    * and `Dropdown` (both close on Escape internally). Every key goes through
    * the shortcut registry (`../../lib/shortcuts.ts`): the shell registers ⌘K
    * for the palette, `g` then a letter for each destination and `?` for the
-   * map (`./destinations.ts`), and reads each key press against it.
+   * map (`./destinations.ts`), and reads each key press against it. ⌘K acts from inside a field,
+   * the composer included, and never under Shift (⌘⇧K is the composer's link shortcut); the plain
+   * keys never act inside a field, and a person can turn them off in Settings.
    */
-  import { Banner, SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
+  import { Banner } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
-  import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
@@ -29,11 +30,21 @@
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
   import { CONNECTION_COPY } from '../copy.ts';
-  import { ConnectionMonitor, provideConnection } from '../connection.svelte.ts';
+  import {
+    CONNECTION_MAX_ATTEMPTS,
+    connectionBannerPreset,
+    ConnectionMonitor,
+    provideConnection,
+  } from '../connection.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
+  import { restartActivity } from '../restart/host-restart-flow.svelte.ts';
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
   import { connectNotificationFeed } from '../notification-feed.svelte.ts';
+  import {
+    KeyboardPreferences,
+    provideKeyboardPreferences,
+  } from '../keyboard-preferences.svelte.ts';
   import { LayoutPreferences, provideLayoutPreferences } from '../layout-preferences.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
@@ -46,6 +57,8 @@
   import PluginProblemsBanner from './plugin-problems-banner.svelte';
   import RouteOutlet from './route-outlet.svelte';
   import ShortcutMap from './shortcut-map.svelte';
+  import { provideSearchOpener } from './search-opener.ts';
+  import { provideShellNavigation, ShellNavigation } from './shell-navigation.svelte.ts';
   import Sidebar from './sidebar.svelte';
   import Topbar from './topbar.svelte';
 
@@ -102,20 +115,39 @@
   onDestroy(disarmWriteGuard);
   $effect(() => {
     const stopObserving = connection.observe(queryClient);
-    const goOffline = () => connection.reportUnreachable();
-    const comeOnline = () => void connection.check();
+    const goOffline = () => connection.setBrowserOffline(true);
+    const comeOnline = () => connection.setBrowserOffline(false);
+    // A page opened while the browser is already offline gets no `offline` event to say so.
+    // Untracked: a change to the monitor's own state must not re-run this effect.
+    untrack(() => {
+      if (connection.browserOffline) connection.reportUnreachable();
+    });
     window.addEventListener('offline', goOffline);
     window.addEventListener('online', comeOnline);
     return () => {
       stopObserving();
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('online', comeOnline);
-      connection.dispose();
     };
+  });
+  // Disposed with the shell, not with the effect: the monitor outlives a re-run of the effect.
+  onDestroy(() => connection.dispose());
+
+  // While the host restarts the monitor keeps quiet (see the banner below). When the restart is
+  // over it asks the server once, so a host that is back does not wait out a countdown behind a
+  // banner that is no longer true.
+  let restartWasActive = false;
+  $effect(() => {
+    const active = restartActivity.active;
+    untrack(() => {
+      if (restartWasActive && !active) void connection.check();
+      restartWasActive = active;
+    });
   });
 
   const theme = new ThemeStore();
   const layout = provideLayoutPreferences(new LayoutPreferences());
+  const keyboard = provideKeyboardPreferences(new KeyboardPreferences());
   const notifications = new NotificationStore();
   const engineStatus = new EngineStatusController(initialClient);
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
@@ -148,6 +180,8 @@
 
   let shortcutMapOpen = $state(false);
   let paletteOpen = $state(false);
+  // A page under the shell, such as the not-found page, can offer to search (`./search-opener.ts`).
+  provideSearchOpener(() => (paletteOpen = true));
 
   $effect(() =>
     registerShellShortcuts(shortcuts, {
@@ -156,6 +190,13 @@
       openPalette: () => (paletteOpen = true),
     }),
   );
+
+  // "Use single-key shortcuts" in Settings: with it off the registry ignores the plain keys, and
+  // the palette stops printing them beside its actions (design row 03f).
+  $effect(() => {
+    shortcuts.setSingleKeyShortcuts(keyboard.singleKeyShortcuts);
+    return () => shortcuts.setSingleKeyShortcuts(true);
+  });
 
   // Every key press is read against the registry, in the scope of the route on screen and the
   // focus regions (`data-shortcut-region`) around the focus.
@@ -184,6 +225,7 @@
           metaKey: event.metaKey,
           ctrlKey: event.ctrlKey,
           altKey: event.altKey,
+          shiftKey: event.shiftKey,
           editable,
           repeat: event.repeat,
         },
@@ -222,25 +264,9 @@
   // The Bureau's feed, applied for every page: a review requested or decided, a run settling.
   $effect(() => subscribeBureauInvalidation(bureauEvents, queryClient));
 
-  /**
-   * On a desktop viewport the sidebar's `collapsed` is the person's icon-rail preference, which
-   * the shell keeps in storage. Below `SIDEBAR_MOBILE_MEDIA_QUERY` Cinder's `Sidebar` becomes a
-   * drawer and `collapsed` means "drawer closed" (its own `open = !collapsed`), which starts
-   * closed on every page load and is never stored: a phone must not open on a drawer over the
-   * whole screen, and closing the drawer must not fold the desktop sidebar.
-   */
-  const isMobileViewport = new MediaQuery(SIDEBAR_MOBILE_MEDIA_QUERY, false);
-
-  let drawerOpen = $state(false);
-
-  function sidebarCollapsed(): boolean {
-    return isMobileViewport.current ? !drawerOpen : layout.sidebarCollapsed;
-  }
-
-  function setSidebarCollapsed(collapsed: boolean): void {
-    if (isMobileViewport.current) drawerOpen = !collapsed;
-    else layout.setSidebarCollapsed(collapsed);
-  }
+  // How the navigation is shown at this width and pointer: the column, the rail, or the drawer
+  // (`./shell-navigation.svelte.ts`). The sidebar and the top bar's menu button share it.
+  provideShellNavigation(new ShellNavigation(layout));
 
   // While the server does not answer, every control that changes something is held back: dimmed by
   // the shell's `data-connection` attribute, refused on activation, and marked `aria-disabled`.
@@ -253,20 +279,23 @@
 </script>
 
 <div class="weft-shell" data-connection={connection.unreachable ? 'unreachable' : 'reachable'}>
-  <Sidebar
-    {client}
-    engineStatus={engineStatus.status}
-    bind:collapsed={sidebarCollapsed, setSidebarCollapsed}
-  />
+  <Sidebar {client} />
   <div class="weft-shell-main">
-    <Topbar {notifications} {theme} {layout} bind:paletteOpen bind:drawerOpen />
-    {#if connection.unreachable}
+    <Topbar {notifications} {theme} {layout} bind:paletteOpen />
+    {#if connection.unreachable && !restartActivity.active}
+      <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet.
+           The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
+           answering with its countdown, or the retries stopped. Retry now is always there. -->
       <Banner
-        preset="unreachable"
-        dismissible={false}
+        preset={connectionBannerPreset(connection)}
         dataUpdatedAt={connection.lastHealthyAt}
-        onRetry={() => void connection.check()}>{CONNECTION_COPY.banner}</Banner
-      >
+        retryInSeconds={connection.retryInSeconds}
+        attempt={connection.browserOffline || connection.attempt === 0
+          ? undefined
+          : connection.attempt}
+        maxAttempts={CONNECTION_MAX_ATTEMPTS}
+        onRetry={() => void connection.retryNow()}
+      />
     {/if}
     <AuthModeBanner mode={principalStore.bannerMode} />
     <PluginProblemsBanner unreachable={connection.unreachable} />

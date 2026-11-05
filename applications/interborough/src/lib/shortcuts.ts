@@ -38,6 +38,12 @@ export interface ShortcutDescriptor {
    * never starts or continues a sequence. Left out, the keys are pressed without a modifier.
    */
   readonly modifier?: 'mod';
+  /**
+   * Keeps a shortcut pressed without a modifier answering while single-key shortcuts are turned
+   * off ({@link ShortcutRegistry.setSingleKeyShortcuts}). The `?` map has it, because that map is
+   * how a person finds the setting that turns the others back on.
+   */
+  readonly alwaysOn?: boolean;
 }
 
 /** One shortcut the registry lists and handles. */
@@ -70,6 +76,11 @@ export interface ShortcutKey {
   readonly ctrlKey: boolean;
   /** Whether Alt (⌥) was held. */
   readonly altKey: boolean;
+  /**
+   * Whether Shift was held. A shortcut held with ⌘ never acts under Shift: ⌘⇧K is the composer's
+   * link shortcut, not search (design row 03e). Left out, it reads as not held.
+   */
+  readonly shiftKey?: boolean;
   /** Whether the key went to something the person is typing into. */
   readonly editable: boolean;
   /**
@@ -93,8 +104,13 @@ export interface ShortcutGroupListing {
 export interface ShortcutAction {
   /** What the shortcut does, as the `?` map says it. */
   readonly label: string;
-  /** Its keys as a keycap prints them: `['G', 'C']`. */
+  /**
+   * Its keys as a keycap prints them: `['G', 'C']`. Empty while single-key shortcuts are turned
+   * off, because the keys then do nothing, and the action is only run by name.
+   */
   readonly keys: readonly string[];
+  /** The heading the `?` map lists it under, which the palette orders its actions by. */
+  readonly group: string;
   /** Runs what the keys run. */
   readonly run: () => void;
 }
@@ -169,6 +185,7 @@ function displayKey(key: string): string {
 /** The registry. The shell keeps one ({@link shortcuts}); a test makes its own. */
 export class ShortcutRegistry {
   readonly #registrations: Registration[] = [];
+  #singleKeyShortcuts = true;
   #pending: { readonly keys: readonly string[]; readonly atMs: number } | null = null;
 
   /**
@@ -179,6 +196,21 @@ export class ShortcutRegistry {
   register(entry: ShortcutEntry): () => void {
     const { handler, ...descriptor } = entry;
     return this.#add({ descriptor, handler });
+  }
+
+  /** Whether shortcuts pressed without a modifier answer. On until {@link setSingleKeyShortcuts} says otherwise. */
+  get singleKeyShortcuts(): boolean {
+    return this.#singleKeyShortcuts;
+  }
+
+  /**
+   * Turns the shortcuts pressed without a modifier (the G sequences, C, and every other plain key
+   * but the ones marked `alwaysOn`) on or off. Shortcuts held with ⌘ are not single-key, so they
+   * act either way. Turning them off drops a sequence that is waiting for its next key.
+   */
+  setSingleKeyShortcuts(enabled: boolean): void {
+    this.#singleKeyShortcuts = enabled;
+    if (!enabled) this.#pending = null;
   }
 
   /**
@@ -224,8 +256,22 @@ export class ShortcutRegistry {
   actions(): ShortcutAction[] {
     return this.#registrations.flatMap(({ descriptor, handler }) =>
       handler !== undefined && descriptor.scope === 'global' && descriptor.modifier === undefined
-        ? [{ label: descriptor.label, keys: descriptor.keys.map(displayKey), run: handler }]
+        ? [
+            {
+              label: descriptor.label,
+              keys: this.#answers(descriptor) ? descriptor.keys.map(displayKey) : [],
+              group: descriptor.group,
+              run: handler,
+            },
+          ]
         : [],
+    );
+  }
+
+  /** Whether a shortcut pressed without a modifier answers now. */
+  #answers(descriptor: ShortcutDescriptor): boolean {
+    return (
+      this.#singleKeyShortcuts || descriptor.modifier !== undefined || descriptor.alwaysOn === true
     );
   }
 
@@ -264,6 +310,7 @@ export class ShortcutRegistry {
         (registration) =>
           registration.handler !== undefined &&
           registration.descriptor.modifier === 'mod' &&
+          event.shiftKey !== true &&
           sameHeldKey(registration.descriptor.keys[0], event.key) &&
           scopeActive(registration.descriptor.scope, context),
       );
@@ -291,6 +338,7 @@ export class ShortcutRegistry {
       (registration) =>
         registration.handler !== undefined &&
         registration.descriptor.modifier === undefined &&
+        this.#answers(registration.descriptor) &&
         scopeActive(registration.descriptor.scope, context) &&
         startsWith(registration.descriptor.keys, sequence),
     );

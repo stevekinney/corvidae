@@ -86,9 +86,15 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-3);
-    min-block-size: 4.5rem;
-    padding-inline: var(--cinder-space-5);
+    min-block-size: 3rem;
+    padding-inline: var(--cinder-space-3-5);
     background: var(--cinder-surface-raised);
+    flex-shrink: 0;
+  }
+
+  /* The key hint at the end of the search field ("esc"); not part of the input's name. */
+  .cinder-command-palette__escape {
+    display: inline-flex;
     flex-shrink: 0;
   }
 
@@ -142,7 +148,9 @@
   .cinder-command-palette__listbox {
     list-style: none;
     margin: 0;
-    padding: var(--cinder-space-2) 0;
+    padding: var(--cinder-space-1) var(--cinder-space-1-5) var(--cinder-space-2);
+    /* The hairline under the search field (row 03c). */
+    border-block-start: 1px solid var(--cinder-border-muted);
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
@@ -167,7 +175,7 @@
 
   .cinder-command-group {
     margin: 0;
-    padding-block: var(--cinder-space-1);
+    padding: 0;
     list-style: none;
   }
 
@@ -177,12 +185,13 @@
     list-style: none;
   }
 
+  /* A group heading is 12px, semibold and muted, set in from the rows' own inset (row 03g). */
   .cinder-command-group__label {
     display: block;
-    padding: var(--cinder-space-1-5) var(--cinder-space-5);
+    padding: var(--cinder-space-2) var(--cinder-space-2-5) var(--cinder-space-1);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
-    font-weight: var(--cinder-font-medium);
+    font-weight: var(--cinder-font-semibold);
   }
 
   /* ----------------------------------------
@@ -192,8 +201,8 @@
   .cinder-command-palette__footer {
     display: flex;
     align-items: center;
-    gap: var(--cinder-space-3);
-    padding: var(--cinder-space-2) var(--cinder-space-4);
+    gap: var(--cinder-space-3-5);
+    padding: var(--cinder-space-2) var(--cinder-space-3-5);
     border-block-start: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface);
     flex-shrink: 0;
@@ -293,6 +302,11 @@
   .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-palette__input {
     min-inline-size: 0;
     font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-palette__listbox {
+    padding-inline: 0;
+    border-block-start: none;
   }
 
   .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-group__label {

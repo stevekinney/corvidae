@@ -19,6 +19,15 @@ const schema = {
       description:
         "Viewport width below which the sidebar switches from the inline aside to\nthe mobile drawer. Accepts a simple CSS length such as `'639.98px'` or\n`'1024px'`. Default `'639.98px'`, so tablets keep the inline column and\nits icon rail.",
     },
+    drawerQuery: {
+      type: 'string',
+      description:
+        "A parenthesized media query that also turns the sidebar into the drawer, beside the width\nbreakpoint, for a layout that depends on more than width: `'(pointer: coarse) and\n(max-width: 1023.98px)'` gives touch devices the drawer at every width below 1024, because an\nicon rail with tooltip-only labels has no labels on touch. Read after the page loads; the\nserver markup is the inline column.",
+    },
+    closeLabel: {
+      type: 'string',
+      description: "Accessible name of the drawer's close button. Default `'Close navigation'`.",
+    },
     class: {
       type: 'string',
       description: 'Additional CSS class merged with `.cinder-sidebar`.',

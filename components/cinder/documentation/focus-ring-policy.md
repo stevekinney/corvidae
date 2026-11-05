@@ -162,7 +162,6 @@ Filled variants and states that paint the gap today:
 - Button `primary` and `danger`. A focusable `aria-disabled` button that is not loading has an inset fill and keeps the tight ring.
 - Checkbox checked and indeterminate, and Radio checked (inline, so an invalid control keeps its danger ring).
 - Toggle (switch) on (inline, so a consumer's `--cinder-toggle-ring` still applies).
-- SegmentedControl selected, pressed, and current options outside the tablist variant.
 - Chip pressed in the `accent`, `danger`, `success`, `warning`, and `info` variants.
 - Pagination current page.
 - Calendar range start and end days.
@@ -176,7 +175,7 @@ FloatingAction `primary` predates this rule and keeps its tight `--cinder-ring-o
 
 Considered and excluded:
 
-- Chip pressed in the `neutral` variant, a surface shift rather than a fill.
+- Chip pressed in the `neutral` variant, and SegmentedControl selected, pressed, and current options, a surface shift rather than a fill.
 - The slider thumb (a raised fill with an accent border), the tablist SegmentedControl's selected tab (transparent), and pseudo-element fills such as the tab indicator and carousel dot. None of them is a solid fill on the focused element itself.
 - Command items. Focus stays on the palette input through `aria-activedescendant`, and the active item draws its own `--cinder-accent-contrast` inset ring.
 - Transient fills: a `soft-danger` Button while pressed and Chat's attachment-remove button on hover. They last only as long as the press or hover.

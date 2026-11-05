@@ -238,6 +238,37 @@ export function formatRelativeTime(
   return relativeUnit(Math.floor(distance / HOUR), 'hour', past, options.locale);
 }
 
+/**
+ * How long ago a moment was in the few characters a list row's time column has, and never "ago":
+ * "now" under a minute, "4 min" to the nearest minute under an hour, "7 h" in whole hours under a
+ * day, the weekday ("Sun") under a week, then the date ("Oct 24", with the year when it is not this
+ * one). A moment in the future reads "now". Another language reads {@link formatRelativeTime}.
+ */
+export function formatCompactAge(input: DateInput, options: DateFormatOptions = {}): string {
+  const date = toDate(input);
+  if (Number.isNaN(date.getTime())) return 'Invalid date';
+  if (!isEnglish(options.locale)) return formatRelativeTime(date, options);
+  const now = resolveNow(options.now);
+  const elapsed = now.getTime() - date.getTime();
+  if (elapsed < MINUTE) return 'now';
+  if (elapsed < HOUR) {
+    const minutes = Math.round(elapsed / MINUTE);
+    return minutes >= 60 ? '1 h' : `${minutes} min`;
+  }
+  if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)} h`;
+  const locale = options.locale ?? 'en-US';
+  if (elapsed < 7 * DAY) {
+    return formatDate(date, locale, { timeZone: options.timeZone, weekday: 'short' });
+  }
+  const withYear = calendarYear(date, options.timeZone) !== calendarYear(now, options.timeZone);
+  return formatDate(date, locale, {
+    timeZone: options.timeZone,
+    month: 'short',
+    day: 'numeric',
+    ...(withYear ? { year: 'numeric' } : {}),
+  });
+}
+
 /** The `spelled` reading: minutes, hours, then whole days up to a week, then the absolute form. */
 function formatSpelledRelativeTime(
   date: Date,

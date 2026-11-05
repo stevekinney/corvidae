@@ -58,7 +58,9 @@
     <h3 class="ib-run__heading-3">{TASK_COPY.answerHeading}</h3>
     {#if hasAnswer}
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      <div class="weft-artifact-markdown ib-run__answer">{@html answerHtml}</div>
+      <div class="cinder-markdown-content weft-artifact-markdown ib-run__answer">
+        {@html answerHtml}
+      </div>
       {#if answerTruncated}<p class="ib-run__note">{TASK_COPY.answerTruncated}</p>{/if}
     {:else}
       <p class="ib-run__note">
