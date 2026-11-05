@@ -25,7 +25,7 @@
  * @module provider-manager
  */
 
-import type { Bungalow } from '@lostgradient/bungalow';
+import type { Bungalow, ConfigurationSnapshot } from '@lostgradient/bungalow';
 import {
   ANONYMOUS_LOCAL_OWNER,
   type ProviderChecker,
@@ -410,7 +410,10 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
   const load = (providers: readonly ContributedProvider[]): Promise<LoadedProviders> =>
     loadProviders({
       configurationLocation: location,
-      readConfiguration: () => bungalow.readConfiguration(),
+      readConfiguration: async () => {
+        const snapshot = await bungalow.readConfiguration();
+        return snapshot.text;
+      },
       readSecret: (key) => bungalow.readSecret(key),
       warn: options.warn,
       providers,
@@ -442,17 +445,21 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
   };
 
   /** The configuration as an object whose other keys a write keeps, or `{}` when none exists. */
-  async function readDocument(): Promise<Record<string, unknown>> {
-    let text: string | undefined;
+  async function readDocument(): Promise<{
+    document: Record<string, unknown>;
+    revision: string | null;
+  }> {
+    let snapshot: ConfigurationSnapshot;
     try {
-      text = await bungalow.readConfiguration();
+      snapshot = await bungalow.readConfiguration();
     } catch {
       throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
     }
+    const { text, revision } = snapshot;
     // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
     const document = parseDocument(text, location);
     if (text !== undefined) parseProviderConfiguration(text, location);
-    return document;
+    return { document, revision };
   }
 
   /** Check a document against the keys the host would hold, then write it. Nothing is written when it fails. */
@@ -507,7 +514,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       closed = true;
     },
     async snapshot() {
-      const document = await readDocument();
+      const { document } = await readDocument();
       const configuration = parseProviderConfiguration(JSON.stringify(document), location);
       const allowlists = readAllowlists(
         document,
@@ -548,7 +555,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         ? [...connection.models]
         : connection.models;
       return serialized(async () => {
-        const document = await readDocument();
+        const { document, revision } = await readDocument();
         const text = validated(
           withAllowlist(document, contributed.plugin, models),
           new Set([...loaded.apiKeys.keys(), provider]),
@@ -558,6 +565,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         // file (Bungalow renames it, then syncs the directory), so a throw is checked against the
         // disk and not taken to mean that nothing changed.
         let keyWritten = false;
+        let configurationUncertain = false;
         try {
           try {
             bungalow.writeSecret(secretKey, key);
@@ -578,9 +586,21 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
               throw error;
             }
           }
-          bungalow.writeConfiguration(text);
+          const result = await bungalow.writeConfiguration(text, { expectedRevision: revision });
+          configurationUncertain = result.outcome === 'unknown';
+          if (result.outcome !== 'committed') {
+            throw new ProviderConfigurationError(
+              location,
+              'configuration',
+              `write outcome: ${result.outcome}. Reload before retrying.`,
+            );
+          }
         } catch (error) {
           if (!keyWritten) throw error;
+          if (configurationUncertain) {
+            await apply().catch(() => undefined);
+            throw error;
+          }
           // The key went first. Put the old one back (an empty value reads as no key), so a change
           // that did not happen leaves the host on the key it had.
           let restored = true;
@@ -623,7 +643,8 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         }
       }
       return serialized(async () => {
-        const { catalog: stored, ...rest } = await readDocument();
+        const { document, revision } = await readDocument();
+        const { catalog: stored, ...rest } = document;
         // An edit for a provider no loaded plugin contributes is not the caller's to replace: it
         // waits in the file for its plugin, after the edits that replace the others.
         const names = new Set(loaded.providers.map((provider) => provider.name));
@@ -640,7 +661,15 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           next.length === 0 ? rest : { ...rest, catalog: next },
           new Set(loaded.apiKeys.keys()),
         );
-        bungalow.writeConfiguration(text);
+        const result = await bungalow.writeConfiguration(text, { expectedRevision: revision });
+        if (result.outcome !== 'committed') {
+          await apply().catch(() => undefined);
+          throw new ProviderConfigurationError(
+            location,
+            'configuration',
+            `write outcome: ${result.outcome}. Reload before retrying.`,
+          );
+        }
         return apply();
       });
     },
@@ -694,7 +723,8 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       if (!Array.isArray(models) || !models.every((entry) => typeof entry === 'string')) return [];
       let text: string | undefined;
       try {
-        text = await bungalow.readConfiguration();
+        const snapshot = await bungalow.readConfiguration();
+        text = snapshot.text;
       } catch {
         throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
       }

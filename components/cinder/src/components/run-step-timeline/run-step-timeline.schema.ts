@@ -20,6 +20,10 @@ const schema = {
       description:
         "Rendered step path key to visually mark as selected.\nAccepts `null` so consumers can clear linked selection without omitting\nthe prop. Use the value passed to `onStepSelect`, or a row's\n`data-cinder-path` attribute, for nested or branch-lane steps.",
     },
+    variant: {
+      enum: ['detailed', 'narrative'],
+      description: 'How a step reads: `detailed` (default) or `narrative`.',
+    },
     class: {
       type: 'string',
       description: 'Additional CSS classes applied to the root element.',
@@ -50,8 +54,53 @@ const schema = {
                   'skipped',
                   'retrying',
                   'waiting_approval',
+                  'waiting',
+                  'recorded',
                 ],
                 description: 'Generic execution state.',
+              },
+              description: {
+                type: 'string',
+                description:
+                  'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+              },
+              time: {
+                type: 'string',
+                description:
+                  'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+              },
+              note: {
+                type: 'object',
+                properties: {
+                  title: {
+                    type: 'string',
+                    description: 'Bold first line of the block.',
+                  },
+                  lines: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                    },
+                    description: 'The lines of the block, one per line.',
+                  },
+                  tone: {
+                    enum: ['neutral', 'danger'],
+                    description: '`danger` tints the block for a failure. Default `neutral`.',
+                  },
+                  label: {
+                    type: 'string',
+                    description:
+                      'A muted word before the first line, joined to it by a middle dot.',
+                  },
+                  streaming: {
+                    type: 'boolean',
+                    description:
+                      'Whether the lines are still arriving; a text cursor follows the last line.',
+                  },
+                },
+                additionalProperties: false,
+                required: ['lines'],
+                description: 'A block shown open under the description.',
               },
               startTime: {
                 type: 'string',
@@ -201,8 +250,53 @@ const schema = {
                         'skipped',
                         'retrying',
                         'waiting_approval',
+                        'waiting',
+                        'recorded',
                       ],
                       description: 'Generic execution state.',
+                    },
+                    description: {
+                      type: 'string',
+                      description:
+                        'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                    },
+                    time: {
+                      type: 'string',
+                      description:
+                        'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                    },
+                    note: {
+                      type: 'object',
+                      properties: {
+                        title: {
+                          type: 'string',
+                          description: 'Bold first line of the block.',
+                        },
+                        lines: {
+                          type: 'array',
+                          items: {
+                            type: 'string',
+                          },
+                          description: 'The lines of the block, one per line.',
+                        },
+                        tone: {
+                          enum: ['neutral', 'danger'],
+                          description: '`danger` tints the block for a failure. Default `neutral`.',
+                        },
+                        label: {
+                          type: 'string',
+                          description:
+                            'A muted word before the first line, joined to it by a middle dot.',
+                        },
+                        streaming: {
+                          type: 'boolean',
+                          description:
+                            'Whether the lines are still arriving; a text cursor follows the last line.',
+                        },
+                      },
+                      additionalProperties: false,
+                      required: ['lines'],
+                      description: 'A block shown open under the description.',
                     },
                     startTime: {
                       type: 'string',
@@ -354,8 +448,54 @@ const schema = {
                               'skipped',
                               'retrying',
                               'waiting_approval',
+                              'waiting',
+                              'recorded',
                             ],
                             description: 'Generic execution state.',
+                          },
+                          description: {
+                            type: 'string',
+                            description:
+                              'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                          },
+                          time: {
+                            type: 'string',
+                            description:
+                              'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                          },
+                          note: {
+                            type: 'object',
+                            properties: {
+                              title: {
+                                type: 'string',
+                                description: 'Bold first line of the block.',
+                              },
+                              lines: {
+                                type: 'array',
+                                items: {
+                                  type: 'string',
+                                },
+                                description: 'The lines of the block, one per line.',
+                              },
+                              tone: {
+                                enum: ['neutral', 'danger'],
+                                description:
+                                  '`danger` tints the block for a failure. Default `neutral`.',
+                              },
+                              label: {
+                                type: 'string',
+                                description:
+                                  'A muted word before the first line, joined to it by a middle dot.',
+                              },
+                              streaming: {
+                                type: 'boolean',
+                                description:
+                                  'Whether the lines are still arriving; a text cursor follows the last line.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['lines'],
+                            description: 'A block shown open under the description.',
                           },
                           startTime: {
                             type: 'string',
@@ -511,8 +651,54 @@ const schema = {
                                     'skipped',
                                     'retrying',
                                     'waiting_approval',
+                                    'waiting',
+                                    'recorded',
                                   ],
                                   description: 'Generic execution state.',
+                                },
+                                description: {
+                                  type: 'string',
+                                  description:
+                                    'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                },
+                                time: {
+                                  type: 'string',
+                                  description:
+                                    'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                },
+                                note: {
+                                  type: 'object',
+                                  properties: {
+                                    title: {
+                                      type: 'string',
+                                      description: 'Bold first line of the block.',
+                                    },
+                                    lines: {
+                                      type: 'array',
+                                      items: {
+                                        type: 'string',
+                                      },
+                                      description: 'The lines of the block, one per line.',
+                                    },
+                                    tone: {
+                                      enum: ['neutral', 'danger'],
+                                      description:
+                                        '`danger` tints the block for a failure. Default `neutral`.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'A muted word before the first line, joined to it by a middle dot.',
+                                    },
+                                    streaming: {
+                                      type: 'boolean',
+                                      description:
+                                        'Whether the lines are still arriving; a text cursor follows the last line.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['lines'],
+                                  description: 'A block shown open under the description.',
                                 },
                                 startTime: {
                                   type: 'string',
@@ -740,8 +926,54 @@ const schema = {
                               'skipped',
                               'retrying',
                               'waiting_approval',
+                              'waiting',
+                              'recorded',
                             ],
                             description: 'Generic execution state.',
+                          },
+                          description: {
+                            type: 'string',
+                            description:
+                              'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                          },
+                          time: {
+                            type: 'string',
+                            description:
+                              'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                          },
+                          note: {
+                            type: 'object',
+                            properties: {
+                              title: {
+                                type: 'string',
+                                description: 'Bold first line of the block.',
+                              },
+                              lines: {
+                                type: 'array',
+                                items: {
+                                  type: 'string',
+                                },
+                                description: 'The lines of the block, one per line.',
+                              },
+                              tone: {
+                                enum: ['neutral', 'danger'],
+                                description:
+                                  '`danger` tints the block for a failure. Default `neutral`.',
+                              },
+                              label: {
+                                type: 'string',
+                                description:
+                                  'A muted word before the first line, joined to it by a middle dot.',
+                              },
+                              streaming: {
+                                type: 'boolean',
+                                description:
+                                  'Whether the lines are still arriving; a text cursor follows the last line.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['lines'],
+                            description: 'A block shown open under the description.',
                           },
                           startTime: {
                             type: 'string',
@@ -897,8 +1129,54 @@ const schema = {
                                     'skipped',
                                     'retrying',
                                     'waiting_approval',
+                                    'waiting',
+                                    'recorded',
                                   ],
                                   description: 'Generic execution state.',
+                                },
+                                description: {
+                                  type: 'string',
+                                  description:
+                                    'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                },
+                                time: {
+                                  type: 'string',
+                                  description:
+                                    'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                },
+                                note: {
+                                  type: 'object',
+                                  properties: {
+                                    title: {
+                                      type: 'string',
+                                      description: 'Bold first line of the block.',
+                                    },
+                                    lines: {
+                                      type: 'array',
+                                      items: {
+                                        type: 'string',
+                                      },
+                                      description: 'The lines of the block, one per line.',
+                                    },
+                                    tone: {
+                                      enum: ['neutral', 'danger'],
+                                      description:
+                                        '`danger` tints the block for a failure. Default `neutral`.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'A muted word before the first line, joined to it by a middle dot.',
+                                    },
+                                    streaming: {
+                                      type: 'boolean',
+                                      description:
+                                        'Whether the lines are still arriving; a text cursor follows the last line.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['lines'],
+                                  description: 'A block shown open under the description.',
                                 },
                                 startTime: {
                                   type: 'string',
@@ -1062,8 +1340,54 @@ const schema = {
                                           'skipped',
                                           'retrying',
                                           'waiting_approval',
+                                          'waiting',
+                                          'recorded',
                                         ],
                                         description: 'Generic execution state.',
+                                      },
+                                      description: {
+                                        type: 'string',
+                                        description:
+                                          'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                      },
+                                      time: {
+                                        type: 'string',
+                                        description:
+                                          'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                      },
+                                      note: {
+                                        type: 'object',
+                                        properties: {
+                                          title: {
+                                            type: 'string',
+                                            description: 'Bold first line of the block.',
+                                          },
+                                          lines: {
+                                            type: 'array',
+                                            items: {
+                                              type: 'string',
+                                            },
+                                            description: 'The lines of the block, one per line.',
+                                          },
+                                          tone: {
+                                            enum: ['neutral', 'danger'],
+                                            description:
+                                              '`danger` tints the block for a failure. Default `neutral`.',
+                                          },
+                                          label: {
+                                            type: 'string',
+                                            description:
+                                              'A muted word before the first line, joined to it by a middle dot.',
+                                          },
+                                          streaming: {
+                                            type: 'boolean',
+                                            description:
+                                              'Whether the lines are still arriving; a text cursor follows the last line.',
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                        required: ['lines'],
+                                        description: 'A block shown open under the description.',
                                       },
                                       startTime: {
                                         type: 'string',
@@ -1233,8 +1557,56 @@ const schema = {
                                                 'skipped',
                                                 'retrying',
                                                 'waiting_approval',
+                                                'waiting',
+                                                'recorded',
                                               ],
                                               description: 'Generic execution state.',
+                                            },
+                                            description: {
+                                              type: 'string',
+                                              description:
+                                                'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                            },
+                                            time: {
+                                              type: 'string',
+                                              description:
+                                                'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                            },
+                                            note: {
+                                              type: 'object',
+                                              properties: {
+                                                title: {
+                                                  type: 'string',
+                                                  description: 'Bold first line of the block.',
+                                                },
+                                                lines: {
+                                                  type: 'array',
+                                                  items: {
+                                                    type: 'string',
+                                                  },
+                                                  description:
+                                                    'The lines of the block, one per line.',
+                                                },
+                                                tone: {
+                                                  enum: ['neutral', 'danger'],
+                                                  description:
+                                                    '`danger` tints the block for a failure. Default `neutral`.',
+                                                },
+                                                label: {
+                                                  type: 'string',
+                                                  description:
+                                                    'A muted word before the first line, joined to it by a middle dot.',
+                                                },
+                                                streaming: {
+                                                  type: 'boolean',
+                                                  description:
+                                                    'Whether the lines are still arriving; a text cursor follows the last line.',
+                                                },
+                                              },
+                                              additionalProperties: false,
+                                              required: ['lines'],
+                                              description:
+                                                'A block shown open under the description.',
                                             },
                                             startTime: {
                                               type: 'string',

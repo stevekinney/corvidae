@@ -60,7 +60,7 @@ test.describe('at a 375px phone viewport', () => {
   test.use({ viewport: PHONE });
 
   test('a table stacks each row into labelled values', async ({ page }) => {
-    await page.goto(namedFixtureRoute('table', 'contributors'));
+    await page.goto(namedFixtureRoute('table', 'assertion'));
     const table = page.getByRole('table', { name: 'Recent contributors' });
     await expect(table).toHaveAttribute('data-cinder-stacked', 'true');
 
@@ -75,15 +75,32 @@ test.describe('at a 375px phone viewport', () => {
     const firstRow = table.locator('tbody tr').first();
     const roleCell = firstRow.locator('td').filter({ hasText: 'Mathematician' });
     await expect(roleCell).toHaveAttribute('data-cinder-stack-label', 'Role');
-    expect(await roleCell.evaluate((cell) => getComputedStyle(cell, '::before').content)).toBe(
-      '"Role"',
+    const actionCell = firstRow.locator('td[data-cinder-controls="fit"]');
+    await expect(actionCell).toHaveAttribute('data-cinder-stack-label', 'Actions');
+    expect(await actionCell.evaluate((cell) => getComputedStyle(cell, '::before').content)).toBe(
+      '"Actions"',
     );
     const nameBox = await boxOf(firstRow.locator('td').filter({ hasText: 'Ada Lovelace' }));
     const roleBox = await boxOf(roleCell);
-    expect(roleBox.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height - 1);
-    expect(roleBox.x).toBeCloseTo(nameBox.x, 0);
+    const actionBox = await boxOf(actionCell);
+    expect(roleBox.y).toBeCloseTo(nameBox.y, 0);
+    expect(roleBox.x).toBeGreaterThan(nameBox.x);
+    expect(actionBox.y).toBeGreaterThanOrEqual(roleBox.y + roleBox.height - 1);
 
     await expectNoSidewaysScroll(page);
+
+    const ordinaryWrapper = page.getByRole('region', { name: 'Build history table scroll area' });
+    const ordinaryTable = ordinaryWrapper.getByRole('table', { name: 'Build history' });
+    await expect(ordinaryTable).not.toHaveAttribute('data-cinder-stacked');
+    const sizes = await ordinaryWrapper.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(sizes.scrollWidth).toBeGreaterThan(sizes.clientWidth);
+    await ordinaryWrapper.evaluate((element) => {
+      element.scrollLeft = 120;
+    });
+    expect(await ordinaryWrapper.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   });
 
   test('a popover that takes focus opens as the bottom Drawer', async ({ page }) => {
@@ -141,8 +158,8 @@ test.describe('at a 768px tablet viewport', () => {
     await page.getByRole('button', { name: 'Collapse sidebar' }).click();
     await expect(aside).toHaveAttribute('data-cinder-collapsed', '');
     await expect(aside).toBeVisible();
-    // The rail is the 4rem icon column, not a hidden drawer.
-    await expect.poll(() => widthOf(aside)).toBeCloseTo(64, 0);
+    // The rail is the 3.5rem icon column, not a hidden drawer.
+    await expect.poll(() => widthOf(aside)).toBeCloseTo(56, 0);
     await expect(aside.getByRole('link', { name: 'Dashboard' })).toBeVisible();
   });
 

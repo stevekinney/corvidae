@@ -5,6 +5,7 @@ import { dirname, join, relative } from 'node:path';
 import ts from 'typescript';
 import {
   collectScannedFiles,
+  findFloatingConfigurationWrites,
   findPromiseAssertionModifierViolations,
   mayContainPromiseAssertionModifier,
 } from './check-promise-assertion-modifiers';
@@ -97,5 +98,27 @@ describe('scanned files', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('asynchronous configuration mutation guard', () => {
+  test.each([
+    "home.writeConfiguration('{}', { expectedRevision: null });",
+    "void home.writeConfiguration('{}', condition);",
+    "home['writeConfiguration']('{}', condition);",
+  ])('rejects discarded mutation %s', (source) => {
+    const file = ts.createSourceFile('fixture.ts', source, ts.ScriptTarget.Latest, true);
+    expect(mayContainPromiseAssertionModifier(source)).toBe(true);
+    expect(findFloatingConfigurationWrites(file)).toHaveLength(1);
+  });
+  test.each([
+    "await home.writeConfiguration('{}', condition);",
+    "return home.writeConfiguration('{}', condition);",
+    "const pending = home.writeConfiguration('{}', condition); await pending;",
+    "await Promise.all([home.writeConfiguration('{}', condition)]);",
+    "const forward = () => home.writeConfiguration('{}', condition);",
+  ])('accepts consumed mutation %s', (source) => {
+    const file = ts.createSourceFile('fixture.ts', source, ts.ScriptTarget.Latest, true);
+    expect(findFloatingConfigurationWrites(file)).toEqual([]);
   });
 });

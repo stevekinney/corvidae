@@ -101,6 +101,19 @@ describe('an invalid file', () => {
     expect(listing(fixture, 'array')?.problem?.code).toBe('invalid-json');
   });
 
+  it('readSnapshot uses the same invalid-identifier evaluation as the scanned listing', async () => {
+    const fixture = await start();
+    await fixture.put('Bad_Name.json', workflowFileText('Bad_Name'));
+    await fixture.catalog.refresh();
+
+    const snapshot = await fixture.catalog.readSnapshot('Bad_Name');
+    expect(snapshot?.listing).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'invalid-identifier' },
+    });
+    expect(snapshot?.file).toBeUndefined();
+  });
+
   it('invalid-document: a name that is not the identifier, an unknown key, bad agent or paused, another trigger kind', async () => {
     const fixture = await start();
     await fixture.put('renamed.json', workflowFileText('other'));
@@ -129,6 +142,18 @@ describe('an invalid file', () => {
     expect(fixture.catalog.find('code-workflow')).toBeUndefined();
   });
 
+  it('readSnapshot applies the code-workflow collision policy', async () => {
+    const fixture = await start({ codeWorkflows: ['code-workflow'] });
+    await fixture.put('code-workflow.json', workflowFileText('code-workflow'));
+    const snapshot = await fixture.catalog.readSnapshot('code-workflow');
+
+    expect(snapshot?.listing).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'shadows-code-workflow' },
+    });
+    expect(snapshot?.file).toBeUndefined();
+  });
+
   it('file-too-large: the file is over the limit and is not read', async () => {
     const reads: string[] = [];
     const fixture = await start({
@@ -145,6 +170,20 @@ describe('an invalid file', () => {
     expect(listing(fixture, 'huge')?.problem?.code).toBe('file-too-large');
     expect(listing(fixture, 'huge')?.hash).toBeUndefined();
     expect(reads).toEqual([]);
+  });
+
+  it('readSnapshot omits the unavailable hash and text for an oversized file', async () => {
+    const fixture = await start();
+    await fixture.put('huge.json', 'x'.repeat(WORKFLOW_FILE_SIZE_LIMIT + 1));
+    const snapshot = await fixture.catalog.readSnapshot('huge');
+    expect(snapshot).toMatchObject({
+      listing: {
+        state: 'invalid',
+        problem: { code: 'file-too-large' },
+      },
+    });
+    expect(snapshot?.listing.hash).toBeUndefined();
+    expect(snapshot?.text).toBeUndefined();
   });
 
   it('not-utf8: the bytes are not valid UTF-8', async () => {
@@ -171,6 +210,28 @@ describe('an invalid file', () => {
     expect(listing(fixture, 'locked')?.problem?.code).toBe('unreadable');
     expect(listing(fixture, 'locked')?.problem?.message).toContain('EACCES');
     expect(listing(fixture, 'fine')?.state).toBe('ready');
+  });
+
+  it('readSnapshot keeps the unreadable diagnostic without an unavailable hash or text', async () => {
+    const fixture = await start({
+      operations: {
+        ...nodeAgentFileOperations,
+        read: async (path) => {
+          if (path.endsWith('locked.json')) throw new Error('EACCES: permission denied');
+          return nodeAgentFileOperations.read(path);
+        },
+      },
+    });
+    await fixture.put('locked.json', workflowFileText('locked'));
+    const snapshot = await fixture.catalog.readSnapshot('locked');
+    expect(snapshot).toMatchObject({
+      listing: {
+        state: 'invalid',
+        problem: { code: 'unreadable', message: expect.stringContaining('EACCES') },
+      },
+    });
+    expect(snapshot?.listing.hash).toBeUndefined();
+    expect(snapshot?.text).toBeUndefined();
   });
 
   it('never affects another workflow', async () => {

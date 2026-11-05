@@ -74,6 +74,7 @@ export const SESSION_AGENT_OPTION_DISPOSITIONS = {
   childCorrelation: 'run',
   childRegistry: 'run',
   delegatedAuthority: 'run',
+  delegatedToolCapabilities: 'run',
   parentSignals: 'run',
 
   runtime: 'bureau',

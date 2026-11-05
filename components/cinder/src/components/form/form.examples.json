@@ -8,6 +8,12 @@
       "title": "Basic form",
       "description": "Native form submission with Cinder controls.",
       "code": "<script lang=\"ts\">\n  import { Form } from '@lostgradient/cinder';\n  import { Input } from '@lostgradient/cinder';\n  import { Button } from '@lostgradient/cinder';\n</script>\n\n<Form onSubmit={() => undefined}>\n  {#snippet children({ submitting })}\n    <Input id=\"form-name\" label=\"Name\" value=\"\" disabled={submitting}>\n      {#snippet leading()}{/snippet}\n      {#snippet trailing()}{/snippet}\n    </Input>\n    <Button type=\"submit\" disabled={submitting}>Save</Button>\n  {/snippet}\n</Form>\n"
+    },
+    {
+      "id": "problems",
+      "title": "Save stays enabled; focus goes to the first problem",
+      "description": "Validation never disables Save. Pressing it puts each message at its field, under it with a warning glyph, and moves focus to the first problem. readingColumn holds the form to one column up to 720px.",
+      "code": "<script lang=\"ts\">\n  import { Button, Form, FormField, Input } from '@lostgradient/cinder';\n\n  let name = $state('');\n  let check = $state('');\n  let nameError = $state<string | undefined>();\n  let checkError = $state<string | undefined>();\n</script>\n\n<Form\n  novalidate\n  readingColumn\n  onSubmit={() => {\n    nameError = name ? undefined : 'Enter a name.';\n    checkError = check ? undefined : 'Choose what decides the goal is done.';\n  }}\n>\n  <div style=\"display: grid; gap: 1rem;\">\n    <FormField id=\"goal-name\" label=\"Name\" required error={nameError}>\n      <Input id=\"goal-name\" bind:value={name} />\n    </FormField>\n    <FormField id=\"goal-check\" label=\"Check\" required error={checkError}>\n      <Input id=\"goal-check\" bind:value={check} />\n    </FormField>\n    <div><Button type=\"submit\" variant=\"primary\">Create goal</Button></div>\n  </div>\n</Form>\n"
     }
   ]
 }

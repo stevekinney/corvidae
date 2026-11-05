@@ -163,6 +163,19 @@
     background: var(--cinder-surface);
     flex-shrink: 0;
   }
+
+  /* With no close button to keep clear of, a header that carries trailing content uses the same
+     padding at both edges. */
+  .cinder-modal__header[data-cinder-trailing]:not([data-cinder-closable]) {
+    padding-inline-end: var(--cinder-space-5);
+  }
+
+  /* Content opposite the title (a count) reads on the title's line, muted and out of its way. */
+  .cinder-modal__header-trailing {
+    flex: none;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
   .cinder-modal__drag-strip {
     position: absolute;
     inset-block-start: 0;

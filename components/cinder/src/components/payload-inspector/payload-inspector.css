@@ -1,35 +1,58 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../badge/badge.css';
+@import '../button/button.css';
+@import '../code-block/code-block.css';
 @import '../copy-button/copy-button.css';
+@import '../inline-loading/inline-loading.css';
 @import '../json-viewer/json-viewer.css';
 @import '../segmented-control/segmented-control.css';
+@import '../source-diff-viewer/source-diff-viewer.css';
+@import '../table/table.css';
+@import '../tooltip/tooltip.css';
 
 @layer cinder.components {
-  /* Flat: the inspector draws no frame of its own. The heading row sits on the
-   * surface, and the value below it is the content. */
+  /* One card for every shape of payload: a header row (the Fields / JSON switch at the start, the
+   * count and Copy at the end), a divider, and the body. With nothing to show there is no card,
+   * only one muted line. */
   .cinder-payload-inspector {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
     font-size: var(--cinder-text-sm);
     user-select: none;
   }
 
+  .cinder-payload-inspector[data-cinder-state='none'] {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .cinder-payload-inspector__empty {
+    margin: 0;
+    color: var(--cinder-text-muted);
+  }
+
   /* ----------------------------------------
-   * Heading row
+   * Header row
    * ---------------------------------------- */
 
   .cinder-payload-inspector__header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-3);
     flex-wrap: wrap;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border-block-end: 1px solid var(--cinder-border-muted);
   }
 
   .cinder-payload-inspector__label {
     font-size: var(--cinder-text-sm);
-    font-weight: var(--cinder-font-medium);
+    font-weight: var(--cinder-font-semibold);
     color: var(--cinder-text-default);
   }
 
@@ -37,37 +60,76 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
-    flex-wrap: wrap;
+    margin-inline-start: auto;
   }
 
   .cinder-payload-inspector__size {
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
     font-variant-numeric: tabular-nums;
   }
 
+  /* The selected view is a quiet accent tint with accent text, not the control's solid fill: the
+   * switch sits in every payload on a page, so it must not outshout the data. The hover rule is
+   * restated because the control darkens a selected segment on hover. */
+  .cinder-payload-inspector__header .cinder-segmented-control-option[data-cinder-selected],
+  .cinder-payload-inspector__header
+    .cinder-segmented-control-option[data-cinder-selected]:hover:not(:disabled):not(
+      [aria-disabled='true']
+    ) {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    color: var(--cinder-accent-text);
+    box-shadow: none;
+  }
+
+  /* Copy is a bare icon in the header; it only gets an edge back when it is focused. */
+  .cinder-payload-inspector__header .cinder-copy-button {
+    padding: var(--cinder-space-1);
+    border-color: transparent;
+  }
+
+  /* The word that follows the check once a copy lands, beside the count. */
+  .cinder-payload-inspector__copied {
+    font-size: var(--cinder-text-sm);
+  }
+
   /* ----------------------------------------
-   * Panel content
+   * Body
    * ---------------------------------------- */
 
   .cinder-payload-inspector__panel {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-3);
+    min-inline-size: 0;
     overflow: auto;
+  }
+
+  .cinder-payload-inspector__panel > * {
+    max-inline-size: 100%;
+  }
+
+  /* A code field and the JSON tree take the card's whole width, under the divider. */
+  .cinder-payload-inspector__panel > .cinder-json-viewer,
+  .cinder-payload-inspector__panel > .cinder-code-block,
+  .cinder-payload-inspector__panel > .cinder-payload-inspector__field-view {
+    align-self: stretch;
   }
 
   .cinder-payload-inspector__panel .cinder-json-viewer {
     user-select: text;
   }
 
+  .cinder-payload-inspector__field-view {
+    min-inline-size: 0;
+    user-select: text;
+  }
+
   /* ----------------------------------------
    * Fields view
    * ---------------------------------------- */
-
-  .cinder-payload-inspector__field-view {
-    user-select: text;
-  }
 
   .cinder-payload-inspector__fields {
     display: flex;
@@ -87,8 +149,50 @@
     gap: var(--cinder-space-3);
   }
 
+  /* A plain list of keys and values shares one key column, as wide as its longest key and never
+   * more than 40% of the card, so the values line up and no key is stretched across the row. */
+  .cinder-payload-inspector__fields[data-cinder-layout='rows'] {
+    display: grid;
+    grid-template-columns: fit-content(40%) minmax(0, 1fr);
+    column-gap: var(--cinder-space-3);
+    row-gap: var(--cinder-space-1-5);
+  }
+
+  .cinder-payload-inspector__fields[data-cinder-layout='rows'] > .cinder-payload-inspector__field {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    column-gap: var(--cinder-space-3);
+    row-gap: 0;
+  }
+
+  .cinder-payload-inspector__fields[data-cinder-layout='rows']
+    > .cinder-payload-inspector__field[data-cinder-block],
+  .cinder-payload-inspector__fields[data-cinder-layout='rows']
+    > .cinder-payload-inspector__field[data-cinder-patch] {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--cinder-space-1);
+  }
+
+  /* A nested object or array, a patch and an item are not squeezed into the value column: the label
+   * and its count sit on one line and the content takes the whole width under them. */
+  .cinder-payload-inspector__field[data-cinder-block],
+  .cinder-payload-inspector__field[data-cinder-patch] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-payload-inspector__field[data-cinder-block] > .cinder-payload-inspector__field-value {
+    padding-inline-start: var(--cinder-space-4);
+  }
+
+  .cinder-payload-inspector__patch-count {
+    margin-inline-start: var(--cinder-space-2);
+    font-variant-numeric: tabular-nums;
+  }
+
   .cinder-payload-inspector__field-label {
     margin: 0;
+    min-inline-size: 0;
     color: var(--cinder-text-muted);
     overflow-wrap: anywhere;
   }
@@ -100,11 +204,108 @@
     overflow-wrap: anywhere;
   }
 
-  /* A nested object or array reads as a sub-list under its label, set in from the
-   * left by a hairline, so the nesting is visible without boxes. */
-  .cinder-payload-inspector__field-value > .cinder-payload-inspector__fields {
-    padding-inline-start: var(--cinder-space-3);
-    border-inline-start: 1px solid var(--cinder-border-muted);
+  /* A tree reads the same at every level: a leaf value is in the stronger weight and a key is
+   * regular and muted, whether it sits at the top or three levels down. Only a value that is a
+   * leaf is bold; a block's value holds more keys and values, which style themselves. */
+  .cinder-payload-inspector__field-view[data-cinder-tree]
+    .cinder-payload-inspector__field:not([data-cinder-block])
+    > .cinder-payload-inspector__field-value {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-payload-inspector__field-view[data-cinder-tree] .cinder-payload-inspector__field-label {
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  /* The count that follows a nested label: "Parts · 3 items". */
+  .cinder-payload-inspector__count {
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-normal);
+    white-space: nowrap;
+  }
+
+  /* A key too long for its column cuts to one line with an ellipsis; its tooltip carries the whole key. */
+  .cinder-payload-inspector__field-label .cinder-tooltip-wrapper {
+    display: block;
+    min-inline-size: 0;
+  }
+
+  /* The cut key asks for no more than 10rem when the shared key column is sized, so one long key
+   * never pushes every value to the right: the column is as wide as the widest short key, or this
+   * cap, whichever is larger. */
+  .cinder-payload-inspector__long-key {
+    display: block;
+    max-inline-size: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-payload-inspector__long-key:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* A nested row's label opens or closes what is under it. */
+  .cinder-payload-inspector__toggle {
+    appearance: none;
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--cinder-space-1);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-payload-inspector__toggle > svg {
+    align-self: center;
+    flex: none;
+  }
+
+  .cinder-payload-inspector__toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* Few short pairs: one line, labels regular and values bold, joined by middots. It cuts with an
+   * ellipsis only when it cannot fit. */
+  .cinder-payload-inspector__inline {
+    margin: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: text;
+  }
+
+  .cinder-payload-inspector__inline .cinder-payload-inspector__field-label {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-payload-inspector__inline-value {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* Many short pairs: a wrapping key and value grid sized to its content, never stretched across the
+   * card. The 10rem floor and the 1.5rem gap let a ~436px card hold two columns, as the board does. */
+  .cinder-payload-inspector__fields[data-cinder-layout='grid'] {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), max-content));
+    column-gap: var(--cinder-space-6);
+    row-gap: var(--cinder-space-1-5);
+  }
+
+  .cinder-payload-inspector__fields[data-cinder-layout='grid'] > .cinder-payload-inspector__field {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cinder-space-3);
   }
 
   .cinder-payload-inspector__identifier,
@@ -117,14 +318,30 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* An empty string, a null and the line that stands for nothing at all. */
   .cinder-payload-inspector__null,
   .cinder-payload-inspector__more {
     margin: 0;
     color: var(--cinder-text-muted);
   }
 
+  .cinder-payload-inspector__null {
+    font-style: italic;
+  }
+
   .cinder-payload-inspector__link {
     color: var(--cinder-accent-text);
+  }
+
+  /* A value the card never shows: bullets and the word that says why. */
+  .cinder-payload-inspector__secret {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-payload-inspector__hidden-word {
+    color: var(--cinder-text-muted);
   }
 
   @media (max-width: 30rem) {
@@ -132,52 +349,186 @@
       grid-template-columns: 1fr;
       gap: 0;
     }
+
+    .cinder-payload-inspector__fields[data-cinder-layout='rows'] {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cinder-payload-inspector__fields[data-cinder-layout='rows']
+      > .cinder-payload-inspector__field {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* A pair stays "key value" on one line and wraps its value only when it must, and the pairs are
+     * spaced further apart than a key is from its own value, so a value never reads as the next
+     * pair's key. */
+    .cinder-payload-inspector__fields[data-cinder-layout='grid'] {
+      row-gap: var(--cinder-space-2-5);
+    }
+
+    .cinder-payload-inspector__fields[data-cinder-layout='grid']
+      > .cinder-payload-inspector__field {
+      flex-wrap: wrap;
+      gap: var(--cinder-space-0-5) var(--cinder-space-2);
+    }
+
+    .cinder-payload-inspector__fields[data-cinder-layout='rows'] {
+      row-gap: var(--cinder-space-2);
+    }
   }
 
+  /* Long text holds to two lines until Show all opens it. */
+  .cinder-payload-inspector__clamped {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-payload-inspector__clamp-text {
+    white-space: pre-line;
+  }
+
+  .cinder-payload-inspector__clamp-text[data-cinder-clamped] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .cinder-payload-inspector__show-all {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-weight: var(--cinder-font-medium);
+    cursor: pointer;
+  }
+
+  .cinder-payload-inspector__show-all > svg[data-cinder-open] {
+    transform: rotate(180deg);
+  }
+
+  @media (hover: hover) {
+    .cinder-payload-inspector__show-all:hover {
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
+    }
+  }
+
+  .cinder-payload-inspector__show-all:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* An array of scalars is a bulleted list under its key, never an index. */
+  .cinder-payload-inspector__list {
+    margin: 0;
+    padding-inline-start: var(--cinder-space-5);
+    list-style: disc;
+  }
+
+  /* An array whose items do not share keys: each item is its own block of fields, in order. */
+  .cinder-payload-inspector__items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    padding-inline-start: var(--cinder-space-3);
+    border-inline-start: 2px solid var(--cinder-border-muted);
+  }
+
+  .cinder-payload-inspector__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  /* "Item 2 of 3" heads its block in small muted type, so it never reads as another key. */
+  .cinder-payload-inspector__item-title {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* An array of uniform objects: a small table in its own bordered box, which scrolls sideways when
+   * the columns do not fit, so neither the card nor the page ever does. */
+  .cinder-payload-inspector__table {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-payload-inspector__table .cinder-payload-inspector__table-element {
+    min-inline-size: 22rem;
+  }
+
+  .cinder-payload-inspector__cell[data-cinder-token] {
+    font-family: var(--cinder-font-mono);
+    font-size: 0.9em;
+    white-space: nowrap;
+  }
+
+  .cinder-payload-inspector__table-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    margin: 0;
+    color: var(--cinder-text-muted);
+  }
+
+  /* A payload that is one value, not an object: the value alone, in monospace. */
   .cinder-payload-inspector__primitive {
     margin: 0;
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-radius: var(--cinder-radius-sm);
-    border: 1px solid var(--cinder-border);
     white-space: pre-wrap;
-    word-break: break-all;
+    overflow-wrap: anywhere;
     user-select: text;
   }
 
   /* ----------------------------------------
-   * Notices and placeholders
+   * Notices
    * ---------------------------------------- */
 
   .cinder-payload-inspector__notice {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--cinder-space-2);
-    padding: var(--cinder-space-3);
-    background: var(--cinder-surface-raised);
-    border-radius: var(--cinder-radius-sm);
-    border: 1px solid var(--cinder-border);
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
+    margin: 0;
+    color: var(--cinder-text-default);
     user-select: text;
   }
 
-  .cinder-payload-inspector__notice--warning {
-    background: var(--cinder-status-warning-background);
-    border-color: var(--cinder-status-warning-border);
+  .cinder-payload-inspector__warning,
+  .cinder-payload-inspector__error {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    user-select: text;
+  }
+
+  .cinder-payload-inspector__warning {
     color: var(--cinder-status-warning-text);
   }
 
-  .cinder-payload-inspector__empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--cinder-space-4);
-    color: var(--cinder-text-disabled);
-    font-size: var(--cinder-text-sm);
-    font-style: italic;
+  .cinder-payload-inspector__error {
+    color: var(--cinder-status-danger-text);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-payload-inspector__header .cinder-segmented-control-option[data-cinder-selected] {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+    }
   }
 }

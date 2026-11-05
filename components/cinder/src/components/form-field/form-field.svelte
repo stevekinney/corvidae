@@ -26,6 +26,10 @@
     description,
     warning,
     error,
+    errorGlyph,
+    errorAction,
+    note,
+    trailing,
     managed,
     required = false,
     disabled = false,
@@ -41,9 +45,14 @@
   {description}
   {warning}
   {error}
+  {errorGlyph}
+  {errorAction}
+  {note}
   {managed}
   {required}
   {disabled}
   class={classNames(className)}
+  controlClass={trailing ? 'cinder-form-field__control--row' : undefined}
+  after={trailing}
   control={children}
 />

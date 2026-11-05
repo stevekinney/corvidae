@@ -49,19 +49,33 @@ describe('the shell’s shortcuts', () => {
     expect(() => registerShellShortcuts(registry, actions)).not.toThrow();
   });
 
-  test('the sidebar’s destinations are the eleven names, in order, each with its own letter', () => {
+  test('the sidebar’s destinations are the twelve names, in order, each with its own letter', () => {
     expect(DESTINATIONS.map((destination) => [destination.path, destination.letter])).toEqual([
+      ['/', 'h'],
       ['/chats', 'c'],
-      ['/reviews', 'v'],
+      ['/reviews', 'r'],
+      ['/runs', 'u'],
       ['/agents', 'a'],
       ['/workflows', 'w'],
-      ['/runs', 'r'],
       ['/schedules', 's'],
       ['/goals', 'l'],
       ['/capabilities', 'p'],
-      ['/hooks', 'h'],
+      ['/hooks', 'k'],
       ['/health', 'e'],
       ['/settings', 'n'],
+    ]);
+  });
+
+  test('the sidebar groups them as Home, Work, Build and System (03h)', () => {
+    const groups = new Map<string, string[]>();
+    for (const destination of DESTINATIONS) {
+      groups.set(destination.group, [...(groups.get(destination.group) ?? []), destination.view]);
+    }
+    expect([...groups]).toEqual([
+      ['home', ['home']],
+      ['work', ['chat', 'reviews', 'runs']],
+      ['build', ['agents', 'workflows', 'schedules', 'goals', 'capabilities', 'hooks']],
+      ['system', ['health', 'settings']],
     ]);
   });
 
@@ -76,11 +90,11 @@ describe('the shell’s shortcuts', () => {
     }
   });
 
-  test('G O opens Workers, G T Storage and G U the audit log, pages under Health that the sidebar does not list', () => {
+  test('G O opens Workers, G T Storage and G D the audit log, pages under Health that the sidebar does not list', () => {
     expect(HEALTH_SHORTCUTS.map((page) => [page.letter, page.path])).toEqual([
       ['o', '/health/workers'],
       ['t', '/health/storage'],
-      ['u', '/health/audit'],
+      ['d', '/health/audit'],
     ]);
     for (const page of HEALTH_SHORTCUTS) {
       const { registry, opened } = registered();
@@ -100,7 +114,7 @@ describe('the shell’s shortcuts', () => {
       .find((group) => group.label === SHORTCUT_COPY.navigationGroup);
     expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Workers', keys: ['G', 'O'] });
     expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Storage', keys: ['G', 'T'] });
-    expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Audit log', keys: ['G', 'U'] });
+    expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Audit log', keys: ['G', 'D'] });
   });
 
   test('C opens a new chat from anywhere, and is listed in the map', () => {
@@ -149,7 +163,7 @@ describe('the shell’s shortcuts', () => {
     expect(actions.map((action) => action.label)).not.toContain(SHORTCUT_COPY.openSearch);
     expect(actions.map((action) => [action.label, action.keys.join(' ')])).toContainEqual([
       'Go to Reviews',
-      'G V',
+      'G R',
     ]);
     expect(actions.map((action) => action.label)).toContain(SHORTCUT_COPY.newChat);
     // The keys ListDetail handles itself are not actions: the registry never runs them.

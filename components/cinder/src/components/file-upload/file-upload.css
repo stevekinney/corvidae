@@ -277,6 +277,144 @@
     font-weight: var(--cinder-font-medium);
   }
 
+  /* ----------------------------------------
+   * Compact and button variants
+   *
+   * The compact variant is a short form control: a bordered list of rows (name, size, remove), an
+   * uploading file as one line (name, bar, percent, cancel), a danger alert for a file that was
+   * not added, and a one-line dashed zone under them. The button variant is only the button and a
+   * line of text.
+   * ---------------------------------------- */
+
+  .cinder-file-upload[data-cinder-variant] {
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-file-upload__dropzone[data-variant='compact'],
+  .cinder-file-upload__dropzone[data-variant='button'] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--cinder-space-2-5);
+    min-block-size: 0;
+    text-align: start;
+  }
+
+  .cinder-file-upload__dropzone[data-variant='compact'] {
+    border-width: 1px;
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-3);
+  }
+
+  .cinder-file-upload__dropzone[data-variant='button'] {
+    border: 0;
+    border-radius: var(--cinder-radius-md);
+    background: transparent;
+    padding: 0;
+  }
+
+  .cinder-file-upload__dropzone[data-variant='button'][data-drag-active] {
+    background: var(--cinder-accent-background);
+  }
+
+  .cinder-file-upload__line {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-file-upload__dropzone[data-variant='compact'] .cinder-file-upload__line {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-file-upload__dropzone[data-variant='button'] .cinder-file-upload__line {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-file-upload__compact-rows {
+    display: grid;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-file-upload__compact-list,
+  .cinder-file-upload__compact-uploads {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-file-upload__compact-list {
+    overflow: hidden;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+  }
+
+  .cinder-file-upload__compact-uploads {
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-file-upload__compact-row,
+  .cinder-file-upload__upload-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2-5);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .cinder-file-upload__compact-row + .cinder-file-upload__compact-row {
+    border-block-start: 1px solid var(--cinder-border);
+  }
+
+  .cinder-file-upload__upload-row {
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface);
+  }
+
+  .cinder-file-upload__compact-row .cinder-file-upload__file-name,
+  .cinder-file-upload__upload-row .cinder-file-upload__file-name {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .cinder-file-upload__upload-bar {
+    flex: none;
+    inline-size: 8.75rem;
+  }
+
+  /* A row's remove button is a quiet outlined square with a small glyph, not a control-weight
+     button, so a list of them does not shout. */
+  .cinder-file-upload .cinder-file-upload__row-action[data-cinder-icon-only] {
+    border: 1px solid var(--cinder-border);
+  }
+
+  .cinder-file-upload .cinder-file-upload__row-action svg {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .cinder-file-upload__compact-row .cinder-file-upload__error-row {
+    flex-basis: 100%;
+  }
+
+  .cinder-file-upload .cinder-file-upload__rejection {
+    align-items: center;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border-radius: var(--cinder-radius-md);
+  }
+
+  .cinder-file-upload .cinder-file-upload__rejection .cinder-alert__icon {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    margin-block-start: 0;
+  }
+
   @media (hover: hover) {
     .cinder-file-upload__retry:hover:not(:disabled),
     .cinder-file-upload__remove:hover:not(:disabled) {

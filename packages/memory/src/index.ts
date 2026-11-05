@@ -113,6 +113,7 @@ export type {
 export type {
   CreateGovernedMemoryToolsOptions,
   GovernedMemoryToolAuthorityInput,
+  GovernedMemoryToolContext,
   MemoryForgetToolOutput,
   MemoryForgetToolReason,
 } from './governance/governed-tools';

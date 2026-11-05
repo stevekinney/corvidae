@@ -24,7 +24,31 @@
     },
     "scrollable": {
       "type": "boolean",
-      "description": "When true, wraps the table in a `.cinder-table-scroll` container that\nenables horizontal overflow scrolling on small viewports."
+      "description": "Draws the table inside the same scroll box a `Table` uses: it owns the border, the radius and\nthe clip, scrolls sideways when the columns do not fit, and fades at the inline end. A\nvirtualized table always scrolls in this box.",
+      "default": true
+    },
+    "stackBelow": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "Width of the table's own container below which a table with a `controls` column stacks, each\nrow becoming a card with the controls on a line of their own. See `Table`.",
+      "default": "640px"
+    },
+    "openRowId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Id of the open row, the one a detail pane shows. It is marked `aria-current` and drawn\nhighlighted. Ids are the ones `getRowId` returns."
     },
     "resizable": {
       "type": "boolean",
@@ -59,15 +83,35 @@
   "metadata": {
     "unsupportedProps": [
       {
+        "name": "cell",
+        "reason": "function-or-snippet",
+        "description": "Draws the content of every body cell, in place of the plain value, for cells that hold more\nthan text: a checkbox, a select, a name with its identifier beneath. Render\n`{context.value}` for a column that needs nothing special."
+      },
+      {
         "name": "columns",
         "reason": "unknown-shape",
         "required": true,
         "description": "Column descriptors defining the headers and cell rendering for each column."
       },
       {
+        "name": "footer",
+        "reason": "function-or-snippet",
+        "description": "Content of a footer row that spans the table, below the last row: a count, a hint. The table\nstays one framed box."
+      },
+      {
         "name": "getRowId",
         "reason": "function-or-snippet",
         "description": "Resolves the stable row id used for selection. Defaults to `row.id` when it\nis a string or number, otherwise the row's current positional index."
+      },
+      {
+        "name": "groupBy",
+        "reason": "function-or-snippet",
+        "description": "Groups consecutive rows under a header row that spans the table, such as a day. Each run of\nrows with the same group key follows one header, drawn as the group's `label` and, after a dot,\nits `detail` (the time zone). Rows are not reordered; pass them already sorted. Ignored while\n`virtualized`."
+      },
+      {
+        "name": "hasRowMessage",
+        "reason": "function-or-snippet",
+        "description": "Whether a row has a message under it. Without it, every row has one while `rowMessage` is set."
       },
       {
         "name": "isRowSelectionDisabled",
@@ -78,6 +122,21 @@
         "name": "onColumnResize",
         "reason": "function-or-snippet",
         "description": "Called after a column width changes through a pointer or keyboard resize handle."
+      },
+      {
+        "name": "onReachEnd",
+        "reason": "function-or-snippet",
+        "description": "Called when the end of the table scrolls into view, and again after `rows` grows while the end\nis still in view, so a table loads more rows by scrolling and needs no button. Pass it only\nwhile there are more rows to load, and guard against a load already in flight."
+      },
+      {
+        "name": "onRowOpen",
+        "reason": "function-or-snippet",
+        "description": "Makes each row open on a click, Enter or Space, and gives the rows one tab stop with Arrow keys,\nHome and End moving between them. A click on a control inside the row (a button, a link, a\nfield) does not open it."
+      },
+      {
+        "name": "rowMessage",
+        "reason": "function-or-snippet",
+        "description": "Draws a message across the full width of the table directly under a row, such as the line\nthat says a save failed. It is a row of its own, not squeezed into a cell, and it belongs to\nthe row above it. Which rows have one is `hasRowMessage`. Give the message `role=\"alert\"` when\nit reports a failure, so it is announced."
       },
       {
         "name": "rows",

@@ -47,6 +47,8 @@ export type FakePluginHost = {
   refuseRestart?: Response;
   /** Makes the restart request fail the way a request that gets no answer does. */
   failRestartRequest?: boolean;
+  /** The command the host says it was launched with, or `null` for a host no supervisor started. */
+  launch: string | null;
   /** Folders the host could not load, as it reports them. */
   unloaded: PluginsSnapshot['unloaded'];
   /** Makes the next write to a plugin answer with this response instead of making the change. */
@@ -156,6 +158,7 @@ export function installFakePluginHost(
     downFor: options.downFor ?? 2,
     restartApplies: options.restartApplies ?? true,
     failReads: 0,
+    launch: 'bun run start',
     unloaded: [],
     ...(options.lockReason === undefined ? {} : { lockReason: options.lockReason }),
     requests: [],
@@ -170,6 +173,14 @@ export function installFakePluginHost(
     }
     const method = init?.method ?? 'GET';
     const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+    if (method === 'GET' && path === '/host/restart') {
+      host.requests.push({ method, path, body });
+      return Response.json({
+        available: true,
+        launch:
+          host.launch === null ? null : { command: host.launch, directory: '/home/steve/app' },
+      });
+    }
     if (method === 'GET' && stopping) {
       if (stopped < host.downFor) {
         stopped += 1;

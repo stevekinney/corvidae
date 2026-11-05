@@ -10,10 +10,10 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
+import { restartProbing } from '../../app/restart/host-restart-flow.svelte.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import QueryPage from '../chat/chat-toasts.test-harness.svelte';
 import { bureau, landAt } from '../chat/pages.test-support.ts';
-import { restartProbing } from '../settings/plugins/restart-flow.svelte.ts';
 import CapabilitiesPage from './index.svelte';
 import {
   fakeToolSources,

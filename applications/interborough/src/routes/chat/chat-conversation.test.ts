@@ -242,6 +242,38 @@ describe('a new chat', () => {
     expect(router.current.search.get('agent')).toBe('researcher');
   });
 
+  test('opens with the topic of "New chat about" in the composer, and sends nothing', async () => {
+    const runs: string[] = [];
+    restore = bureau({}, (url) => {
+      if (url.includes('/ag-ui/agents/')) runs.push(url);
+      return undefined;
+    }).restore;
+    landAt('/chats/new?about=refund');
+    const { container } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    await waitFor(() => expect(container.querySelector('textarea')?.value).toBe('refund'));
+    expect(runs).toEqual([]);
+  });
+
+  test('opens with an empty composer when no topic is named', async () => {
+    restore = bureau({}).restore;
+    landAt('/chats/new');
+    const { container } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
+    expect(container.querySelector('textarea')?.value).toBe('');
+  });
+
   test('names an agent whose display name is its identifier once, in monospace, in the greeting', async () => {
     const echo = { ...AGENT, name: 'echo', displayName: 'echo', description: null };
     const runner = {

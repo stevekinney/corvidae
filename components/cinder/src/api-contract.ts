@@ -288,6 +288,10 @@ export const CONTRACT: Record<string, ComponentContract> = {
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       name: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('dropzone') },
+      summary: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      rejectionMessage: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      cancelLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Cancel upload') },
       title: {
         optional: true,
         type_kind: 'TSStringKeyword',
@@ -301,6 +305,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       onFilesAccepted: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onFilesChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onReject: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      onFileCancel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onFileRetry: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
     },
     snippets: {
@@ -349,8 +354,12 @@ export const CONTRACT: Record<string, ComponentContract> = {
       selectionLocation: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       storageKey: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       storage: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
-      pushBelow: { optional: true, type_kind: 'TSNumberKeyword', default: L(900) },
-      defaultListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(320) },
+      pushBelow: { optional: true, type_kind: 'TSNumberKeyword', default: L(600) },
+      defaultListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(280) },
+      flushDetail: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
       backLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Back') },
       detailLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Details') },
       emptyTitle: { optional: true, type_kind: 'TSStringKeyword', default: L('Nothing selected') },
@@ -362,7 +371,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
-      list: sp(2, false),
+      list: sp(2, true),
+      listBody: sp(1, true),
       detail: sp(1, false),
       empty: s0(true),
       listEmpty: s0(true),
@@ -614,6 +624,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // through FormField context (`disabled ?? context?.disabled ?? false`), so
       // the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      readonly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onValueChangeRequest: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },

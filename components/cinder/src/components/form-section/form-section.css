@@ -28,6 +28,31 @@
     padding: 0;
   }
 
+  /* A heading with a note beside it shares one baseline; the row, not the heading, owns the gap
+     below. */
+  .cinder-form-section__title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-2);
+    margin: 0 0 var(--cinder-space-1-5);
+  }
+
+  .cinder-form-section__title > .cinder-form-section__heading {
+    margin: 0;
+  }
+
+  .cinder-form-section__meta {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-form-section__legend > .cinder-form-section__meta {
+    margin-inline-start: var(--cinder-space-2);
+  }
+
   /* ----------------------------------------
  * Description
  * ---------------------------------------- */

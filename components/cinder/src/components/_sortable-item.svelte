@@ -1,6 +1,7 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
   import type { SortableItemContext } from '../utilities/sortable-controller.types.ts';
+  import type { SortableReorderMode } from './sortable-list/sortable-list.types.ts';
 
   /** Internal props for SortableItem — not part of the public package API. */
   export type SortableItemProps<Item> = {
@@ -13,6 +14,10 @@
     index: number;
     itemLabel: string;
     formatHandleLabel: (itemLabel: string) => string;
+    /** How the row is reordered. Lists that never move a row by button leave it as `handle`. */
+    reorderMode?: SortableReorderMode;
+    formatMoveUpLabel?: (itemLabel: string) => string;
+    formatMoveDownLabel?: (itemLabel: string) => string;
     children: Snippet<[SortableItemContext]>;
     handle?: Snippet<[{ pressed: boolean; label: string }]>;
     instructionsId: string;
@@ -22,8 +27,11 @@
 </script>
 
 <script lang="ts" generics="Item">
+  import { tick } from 'svelte';
   import { getSortableContext } from '../utilities/sortable-controller.svelte.ts';
   import { classNames } from '../utilities/class-names.ts';
+  import Button from './button/button.svelte';
+  import { ArrowDown, ArrowUp } from './icons/index.ts';
 
   let {
     item: _item,
@@ -31,6 +39,9 @@
     index,
     itemLabel,
     formatHandleLabel,
+    reorderMode = 'handle',
+    formatMoveUpLabel = (label) => `Move ${label} up`,
+    formatMoveDownLabel = (label) => `Move ${label} down`,
     children,
     handle,
     instructionsId,
@@ -83,6 +94,38 @@
     context.controller.phase === 'lifted' && context.controller.liftedTo === index,
   );
 
+  const showHandle = $derived(reorderMode !== 'buttons');
+  const showMoveButtons = $derived(reorderMode !== 'handle' && context.step !== undefined);
+
+  // A move re-renders the row at its new place, and the button that was pressed may no longer
+  // exist there (the second row moved up is the first, which has no Move up). Remember which
+  // direction was pressed and put focus back on that button or, failing that, the other one.
+  let pendingMoveFocus: 'up' | 'down' | null = null;
+
+  async function requestMove(delta: -1 | 1): Promise<void> {
+    pendingMoveFocus = delta === -1 ? 'up' : 'down';
+    context.step?.(itemKey, delta, itemLabel);
+    await tick();
+    restoreMoveFocus();
+  }
+
+  function restoreMoveFocus(): void {
+    if (pendingMoveFocus === null || !rowEl) return;
+    const preferred = pendingMoveFocus;
+    pendingMoveFocus = null;
+    const target =
+      rowEl.querySelector<HTMLElement>(`[data-cinder-move="${preferred}"]`) ??
+      rowEl.querySelector<HTMLElement>('[data-cinder-move]');
+    target?.focus();
+  }
+
+  // The consumer's `onReorder` may apply the new order after the call returns, so a move that
+  // changes this row's place also restores focus once the row has been placed.
+  $effect(() => {
+    void index;
+    if (pendingMoveFocus !== null) void tick().then(restoreMoveFocus);
+  });
+
   const itemContext: SortableItemContext = {
     get isLifted() {
       return isLifted;
@@ -95,6 +138,9 @@
     },
     get total() {
       return total;
+    },
+    get moveButtons() {
+      return showMoveButtons ? moveButtons : undefined;
     },
   };
 
@@ -559,6 +605,35 @@
   });
 </script>
 
+{#snippet moveButtons()}
+  <span class="cinder-sortable-move-buttons">
+    {#if index > 0}
+      <Button
+        iconOnly
+        size="sm"
+        variant="secondary"
+        aria-label={formatMoveUpLabel(itemLabel)}
+        data-cinder-move="up"
+        onclick={() => requestMove(-1)}
+      >
+        <ArrowUp aria-hidden="true" />
+      </Button>
+    {/if}
+    {#if index < total - 1}
+      <Button
+        iconOnly
+        size="sm"
+        variant="secondary"
+        aria-label={formatMoveDownLabel(itemLabel)}
+        data-cinder-move="down"
+        onclick={() => requestMove(1)}
+      >
+        <ArrowDown aria-hidden="true" />
+      </Button>
+    {/if}
+  </span>
+{/snippet}
+
 <li
   bind:this={rowEl}
   data-sortable-row
@@ -578,34 +653,36 @@
 >
   {@render children(itemContext)}
 
-  <button
-    bind:this={handleEl}
-    type="button"
-    class="cinder-sortable-handle"
-    aria-label={handleLabel}
-    aria-pressed={isLifted}
-    aria-describedby={instructionsId}
-    onkeydown={handleKeyDown}
-    onpointerdown={handlePointerDown}
-    onpointermove={handlePointerMove}
-    onpointerup={handlePointerUp}
-    onpointercancel={handlePointerCancel}
-  >
-    {#if handle}
-      {@render handle({ pressed: isLifted, label: handleLabel })}
-    {:else}
-      <!-- Default drag handle icon (grip lines) -->
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="16"
-        height="16"
-        viewBox="0 0 16 16"
-        fill="currentColor"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path d="M2 4h12v1.5H2zM2 7.25h12v1.5H2zM2 10.5h12v1.5H2z" />
-      </svg>
-    {/if}
-  </button>
+  {#if showHandle}
+    <button
+      bind:this={handleEl}
+      type="button"
+      class="cinder-sortable-handle"
+      aria-label={handleLabel}
+      aria-pressed={isLifted}
+      aria-describedby={instructionsId}
+      onkeydown={handleKeyDown}
+      onpointerdown={handlePointerDown}
+      onpointermove={handlePointerMove}
+      onpointerup={handlePointerUp}
+      onpointercancel={handlePointerCancel}
+    >
+      {#if handle}
+        {@render handle({ pressed: isLifted, label: handleLabel })}
+      {:else}
+        <!-- Default drag handle icon (grip lines) -->
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M2 4h12v1.5H2zM2 7.25h12v1.5H2zM2 10.5h12v1.5H2z" />
+        </svg>
+      {/if}
+    </button>
+  {/if}
 </li>

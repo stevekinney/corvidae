@@ -116,12 +116,28 @@ async function choose(label: string, query: string, optionText: string): Promise
   await fireEvent.mouseDown(option);
 }
 
+/** Opens the Time zone picker, searches it and chooses the zone whose row names `city`. */
+async function chooseZone(search: string, city: string): Promise<void> {
+  await fireEvent.click(await view().findByRole('combobox', { name: /^Time zone/ }));
+  const field = await waitFor(() => {
+    const found = document.body.querySelector<HTMLInputElement>('.cinder-combobox__search input');
+    if (found === null) throw new Error('The time zone search has not mounted.');
+    return found;
+  });
+  await fireEvent.input(field, { target: { value: search } });
+  const option = await waitFor(() => {
+    const found = [...document.body.querySelectorAll('[role="option"]')].find((entry) =>
+      (entry.textContent ?? '').includes(city),
+    );
+    if (found === undefined) throw new Error(`Expected ${city} to be offered.`);
+    return found;
+  });
+  await fireEvent.mouseDown(option);
+}
+
 /** Sets one field of the cron builder to a specific value. */
 async function setCronField(name: string, value: string): Promise<void> {
-  await fireEvent.change(view().getByLabelText(`${name} pattern`), {
-    target: { value: 'specific' },
-  });
-  const field = view().getByLabelText(`${name} value`);
+  const field = view().getByLabelText(name);
   await fireEvent.input(field, { target: { value } });
   await fireEvent.change(field, { target: { value } });
   await fireEvent.blur(field);
@@ -723,7 +739,7 @@ describe('a workflow', () => {
     open();
     await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
     await view().findByTestId('new-schedule-input');
-    await choose('Time zone', 'Asia/Tokyo', 'Asia/Tokyo');
+    await chooseZone('tokyo', 'Tokyo');
     await waitFor(() =>
       expect(view().getByTestId('new-schedule-summary').textContent).toContain('Asia/Tokyo'),
     );

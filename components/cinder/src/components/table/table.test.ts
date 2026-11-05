@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { stripCinderComponentsLayer } from '../../test/css.ts';
+import { lengthToPixels } from './table.length.ts';
 import type { TableScrollContainerProps } from './table.types.ts';
 
 setupHappyDom();
@@ -67,7 +68,7 @@ describe('Table semantics', () => {
   });
 
   test('scrollable=false renders the table without a scroll wrapper', () => {
-    const { container } = render(Wrapper, { columns, rows });
+    const { container } = render(Wrapper, { columns, rows, scrollable: false });
     expect(container.querySelector('.cinder-table-scroll')).toBeNull();
   });
 
@@ -251,6 +252,7 @@ describe('Table semantics', () => {
     const { container } = render(Wrapper, {
       columns,
       rows,
+      scrollable: false,
       scrollContainerProps: {
         'aria-label': 'Unused scroll wrapper',
       },
@@ -503,8 +505,10 @@ describe('Table sticky-header caption measurement', () => {
     await withResizeObserver(async () => {
       render(Wrapper, { columns, rows, stickyHeader: false, caption: 'Plain caption' });
       await tick();
-      // The `enabled: () => stickyHeader` gate skips observation entirely.
-      expect(CapturingResizeObserver.lastObserver?.observed ?? []).toHaveLength(0);
+      // The `enabled: () => stickyHeader` gate skips the caption. The scroll box watches itself for
+      // the fade, but nothing watches the caption.
+      const observed = Array.from(CapturingResizeObserver.lastObserver?.observed ?? []);
+      expect(observed.some((element) => element.tagName === 'CAPTION')).toBe(false);
     });
   });
 });
@@ -962,10 +966,11 @@ describe('CSS rule assertions — sort indicator and focus ring', () => {
 
   test('scroll wrapper owns horizontal overflow without changing table semantics', () => {
     const wrapperRule = injectTableCssAndFind('.cinder-table-scroll');
-    // The scroll wrapper owns horizontal overflow; the table inside it grows to
-    // its intrinsic width via a descendant combinator on `.cinder-table-scroll`.
-    const tableRule = injectTableCssAndFind('.cinder-table-scroll .cinder-table');
+    // The scroll wrapper owns horizontal overflow and the frame; the table inside it grows to
+    // its intrinsic width and draws no border of its own.
+    const tableRule = injectTableCssAndFind('.cinder-table-scroll > .cinder-table');
     expect(wrapperRule?.style.overflowX).toBe('auto');
+    expect(wrapperRule?.style.borderRadius).toBe('var(--cinder-radius-lg)');
     expect(tableRule?.style.minInlineSize).toBe('max-content');
   });
 
@@ -1041,6 +1046,20 @@ describe('Table data display', () => {
   // markup that marks a cell, and the CSS the table ships for that marker.
   const longValue = 'storage/'.concat('segment-'.repeat(250)); // about 2,000 characters
 
+  test('converts table lengths relative to the document and cell font sizes', () => {
+    const element = document.createElement('div');
+    document.body.append(element);
+    document.documentElement.style.fontSize = '20px';
+    element.style.fontSize = '12px';
+    expect(lengthToPixels('0', element)).toBe(0);
+    expect(lengthToPixels('2px', element)).toBe(2);
+    expect(lengthToPixels('2rem', element)).toBe(40);
+    expect(lengthToPixels('2em', element)).toBe(24);
+    expect(lengthToPixels('2vw', element)).toBeUndefined();
+    element.remove();
+    document.documentElement.style.removeProperty('font-size');
+  });
+
   function ruleBody(selector: string): string {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const match = new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(tableCss);
@@ -1103,6 +1122,13 @@ describe('Table data display', () => {
     expect(fill).toMatch(/max-inline-size:\s*100%/);
     expect(ruleBody('.cinder-table__cell[data-cinder-controls]')).toMatch(
       /min-inline-size:\s*var\(--_cinder-table-controls-size\)/,
+    );
+  });
+
+  test('a stacked card sets its controls to 44px so a select is as tall as its row (row 40a)', () => {
+    const stacked = tableCss.slice(tableCss.indexOf('[data-cinder-stacked]'));
+    expect(stacked).toMatch(
+      /:is\(\.cinder-select, \.cinder-input, \.cinder-button\) \{\s*min-block-size: 2\.75rem;/,
     );
   });
 

@@ -316,7 +316,7 @@ describe('FileUpload validation and events', () => {
     await fireEvent(dropzone, createDropEvent('drop', [file]));
     expect(onReject).toHaveBeenCalledTimes(1);
     expect(onReject.mock.calls[0]?.[0]?.[0]?.reason).toBe('too-large');
-    expect(onReject.mock.calls[0]?.[0]?.[0]?.message).toContain('2.0 MB');
+    expect(onReject.mock.calls[0]?.[0]?.[0]?.message).toContain('2 MB');
   });
 
   test('accept MIME filtering rejects mismatches', async () => {

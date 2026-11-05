@@ -504,7 +504,24 @@ export function carryLiveNotes(
     if (before === undefined || current.messages[id] === undefined) continue;
     const carried = notesOf(before).filter((note) => LIVE_ONLY.has(note.kind));
     // On the row that held it: a wakeup held on a tool row stays there.
-    for (const note of carried) current = stampNote(current, note, id) ?? current;
+    for (const note of carried) {
+      const holding = rowHolding(current, note.id);
+      const heldRow = holding === undefined ? undefined : current.messages[holding];
+      const existing =
+        heldRow === undefined ? undefined : notesOf(heldRow).find((entry) => entry.id === note.id);
+      // A live child can settle between two restores. Preserve that newer terminal state when a
+      // stale snapshot still describes the child as running; the next task read may otherwise
+      // overwrite the card immediately after the settlement callback.
+      if (
+        note.kind === 'child-run' &&
+        existing?.kind === 'child-run' &&
+        note.status === 'running' &&
+        existing.status !== 'running'
+      ) {
+        continue;
+      }
+      current = stampNote(current, note, id) ?? current;
+    }
   }
   return current;
 }

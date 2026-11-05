@@ -19,6 +19,7 @@
   import type { TabListProps } from './tab-list.types.ts';
 
   import { getTabsContext } from '../tabs/tabs-context.ts';
+  import { overflowFadeEdges } from '../../utilities/attachments.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
   let { label, ariaLabelledby, class: className, children, ...rest }: TabListProps = $props();
@@ -30,11 +31,16 @@
   {...rest}
   role="tablist"
   hidden={tabs.collapsed}
-  class={classNames('cinder-tab-list', className)}
+  class={classNames(
+    'cinder-tab-list',
+    tabs.orientation === 'horizontal' && 'cinder-_scroll-fade-inline-end',
+    className,
+  )}
   data-cinder-orientation={tabs.orientation}
   aria-label={label}
   aria-labelledby={ariaLabelledby}
   aria-orientation={tabs.orientation}
+  {@attach tabs.orientation === 'horizontal' ? overflowFadeEdges('inline') : undefined}
 >
   {@render children()}
 </div>

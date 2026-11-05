@@ -32,6 +32,9 @@
     getKey,
     getItemLabel,
     formatHandleLabel = (label) => `Reorder ${label}`,
+    reorderMode = 'handle',
+    formatMoveUpLabel = (label) => `Move ${label} up`,
+    formatMoveDownLabel = (label) => `Move ${label} down`,
     handle,
     onReorder,
     announcements,
@@ -95,6 +98,10 @@
     move(toIndex, itemLabel, total) {
       controller.move(toIndex, itemLabel, total);
     },
+    step(itemKey, delta, itemLabel) {
+      const result = controller.step(items, getKey, itemKey, delta, itemLabel);
+      if (result) onReorder(result.nextItems, result.change);
+    },
   });
 
   // Window-level Escape handler: cancels the lift regardless of which element has focus.
@@ -138,6 +145,9 @@
       index={visualIndex}
       itemLabel={rowItemLabel}
       {formatHandleLabel}
+      {reorderMode}
+      {formatMoveUpLabel}
+      {formatMoveDownLabel}
       {...handle !== undefined ? { handle } : {}}
       {instructionsId}
       total={visualItems.length}

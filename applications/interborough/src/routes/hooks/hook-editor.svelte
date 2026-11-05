@@ -618,7 +618,8 @@
     min-width: 0;
   }
 
-  @media (min-width: 900px) {
+  /* A side rail stacks below the main column under 1024px (design row 04b). */
+  @media (min-width: 64rem) {
     .ib-hook-editor__layout:has(.ib-hook-editor__aside) {
       grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     }

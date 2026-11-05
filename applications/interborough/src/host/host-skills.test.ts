@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1818: the host reads the `skills` sources in `configuration.json`, hands the catalog to
  * `bureau.skills.list`, refuses an untrusted skill, and changes a source's trust through the
@@ -61,6 +62,7 @@ type Layout = {
 /** A home whose configuration names a user source and a project source and trusts neither. */
 async function layout(extra: Record<string, unknown> = {}): Promise<Layout> {
   const home = await scratch('interborough-skills-home-');
+  await initializeWorkspaceHome(home);
   const userSkills = await scratch('interborough-skills-user-');
   const projectSkills = await scratch('interborough-skills-project-');
   await writeSkill(userSkills, 'summarize', 'read_file grep');
@@ -244,8 +246,9 @@ describe('skills in configuration.json', () => {
     const bungalow = {
       mode: 'local' as const,
       configurationLocation: join(home, 'configuration.json'),
-      readConfiguration: async () =>
-        JSON.stringify({
+      readConfiguration: async () => ({
+        revision: 'initial',
+        text: JSON.stringify({
           skills: {
             sources: [
               { id: 'home', kind: 'user', path: userSkills },
@@ -254,7 +257,8 @@ describe('skills in configuration.json', () => {
             trusted: ['home'],
           },
         }),
-      writeConfiguration: async () => {},
+      }),
+      writeConfiguration: async () => ({ outcome: 'committed' as const }),
     };
     const catalog = await discoverFirstSkills({
       bungalow,
@@ -281,6 +285,7 @@ describe('skills in configuration.json', () => {
 
   test('loads a configuration written before the key existed, and lists no skills', async () => {
     const home = await scratch('interborough-skills-old-');
+    await initializeWorkspaceHome(home);
     await writeFile(join(home, 'configuration.json'), JSON.stringify({ providers: {} }));
     const host = await startAt(home);
 
@@ -326,6 +331,7 @@ describe('skills in configuration.json', () => {
     ['an unknown field', { sources: [], extra: true }, 'skills.extra'],
   ])('stops a host whose configuration has %s, naming the field', async (_name, skills, field) => {
     const home = await scratch('interborough-skills-invalid-');
+    await initializeWorkspaceHome(home);
     await writeFile(join(home, 'configuration.json'), JSON.stringify({ skills }));
 
     const failure = await failureOf(startAt(home));

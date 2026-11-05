@@ -2,6 +2,7 @@
  * One chat session's state over stubbed Bureau requests: what a follow-up sends, what an attach
  * restores, and which approvals the conversation is waiting on.
  */
+import { resolveMessageNotes } from '@lostgradient/chat';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
@@ -82,6 +83,53 @@ describe('a message', () => {
       .catch(() => undefined);
 
     expect(session.failure).toBe('The thread is busy.');
+  });
+
+  test('keeps a live child settlement after the session applies the stream snapshot', async () => {
+    let push!: (event: unknown) => void;
+    let finish!: () => void;
+    const open$ = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encode = (event: unknown) =>
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+        push = encode;
+        finish = () => {
+          encode(finished);
+          controller.close();
+        };
+        encode(started);
+      },
+    });
+    const session = open(
+      async () => new Response(open$, { headers: { 'content-type': 'text/event-stream' } }),
+    );
+    const turn = session.adapter.sendMessage({ role: 'user', content: 'Start the work' }, []);
+    await until(() => session.streaming);
+
+    push({
+      type: 'CUSTOM',
+      name: 'bureau.child-run-started',
+      value: { childRunId: 'child-1', childAgentName: 'researcher' },
+    });
+    push({
+      type: 'CUSTOM',
+      name: 'bureau.child-run-settled',
+      value: { childRunId: 'child-1', status: 'failed' },
+    });
+    const liveNotes = () =>
+      session.conversation.ids.flatMap((id) => {
+        const message = session.conversation.messages[id];
+        return message === undefined ? [] : (resolveMessageNotes(message) ?? []);
+      });
+    await until(() =>
+      liveNotes().some((note) => note.kind === 'child-run' && note.status === 'failed'),
+    );
+
+    expect(liveNotes()).toMatchObject([
+      { kind: 'child-run', childRunId: 'child-1', status: 'failed', href: '/runs/child-1' },
+    ]);
+    finish();
+    await turn;
   });
 });
 

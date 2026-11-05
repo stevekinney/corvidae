@@ -104,15 +104,41 @@
     "class": {
       "type": "string",
       "description": "Additional classes merged onto the root element."
+    },
+    "clamp": {
+      "type": "number",
+      "description": "Holds the text to this many lines; a \"Show all\" button appears only while the text is cut off."
+    },
+    "expanded": {
+      "type": "boolean",
+      "description": "Whether a clamped run is open to its full length.",
+      "default": false
+    },
+    "truncate": {
+      "const": "middle",
+      "description": "Cuts the text in the middle when it is too long for one line. Needs `text`."
+    },
+    "text": {
+      "type": "string",
+      "description": "The plain text to cut in the middle with `truncate=\"middle\"`."
+    },
+    "tailLength": {
+      "type": "number",
+      "description": "With `truncate=\"middle\"`, how many characters at the end of the text stay visible.",
+      "default": 4
     }
   },
   "additionalProperties": false,
   "metadata": {
     "unsupportedProps": [
       {
+        "name": "actions",
+        "reason": "function-or-snippet",
+        "description": "Content that sits beside the \"Show all\" button on the line under a clamped run, separated from\nit by a middle dot, such as a \"Show raw payloads\" link. Ignored without `clamp`."
+      },
+      {
         "name": "children",
         "reason": "function-or-snippet",
-        "required": true,
         "description": "Required text content."
       }
     ]

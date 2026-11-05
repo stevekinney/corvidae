@@ -188,12 +188,16 @@ const SHORTCUT_FORMATS: Readonly<Record<string, ChatComposerFormat>> = {
   b: 'bold',
   i: 'italic',
   e: 'code',
-  k: 'link',
 };
 
-/** The format a keydown asks for: Cmd or Ctrl with B, I, E, or K, and nothing else held. */
+/**
+ * The format a keydown asks for: Cmd or Ctrl with B, I, or E, or with Shift and K for a link, and
+ * nothing else held. The link is Shift plus K, never K alone, because Cmd or Ctrl with K is the
+ * application's search and has to reach it from inside the composer (design row 03e).
+ */
 export function composerShortcutFormat(event: KeyboardEvent): ChatComposerFormat | undefined {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return undefined;
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return undefined;
   const key = event.key.toLowerCase();
+  if (event.shiftKey) return key === 'k' ? 'link' : undefined;
   return Object.hasOwn(SHORTCUT_FORMATS, key) ? SHORTCUT_FORMATS[key] : undefined;
 }

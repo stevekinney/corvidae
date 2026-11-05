@@ -14,6 +14,12 @@
       "title": "Accent bar that fills its container",
       "description": "With tone accent and layout block the bar is a progress cue in its own right, as in the reconnecting dialog's \"Attempt 3 of 8\". Name it with label so the count is spoken.",
       "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div style=\"max-width: 24rem;\">\n  <p style=\"margin: 0 0 0.75rem;\">Trying again in 4 s. Attempt 3 of 8.</p>\n  <AttemptsIndicator made={3} allowed={8} tone=\"accent\" layout=\"block\" label=\"Attempt 3 of 8\" />\n</div>\n"
+    },
+    {
+      "id": "goal",
+      "title": "A goal with three of five attempts used",
+      "description": "On a goal row the bar sits beside its count, \"3 of 5\", in the same neutral colours in light and dark; running out of attempts never turns it red.",
+      "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div\n  style=\"display: grid; gap: 0.5rem; font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);\"\n>\n  <span>Triage the refund queue · <AttemptsIndicator made={3} allowed={5} /> 3 of 5</span>\n  <span>Reconcile the ledger · <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>\n</div>\n"
     }
   ]
 }

@@ -67,8 +67,9 @@ const schema = {
       default: 'vertical',
     },
     variant: {
-      enum: ['rail', 'list'],
-      description: 'Rail with connectors, or compact rows with none.',
+      enum: ['rail', 'list', 'rows'],
+      description:
+        'Rail with connectors, compact rows with none, or a rail whose rows `children` draws whole.',
       default: 'rail',
     },
     groupBy: {

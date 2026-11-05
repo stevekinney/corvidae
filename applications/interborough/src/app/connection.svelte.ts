@@ -19,9 +19,24 @@ import type { QueryClient } from '@tanstack/svelte-query';
 
 import { isNetworkFailure } from '../lib/faults.ts';
 
+/** How many probes the monitor makes before it stops and leaves Retry now as the way back. */
+export const CONNECTION_MAX_ATTEMPTS = 8;
+
 /** The wait before the probe of attempt `attempt` (counted from 1): one second, doubling to eight. */
 export function connectionProbeDelayMs(attempt: number): number {
   return Math.min(1_000 * 2 ** (attempt - 1), 8_000);
+}
+
+/**
+ * Which of Cinder's banner presets says what the monitor knows: the browser being offline comes
+ * first (nothing is wrong with the server), then retries that ran out, then a server that does not
+ * answer while the retries count down.
+ */
+export function connectionBannerPreset(
+  monitor: Pick<ConnectionMonitor, 'browserOffline' | 'stopped'>,
+): 'offline' | 'stopped' | 'unreachable' {
+  if (monitor.browserOffline) return 'offline';
+  return monitor.stopped ? 'stopped' : 'unreachable';
 }
 
 export interface ConnectionMonitorOptions {
@@ -31,8 +46,10 @@ export interface ConnectionMonitorOptions {
   readonly onRecovered?: () => void;
   /** Overrides the wait before each probe while unreachable; tests inject a near-zero one. */
   readonly probeDelayMs?: (attempt: number) => number;
-  /** Overrides the clock `lastHealthyAt` reads. */
+  /** Overrides the clock `lastHealthyAt` and the retry countdown read. */
   readonly now?: () => number;
+  /** Whether the browser says it is offline when the monitor starts. Defaults to `navigator.onLine`. */
+  readonly browserOffline?: boolean;
 }
 
 export class ConnectionMonitor {
@@ -40,13 +57,28 @@ export class ConnectionMonitor {
   unreachable = $state(false);
   /** When the server last answered, which is the age of the data the page still shows. */
   lastHealthyAt = $state(0);
+  /**
+   * Whether the browser itself reports that it is offline (the `offline` event, until the `online`
+   * event). The banner then says "You're offline" instead of blaming the server.
+   */
+  browserOffline = $state(false);
+  /** The probe that is under way or counting down, counted from 1; 0 while the server answers. */
+  attempt = $state(0);
+  /** Seconds until the next automatic probe, or `undefined` while none is counting down. */
+  retryInSeconds = $state<number | undefined>(undefined);
+  /**
+   * Whether the probes ran out after {@link CONNECTION_MAX_ATTEMPTS} tries. Nothing probes on its
+   * own then; `retryNow()` starts the count again.
+   */
+  stopped = $state(false);
 
   readonly #probe: () => Promise<unknown>;
   readonly #onRecovered: (() => void) | undefined;
   readonly #delay: (attempt: number) => number;
   readonly #now: () => number;
   #timer: ReturnType<typeof setTimeout> | undefined;
-  #attempt = 0;
+  #countdown: ReturnType<typeof setInterval> | undefined;
+  #retryAt = 0;
   #disposed = false;
 
   constructor(options: ConnectionMonitorOptions) {
@@ -55,14 +87,38 @@ export class ConnectionMonitor {
     this.#delay = options.probeDelayMs ?? connectionProbeDelayMs;
     this.#now = options.now ?? Date.now;
     this.lastHealthyAt = this.#now();
+    this.browserOffline =
+      options.browserOffline ?? (typeof navigator !== 'undefined' && !navigator.onLine);
   }
 
   /** Records that a request got no answer. The probe starts, and runs until the server answers. */
   reportUnreachable(): void {
     if (this.#disposed || this.unreachable) return;
     this.unreachable = true;
-    this.#attempt = 0;
+    this.attempt = 0;
+    this.stopped = false;
     this.#scheduleProbe();
+  }
+
+  /** Records the browser's own word on whether it is online, from the `offline` and `online` events. */
+  setBrowserOffline(offline: boolean): void {
+    if (this.#disposed) return;
+    this.browserOffline = offline;
+    if (offline) this.reportUnreachable();
+    else void this.retryNow();
+  }
+
+  /**
+   * The banner's Retry now: starts the count of probes again from the first and asks the server
+   * right away. It is always available, including after the probes stopped.
+   */
+  async retryNow(): Promise<void> {
+    if (this.#disposed) return;
+    this.#stopProbing();
+    this.stopped = false;
+    await this.check();
+    // The server still does not answer: the probes begin again, counted from 1.
+    if (this.unreachable) this.#scheduleProbe();
   }
 
   /** Records that the server answered. Only the probe may say so: see the header. */
@@ -71,11 +127,12 @@ export class ConnectionMonitor {
     this.lastHealthyAt = this.#now();
     if (!this.unreachable) return;
     this.unreachable = false;
+    this.stopped = false;
     this.#stopProbing();
     this.#onRecovered?.();
   }
 
-  /** Asks the server once, now. Used by the banner's Retry and when the browser comes back online. */
+  /** Asks the server once, now. Used when the browser comes back online and by the engine feed. */
   async check(): Promise<void> {
     if (this.#disposed) return;
     try {
@@ -111,12 +168,25 @@ export class ConnectionMonitor {
 
   #scheduleProbe(): void {
     if (this.#disposed || this.#timer !== undefined) return;
-    this.#attempt += 1;
+    if (this.attempt >= CONNECTION_MAX_ATTEMPTS) {
+      this.stopped = true;
+      this.retryInSeconds = undefined;
+      return;
+    }
+    this.attempt += 1;
+    const delay = this.#delay(this.attempt);
+    this.#retryAt = this.#now() + delay;
+    this.retryInSeconds = Math.ceil(delay / 1_000);
+    // poll-reason: timer
+    this.#countdown = setInterval(() => {
+      this.retryInSeconds = Math.max(0, Math.ceil((this.#retryAt - this.#now()) / 1_000));
+    }, 1_000);
     // poll-reason: timer
     this.#timer = setTimeout(() => {
       this.#timer = undefined;
+      this.#stopCountdown();
       void this.#probeOnce();
-    }, this.#delay(this.#attempt));
+    }, delay);
   }
 
   async #probeOnce(): Promise<void> {
@@ -130,10 +200,17 @@ export class ConnectionMonitor {
     this.reportReachable();
   }
 
+  #stopCountdown(): void {
+    if (this.#countdown !== undefined) clearInterval(this.#countdown);
+    this.#countdown = undefined;
+    this.retryInSeconds = undefined;
+  }
+
   #stopProbing(): void {
     if (this.#timer !== undefined) clearTimeout(this.#timer);
     this.#timer = undefined;
-    this.#attempt = 0;
+    this.#stopCountdown();
+    this.attempt = 0;
   }
 
   dispose(): void {

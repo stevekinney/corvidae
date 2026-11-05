@@ -1139,6 +1139,9 @@ export function createCatalogDispatcher({
     const context: AgentRunContext = {
       agentName: start.agentName,
       ...start.context,
+      ...(start.delegatedToolCapabilities === undefined
+        ? {}
+        : { delegatedToolCapabilities: start.delegatedToolCapabilities }),
       ...(start.principal === undefined ? {} : { principal: start.principal }),
       ...catalogRunGuardrailsContext(agent),
     };

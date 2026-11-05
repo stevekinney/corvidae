@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1880: the host lists the plugins it loads, persists the owner's choices for them in
  * `configuration.json`, stores the secrets they declare, and creates the ones marked `generated`.
@@ -277,6 +278,7 @@ describe('a plugin the file does not name', () => {
 
   test('is read from the file: a stored choice replaces the default', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     await Bun.write(
       join(home, 'configuration.json'),
       JSON.stringify({ plugins: { quiet: { enabled: true }, limited: { enabled: false } } }),
@@ -319,6 +321,7 @@ describe('PUT /host/plugins/:name', () => {
 
   test('keeps every other key of the file, and a stored field the request leaves out', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     await Bun.write(
       join(home, 'configuration.json'),
       JSON.stringify({
@@ -389,6 +392,7 @@ describe('PUT /host/plugins/:name', () => {
 
   test('does not start on a file whose plugins key is malformed', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     await Bun.write(join(home, 'configuration.json'), JSON.stringify({ plugins: { quiet: 3 } }));
 
     const failure = await startAt(home).then(
@@ -563,10 +567,10 @@ describe('a remote home', () => {
       bungalow: {
         mode: 'remote' as const,
         configurationLocation: 's3://bucket/configuration.json',
-        readConfiguration: async () => undefined,
-        writeConfiguration: () => {
+        readConfiguration: async () => ({ text: undefined, revision: null }),
+        writeConfiguration: async () => {
           writes.push('configuration');
-          throw new Error('The remote home cannot be written.');
+          return { outcome: 'read-only' as const };
         },
         readSecret: (key: string) => environment[key],
         writeSecret: () => {
@@ -669,8 +673,8 @@ describe('a secret write that stores the file and then fails', () => {
       bungalow: {
         mode: 'local' as const,
         configurationLocation: '/home/configuration.json',
-        readConfiguration: async () => undefined,
-        writeConfiguration: () => {},
+        readConfiguration: async () => ({ text: undefined, revision: null }),
+        writeConfiguration: async () => ({ outcome: 'committed' as const }),
         readSecret: (key: string) => stored.get(key),
         writeSecret: (key: string, value: string) => {
           stored.set(key, value);

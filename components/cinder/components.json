@@ -1671,7 +1671,7 @@
       "exportName": "DataTable",
       "category": "data-display",
       "status": "alpha",
-      "purpose": "Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from a columns array and a rows array.",
+      "purpose": "Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from columns and rows, with custom cells, day groups, a footer and rows that open a detail pane.",
       "tags": ["table", "data"],
       "useWhen": [
         "Rendering a structured dataset where columns and rows are known at runtime (e.g. API responses, config-driven dashboards).",
@@ -1679,7 +1679,7 @@
       ],
       "avoidWhen": [
         {
-          "reason": "You need custom cell rendering, interactive cells, nested components, or column spanning — use the compositional Table family directly."
+          "reason": "You need nested components in header cells or column spanning — use the compositional Table family directly."
         },
         {
           "reason": "You need fully custom cell or row composition — use Table directly."
@@ -2151,6 +2151,36 @@
       }
     },
     {
+      "name": "DurationField",
+      "id": "duration-field",
+      "import": "@lostgradient/cinder",
+      "exportName": "DurationField",
+      "category": "form",
+      "status": "beta",
+      "purpose": "Number plus unit for a duration that is stored in milliseconds, so a person types 30 and picks seconds while the value stays one number.",
+      "tags": ["form", "duration", "numeric"],
+      "useWhen": [
+        "A setting or schema field holds a length of time in milliseconds and the person should not have to count zeros.",
+        "A setting always counts in one unit and should show it beside the number (\"30 seconds\") — set `unitSelectable` to `false`."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Collecting a clock time or a calendar date — use time-field or date-picker."
+        },
+        {
+          "reason": "Showing a duration read-only — format it with `formatDuration`."
+        }
+      ],
+      "related": ["number-input", "select", "time-field"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/duration-field/duration-field.schema.json",
+        "variables": "src/components/duration-field/duration-field.variables.json",
+        "examples": "src/components/duration-field/duration-field.examples.json"
+      }
+    },
+    {
       "name": "EmptyState",
       "id": "empty-state",
       "import": "@lostgradient/cinder",
@@ -2334,11 +2364,11 @@
       "exportName": "FilterBar",
       "category": "form",
       "status": "beta",
-      "purpose": "Composed filtering toolbar with search, select facets, applied-filter chips, and clear-all for dense operational list views.",
+      "purpose": "Single-row filtering toolbar for list views: status segments, select and chip facets, a search field, and a collapse to a select and a Filter menu on narrow screens.",
       "tags": ["form", "filter"],
       "useWhen": [
-        "Filtering a list or table by multiple dimensions such as status, category, and queue simultaneously.",
-        "Showing applied filters as removable chips so users can see and undo active constraints."
+        "Filtering a list or table by several dimensions at once, such as status, who started it, and which agent ran it.",
+        "Showing applied filters as tinted chips that read \"Agent: Tool runner\" and can be removed in place."
       ],
       "avoidWhen": [
         {
@@ -2348,7 +2378,7 @@
           "reason": "Filtering navigates to a new page — the bar owns no routing or persistence."
         }
       ],
-      "related": ["search-field", "chip", "select", "toolbar"],
+      "related": ["search-field", "segmented-control", "select", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
@@ -2488,6 +2518,36 @@
         "schema": "src/components/form/form.schema.json",
         "variables": "src/components/form/form.variables.json",
         "examples": "src/components/form/form.examples.json"
+      }
+    },
+    {
+      "name": "FormActions",
+      "id": "form-actions",
+      "import": "@lostgradient/cinder",
+      "exportName": "FormActions",
+      "category": "form",
+      "status": "beta",
+      "purpose": "Action bar for the end of a form: a summary on the left, the secondary then primary buttons on the right, an optional failed-save alert above them, and an option to stay at the bottom of a long form.",
+      "tags": ["form", "actions", "sticky"],
+      "useWhen": [
+        "A form's Save and Cancel belong in one bar with a line of status beside them, such as \"N unsaved changes\" or what saving will do.",
+        "A long form's Save must stay in reach, with the effect of saving named beside it."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The bar belongs to a page that is not a form, such as a run's Send a message and Cancel run — use docked-action-bar."
+        },
+        {
+          "reason": "The actions belong to a dialog or drawer — use the overlay's own footer."
+        }
+      ],
+      "related": ["form", "button", "docked-action-bar", "alert"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/form-actions/form-actions.schema.json",
+        "variables": "src/components/form-actions/form-actions.variables.json",
+        "examples": "src/components/form-actions/form-actions.examples.json"
       }
     },
     {
@@ -2888,7 +2948,7 @@
       "exportName": "JsonEditor",
       "category": "form",
       "status": "stable",
-      "purpose": "Controlled free-form JSON editor on a lazily loaded CodeMirror view with folding, schema completion, inline errors, and Format, backed by a native textarea.",
+      "purpose": "Controlled free-form JSON editor in one frame: a toolbar with validity status and Format over a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.",
       "tags": ["form", "json", "editor"],
       "useWhen": [
         "Editing arbitrary JSON source while preserving the exact string in parent-owned state.",
@@ -3815,7 +3875,7 @@
       "exportName": "PayloadInspector",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Inspector for structured payloads: labelled fields by default with a Fields / JSON switch, a copy action, and size and truncation status.",
+      "purpose": "Card for any payload: sentence-case fields by default, a Fields / JSON switch, count and size, one copy action, secret masking, and states from streaming to failed.",
       "tags": ["json", "inspector", "payload"],
       "useWhen": [
         "Inspecting workflow inputs, signal payloads, activity results, or API response bodies in a dashboard.",
@@ -4274,6 +4334,36 @@
       }
     },
     {
+      "name": "RestartState",
+      "id": "restart-state",
+      "import": "@lostgradient/cinder",
+      "exportName": "RestartState",
+      "category": "overlay",
+      "status": "beta",
+      "purpose": "Modal state that takes over the page while its host restarts: progress by step, the reconnect attempt count with Retry now, and a failure that says what to check and how to start the host again.",
+      "tags": ["overlay", "restart", "progress"],
+      "useWhen": [
+        "The person confirmed a restart and the page must say what is happening while the host stops answering.",
+        "The host did not come back and the person needs the way back: what to check, the exact command, and a choice to keep waiting."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Asking whether to restart at all — use confirm-dialog first."
+        },
+        {
+          "reason": "Showing that the connection dropped on its own — use banner with the reconnecting preset."
+        }
+      ],
+      "related": ["confirm-dialog", "banner", "steps", "modal"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/restart-state/restart-state.schema.json",
+        "variables": "src/components/restart-state/restart-state.variables.json",
+        "examples": "src/components/restart-state/restart-state.examples.json"
+      }
+    },
+    {
       "name": "RunStepTimeline",
       "id": "run-step-timeline",
       "import": "@lostgradient/cinder",
@@ -4316,7 +4406,7 @@
       "exportName": "ScheduleBuilder",
       "category": "form",
       "status": "beta",
-      "purpose": "Recurrence-definition control that reads a schedule as Repeats, At and Time zone, emits a cron or a counted interval with its IANA zone, and reads the schedule back as a sentence with its next runs.",
+      "purpose": "Recurrence control: Repeats, At and Time zone emit a cron or counted interval with its IANA zone, read back with its next runs, with optional overlap and catch-up selects.",
       "tags": ["schedule", "recurrence", "cron", "form"],
       "useWhen": [
         "Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.",
@@ -4324,7 +4414,7 @@
       ],
       "avoidWhen": [
         {
-          "reason": "You need overlap policy, jitter, or backfill controls — those belong to the consumer's surrounding form.",
+          "reason": "You need jitter or backfill-window controls — those belong to the consumer's surrounding form.",
           "alternative": "invocation-rule-builder"
         },
         {
@@ -4343,7 +4433,7 @@
       "a11y": {
         "pattern": "Form group",
         "notes": [
-          "Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable combobox; each custom cron field reports validity via aria-invalid and an associated hint or error."
+          "Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable picker; each custom cron field reports validity via aria-invalid and one associated error."
         ]
       }
     },
@@ -4396,7 +4486,7 @@
       "exportName": "SchemaView",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Read-only view of a JSON Schema: one line per field with a label, a red dot when required, a monospace type and a description, nested objects indented, and a disclosure for the raw document.",
+      "purpose": "Read-only view of a JSON Schema as one aligned grid of Field, Type and Description: required fields first with a red dot, nested fields indented, plain-word types, a raw-document disclosure.",
       "tags": ["schema", "json-schema", "read-only", "data-display"],
       "useWhen": [
         "Showing the shape of a workflow input or output, a tool input, or a signal or update payload without a raw JSON dump.",
@@ -4714,9 +4804,12 @@
       "exportName": "SettingRow",
       "category": "form",
       "status": "beta",
-      "purpose": "Settings-page row that publishes form-field context to its control and supports managed-policy and disclosure details.",
+      "purpose": "Settings-page row: label, raw key and description on the left with the setting's save status, error and managed line under them, and the control on the right; it stacks below a container width.",
       "tags": ["form", "settings"],
-      "useWhen": ["Pairing a setting label and guidance with an Input, Toggle, or Select control."],
+      "useWhen": [
+        "Pairing a setting label and guidance with an Input, Toggle, or Select control that saves as the person leaves it.",
+        "A setting needs to say where its save has got to (Saving, Saved, Applies after restart) or that it is locked by policy."
+      ],
       "avoidWhen": [
         {
           "reason": "The control belongs in a conventional stacked form field."
@@ -6138,6 +6231,96 @@
         "schema": "src/components/toggle/toggle.schema.json",
         "variables": "src/components/toggle/toggle.variables.json",
         "examples": "src/components/toggle/toggle.examples.json"
+      }
+    },
+    {
+      "name": "ToolCallPanel",
+      "id": "tool-call-panel",
+      "import": "@lostgradient/cinder",
+      "exportName": "ToolCallPanel",
+      "category": "overlay",
+      "status": "beta",
+      "purpose": "One tool call's side panel: its state, its input and result as fields, a failure's message first with next steps, and a waiting call's note and decision. Docks from 1280px; a Drawer below.",
+      "tags": ["tool-call", "panel", "agent"],
+      "useWhen": [
+        "Opening a tool call from a ToolCallRail row to read what it was given and what came back.",
+        "Letting a person answer a call that is waiting on them, with a note, without leaving the conversation."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing an arbitrary payload on its own — use payload-inspector."
+        },
+        {
+          "reason": "Showing supplementary navigation or settings from a page edge — use drawer."
+        }
+      ],
+      "related": ["tool-call-rail", "drawer", "approval-card", "payload-inspector"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/tool-call-panel/tool-call-panel.schema.json",
+        "variables": "src/components/tool-call-panel/tool-call-panel.variables.json",
+        "examples": "src/components/tool-call-panel/tool-call-panel.examples.json"
+      }
+    },
+    {
+      "name": "ToolCallRail",
+      "id": "tool-call-rail",
+      "import": "@lostgradient/cinder",
+      "exportName": "ToolCallRail",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "One turn's tool calls on a rail: a one-line row per call, the first and last few with the middle folded, failures and calls that need a person always in view, and the run's end state.",
+      "tags": ["timeline", "tool-call", "agent"],
+      "useWhen": [
+        "Showing an agent's tool calls for one chat turn, where a failure or an approval must never fold away.",
+        "Opening a call's details in a side panel from a selectable row, with a failed call's next steps on the rail."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing the steps of a run with their own timing, retries and branches — use run-step-timeline."
+        },
+        {
+          "reason": "Listing dated events — use timeline."
+        }
+      ],
+      "related": ["timeline", "run-step-timeline", "approval-card", "status-dot"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/tool-call-rail/tool-call-rail.schema.json",
+        "variables": "src/components/tool-call-rail/tool-call-rail.variables.json",
+        "examples": "src/components/tool-call-rail/tool-call-rail.examples.json"
+      }
+    },
+    {
+      "name": "ToolPicker",
+      "id": "tool-picker",
+      "import": "@lostgradient/cinder",
+      "exportName": "ToolPicker",
+      "category": "overlay",
+      "status": "beta",
+      "purpose": "Dialog for choosing tools and skills from a searchable list grouped by source, with each tool's risk and starting level, a counter, a loading state and collapsing groups for long lists.",
+      "tags": ["overlay", "dialog", "selection", "search"],
+      "useWhen": [
+        "Letting a person choose several items that carry a name, an identifier, a description and trailing facts, from grouped sources.",
+        "The list can be long enough to need search and collapsing groups, and some entries are shown but cannot be chosen."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Choosing one item from a short list — use select or combobox instead."
+        },
+        {
+          "reason": "Moving items between two lists the person keeps open — use transfer-list instead."
+        }
+      ],
+      "related": ["modal", "checkbox", "transfer-list", "combobox", "skeleton"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/tool-picker/tool-picker.schema.json",
+        "variables": "src/components/tool-picker/tool-picker.variables.json",
+        "examples": "src/components/tool-picker/tool-picker.examples.json"
       }
     },
     {

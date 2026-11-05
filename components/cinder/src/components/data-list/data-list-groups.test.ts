@@ -226,4 +226,37 @@ describe('scroll anchor', () => {
     expect(captureScrollAnchor(list)).toBeUndefined();
     scroller.remove();
   });
+
+  test('uses the window scroll fallback when no ancestor scrolls', () => {
+    const list = document.createElement('ul');
+    const row = document.createElement('li');
+    let top = 30;
+    row.getBoundingClientRect = () => ({ top, bottom: top + 50, height: 50 }) as DOMRect;
+    list.append(row);
+    document.body.append(list);
+
+    const scrollYDescriptor = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    const scrollByDescriptor = Object.getOwnPropertyDescriptor(window, 'scrollBy');
+    let scrolledBy = 0;
+    try {
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: 200 });
+      Object.defineProperty(window, 'scrollBy', {
+        configurable: true,
+        value: (_x: number, y: number) => {
+          scrolledBy += y;
+        },
+      });
+      const restore = captureScrollAnchor(list);
+      expect(restore).toBeDefined();
+      top += 40;
+      restore?.();
+      expect(scrolledBy).toBe(40);
+    } finally {
+      if (scrollYDescriptor) Object.defineProperty(window, 'scrollY', scrollYDescriptor);
+      else delete (window as { scrollY?: number }).scrollY;
+      if (scrollByDescriptor) Object.defineProperty(window, 'scrollBy', scrollByDescriptor);
+      else delete (window as { scrollBy?: (x: number, y: number) => void }).scrollBy;
+      list.remove();
+    }
+  });
 });

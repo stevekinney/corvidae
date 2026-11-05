@@ -7,27 +7,27 @@
   import { QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import { createQueryClient } from '../../lib/query.ts';
   import {
     AUTHORIZATION_SCOPES,
     providePrincipalStore,
     type AuthorizationScope,
   } from '../../lib/scopes.svelte.ts';
+  import { provideShellNavigation, type ShellNavigation } from './shell-navigation.svelte.ts';
   import Sidebar from './sidebar.svelte';
 
   interface SidebarHarnessProps {
     client: HttpClient;
-    engineStatus?: LiveSourceStatus;
     /** The scopes the principal holds; every scope by default. */
     scopes?: readonly AuthorizationScope[];
+    /** The shell's navigation state, which a test drives; the sidebar keeps its own without it. */
+    navigation?: ShellNavigation;
   }
 
-  let {
-    client,
-    engineStatus = 'live',
-    scopes = AUTHORIZATION_SCOPES,
-  }: SidebarHarnessProps = $props();
+  let { client, scopes = AUTHORIZATION_SCOPES, navigation }: SidebarHarnessProps = $props();
+
+  const providedNavigation = untrack(() => navigation);
+  if (providedNavigation !== undefined) provideShellNavigation(providedNavigation);
 
   providePrincipalStore().setPrincipal({
     scopes: untrack(() => scopes),
@@ -40,5 +40,5 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <Sidebar client={initialClient} {engineStatus} />
+  <Sidebar client={initialClient} />
 </QueryClientProvider>

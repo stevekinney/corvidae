@@ -23,13 +23,13 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { ErrorState, Skeleton } from '@lostgradient/cinder';
   import { renderMarkdown } from '@lostgradient/markdown';
-  import { SearchX } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
+  import NotFoundState from '../../../app/not-found-state.svelte';
   import { getContext } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import {
@@ -362,14 +362,11 @@
 </script>
 
 {#if follower.removed || unknownRun}
-  <EmptyState
-    kind="first-use"
+  <NotFoundState
     title={TASK_COPY.notFound.title}
     description={TASK_COPY.notFound.description}
-    headingLevel={1}
-  >
-    {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
-  </EmptyState>
+    view="runs"
+  />
 {:else if failed}
   <ErrorState
     variant="flat"

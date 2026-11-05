@@ -1,0 +1,23 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../number-input/number-input.css';
+@import '../select/select.css';
+
+@layer cinder.components {
+  /* ========================================
+ * DURATION FIELD
+ *
+ * A number and, beside it, the unit it is counted in. A fixed unit is text inside the number's
+ * own frame, so a setting that always counts in seconds reads "30 seconds" in one box.
+ * ======================================== */
+
+  .cinder-duration-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-duration-field[data-cinder-fixed-unit] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

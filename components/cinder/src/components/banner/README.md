@@ -55,7 +55,7 @@ Passing `children` replaces the generated words and keeps everything else; with 
 
 ### Title, glyph, neutral tone and sticky
 
-`title` sets a bold lead. With a preset it runs inline as the first words of the sentence; on a plain banner it sits on its own line above the message, and `titleLayout` moves it either way. `icon` draws a decorative glyph at the start. `variant="neutral"` is a notice that is not a status, such as a setting the person chose. `sticky` keeps the banner at the top of its scroll container.
+`title` sets a bold lead. With a preset it runs inline as the first words of the sentence; on a plain banner it sits on its own line above the message, and `titleLayout` moves it either way. `icon` draws a decorative glyph at the start; a `success` banner leads with a check-circle unless `icon` draws another. `variant="neutral"` is a notice that is not a status, such as a setting the person chose. `sticky` keeps the banner at the top of its scroll container.
 
 ```svelte
 <script lang="ts">
@@ -99,7 +99,7 @@ When the width runs out (a phone) the message wraps and the actions drop to a li
 | `actions` | `(opaque)` | no | — | Optional trailing CTA region (e.g., "Renew now" button). Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Banner body content. Optional with a `preset`, which writes its own words. Not expressible in JSON Schema; see the component types for the signature. |
 | `dataUpdatedAt` | `(opaque)` | no | — | When the data still on screen was last loaded. With a `preset` and no `children` the copy names it as an absolute time with its zone ("as of 10:44 AM CST"). Otherwise it adds a stale-data notice that reads "Showing data from" followed by a live relative time such as "2 minutes ago". Not expressible in JSON Schema; see the component types for the signature. |
-| `icon` | `(opaque)` | no | — | A glyph at the start of the banner, drawn decoratively (`aria-hidden`). The `offline`, `unreachable` and `stopped` presets supply their own connection glyph. Not expressible in JSON Schema; see the component types for the signature. |
+| `icon` | `(opaque)` | no | — | A glyph at the start of the banner, drawn decoratively (`aria-hidden`). The `offline`, `unreachable` and `stopped` presets supply their own connection glyph, and a `success` banner leads with a check-circle unless this draws another. Not expressible in JSON Schema; see the component types for the signature. |
 | `onDismiss` | `(opaque)` | no | — | Called after the dismiss button is clicked. Use to persist state. Not expressible in JSON Schema; see the component types for the signature. |
 | `onOpenHealth` | `(opaque)` | no | — | Called when the `restart-failed` preset's secondary action, "Open Health", is pressed. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRestart` | `(opaque)` | no | — | Called when the `restart-failed` preset's primary action, "Restart again", is pressed. Not expressible in JSON Schema; see the component types for the signature. |

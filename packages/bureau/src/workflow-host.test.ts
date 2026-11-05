@@ -11,9 +11,11 @@ import {
   composeAgentMessage,
   createWorkflowDocumentHost,
   registerBureauWorkflowDocuments,
+  workflowCatalogOf,
   WorkflowHostConflictError,
   type AgentStepRequest,
 } from './workflow-host';
+import { NO_WORKFLOW_CONTRIBUTIONS } from './workflow-contributions';
 
 const FENCE = '```';
 
@@ -93,6 +95,48 @@ describe('the workflow host', () => {
         step: 2,
       },
     ]);
+  });
+
+  it('converts a structural Standard Schema activity input into the catalog', () => {
+    const inputSchema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'catalog-test',
+        validate: (value: unknown) => ({ value }),
+        jsonSchema: {
+          input: () => ({
+            type: 'object',
+            properties: { issue: { type: 'string' } },
+            required: ['issue'],
+          }),
+          output: () => ({ type: 'object' }),
+        },
+      },
+    };
+    const contributions = {
+      ...NO_WORKFLOW_CONTRIBUTIONS,
+      activities: {
+        x__lookup: {
+          name: 'x__lookup',
+          inputSchema,
+          execute: async () => null,
+        },
+      },
+    };
+    const host = createWorkflowDocumentHost({
+      runAgentStep: async () => unreachable(),
+      contributions,
+    });
+
+    expect(workflowCatalogOf(host, contributions).activities).toContainEqual(
+      expect.objectContaining({
+        id: 'x:lookup',
+        inputSchema: expect.objectContaining({
+          required: ['issue'],
+          properties: { issue: { type: 'string' } },
+        }),
+      }),
+    );
   });
 });
 

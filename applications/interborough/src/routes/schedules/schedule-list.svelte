@@ -219,7 +219,6 @@
       {appliedFilters}
       onFacetChange={changeFilter}
       onFilterRemove={(key) => changeFilter(key, '')}
-      onClearAll={clearFilters}
     />
   {/snippet}
   {#snippet newSchedule()}

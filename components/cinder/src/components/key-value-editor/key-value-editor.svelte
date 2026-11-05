@@ -25,6 +25,11 @@
     secret,
     addLabel = 'Add pair',
     removeLabel = (key) => `Remove ${key || 'pair'}`,
+    label,
+    description,
+    keyLabel = 'Key',
+    valueLabel = 'Value',
+    monospace = false,
     class: className,
     ...rest
   }: KeyValueEditorProps = $props();
@@ -93,7 +98,17 @@
   });
 </script>
 
-<div bind:this={editorElement} {...rest} class={classNames('cinder-key-value-editor', className)}>
+<div
+  bind:this={editorElement}
+  {...rest}
+  role={label ? 'group' : undefined}
+  aria-labelledby={label ? `${instanceId}-label` : undefined}
+  aria-describedby={description ? `${instanceId}-description` : undefined}
+  class={classNames('cinder-key-value-editor', className)}
+>
+  {#if label}
+    <div id={`${instanceId}-label`} class="cinder-key-value-editor__label">{label}</div>
+  {/if}
   <Grid columns={1} gap="var(--cinder-space-2)" class="cinder-key-value-editor__rows" role="list">
     {#each rows as row, index (row.id)}
       <Grid
@@ -106,15 +121,17 @@
       >
         <Input
           id={`${instanceId}-key-${row.id}`}
-          label="Key"
+          label={keyLabel}
           labelVisible={false}
+          variant={monospace ? 'code' : 'default'}
           value={row.key}
           onValueChange={(next) => update(row.id, 'key', next)}
         />
         <Input
           id={`${instanceId}-value-${row.id}`}
-          label="Value"
+          label={valueLabel}
           labelVisible={false}
+          variant={monospace ? 'code' : 'default'}
           type={secret?.(row.key) ? 'password' : 'text'}
           value={row.value}
           onValueChange={(next) => update(row.id, 'value', next)}
@@ -135,4 +152,9 @@
     class="cinder-key-value-editor__add"
     onclick={addRow}>{addLabel}</Button
   >
+  {#if description}
+    <p id={`${instanceId}-description`} class="cinder-key-value-editor__description">
+      {description}
+    </p>
+  {/if}
 </div>

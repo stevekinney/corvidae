@@ -146,6 +146,7 @@
     onInputSubmit,
     answerInComposer = false,
     disabled = false,
+    pausedReason,
     messageReasoning,
     messageSteps,
     messageSuggestions,
@@ -2022,6 +2023,7 @@
           {...questions.composerTarget === undefined ? {} : { placeholder: 'Answer' }}
           disabled={streaming && !followUpsEnabled}
           paused={disabled}
+          {pausedReason}
           sending={streaming}
           allowFollowUp={followUpsEnabled}
           actions={composerActions}

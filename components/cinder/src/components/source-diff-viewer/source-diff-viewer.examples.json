@@ -20,6 +20,12 @@
       "title": "Optional annotation hooks",
       "description": "A controlled annotationSelection lets a host build line-comment UI without SourceDiffViewer importing editor or Markdown runtime code.",
       "code": "<script lang=\"ts\">\n  import { SourceDiffViewer, type SourceDiffAnnotationSelection } from '@lostgradient/cinder';\n\n  const patch = `diff --git a/src/cache.ts b/src/cache.ts\n--- a/src/cache.ts\n+++ b/src/cache.ts\n@@ -1,2 +1,2 @@\n-cache.set(key, result);\n+cache.set(key, result, { ttl: 60 });\n return result;\n`;\n\n  let selection: SourceDiffAnnotationSelection | null = $state(null);\n</script>\n\n<SourceDiffViewer\n  {patch}\n  annotationSelection={selection}\n  onAnnotationSelectionChange={(next) => (selection = next)}\n/>\n"
+    },
+    {
+      "id": "inline",
+      "title": "Inline: a patch inside a payload",
+      "description": "The first two changed lines as bare rows, a +3 −1 count beside the label, and Show all with the number of lines in the patch.",
+      "code": "<script lang=\"ts\">\n  import { SourceDiffViewer, countPatchChanges } from '@lostgradient/cinder';\n\n  const patch = `--- a/release-notes.md\n+++ b/release-notes.md\n@@ -12,3 +12,5 @@\n # Release notes\n-Refunds are sent at once.\n+Refunds now ask for approval before money moves.\n+Large refunds go to a person.\n+Nothing is sent without a note.\n Thanks for reading.\n`;\n  const changes = $derived(countPatchChanges(patch));\n</script>\n\n<p>Patch +{changes.added} −{changes.removed}</p>\n<SourceDiffViewer {patch} variant=\"inline\" maxLines={2} ariaLabel=\"Patch\" />\n"
     }
   ]
 }

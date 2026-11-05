@@ -33,6 +33,17 @@ const schema = {
       type: 'string',
       description: 'Validation error; sets `aria-invalid="true"` on opted-in controls via context.',
     },
+    errorGlyph: {
+      enum: ['warning', 'error'],
+      description:
+        'The glyph drawn before the error message: `warning` (a triangle, the default) for a value the\nperson can fix, or `error` (a circle) for a conflict such as a URL that is already connected.',
+      default: 'warning',
+    },
+    note: {
+      type: 'string',
+      description:
+        'Neutral explanation drawn under the helper text and wired into `aria-describedby`, such as why a field is cleared. Not an error and not a warning.',
+    },
     managed: {
       type: 'object',
       properties: {
@@ -43,6 +54,11 @@ const schema = {
         reason: {
           type: 'string',
           description: 'Human-readable explanation for the constraint.',
+        },
+        message: {
+          type: 'string',
+          description:
+            'The whole line to show beside the lock glyph, replacing the "Managed by" wording, such as "Locked by your deployment (remote mode). Change it in the deployment\'s configuration."',
         },
       },
       additionalProperties: false,
@@ -70,6 +86,18 @@ const schema = {
         reason: 'function-or-snippet',
         required: true,
         description: 'Control(s) rendered inside the field.',
+      },
+      {
+        name: 'errorAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the error message inside the same live region, such as a link to the record that conflicts ("Open GitHub") or a quiet Retry.',
+      },
+      {
+        name: 'trailing',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered beside the control on the same row, such as a Try again button after a failed test. The control takes the room the trailing content leaves.',
       },
     ],
   },

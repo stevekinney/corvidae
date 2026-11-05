@@ -98,6 +98,7 @@ Command items register with the palette by DOM node, so grouped results can use 
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Class merged onto the palette panel. |
 | `closeLabel` | `string` | no | `"Close"` | Accessible name and visible text of the Close button the sheet form shows beside the search field. |
+| `escapeHint` | `string` \| `false` | no | `"esc"` | The key hint at the end of the search field, drawn as a `Kbd` ("esc"), which says how to close the palette. `false` leaves it out. The bottom sheet shows a Close button instead and never the hint. |
 | `label` | `string` | no | — | Accessible name for the dialog, wired via `aria-label`. |
 | `open` | `boolean` | yes | — | Bindable open state. The component mutates `open = false` on Escape, backdrop click, or any explicit close path, then fires `onClose`. |
 | `placeholder` | `string` | no | — | Placeholder rendered inside the search input. |

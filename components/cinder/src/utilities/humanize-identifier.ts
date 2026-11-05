@@ -37,10 +37,19 @@ export const IDENTIFIER_ACRONYMS = [
   'UTC',
   'AG-UI',
   'A2A',
+  'SKU',
 ] as const;
 
 /** Options for {@link humanizeIdentifier}. */
 export type HumanizeIdentifierOptions = {
+  /**
+   * How the words are cased. `'title'` capitalizes every word (`wrong_item`
+   * reads "Wrong Item"); `'sentence'` capitalizes only the first word of each
+   * segment (`wrong_item` reads "Wrong item", `timeZone` "Time zone"). Acronyms
+   * keep their canonical spelling in both.
+   * @default "title"
+   */
+  casing?: 'title' | 'sentence';
   /**
    * The heading the label appears under. A leading path segment, or leading
    * words, that read the same as the heading are dropped, so `retention.audit`
@@ -76,15 +85,16 @@ const WORD = new RegExp(
   'g',
 );
 
-function formatWord(word: string): string {
-  return (
-    canonicalAcronyms.get(word.toLowerCase()) ??
-    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-  );
+function formatWord(word: string, capitalize: boolean): string {
+  const acronym = canonicalAcronyms.get(word.toLowerCase());
+  if (acronym !== undefined) return acronym;
+  return capitalize
+    ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    : word.toLowerCase();
 }
 
 /** Splits one path segment on `_ - /` and whitespace and at camelCase boundaries. */
-function segmentWords(segment: string): string[] {
+function segmentWords(segment: string, casing: 'title' | 'sentence'): string[] {
   const parts = segment.split(/([_\-/\s]+)/);
   const words: string[] = [];
   for (let index = 0; index < parts.length; index += 2) {
@@ -99,9 +109,15 @@ function segmentWords(segment: string): string[] {
         continue;
       }
     }
-    for (const match of chunk.matchAll(WORD)) words.push(formatWord(match[0]));
+    for (const match of chunk.matchAll(WORD)) {
+      words.push(formatWord(match[0], casing === 'title' || words.length === 0));
+    }
   }
   return words;
+}
+
+function capitalizeFirst(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
 function sameWords(left: readonly string[], right: readonly string[]): boolean {
@@ -111,8 +127,12 @@ function sameWords(left: readonly string[], right: readonly string[]): boolean {
   );
 }
 
-function dropHeading(segments: string[][], under: string): string[][] {
-  const heading = under.split('.').flatMap((segment) => segmentWords(segment));
+function dropHeading(
+  segments: string[][],
+  under: string,
+  casing: 'title' | 'sentence',
+): string[][] {
+  const heading = under.split('.').flatMap((segment) => segmentWords(segment, casing));
   if (heading.length === 0) return segments;
   const [first, ...rest] = segments;
   if (first === undefined) return segments;
@@ -134,13 +154,22 @@ function dropHeading(segments: string[][], under: string): string[][] {
  * Each word is title-cased, except the acronyms in `IDENTIFIER_ACRONYMS`,
  * which keep their canonical spelling. Dotted path segments join with " ▶ ".
  * With `under`, a leading segment or leading words matching that heading are
- * dropped, unless that would drop everything.
+ * dropped, unless that would drop everything. With `casing: 'sentence'` only
+ * the first word of each segment is capitalized: `timeZone` reads "Time zone".
  */
 export function humanizeIdentifier(key: string, options: HumanizeIdentifierOptions = {}): string {
+  const casing = options.casing ?? 'title';
   let segments = key
     .split('.')
-    .map((segment) => segmentWords(segment))
+    .map((segment) => segmentWords(segment, casing))
     .filter((words) => words.length > 0);
-  if (options.under !== undefined) segments = dropHeading(segments, options.under);
-  return segments.map((words) => words.join(' ')).join(PATH_SEPARATOR);
+  if (options.under !== undefined) segments = dropHeading(segments, options.under, casing);
+  return segments
+    .map((words) => {
+      const [first, ...rest] = words;
+      // Dropping a heading can leave a lower-case word first in a sentence-cased segment.
+      const lead = casing === 'sentence' && first !== undefined ? capitalizeFirst(first) : first;
+      return [lead, ...rest].join(' ');
+    })
+    .join(PATH_SEPARATOR);
 }

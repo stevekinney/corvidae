@@ -3,6 +3,7 @@ export type {
   Bungalow,
   ContentLocation,
   DatabaseLocation,
+  DatabaseWorkspaceClaim,
   OpenBungalowOptions,
   OpenTemporaryBungalowOptions,
 } from './bungalow.ts';
@@ -16,3 +17,10 @@ export {
 } from './errors.ts';
 export { bungalowHomeVariable, resolveBungalowRoot } from './resolve-root.ts';
 export type { BungalowEnvironment, ResolveBungalowRootOptions } from './resolve-root.ts';
+
+export type {
+  ConfigurationSnapshot,
+  ConfigurationWriteCapability,
+  ConfigurationWriteCondition,
+  ConfigurationWriteResult,
+} from './configuration.ts';

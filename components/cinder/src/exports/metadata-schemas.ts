@@ -67,6 +67,7 @@ export { default as dropdownMenuSchema } from '../components/dropdown-menu/dropd
 export { default as dropdownSeparatorSchema } from '../components/dropdown-separator/dropdown-separator.schema.ts';
 export { default as dropdownTriggerSchema } from '../components/dropdown-trigger/dropdown-trigger.schema.ts';
 export { default as dropdownSchema } from '../components/dropdown/dropdown.schema.ts';
+export { default as durationFieldSchema } from '../components/duration-field/duration-field.schema.ts';
 export { default as emptyStateSchema } from '../components/empty-state/empty-state.schema.ts';
 export { default as errorStateSchema } from '../components/error-state/error-state.schema.ts';
 export { default as feedBoundarySchema } from '../components/feed-boundary/feed-boundary.schema.ts';
@@ -78,6 +79,7 @@ export { default as findBarSchema } from '../components/find-bar/find-bar.schema
 export { default as floatingActionSchema } from '../components/floating-action/floating-action.schema.ts';
 export { default as focusTrapSchema } from '../components/focus-trap/focus-trap.schema.ts';
 export { default as footerSchema } from '../components/footer/footer.schema.ts';
+export { default as formActionsSchema } from '../components/form-actions/form-actions.schema.ts';
 export { default as formFieldSchema } from '../components/form-field/form-field.schema.ts';
 export { default as formSectionSchema } from '../components/form-section/form-section.schema.ts';
 export { default as formSchema } from '../components/form/form.schema.ts';
@@ -139,6 +141,7 @@ export { default as radioGroupSchema } from '../components/radio-group/radio-gro
 export { default as ratingSchema } from '../components/rating/rating.schema.ts';
 export { default as relativeTimeSchema } from '../components/relative-time/relative-time.schema.ts';
 export { default as resizablePanelsSchema } from '../components/resizable-panels/resizable-panels.schema.ts';
+export { default as restartStateSchema } from '../components/restart-state/restart-state.schema.ts';
 export { default as runStepTimelineSchema } from '../components/run-step-timeline/run-step-timeline.schema.ts';
 export { default as scheduleBuilderSchema } from '../components/schedule-builder/schedule-builder.schema.ts';
 export { default as schemaFormSchema } from '../components/schema-form/schema-form.schema.ts';
@@ -200,6 +203,9 @@ export { default as timeFieldSchema } from '../components/time-field/time-field.
 export { default as timelineSchema } from '../components/timeline/timeline.schema.ts';
 export { default as toastRegionSchema } from '../components/toast-region/toast-region.schema.ts';
 export { default as toggleSchema } from '../components/toggle/toggle.schema.ts';
+export { default as toolCallPanelSchema } from '../components/tool-call-panel/tool-call-panel.schema.ts';
+export { default as toolCallRailSchema } from '../components/tool-call-rail/tool-call-rail.schema.ts';
+export { default as toolPickerSchema } from '../components/tool-picker/tool-picker.schema.ts';
 export { default as toolbarSchema } from '../components/toolbar/toolbar.schema.ts';
 export { default as tooltipSchema } from '../components/tooltip/tooltip.schema.ts';
 export { default as transferListSchema } from '../components/transfer-list/transfer-list.schema.ts';

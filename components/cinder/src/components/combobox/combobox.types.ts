@@ -40,6 +40,11 @@ export type ComboboxOption<T extends string = string> = {
    * option's accessible name already includes the label.
    */
   avatar?: string;
+  /**
+   * What the closed picker shows once this option is chosen, when that is shorter than `label`
+   * ("Central time" for the row "Central time · Chicago"). The open list always shows `label`.
+   */
+  triggerLabel?: string;
   /** When true, the option is non-selectable. */
   disabled?: boolean;
   /**

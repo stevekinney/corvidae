@@ -14,8 +14,10 @@
   export type {
     FileUploadEntry,
     FileUploadProps,
+    FileUploadRejection,
     FileUploadRejectionReason,
     FileUploadStatus,
+    FileUploadVariant,
     RejectedFile,
   } from './file-upload.types.ts';
 </script>
@@ -24,12 +26,17 @@
   import { onDestroy, tick } from 'svelte';
   import { on } from 'svelte/events';
 
+  import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
+  import UploadIcon from '@lucide/svelte/icons/upload';
+
   import { resolveFieldControl } from '../../_internal/field-control.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { formatBytes } from '../../utilities/format-bytes.ts';
   import { useAnnouncer } from '../../utilities/use-announcer.svelte.ts';
+  import Alert from '../alert/alert.svelte';
+  import Button from '../button/button.svelte';
   import FileUploadList from './file-upload-list.svelte';
   import {
     acceptsFile,
@@ -53,6 +60,10 @@
     required,
     name,
     class: className,
+    variant = 'dropzone',
+    summary,
+    rejectionMessage,
+    cancelLabel = 'Cancel upload',
     title = 'Click to upload or drop files',
     description,
     draggingLabel = 'Drop to add',
@@ -66,6 +77,7 @@
     onFilesChange,
     onReject,
     onFileRetry,
+    onFileCancel,
     oncancel,
     'aria-describedby': consumerDescribedBy,
     'aria-invalid': consumerInvalid,
@@ -95,7 +107,7 @@
   const dropzoneLabel = $derived(dropzoneLabelledBy === undefined ? 'File upload' : undefined);
 
   let inputElement = $state<HTMLInputElement | null>(null);
-  let browseButtonElement = $state<HTMLButtonElement | null>(null);
+  let dropzoneElement = $state<HTMLDivElement | null>(null);
   let dragDepth = $state(0);
   let internalEntries = $state<FileUploadEntry[]>([]);
   let internalEntryCounter = $state(0);
@@ -106,6 +118,21 @@
   const isDragActive = $derived(dragDepth > 0);
   const renderedEntries = $derived(files ?? internalEntries);
   const resolvedDescription = $derived(description ?? formatAcceptDescription(accept));
+  // The compact and button variants say a local rejection as an alert of its own, so those entries
+  // leave the rows. The default dropzone keeps them as rows that name the file.
+  const alertsForRejections = $derived(variant !== 'dropzone');
+  const isRejection = (entry: FileUploadEntry) =>
+    entry.status === 'error' && entry.rejectionReason !== undefined;
+  const rejections = $derived(alertsForRejections ? renderedEntries.filter(isRejection) : []);
+  const listedEntries = $derived(
+    alertsForRejections ? renderedEntries.filter((entry) => !isRejection(entry)) : renderedEntries,
+  );
+
+  function focusBrowseButton() {
+    dropzoneElement
+      ?.querySelector<HTMLButtonElement>('.cinder-file-upload__button, .cinder-file-upload__browse')
+      ?.focus();
+  }
 
   $effect(() => {
     const pending = pendingRemovalAnnouncement;
@@ -200,7 +227,9 @@
         rejected.push({
           file,
           reason: 'too-large',
-          message: `${file.name} is ${formatBytes(file.size)}; maximum is ${formatBytes(maxSize)}`,
+          message:
+            rejectionMessage?.({ file, reason: 'too-large', maxSize }) ??
+            `${file.name} is ${formatBytes(file.size)}; maximum is ${formatBytes(maxSize)}`,
         });
         continue;
       }
@@ -209,7 +238,9 @@
         rejected.push({
           file,
           reason: 'wrong-type',
-          message: `${file.name} is not an accepted file type`,
+          message:
+            rejectionMessage?.({ file, reason: 'wrong-type' }) ??
+            `${file.name} is not an accepted file type`,
         });
         continue;
       }
@@ -232,7 +263,13 @@
         rejected.push({
           file,
           reason: 'too-many',
-          message: `${acceptedFileLimit === 1 ? 'Only one file is' : `Only ${acceptedFileLimit} files are`} allowed; ${file.name} was ignored`,
+          message:
+            rejectionMessage?.({
+              file,
+              reason: 'too-many',
+              ...(acceptedFileLimit === undefined ? {} : { maxFiles: acceptedFileLimit }),
+            }) ??
+            `${acceptedFileLimit === 1 ? 'Only one file is' : `Only ${acceptedFileLimit} files are`} allowed; ${file.name} was ignored`,
         });
       }
     }
@@ -259,12 +296,14 @@
 
   function announceResult(accepted: File[], rejected: RejectedFile[]) {
     if (accepted.length === 0 && rejected.length === 0) return;
+    if (accepted.length === 0 && alertsForRejections) return;
     if (accepted.length > 0 && rejected.length === 0) {
       announcer.announce(`${accepted.length} file${accepted.length === 1 ? '' : 's'} accepted`);
       return;
     }
     if (accepted.length === 0 && rejected.length === 1) {
-      announcer.announce(rejected[0]!.message);
+      // An alert announces itself when it appears, so saying it here too would read it twice.
+      if (!alertsForRejections) announcer.announce(rejected[0]!.message);
       return;
     }
     announcer.announce(
@@ -275,7 +314,9 @@
   function processFiles(sourceFiles: File[]) {
     const { accepted, rejected } = validateFiles(sourceFiles);
     const entries = createEntries(accepted, rejected);
-    const nextEntries = multiple ? [...renderedEntries, ...entries] : entries;
+    // An alert says what the last attempt did not add, so the next attempt clears it.
+    const kept = renderedEntries.filter((entry) => !alertsForRejections || !isRejection(entry));
+    const nextEntries = multiple ? [...kept, ...entries] : entries;
     if (files === undefined) internalEntries = nextEntries;
     synchronizeNativeInputFiles(files !== undefined && accepted.length === 0 ? files : nextEntries);
     if (accepted.length > 0) onFilesAccepted?.(accepted);
@@ -411,8 +452,46 @@
   </div>
 {/snippet}
 
-<div class={classNames('cinder-file-upload', className)}>
+{#snippet fileRows()}
+  {#if fileList}
+    {@render fileList(
+      renderedEntries,
+      files === undefined || onFilesChange !== undefined ? removeEntry : undefined,
+    )}
+  {:else if variant !== 'button'}
+    <FileUploadList
+      entries={listedEntries}
+      disabled={field.disabled}
+      removable={files === undefined || onFilesChange !== undefined}
+      compact={variant === 'compact'}
+      {cancelLabel}
+      {onFileRetry}
+      {onFileCancel}
+      onRemove={removeEntry}
+      onQueueEmptyFocus={focusBrowseButton}
+    />
+  {/if}
+{/snippet}
+
+{#snippet rejectionAlerts()}
+  {#each rejections as entry (entry.id)}
+    <Alert variant="danger" class="cinder-file-upload__rejection">
+      {#snippet icon()}<TriangleAlertIcon aria-hidden="true" />{/snippet}
+      {entry.error}
+    </Alert>
+  {/each}
+{/snippet}
+
+<div
+  class={classNames('cinder-file-upload', className)}
+  data-cinder-variant={variant === 'dropzone' ? undefined : variant}
+>
+  {#if variant === 'compact'}
+    {@render fileRows()}
+    {@render rejectionAlerts()}
+  {/if}
   <div
+    bind:this={dropzoneElement}
     class={classNames(
       'cinder-file-upload__dropzone',
       borderBeamVisible && 'cinder-file-upload__dropzone--border-beam',
@@ -420,6 +499,7 @@
     role="group"
     aria-label={dropzoneLabel}
     aria-labelledby={dropzoneLabelledBy}
+    data-variant={variant}
     data-drag-active={isDragActive || undefined}
     data-disabled={field.disabled || undefined}
     ondragenter={handleDragEnter}
@@ -446,44 +526,70 @@
       onchange={handleInputChange}
     />
 
-    {#if isDragActive}
-      {#if dragActive}
-        {@render dragActive()}
+    {#if variant === 'dropzone'}
+      {#if isDragActive}
+        {#if dragActive}
+          {@render dragActive()}
+        {:else}
+          {@render defaultDragActive()}
+        {/if}
+      {:else if idle}
+        {@render idle()}
       {:else}
-        {@render defaultDragActive()}
+        {@render defaultIdle()}
       {/if}
-    {:else if idle}
-      {@render idle()}
-    {:else}
-      {@render defaultIdle()}
-    {/if}
 
-    <button
-      bind:this={browseButtonElement}
-      type="button"
-      class="cinder-file-upload__button"
-      disabled={field.disabled}
-      aria-describedby={field.describedBy}
-      onclick={openPicker}
-    >
-      {browseLabel}
-    </button>
+      <button
+        type="button"
+        class="cinder-file-upload__button"
+        disabled={field.disabled}
+        aria-describedby={field.describedBy}
+        onclick={openPicker}
+      >
+        {browseLabel}
+      </button>
+    {:else}
+      {#if variant === 'button'}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          class="cinder-file-upload__browse"
+          disabled={field.disabled}
+          aria-describedby={field.describedBy}
+          onclick={openPicker}
+        >
+          {#snippet leadingIcon()}<UploadIcon aria-hidden="true" />{/snippet}
+          {browseLabel}
+        </Button>
+      {:else}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          class="cinder-file-upload__browse"
+          disabled={field.disabled}
+          aria-describedby={field.describedBy}
+          onclick={openPicker}
+        >
+          {browseLabel}
+        </Button>
+      {/if}
+      <span id={field.ownDescriptionId} class="cinder-file-upload__line">
+        {#if isDragActive}
+          {draggingLabel}
+        {:else if variant === 'button'}
+          {summary ?? description ?? ''}
+        {:else}
+          {resolvedDescription}
+        {/if}
+      </span>
+    {/if}
   </div>
 
-  {#if fileList}
-    {@render fileList(
-      renderedEntries,
-      files === undefined || onFilesChange !== undefined ? removeEntry : undefined,
-    )}
-  {:else}
-    <FileUploadList
-      entries={renderedEntries}
-      disabled={field.disabled}
-      removable={files === undefined || onFilesChange !== undefined}
-      {onFileRetry}
-      onRemove={removeEntry}
-      onQueueEmptyFocus={() => browseButtonElement?.focus()}
-    />
+  {#if variant !== 'compact'}
+    {@render rejectionAlerts()}
+    {@render fileRows()}
   {/if}
 
   <div class="cinder-sr-only" aria-live="polite" aria-atomic="true">{announcer.message}</div>

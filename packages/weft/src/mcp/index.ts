@@ -21,6 +21,7 @@ export type {
   JwtClaims,
   Principal,
   UnauthenticatedPrincipal,
+  WorkspaceIdentity,
 } from '../server/principal.ts';
 export { McpEndpoint, createMcpEndpoint, handleMcpHttpRequest } from './http.ts';
 export type { McpEndpointOptions, McpHttpRequestOptions } from './http.ts';

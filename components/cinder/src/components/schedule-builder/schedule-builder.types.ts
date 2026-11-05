@@ -52,14 +52,31 @@ export type ScheduleFire = {
 };
 
 /**
+ * How the builder is laid out. `default` is the full block: Repeats and At, then Time zone, then
+ * a Runs panel that reads the schedule back as a sentence and lists the next runs, then the
+ * policy selects. `compact` fits a form that already says what runs: Repeats, At and Time zone in
+ * one row, the policy selects, then a plain Next runs list with no sentence and no panel.
+ */
+export type ScheduleBuilderVariant = 'default' | 'compact';
+
+/** One choice of a policy select, such as the overlap policy. */
+export type SchedulePolicyOption = {
+  /** The value `onOverlapChange` reports when this choice is picked. */
+  value: string;
+  /** The words the select shows for this choice. */
+  label: string;
+};
+
+/**
  * Props for the ScheduleBuilder component.
  *
  * ScheduleBuilder is a presentational recurrence-definition control. It owns
  * no scheduling execution, persistence, or date math. It is date-library-free:
  * the "next N fires" preview is produced by the injected `computeNextFires`
  * callback, and degrades gracefully (the preview is hidden) when the callback
- * is absent. Scope is recurrence only — overlap policy, jitter, and backfill
- * belong to the consumer's surrounding form.
+ * is absent. Scope is recurrence, plus two optional policy selects the consumer owns the values of:
+ * what to do when a run is still going (`overlap`) and whether to catch up on occurrences missed
+ * while the app was off (`catchUp`). Jitter and backfill windows belong to the consumer's form.
  */
 export type ScheduleBuilderProps = Omit<
   HTMLAttributes<HTMLDivElement>,
@@ -94,6 +111,46 @@ export type ScheduleBuilderProps = Omit<
   timeZones?: readonly string[] | undefined;
   /** Accessible label for the whole control. Defaults to "Schedule". */
   label?: string | undefined;
+  /**
+   * How the block is laid out; see {@link ScheduleBuilderVariant}.
+   * @default "default"
+   */
+  variant?: ScheduleBuilderVariant | undefined;
+  /**
+   * The chosen overlap policy: what happens when a run is still going as the next one is due. The
+   * select is drawn only when this is set. The builder does not own it, so pass the value back
+   * from `onOverlapChange`.
+   */
+  overlap?: string | undefined;
+  /** Called with the picked choice's `value` when the overlap select changes. */
+  onOverlapChange?: ((value: string) => void) | undefined;
+  /**
+   * The choices of the overlap select. Defaults to `skip` ("Skip this one") and `allow` ("Start
+   * another run").
+   */
+  overlapOptions?: readonly SchedulePolicyOption[] | undefined;
+  /**
+   * Label of the overlap select.
+   * @default "If a run is still going"
+   */
+  overlapLabel?: string | undefined;
+  /**
+   * Whether to catch up on occurrences missed while the app was off. The select is drawn only
+   * when this is set. The builder does not own it, so pass the value back from `onCatchUpChange`.
+   */
+  catchUp?: boolean | undefined;
+  /** Called with `true` or `false` when the catch-up select changes. */
+  onCatchUpChange?: ((value: boolean) => void) | undefined;
+  /**
+   * Label of the catch-up select. Name the product here ("If Interborough was off").
+   * @default "If the app was off"
+   */
+  catchUpLabel?: string | undefined;
+  /**
+   * The words of the catch-up select's two choices.
+   * @default { on: "Catch up on missed runs", off: "Don’t catch up on missed runs" }
+   */
+  catchUpOptionLabels?: { on: string; off: string } | undefined;
   /** Additional CSS classes applied to the root element. */
   class?: string | undefined;
 };
@@ -129,6 +186,30 @@ export type ScheduleBuilderSchemaProps = {
   timeZones?: readonly string[] | undefined;
   /** Accessible label for the whole control. Defaults to "Schedule". */
   label?: string | undefined;
+  /**
+   * How the block is laid out: the full block with a Runs panel (`default`), or one row of fields
+   * and a plain Next runs list (`compact`).
+   * @default "default"
+   */
+  variant?: ScheduleBuilderVariant | undefined;
+  /** The chosen overlap policy. The overlap select is drawn only when this is set. */
+  overlap?: string | undefined;
+  /** The choices of the overlap select. Defaults to skip and allow. */
+  overlapOptions?: readonly SchedulePolicyOption[] | undefined;
+  /**
+   * Label of the overlap select.
+   * @default "If a run is still going"
+   */
+  overlapLabel?: string | undefined;
+  /** Whether to catch up on occurrences missed while the app was off. The select is drawn only when this is set. */
+  catchUp?: boolean | undefined;
+  /**
+   * Label of the catch-up select.
+   * @default "If the app was off"
+   */
+  catchUpLabel?: string | undefined;
+  /** The words of the catch-up select's two choices. */
+  catchUpOptionLabels?: { on: string; off: string } | undefined;
   /** Additional CSS classes applied to the root element. */
   class?: string | undefined;
 };

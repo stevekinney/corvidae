@@ -39,6 +39,12 @@ const schema = {
       description:
         'Minimum cell width for `columns="responsive"`. Accepts any CSS\n`<length>` (e.g. `"12rem"`, `"200px"`). Default: `"10rem"`, or `"6rem"`\nwhen `size="sm"` — passing `minColumnWidth` explicitly always wins over\neither default.',
     },
+    variant: {
+      enum: ['tile', 'card'],
+      description:
+        "How items are drawn. `'tile'` (the default) keeps the centered quiz tile; `'card'` draws a\nleft-aligned card with a radio (or checkbox when `multiple`) indicator, so each choice can carry\nan icon and a one-sentence description. Selection, roving focus and ARIA roles are identical in\nboth. `size` applies to tiles only.",
+      default: 'tile',
+    },
     size: {
       const: 'sm',
       description:

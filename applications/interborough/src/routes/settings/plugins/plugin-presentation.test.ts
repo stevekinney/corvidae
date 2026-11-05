@@ -8,10 +8,12 @@ import {
   disableImpacts,
   inUseSentence,
   referenceTotals,
+  restartBackWords,
   sourceKind,
   sourceWord,
-  standingCounts,
+  standingNames,
   statusOf,
+  unavailableAfterDisable,
 } from './plugin-presentation.ts';
 import { problemView } from './plugin-problems.ts';
 import { contribution, installFakePluginHost, snapshotOf } from './plugins-host.test-support.ts';
@@ -112,8 +114,8 @@ describe('what a plugin adds and what names it', () => {
   });
 });
 
-describe('standingCounts', () => {
-  test('counts running, needing setup and disabled', () => {
+describe('standingNames', () => {
+  test('names the plugins that are running, need setup, are disabled and did not load', () => {
     const host = installFakePluginHost([
       { name: 'a' },
       { name: 'b', status: 'needs-setup' },
@@ -122,7 +124,71 @@ describe('standingCounts', () => {
     ]);
     const snapshot = snapshotOf(host);
     host.restore();
-    expect(standingCounts(snapshot)).toEqual({ running: 1, needSetup: 1, disabled: 1 });
+    expect(standingNames(snapshot)).toEqual({
+      running: ['a'],
+      needSetup: ['b'],
+      disabled: ['c'],
+      notLoaded: ['d'],
+    });
+  });
+});
+
+describe('restartBackWords', () => {
+  const snapshot = (() => {
+    const host = installFakePluginHost([
+      { name: 'Files' },
+      { name: 'Anthropic', status: 'needs-setup' },
+      { name: 'OpenAI', status: 'needs-setup' },
+      { name: 'Web search', enabled: false },
+    ]);
+    const result = snapshotOf(host);
+    host.restore();
+    return result;
+  })();
+
+  test('says a plugin was turned off, how the plugins stand, and that nothing used it', () => {
+    expect(
+      restartBackWords(
+        {
+          changes: ['Web search'],
+          disabling: { title: 'Web search', unavailable: undefined },
+        },
+        snapshot,
+      ),
+    ).toEqual({
+      title: 'Back up. Web search is disabled.',
+      text: '1 plugin running (Files); Anthropic and OpenAI need setup; Web search is disabled. Nothing used Web search, so nothing became unavailable. Enable it again at any time.',
+    });
+  });
+
+  test('names what stopped working when something used the plugin', () => {
+    const words = restartBackWords(
+      { changes: ['Web search'], disabling: { title: 'Web search', unavailable: '2 agents' } },
+      snapshot,
+    );
+    expect(words.text).toContain('2 agents used Web search and now show as unavailable.');
+    expect(words.text).not.toContain('Nothing used');
+  });
+
+  test('counts and names the changes of a restart that did not turn a plugin off', () => {
+    expect(restartBackWords({ changes: ['Files'] }, undefined)).toEqual({
+      title: 'Back up',
+      text: '1 change applied: Files. Running work picked up where it stopped; reviews stayed waiting.',
+    });
+  });
+});
+
+describe('unavailableAfterDisable', () => {
+  test('counts what depends on the plugin, or says nothing does', () => {
+    expect(unavailableAfterDisable(standing({ name: 'a' }))).toBeUndefined();
+    expect(
+      unavailableAfterDisable(
+        standing({
+          name: 'a',
+          contributions: [contribution('tool', 'a:x', { agents: 2, waitingRuns: 1 })],
+        }),
+      ),
+    ).toBe('2 agents and 1 waiting run');
   });
 });
 

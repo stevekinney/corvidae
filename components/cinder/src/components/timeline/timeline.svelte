@@ -103,6 +103,7 @@
         title={entry.title}
         tone={entry.tone ?? 'info'}
         kind={entry.kind ?? 'event'}
+        bare={variant === 'rows'}
         detail={entry.detail}
         expandLabel={entry.expandLabel}
         collapseLabel={entry.collapseLabel}

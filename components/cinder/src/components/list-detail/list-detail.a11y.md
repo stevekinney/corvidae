@@ -24,6 +24,14 @@ Below `pushBelow` the list is replaced by the detail when a row opens, so focus 
 
 The open row carries `aria-current` when it uses `selectedState="current"`. Meaning never depends on color alone. Row actions are always visible and focusable; none is revealed only on hover.
 
+## Loading
+
+While `loading` is set the list region is `aria-busy` and a polite status names what is loading (`loadingLabel`) once the placeholder appears, after 300 milliseconds. The placeholder bars are hidden from assistive technology. When the rows arrive the status clears and the region is no longer busy.
+
+## A table in the list slot
+
+A table drawn through `listBody` keeps its own table semantics. Rows that open take one tab stop, the open row carries `aria-current="true"`, and `J` and `K` move the cursor between rows as they do between list rows. Enter or Space opens the focused row.
+
 ## Verification
 
 - Tab through the header, the rows and their menus, then the separator and the detail.

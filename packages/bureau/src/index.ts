@@ -1,3 +1,8 @@
+export type {
+  WorkspaceCredential,
+  WorkspaceMembership,
+  WorkspaceMembershipOptions,
+} from './http/workspace-principal.ts';
 export {
   BUREAU_RESERVED_KEY_FAMILIES,
   BUREAU_RESERVED_KEY_PREFIXES,
@@ -597,8 +602,10 @@ export {
   createMemoryPersistHook,
   createMemoryRecallHook,
   createRunMemoryAuthority,
+  createToolMemoryAuthority,
   createRuntimeComposition,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
+  DEFAULT_TOOL_MEMORY_CAPABILITIES,
   resolveProviderGenerate,
 } from './runtime-composition';
 export {

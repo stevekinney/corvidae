@@ -31,7 +31,6 @@
 
 .ib-reviews__detail {
   min-inline-size: 0;
-  padding: var(--cinder-space-4);
 }
 
 /* ── The open review ──────────────────────────────────────────────────────────── */

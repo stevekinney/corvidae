@@ -1,5 +1,17 @@
 import type { Snippet } from 'svelte';
 import type { FormFieldManaged } from '../form-field/form-field.types.ts';
+
+/**
+ * Where a setting's own save has got to, drawn as a status line under its description.
+ *
+ * - `saving`: the request is in flight after the field was left ("Saving…", with a spinning glyph).
+ * - `saved`: the value was just saved and is in effect ("Saved just now", in the success tone).
+ * - `restart`: the static property of a setting that only applies after a restart, before it is
+ *   changed ("Applies after restart", with a restart glyph).
+ * - `saved-restart`: saved but not yet in effect ("Saved, waiting for a restart", with an amber dot).
+ */
+export type SettingRowStatus = 'saving' | 'saved' | 'restart' | 'saved-restart';
+
 export type SettingRowProps = {
   /**
    * Stable id forwarded into `FormField` context, which associates the
@@ -12,6 +24,31 @@ export type SettingRowProps = {
   id: string;
   /** Visible setting label. */
   label: string;
+  /**
+   * The raw key behind the label, drawn small and monospaced beside it ("engine.maxConcurrentRuns").
+   * It sits outside the `<label>`, so it never becomes part of the control's accessible name.
+   */
+  identifier?: string;
+  /**
+   * Where the setting's own save has got to: `saving`, `saved`, `restart` or `saved-restart`. It
+   * draws a status line under the description, in a polite live region that is always mounted, so
+   * a change from Saving to Saved is announced. Leave it unset for a setting at rest. Pair it with
+   * `error` for the failures: an invalid value or a save that did not go through.
+   */
+  status?: SettingRowStatus;
+  /** Replaces the words of the status line, such as "Saved 2 minutes ago" for `saved`. The glyph and tone still follow `status`. */
+  statusLabel?: string;
+  /**
+   * Called by the quiet Retry beside the error, for a save that did not go through ("Couldn't
+   * save. Your value is still in the field. Retry"). Leave it unset for an invalid value, where
+   * retrying changes nothing and the person fixes the field instead.
+   */
+  onRetry?: () => void;
+  /**
+   * Label of the retry action drawn beside the error when `onRetry` is set.
+   * @default "Retry"
+   */
+  retryLabel?: string;
   /** Guidance text describing the setting. */
   description?: string;
   /**
@@ -51,7 +88,11 @@ export type SettingRowProps = {
    * @default false
    */
   disabled?: boolean;
-  /** Renders a managed-policy indicator; pair with `PolicyLock`. */
+  /**
+   * Renders a managed-policy line with a lock glyph; pair with `PolicyLock`. Give it a `message`
+   * for a locked setting ("Locked by your deployment (remote mode). Change it in the deployment's
+   * configuration."). The control stays the page's to make read-only.
+   */
   managed?: FormFieldManaged;
   /** The setting's control, rendered with `FormField` context applied. */
   control: Snippet;

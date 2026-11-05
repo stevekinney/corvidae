@@ -9,10 +9,13 @@ import {
   Bot,
   CalendarClock,
   HeartPulse,
+  House,
   Inbox,
+  Keyboard,
   MessageSquare,
   Play,
-  SlidersHorizontal,
+  Plus,
+  Settings,
   Target,
   Webhook,
   Workflow,
@@ -26,6 +29,15 @@ import type { ViewName } from '../views.ts';
 /** The focus region of a ListDetail list: its keys act only there. */
 export const LIST_DETAIL_REGION = 'list-detail';
 
+/**
+ * The sections the sidebar groups its destinations in: Home on its own at the top, then Work,
+ * Build and System, which sits at the bottom of the column.
+ */
+export const DESTINATION_GROUPS = ['home', 'work', 'build', 'system'] as const;
+
+/** One of {@link DESTINATION_GROUPS}. */
+export type DestinationGroup = (typeof DESTINATION_GROUPS)[number];
+
 /** One place the sidebar opens. */
 export interface Destination {
   readonly view: ViewName;
@@ -33,23 +45,25 @@ export interface Destination {
   /** The letter that follows `g`. */
   readonly letter: string;
   readonly icon: typeof Workflow;
-  /** Whether the sidebar pins it to the bottom, under the rest. */
-  readonly pinned: boolean;
+  /** The section of the sidebar it sits in. */
+  readonly group: DestinationGroup;
 }
 
-/** Every destination, in the sidebar's order. Settings is pinned to the bottom. */
+/** Every destination, in the sidebar's order. */
 export const DESTINATIONS: readonly Destination[] = [
-  { view: 'chat', path: '/chats', letter: 'c', icon: MessageSquare, pinned: false },
-  { view: 'reviews', path: '/reviews', letter: 'v', icon: Inbox, pinned: false },
-  { view: 'agents', path: '/agents', letter: 'a', icon: Bot, pinned: false },
-  { view: 'workflows', path: '/workflows', letter: 'w', icon: Workflow, pinned: false },
-  { view: 'runs', path: '/runs', letter: 'r', icon: Play, pinned: false },
-  { view: 'schedules', path: '/schedules', letter: 's', icon: CalendarClock, pinned: false },
-  { view: 'goals', path: '/goals', letter: 'l', icon: Target, pinned: false },
-  { view: 'capabilities', path: '/capabilities', letter: 'p', icon: Wrench, pinned: false },
-  { view: 'hooks', path: '/hooks', letter: 'h', icon: Webhook, pinned: false },
-  { view: 'health', path: '/health', letter: 'e', icon: HeartPulse, pinned: false },
-  { view: 'settings', path: '/settings', letter: 'n', icon: SlidersHorizontal, pinned: true },
+  { view: 'home', path: '/', letter: 'h', icon: House, group: 'home' },
+  { view: 'chat', path: '/chats', letter: 'c', icon: MessageSquare, group: 'work' },
+  { view: 'reviews', path: '/reviews', letter: 'r', icon: Inbox, group: 'work' },
+  { view: 'runs', path: '/runs', letter: 'u', icon: Play, group: 'work' },
+  { view: 'agents', path: '/agents', letter: 'a', icon: Bot, group: 'build' },
+  { view: 'workflows', path: '/workflows', letter: 'w', icon: Workflow, group: 'build' },
+  { view: 'schedules', path: '/schedules', letter: 's', icon: CalendarClock, group: 'build' },
+  { view: 'goals', path: '/goals', letter: 'l', icon: Target, group: 'build' },
+  { view: 'capabilities', path: '/capabilities', letter: 'p', icon: Wrench, group: 'build' },
+  { view: 'hooks', path: '/hooks', letter: 'k', icon: Webhook, group: 'build' },
+  { view: 'health', path: '/health', letter: 'e', icon: HeartPulse, group: 'system' },
+  // The gear is Settings; the sliders icon in the top bar is quick settings.
+  { view: 'settings', path: '/settings', letter: 'n', icon: Settings, group: 'system' },
 ];
 
 /** The key sequence that opens a destination, such as `['g', 'c']`. */
@@ -69,7 +83,7 @@ export const NEW_CHAT_PATH = '/chats/new';
 /**
  * The pages under Health that have a shortcut of their own, though the sidebar lists only Health:
  * `g` then `o` for Workers (`w` is Workflows, and `e` is Health), `g` then `t` for Storage and
- * `g` then `u` for the audit log.
+ * `g` then `d` for the audit log (`u` is Runs).
  */
 export const HEALTH_SHORTCUTS: readonly {
   readonly view: ViewName;
@@ -78,8 +92,23 @@ export const HEALTH_SHORTCUTS: readonly {
 }[] = [
   { view: 'workers', path: '/health/workers', letter: 'o' },
   { view: 'storage', path: '/health/storage', letter: 't' },
-  { view: 'audit', path: '/health/audit', letter: 'u' },
+  { view: 'audit', path: '/health/audit', letter: 'd' },
 ];
+
+/**
+ * The glyph the command palette draws before an action: the destination's own icon for a "Go to"
+ * row (the pages under Health use Health's), a plus for New chat, and the keyboard for the map.
+ */
+export function actionIcon(label: string): typeof Workflow {
+  const destination = DESTINATIONS.find(
+    (candidate) => SHORTCUT_COPY.goTo(VIEW_COPY[candidate.view].label) === label,
+  );
+  if (destination !== undefined) return destination.icon;
+  if (HEALTH_SHORTCUTS.some((page) => SHORTCUT_COPY.goTo(VIEW_COPY[page.view].label) === label)) {
+    return HeartPulse;
+  }
+  return label === SHORTCUT_COPY.newChat ? Plus : Keyboard;
+}
 
 /** What the shell's shortcuts do when they run. */
 export interface ShellShortcutActions {
@@ -114,6 +143,7 @@ export function registerShellShortcuts(
       label: SHORTCUT_COPY.openMap,
       group: SHORTCUT_COPY.generalGroup,
       scope: 'global',
+      alwaysOn: true,
       handler: actions.openShortcutMap,
     }),
     // C starts a chat, wherever the person is; typing a "c" into a field never reaches it.

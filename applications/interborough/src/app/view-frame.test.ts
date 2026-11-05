@@ -25,7 +25,7 @@ import {
   type WorkflowStub,
   type World,
 } from '../lib/workflow-world.test-support.ts';
-import { FIRST_RUN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { FIRST_RUN_COPY, FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
@@ -239,11 +239,14 @@ function frame(container: HTMLElement): HTMLElement {
  * it lets only a refusal or a 401 through, and shows the Bureau's other failures in a banner beside
  * the engine's reviews (see "the Reviews view", which asserts that and the 401).
  */
-const VIEWS_THAT_CAN_FAIL = VIEW_NAMES.filter((view) => view !== 'reviews' && view !== 'health');
+const VIEWS_THAT_CAN_FAIL = VIEW_NAMES.filter(
+  (view) => view !== 'reviews' && view !== 'health' && view !== 'home',
+);
 
 // Health is left out of the probe cases below: it asks the server nothing before it shows. Its
 // bands each read with their own scope, so a probe needing one scope would turn away a principal
-// holding the other (see "the Health view").
+// holding the other (see "the Health view"). Home asks nothing either: each of its cards reads on
+// its own, so one failing read shows inside its own card and never replaces the page.
 
 describe('every view whose probe fails the page, when its probe fails', () => {
   for (const view of VIEWS_THAT_CAN_FAIL) {
@@ -277,7 +280,7 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is forbidden when its probe is refused`, async () => {
-      if (view === 'health') return;
+      if (view === 'health' || view === 'home') return;
       stub(view, 'forbidden');
       const { container, findByRole } = mount(view);
       expect(await findByRole('heading', { level: 1, name: copy.forbidden.title })).not.toBeNull();
@@ -285,7 +288,7 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is loading while its probe is pending`, async () => {
-      if (view === 'health') return;
+      if (view === 'health' || view === 'home') return;
       restore = installFetchImplementation(() => new Promise<Response>(() => {}));
       const { container, findByRole } = mount(view);
       expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
@@ -300,11 +303,23 @@ describe('every view, in every state', () => {
       const { requests } = stub(view, 'content');
       const { container, unmount } = mount(view, { scopes: [] });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain(`Requires ${VIEWS[view].scopes.join(' or ')}`);
+      expect(container.textContent).toContain(`requires ${VIEWS[view].scopes.join(' or ')}`);
       expect(requests).toEqual([]);
       unmount();
       restore?.();
     }
+  });
+});
+
+describe('the Home view', () => {
+  test('opens with no scope and asks nothing before it shows', async () => {
+    expect(VIEWS.home.scopes).toEqual([]);
+    expect(VIEWS.home.canBeEmpty).toBe(false);
+    const { requests } = stub('home', 'content');
+    const { container, findByTestId } = mount('home', { scopes: [] });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toEqual([]);
   });
 });
 
@@ -326,7 +341,7 @@ describe('the Health view', () => {
     const { requests } = stub('health', 'content');
     const { container } = mount('health', { scopes: ['schedules:read'] });
     expect(frame(container).dataset['state']).toBe('forbidden');
-    expect(container.textContent).toContain('Requires system:read or workflows:read');
+    expect(container.textContent).toContain('requires system:read or workflows:read');
     expect(requests).toEqual([]);
   });
 });
@@ -752,7 +767,7 @@ describe('an agent’s memory page, under the Agents view', () => {
 
     expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
     expect(container.textContent).toContain('bureau.memory:read');
-    expect(container.textContent).toContain(words?.description ?? '');
+    expect(container.textContent).toContain(FORBIDDEN_COPY.description);
     expect(frame(container).dataset['state']).toBe('forbidden');
     expect(words?.title).not.toBe(copy.forbidden.title);
   });
@@ -829,7 +844,7 @@ describe('the Workflows area', () => {
       const stub = world();
       const { container } = mount('workflows', { scopes: [], parameters, pattern });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain('Requires workflows:read');
+      expect(container.textContent).toContain('requires workflows:read');
       expect(stub.calls).toEqual([]);
     });
 

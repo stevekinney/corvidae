@@ -82,6 +82,8 @@ import {
   acceptContributedTriggers,
   bridgeEngineActivities,
   registerBureauWorkflowDocuments,
+  workflowCatalogOf,
+  type WorkflowCatalog,
   type ScheduleOverlapPolicy,
 } from './workflow-host';
 import {
@@ -122,6 +124,8 @@ const RUNS_READ_LIMIT_PER_WORKFLOW = 1000;
 export interface WorkflowDetail extends WorkflowListing {
   /** The file's text, for an editor that writes it back with `expectedHash`. */
   readonly text?: string;
+  /** The parsed Weft document, when the file is ready. */
+  readonly document?: WorkflowDocument;
   /** The workflow's native schedule, when it has a live one. */
   readonly schedule: {
     readonly id: string;
@@ -355,6 +359,8 @@ export interface WorkflowAuditEntry {
 export interface BureauWorkflows {
   /** The deployment's owner of record, which every workflow file belongs to. */
   readonly owner: string;
+  /** The step, activity, and trigger kinds this runtime supports. */
+  readonly catalog: () => WorkflowCatalog;
   readonly list: () => readonly WorkflowListing[];
   readonly get: (id: string) => Promise<WorkflowDetail | undefined>;
   readonly create: (
@@ -366,6 +372,12 @@ export interface BureauWorkflows {
     id: string,
     definition: WorkflowFileDefinition,
     options: { readonly expectedHash: string } & WorkflowWriteContext,
+  ) => Promise<WorkflowFileWriteResult>;
+  /** Validate a draft with the same parser and conflict checks as a write, without writing. */
+  readonly validate: (
+    id: string,
+    definition: WorkflowFileDefinition,
+    expectedHash?: string,
   ) => Promise<WorkflowFileWriteResult>;
   readonly pause: (
     id: string,
@@ -1665,15 +1677,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
   const workflows: BureauWorkflows = {
     owner,
+    catalog: () => workflowCatalogOf(host, contributions),
     list: () => catalog.list(),
 
     async get(id) {
-      const listing = catalog.list().find((entry) => entry.id === id);
-      if (listing === undefined) return undefined;
-      const read = await catalog.read(id).catch(() => undefined);
+      const snapshot = await catalog.readSnapshot(id);
+      if (snapshot === undefined) return undefined;
       return {
-        ...listing,
-        ...(read === undefined ? {} : { text: read.text }),
+        ...snapshot.listing,
+        ...(snapshot.text === undefined ? {} : { text: snapshot.text }),
+        ...(snapshot.file === undefined ? {} : { document: snapshot.file.document }),
         schedule: await liveSchedule(id),
       };
     },
@@ -1694,6 +1707,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         (onWritten) => catalog.update(id, definition, { ...update, onWritten }),
         id,
       ),
+    validate: (id, definition, expectedHash) => catalog.validate(id, definition, expectedHash),
     pause: (id, guard) =>
       write(
         'workflow.paused',

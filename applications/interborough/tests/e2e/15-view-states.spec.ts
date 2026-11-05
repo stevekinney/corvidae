@@ -49,6 +49,7 @@ test.afterAll(async ({ playwright }) => {
 });
 
 const PATHS: Readonly<Record<ViewName, string>> = {
+  home: '/',
   chat: '/chats',
   agents: '/agents',
   'agent-editor': '/agents/new',
@@ -96,8 +97,11 @@ function bureauProbe(method: string, empty: unknown): ProbeRoute {
   };
 }
 
-/** Every view that has a probe: Health reads its bands apart and has none. */
-type ProbedView = Exclude<ViewName, 'health'>;
+/**
+ * Every view that has a probe: Health reads its bands apart and has none, and Home reads what other
+ * views read, each card on its own, so it has none either.
+ */
+type ProbedView = Exclude<ViewName, 'health' | 'home'>;
 
 const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   // The view asks for one chat to learn whether the caller has any. The shell's notification bell
@@ -182,7 +186,7 @@ async function holdOnlyScopes(page: Page, scopes: readonly string[]): Promise<vo
 
 /** The probe a view asks, which Health does not have. */
 function probeOf(view: ViewName): ProbeRoute {
-  const probe = view === 'health' ? undefined : PROBES[view];
+  const probe = view === 'health' || view === 'home' ? undefined : PROBES[view];
   if (probe === undefined) throw new Error(`${view} has no probe to answer`);
   return probe;
 }
@@ -256,6 +260,8 @@ function statesOf(view: ViewName): Outcome[] {
   // Health has no probe, so it is never loading, empty or failing as a view; it is ready, or locked
   // when the principal lacks both scopes. Its bands' own states are covered below.
   if (view === 'health') return ['forbidden', 'ready'];
+  // Home has no probe either: each of its cards reads on its own, so the view is only ever ready.
+  if (view === 'home') return ['ready'];
   // The reviews probe swallows a Bureau failure such as a 5xx, and the page shows it in a banner
   // beside the engine's reviews (`31-reviews.spec.ts`), so the view is not in the error state for
   // it. A 401 does reach the error state (`view-frame.test.ts`, "the Reviews view").
@@ -335,7 +341,7 @@ test('a view the principal lacks the scopes for is forbidden without a probe req
   await page.goto('/health/storage');
   const frame = page.locator('[data-view="storage"]');
   await expect(frame).toHaveAttribute('data-state', 'forbidden');
-  await expect(frame).toContainText('Requires storage:admin');
+  await expect(frame).toContainText('requires storage:admin');
 });
 
 /** The engine reads behind Health's two engine counts and its health line, which the faulted case refuses. */
@@ -459,7 +465,10 @@ for (const width of WIDTHS) {
     await expect(frame).toHaveAttribute('data-state', 'not-found');
     await expect(frame.getByRole('heading', { level: 1 })).toHaveText(NOT_FOUND_ROUTE_COPY.title);
     await expect(frame).toContainText(NOT_FOUND_ROUTE_COPY.description);
-    await expect(frame.locator('code')).toHaveText('/nonsense/route');
+    await expect(frame.locator('.cinder-empty-state-action > *')).toHaveText([
+      'Back to Home',
+      'Search everything',
+    ]);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
@@ -470,8 +479,36 @@ for (const width of WIDTHS) {
     });
     await checkA11y(`not-found route at ${width}px`);
 
-    await frame.getByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label }).click();
-    await expect(page).toHaveURL(/\/chats$/);
+    await frame.getByRole('link', { name: 'Back to Home' }).click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test(`a run that does not exist is the not-found page, with Runs › Not found for a breadcrumb, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // The run page asks the workflow engine for a run the Bureau does not know, and it says no.
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(404, /\/v1\/workflows\/no-such-run/),
+      reason: 'the engine has no run called no-such-run',
+    });
+    await page.goto('/runs/no-such-run');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('This run doesn’t exist');
+    await expect(page.getByText(NOT_FOUND_ROUTE_COPY.description)).toBeVisible();
+    await expect(page.locator('main').getByRole('link', { name: 'Back to Runs' })).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('button', { name: 'Search everything' }),
+    ).toBeVisible();
+    // The breadcrumb names the missing run in words: Runs › Not found.
+    await expect(page.locator('header.weft-shell-topbar')).toContainText('Not found');
+    await captureForDesignReview(page, {
+      route: '/runs/no-such-run',
+      state: 'not-found',
+      source: '15-view-states.spec.ts',
+    });
+    await checkA11y(`a run that does not exist at ${width}px`);
   });
 
   test(`the not-found page keeps the sidebar at ${width} pixels`, async ({ page }) => {
@@ -483,7 +520,7 @@ for (const width of WIDTHS) {
     );
     // Beside the page on a desktop, behind the menu button on a phone.
     if (width < 640) {
-      await page.getByRole('button', { name: 'Toggle navigation menu' }).click();
+      await page.getByRole('button', { name: 'Open navigation' }).click();
     }
     const navigation = page.getByRole('navigation', { name: 'Views' });
     await expect(navigation).toBeVisible();

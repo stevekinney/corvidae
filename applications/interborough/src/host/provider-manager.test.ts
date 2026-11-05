@@ -53,11 +53,20 @@ function fakeHome(
     }),
     secrets: new Map([['anthropic-api-key', 'fixture-existing-key']]),
     unreadable: false,
-    readConfiguration: () => Promise.resolve(home.configuration),
-    writeConfiguration: (text) => {
+    readConfiguration: async () => ({
+      text: home.configuration,
+      revision: home.configuration === undefined ? null : Bun.hash(home.configuration).toString(),
+    }),
+    writeConfiguration: async (text, condition) => {
+      if (
+        condition.expectedRevision !==
+        (home.configuration === undefined ? null : Bun.hash(home.configuration).toString())
+      )
+        return { outcome: 'conflict' };
       home.writes.push('configuration');
-      if (options.failConfiguration === true) throw new Error('The disk is full.');
+      if (options.failConfiguration === true) return { outcome: 'unavailable' };
       home.configuration = text;
+      return { outcome: 'committed' };
     },
     readSecret: (key) => {
       if (home.unreadable) throw new Error('The disk cannot be read.');
@@ -454,5 +463,42 @@ describe('a write that fails', () => {
       'gemini',
       'openai',
     ]);
+  });
+});
+
+describe('configuration revision conflicts', () => {
+  test('preserves a competing writer and requires a fresh explicit retry', async () => {
+    const home = fakeHome('local');
+    const { manager } = await managerFor(home);
+    const write = home.writeConfiguration;
+    const competing = JSON.stringify({ retainedByOtherWriter: true });
+    let attempts = 0;
+    home.writeConfiguration = async (text, condition) => {
+      attempts += 1;
+      home.configuration = competing;
+      return write(text, condition);
+    };
+    const failure = await failureOf(
+      manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]),
+    );
+    expect(String(failure)).toContain('conflict');
+    expect(home.configuration).toBe(competing);
+    expect(attempts).toBe(1);
+    home.writeConfiguration = write;
+    await manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]);
+    expect(JSON.parse(home.configuration ?? '{}')).toMatchObject({ retainedByOtherWriter: true });
+  });
+
+  test('does not restore the prior credential after an unknown configuration commit', async () => {
+    const home = fakeHome('local');
+    const { manager } = await managerFor(home);
+    home.writeConfiguration = async (text) => {
+      home.configuration = text;
+      return { outcome: 'unknown' };
+    };
+    const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
+    expect(String(failure)).toContain('unknown');
+    expect(home.secrets.get('anthropic-api-key')).toBe(KEY);
+    expect(home.writes.filter((entry) => entry === 'secret anthropic-api-key')).toHaveLength(1);
   });
 });

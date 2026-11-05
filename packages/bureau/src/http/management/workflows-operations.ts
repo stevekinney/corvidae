@@ -180,6 +180,20 @@ const definitionSchema = z
   );
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
+const validationResultSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok'), id: z.string(), hash: z.string() }),
+  z.object({
+    status: z.literal('invalid'),
+    code: z.string(),
+    issues: z.array(z.object({ path: z.string(), message: z.string() })),
+  }),
+  z.object({
+    status: z.literal('conflict'),
+    id: z.string(),
+    reason: z.enum(['workflow-file-exists', 'workflow-file-changed']),
+    currentHash: z.string().optional(),
+  }),
+]);
 
 const runStatusSchema = z.enum([
   'pending',
@@ -337,6 +351,28 @@ function faultOf(error: unknown, id: string, expectedHash?: string): never {
   throw error;
 }
 
+function validationResultOf(error: unknown, id: string): z.infer<typeof validationResultSchema> {
+  if (error instanceof WorkflowFileConflictError) {
+    return {
+      status: 'conflict',
+      id,
+      reason:
+        error.code === 'workflow-file-exists' ? 'workflow-file-exists' : 'workflow-file-changed',
+      ...(error.currentHash === undefined ? {} : { currentHash: error.currentHash }),
+    };
+  }
+  if (error instanceof WorkflowFileError) {
+    return {
+      status: 'invalid',
+      code: error.code,
+      issues: error.problem?.issues?.map(({ path, message }) => ({ path, message })) ?? [
+        { path: '', message: error.message },
+      ],
+    };
+  }
+  throw error;
+}
+
 const surface = z
   .enum(TASK_PERSON_SURFACES)
   .optional()
@@ -397,6 +433,67 @@ const updateInput = z.object({
   expectedHash: hash,
   definition: definitionSchema,
   surface,
+});
+
+const validateInput = z.object({
+  id: workflowId.optional(),
+  expectedHash: hash.optional(),
+  // Keep the draft lossless until the shared parser can report undeclared document keys. The
+  // operation envelope remains strict; only this nested draft is open because validation owns the
+  // document's unknown-key contract (the write operations still reject it at their boundary).
+  definition: definitionSchema
+    .loose()
+    .describe(
+      'The workflow draft to validate. Unknown document keys are retained so canonical validation can report them as invalid-document issues.',
+    ),
+  surface,
+});
+
+export const workflowsValidateOperation = defineOperation<
+  typeof validateInput,
+  typeof validationResultSchema,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.validate',
+  mcpExposable: true,
+  summary: 'Validate a workflow draft',
+  description:
+    'Validates a workflow definition with the same parser and checks as a write, without writing a file or registering an engine workflow. With `expectedHash`, the existing file must still have that hash; without it, `id` must not already name a file. Requires `bureau.workflows:read`.',
+  destructive: false,
+  tags: ['Workflows'],
+  inputSchema: validateInput,
+  outputSchema: validationResultSchema,
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'Conflict',
+    'StaleRevision',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
+      throw {
+        code: 'Forbidden',
+        message: 'Validating workflows requires bureau.workflows:read',
+        data: { reason: 'missing scope bureau.workflows:read' },
+      } satisfies OperationFault;
+    }
+    const workflows = workflowsOf(host);
+    const id = input.id ?? 'draft';
+    try {
+      return {
+        status: 'ok' as const,
+        ...(await workflows.validate(id, input.definition, input.expectedHash)),
+      };
+    } catch (error) {
+      return validationResultOf(error, id);
+    }
+  },
 });
 
 export const workflowsUpdateOperation = defineOperation<
@@ -1200,6 +1297,7 @@ export const workflowsImpactOperation = defineOperation<
 export const bureauWorkflowsOperations = [
   workflowsCreateOperation,
   workflowsUpdateOperation,
+  workflowsValidateOperation,
   workflowsPauseOperation,
   workflowsResumeOperation,
   workflowsDeleteOperation,

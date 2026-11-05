@@ -22,6 +22,17 @@ const schema = {
       type: 'boolean',
       description: 'Prevents interaction when true. Sets `disabled` attribute.',
     },
+    readonly: {
+      type: 'boolean',
+      description:
+        'Shows the setting without letting a press change it, for a value that something else owns,\nsuch as a schedule defined in a file. The switch stays focusable, announces\n`aria-readonly="true"`, ignores a press on the track or the label, and still submits its value\nwith a native form (unlike `disabled`).',
+      default: false,
+    },
+    description: {
+      type: 'string',
+      description:
+        'Short visible text beside the label that describes the switch, such as the file that defines\nit ("Defined in workflows/release-notes.json"). It is wired into `aria-describedby`.',
+    },
     mutating: {
       type: 'boolean',
       description:

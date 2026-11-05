@@ -40,6 +40,21 @@ describe('humanizeIdentifier', () => {
     });
   }
 
+  test('sentence casing capitalizes only the first word of each segment and keeps acronyms', () => {
+    const sentence = (key: string, under?: string) =>
+      humanizeIdentifier(
+        key,
+        under === undefined ? { casing: 'sentence' } : { casing: 'sentence', under },
+      );
+    expect(sentence('timeZone')).toBe('Time zone');
+    expect(sentence('catch_up')).toBe('Catch up');
+    expect(sentence('orderId')).toBe('Order ID');
+    expect(sentence('apiKey')).toBe('API key');
+    expect(sentence('tool-runner')).toBe('Tool runner');
+    expect(sentence('retention.auditLog')).toBe('Retention ▶ Audit log');
+    expect(sentence('retentionAudit', 'Retention')).toBe('Audit');
+  });
+
   test('every acronym in the list formats as itself', () => {
     for (const acronym of IDENTIFIER_ACRONYMS) {
       expect(humanizeIdentifier(acronym.toLowerCase())).toBe(acronym);
@@ -81,6 +96,7 @@ describe('humanizeIdentifier', () => {
       'UTC',
       'AG-UI',
       'A2A',
+      'SKU',
     ]);
   });
 });

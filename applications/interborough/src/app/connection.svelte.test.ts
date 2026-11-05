@@ -6,7 +6,12 @@ import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { QueryClient } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { ConnectionMonitor, connectionProbeDelayMs } from './connection.svelte.ts';
+import {
+  CONNECTION_MAX_ATTEMPTS,
+  connectionBannerPreset,
+  ConnectionMonitor,
+  connectionProbeDelayMs,
+} from './connection.svelte.ts';
 
 const monitors: ConnectionMonitor[] = [];
 afterEach(() => {
@@ -18,6 +23,7 @@ function open(probe: () => Promise<unknown>, onRecovered?: () => void) {
     probe,
     ...(onRecovered === undefined ? {} : { onRecovered }),
     probeDelayMs: () => 1,
+    browserOffline: false,
   });
   monitors.push(monitor);
   return monitor;
@@ -28,6 +34,15 @@ describe('connectionProbeDelayMs', () => {
     expect([1, 2, 3, 4, 5, 9].map(connectionProbeDelayMs)).toEqual([
       1_000, 2_000, 4_000, 8_000, 8_000, 8_000,
     ]);
+  });
+});
+
+describe('connectionBannerPreset', () => {
+  test('the browser being offline wins, then stopped retries, then a server that does not answer', () => {
+    expect(connectionBannerPreset({ browserOffline: true, stopped: true })).toBe('offline');
+    expect(connectionBannerPreset({ browserOffline: true, stopped: false })).toBe('offline');
+    expect(connectionBannerPreset({ browserOffline: false, stopped: true })).toBe('stopped');
+    expect(connectionBannerPreset({ browserOffline: false, stopped: false })).toBe('unreachable');
   });
 });
 
@@ -165,5 +180,109 @@ describe('ConnectionMonitor', () => {
       .catch(() => undefined);
     expect(monitor.unreachable).toBe(false);
     stop();
+  });
+
+  test('counts each probe from 1 and stops after eight failures, leaving Retry now', async () => {
+    let probes = 0;
+    const monitor = open(async () => {
+      probes += 1;
+      throw new TypeError('Failed to fetch');
+    });
+    monitor.reportUnreachable();
+    expect(monitor.attempt).toBe(1);
+    expect(monitor.retryInSeconds).toBe(1);
+    expect(monitor.stopped).toBe(false);
+
+    await waitUntil(() => monitor.stopped, { message: 'the probes running out' });
+    expect(CONNECTION_MAX_ATTEMPTS).toBe(8);
+    expect(probes).toBe(CONNECTION_MAX_ATTEMPTS);
+    expect(monitor.attempt).toBe(CONNECTION_MAX_ATTEMPTS);
+    expect(monitor.retryInSeconds).toBeUndefined();
+    expect(monitor.unreachable).toBe(true);
+    await quietFor(50);
+    expect(probes).toBe(CONNECTION_MAX_ATTEMPTS);
+  });
+
+  test('the countdown follows the clock while the next probe waits, and ends when probing stops', async () => {
+    let now = 10_000;
+    const monitor = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      probeDelayMs: () => 60_000,
+      now: () => now,
+      browserOffline: false,
+    });
+    monitors.push(monitor);
+    monitor.reportUnreachable();
+    expect([monitor.attempt, monitor.retryInSeconds]).toEqual([1, 60]);
+
+    now = 13_500;
+    await waitUntil(() => monitor.retryInSeconds === 57, { message: 'the countdown ticking' });
+    monitor.dispose();
+    expect(monitor.retryInSeconds).toBeUndefined();
+  });
+
+  test('Retry now after the probes stopped counts from 1 again and finds the server when it is back', async () => {
+    let answers = false;
+    let recovered = 0;
+    const monitor = open(
+      async () => {
+        if (!answers) throw new TypeError('Failed to fetch');
+        return new Response('ok');
+      },
+      () => {
+        recovered += 1;
+      },
+    );
+    monitor.reportUnreachable();
+    await waitUntil(() => monitor.stopped, { message: 'the probes running out' });
+
+    answers = true;
+    await monitor.retryNow();
+    expect(monitor.unreachable).toBe(false);
+    expect(monitor.stopped).toBe(false);
+    expect(monitor.attempt).toBe(0);
+    expect(recovered).toBe(1);
+  });
+
+  test('Retry now while the server is still down starts the count again', async () => {
+    const monitor = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      probeDelayMs: () => 60_000,
+      browserOffline: false,
+    });
+    monitors.push(monitor);
+    monitor.reportUnreachable();
+    await monitor.retryNow();
+    expect(monitor.unreachable).toBe(true);
+    expect(monitor.stopped).toBe(false);
+    expect(monitor.attempt).toBe(1);
+    expect(monitor.retryInSeconds).toBe(60);
+  });
+
+  test('the browser going offline makes it unreachable and says why, and coming back asks the server', async () => {
+    let probes = 0;
+    const monitor = open(async () => {
+      probes += 1;
+      return new Response('ok');
+    });
+    expect(monitor.browserOffline).toBe(false);
+    monitor.setBrowserOffline(true);
+    expect(monitor.browserOffline).toBe(true);
+    expect(monitor.unreachable).toBe(true);
+
+    monitor.setBrowserOffline(false);
+    expect(monitor.browserOffline).toBe(false);
+    await waitUntil(() => !monitor.unreachable, { message: 'the server answering after online' });
+    expect(probes).toBeGreaterThan(0);
+  });
+
+  test('starts out offline when the browser already says so', () => {
+    const monitor = new ConnectionMonitor({ probe: async () => 1, browserOffline: true });
+    monitors.push(monitor);
+    expect(monitor.browserOffline).toBe(true);
   });
 });

@@ -13,6 +13,26 @@ const schema = {
       type: 'string',
       description: 'Visible setting label.',
     },
+    identifier: {
+      type: 'string',
+      description:
+        'The raw key behind the label, drawn small and monospaced beside it ("engine.maxConcurrentRuns").\nIt sits outside the `<label>`, so it never becomes part of the control\'s accessible name.',
+    },
+    status: {
+      enum: ['saving', 'saved', 'restart', 'saved-restart'],
+      description:
+        "Where the setting's own save has got to: `saving`, `saved`, `restart` or `saved-restart`. It\ndraws a status line under the description, in a polite live region that is always mounted, so\na change from Saving to Saved is announced. Leave it unset for a setting at rest. Pair it with\n`error` for the failures: an invalid value or a save that did not go through.",
+    },
+    statusLabel: {
+      type: 'string',
+      description:
+        'Replaces the words of the status line, such as "Saved 2 minutes ago" for `saved`. The glyph and tone still follow `status`.',
+    },
+    retryLabel: {
+      type: 'string',
+      description: 'Label of the retry action drawn beside the error when `onRetry` is set.',
+      default: 'Retry',
+    },
     description: {
       type: 'string',
       description: 'Guidance text describing the setting.',
@@ -50,9 +70,15 @@ const schema = {
           type: 'string',
           description: 'Human-readable explanation for the constraint.',
         },
+        message: {
+          type: 'string',
+          description:
+            'The whole line to show beside the lock glyph, replacing the "Managed by" wording, such as "Locked by your deployment (remote mode). Change it in the deployment\'s configuration."',
+        },
       },
       additionalProperties: false,
-      description: 'Renders a managed-policy indicator; pair with `PolicyLock`.',
+      description:
+        'Renders a managed-policy line with a lock glyph; pair with `PolicyLock`. Give it a `message`\nfor a locked setting ("Locked by your deployment (remote mode). Change it in the deployment\'s\nconfiguration."). The control stays the page\'s to make read-only.',
     },
     class: {
       type: 'string',
@@ -73,6 +99,12 @@ const schema = {
         name: 'disclosure',
         reason: 'function-or-snippet',
         description: 'Optional disclosure content rendered beneath the row.',
+      },
+      {
+        name: 'onRetry',
+        reason: 'function-or-snippet',
+        description:
+          'Called by the quiet Retry beside the error, for a save that did not go through ("Couldn\'t\nsave. Your value is still in the field. Retry"). Leave it unset for an invalid value, where\nretrying changes nothing and the person fixes the field instead.',
       },
     ],
   },

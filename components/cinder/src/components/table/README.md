@@ -18,7 +18,7 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
   ];
 </script>
 
-<Table scrollable caption="Recent contributors">
+<Table caption="Recent contributors">
   <Table.Header>
     <Table.Row>
       <Table.HeaderCell>Name</Table.HeaderCell>
@@ -38,7 +38,36 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
 </Table>
 ```
 
-Pass `scrollable` for dense or unknown-width tables. The Table root stays a native `<table>`; Cinder generates a focusable `.cinder-table-scroll` wrapper that owns horizontal overflow when the available component width is too narrow. Use `scrollContainerProps` to label, style, or override attributes on that generated wrapper. When `scrollable` and `stickyHeader` are combined, the generated wrapper is the sticky header's scroll container; set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper.
+A table scrolls by default. The Table root stays a native `<table>`; Cinder generates a focusable `.cinder-table-scroll` wrapper that owns the frame (the border, the radius and the clip) and the horizontal overflow, with a visible scrollbar and a fade at the inline end, so the page never scrolls sideways. Use `scrollContainerProps` to label, style, or override attributes on that generated wrapper. When `stickyHeader` is set, the generated wrapper is the sticky header's scroll container; set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper.
+
+### Tables with controls
+
+A table whose cells hold controls (a select, a switch, a checkbox, a button) stacks instead of scrolling. Set `controls` on every cell in a column of controls, and `controls="fit"` for a control that keeps its own size. Below `stackBelow` (640px), measured on the table's own container, each row becomes a card with the name and its muted detail on the first line and the controls full width at 44px beneath.
+
+```svelte
+<Table caption="Tool access">
+  <Table.Header>
+    <Table.Row>
+      <Table.HeaderCell>Tool</Table.HeaderCell>
+      <Table.HeaderCell>Risk</Table.HeaderCell>
+      <Table.HeaderCell>On</Table.HeaderCell>
+      <Table.HeaderCell>Asks</Table.HeaderCell>
+    </Table.Row>
+  </Table.Header>
+  <Table.Body>
+    {#each tools as tool (tool.id)}
+      <Table.Row>
+        <Table.Cell as="th">{tool.name}</Table.Cell>
+        <Table.Cell>{tool.risk}</Table.Cell>
+        <Table.Cell controls="fit"><Checkbox aria-label={`Allow ${tool.name}`} /></Table.Cell>
+        <Table.Cell controls>
+          <Select id={`asks-${tool.id}`} label={`${tool.name} asks`} options={asks} />
+        </Table.Cell>
+      </Table.Row>
+    {/each}
+  </Table.Body>
+</Table>
+```
 
 The leaves are also named exports of `@lostgradient/cinder`.
 
@@ -51,9 +80,9 @@ The leaves are also named exports of `@lostgradient/cinder`.
 | `caption` | `string` | no | — | Accessible caption rendered as a `<caption>` element. It names the table for assistive technology but is visually hidden: the heading above the table already says what it is, and the table draws no title row of its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-table`. |
 | `density` | `"comfortable"` \| `"condensed"` \| `"spacious"` | no | `"comfortable"` | Vertical padding density for header and body cells. Defaults to `'comfortable'`. |
-| `scrollable` | `boolean` | no | `false` | When true, wraps the table in a `.cinder-table-scroll` container that enables horizontal overflow scrolling for dense or unknown-width tables. Use this instead of manually wrapping Table in `.cinder-table-scroll`. When combined with `stickyHeader`, the generated wrapper is the sticky header's scroll container. Set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper. |
+| `scrollable` | `boolean` | no | `true` | Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and the clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade at the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out as a bare `<table>`. When combined with `stickyHeader`, the generated wrapper is the sticky header's scroll container. Set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper. |
 | `selectable` | `boolean` | no | `false` | Enables the leading selection column on the entire table. When true: - The single `TableRow` inside `TableHeader` renders a leading `<th>` with a select-all checkbox sourced from the header's props. - Every `TableRow` inside `TableBody` renders a leading selection cell. Selection is strictly controlled — the consumer owns all selection state. |
-| `stackBelow` | `string` \| `false` | no | `"640px"` | Viewport width below which every body row stacks into a card: each cell becomes its column's header text above the cell's value, and the header row is hidden visually but kept for assistive technology. A simple CSS length such as `'640px'`, or `false` to keep the table layout at every width. |
+| `stackBelow` | `string` \| `false` | no | `"640px"` | Width of the table's own container below which a table whose cells hold controls stacks. Each body row becomes a card: the name and its muted detail on the first line, the controls full width at 44px beneath. A table with no `controls` cell never stacks; it scrolls. The width is the container's (the scroll box, or the parent when `scrollable` is false), not the window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit falls back to the viewport. `false` keeps the table layout at every width. |
 | `stickyHeader` | `boolean` | no | `false` | When true, the header sticks to the top of the scrolling container. |
 | `children` | `(opaque)` | yes | — | TableHeader, TableBody, etc. Not expressible in JSON Schema; see the component types for the signature. |
 | `scrollContainerProps` | `(opaque)` | no | — | Attributes forwarded to the generated `.cinder-table-scroll` wrapper when `scrollable` is true. The wrapper is focusable by default so keyboard users can scroll read-only wide tables. When the table has a caption, or when `aria-label` or `aria-labelledby` is provided here, the wrapper becomes a named `region`; pass `role` or `tabindex` here to override those defaults. Not expressible in JSON Schema; see the component types for the signature. |

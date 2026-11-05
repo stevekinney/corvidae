@@ -20,6 +20,7 @@
  * @module create-bureau-handler
  */
 
+import { withWorkspaceMembership, type WorkspaceMembershipOptions } from './workspace-principal.ts';
 import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
@@ -459,13 +460,17 @@ export type BureauHandlerOptions = {
    * construction, and so does a static `apiKeys` list, because every static key
    * authenticates as one shared caller and so would own every resource together.
    * `resolveApiKeyPrincipal` returns the principal a key stands for; its `subject`
-   * is the owner (`api-key:<encodeURIComponent(subject)>`), so keys share an owner
-   * only by returning the same subject. A subject in the reserved `system:` or
+   * names the credential. Without `workspace`, the subject determines the owner
+   * (`api-key:<encodeURIComponent(subject)>`). With `workspace`, the trusted membership
+   * resolver explicitly maps credentials to stable actors and opaque durable owners.
+   * A subject in the reserved `system:` or
    * `anonymous:` namespace is refused with 401. Required unless
    * `unauthenticatedAccess` is `'allow'`; with it, a request that carries a
    * credential is authenticated by it, and A2A requires one (COR-1904).
    */
   readonly authentication?: AuthConfig;
+  /** Server-supplied current membership for this runtime's workspace, resolved after authentication. */
+  readonly workspace?: WorkspaceMembershipOptions;
   /**
    * `'reject'` (the default) requires `authentication` and answers 401 to a
    * request without credentials on every route. `'allow'` serves every request
@@ -546,6 +551,7 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'signing',
   'pushNotifications',
   'authentication',
+  'workspace',
   'unauthenticatedAccess',
   'mounts',
   'agUi',
@@ -1365,11 +1371,15 @@ export function createBureauHandler(
   assertPersistence(bureau);
 
   const host = buildBureauHandlerHost(bureau, options.a2aAgents ?? [], options.skills);
+  const authenticate = handlerAuthenticate(options.authentication, unauthenticatedAccess);
 
   return createOperationHandler({
     operations: BUREAU_HANDLER_OPERATIONS,
     host,
-    authenticate: handlerAuthenticate(options.authentication, unauthenticatedAccess),
+    authenticate:
+      options.workspace === undefined
+        ? authenticate
+        : withWorkspaceMembership(authenticate, options.workspace),
     ...(options.maxRequestBodyBytes === undefined
       ? {}
       : { maxRequestBodyBytes: options.maxRequestBodyBytes }),

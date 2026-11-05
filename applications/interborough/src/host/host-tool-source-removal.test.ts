@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1931: removing a saved tool source. The owner previews the agent files that name its tools,
  * removal answers the same list and audits it, no agent file is edited, and after the host starts
@@ -39,6 +40,7 @@ const BEARER = 'bearer-fixture-removal-5d2f31';
 /** A home with a model provider, so an agent file is valid until a check about its tools fails. */
 async function home(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'interborough-tool-source-removal-'));
+  await initializeWorkspaceHome(directory);
   directories.push(directory);
   await writeFile(
     join(directory, 'configuration.json'),

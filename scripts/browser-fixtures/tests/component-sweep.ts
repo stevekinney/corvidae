@@ -1,6 +1,7 @@
 import type {
   ComponentEntry,
   FixtureCategory,
+  InteractionStep,
   ManifestFixtureEntry,
   Theme,
   Viewport,
@@ -106,7 +107,15 @@ export async function runFixtureSweep(
 
   const category = fixtureCategory(fixture);
   const masks = fixtureMasks(fixture);
-  const interactionSteps = fixtureInteractions(fixture);
+  const isMobileTabsKeyboardFixture =
+    entry.slug === 'tabs' && viewport.name === 'mobile' && fixture.name === 'keyboard-next';
+  const interactionSteps: InteractionStep[] = isMobileTabsKeyboardFixture
+    ? [
+        { action: 'click', target: { role: 'combobox', name: 'Tab' } },
+        { action: 'press', target: { role: 'combobox', name: 'Tab' }, key: 'ArrowDown' },
+        { action: 'press', target: { role: 'combobox', name: 'Tab' }, key: 'Enter' },
+      ]
+    : fixtureInteractions(fixture);
   const hasInteractions = interactionSteps.length > 0;
   const restingKey = hasInteractions ? { ...key, fixture: `${fixture.name}-resting` } : key;
 
@@ -130,6 +139,9 @@ export async function runFixtureSweep(
       component: entry.slug,
       fixture: fixture.name,
     });
+    if (isMobileTabsKeyboardFixture) {
+      await expect(page.locator('.cinder-tab-panel[data-cinder-value="activity"]')).toBeVisible();
+    }
     await expect(page.locator('[data-cinder-position-ready="false"]')).toHaveCount(0);
     await captureScreenshot(page, key, masks === undefined ? undefined : { masks });
     await writeScreenshotMetadata({

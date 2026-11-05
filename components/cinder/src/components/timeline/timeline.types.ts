@@ -17,8 +17,12 @@ export type TimelineEntryKind = 'event' | 'now' | 'separator' | 'band';
 /**
  * `rail` is the default: a vertical rail with a connector from marker to marker. `list` is the
  * same entries as compact rows, with no connector, a hairline between rows and the time first.
+ * `rows` keeps the rail's marker column and connector but draws nothing else: each entry is a
+ * single row whose whole content is the `children` snippet, with no timestamp or title header, for
+ * a sequence that has nothing to date (the tool calls of one chat turn). Its `datetime` and
+ * `timestamp` are not read, so they may be empty, and `title` is only the entry's name.
  */
-export type TimelineVariant = 'rail' | 'list';
+export type TimelineVariant = 'rail' | 'list' | 'rows';
 export type TimelineHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type TimelineEntry = {
@@ -68,7 +72,7 @@ export type TimelineProps = Omit<
   entries: TimelineEntry[];
   /** Layout orientation. @default "vertical" */
   orientation?: TimelineOrientation | undefined;
-  /** Rail with connectors, or compact rows with none. @default "rail" */
+  /** Rail with connectors, compact rows with none, or a rail whose rows `children` draws whole. @default "rail" */
   variant?: TimelineVariant | undefined;
   /** Optional adjacent UTC day/week grouping mode. @default "none" */
   groupBy?: TimelineGroupBy | undefined;
@@ -103,7 +107,7 @@ export interface TimelineSchemaProps {
   entries: TimelineEntry[];
   /** Layout orientation. @default "vertical" */
   orientation?: TimelineOrientation | undefined;
-  /** Rail with connectors, or compact rows with none. @default "rail" */
+  /** Rail with connectors, compact rows with none, or a rail whose rows `children` draws whole. @default "rail" */
   variant?: TimelineVariant | undefined;
   /** Optional adjacent UTC day/week grouping mode. @default "none" */
   groupBy?: TimelineGroupBy | undefined;

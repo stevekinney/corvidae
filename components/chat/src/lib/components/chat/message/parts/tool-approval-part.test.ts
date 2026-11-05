@@ -57,7 +57,7 @@ describe('ToolApprovalPart', () => {
 
     expect(operation).toBe(part.action.operation);
   });
-  test('renders one Cinder approval row with the question and View input', async () => {
+  test('renders one Cinder approval row with the question and Input', async () => {
     const { container, getByRole } = render(ToolApprovalPart, {
       props: { part: pendingPart(), onApprovalResolve: () => undefined },
     });
@@ -70,12 +70,19 @@ describe('ToolApprovalPart', () => {
     expect(card?.getAttribute('data-cinder-risk')).toBe('high');
     expect(getByRole('article', { name: 'Deploy to production?' })).toBe(card as HTMLElement);
     const buttons = Array.from(
-      container.querySelectorAll('.cinder-approval-card__row button'),
-      (button) => button.textContent?.trim(),
+      container.querySelectorAll(
+        '.cinder-approval-card__input-toggle, .cinder-approval-card__row-actions button',
+      ),
+      (button) => button.textContent?.replace(/\s+/g, ' ').trim(),
     );
-    expect(buttons).toEqual(['View input', 'Deny', 'Approve']);
+    expect(buttons).toEqual([
+      'Input Environment production · Replicas 3',
+      'Add a note',
+      'Deny',
+      'Approve',
+    ]);
 
-    await fireEvent.click(getByRole('button', { name: 'View input' }));
+    await fireEvent.click(getByRole('button', { name: /^Input/ }));
     flushSync();
 
     expect(container.textContent).toContain('deploy_to_production --environment production');

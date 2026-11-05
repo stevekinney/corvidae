@@ -31,6 +31,33 @@ export type KeyValueEditorProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> 
    * not-yet-named row) falls back to `'Remove pair'`.
    */
   removeLabel?: (key: string) => string;
+  /**
+   * Visible name for the whole list, shown above the rows ("Environment"). The editor becomes a
+   * labelled group, so a screen reader announces it when focus enters the list.
+   */
+  label?: string;
+  /**
+   * Help under the Add button, linked to the group with `aria-describedby`. State what the values
+   * are, such as that they are masked and never shown again.
+   */
+  description?: string;
+  /**
+   * Accessible name of every row's key input (it has no visible label of its own). Give it the
+   * noun the rows use, such as `'Name'` for environment variables.
+   * @default 'Key'
+   */
+  keyLabel?: string;
+  /**
+   * Accessible name of every row's value input.
+   * @default 'Value'
+   */
+  valueLabel?: string;
+  /**
+   * Draws the key and value inputs in the monospace face, for identifiers and secrets such as
+   * environment variable names.
+   * @default false
+   */
+  monospace?: boolean;
   /** Additional class merged with the component's root class. */
   class?: string;
 };

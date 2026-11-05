@@ -4,6 +4,8 @@ import Meter from './meter.svelte';
 export default Meter;
 export type {
   MeterProps,
+  MeterRemainder,
+  MeterSegment,
   MeterSize,
   MeterState,
   MeterVerdict,

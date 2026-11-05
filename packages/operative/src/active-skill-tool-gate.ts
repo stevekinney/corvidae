@@ -20,10 +20,17 @@ type DurableOperationKey =
   string | ((call: ToolCall, index: number) => string | undefined) | undefined;
 
 /** The refusal for `toolName`, shaped like Armorer's own policy denial. */
-function refusalFor(call: ToolCallInput, toolName: string): ToolExecutionResult {
+function refusalFor(
+  call: ToolCallInput,
+  toolName: string,
+  refusal: { readonly code: string; readonly message: string } = {
+    code: SKILL_TOOL_DENIED_CODE,
+    message: `Tool "${toolName}" is not available: the active skills' allowed-tools exclude it.`,
+  },
+): ToolExecutionResult {
   const callId =
     call.id !== undefined && call.id.length > 0 ? call.id : createToolCall(toolName, {}).id;
-  const message = `Tool "${toolName}" is not available: the active skills' allowed-tools exclude it.`;
+  const message = refusal.message;
   return {
     callId,
     outcome: 'error',
@@ -32,7 +39,7 @@ function refusalFor(call: ToolCallInput, toolName: string): ToolExecutionResult 
     ...(call.providerCallId === undefined ? {} : { providerCallId: call.providerCallId }),
     toolName,
     result: undefined,
-    error: { code: SKILL_TOOL_DENIED_CODE, category: 'permission', retryable: false, message },
+    error: { code: refusal.code, category: 'permission', retryable: false, message },
     errorMessage: message,
     errorCategory: 'permission',
   };
@@ -98,6 +105,7 @@ export function createGatedExecute(
   target: AnyToolbox,
   execute: (calls: unknown, options?: unknown) => Promise<unknown>,
   visibleTools: () => ReadonlyArray<{ readonly id: string }>,
+  refusalPolicy?: (toolName: string) => { readonly code: string; readonly message: string },
 ): (callOrCalls: ToolCallInput | ToolCallInput[], options?: ExecuteOptions) => Promise<unknown> {
   return async (callOrCalls, options) => {
     // By id, so a skill that allows `a:search` hides `b:search` though both are named `search`.
@@ -111,7 +119,7 @@ export function createGatedExecute(
     calls.forEach((call, index) => {
       const reached = callTarget(target, registered, call.name);
       if (reached !== undefined && !reached.ids.some((id) => visible.has(id))) {
-        refusals.set(index, refusalFor(call, reached.name));
+        refusals.set(index, refusalFor(call, reached.name, refusalPolicy?.(reached.name)));
       }
     });
     if (refusals.size === 0) return execute(callOrCalls, options);

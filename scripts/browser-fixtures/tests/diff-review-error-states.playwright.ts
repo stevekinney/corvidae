@@ -92,7 +92,7 @@ test.describe('Diff review — truncated patch state', () => {
     await mount.locator('.diff-review-file-list-button').click();
 
     const notice = mount.locator('[role="status"]', {
-      hasText: /Showing first \d+ of \d+ diff lines\./,
+      hasText: /Showing \d+ of \d+ changed lines/,
     });
     await expect(notice).toHaveCount(1);
 

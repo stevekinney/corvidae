@@ -1,0 +1,31 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "form-actions",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Save bar with unsaved changes and a failed save",
+      "description": "The bar at the end of a form: the unsaved-change count and the effect of saving on the left, Reset then Save on the right, with a top divider. A failed save draws a danger alert above the buttons, the choices stay as ticked, and Save keeps its label as the retry. sticky pins the bar to the bottom of a long form.",
+      "code": "<script lang=\"ts\">\n  import { Button, Checkbox, Form, FormActions } from '@lostgradient/cinder';\n\n  let opus = $state(true);\n  let sonnet = $state(true);\n  let failed = $state(true);\n  let changes = $derived((opus ? 0 : 1) + (sonnet ? 0 : 1));\n</script>\n\n<Form onSubmit={() => (failed = !failed)} novalidate>\n  <Checkbox id=\"allow-opus\" label=\"Claude Opus 5.5\" bind:checked={opus} />\n  <Checkbox id=\"allow-sonnet\" label=\"Claude Sonnet 5.5\" bind:checked={sonnet} />\n  <FormActions\n    unsavedChanges={changes}\n    errorTitle={failed ? 'Couldn’t save.' : undefined}\n    error={failed ? 'Interborough didn’t answer. Your choices are still here.' : undefined}\n  >\n    {#snippet summary()}Saving raises the policy revision.{/snippet}\n    {#snippet end()}\n      <Button\n        variant=\"secondary\"\n        onclick={() => {\n          opus = true;\n          sonnet = true;\n        }}>Reset to default</Button\n      >\n      <Button type=\"submit\" variant=\"primary\">Save</Button>\n    {/snippet}\n  </FormActions>\n</Form>\n"
+    },
+    {
+      "id": "save-failed",
+      "title": "A failed save",
+      "description": "A failed save draws a danger alert above the buttons. The choices stay as ticked, and Save keeps its label as the retry beside Reset to default.",
+      "code": "<script lang=\"ts\">\n  import { Button, Checkbox, Form, FormActions } from '@lostgradient/cinder';\n\n  let opus = $state(true);\n  let sonnet = $state(true);\n  let haiku = $state(false);\n  const changes = $derived([opus, sonnet, haiku].filter(Boolean).length);\n</script>\n\n<Form onSubmit={() => {}} novalidate>\n  <Checkbox id=\"failed-opus\" label=\"Claude Opus 5.5\" bind:checked={opus} />\n  <Checkbox id=\"failed-sonnet\" label=\"Claude Sonnet 5.5\" bind:checked={sonnet} />\n  <Checkbox id=\"failed-haiku\" label=\"Claude Haiku 5\" bind:checked={haiku} />\n  <FormActions\n    unsavedChanges={changes}\n    errorTitle=\"Couldn’t save.\"\n    error=\"Interborough didn’t answer. Your choices are still here.\"\n  >\n    {#snippet summary()}Saving raises the policy revision.{/snippet}\n    {#snippet end()}\n      <Button variant=\"secondary\">Reset to default</Button>\n      <Button type=\"submit\" variant=\"primary\">Save</Button>\n    {/snippet}\n  </FormActions>\n</Form>\n"
+    },
+    {
+      "id": "sticky",
+      "title": "Sticky bar on a long form",
+      "description": "sticky keeps the bar at the bottom of the nearest scrolling container, so the only Save is in reach however long the form gets: the summary \"Not saved yet\", then Cancel, then Save.",
+      "code": "<script lang=\"ts\">\n  import { Button, Form, FormActions, FormField, Input } from '@lostgradient/cinder';\n\n  const fields = [\n    'Name',\n    'Description',\n    'Model',\n    'Instructions',\n    'Tools',\n    'Skills',\n    'Memory',\n    'Schedule',\n  ];\n</script>\n\n<div style=\"max-block-size: 20rem; overflow: auto; border: 1px solid var(--cinder-border);\">\n  <Form onSubmit={() => {}} novalidate>\n    {#each fields as field (field)}\n      <FormField label={field} id={`sticky-${field.toLowerCase()}`}>\n        <Input id={`sticky-${field.toLowerCase()}`} value=\"\" />\n      </FormField>\n    {/each}\n    <FormActions sticky label=\"New agent\">\n      {#snippet summary()}Not saved yet{/snippet}\n      {#snippet end()}\n        <Button variant=\"secondary\">Cancel</Button>\n        <Button type=\"submit\" variant=\"primary\">Save</Button>\n      {/snippet}\n    </FormActions>\n  </Form>\n</div>\n"
+    },
+    {
+      "id": "unsaved-changes",
+      "title": "Unsaved changes and the effect of saving",
+      "description": "Once something changes the bar counts the unsaved changes in neutral text and names what saving does (\"Saving raises the policy revision.\"), with Reset to default then Save on the right. Untick a model to see the count.",
+      "code": "<script lang=\"ts\">\n  import { Button, Checkbox, Form, FormActions } from '@lostgradient/cinder';\n\n  let opus = $state(false);\n  let sonnet = $state(false);\n  let haiku = $state(true);\n  const changes = $derived([opus, sonnet, !haiku].filter(Boolean).length);\n\n  function reset(): void {\n    opus = false;\n    sonnet = false;\n    haiku = true;\n  }\n</script>\n\n<Form onSubmit={() => {}} novalidate>\n  <Checkbox id=\"allow-opus\" label=\"Claude Opus 5.5\" bind:checked={opus} />\n  <Checkbox id=\"allow-sonnet\" label=\"Claude Sonnet 5.5\" bind:checked={sonnet} />\n  <Checkbox id=\"allow-haiku\" label=\"Claude Haiku 5\" bind:checked={haiku} />\n  <FormActions unsavedChanges={changes}>\n    {#snippet summary()}Saving raises the policy revision.{/snippet}\n    {#snippet end()}\n      <Button variant=\"secondary\" onclick={reset}>Reset to default</Button>\n      <Button type=\"submit\" variant=\"primary\">Save</Button>\n    {/snippet}\n  </FormActions>\n</Form>\n"
+    }
+  ]
+}

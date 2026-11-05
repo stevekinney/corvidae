@@ -175,4 +175,118 @@
       min-inline-size: 44px;
     }
   }
+
+  /* ----------------------------------------
+   * Card variant (`variant="card"` on the grid)
+   *
+   * A left-aligned card: a radio (or checkbox) indicator, an optional icon beside the title, and a
+   * description under the title that lines up with the icon. Selection is the accent border and
+   * the accent-tinted surface; the indicator carries it too, so it never rests on color alone.
+   * ---------------------------------------- */
+
+  .cinder-choice-grid-item[data-cinder-variant='card'] {
+    --_cinder-choice-card-indicator-size: 1rem;
+
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    justify-content: stretch;
+    gap: var(--cinder-space-2-5) var(--cinder-space-2);
+    min-block-size: 0;
+    padding: var(--cinder-space-2-5) var(--cinder-space-3);
+    border-width: 1px;
+    border-radius: var(--cinder-radius-md);
+    text-align: start;
+  }
+
+  .cinder-choice-grid-item[data-cinder-variant='card'][data-cinder-selected] {
+    background: color-mix(in oklch, var(--cinder-accent-solid), var(--cinder-surface) 93%);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-choice-grid-item__indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    flex: none;
+    inline-size: var(--_cinder-choice-card-indicator-size, 1rem);
+    block-size: var(--_cinder-choice-card-indicator-size, 1rem);
+    margin-block-start: 0.125rem;
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-control-background);
+    transition:
+      background var(--cinder-duration-fast) ease,
+      border-color var(--cinder-duration-fast) ease;
+  }
+
+  [data-cinder-multiple] > .cinder-choice-grid-item .cinder-choice-grid-item__indicator {
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-choice-grid-item[data-cinder-selected] .cinder-choice-grid-item__indicator {
+    border-color: var(--cinder-accent-solid);
+    background: var(--cinder-accent-solid);
+  }
+
+  /* The dot (radio) or the check (checkbox) is a mask, so it tracks the accent contrast color. */
+  .cinder-choice-grid-item[data-cinder-selected] .cinder-choice-grid-item__indicator::after {
+    --_cinder-choice-card-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='3.5'/%3E%3C/svg%3E");
+
+    content: '';
+    inline-size: 100%;
+    block-size: 100%;
+    background: var(--cinder-accent-contrast);
+    mask: var(--_cinder-choice-card-mark) center / contain no-repeat;
+  }
+
+  [data-cinder-multiple]
+    > .cinder-choice-grid-item[data-cinder-selected]
+    .cinder-choice-grid-item__indicator::after {
+    --_cinder-choice-card-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5 6.5 11.5 12.5 5'/%3E%3C/svg%3E");
+  }
+
+  .cinder-choice-grid-item__card {
+    display: grid;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+    pointer-events: none; /* Clicks bubble to the item. */
+  }
+
+  .cinder-choice-grid-item__heading {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-choice-grid-item__icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-choice-grid-item__icon :where(svg) {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-choice-grid-item__title {
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-choice-grid-item__description {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-choice-grid-item[data-cinder-variant='card'][data-cinder-selected]
+    .cinder-choice-grid-item__title {
+    color: var(--cinder-text-default);
+  }
 }

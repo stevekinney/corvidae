@@ -8,6 +8,9 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
   type Stats,
 } from 'node:fs';
 import { dirname } from 'node:path';
@@ -144,4 +147,49 @@ export function readEntry(path: string, label: string, tighten?: number): string
   } finally {
     closeSync(descriptor);
   }
+}
+
+/** Write every byte, since `writeSync` may write fewer than it was given. */
+function writeFully(descriptor: number, contents: Buffer): void {
+  let offset = 0;
+  while (offset < contents.length) {
+    offset += writeSync(descriptor, contents, offset, contents.length - offset);
+  }
+}
+
+/**
+ * Write a file that is 0600 from its first byte, then rename it into place and sync the entry.
+ * The rename replaces whatever entry was at `path` (a symbolic link, a FIFO, a stale file) rather
+ * than writing through it, so a write can never land on something that is not Bungalow's.
+ */
+export function writePrivateFile(
+  path: string,
+  contents: string,
+  rename: (from: string, to: string) => void = renameSync,
+): void {
+  const temporary = `${path}.${process.pid}-${crypto.randomUUID()}.tmp`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openEntry(
+      temporary,
+      'temporary file',
+      'file',
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+      0o600,
+    );
+    writeFully(descriptor, Buffer.from(contents));
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    rename(temporary, path);
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // The temporary file was never created, or is already gone.
+    }
+    throw error;
+  }
+  syncDirectory(dirname(path));
 }

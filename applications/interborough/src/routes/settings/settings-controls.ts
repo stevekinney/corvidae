@@ -207,6 +207,19 @@ export function groupsOf(keys: readonly string[]): readonly string[] {
   return [...known, ...other];
 }
 
+/**
+ * A setting's name as a person reads it: the last part of its key, split into words and in
+ * sentence case, so `engine.workflowClaimRenewInterval` is "Workflow claim renew interval".
+ */
+export function settingLabel(key: string): string {
+  const last = key.split('.').at(-1) ?? key;
+  const words = last
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .trim();
+  return words === '' ? key : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
 /** Whether a property of an object-valued setting is a duration, which every setting takes in milliseconds. */
 export function isDuration(name: string): boolean {
   return name === 'olderThan' || name.endsWith('Milliseconds');

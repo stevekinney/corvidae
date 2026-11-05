@@ -20,6 +20,8 @@ Purpose: Lightweight unified-patch viewer for source-code and operational diffs 
 
 Without `onAnnotationSelectionChange`, the component is read-only and keyboard behavior follows the rendered native elements. The diff region has an accessible label through `ariaLabel`; provide a specific label when multiple diff viewers appear on the same page.
 
+When `maxLines` cuts a patch short, a footer under the rows says so in a `role="status"` line ("Showing 6 of 64 changed lines") beside a native _Show all_ button. Activating it renders every row in place, the button goes away, and focus moves to that status line, which then reads "Showing all 64 lines", so a keyboard user does not lose their place and a screen reader hears the change. The `inline` variant, which previews only the first changed lines, uses a button named "Show all 9 lines" (the patch's line count) with a decorative chevron and no status line until it is activated; every preview row keeps its screen-reader label ("Removed line 13: …").
+
 Supplying `onAnnotationSelectionChange` turns on one native `<button>` per commentable row/side, each a real focus stop in source order (addition and removal rows expose one control on their own side; context rows expose separate old- and new-side controls). On a focused control:
 
 - **Enter** starts a selection at that row, or — while a selection is pending — commits it and calls `onAnnotationSelectionChange` with the final range.

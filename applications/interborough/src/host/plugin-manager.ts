@@ -369,7 +369,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
 
   async function readText(): Promise<string | undefined> {
     try {
-      return await bungalow.readConfiguration();
+      const snapshot = await bungalow.readConfiguration();
+      return snapshot.text;
     } catch {
       throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
     }
@@ -568,7 +569,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       const live = options.appliesConfigurationLive?.(name) === true;
       const change = await serialized(async () => {
         assertWritable();
-        const text = await readText();
+        const snapshot = await bungalow.readConfiguration();
+        const text = snapshot.text;
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
         if (text !== undefined) parseProviderConfiguration(text, location);
         const current = readPluginSettings(text, location);
@@ -589,7 +591,14 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         const applied = parsePluginSettings(nextDocument, location);
         if (live && configuration !== undefined) options.checkDocument?.(nextDocument);
         try {
-          bungalow.writeConfiguration(`${JSON.stringify(nextDocument, null, 2)}\n`);
+          const result = await bungalow.writeConfiguration(
+            `${JSON.stringify(nextDocument, null, 2)}\n`,
+            { expectedRevision: snapshot.revision },
+          );
+          if (result.outcome !== 'committed')
+            throw new Error(
+              `Configuration write outcome: ${result.outcome}. Reload before retrying.`,
+            );
         } catch (error) {
           // A write that throws may still have replaced the file, so the disk decides what is reported.
           try {

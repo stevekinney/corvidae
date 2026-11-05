@@ -1,3 +1,4 @@
+import { planFold } from '../../utilities/fold-middle.ts';
 import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 import type {
   RunStep,
@@ -6,6 +7,7 @@ import type {
   RunStepBranchLaneOutcome,
   RunStepStatus,
   RunStepTimelineEntry,
+  RunStepTimelineFold,
 } from './run-step-timeline.types.ts';
 
 function assertNever(value: never): never {
@@ -99,8 +101,10 @@ export function statusDotStatus(status: RunStepStatus): StatusDotStatus {
     case 'cancelled':
       return 'offline';
     case 'skipped':
+    case 'recorded':
       return 'neutral';
     case 'pending':
+    case 'waiting':
       return 'pending';
     default:
       return assertNever(status);
@@ -121,13 +125,17 @@ export function statusLabel(status: RunStepStatus): string {
     case 'timed-out':
       return 'Timed out';
     case 'cancelled':
-      return 'Cancelled';
+      return 'Canceled';
     case 'skipped':
       return 'Skipped';
     case 'retrying':
       return 'Retrying';
     case 'waiting_approval':
       return 'Waiting approval';
+    case 'waiting':
+      return 'Waiting';
+    case 'recorded':
+      return 'Recorded';
     default:
       return assertNever(status);
   }
@@ -150,8 +158,10 @@ export function badgeVariant(status: RunStepStatus): RunStepBadgeVariant {
     case 'cancelled':
       return 'neutral';
     case 'skipped':
+    case 'recorded':
       return 'neutral';
     case 'pending':
+    case 'waiting':
       return 'neutral';
     default:
       return assertNever(status);
@@ -165,13 +175,19 @@ export function isTerminal(status: RunStepStatus): boolean {
     status === 'failed' ||
     status === 'timed-out' ||
     status === 'cancelled' ||
-    status === 'skipped'
+    status === 'skipped' ||
+    status === 'recorded'
   );
 }
 
 /** Whether this status represents an in-flight ("current") step. */
 export function isCurrent(status: RunStepStatus): boolean {
-  return status === 'running' || status === 'retrying' || status === 'waiting_approval';
+  return (
+    status === 'running' ||
+    status === 'retrying' ||
+    status === 'waiting_approval' ||
+    status === 'waiting'
+  );
 }
 
 /** Whether this step should render a progress bar. */
@@ -329,4 +345,73 @@ export function safeStepLinkHref(href: string): string | undefined {
   }
 
   return trimmedHref;
+}
+
+/** One run of a description: plain text, or code that was between backticks. */
+export type DescriptionSegment = { text: string; code: boolean };
+
+/**
+ * Splits a description at its backtick pairs so the parts between them can render as inline code.
+ * An unmatched backtick and an empty pair stay as plain text.
+ */
+export function describeSegments(description: string): DescriptionSegment[] {
+  const segments: DescriptionSegment[] = [];
+  let last = 0;
+  for (const match of description.matchAll(/`([^`]+)`/g)) {
+    const start = match.index;
+    if (start > last) segments.push({ text: description.slice(last, start), code: false });
+    segments.push({ text: match[1] ?? '', code: true });
+    last = start + match[0].length;
+  }
+  if (last < description.length) segments.push({ text: description.slice(last), code: false });
+  return segments;
+}
+
+/** The statuses a narrative fold never hides: something went wrong, is waiting on a person or a signal, or is under way. */
+const FOLD_PINNED_STATUSES: ReadonlySet<RunStepStatus> = new Set([
+  'failed',
+  'timed-out',
+  'waiting_approval',
+  'waiting',
+  'running',
+  'retrying',
+]);
+
+/** A narrative timeline with its middle folded, and the action each fold row carries. */
+export type FoldedNarrativeEntries = {
+  /** The entries to draw: the steps, with each folded run replaced by one row. */
+  readonly entries: RunStepTimelineEntry[];
+  /** The action text of each fold row, by the row's step id. */
+  readonly rows: ReadonlyMap<string, string>;
+};
+
+/**
+ * Replaces the middle of a long narrative timeline with fold rows: the first and last few entries
+ * stay, steps that failed or wait never fold, and each run of at least two entries that remains is
+ * one row, "3 more calls", whose action reads "Show all 9".
+ */
+export function foldNarrativeEntries(
+  entries: readonly RunStepTimelineEntry[],
+  fold: RunStepTimelineFold | undefined,
+): FoldedNarrativeEntries {
+  const label = fold?.label ?? ((hidden: number) => `${hidden} more steps`);
+  const actionLabel = fold?.actionLabel ?? ((total: number) => `Show all ${total}`);
+  const rows = new Map<string, string>();
+  const folded: RunStepTimelineEntry[] = [];
+  const plan = planFold(entries, {
+    first: fold?.first ?? 3,
+    last: fold?.last ?? 3,
+    // A branch group is never folded: it draws its own lanes.
+    isPinned: (entry) => 'kind' in entry || FOLD_PINNED_STATUSES.has(entry.status),
+  });
+  for (const part of plan) {
+    if (part.kind === 'item') {
+      folded.push(part.item);
+      continue;
+    }
+    const id = `__cinder-fold-${part.key}`;
+    rows.set(id, actionLabel(entries.length));
+    folded.push({ id, label: label(part.items.length), status: 'recorded' });
+  }
+  return { entries: folded, rows };
 }

@@ -19,12 +19,18 @@ const schema = {
     rawLabel: {
       type: 'string',
       description: 'Label of the disclosure that reveals the raw schema document.',
-      default: 'View JSON Schema',
+      default: 'JSON schema',
     },
     emptyLabel: {
       type: 'string',
-      description: 'Text shown when the schema declares no fields.',
-      default: 'This schema declares no fields.',
+      description:
+        'Text shown, in a bordered box instead of an empty grid, when the schema\ndeclares no fields.',
+      default: 'This schema takes no fields, so there is nothing to fill in.',
+    },
+    caption: {
+      type: 'string',
+      description:
+        "A note shown as the last line of the frame, below the rows. Use it to say\nhow to read the grid, for example how a choice's branches are labelled.",
     },
     class: {
       type: 'string',

@@ -69,4 +69,17 @@ describe('trackKeyboardInset', () => {
     expect(readInset()).toBe('0px');
     stop();
   });
+
+  test('returns a harmless cleanup when window is unavailable', () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: undefined });
+
+    try {
+      const stop = trackKeyboardInset();
+      expect(() => stop()).not.toThrow();
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+      else Reflect.deleteProperty(globalThis, 'window');
+    }
+  });
 });

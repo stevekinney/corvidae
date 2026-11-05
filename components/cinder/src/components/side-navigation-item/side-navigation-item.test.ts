@@ -119,6 +119,52 @@ function iconSnippet() {
   }));
 }
 
+describe('SideNavigationItem empty label (row 03k)', () => {
+  test('a row with no count names its state: "Health, nothing needs attention"', () => {
+    const { container } = render(SideNavigationItem, {
+      props: {
+        href: '/health',
+        label: 'Health',
+        count: 0,
+        countLabel: 'need attention',
+        emptyLabel: 'nothing needs attention',
+        dot: 'success',
+        children: labelSnippet('Health'),
+      },
+    });
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe(
+      'Health, nothing needs attention',
+    );
+    expect(
+      container.querySelector('.cinder-side-navigation-item__dot')?.getAttribute('aria-hidden'),
+    ).toBe('true');
+  });
+
+  test('a count wins over the empty label', () => {
+    const { container } = render(SideNavigationItem, {
+      props: {
+        href: '/health',
+        label: 'Health',
+        count: 3,
+        countLabel: 'need attention',
+        emptyLabel: 'nothing needs attention',
+        dot: 'warning',
+        children: labelSnippet('Health'),
+      },
+    });
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe(
+      'Health, 3 need attention',
+    );
+  });
+
+  test('without an empty label a row with no count is named by its content alone', () => {
+    const { container } = render(SideNavigationItem, {
+      props: { href: '/reviews', label: 'Reviews', count: 0, children: labelSnippet('Reviews') },
+    });
+    expect(container.querySelector('a')?.hasAttribute('aria-label')).toBe(false);
+  });
+});
+
 describe('SideNavigationItem accessible name (rows 02q and 03b)', () => {
   test('a count names the row: "Health, 3 need attention"', () => {
     const { container } = render(SideNavigationItem, {

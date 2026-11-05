@@ -27,6 +27,8 @@ Use the public props and documented examples to provide accessible names, descri
 
 Verdict mode renders the verdict label visibly and uses that same label for `aria-valuetext` when a bounded value exists. WAI-ARIA requires `aria-valuenow` on `role="meter"`, so an `unknown` verdict renders the same visual track as a polite `role="status"` with no fill or fabricated number. Known verdict levels remain meters and preserve their numeric range.
 
+Stacked `segments` keep one `role="meter"` whose `aria-valuenow` is the sum of the shares; pass `ariaValueText` for the sentence a reader should hear ("76K of 200K tokens"). The bar is decorative (`aria-hidden`) and the legend is a real list that names every share and its amount, so the breakdown never depends on the tones.
+
 When Meter accepts snippets or arbitrary children, the caller owns the semantics inside those children. Prefer native elements first, and add ARIA only when it matches the rendered behavior.
 
 ## Verification

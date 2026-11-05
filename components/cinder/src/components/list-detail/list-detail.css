@@ -55,9 +55,77 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
+  /* The detail pane keeps its own inset, so a detail view needs no compensating padding of its
+   * own. A view that bleeds edge to edge (a table, a code frame) sets
+   * `flushDetail`, or `--cinder-list-detail-detail-padding: 0` on an ancestor outside Interborough. */
   .cinder-list-detail__detail-body {
     flex: 1 1 auto;
     min-block-size: 0;
     overflow-y: auto;
+    padding: var(--cinder-list-detail-detail-padding, var(--cinder-space-4));
+  }
+
+  .cinder-list-detail[data-cinder-flush-detail] .cinder-list-detail__detail-body {
+    padding: 0;
+  }
+
+  /* A table in the list slot fills the pane edge to edge: the pane is its frame, so the table draws
+   * no border or radius of its own. */
+  .cinder-list-detail__rows .cinder-table-scroll {
+    border: 0;
+    border-radius: 0;
+  }
+
+  /* The loading placeholder for the list pane draws its own rows and keeps the pane's width. */
+  .cinder-list-detail__loading {
+    inline-size: 100%;
+  }
+
+  /* One pane at a time: the pane follows the page, not a box of its own. The list and the open item
+   * grow with their content and the page scrolls, so a phone never holds a second, inner scroll. */
+  .cinder-list-detail[data-cinder-layout='stacked'] {
+    block-size: auto;
+    min-block-size: 0;
+  }
+
+  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__list,
+  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__detail {
+    block-size: auto;
+  }
+
+  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__rows,
+  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__detail-body {
+    overflow-y: visible;
+  }
+
+  /* The divider between the panes is a full-height 1px rule. The grip is drawn on it only while the
+   * pointer is over the divider or it has focus, so a resting list-and-detail shows a quiet line. */
+  .cinder-list-detail__panels > .cinder-resizable-panels__handle::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 50%;
+    inline-size: 0;
+    transform: translateX(-50%);
+    border-inline-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-list-detail__panels
+    > .cinder-resizable-panels__handle
+    .cinder-resizable-panels__handle-line {
+    opacity: 0;
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-list-detail__panels
+    > .cinder-resizable-panels__handle:is(:hover, :focus-visible)
+    .cinder-resizable-panels__handle-line {
+    opacity: 1;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-list-detail__panels > .cinder-resizable-panels__handle::before {
+      border-inline-start-color: CanvasText;
+    }
   }
 }

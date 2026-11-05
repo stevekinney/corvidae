@@ -3,25 +3,28 @@
    * @cinder
    * @category data-display
    * @status alpha
-   * @purpose Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from a columns array and a rows array.
+   * @purpose Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from columns and rows, with custom cells, day groups, a footer and rows that open a detail pane.
    * @tag table
    * @tag data
    * @useWhen Rendering a structured dataset where columns and rows are known at runtime (e.g. API responses, config-driven dashboards).
    * @useWhen You want correct scope=col / scope=row semantics and aria-sort wiring without writing Table.Header / Table.Body manually.
-   * @avoidWhen You need custom cell rendering, interactive cells, nested components, or column spanning — use the compositional Table family directly.
+   * @avoidWhen You need nested components in header cells or column spanning — use the compositional Table family directly.
    * @avoidWhen You need fully custom cell or row composition — use Table directly.
    * @related table, data-grid, table-header, table-body, table-row, table-cell, table-header-cell
    */
   export type {
+    DataTableCellContext,
     DataTableColumn,
     DataTableProps,
     DataTableRow,
+    DataTableRowContext,
     DataTableSelectionMode,
   } from './data-table.types.ts';
 </script>
 
 <script lang="ts" generics="Row extends DataTableRow">
   import { onDestroy, tick, untrack } from 'svelte';
+  import type { Attachment } from 'svelte/attachments';
 
   import Checkbox from '../checkbox/checkbox.svelte';
   import TableBody from '../table-body/table-body.svelte';
@@ -31,6 +34,7 @@
   import TableRow from '../table-row/table-row.svelte';
   import TableRoot from '../table/table.svelte';
 
+  import { overflowFadeEdges } from '../../utilities/attachments.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import {
     getFixedVirtualWindow,
@@ -39,6 +43,7 @@
     resolveVirtualOverscan,
   } from '../../utilities/fixed-virtual-window.ts';
   import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import type { DataListGroup } from '../data-list/data-list.types.ts';
   import type { DataTableColumn, DataTableProps, DataTableRow } from './data-table.types.ts';
 
   let {
@@ -54,7 +59,16 @@
     rowSelectionLabel,
     stickyHeader = false,
     density = 'comfortable',
-    scrollable = false,
+    scrollable = true,
+    stackBelow = '640px',
+    cell,
+    rowMessage,
+    hasRowMessage,
+    groupBy,
+    footer,
+    onReachEnd,
+    openRowId = null,
+    onRowOpen,
     resizable = false,
     onColumnResize,
     virtualized = false,
@@ -114,7 +128,9 @@
   const someRowsSelected = $derived(
     selectable === 'multiple' && selectableRowIds.some((id) => selectedRowIdSet.has(id)),
   );
+  const fadeAttachment = overflowFadeEdges('inline');
   const shouldVirtualizeRows = $derived(virtualized);
+  const scrollsSideways = $derived(scrollable || shouldVirtualizeRows);
   const resolvedRowHeight = $derived(resolveVirtualItemHeight(rowHeight, 44));
   const resolvedOverscan = $derived(resolveVirtualOverscan(overscan));
   const viewportHeight = $derived(
@@ -144,6 +160,46 @@
         })),
   );
   const tabbableRowIndex = $derived(getTabbableRowIndex());
+  // A virtualized table, and one whose rows open, keep one row in the tab order and move between
+  // rows with the arrow keys.
+  const rowsFocusable = $derived(shouldVirtualizeRows || onRowOpen !== undefined);
+  const columnCount = $derived(columns.length + (selectionEnabled ? 1 : 0));
+  // The group each row sits under, and whether a header row opens a new run. Virtualized rows are
+  // a window, so grouping is left out there.
+  const rowGroups = $derived(
+    groupBy && !shouldVirtualizeRows ? rows.map((row, index) => groupBy(row, index)) : undefined,
+  );
+  function startsGroup(index: number): DataListGroup | undefined {
+    const group = rowGroups?.[index];
+    if (!group) return undefined;
+    const previous = index === 0 ? undefined : rowGroups?.[index - 1];
+    return previous !== undefined && previous.key === group.key ? undefined : group;
+  }
+  function rowHasMessage(row: Row, index: number): boolean {
+    if (!rowMessage) return false;
+    return hasRowMessage ? hasRowMessage(row, index) : true;
+  }
+  // Interactive controls inside an opening row take their own clicks.
+  const INTERACTIVE_TARGET = 'a, button, input, select, textarea, label, summary, [role="button"]';
+  function handleRowClick(event: MouseEvent, row: Row, index: number): void {
+    if (!onRowOpen || event.defaultPrevented) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest(INTERACTIVE_TARGET) !== null) return;
+    onRowOpen(row, index);
+  }
+
+  // The end of the table, watched so a table loads more rows by scrolling. The observer is made
+  // again whenever the row count changes, so an end that is still in view after a load fires again.
+  const watchEnd: Attachment<HTMLElement> = (node) => {
+    void rows.length;
+    const reached = onReachEnd;
+    if (!reached || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) reached();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  };
 
   /**
    * Map a DataTableColumn's `align` value to the value accepted by TableHeaderCell
@@ -495,7 +551,7 @@
   function focusRow(index: number): void {
     const nextIndex = clampRowIndex(index);
     activeRowIndex = nextIndex;
-    scrollToRow(nextIndex);
+    if (shouldVirtualizeRows) scrollToRow(nextIndex);
 
     void tick().then(() => {
       const row = wrapperElement?.querySelector<HTMLElement>(
@@ -511,13 +567,23 @@
   }
 
   function handleRowKeydown(event: KeyboardEvent, index: number): void {
-    if (!shouldVirtualizeRows) return;
+    if (!rowsFocusable) return;
+    // Keys pressed in a control inside the row belong to the control.
+    if (event.target !== event.currentTarget) return;
 
-    if (event.key === ' ' && selectionEnabled) {
+    if (event.key === 'Enter' || event.key === ' ') {
       const row = rows[index];
-      if (!row || isRowSelectionDisabled?.(row, index)) return;
-      event.preventDefault();
-      setRowSelected(row, index, !selectedRowIdSet.has(resolveRowId(row, index)));
+      if (!row) return;
+      if (event.key === ' ' && selectionEnabled) {
+        if (isRowSelectionDisabled?.(row, index)) return;
+        event.preventDefault();
+        setRowSelected(row, index, !selectedRowIdSet.has(resolveRowId(row, index)));
+        return;
+      }
+      if (onRowOpen) {
+        event.preventDefault();
+        onRowOpen(row, index);
+      }
       return;
     }
 
@@ -549,6 +615,8 @@
     {...shouldVirtualizeRows ? { 'aria-rowcount': rows.length + 1 } : {}}
     {stickyHeader}
     {density}
+    scrollable={false}
+    {stackBelow}
     bind:sort
   >
     <TableHeader>
@@ -628,22 +696,50 @@
         </tr>
       {/if}
       {#each virtualRows as virtualRow (virtualRow.key)}
+        {@const rowId = resolveRowId(virtualRow.row, virtualRow.index)}
+        {@const group = startsGroup(virtualRow.index)}
+        {@const withMessage = rowHasMessage(virtualRow.row, virtualRow.index)}
+        {#if group}
+          <tr class="cinder-data-table__group-row">
+            <th scope="colgroup" colspan={columnCount} class="cinder-data-table__group-cell">
+              <span class="cinder-data-table__group-label">{group.label}</span>
+              {#if group.detail}
+                <span class="cinder-data-table__group-detail" aria-hidden="true">·</span>
+                <span class="cinder-data-table__group-detail">{group.detail}</span>
+              {/if}
+            </th>
+          </tr>
+        {/if}
         <TableRow
+          data-cinder-row-id={rowId}
+          data-cinder-open={openRowId === rowId ? '' : undefined}
+          data-cinder-message={withMessage ? '' : undefined}
+          aria-current={openRowId === rowId ? 'true' : undefined}
           {...shouldVirtualizeRows
             ? {
                 'aria-rowindex': virtualRow.index + 2,
-                tabindex: tabbableRowIndex === virtualRow.index ? 0 : -1,
                 'data-cinder-virtual-row': 'true',
+              }
+            : {}}
+          {...rowsFocusable
+            ? {
+                tabindex: tabbableRowIndex === virtualRow.index ? 0 : -1,
                 'data-cinder-data-table-row-index': virtualRow.index,
                 onfocus: () => handleRowFocus(virtualRow.index),
                 onkeydown: (event: KeyboardEvent) => handleRowKeydown(event, virtualRow.index),
+              }
+            : {}}
+          {...onRowOpen
+            ? {
+                'data-cinder-row-opens': '',
+                onclick: (event: MouseEvent) =>
+                  handleRowClick(event, virtualRow.row, virtualRow.index),
               }
             : {}}
         >
           {#if selectionEnabled}
             {@const rowSelectionDisabled =
               isRowSelectionDisabled?.(virtualRow.row, virtualRow.index) ?? false}
-            {@const rowId = resolveRowId(virtualRow.row, virtualRow.index)}
             <td
               class="cinder-table__cell cinder-table__cell--selection"
               data-cinder-selection-disabled={rowSelectionDisabled || undefined}
@@ -665,13 +761,31 @@
               as={column.key === rowHeaderKey ? 'th' : 'td'}
               align={mapAlign(column.align) ?? 'left'}
               truncate={column.truncate ?? false}
+              controls={column.controls ?? false}
+              data-cinder-monospace={column.monospace || undefined}
               title={column.truncate ? truncatedTitle(virtualRow.row[column.key]) : undefined}
               style={columnWidth(column) ? `width: ${columnWidth(column)}px` : undefined}
             >
-              {virtualRow.row[column.key]}
+              {#if cell}
+                {@render cell({
+                  row: virtualRow.row,
+                  column,
+                  value: virtualRow.row[column.key],
+                  index: virtualRow.index,
+                })}
+              {:else}
+                {virtualRow.row[column.key]}
+              {/if}
             </TableCell>
           {/each}
         </TableRow>
+        {#if withMessage && rowMessage}
+          <tr class="cinder-data-table__row-message">
+            <td colspan={columnCount} class="cinder-data-table__row-message-cell">
+              {@render rowMessage({ row: virtualRow.row, index: virtualRow.index })}
+            </td>
+          </tr>
+        {/if}
       {/each}
       {#if shouldVirtualizeRows && virtualWindow.trailingSize > 0}
         <tr class="cinder-data-table__virtual-spacer" aria-hidden="true">
@@ -683,6 +797,16 @@
         </tr>
       {/if}
     </TableBody>
+    {#if footer || onReachEnd}
+      <tfoot class="cinder-data-table__footer">
+        <tr>
+          <td colspan={columnCount} class="cinder-data-table__footer-cell">
+            {@render footer?.()}
+            <span class="cinder-data-table__end" aria-hidden="true" {@attach watchEnd}></span>
+          </td>
+        </tr>
+      </tfoot>
+    {/if}
   </TableRoot>
 {/snippet}
 
@@ -690,9 +814,10 @@
   {...rest}
   bind:this={wrapperElement}
   {@attach observeWrapperResize}
+  {@attach scrollsSideways ? fadeAttachment : undefined}
   class={classNames(
     'cinder-data-table',
-    scrollable || shouldVirtualizeRows ? 'cinder-table-scroll' : undefined,
+    scrollsSideways ? 'cinder-table-scroll cinder-_scroll-fade-inline-end' : undefined,
     className,
   )}
   data-cinder-virtualized={shouldVirtualizeRows ? 'true' : undefined}

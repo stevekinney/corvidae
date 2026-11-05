@@ -193,7 +193,8 @@ const durationSchema = z.union([z.string(), z.number()]).superRefine((duration, 
   }
 });
 
-const stepSchema = z.discriminatedUnion('kind', [
+/** The schema of one document step, exposed so workflow editors can derive its field catalog. */
+export const workflowDocumentStepSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('activity'),
     handler: z.string().min(1),
@@ -215,7 +216,7 @@ export const workflowDocumentSchema = z.strictObject({
       context.addIssue({ code: 'custom', message: 'must contain only JSON values' });
     }
   }),
-  steps: z.array(stepSchema).min(1),
+  steps: z.array(workflowDocumentStepSchema).min(1),
   inputSchema: jsonObjectSchema.optional(),
   outputSchema: jsonObjectSchema.optional(),
   activityVersions: z.record(z.string().min(1), z.string().min(1)).optional(),

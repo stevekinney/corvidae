@@ -392,6 +392,23 @@ async function sayHelloChat({ host, runtime, director }: SessionContext): Promis
  * starts, the storage alert at 9:05 AM, then
  * everything from 9:46 AM to 10:45 AM.
  */
+/**
+ * The notifications the person's own hooks wrote ("Tell me when triage finishes", "Tell me when a
+ * schedule misses") are read and cleared by Nov 2, 10:45 AM, so the bell lists what needs them now
+ * (design row 02w) and not every event their hooks announced since Oct 23.
+ */
+async function clearHookNotifications(host: Host): Promise<void> {
+  const listed = await bureauCall<{ notifications: { id: string; kind: string }[] }>(
+    host,
+    'bureau.notifications.list',
+    { limit: 100 },
+  );
+  const ids = listed.notifications
+    .filter((notification) => notification.kind === 'hook')
+    .map((notification) => notification.id);
+  if (ids.length > 0) await bureauCall(host, 'bureau.notifications.dismiss', { ids });
+}
+
 async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host' | 'runtime'>> {
   const { host, runtime } = context;
   await missedRunsLogged(context);
@@ -426,6 +443,7 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
   const removed = await fetch(new URL('/host/providers/anthropic', host.url), { method: 'DELETE' });
   if (!removed.ok)
     throw new Error(`Removing the Anthropic key answered ${String(removed.status)}.`);
+  await clearHookNotifications(host);
 
   return {
     runs: { refund4472: refund4472.runId, refund4471: refund4471.runId },

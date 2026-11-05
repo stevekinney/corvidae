@@ -14,7 +14,6 @@ import {
   installBureauWorld,
   type BureauWorldStub,
 } from '../../../lib/bureau-world.test-support.ts';
-import { scopeReason } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 
 let stub: BureauWorldStub | undefined;
@@ -40,6 +39,6 @@ describe('the start picker for a caller who may not read the engine', () => {
     const view = open('/runs?view=start');
 
     await view.findByRole('heading', { level: 1, name: VIEW_COPY.runs.forbidden.title });
-    expect(view.getByText(scopeReason('workflows:read'))).not.toBeNull();
+    expect(view.getByText('requires workflows:read')).not.toBeNull();
   });
 });

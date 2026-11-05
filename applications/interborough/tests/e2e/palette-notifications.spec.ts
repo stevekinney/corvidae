@@ -96,17 +96,21 @@ test.describe('⌘K over every kind of record', () => {
     await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.workers);
 
     await search(page).fill('echo');
-    await expect(palette(page).getByRole('option', { name: /^demo:echo, / })).toBeVisible();
-    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.agents);
+    await expect(
+      palette(page).getByRole('option', { name: /^Echo, demo:echo, agent$/ }),
+    ).toBeVisible();
+    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.agentsAndTools);
 
     await search(page).fill(toolName);
     await expect(
-      palette(page).getByRole('option', { name: new RegExp(`^${toolName}`) }),
+      palette(page).getByRole('option', { name: new RegExp(`${toolName}, tool`) }),
     ).toBeVisible();
-    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.tools);
+    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.agentsAndTools);
 
     await search(page).fill('go to reviews');
-    await expect(palette(page).getByRole('option', { name: 'Go to Reviews' })).toBeVisible();
+    await expect(
+      palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }),
+    ).toBeVisible();
     await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.actions);
     await checkA11y('the palette with a result of every kind');
   });
@@ -117,7 +121,7 @@ test.describe('⌘K over every kind of record', () => {
 
     await search(page).fill(toolName);
     await palette(page)
-      .getByRole('option', { name: new RegExp(`^${toolName}`) })
+      .getByRole('option', { name: new RegExp(`${toolName}, tool`) })
       .click();
     await expect(page).toHaveURL(
       new RegExp(`/capabilities\\?tool=${encodeURIComponent(toolName)}`),
@@ -132,7 +136,7 @@ test.describe('⌘K over every kind of record', () => {
 
     await openPalette(page);
     await search(page).fill('go to reviews');
-    await palette(page).getByRole('option', { name: 'Go to Reviews' }).click();
+    await palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).click();
     await expect(page).toHaveURL(/\/reviews$/);
   });
 
@@ -148,7 +152,7 @@ test.describe('⌘K over every kind of record', () => {
     // The palette lists the eight longest-waiting, and other specifications leave their own
     // approvals waiting on this host, so what is first is not known here: it opens a chat.
     await waiting
-      .getByRole('option', { name: /needs your approval/ })
+      .getByRole('option', { name: /Waiting for your approval/ })
       .first()
       .click();
     await expect(page).toHaveURL(/\/chats\/(?!new)[^/?]+$/);
@@ -159,7 +163,7 @@ test.describe('⌘K over every kind of record', () => {
     await search(page).fill(MARKER);
     await palette(page)
       .getByRole('group', { name: PALETTE_COPY.groups.waiting })
-      .getByRole('option', { name: new RegExp(`needs your approval.*${MARKER}`) })
+      .getByRole('option', { name: /Waiting for your approval/ })
       .click();
     await expect(page).toHaveURL(new RegExp(`/chats/${waitingThread}$`));
   });
@@ -171,17 +175,18 @@ test.describe('⌘K over every kind of record', () => {
     await search(page).fill('>keyboard');
     await expect.poll(() => groupsOf(page)).toEqual([PALETTE_COPY.groups.actions]);
     const action = palette(page).getByRole('option', { name: SHORTCUT_COPY.openMap });
-    await expect(action).toHaveAttribute('aria-keyshortcuts', '?');
+    await expect(action.locator('kbd')).toHaveText(['?']);
 
     await search(page).fill('>go to rev');
-    await expect(palette(page).getByRole('option', { name: 'Go to Reviews' })).toHaveAttribute(
-      'aria-keyshortcuts',
-      'G V',
-    );
+    await expect(
+      palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).locator('kbd'),
+    ).toHaveText(['G', 'R']);
 
     await search(page).fill('@');
-    await expect(palette(page).getByRole('option', { name: /^demo:echo, / })).toBeVisible();
-    await expect.poll(() => groupsOf(page)).toEqual([PALETTE_COPY.groups.agents]);
+    await expect(
+      palette(page).getByRole('option', { name: /^Echo, demo:echo, agent$/ }),
+    ).toBeVisible();
+    await expect.poll(() => groupsOf(page)).toEqual([PALETTE_COPY.groups.agentsAndTools]);
 
     await search(page).fill('@zzzzqqqq');
     await expect(palette(page).getByText(PALETTE_COPY.noMatchesTitle)).toBeVisible();
@@ -363,7 +368,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
 
     await expect(page.getByText(NOTIFICATION_COPY.readFailed)).toBeVisible();
     await expect(rowOf(page)).toHaveAttribute('data-read', 'false');
-    await expect(page.locator('.weft-notification-bell__count')).not.toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).not.toHaveCount(0);
   });
 
   test('a notification is unread, and marking it read in one browser reads it in another', async ({
@@ -372,7 +377,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
     checkA11y,
   }) => {
     await page.goto('/agents');
-    await expect(page.locator('.weft-notification-bell__count')).not.toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).not.toHaveCount(0);
     await bell(page, /^Notifications/).click();
     await expect(rowOf(page)).toHaveAttribute('data-read', 'false');
     await checkA11y('the notification panel with a notification');

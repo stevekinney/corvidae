@@ -3,7 +3,7 @@
    * @cinder
    * @category data-display
    * @status stable
-   * @purpose Inspector for structured payloads: labelled fields by default with a Fields / JSON switch, a copy action, and size and truncation status.
+   * @purpose Card for any payload: sentence-case fields by default, a Fields / JSON switch, count and size, one copy action, secret masking, and states from streaming to failed.
    * @tag json
    * @tag inspector
    * @tag payload
@@ -26,14 +26,36 @@
 <script lang="ts">
   import type { PayloadInspectorProps, PayloadInspectorView } from './payload-inspector.types.ts';
 
+  import CircleAlert from '@lucide/svelte/icons/circle-alert';
+  import Check from '@lucide/svelte/icons/check';
+  import Download from '@lucide/svelte/icons/download';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Badge from '../badge/badge.svelte';
+  import Button from '../button/button.svelte';
+  import CodeBlock from '../code-block/code-block.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
+  import InlineLoading from '../inline-loading/inline-loading.svelte';
   import JsonViewer from '../json-viewer/json-viewer.svelte';
   import Segment from '../segment/segment.svelte';
+
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import { classNames } from '../../utilities/class-names.ts';
-  import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
-  import { isIdentifierField, readPayloadEntries } from './payload-inspector-fields.ts';
+  import { formatBytes } from '../../utilities/format-bytes.ts';
+  import {
+    chooseFieldsLayout,
+    headerCount,
+    isTreePayload,
+    LARGE_ARRAY_ABOVE,
+    readPartialObject,
+  } from './payload-inspector-model.ts';
+  import {
+    containsSecret,
+    maskSecrets,
+    SECRET_MASK,
+    writeSecretsAsText,
+  } from './payload-inspector-secrets.ts';
+  import PayloadFields from './_payload-fields.svelte';
+  import PayloadScalar from './_payload-scalar.svelte';
 
   let {
     value,
@@ -42,9 +64,17 @@
     maxDepth = 50,
     maxBytes = 1_048_576,
     parse,
-    label = 'Payload inspector',
+    label,
     view = $bindable('fields'),
     linkFor,
+    redact,
+    formatValue,
+    streaming = false,
+    failed = false,
+    failedMessage = "Couldn't load the full result.",
+    onRetry,
+    emptyLabel = 'No payload',
+    downloadFilename = 'payload.json',
     class: className,
     ...rest
   }: PayloadInspectorProps = $props();
@@ -53,7 +83,8 @@
 
   // --------------------------------------------------------------------------
   // Parsing: preserve plain string values, while still accepting serialized JSON
-  // strings for object, array, and JSON primitive payloads.
+  // strings for object, array, and JSON primitive payloads. A payload still
+  // arriving is text that is not whole yet, so it is read as it stands below.
   // --------------------------------------------------------------------------
 
   type ParseResult = { ok: true; parsed: unknown } | { ok: false; error: string };
@@ -86,222 +117,270 @@
     }
   });
 
-  const parsedValue = $derived(parseResult.ok ? parseResult.parsed : undefined);
-
-  // --------------------------------------------------------------------------
-  // Serialized size — compute once from the canonical in-memory value so that
-  // size display and the oversize gate are consistent with each other.
-  // --------------------------------------------------------------------------
-
-  type SizeResult = { ok: true; bytes: number } | { ok: false };
-
-  const sizeResult = $derived.by((): SizeResult => {
-    if (!parseResult.ok) return { ok: false };
-    try {
-      const json = JSON.stringify(parsedValue);
-      if (typeof json !== 'string') return { ok: false };
-      return { ok: true, bytes: new Blob([json]).size };
-    } catch {
-      return { ok: false };
-    }
-  });
-
-  const byteLabel = $derived.by((): string => {
-    if (!sizeResult.ok) return 'Unknown size';
-    const bytes = sizeResult.bytes;
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  });
+  // The text received so far. `value` is a string while a payload streams, and nothing before the first chunk.
+  const arrivedText = $derived(typeof value === 'string' ? value : '');
+  const arriving = $derived(streaming && (typeof value === 'string' || value === undefined));
+  const partial = $derived(arriving ? readPartialObject(arrivedText) : undefined);
+  const isEmpty = $derived(!arriving && value === undefined);
 
   // True when the in-memory value cannot be round-tripped through JSON.stringify
   // (e.g. circular references, BigInt). Only fires for non-string values that
   // parsed successfully — string parse errors are handled by parseResult.ok.
   const unserializable = $derived.by((): boolean => {
-    if (typeof value === 'string' || !parseResult.ok) return false;
+    if (arriving || typeof value === 'string' || !parseResult.ok || isEmpty) return false;
     try {
-      JSON.stringify(parsedValue);
-      return false;
+      return typeof JSON.stringify(parseResult.parsed) !== 'string';
     } catch {
       return true;
     }
   });
 
-  const isEmpty = $derived(parsedValue === undefined && value === undefined);
-
-  const isPrimitive = $derived(
-    parsedValue === null ||
-      typeof parsedValue === 'boolean' ||
-      typeof parsedValue === 'number' ||
-      typeof parsedValue === 'string',
-  );
-
-  // Copy target: the original string verbatim whenever the payload itself was
-  // a string — including a JSON-encoded string primitive like '"hello"',
-  // which parses to the bare string `hello` but should still copy as the
-  // original input, not the unquoted parsed result. Everything else copies
-  // as pretty-printed JSON of the parsed value.
-  const copyText = $derived.by((): string => {
-    if (!parseResult.ok) return typeof value === 'string' ? value : '';
-    if (typeof value === 'string') return value;
-    try {
-      return JSON.stringify(parsedValue, null, 2) ?? '';
-    } catch {
-      return '';
-    }
+  // Secrets are hidden here, before any size, layout or copy text is worked out from the value.
+  const shown = $derived.by((): unknown => {
+    if (arriving) return maskSecrets(Object.fromEntries(partial?.entries ?? []), redact);
+    if (!parseResult.ok || isEmpty || unserializable) return undefined;
+    return maskSecrets(parseResult.parsed, redact);
   });
 
-  const canCopy = $derived(!isEmpty && copyText !== '');
+  const serialized = $derived.by((): string | undefined => {
+    if (shown === undefined || arriving) return undefined;
+    try {
+      return JSON.stringify(shown);
+    } catch {
+      return undefined;
+    }
+  });
+  const bytes = $derived(serialized === undefined ? undefined : new Blob([serialized]).size);
+  const tooLarge = $derived(bytes !== undefined && bytes > maxBytes);
 
-  // Fields and JSON describe a structured payload. A primitive, an empty value,
-  // a parse failure and an unserializable value have nothing to switch between.
   const isStructured = $derived(
-    parseResult.ok &&
-      !unserializable &&
-      !isEmpty &&
-      !isPrimitive &&
-      typeof parsedValue === 'object',
+    typeof shown === 'object' && shown !== null && !(shown instanceof Date),
   );
 
-  const tooLarge = $derived(sizeResult.ok && sizeResult.bytes > maxBytes);
+  type Mode = 'failed' | 'none' | 'unserializable' | 'oversize' | 'invalid' | 'streaming' | 'ready';
 
-  function selectView(next: PayloadInspectorView): void {
-    view = next;
-  }
+  // The card is in exactly one of these states, and each one decides the header and the body, so
+  // the order below is the precedence.
+  const mode = $derived.by((): Mode => {
+    if (failed) return 'failed';
+    if (isEmpty) return 'none';
+    if (arriving) return 'streaming';
+    if (!parseResult.ok) return 'invalid';
+    if (unserializable) return 'unserializable';
+    if (tooLarge) return 'oversize';
+    return 'ready';
+  });
+
+  // Copy writes what the card shows. A string payload copies as it came, unless a secret in it was
+  // hidden, in which case the hidden copy is written instead so Copy never holds the stored value.
+  const copyText = $derived.by((): string => {
+    if (mode === 'invalid') return typeof value === 'string' ? value : '';
+    if (mode !== 'ready' && mode !== 'oversize') return '';
+    if (typeof value === 'string' && !containsSecret(shown)) return value;
+    return serialized === undefined ? '' : (JSON.stringify(shown, null, 2) ?? '');
+  });
+
+  const copyLabel = $derived(mode === 'invalid' ? 'Copy text' : `Copy ${label ?? 'payload'}`);
+  const showCopy = $derived(mode !== 'none' && mode !== 'unserializable');
+  const copyDisabled = $derived(mode === 'failed' || mode === 'streaming');
+  const showSwitch = $derived(mode === 'ready' || mode === 'streaming' || mode === 'invalid');
+
+  const countText = $derived.by((): string | undefined => {
+    if (mode === 'ready') return headerCount(shown, { bytes });
+    if (mode === 'streaming') return headerCount(shown, { streaming: true });
+    if (mode === 'invalid') return 'Text';
+    if (mode === 'oversize' && bytes !== undefined) return formatBytes(bytes);
+    return undefined;
+  });
+
+  const fieldsOptions = $derived({
+    linkFor,
+    formatValue,
+    initialDepth,
+    maxDepth,
+    tree: isTreePayload(shown),
+  });
+
+  // A payload that has said nothing whole yet has no field to list, only the wait.
+  const receivingOnly = $derived(
+    mode === 'streaming' &&
+      (partial === undefined || (partial.entries.length === 0 && partial.pendingKey === undefined)),
+  );
+
+  const rootLayout = $derived.by(() => {
+    if (
+      typeof shown !== 'object' ||
+      shown === null ||
+      Array.isArray(shown) ||
+      shown instanceof Date
+    ) {
+      return 'rows' as const;
+    }
+    return chooseFieldsLayout(
+      Object.entries(shown).map(([key, entry]) => ({
+        key,
+        value: entry,
+        linked:
+          linkFor?.({ path: [key], key, value: entry }) !== undefined &&
+          (entry === null || typeof entry !== 'object'),
+      })),
+      { streaming: arriving },
+    );
+  });
+
+  // The JSON view of a payload still arriving is the text so far, with a hidden value written as
+  // bullets, so what has not arrived whole is shown as received.
+  const streamingText = $derived.by((): string => {
+    if (!arriving) return '';
+    if (partial === undefined) return arrivedText;
+    const lines = Object.entries(shown as Record<string, unknown>).map(
+      ([key, entry]) =>
+        `  ${JSON.stringify(key)}: ${JSON.stringify(writeSecretsAsText(entry), null, 2)?.replaceAll('\n', '\n  ')}`,
+    );
+    if (partial.pendingKey !== undefined) {
+      const pending = maskSecrets({ [partial.pendingKey]: 0 }, redact) as Record<string, unknown>;
+      const hidden = typeof pending[partial.pendingKey] !== 'number';
+      lines.push(
+        `  ${JSON.stringify(partial.pendingKey)}: ${hidden ? JSON.stringify(SECRET_MASK) : (partial.pendingText ?? '')}`,
+      );
+    }
+    return `{\n${lines.join(',\n')}`;
+  });
 
   function handleViewChange(next: string): void {
-    if (next === 'fields' || next === 'json') selectView(next);
+    if (next === 'fields' || next === 'json') view = next satisfies PayloadInspectorView;
   }
 
-  // Fields view only: how many entries of one object or array render before the
-  // rest are summarised, so a very wide payload cannot build an unbounded DOM.
-  const FIELD_ENTRY_LIMIT = 100;
+  function download(): void {
+    const url = URL.createObjectURL(new Blob([copyText], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = downloadFilename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 </script>
 
-{#snippet scalar(key: string, value: unknown, path: string[])}
-  {@const href = linkFor?.({ path, key, value })}
-  {#if value === null}
-    <span class="cinder-payload-inspector__null">null</span>
-  {:else if typeof value === 'string' && value === ''}
-    <span class="cinder-payload-inspector__null">Empty</span>
-  {:else if href !== undefined}
-    <a
-      class="cinder-payload-inspector__link"
-      data-cinder-identifier={isIdentifierField(key, value) || undefined}
-      {href}>{String(value)}</a
-    >
-  {:else if isIdentifierField(key, value)}
-    <code class="cinder-payload-inspector__identifier">{String(value)}</code>
-  {:else if typeof value === 'number' || typeof value === 'bigint'}
-    <span class="cinder-payload-inspector__number">{String(value)}</span>
+<div
+  {...rest}
+  role="group"
+  aria-label={label ?? 'Payload'}
+  data-cinder-state={mode}
+  class={classNames('cinder-payload-inspector', className)}
+>
+  {#if mode === 'none'}
+    <p class="cinder-payload-inspector__empty">{emptyLabel}</p>
   {:else}
-    <span class="cinder-payload-inspector__text">{String(value)}</span>
-  {/if}
-{/snippet}
-
-{#snippet fieldRows(source: unknown, path: string[], depth: number)}
-  {@const entries = readPayloadEntries(source)}
-  {#if entries.length === 0}
-    <span class="cinder-payload-inspector__null"
-      >{Array.isArray(source) ? 'No items' : 'No fields'}</span
-    >
-  {:else}
-    <dl class="cinder-payload-inspector__fields">
-      {#each entries.slice(0, FIELD_ENTRY_LIMIT) as entry (entry.key)}
-        <div class="cinder-payload-inspector__field">
-          <dt class="cinder-payload-inspector__field-label">
-            {entry.isIndex ? entry.key : humanizeIdentifier(entry.key)}
-          </dt>
-          <dd class="cinder-payload-inspector__field-value">
-            {#if entry.nested && depth < maxDepth}
-              {@render fieldRows(entry.value, [...path, entry.key], depth + 1)}
-            {:else if entry.nested}
-              <span class="cinder-payload-inspector__null">Too deep to show here.</span>
-            {:else}
-              {@render scalar(entry.key, entry.value, [...path, entry.key])}
-            {/if}
-          </dd>
-        </div>
-      {/each}
-    </dl>
-    {#if entries.length > FIELD_ENTRY_LIMIT}
-      <p class="cinder-payload-inspector__more">
-        {entries.length - FIELD_ENTRY_LIMIT} more not shown. Switch to JSON to see them.
-      </p>
-    {/if}
-  {/if}
-{/snippet}
-
-<div {...rest} class={classNames('cinder-payload-inspector', className)}>
-  <!-- Heading row: label on the left; size, view switch and copy on the right -->
-  <div class="cinder-payload-inspector__header">
-    <span class="cinder-payload-inspector__label">{label}</span>
-    <div class="cinder-payload-inspector__header-actions">
-      {#if isStructured}
+    <div class="cinder-payload-inspector__header">
+      {#if label !== undefined}
+        <span class="cinder-payload-inspector__label">{label}</span>
+      {/if}
+      {#if showSwitch}
         <SegmentedControl
           id={switchId}
-          label={`${label} view`}
+          label={`${label ?? 'Payload'} view`}
           labelVisible={false}
           size="sm"
-          value={view}
+          value={mode === 'invalid' ? 'fields' : view}
+          disabled={mode === 'invalid'}
           onValueChange={handleViewChange}
         >
           <Segment value="fields">Fields</Segment>
           <Segment value="json">JSON</Segment>
         </SegmentedControl>
       {/if}
-      {#if sizeResult.ok}
-        <span class="cinder-payload-inspector__size" aria-label={`${byteLabel} payload size`}>
-          {byteLabel}
-        </span>
-      {/if}
-      {#if truncated}
-        <Badge variant="warning" size="xs">Truncated</Badge>
-      {/if}
-      {#if canCopy}
-        <CopyButton
-          value={copyText}
-          label={`Copy ${label}`}
-          copiedLabel="Copied"
-          title={`Copy ${label}`}
-          iconOnly
-        />
+      <div class="cinder-payload-inspector__header-actions">
+        {#if countText !== undefined}
+          <span class="cinder-payload-inspector__size">{countText}</span>
+        {/if}
+        {#if truncated}
+          <Badge variant="warning" size="xs">Truncated</Badge>
+        {/if}
+        {#if showCopy}
+          <CopyButton
+            value={copyText}
+            label={copyLabel}
+            copiedLabel="Copied"
+            title={copyLabel}
+            confirmDuration={2000}
+            disabled={copyDisabled}
+            iconOnly
+          >
+            {#snippet confirmation()}
+              <Check class="cinder-icon-sm" aria-hidden="true" />
+              <span class="cinder-payload-inspector__copied">Copied</span>
+            {/snippet}
+          </CopyButton>
+        {/if}
+      </div>
+    </div>
+
+    <div class="cinder-payload-inspector__panel">
+      {#if mode === 'failed'}
+        <div class="cinder-payload-inspector__error" role="alert">
+          <CircleAlert class="cinder-icon-sm" aria-hidden="true" />
+          <span>{failedMessage}</span>
+          {#if onRetry !== undefined}
+            <Button variant="secondary" size="sm" onclick={onRetry}>Try again</Button>
+          {/if}
+        </div>
+      {:else if mode === 'unserializable'}
+        <p class="cinder-payload-inspector__notice">
+          This value can't be serialized as JSON (it may contain circular references or BigInt
+          values).
+        </p>
+      {:else if mode === 'oversize' && bytes !== undefined}
+        <p class="cinder-payload-inspector__notice">
+          This payload is {formatBytes(bytes)}, over the {formatBytes(maxBytes)} shown here. It isn't
+          rendered, so the page stays fast.
+        </p>
+        <div>
+          <Button variant="secondary" size="sm" onclick={download}>
+            {#snippet leadingIcon()}<Download class="cinder-icon-sm" aria-hidden="true" />{/snippet}
+            Download JSON
+          </Button>
+        </div>
+      {:else if mode === 'invalid'}
+        <p class="cinder-payload-inspector__warning">
+          <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />
+          <span>This isn't valid JSON, so it's shown as text.</span>
+        </p>
+        <CodeBlock code={typeof value === 'string' ? value : ''} wrap />
+      {:else if view === 'json'}
+        {#if mode === 'streaming'}
+          <CodeBlock code={streamingText} wrap />
+        {:else}
+          <JsonViewer
+            value={writeSecretsAsText(shown)}
+            {initialDepth}
+            {maxDepth}
+            {maxBytes}
+            largeArrayAbove={LARGE_ARRAY_ABOVE}
+            maxKeyLength={40}
+            maxStringLength={200}
+          />
+        {/if}
+      {:else if receivingOnly}
+        <InlineLoading status="active" description="Receiving…" />
+      {:else if isStructured}
+        <div
+          class="cinder-payload-inspector__field-view"
+          data-cinder-tree={fieldsOptions.tree || undefined}
+        >
+          <PayloadFields
+            source={shown}
+            path={[]}
+            depth={0}
+            options={fieldsOptions}
+            layout={rootLayout}
+            pendingKey={mode === 'streaming' ? partial?.pendingKey : undefined}
+          />
+        </div>
+      {:else}
+        <div class="cinder-payload-inspector__primitive">
+          <PayloadScalar fieldKey="" value={shown} path={[]} options={fieldsOptions} />
+        </div>
       {/if}
     </div>
-  </div>
-
-  <div class="cinder-payload-inspector__panel">
-    {#if isEmpty}
-      <div class="cinder-payload-inspector__empty" role="status">No payload</div>
-    {:else if !parseResult.ok}
-      <div
-        class="cinder-payload-inspector__notice cinder-payload-inspector__notice--warning"
-        role="alert"
-      >
-        Parse error: {parseResult.error}
-      </div>
-      {#if typeof value === 'string'}
-        <pre class="cinder-payload-inspector__primitive">{value}</pre>
-      {/if}
-    {:else if unserializable}
-      <div class="cinder-payload-inspector__notice" role="status">
-        This value can't be serialized as JSON (it may contain circular references or BigInt
-        values).
-      </div>
-    {:else if isPrimitive}
-      <pre class="cinder-payload-inspector__primitive">{String(parsedValue)}</pre>
-    {:else if view === 'json'}
-      <JsonViewer value={parsedValue} {initialDepth} {maxDepth} {maxBytes} />
-    {:else if tooLarge}
-      <div class="cinder-payload-inspector__notice" role="status">
-        Payload too large to show as fields (~{Math.round(
-          (sizeResult.ok ? sizeResult.bytes : 0) / 1024,
-        )} KB; cap is {Math.round(maxBytes / 1024)} KB). Copy it to inspect the raw JSON.
-      </div>
-    {:else}
-      <div class="cinder-payload-inspector__field-view">
-        {@render fieldRows(parsedValue, [], 0)}
-      </div>
-    {/if}
-  </div>
+  {/if}
 </div>

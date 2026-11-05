@@ -1,5 +1,7 @@
+import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { DataListGroup } from '../data-list/data-list.types.ts';
 import type { TableDensity, TableSort } from '../table/table.types.ts';
 
 /**
@@ -48,9 +50,41 @@ export type DataTableColumn<Row extends DataTableRow = DataTableRow> = {
    * value then cannot widen the table.
    */
   truncate?: boolean;
+  /**
+   * Marks the column's body cells as holding form controls (a select, a checkbox, a button), which
+   * the `cell` snippet draws. The controls fill the cell and share one width; `'fit'` is for a
+   * control that keeps its own size, such as a checkbox. A table with a controls column stacks on a
+   * narrow container (see `stackBelow`).
+   */
+  controls?: boolean | 'fit';
+  /**
+   * When true, the column's body cells render in the monospace face, for identifiers, keys and
+   * paths.
+   */
+  monospace?: boolean;
   width?: number;
   minWidth?: number;
   maxWidth?: number;
+};
+
+/** What the `cell` snippet receives for one body cell. */
+export type DataTableCellContext<Row extends DataTableRow = DataTableRow> = {
+  /** The row record. */
+  row: Row;
+  /** The column the cell belongs to. */
+  column: DataTableColumn<Row>;
+  /** The row's value for the column, `row[column.key]`. */
+  value: unknown;
+  /** The row's position in `rows`. */
+  index: number;
+};
+
+/** What the `rowMessage` snippet receives for one row. */
+export type DataTableRowContext<Row extends DataTableRow = DataTableRow> = {
+  /** The row record. */
+  row: Row;
+  /** The row's position in `rows`. */
+  index: number;
 };
 
 /** Row-selection mode for DataTable. */
@@ -117,10 +151,64 @@ export type DataTableProps<Row extends DataTableRow = DataTableRow> = Omit<
    */
   density?: TableDensity;
   /**
-   * When true, wraps the table in a `.cinder-table-scroll` container that
-   * enables horizontal overflow scrolling on small viewports.
+   * Draws the table inside the same scroll box a `Table` uses: it owns the border, the radius and
+   * the clip, scrolls sideways when the columns do not fit, and fades at the inline end. A
+   * virtualized table always scrolls in this box.
+   * @default true
    */
   scrollable?: boolean;
+  /**
+   * Width of the table's own container below which a table with a `controls` column stacks, each
+   * row becoming a card with the controls on a line of their own. See `Table`.
+   * @default "640px"
+   */
+  stackBelow?: string | false;
+  /**
+   * Draws the content of every body cell, in place of the plain value, for cells that hold more
+   * than text: a checkbox, a select, a name with its identifier beneath. Render
+   * `{context.value}` for a column that needs nothing special.
+   */
+  cell?: Snippet<[context: DataTableCellContext<Row>]>;
+  /**
+   * Draws a message across the full width of the table directly under a row, such as the line
+   * that says a save failed. It is a row of its own, not squeezed into a cell, and it belongs to
+   * the row above it. Which rows have one is `hasRowMessage`. Give the message `role="alert"` when
+   * it reports a failure, so it is announced.
+   */
+  rowMessage?: Snippet<[context: DataTableRowContext<Row>]>;
+  /**
+   * Whether a row has a message under it. Without it, every row has one while `rowMessage` is set.
+   */
+  hasRowMessage?: (row: Row, index: number) => boolean;
+  /**
+   * Groups consecutive rows under a header row that spans the table, such as a day. Each run of
+   * rows with the same group key follows one header, drawn as the group's `label` and, after a dot,
+   * its `detail` (the time zone). Rows are not reordered; pass them already sorted. Ignored while
+   * `virtualized`.
+   */
+  groupBy?: (row: Row, index: number) => DataListGroup;
+  /**
+   * Content of a footer row that spans the table, below the last row: a count, a hint. The table
+   * stays one framed box.
+   */
+  footer?: Snippet;
+  /**
+   * Called when the end of the table scrolls into view, and again after `rows` grows while the end
+   * is still in view, so a table loads more rows by scrolling and needs no button. Pass it only
+   * while there are more rows to load, and guard against a load already in flight.
+   */
+  onReachEnd?: (() => void) | undefined;
+  /**
+   * Id of the open row, the one a detail pane shows. It is marked `aria-current` and drawn
+   * highlighted. Ids are the ones `getRowId` returns.
+   */
+  openRowId?: string | null;
+  /**
+   * Makes each row open on a click, Enter or Space, and gives the rows one tab stop with Arrow keys,
+   * Home and End moving between them. A click on a control inside the row (a button, a link, a
+   * field) does not open it.
+   */
+  onRowOpen?: (row: Row, index: number) => void;
   /** Enables pointer and keyboard resizing handles in column headers. */
   resizable?: boolean;
   /** Called after a column width changes through a pointer or keyboard resize handle. */

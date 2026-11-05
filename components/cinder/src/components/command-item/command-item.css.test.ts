@@ -1,23 +1,13 @@
 /**
- * Regression test for the command-item active-row ring (WCAG 1.4.11 fix).
+ * Regression test for the command-item active row: a soft accent tint with the label's own color
+ * (row 03c), and the keyboard-cursor ring (WCAG 1.4.11) that comes from the shared row rule.
  *
- * The active command item row communicates keyboard position and must carry a
- * contrast-safe geometric ring (`box-shadow: inset 0 0 0 1px
- * var(--cinder-accent-contrast)`) in addition to its accent fill. The ring sits
- * ON the accent fill, so unlike the shared `_floating-surface.css` ring (which
- * sits on a neutral hover surface and uses `--cinder-ring-color`), it must
- * contrast against `--cinder-accent-solid` itself. `--cinder-ring-color` collapses to
- * ~1.1:1 on the accent fill (invisible); `--cinder-accent-contrast` is the token
- * already proven to clear AA on that fill.
- *
- * This file is parser-only: it pins the CSS *declaration* (that the ring uses
- * `--cinder-accent-contrast`, the accent fill is preserved, and the forced-colors
- * fallback is intact) via `postcss`. happy-dom does not compute styles from
- * stylesheets and the package has no browser harness for unit CSS, so the actual
- * *contrast ratio* is gated separately in `check-token-contrast.test.ts`, which
- * parses the oklch token definitions and asserts the accent/accent-contrast pair
- * clears the WCAG thresholds. The two together — declaration here, ratio there —
- * are what prevent a silent regression to an invisible ring.
+ * The tint is too pale to be a cursor boundary on its own, so the inset `--cinder-ring-color` ring
+ * of `_row-item.css` must keep applying to the active row. This file is parser-only: it pins the CSS
+ * *declarations* (the tint, the unchanged text color, no `box-shadow` that would remove the ring,
+ * and the forced-colors fallback) via `postcss`. happy-dom does not compute styles from stylesheets
+ * and the package has no browser harness for unit CSS, so the contrast ratio of the ring token is
+ * gated separately in `check-token-contrast.test.ts`.
  */
 
 import { readFileSync } from 'node:fs';
@@ -74,31 +64,26 @@ function declValue(rule: Rule, property: string): string | undefined {
 
 const ACTIVE_SELECTOR = '.cinder-command-item[data-cinder-active]';
 
-describe('command-item active state — WCAG 1.4.11 ring', () => {
-  test('active rule keeps the accent fill background', () => {
+describe('command-item active state — tint and WCAG 1.4.11 ring', () => {
+  test('active rule is a soft accent tint, not the solid accent fill', () => {
     const rule = findTopLevelRule(ACTIVE_SELECTOR);
-    expect(declValue(rule, 'background')).toBe('var(--cinder-accent-solid)');
+    expect(declValue(rule, 'background')).toBe('var(--cinder-accent-background)');
   });
 
-  test('active rule keeps the accent contrast foreground color', () => {
+  test('active rule keeps the default text color, so the highlight never recolors the label', () => {
     const rule = findTopLevelRule(ACTIVE_SELECTOR);
-    expect(declValue(rule, 'color')).toBe('var(--cinder-accent-contrast)');
+    expect(declValue(rule, 'color')).toBe('var(--cinder-text-default)');
   });
 
-  test('active rule includes an inset ring using var(--cinder-accent-contrast)', () => {
-    // The ring is the WCAG 1.4.11 geometric affordance for keyboard cursor
-    // position. It must use `--cinder-accent-contrast` — the only token proven to
-    // contrast against the accent fill the ring sits on — as an inset box-shadow
-    // so it follows the element's border-radius. (`--cinder-ring-color` would be
-    // invisible here; the actual ratio is asserted in check-token-contrast.test.ts.)
+  test('active rule leaves the shared row ring in place instead of removing it', () => {
+    // The tint is too pale to be the keyboard cursor's only boundary (WCAG 1.4.11), so the inset
+    // `--cinder-ring-color` ring `_row-item.css` draws on every active row must keep applying: this
+    // rule declares no `box-shadow` of its own that could replace or cancel it.
     const rule = findTopLevelRule(ACTIVE_SELECTOR);
-    const shadow = declValue(rule, 'box-shadow');
-    expect(
-      shadow,
-      'box-shadow must be set on the top-level active rule (not only in forced-colors)',
-    ).toBeDefined();
-    expect(shadow, 'box-shadow must be an inset ring using var(--cinder-accent-contrast)').toMatch(
-      /inset\s+0\s+0\s+0\s+1px\s+var\(--cinder-accent-contrast\)/,
+    expect(declValue(rule, 'box-shadow')).toBeUndefined();
+    const shared = loadCss('../../styles/components/_row-item.css');
+    expect(shared).toMatch(
+      /\.cinder-_row-item\[data-cinder-active\][\s\S]*?box-shadow:\s*inset\s+0\s+0\s+0\s+1px\s+var\(--cinder-ring-color\)/,
     );
   });
 

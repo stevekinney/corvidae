@@ -22,12 +22,17 @@ import { endToEndPort } from './environment-configuration.ts';
 const NOW = new Date('2026-11-02T08:30:00.000Z');
 
 describe('parseArguments', () => {
-  test('captures all three specifications in both schemes into a time-stamped directory by default', () => {
+  test('captures every specification in both schemes into a time-stamped directory by default', () => {
     const options = parseArguments([], NOW);
     if (typeof options === 'string') throw new Error(options);
     expect(options.schemes).toEqual(['light', 'dark']);
     expect(options.specifications).toEqual([
       'tests/e2e/showcase.spec.ts',
+      'tests/e2e/shell-chrome.spec.ts',
+      'tests/e2e/shell-search.spec.ts',
+      'tests/e2e/shell-states.spec.ts',
+      'tests/e2e/restart.spec.ts',
+      'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
     ]);
@@ -53,7 +58,14 @@ describe('parseArguments', () => {
       if (typeof options === 'string') throw new Error(options);
       return options.specifications;
     };
-    expect(specificationsOf(['--data', 'showcase'])).toEqual(['tests/e2e/showcase.spec.ts']);
+    expect(specificationsOf(['--data', 'showcase'])).toEqual([
+      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/shell-chrome.spec.ts',
+      'tests/e2e/shell-search.spec.ts',
+      'tests/e2e/shell-states.spec.ts',
+      'tests/e2e/restart.spec.ts',
+      'tests/e2e/first-run.spec.ts',
+    ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
       'tests/e2e/responsive.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
@@ -64,6 +76,11 @@ describe('parseArguments', () => {
     ]);
     expect(specificationsOf(['--specs', 'responsive', '--data', 'both'])).toEqual([
       'tests/e2e/showcase.spec.ts',
+      'tests/e2e/shell-chrome.spec.ts',
+      'tests/e2e/shell-search.spec.ts',
+      'tests/e2e/shell-states.spec.ts',
+      'tests/e2e/restart.spec.ts',
+      'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     // `--specs` alone keeps meaning what it always meant: one of the stress specifications.

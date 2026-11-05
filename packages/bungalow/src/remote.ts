@@ -1,4 +1,6 @@
-import type { Bungalow } from './bungalow.ts';
+import type { Bungalow, DatabaseWorkspaceClaim } from './bungalow.ts';
+import type { ConfigurationSnapshot, ConfigurationWriteResult } from './configuration.ts';
+import { assertConfigurationWrite } from './configuration.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
 import { secretVariable, type RemoteConfiguration } from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
@@ -11,7 +13,13 @@ const PRESIGN_SECONDS = 60;
 const SESSION_TOKEN_PARAMETER = 'X-Amz-Security-Token';
 
 /** The S3 operations Bungalow performs, which are all a failure's message may name. */
-type S3Operation = 'read configuration' | 'read deployment ID' | 'write deployment ID';
+type S3Operation =
+  | 'read configuration'
+  | 'write configuration'
+  | 'read deployment ID'
+  | 'write deployment ID'
+  | 'read workspace identity'
+  | 'write workspace identity';
 
 /**
  * What a failed S3 operation keeps as its `cause`: the HTTP status of a response, or the code of
@@ -81,6 +89,41 @@ async function readObject(
   }
 }
 
+/** Read bytes and revision from one HTTP response, never separate GET and HEAD requests. */
+async function readConfigurationObject(
+  client: Bun.S3Client,
+  key: string,
+): Promise<ConfigurationSnapshot> {
+  const response = await send(client, key, 'read configuration', 'GET');
+  if (!response.ok) {
+    await discard(response);
+    if (response.status === 404) return { text: undefined, revision: null };
+    throw s3Failure('read configuration', { status: response.status });
+  }
+  const revision = response.headers.get('etag');
+  if (revision === null || revision === '') {
+    await discard(response);
+    throw s3Failure('read configuration', { code: 'missing-revision' });
+  }
+  try {
+    return { text: await response.text(), revision };
+  } catch {
+    throw s3Failure('read configuration', { code: 'read-failed' });
+  }
+}
+
+/** An uncertain response is observed once; equal content alone cannot prove which writer committed. */
+async function reconcileConfiguration(
+  client: Bun.S3Client,
+  key: string,
+): Promise<ConfigurationWriteResult> {
+  try {
+    return { outcome: 'unknown', current: await readConfigurationObject(client, key) };
+  } catch {
+    return { outcome: 'unknown' };
+  }
+}
+
 /**
  * Write a new deployment ID only if none exists. A 412 means another instance wrote first, which
  * is as good as success: the caller reads back whichever value the store kept.
@@ -93,6 +136,40 @@ async function createDeploymentId(client: Bun.S3Client, key: string): Promise<vo
   await discard(response);
   if (response.ok || response.status === 412) return;
   throw s3Failure('write deployment ID', { status: response.status });
+}
+
+async function bindWorkspaceId(
+  client: Bun.S3Client,
+  workspaceKey: string,
+  deploymentId: string,
+  configured?: string,
+): Promise<string> {
+  const expected = (configured ?? deploymentId).trim();
+  if (expected === '' || expected.includes('\n')) {
+    throw new BungalowInputError('The workspace identity must be non-empty text.');
+  }
+  if (configured !== undefined && expected !== deploymentId) {
+    throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
+  }
+  let marker = await readObject(client, workspaceKey, 'read workspace identity');
+  if (marker !== undefined && marker.trim() !== expected) {
+    throw new BungalowStateError('The backing store belongs to a different workspace.');
+  }
+  if (marker === undefined) {
+    const response = await send(client, workspaceKey, 'write workspace identity', 'PUT', {
+      headers: { 'If-None-Match': '*' },
+      body: `${expected}\n`,
+    });
+    await discard(response);
+    if (!response.ok && response.status !== 412) {
+      throw s3Failure('write workspace identity', { status: response.status });
+    }
+    marker = await readObject(client, workspaceKey, 'read workspace identity');
+  }
+  if (marker === undefined || marker.trim() !== expected) {
+    throw new BungalowStateError('The backing store belongs to a different workspace.');
+  }
+  return expected;
 }
 
 /**
@@ -110,7 +187,7 @@ async function loadDeploymentId(client: Bun.S3Client, key: string): Promise<stri
   const identifier = stored.trim();
   if (!isUlid(identifier)) {
     throw new BungalowStateError(
-      'The deployment-id object does not hold a ULID. Remove it to generate a new identity.',
+      'The deployment-id object does not hold a ULID. Restore the original identity from a backup.',
     );
   }
   return identifier;
@@ -196,15 +273,81 @@ function assertNoAmbientSessionToken(
 export async function openRemoteBungalow(
   name: string,
   configuration: RemoteConfiguration,
+  configuredWorkspaceId: string | undefined,
+  databaseWorkspaceClaim: DatabaseWorkspaceClaim,
+  writableConfiguration = false,
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
   const client = s3Client(configuration);
   const deploymentKey = `${prefix}deployment-id`;
+  const workspaceKey = `${prefix}workspace-id`;
   const configurationKey = `${prefix}configuration.json`;
   assertExactlyAddressed(client, bucket, deploymentKey);
+  assertExactlyAddressed(client, bucket, workspaceKey);
   assertExactlyAddressed(client, bucket, configurationKey);
   assertNoAmbientSessionToken(client, configuration, deploymentKey);
+  const existingDeployment = await readObject(client, deploymentKey, 'read deployment ID');
+  if (existingDeployment !== undefined && !isUlid(existingDeployment.trim())) {
+    throw new BungalowStateError(
+      'The deployment-id object does not hold a ULID. Restore the original identity from a backup.',
+    );
+  }
+  const existingWorkspace = await readObject(client, workspaceKey, 'read workspace identity');
+  if (existingDeployment === undefined && existingWorkspace !== undefined) {
+    const racedDeployment = await readObject(client, deploymentKey, 'read deployment ID');
+    if (racedDeployment === undefined) {
+      throw new BungalowStateError(
+        'The workspace identity exists without its persisted deployment identity.',
+      );
+    }
+  }
+  if (existingDeployment === undefined && existingWorkspace === undefined) {
+    // An unmarked remote home may bootstrap only when neither backend already holds state.
+    const entries = await client.list({ prefix, maxKeys: 1 }).catch((error: unknown) => {
+      throw s3Failure('read workspace identity', { code: codeOf(error) });
+    });
+    const racedDeployment = await readObject(client, deploymentKey, 'read deployment ID');
+    if (racedDeployment === undefined) {
+      if ((entries.contents?.length ?? 0) > 0) {
+        throw new BungalowStateError(
+          'Existing remote state has no persisted deployment identity. Restore it from a backup.',
+        );
+      }
+      try {
+        await databaseWorkspaceClaim(
+          configuration.databaseUrl,
+          `s3://${bucket}/${prefix}`,
+          undefined,
+        );
+      } catch (error) {
+        // Another opener may have persisted this prefix's identity and claimed its database
+        // between our read and emptiness check. Continue only from that persisted identity.
+        if ((await readObject(client, deploymentKey, 'read deployment ID')) === undefined)
+          throw error;
+      }
+    }
+  }
   const deploymentId = await loadDeploymentId(client, deploymentKey);
+  const expectedWorkspaceId = (configuredWorkspaceId ?? deploymentId).trim();
+  if (expectedWorkspaceId !== deploymentId) {
+    throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
+  }
+  if (existingWorkspace !== undefined && existingWorkspace.trim() !== expectedWorkspaceId) {
+    throw new BungalowStateError('The backing store belongs to a different workspace.');
+  }
+  // Claim the raw database before publishing the S3 workspace marker. A fresh prefix may have
+  // written only its permitted deployment-id bootstrap; a losing claim performs no other write.
+  await databaseWorkspaceClaim(
+    configuration.databaseUrl,
+    `s3://${bucket}/${prefix}`,
+    expectedWorkspaceId,
+  );
+  const workspaceId = await bindWorkspaceId(
+    client,
+    workspaceKey,
+    deploymentId,
+    configuredWorkspaceId,
+  );
 
   let closed = false;
   const assertOpen = (): void => {
@@ -221,6 +364,7 @@ export async function openRemoteBungalow(
     configurationLocation: `s3://${bucket}/${configurationKey}`,
     logs: undefined,
     deploymentId,
+    workspaceId,
     s3Client() {
       assertOpen();
       return client;
@@ -230,15 +374,49 @@ export async function openRemoteBungalow(
       assertDirectoryName(contentName);
       return { kind: 's3', bucket, prefix: `${prefix}${contentName}/` };
     },
+    configurationWriteCapability: writableConfiguration ? 'writable' : 'read-only',
     async readConfiguration() {
       assertOpen();
-      return readObject(client, configurationKey, 'read configuration');
+      return readConfigurationObject(client, configurationKey);
     },
-    writeConfiguration() {
+    async writeConfiguration(text, condition) {
       assertOpen();
-      throw new BungalowStateError(
-        'A remote Bungalow keeps its configuration in the bucket and cannot write it.',
-      );
+      assertConfigurationWrite(text, condition);
+      if (!writableConfiguration) return { outcome: 'read-only' };
+      const expectedRevision = condition.expectedRevision;
+      let url: string;
+      try {
+        url = client.presign(configurationKey, { method: 'PUT', expiresIn: PRESIGN_SECONDS });
+      } catch {
+        // No request has been sent, so failure here is definitely not a commit.
+        return { outcome: 'unavailable' };
+      }
+      try {
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'content-type': 'application/json',
+            ...(expectedRevision === null
+              ? { 'if-none-match': '*' }
+              : { 'if-match': expectedRevision }),
+          },
+          body: text,
+        });
+        await discard(response);
+        if (response.ok) return { outcome: 'committed' };
+        if (
+          response.status === 412 ||
+          response.status === 409 ||
+          (response.status === 404 && expectedRevision !== null)
+        ) {
+          return { outcome: 'conflict' };
+        }
+        if (response.status === 501) return { outcome: 'unsupported' };
+        if (response.status < 500) return { outcome: 'unavailable' };
+      } catch {
+        // The request may have reached durable storage. Read current standing, but never retry.
+      }
+      return reconcileConfiguration(client, configurationKey);
     },
     secretLocation(key) {
       assertOpen();

@@ -10,13 +10,12 @@ import {
   foldedRanges,
   unfoldAll,
 } from '@codemirror/language';
-import { diagnosticCount, forceLinting } from '@codemirror/lint';
 import { EditorState } from '@codemirror/state';
 import { EditorView, runScopeHandlers } from '@codemirror/view';
 import { requiredInstance } from '@lostgradient/testing';
 import { quietFor } from '@lostgradient/testing/wait-until';
 
-import { formatJsonDocument, lintJsonDocument } from './json-editor-enhancement.ts';
+import { formatJsonDocument } from './json-editor-enhancement.ts';
 import { createSchemaCompletionSource } from './json-editor-schema-completion.ts';
 import type { JsonEditorSchema } from './json-editor.types.ts';
 
@@ -58,6 +57,13 @@ describe('JsonEditor — CodeMirror runtime', () => {
     expect(editor.state.doc.toString()).toBe('{"a":1}');
     expect(view.container.querySelector('.cm-lineNumbers')).not.toBeNull();
     expect(view.container.querySelector('.cm-foldGutter')).not.toBeNull();
+    // The editor sits inside the frame, under the toolbar: the frame owns border, radius and ring.
+    const frame = requiredInstance(
+      view.container.querySelector('.cinder-json-editor__input'),
+      HTMLElement,
+    );
+    expect(frame.firstElementChild?.classList.contains('cinder-json-editor__toolbar')).toBe(true);
+    expect(frame.querySelector('.cm-editor')).not.toBeNull();
     // The textarea stays in the form so the value still posts, but no longer shows.
     expect(textareaOf(view).hidden).toBe(true);
     expect(textareaOf(view).value).toBe('{"a":1}');
@@ -114,11 +120,9 @@ describe('JsonEditor — CodeMirror runtime', () => {
     expect(attributes.id).toBe('payload');
     expect(textareaOf(view).id).toBe('payload-textarea');
     expect(view.getByLabelText('Payload')).toBe(attributes);
-    expect(attributes.getAttribute('aria-describedby')).toBe(
-      'payload-description payload-feedback',
-    );
+    expect(attributes.getAttribute('aria-describedby')).toBe('payload-description payload-status');
     expect(attributes.getAttribute('role')).toBe('textbox');
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Line 1: unexpected end of the JSON');
   });
 
   test('forwards a click on the label into the editor', async () => {
@@ -253,19 +257,50 @@ describe('JsonEditor — CodeMirror runtime', () => {
 });
 
 describe('JsonEditor — empty optional value', () => {
-  test('is valid: no error, no valid message, no lint glyph, and it reads Not set', async () => {
+  test('is valid: no error, no valid message, no mark, and the toolbar reads Empty (row 29p)', async () => {
     const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '' });
     const editor = await mountedView(view);
-    forceLinting(editor);
 
     expect(view.queryByRole('alert')).toBeNull();
-    expect(view.queryByRole('status')).toBeNull();
+    expect(view.getByRole('status').textContent?.trim()).toBe('Empty');
     expect(textareaOf(view).getAttribute('aria-invalid')).toBeNull();
     expect(editor.contentDOM.getAttribute('aria-invalid')).toBeNull();
-    expect(diagnosticCount(editor.state)).toBe(0);
-    expect(view.container.querySelector('.cm-lint-marker')).toBeNull();
-    expect(view.container.querySelector('.cm-placeholder')?.textContent).toBe('Not set');
-    expect(textareaOf(view).placeholder).toBe('Not set');
+    expect(view.container.querySelector('.cinder-json-editor__line--problem')).toBeNull();
+    // The muted body example, prefixed "e.g.", and no line numbers for a document of one line.
+    expect(view.container.querySelector('.cm-placeholder')?.textContent).toBe(
+      'e.g. { "key": "value" }',
+    );
+    expect(textareaOf(view).placeholder).toBe('e.g. { "key": "value" }');
+    expect(view.container.querySelector('.cm-editor')?.classList).toContain(
+      'cinder-json-editor__cm--single-line',
+    );
+    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test('shows the example the caller gives after "e.g."', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '',
+      example: '{ "defaultTimeoutSeconds": 300 }',
+    });
+    await mountedView(view);
+
+    expect(view.container.querySelector('.cm-placeholder')?.textContent).toBe(
+      'e.g. { "defaultTimeoutSeconds": 300 }',
+    );
+  });
+
+  test('a placeholder replaces the whole example text', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '',
+      placeholder: 'Paste JSON',
+    });
+    await mountedView(view);
+
+    expect(view.container.querySelector('.cm-placeholder')?.textContent).toBe('Paste JSON');
   });
 
   test('stays valid while whitespace only', async () => {
@@ -280,9 +315,8 @@ describe('JsonEditor — empty optional value', () => {
     const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '', required: true });
     const editor = await mountedView(view);
 
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Enter valid JSON');
     expect(editor.contentDOM.getAttribute('aria-required')).toBe('true');
-    expect(textareaOf(view).placeholder).toBe('');
     // The hidden textarea keeps the native constraint so an empty required field blocks submit.
     expect(textareaOf(view).required).toBe(true);
   });
@@ -293,45 +327,312 @@ describe('JsonEditor — empty optional value', () => {
 
     typeInto(editor, '{');
 
-    await waitFor(() => expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.'));
+    await waitFor(() =>
+      expect(view.getByRole('status').textContent?.trim()).toBe(
+        'Line 1: unexpected end of the JSON',
+      ),
+    );
   });
 });
 
-describe('JsonEditor — inline lint', () => {
-  test('marks the position of a syntax error', async () => {
-    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '{"a": }' });
-    const editor = await mountedView(view);
-    forceLinting(editor);
+describe('JsonEditor — toolbar status (rows 29q, 29u, 29v)', () => {
+  const sample = '{\n  "mode": "ask",\n  "timeoutSeconds": 600\n}';
 
-    await waitFor(() => expect(diagnosticCount(editor.state)).toBe(1));
-    const [diagnostic] = lintJsonDocument(editor);
-    expect(diagnostic?.severity).toBe('error');
-    expect(diagnostic?.from).toBeLessThan(editor.state.doc.length);
+  test('a valid document reads Valid JSON in the success tone, with the gutter and an enabled Format', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: sample });
+    const editor = await mountedView(view);
+
+    const status = view.getByRole('status');
+    expect(status.textContent?.trim()).toBe('Valid JSON');
+    expect(status.classList).toContain('cinder-json-editor__status--success');
+    expect(status.querySelector('svg')).not.toBeNull();
+    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    // Two or more lines: the gutter is drawn.
+    expect(editor.dom.classList).not.toContain('cinder-json-editor__cm--single-line');
   });
 
-  test('clears when the document becomes valid', async () => {
-    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '{' });
+  test('the gutter appears when a second line is typed and goes when the document is one line again', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '{}' });
     const editor = await mountedView(view);
-    forceLinting(editor);
-    await waitFor(() => expect(diagnosticCount(editor.state)).toBe(1));
+    expect(editor.dom.classList).toContain('cinder-json-editor__cm--single-line');
+
+    typeInto(editor, '{\n}');
+    expect(editor.dom.classList).not.toContain('cinder-json-editor__cm--single-line');
 
     typeInto(editor, '{}');
-    forceLinting(editor);
-
-    await waitFor(() => expect(diagnosticCount(editor.state)).toBe(0));
+    expect(editor.dom.classList).toContain('cinder-json-editor__cm--single-line');
   });
 
-  test('maps a line and column message to a document offset', () => {
-    const editor = new EditorView({ state: EditorState.create({ doc: 'aa\nbb\ncc' }) });
-    const parse = spyOn(JSON, 'parse').mockImplementation(() => {
-      throw new SyntaxError('JSON Parse error: line 3 column 2');
+  test('read only shows a lock and "Read only" and has no Format button', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: sample,
+      readonly: true,
     });
-    try {
-      expect(lintJsonDocument(editor)[0]?.from).toBe(7);
-    } finally {
-      parse.mockRestore();
-      editor.destroy();
-    }
+    await mountedView(view);
+
+    const status = view.getByRole('status');
+    expect(status.textContent?.trim()).toBe('Read only');
+    expect(status.querySelector('svg')).not.toBeNull();
+    expect(view.queryByRole('button', { name: 'Format' })).toBeNull();
+    expect(view.container.querySelector('.cm-content')?.textContent).toContain('"mode"');
+  });
+
+  test('disabled keeps the JSON tag and the Valid JSON status, with Format off and no focus', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: sample,
+      disabled: true,
+    });
+    const editor = await mountedView(view);
+
+    expect(view.container.querySelector('.cinder-json-editor__tag')?.textContent).toBe('JSON');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Valid JSON');
+    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(view.container.querySelector('.cinder-json-editor__input--disabled')).not.toBeNull();
+    expect(editor.contentDOM.hasAttribute('tabindex')).toBe(false);
+  });
+
+  test('a caller status label replaces Valid JSON while the source parses, and never an invalid status', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: sample,
+      statusLabel: 'Valid JSON, not a valid workflow',
+    });
+    await mountedView(view);
+    expect(view.getByRole('status').textContent?.trim()).toBe('Valid JSON, not a valid workflow');
+
+    await view.rerender({
+      id: 'payload',
+      label: 'Payload',
+      value: '{',
+      statusLabel: 'Valid JSON, not a valid workflow',
+    });
+    await waitFor(() =>
+      expect(view.getByRole('status').textContent?.trim()).toBe(
+        'Line 1: unexpected end of the JSON',
+      ),
+    );
+  });
+});
+
+describe('JsonEditor — marked lines', () => {
+  const missingComma = '{\n  "mode": "ask"\n  "timeoutSeconds": 600\n}';
+
+  test('marks the line that ends without its comma, not the line the parser stops at (rows 29r, 57x, 65h)', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+    await mountedView(view);
+
+    const marked = [...view.container.querySelectorAll('.cinder-json-editor__line--problem')];
+    expect(marked.map((line) => line.textContent)).toEqual(['  "mode": "ask"']);
+    const message = view.container.querySelector('.cinder-json-editor__problem');
+    expect(message?.textContent).toBe('Missing comma at the end of this line.');
+    expect(message?.querySelector('svg')).not.toBeNull();
+    // The line number turns red: the gutter element of that line carries the problem class.
+    const gutter = [...view.container.querySelectorAll('.cm-lineNumbers .cm-gutterElement')].filter(
+      (element) => element.classList.contains('cinder-json-editor__gutter--problem'),
+    );
+    expect(gutter.map((element) => element.textContent)).toEqual(['2']);
+  });
+
+  test('the toolbar message names the line and is a button that jumps to it (row 29r)', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+    const editor = await mountedView(view);
+
+    const jump = view.getByRole('button', { name: 'Line 2: expected a comma' });
+    expect(view.getByRole('status').classList).toContain('cinder-json-editor__status--danger');
+    await fireEvent.click(jump);
+
+    expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(2);
+    expect(editor.state.selection.main.head).toBe(editor.state.doc.line(2).from);
+  });
+
+  test('Format is off while the JSON is invalid, and nothing else changes the document', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+    const editor = await mountedView(view);
+
+    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(editor.state.doc.toString()).toBe(missingComma);
+  });
+
+  test('moves the mark as the user fixes and breaks the document', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+    const editor = await mountedView(view);
+
+    typeInto(editor, '{\n  "mode": "ask",\n  "timeoutSeconds": 600\n}');
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.cinder-json-editor__line--problem').length).toBe(0),
+    );
+    expect(view.container.querySelector('.cinder-json-editor__problem')).toBeNull();
+
+    typeInto(editor, '{\n  "a": 1,\n  "b": [1\n  2]\n}');
+    await waitFor(() =>
+      expect(view.container.querySelector('.cinder-json-editor__line--problem')?.textContent).toBe(
+        '  "b": [1',
+      ),
+    );
+  });
+
+  test('marks the lines a caller reports for a document that parses, with their messages (row 65y)', async () => {
+    const lines = ['{', '  "agent": "release-helper",', '  "message": "Post it."', '}'];
+    const message = 'No agent with the ID release-helper is available.';
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: lines.join('\n'),
+      statusLabel: 'Valid JSON, not a valid workflow',
+      diagnostics: [{ line: 2, message }],
+    });
+    await mountedView(view);
+
+    expect(view.container.querySelector('.cinder-json-editor__line--problem')?.textContent).toBe(
+      '  "agent": "release-helper",',
+    );
+    expect(view.container.querySelector('.cinder-json-editor__problem')?.textContent).toBe(message);
+    expect(view.getByRole('status').textContent?.trim()).toBe('Valid JSON, not a valid workflow');
+  });
+
+  test('ignores a caller line that is past the end of the document', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '{\n}',
+      diagnostics: [{ line: 9, message: 'Nowhere.' }],
+    });
+    await mountedView(view);
+
+    expect(view.container.querySelector('.cinder-json-editor__problem')).toBeNull();
+  });
+
+  test('lets pointer events pass through an inline problem message', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '{"agent":"release-helper"}',
+      diagnostics: [{ line: 1, message: 'The agent is unavailable.' }],
+    });
+    await mountedView(view);
+    const message = view.container.querySelector<HTMLElement>('.cinder-json-editor__problem');
+    expect(message).not.toBeNull();
+    await fireEvent.click(message as HTMLElement);
+    await fireEvent.mouseDown(message as HTMLElement);
+    expect(message?.textContent).toBe('The agent is unavailable.');
+  });
+
+  test('focusProblem and focusLine take the caret to the marked line', async () => {
+    let component: { focusLine: (line: number) => void; focusProblem: () => void } | undefined;
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+    component = view.component as unknown as typeof component;
+    const editor = await mountedView(view);
+
+    component?.focusProblem();
+    expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(2);
+
+    component?.focusLine(4);
+    expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(4);
+    component?.focusLine(99);
+    expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(4);
+  });
+
+  test('focusProblem finds the parse problem even while an external error keeps the editor from marking it (row 80n)', async () => {
+    const source = '{\n  "dismissed": true,\n  "dismissedOn": "2026-11-01",\n}';
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: source,
+      error: 'Unexpected token } at line 4. Fix the JSON to save.',
+    });
+    const editor = await mountedView(view);
+
+    (view.component as unknown as { focusProblem: () => void }).focusProblem();
+
+    // The trailing comma is on line 3, though the parser stops at the brace on line 4.
+    expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(3);
+  });
+
+  test('focusProblem with nothing marked focuses the editor', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '{}' });
+    const editor = await mountedView(view);
+    const focus = spyOn(editor, 'focus');
+
+    (view.component as unknown as { focusProblem: () => void }).focusProblem();
+
+    expect(focus).toHaveBeenCalled();
+  });
+
+  test('focusLine puts the caret on the line in the textarea fallback before the editor loads', () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+
+    (view.component as unknown as { focusLine: (line: number) => void }).focusLine(3);
+
+    const textarea = textareaOf(view);
+    expect(textarea.selectionStart).toBe(missingComma.indexOf('  "timeoutSeconds"'));
+  });
+
+  test('an external error turns the frame red and renders its message with a glyph under the field (row 80n)', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '{\n  "dismissed": true,\n}',
+      error: 'Unexpected token } at line 4. Fix the JSON to save.',
+    });
+    await mountedView(view);
+
+    expect(view.container.querySelector('.cinder-json-editor__input--invalid')).not.toBeNull();
+    const alert = view.getByRole('alert');
+    expect(alert.textContent?.trim()).toBe('Unexpected token } at line 4. Fix the JSON to save.');
+    expect(alert.querySelector('svg')).not.toBeNull();
+    // Save stays the caller's: the editor does not parse, so it adds no mark of its own.
+    expect(view.container.querySelector('.cinder-json-editor__line--problem')).toBeNull();
+  });
+
+  test('a parse problem alone does not turn the frame red: it is marked at its line', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+    await mountedView(view);
+
+    expect(view.container.querySelector('.cinder-json-editor__input--invalid')).toBeNull();
+  });
+});
+
+describe('JsonEditor — long lines and height (rows 05l, 29o, 29y)', () => {
+  const longLine = `{\n  "description": "${'A very long line of text that goes on. '.repeat(20)}"\n}`;
+
+  test('lines scroll sideways by default, with no wrapping, and the gutter does not move', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: longLine });
+    const editor = await mountedView(view);
+
+    expect(editor.contentDOM.classList).not.toContain('cm-lineWrapping');
+    expect(textareaOf(view).getAttribute('wrap')).toBe('off');
+  });
+
+  test('wrap="soft" always wraps and wrap="off" never does', async () => {
+    const soft = await mountedView(
+      render(JsonEditor, { id: 'soft', label: 'Soft', value: longLine, wrap: 'soft' }),
+    );
+    expect(soft.contentDOM.classList).toContain('cm-lineWrapping');
+
+    const off = await mountedView(
+      render(JsonEditor, { id: 'off', label: 'Off', value: longLine, wrap: 'off' }),
+    );
+    expect(off.contentDOM.classList).not.toContain('cm-lineWrapping');
+  });
+
+  test('the theme carries a three-row minimum, the rows maximum, and a visible scrollbar', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '{}', rows: 4 });
+    await mountedView(view);
+
+    const rules = [...document.querySelectorAll('style')]
+      .map((style) => style.textContent ?? '')
+      .join('\n');
+    expect(rules).toContain('max-height: calc(var(--_cinder-json-editor-rows, 8) * 1.5em');
+    expect(rules).toContain('min-height: calc(3 * 1.5em');
+    expect(rules).toContain('.cm-scroller::-webkit-scrollbar');
+    expect(rules).toContain('scrollbar-color: var(--cinder-scrollbar-thumb)');
   });
 });
 
@@ -414,7 +715,7 @@ describe('JsonEditor — format', () => {
     });
     const editor = await mountedView(view);
 
-    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(view.queryByRole('button', { name: 'Format' })).toBeNull();
     expect(formatJsonDocument(editor)).toBe(false);
     const event = new KeyboardEvent('keydown', {
       key: 'F',
@@ -439,7 +740,7 @@ describe('JsonEditor — format', () => {
       onValueChange,
     });
 
-    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(view.queryByRole('button', { name: 'Format' })).toBeNull();
     expect(textareaOf(view).value).toBe('{"a":1}');
     expect(onValueChange).not.toHaveBeenCalled();
   });

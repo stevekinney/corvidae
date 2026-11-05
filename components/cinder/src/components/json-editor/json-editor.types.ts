@@ -37,9 +37,23 @@ export interface JsonEditorSchema {
   oneOf?: readonly JsonEditorSchema[];
 }
 
+/**
+ * A problem a caller found in the JSON, marked at one line of the editor.
+ *
+ * The editor marks the line (a tinted row and a red line number) and shows `message` under it. Use
+ * it for what the parser cannot know, such as a valid document that names an agent which is
+ * unavailable. JSON that does not parse is marked by the editor itself.
+ */
+export interface JsonEditorDiagnostic {
+  /** The one-based line to mark. A line past the end of the document is ignored. */
+  line: number;
+  /** The message shown under the line. */
+  message: string;
+}
+
 export type JsonEditorProps = Omit<
   HTMLTextareaAttributes,
-  'id' | 'value' | 'class' | 'onchange' | 'oninput'
+  'id' | 'value' | 'class' | 'onchange' | 'oninput' | 'wrap'
 > & {
   /** Unique identifier used for the label and feedback relationships. */
   id: string;
@@ -51,20 +65,32 @@ export type JsonEditorProps = Omit<
   description?: string;
   /** External validation error. Takes precedence over JSON parse feedback. */
   error?: string;
-  /** The most lines the editor shows before it scrolls. It grows with its content up to this height, so a short value is not a large empty box. Defaults to 8. @default 8 */
+  /** The most lines the editor shows before it scrolls. It grows with its content from a three-line minimum up to this height, so a short value is not a large empty box. Defaults to 8. @default 8 */
   rows?: number;
   /** Disables the editor. A disabled field is not posted with its form. */
   disabled?: boolean;
-  /** Makes the editor read-only. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted. */
+  /** Makes the editor read-only. The toolbar reads "Read only" and has no Format button. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted. */
   readonly?: boolean;
   /** Marks the editor as required. An empty value is valid and reads "Not set" unless the field is required. */
   required?: boolean;
   /** Whether valid JSON should render an announced success message. Defaults to true. @default true */
   validFeedbackVisible?: boolean;
+  /** Replaces the toolbar's "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status. */
+  statusLabel?: string;
+  /** Problems the caller found at specific lines of a document that parses. Each line is marked and shows its message under it. */
+  diagnostics?: readonly JsonEditorDiagnostic[];
+  /** The sample that shows muted, after "e.g.", while the editor is empty, such as `{ "timeoutSeconds": 300 }`. Defaults to `{ "key": "value" }`. A `placeholder` replaces the whole text. */
+  example?: string;
   /** A JSON Schema that drives property-name and value completion. Without one the editor offers no completions. */
   schema?: JsonEditorSchema;
   /** Called with the proposed JSON source whenever the user edits the field. */
   onValueChange?: (value: string) => void;
+  /**
+   * How a line longer than the editor is shown. Left unset, it scrolls sideways inside the editor
+   * with the line-number gutter fixed, and wraps below 640px, where sideways scrolling is hard to
+   * use. `'off'` always scrolls; `'soft'` and `'hard'` always wrap.
+   */
+  wrap?: 'soft' | 'hard' | 'off';
   /** Extra class names merged onto the field wrapper. */
   class?: string;
 };

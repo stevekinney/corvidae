@@ -77,6 +77,8 @@ export interface AgentRunContext {
    * whatever its own `RunOptions.selection` gate already enforces.
    */
   delegatedAuthority?: DelegatedAuthority | undefined;
+  /** Tool identities allowed by the Bureau delegation grant; absent means unrestricted. */
+  delegatedToolCapabilities?: readonly string[] | undefined;
   /**
    * AB-241 — the authenticated principal attributed with this run, forwarded
    * unchanged into `RunOptions.principal` by `createAgent`'s run path

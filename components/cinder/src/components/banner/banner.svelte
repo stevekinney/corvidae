@@ -26,6 +26,7 @@
 
 <script lang="ts">
   import type { BannerProps, BannerVariant } from './banner.types.ts';
+  import CircleCheck from '@lucide/svelte/icons/circle-check';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Unplug from '@lucide/svelte/icons/unplug';
   import WifiOff from '@lucide/svelte/icons/wifi-off';
@@ -226,14 +227,16 @@
     role="region"
     aria-label={ariaLabel}
   >
-    {#if icon || presetConfiguration?.glyph}
+    {#if icon || presetConfiguration?.glyph || resolvedVariant === 'success'}
       <span class="cinder-banner__icon" aria-hidden="true">
         {#if icon}
           {@render icon()}
         {:else if presetConfiguration?.glyph === 'offline'}
           <WifiOff size={16} aria-hidden="true" />
-        {:else}
+        {:else if presetConfiguration?.glyph === 'connection'}
           <Unplug size={16} aria-hidden="true" />
+        {:else}
+          <CircleCheck size={16} aria-hidden="true" />
         {/if}
       </span>
     {/if}

@@ -22,8 +22,12 @@ import type { BureauScope } from './bureau-scopes.ts';
  * local caller, `anonymous:local`; an API key owns as
  * `api-key:<encodeURIComponent(subject)>`. A credential type v1 does not accept
  * (JWT, mTLS), or one with no subject, names no owner.
+ * A workspace-aware host instead supplies the explicit owner resolved from current membership;
+ * credential rotation never changes that durable owner implicitly.
  */
 export function ownerOfPrincipal(principal: Principal): string | undefined {
+  if (principal.method !== 'unauthenticated' && principal.workspace !== undefined)
+    return principal.workspace.owner;
   if (principal.method === 'unauthenticated-local') return ANONYMOUS_LOCAL_OWNER;
   if (principal.method === 'api-key' && principal.subject !== undefined) {
     return apiKeyOwner(principal.subject);
@@ -56,6 +60,9 @@ export const mayAccessOwnedResource: OwnerAccessPredicate = ({
 }) => {
   if (principal.method === 'unauthenticated') return false;
   if (principal.hasScope(operatorScope)) return true;
+  const recordedOwner = (principal as Principal & { readonly owner?: string }).owner;
+  if (recordedOwner !== undefined)
+    return resourceOwner !== undefined && recordedOwner === resourceOwner;
   const caller = ownerOfPrincipal(principal);
   return caller !== undefined && resourceOwner !== undefined && caller === resourceOwner;
 };

@@ -12,6 +12,21 @@ export type RejectedFile = {
   message: string;
 };
 
+/** How the surface is drawn: a large `dropzone` (default), a one-line `compact` zone under its file list, or a bare `button`. */
+export type FileUploadVariant = 'dropzone' | 'compact' | 'button';
+
+/** What a local validation failure knows, handed to `rejectionMessage` so the page can word it. */
+export type FileUploadRejection = {
+  /** The file that failed validation. */
+  file: File;
+  /** Why it failed. */
+  reason: FileUploadRejectionReason;
+  /** The size limit in bytes, when one was set. */
+  maxSize?: number;
+  /** The file-count limit, when one applies. */
+  maxFiles?: number;
+};
+
 export type FileUploadStatus = 'pending' | 'uploading' | 'ready' | 'error';
 
 export type FileUploadEntry = {
@@ -47,6 +62,38 @@ export type FileUploadProps = Omit<
   disabled?: boolean;
   /** Native input name used for form submission. */
   name?: string;
+  /**
+   * How the surface is drawn.
+   * - `'dropzone'` is the large dashed area with a title, a description and a Browse button, the
+   *   file rows below it.
+   * - `'compact'` is a one-line dashed zone (a secondary button and one line of text) that sits
+   *   under the file rows, for a short list on a form. The rows are one bordered list (name, size,
+   *   remove), an uploading file is one line (name, bar, percent, Cancel upload), and a file that
+   *   fails local validation is a danger alert between the rows and the zone saying nothing was
+   *   added, not a row. The alert stays until the next file is chosen.
+   * - `'button'` is just the secondary button and a line of text beside it (`summary`), for one
+   *   file whose details the page already shows. It draws no rows; read the files through
+   *   `onFilesChange`. A rejection is still an alert.
+   * @default 'dropzone'
+   */
+  variant?: FileUploadVariant;
+  /**
+   * The line of text beside the button in the `'button'` variant, usually what was uploaded, such
+   * as the file name and what was read from it. Falls back to `description`.
+   */
+  summary?: string;
+  /**
+   * Words for a local validation failure. Receives the file, the reason and the limits, and
+   * returns the sentence shown for it, so a page can say "documents" instead of "files" and add
+   * what happened to the rest of the batch. Defaults to a generic sentence naming the file and
+   * the limit.
+   */
+  rejectionMessage?: (rejection: FileUploadRejection) => string;
+  /**
+   * Visible text of the cancel action on an uploading file. Only drawn when `onFileCancel` is set.
+   * @default Cancel upload
+   */
+  cancelLabel?: string;
   /** Additional classes merged with `.cinder-file-upload`. */
   class?: string;
   /**
@@ -85,6 +132,12 @@ export type FileUploadProps = Omit<
   onFilesChange?: (entries: FileUploadEntry[]) => void;
   /** Fires with rejected files and reasons after local validation runs. */
   onReject?: (files: RejectedFile[]) => void;
+  /**
+   * Called when Cancel upload is activated on an uploading file. The component does not remove the
+   * row itself: stop the upload and drop the entry from `files`. Without it an uploading file has
+   * no cancel action.
+   */
+  onFileCancel?: (entry: FileUploadEntry) => void;
   /** Called when the retry button is activated for a failed file. */
   onFileRetry?: (entry: FileUploadEntry) => void;
 };

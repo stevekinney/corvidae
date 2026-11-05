@@ -20,7 +20,8 @@
     gap: var(--cinder-space-1);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);
-    line-height: 1;
+    /* The line height is the form-field label's, the one Input and Combobox use, so a Select
+       beside them in a row has a label of the same height (row 74d). */
     color: var(--cinder-text-default);
   }
 

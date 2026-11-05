@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1881: the host loads the folders in Bungalow's `plugins/` and the ones named for development,
  * and a plugin with a problem is skipped with a problem code while the host starts. Each test
@@ -110,6 +111,7 @@ function packagePlugin(
 describe('a folder plugin in Bungalow’s plugins/ directory', () => {
   test('loads, with host packages resolved through the link, and is logged once with its status', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     const folder = await writePlugin(join(home, 'plugins'), 'alpha', importing('alpha'));
 
     const { host, lines } = await startAt(home);
@@ -129,6 +131,7 @@ describe('a folder plugin in Bungalow’s plugins/ directory', () => {
 
   test('that cannot load is reported and logged, the host starts, and the others run', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     const plugins = join(home, 'plugins');
     await writePlugin(plugins, 'fine', importing('fine'));
     const broken = await writePlugin(plugins, 'broken', "throw new Error('nothing to see');\n");
@@ -152,6 +155,7 @@ describe('a folder plugin in Bungalow’s plugins/ directory', () => {
 
   test('that clashes with a package plugin is skipped, and the package plugin keeps the name', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     const folder = await writePlugin(join(home, 'plugins'), 'shared', importing('shared'));
 
     const { host } = await startAt(home, { plugins: [packagePlugin('shared')] });
@@ -182,6 +186,7 @@ describe('a plugin that declares a secret the host cannot honor', () => {
 
   test('is skipped with secret-refused, and the host starts, for a folder plugin', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     await writePlugin(
       join(home, 'plugins'),
       'greedy',
@@ -284,6 +289,7 @@ describe('a development plugin folder', () => {
 describe('two folders that declare the same plugin name', () => {
   test('are one plugin to the host and to Bureau: the copy that runs takes the secrets and the update', async () => {
     const home = await scratch();
+    await initializeWorkspaceHome(home);
     // Bureau loads folder plugins by folder name, so `aaa-weather` runs and `weather` is skipped,
     // although the host lists the installed folder first (COR-1881 round 2).
     const declaring = (version: string, secrets: readonly string[]): string =>

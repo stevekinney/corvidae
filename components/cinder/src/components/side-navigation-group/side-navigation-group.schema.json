@@ -10,6 +10,10 @@
       "type": "string",
       "description": "Optional stable id for the root <li>. Trigger uses `${id}-trigger`, panel uses `${id}-panel`. If omitted, generated via useId."
     },
+    "collapsible": {
+      "type": "boolean",
+      "description": "Whether the group opens and closes. Default: true. Set `false` for a static section: its label\nis plain text over an always-visible list, and in a collapsed sidebar the label gives way to\na hairline between sections. `expanded` and `disabled` do nothing on a static group."
+    },
     "expanded": {
       "type": "boolean",
       "description": "Whether the group is expanded. Bindable. Default: true."
