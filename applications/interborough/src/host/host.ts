@@ -99,7 +99,12 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
 import { localWorkspaceMembership } from './workspace-principal.ts';
 
-import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
+import {
+  openBungalow,
+  type Bungalow,
+  type BungalowEnvironment,
+  type SecretProviderFactory,
+} from '@lostgradient/bungalow';
 import {
   ANONYMOUS_LOCAL_OWNER,
   BUREAU_PLUGIN_ENTRY,
@@ -200,6 +205,7 @@ import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { TOOL_SOURCE_SECRET_PREFIX } from './tool-source-vault.ts';
+import { createWorkspaceSecrets } from './workspace-secrets.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
@@ -315,6 +321,10 @@ export type HostOptions = {
   readonly environment?: BungalowEnvironment;
   /** The workspace identity to bind to the trusted backing store. */
   readonly workspaceId?: string;
+  /** Trusted provider factory; browser payloads cannot select it. */
+  readonly secretProvider?: SecretProviderFactory;
+  /** Opt in to revision-checked remote configuration publication. */
+  readonly writableConfiguration?: boolean;
   /** The port to listen on; `0` asks for a free one. Defaults to `INTERBOROUGH_PORT`, then 7234. */
   readonly port?: number;
   /** The built application to serve. Defaults to `build/` at the package root. */
@@ -549,16 +559,16 @@ export type Host = {
  * the same on every host, and a host without it does not start: a secret one host made up would
  * not verify an approval another host signed.
  */
-function approvalSecret(bungalow: Bungalow): string {
-  const existing = bungalow.readSecret(APPROVAL_SECRET_KEY);
+async function approvalSecret(bungalow: Bungalow): Promise<string> {
+  const existing = await bungalow.deploymentSecrets.read(APPROVAL_SECRET_KEY);
   if (existing !== undefined) return existing;
   if (bungalow.mode === 'remote') {
     throw new Error(
-      `${bungalow.secretLocation(APPROVAL_SECRET_KEY)} is not set. Remote mode needs it: it signs the approvals every host verifies.`,
+      `${bungalow.deploymentSecrets.location(APPROVAL_SECRET_KEY)} is not set. Remote mode needs it: it signs the approvals every host verifies.`,
     );
   }
   const created = `${crypto.randomUUID()}${crypto.randomUUID()}`;
-  bungalow.writeSecret(APPROVAL_SECRET_KEY, created);
+  await bungalow.deploymentSecrets.write(APPROVAL_SECRET_KEY, created);
   return created;
 }
 
@@ -700,6 +710,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     bungalow = await openBungalow({
       name: APPLICATION_NAME,
       environment,
+      ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
+      ...(options.writableConfiguration === undefined
+        ? {}
+        : { writableConfiguration: options.writableConfiguration }),
       ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
       databaseWorkspaceClaim: async (databaseUrl, prefix, workspaceId) => {
         // Required deployment secrets must be present before opening its database. The
@@ -729,10 +743,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   try {
     // No engine, plugin or listener may start before the workspace is bound and secrets validate.
     const database = redactDatabase(bungalow.database);
-    const approval = approvalSecret(bungalow);
+    const workspaceSecrets = createWorkspaceSecrets(bungalow);
+    await workspaceSecrets.reconcile();
+    const approval = await approvalSecret(bungalow);
     // The A2A key and public origin (COR-1904), read as early, so a public origin without a key
     // stops the host before anything listens.
-    const a2aExposure = resolveA2aExposure(
+    const a2aExposure = await resolveA2aExposure(
       bungalow,
       a2aPublicOrigin,
       options.warn ?? ((message) => console.warn(message)),
@@ -764,6 +780,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const isProviderPlugin = (plugin: string): boolean =>
       held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true;
     const pluginManager = await createPluginManager({
+      workspaceSecrets,
       audit: async (entry) => {
         await held.bureau?.internals.auditTrail?.record(entry);
       },
@@ -809,14 +826,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       return recorded?.agentName ?? undefined;
     };
     const providers = createProviderManager({
-      bungalow: {
-        mode: bungalow.mode,
-        configurationLocation: bungalow.configurationLocation,
-        readConfiguration: () => bungalow.readConfiguration(),
-        writeConfiguration: (text, condition) => bungalow.writeConfiguration(text, condition),
-        readSecret: (key) => bungalow.readSecret(key),
-        writeSecret: (key, value) => pluginManager.writeSecret(key, value),
-      },
+      workspaceSecrets,
+      bungalow,
       configurationQueue,
       afterConfigurationWrite: () => pluginManager.reload(),
       warn: options.warn ?? ((message) => console.warn(message)),
@@ -839,6 +850,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     let hostOrigin: string | undefined;
     const startPort = options.port ?? resolvePort(environment);
     const toolSources = createToolSourceManager({
+      workspaceSecrets,
       bungalow,
       keys: answerKeys,
       configurationQueue,
@@ -978,7 +990,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // to this clean-up (`expiredRecords: 'on-request'`), and Data and retention reports it.
     const nightlyCleanUp = startNightlyCleanUp({
       storage,
-      removeExpiredRecords: () => bureau.removeExpiredRecords(),
+      removeExpiredRecords: async () => {
+        await workspaceSecrets.reconcile();
+        return bureau.removeExpiredRecords();
+      },
       now: clock.now,
       ...options.nightlyCleanUp,
       warn: options.warn ?? ((message) => console.warn(message)),
@@ -1141,6 +1156,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
               },
               build: buildDiagnostics(buildDirectory),
               providers: providerDiagnostics(providers.current()),
+              pendingSecretOperations: workspaceSecrets.pending(),
+              pendingSecretOperationCount: workspaceSecrets.pending().length,
             },
           } satisfies HostStatus),
       },
@@ -1343,6 +1360,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
         build: buildDiagnostics(buildDirectory),
         providers: providerDiagnostics(providers.current()),
+        pendingSecretOperations: workspaceSecrets.pending(),
+        pendingSecretOperationCount: workspaceSecrets.pending().length,
       }),
       notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),

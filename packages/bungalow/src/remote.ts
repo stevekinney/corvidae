@@ -1,6 +1,7 @@
-import type { Bungalow, DatabaseWorkspaceClaim } from './bungalow.ts';
+import type { Bungalow, DatabaseWorkspaceClaim, SecretProviderFactory } from './bungalow.ts';
 import type { ConfigurationSnapshot, ConfigurationWriteResult } from './configuration.ts';
 import { assertConfigurationWrite } from './configuration.ts';
+import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
 import { secretVariable, type RemoteConfiguration } from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
@@ -276,6 +277,7 @@ export async function openRemoteBungalow(
   configuredWorkspaceId: string | undefined,
   databaseWorkspaceClaim: DatabaseWorkspaceClaim,
   writableConfiguration = false,
+  secretProviderFactory?: SecretProviderFactory,
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
   const client = s3Client(configuration);
@@ -357,6 +359,24 @@ export async function openRemoteBungalow(
     closed = true;
   };
 
+  const variablePrefix = `${name.toUpperCase().replaceAll('-', '_')}_SECRET_`;
+  const secretProvider =
+    secretProviderFactory?.(workspaceId) ??
+    createEnvironmentSecretProvider({
+      workspaceId,
+      values: Object.fromEntries(
+        [...secrets]
+          .filter(([key]) => key.startsWith(variablePrefix))
+          .map(([key, value]) => [
+            key.slice(variablePrefix.length).toLowerCase().replaceAll('_', '-'),
+            value,
+          ]),
+      ),
+      assertOpen,
+    });
+  if (secretProvider.workspaceId !== workspaceId) {
+    throw new BungalowInputError('The secret provider belongs to a different workspace.');
+  }
   return {
     name,
     mode: 'remote',
@@ -418,20 +438,21 @@ export async function openRemoteBungalow(
       }
       return reconcileConfiguration(client, configurationKey);
     },
-    secretLocation(key) {
-      assertOpen();
-      return secretVariable(name, key);
-    },
-    writeSecret(key) {
-      assertOpen();
-      assertSecretKey(key);
-      throw new BungalowStateError(
-        'A remote Bungalow reads secrets from environment variables and cannot write one.',
-      );
-    },
-    readSecret(key) {
-      assertOpen();
-      return secrets.get(secretVariable(name, key));
+    secretProvider,
+    deploymentSecrets: {
+      location(key) {
+        assertOpen();
+        return secretVariable(name, key);
+      },
+      async write(key) {
+        assertOpen();
+        assertSecretKey(key);
+        throw new BungalowStateError('Deployment secrets are read-only environment inputs.');
+      },
+      async read(key) {
+        assertOpen();
+        return secrets.get(secretVariable(name, key));
+      },
     },
     close,
     [Symbol.dispose]: close,

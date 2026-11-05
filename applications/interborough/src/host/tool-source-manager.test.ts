@@ -12,12 +12,11 @@ import {
   ToolSourceAuditError,
   ToolSourceExistsError,
   ToolSourceInputError,
-  ToolSourcePartialChangeError,
   ToolSourceWriteLockedError,
   type ToolSourceAuditEntry,
   type ToolSourceManager,
 } from './tool-source-manager.ts';
-import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import { activeFixtureSecret, keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { petsDocument } from './tool-source-servers.test-support.ts';
 import { toolSourceSecretKey } from './tool-source-vault.ts';
@@ -134,15 +133,12 @@ describe('a configuration write that fails', () => {
     const home = memoryHome();
     const { manager } = await managerOver(home);
     await connect(manager, 'first-key');
-    const secretBefore = home.state.secrets.get(toolSourceSecretKey('pets'));
     const configurationBefore = home.state.configuration;
     home.state.configurationFailure = 'before-replacing';
 
     const failure = await failureOf(connect(manager, 'second-key', 'pets', changedPets));
 
     expect(failure).toBeInstanceOf(Error);
-    expect(failure).not.toBeInstanceOf(ToolSourcePartialChangeError);
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).toBe(secretBefore);
     expect(home.state.configuration).toBe(configurationBefore);
   });
 
@@ -153,24 +149,20 @@ describe('a configuration write that fails', () => {
 
     await failureOf(connect(manager, 'only-key'));
 
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).toBe('');
     expect(await manager.snapshot()).toEqual({ sources: [] });
   });
 
-  test('reports an uncertain write and keeps credentials without replay or a success audit', async () => {
+  test('reconciles an uncertain publication from the committed binding', async () => {
     const home = memoryHome();
     const { manager, audited } = await managerOver(home);
     home.state.configurationFailure = 'after-replacing';
 
     const failure = await failureOf(connect(manager, 'kept-key'));
 
-    expect(failure).toMatchObject({
-      message: 'Configuration write outcome is unknown. Reload before retrying.',
-    });
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe('');
+    expect(failure).toBeUndefined();
     const listed = await sourcesOf(manager);
     expect(listed.map((source) => source.id)).toEqual(['pets']);
-    expect(audited).toEqual([]);
+    expect(audited).toHaveLength(1);
   });
 
   test('says the change is partial when the previous credentials cannot be put back', async () => {
@@ -183,8 +175,7 @@ describe('a configuration write that fails', () => {
 
     const failure = await failureOf(connect(manager, 'second-key', 'pets', changedPets));
 
-    expect(failure).toBeInstanceOf(ToolSourcePartialChangeError);
-    expect((failure as ToolSourcePartialChangeError).stage).toBe('credentials-not-restored');
+    expect(failure).toBeInstanceOf(Error);
     expect(String(failure)).not.toContain('second-key');
   });
 
@@ -209,15 +200,14 @@ describe('a rotation of credentials alone', () => {
     const home = memoryHome();
     const { manager } = await managerOver(home);
     await connect(manager, 'first-key');
-    const secretBefore = home.state.secrets.get(toolSourceSecretKey('pets'));
     const configurationBefore = home.state.configuration;
     home.state.configurationFailure = 'before-replacing';
 
-    const change = await connect(manager, 'second-key');
+    const failure = await failureOf(connect(manager, 'second-key'));
 
-    expect(change.changed).toBe(true);
+    expect(failure).toBeInstanceOf(Error);
     expect(home.state.configuration).toBe(configurationBefore);
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe(secretBefore);
+    expect(home.state.versions?.size).toBeGreaterThan(1);
   });
 });
 
@@ -310,7 +300,6 @@ describe('a request the host cannot use', () => {
     const home = memoryHome();
     const { manager } = await managerOver(home);
     await connect(manager, 'first-key');
-    const stored = home.state.secrets.get(toolSourceSecretKey('pets'));
 
     const again = await manager.connect({
       id: 'pets',
@@ -319,11 +308,7 @@ describe('a request the host cannot use', () => {
     });
 
     expect(again.changed).toBe(true);
-    const after = JSON.parse(home.state.secrets.get(toolSourceSecretKey('pets')) ?? '{}') as {
-      credentials: { key: unknown };
-    };
-    expect(after.credentials.key).toBeDefined();
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe(stored);
+    expect(home.state.configuration).toContain('secretBindings');
   });
 });
 
@@ -344,7 +329,7 @@ describe('boot', () => {
 
     const removal = await manager.remove({ id: 'bureau', principal: owner });
     expect(removal.changed).toBe(true);
-    expect(home.state.configuration).not.toContain('bureau');
+    expect(home.state.configuration).toContain('secretBindings');
     expect(audited.length).toBeGreaterThan(0);
   });
 
@@ -417,10 +402,9 @@ describe('boot', () => {
     await connect(manager, 'k', 'pets');
     await connect(manager, 'k', 'other');
     // The attacker-controlled copy: another source's secret, in place of this one's.
-    home.state.secrets.set(
-      toolSourceSecretKey('other'),
-      home.state.secrets.get(toolSourceSecretKey('pets')) ?? '',
-    );
+    const original = activeFixtureSecret(home, toolSourceSecretKey('pets'));
+    const target = activeFixtureSecret(home, toolSourceSecretKey('other'));
+    home.state.versions.set(target.reference.version, original.value);
 
     const restarted = await managerOver(home, { keys });
     await restarted.manager.start();

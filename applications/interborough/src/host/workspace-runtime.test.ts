@@ -44,7 +44,7 @@ describe('workspace runtime identity', () => {
     async function start(home: string, sentinel: string) {
       const environment = { INTERBOROUGH_HOME: home };
       using bungalow = await openBungalow({ name: 'interborough', environment });
-      bungalow.writeSecret('probe-key', sentinel);
+      await bungalow.deploymentSecrets.write('probe-key', sentinel);
       const agents = bungalow.content('agents');
       if (agents.kind !== 'directory') throw new Error('Expected a local content root');
       await Bun.write(

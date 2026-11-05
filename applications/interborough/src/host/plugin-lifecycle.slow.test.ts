@@ -309,7 +309,7 @@ const bungalow = await openBungalow({
   environment: { INTERBOROUGH_HOME: home },
 });
 try {
-  bungalow.writeSecret(SECRET_KEY, 'fixture-e2e-key-0c1f');
+  await bungalow.deploymentSecrets.write(SECRET_KEY, 'fixture-e2e-key-0c1f');
 } finally {
   bungalow.close();
 }

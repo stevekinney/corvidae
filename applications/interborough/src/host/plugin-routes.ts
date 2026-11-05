@@ -1,3 +1,4 @@
+import { SecretProviderError } from '@lostgradient/bungalow';
 /**
  * The host's routes for plugins (`plugin-manager.ts`, COR-1880):
  *
@@ -49,6 +50,24 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
+    if (error instanceof SecretProviderError) {
+      const status =
+        error.code === 'rejected'
+          ? 400
+          : error.code === 'read-only'
+            ? 403
+            : error.code === 'conflict'
+              ? 409
+              : 503;
+      return Response.json(
+        {
+          error: 'failed',
+          reason: error.code,
+          message: 'The secret provider could not complete the operation.',
+        },
+        { status },
+      );
+    }
     if (error instanceof PluginWriteLockedError) {
       return Response.json(
         { error: 'locked', reason: error.reason, message: error.message },

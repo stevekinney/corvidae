@@ -589,14 +589,16 @@ describe('remote mode: the handle', () => {
   test('reads secrets from <NAME>_SECRET_<KEY> and refuses to write them', async () => {
     const server = startServer();
     using bungalow = await openRemote(server.endpoint, { BUNGALOW_TEST_SECRET_EMPTY: '' });
-    expect(bungalow.readSecret('api-key')).toBe(SECRET_VALUE);
-    expect(bungalow.readSecret('missing')).toBeUndefined();
-    expect(bungalow.readSecret('empty')).toBeUndefined();
-    expect(bungalow.secretLocation('api-key')).toBe('BUNGALOW_TEST_SECRET_API_KEY');
-    expect(() => bungalow.readSecret('API_KEY')).toThrow(BungalowInputError);
+    expect(await bungalow.deploymentSecrets.read('api-key')).toBe(SECRET_VALUE);
+    expect(await bungalow.deploymentSecrets.read('missing')).toBeUndefined();
+    expect(await bungalow.deploymentSecrets.read('empty')).toBeUndefined();
+    expect(bungalow.deploymentSecrets.location('api-key')).toBe('BUNGALOW_TEST_SECRET_API_KEY');
+    expect(await throwingRejectionOf(bungalow.deploymentSecrets.read('API_KEY'))).toThrow(
+      BungalowInputError,
+    );
     let thrown: unknown;
     try {
-      bungalow.writeSecret('api-key', 'new-sentinel-value');
+      await bungalow.deploymentSecrets.write('api-key', 'new-sentinel-value');
     } catch (error) {
       thrown = error;
     }
@@ -624,8 +626,8 @@ describe('remote mode: the handle', () => {
     environment['BUNGALOW_TEST_SECRET_API_KEY'] = 'changed-after-the-open-began';
     environment['BUNGALOW_TEST_SECRET_LATE'] = 'added-after-the-open-began';
     using bungalow = await opening;
-    expect(bungalow.readSecret('api-key')).toBe(SECRET_VALUE);
-    expect(bungalow.readSecret('late')).toBeUndefined();
+    expect(await bungalow.deploymentSecrets.read('api-key')).toBe(SECRET_VALUE);
+    expect(await bungalow.deploymentSecrets.read('late')).toBeUndefined();
   });
 
   test('close is idempotent and a closed handle refuses further use', async () => {
@@ -636,7 +638,9 @@ describe('remote mode: the handle', () => {
     bungalow[Symbol.dispose]();
     expect(() => bungalow.s3Client()).toThrow(BungalowStateError);
     expect(() => bungalow.content('agents')).toThrow(BungalowStateError);
-    expect(() => bungalow.readSecret('api-key')).toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(bungalow.deploymentSecrets.read('api-key'))).toThrow(
+      BungalowStateError,
+    );
     const reject = await throwingRejectionOf(bungalow.readConfiguration());
     expect(reject).toThrow(BungalowStateError);
   });

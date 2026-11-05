@@ -120,6 +120,7 @@ describe('probing an MCP server', () => {
     }
     // Nothing was stored, written or recorded, and the source is not in the list.
     expect(home.state.secrets.size).toBe(0);
+    expect(home.state.versions.size).toBe(0);
     expect(home.state.configuration).toBeUndefined();
     expect(audited).toEqual([]);
     const { sources } = await manager.snapshot();
@@ -184,6 +185,7 @@ describe('probing an MCP server', () => {
 
     expect(probe).toEqual({ outcome: 'needs-authorization' });
     expect(home.state.secrets.size).toBe(0);
+    expect(home.state.versions.size).toBe(0);
     expect(home.state.configuration).toBeUndefined();
   });
 });

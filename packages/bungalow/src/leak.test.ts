@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 
 import { openBungalow } from './bungalow.ts';
@@ -29,15 +30,6 @@ function exposure(error: unknown): string {
   return parts.join('\n');
 }
 
-function thrownBy(action: () => unknown): unknown {
-  try {
-    action();
-  } catch (error) {
-    return error;
-  }
-  throw new Error('Expected the action to throw.');
-}
-
 function expectNoLeak(error: unknown): void {
   const text = exposure(error);
   expect(text).not.toContain(SENTINEL);
@@ -56,26 +48,28 @@ describe('neither a secret value nor a secret key appears in an error', () => {
   test('invalid key', async () => {
     const root = temporaryDirectory();
     using handle = await openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
-    handle.writeSecret(KEY_SENTINEL, SENTINEL);
+    await handle.deploymentSecrets.write(KEY_SENTINEL, SENTINEL);
 
-    const error = thrownBy(() => handle.writeSecret('../Bad Key', SENTINEL));
+    const error = await rejectionOf(handle.deploymentSecrets.write('../Bad Key', SENTINEL));
     expect(error).toBeInstanceOf(BungalowInputError);
     expectNoLeak(error);
 
-    const keyIsTheSecret = thrownBy(() => handle.writeSecret(SENTINEL.toUpperCase(), 'v'));
+    const keyIsTheSecret = await rejectionOf(
+      handle.deploymentSecrets.write(SENTINEL.toUpperCase(), 'v'),
+    );
     expect(exposure(keyIsTheSecret)).not.toContain(SENTINEL.toUpperCase());
-    const readKey = thrownBy(() => handle.readSecret(KEY_SENTINEL.toUpperCase()));
+    const readKey = await rejectionOf(handle.deploymentSecrets.read(KEY_SENTINEL.toUpperCase()));
     expect(exposure(readKey)).not.toContain(KEY_SENTINEL.toUpperCase());
   });
 
   test('filesystem failure carries a code, a system call, and an errno, and nothing else', async () => {
     const root = temporaryDirectory();
     using handle = await openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
-    handle.writeSecret('known', SENTINEL);
+    await handle.deploymentSecrets.write('known', SENTINEL);
 
     // A directory where the secret's file belongs makes the final rename fail.
     mkdirSync(join(root, 'secrets', KEY_SENTINEL));
-    const renameFailure = thrownBy(() => handle.writeSecret(KEY_SENTINEL, SENTINEL));
+    const renameFailure = await rejectionOf(handle.deploymentSecrets.write(KEY_SENTINEL, SENTINEL));
     expect(renameFailure).toBeInstanceOf(BungalowFilesystemError);
     const cause = (renameFailure as BungalowFilesystemError).cause as Record<string, unknown>;
     expect(Object.keys(cause).toSorted()).toEqual(['code', 'errno', 'syscall']);
@@ -88,7 +82,7 @@ describe('neither a secret value nor a secret key appears in an error', () => {
 
     // A missing secrets directory makes the temporary file's creation fail.
     rmSync(join(root, 'secrets'), { recursive: true, force: true });
-    const createFailure = thrownBy(() => handle.writeSecret(KEY_SENTINEL, SENTINEL));
+    const createFailure = await rejectionOf(handle.deploymentSecrets.write(KEY_SENTINEL, SENTINEL));
     expect(createFailure).toBeInstanceOf(BungalowFilesystemError);
     expect((createFailure as BungalowFilesystemError).cause).toBeDefined();
     expectNoLeak(createFailure);
@@ -96,13 +90,13 @@ describe('neither a secret value nor a secret key appears in an error', () => {
     // Reading a key whose entry cannot be read as a file.
     mkdirSync(join(root, 'secrets'));
     mkdirSync(join(root, 'secrets', KEY_SENTINEL));
-    expectNoLeak(thrownBy(() => handle.readSecret(KEY_SENTINEL)));
+    expectNoLeak(await rejectionOf(handle.deploymentSecrets.read(KEY_SENTINEL)));
   });
 
   test('locked root', async () => {
     const root = temporaryDirectory();
     using handle = await openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
-    handle.writeSecret(KEY_SENTINEL, SENTINEL);
+    await handle.deploymentSecrets.write(KEY_SENTINEL, SENTINEL);
 
     const error = await openBungalow({
       name: TEST_NAME,
