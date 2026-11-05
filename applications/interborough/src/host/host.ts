@@ -886,7 +886,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const peerSecrets = new Map<string, string | undefined>();
     for (const peer of configuredPeers) {
       if (peer.bearerSecret !== undefined && !peerSecrets.has(peer.bearerSecret)) {
-        peerSecrets.set(peer.bearerSecret, await workspaceSecrets.read(peer.bearerSecret));
+        peerSecrets.set(
+          peer.bearerSecret,
+          await workspaceSecrets.read(peer.bearerSecret, configuration),
+        );
       }
     }
     const recoverableStartedApprovals = new Map<
