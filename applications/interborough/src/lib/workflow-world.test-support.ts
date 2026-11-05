@@ -46,6 +46,8 @@ export type FileFixture = {
   state: 'ready' | 'invalid';
   owner: string;
   hash: string | null;
+  /** The name a person reads, when the file gives one. Left out, the listing sends none. */
+  title?: string | null;
   description: string | null;
   agent: string | null;
   paused: boolean;
@@ -53,6 +55,8 @@ export type FileFixture = {
   outputSchema: Record<string, unknown> | null;
   version: string | null;
   trigger: Record<string, unknown> | null;
+  /** The steps as written, for a file that loaded. Left out, the listing sends none. */
+  steps?: Array<Record<string, unknown>> | null;
   /** What `bureau.workflows.list` counts for the file, or `null` for one the Bureau cannot use. */
   runs: { active: number; last24Hours: number; lastRunAt: string | null } | null;
   problem: {
@@ -84,6 +88,10 @@ export type ScheduleFixture = {
   createdAt: number;
   updatedAt: number;
   missedFireCount: number;
+  /** When the schedule last started a run, in milliseconds. */
+  lastFireAt?: number;
+  /** When the schedule last missed a fire, in milliseconds. */
+  lastMissedFireAt?: number;
   skippedCount: number;
   nextFireAt: number | null;
   /** The fire a person asked to skip, set by the Bureau's skip next. */
@@ -336,6 +344,17 @@ export type World = {
   failBureauSchedules: boolean;
   /** Makes `bureau.workflows.list` answer with a fault, as a Bureau that is down would. */
   failBureauFiles: boolean;
+  /** What `bureau.health.attention` lists: the problems that need a person, such as `no-provider` and `missed-runs`. */
+  attention: Array<Record<string, unknown>>;
+  /** Why a Bureau schedule will not start, by schedule id, and the status the Bureau reads it as then. */
+  scheduleBlockers: Record<
+    string,
+    { workflow: string; message: string; status: 'active' | 'paused' }
+  >;
+  /** The steps of the newest saved version of a workflow's file, by identifier, as `bureau.workflows.history` lists them. */
+  savedSteps: Record<string, Array<Record<string, unknown>>>;
+  /** The model each code agent names, by identifier (`provider/model`), or `null` for a scripted one. */
+  agentModels: Record<string, string | null>;
 };
 
 export function emptyWorld(overrides: Partial<World> = {}): World {
@@ -360,6 +379,10 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     failContexts: false,
     failBureauSchedules: false,
     failBureauFiles: false,
+    attention: [],
+    scheduleBlockers: {},
+    savedSteps: {},
+    agentModels: {},
     ...overrides,
   };
 }
@@ -443,16 +466,24 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     cronExpression: schedule.cronExpression ?? null,
     intervalMs: schedule.intervalMs ?? null,
     timeZone: schedule.timeZone,
-    status: schedule.status,
+    status: world.scheduleBlockers[schedule.id]?.status ?? schedule.status,
     overlap: schedule.overlap,
     revision: schedule.revision,
     nextFireAt: iso(schedule.nextFireAt),
     skipUntil: iso(schedule.skipUntil ?? null),
-    lastFireAt: null,
+    lastFireAt: iso(schedule.lastFireAt ?? null),
     missedFireCount: schedule.missedFireCount,
     skippedCount: schedule.skippedCount,
     createdAt: iso(schedule.createdAt),
     updatedAt: iso(schedule.updatedAt),
+    blocker:
+      world.scheduleBlockers[schedule.id] === undefined
+        ? null
+        : {
+            kind: 'workflow-cannot-load',
+            workflow: world.scheduleBlockers[schedule.id]?.workflow,
+            message: world.scheduleBlockers[schedule.id]?.message,
+          },
   });
   const receipt = (schedule: ScheduleFixture) => ({
     id: schedule.id,
@@ -474,6 +505,42 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
 
   const bureauHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
     'bureau.agents.list': () => ({ agents: world.agents }),
+    'bureau.health.attention': () => ({
+      items: world.attention,
+      count: world.attention.length,
+      checks: [],
+    }),
+    'bureau.workflows.history': (params) => {
+      const steps = world.savedSteps[String(params['id'])];
+      if (steps === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
+      return { revisions: [{ current: false, steps }] };
+    },
+    'bureau.agents.definitions.get': (params) => {
+      const id = String(params['id']);
+      if (!(id in world.agentModels)) throw workflowFaults.notFound(`agent ${id}`);
+      return {
+        id,
+        source: 'code',
+        state: 'ready',
+        name: id,
+        description: null,
+        a2a: false,
+        hash: null,
+        problem: null,
+        definition: null,
+        codeDefinition: {
+          name: id,
+          description: null,
+          model: world.agentModels[id] ?? null,
+          models: [],
+          tools: [],
+          skills: [],
+          skillDescriptors: [],
+          instructions: null,
+        },
+      };
+    },
+    'bureau.agents.overrides.get': () => ({ overrides: { model: null } }),
     'bureau.contexts.list': () => {
       if (world.failContexts) throw workflowFaults.unavailable();
       return { contexts: world.contexts, nextOffset: null };

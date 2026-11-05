@@ -173,6 +173,14 @@ export const queryKeys = {
     overlay: () => ['schedules', 'overlay'] as const,
     /** The newest fire each schedule that missed one recorded, for the bell. Under `list`, so a fleet event that changes the schedules reads it again. */
     missedFires: () => ['schedules', 'list', 'missed-fires'] as const,
+    /** What the schedule rows read besides the schedules: the engine's workflow types, the agents, and what needs attention. Under `list`, so a fleet event that changes the schedules reads it again. */
+    rowContext: () => ['schedules', 'list', 'row-context'] as const,
+    /** The agents each workflow ran in its last saved version, for the rows of workflows that cannot load. Under `list` for the same reason. */
+    workflowAgents: (workflowTypes: readonly string[]) =>
+      ['schedules', 'list', 'workflow-agents', workflowTypes] as const,
+    /** Which of the agents the rows name need a model, read from each agent's definition. Under `list` for the same reason. */
+    modelAgents: (agentIds: readonly string[]) =>
+      ['schedules', 'list', 'model-agents', agentIds] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,

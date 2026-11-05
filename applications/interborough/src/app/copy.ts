@@ -1100,7 +1100,16 @@ export const SCHEDULE_COPY = {
   /** The name of a Bureau schedule that has no description and whose agent the caller may not read. */
   unnamedAgentRun: 'Scheduled agent run',
   title: 'Schedules',
+  /** The line under the heading; the zone is the viewer's, as "Central time". */
+  subtitle: (zone: string): string => `Runs that start on a timetable. Times are in ${zone}.`,
   newAction: 'New schedule',
+  /** The segments of the filter bar, which partition the list. */
+  segments: { all: 'All', active: 'Active', paused: 'Paused' },
+  /** The chip beside the segments that narrows to schedules that missed runs, which are also Active. */
+  missedRunsFilter: 'Missed runs',
+  workflowLabel: 'Workflow',
+  /** The accessible name of the list of schedules. */
+  rowsLabel: 'Schedules',
   filtersLabel: 'Filter schedules',
   statusLabel: 'Status',
   anyStatus: 'Any status',

@@ -1,647 +1,433 @@
-import { chooseFilterOption, requireElement } from '../../../tests/dom.test-support.ts';
-
 /**
- * Component tests for `<ScheduleList>` against a REAL in-process weft server
- * (`live-source-test-server.test-support.ts` — plan §11: "No mock server, no
- * fixture drift"). `fixtures/workflows.ts` already registers
- * `inventory-sync-sweep` (from `fixtures/schedules.ts`), so schedules are
- * created directly against that real workflow type per test.
+ * `<ScheduleList>` on the sample world's four schedules, against `installWorkflowWorld`, a stand-in
+ * for the engine and the Bureau that keeps the schedules, workflow files and what needs attention
+ * as a world a test can change: Daily summary (Assistant, four missed runs), Weekly refund audit
+ * (its workflow's file can't load, so the Bureau holds it), Release notes digest (a workflow file's
+ * trigger) and Inbox triage (paused). Each row is the status-first two-line row, one link to its
+ * schedule, with no menu of actions.
  */
-import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
-import { beforeEach, describe, expect, test } from 'bun:test';
-import { Window, type DetachedWindowAPI } from 'happy-dom';
-import { flushSync } from 'svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
-import { HttpClient } from '@lostgradient/weft';
-
-import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { SCHEDULE_COPY } from '../../app/copy.ts';
-import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
-import ScheduleListHarness from './schedule-list-test-harness.test-harness.svelte';
+import {
+  codeDefinition,
+  emptyWorld,
+  installWorkflowWorld,
+  invalidFile,
+  readyFile,
+  scheduleFixture,
+  sourceDefinition,
+  type WorkflowStub,
+  type World,
+} from '../../lib/workflow-world.test-support.ts';
+import IndexHarness from './index-test-harness.test-harness.svelte';
 
-function happyDomAPI(): DetachedWindowAPI {
-  if (!(window instanceof Window)) {
-    throw new Error('expected the test window to be backed by happy-dom');
-  }
-  return window.happyDOM;
+const DAY = 24 * 3_600_000;
+let stub: WorkflowStub | undefined;
+
+afterEach(() => {
+  cleanup();
+  stub?.restore();
+  stub = undefined;
+  Reflect.deleteProperty(window, 'matchMedia');
+});
+
+beforeEach(() => {
+  if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  window.happyDOM.setURL('http://localhost/');
+});
+
+const REFUND_SCHEDULE = 'bureau-workflow-schedule:order-refund:1';
+const RELEASE_SCHEDULE = 'bureau-workflow-schedule:release-notes:1';
+const INBOX_SCHEDULE = 'bureau-workflow-schedule:triage-inbox:1';
+
+/** The sample world's schedules, counted from now so "next" and "last" are always in the right place. */
+function sampleWorld(overrides: Partial<World> = {}): World {
+  const now = Date.now();
+  return emptyWorld({
+    definitions: [
+      codeDefinition('agentRun'),
+      sourceDefinition('release-notes'),
+      sourceDefinition('triage-inbox'),
+    ],
+    files: [
+      readyFile('release-notes', {
+        title: 'Release notes',
+        trigger: { kind: 'schedule', spec: '0 11 * * 5', input: { branch: 'main' } },
+        steps: [{ handler: 'agent', input: { agent: 'assistant' } }],
+        schedule: { id: RELEASE_SCHEDULE, status: 'active', nextFireAt: null },
+      }),
+      invalidFile('order-refund'),
+      readyFile('triage-inbox', {
+        title: 'Triage inbox',
+        paused: true,
+        trigger: { kind: 'schedule', spec: '0 8 * * *' },
+        steps: [{ handler: 'agent', input: { agent: 'assistant' } }],
+        schedule: { id: INBOX_SCHEDULE, status: 'paused', nextFireAt: null },
+      }),
+    ],
+    schedules: [
+      scheduleFixture('daily', 'agentRun', {
+        description: 'Daily summary',
+        cronExpression: '0 9 * * *',
+        missedFireCount: 4,
+        lastFireAt: now - 4 * DAY,
+        nextFireAt: now + DAY,
+      }),
+      scheduleFixture(INBOX_SCHEDULE, 'triage-inbox', {
+        description: 'Inbox triage',
+        status: 'paused',
+        cronExpression: '0 8 * * *',
+        lastFireAt: now - 9 * DAY,
+        nextFireAt: now - 8 * DAY,
+      }),
+      scheduleFixture(RELEASE_SCHEDULE, 'release-notes', {
+        description: 'Release notes digest',
+        cronExpression: '0 11 * * 5',
+        lastFireAt: now - 3 * DAY,
+        nextFireAt: now + 4 * DAY,
+      }),
+      scheduleFixture(REFUND_SCHEDULE, 'order-refund', {
+        description: 'Weekly refund audit',
+        status: 'paused',
+        cronExpression: '0 11 * * 1',
+        nextFireAt: now + 14 * 60_000,
+      }),
+    ],
+    scheduleAgents: { daily: 'assistant' },
+    scheduleBlockers: {
+      [REFUND_SCHEDULE]: {
+        workflow: 'order-refund',
+        message: 'The file is not valid JSON.',
+        status: 'active',
+      },
+    },
+    savedSteps: { 'order-refund': [{ handler: 'agent', input: { agent: 'tool-runner' } }] },
+    agentModels: { assistant: null, 'tool-runner': 'anthropic/claude-sonnet-5-5' },
+    agents: [
+      { name: 'assistant', displayName: 'assistant', media: null },
+      { name: 'tool-runner', displayName: 'tool-runner', media: null },
+    ],
+    attention: [
+      { kind: 'no-provider', area: 'providers', at: now - 3_600_000, provider: 'anthropic' },
+      {
+        kind: 'missed-runs',
+        area: 'schedules',
+        at: now - DAY,
+        scheduleId: 'daily',
+        scheduleName: 'Daily summary',
+        count: 4,
+        since: now - 3 * DAY,
+        occurrences: [],
+      },
+    ],
+    ...overrides,
+  });
 }
 
-/** The row of a schedule, found by its identifier, which no row shows. */
-function row(id: string): Element | null {
-  return document.querySelector(`[data-schedule="${id}"]`);
-}
-
-function resetLocation(path = '/schedules'): void {
-  happyDomAPI().setURL('http://localhost/');
+function open(path = '/schedules', world: World = sampleWorld(), scopes?: readonly string[]) {
+  stub = installWorkflowWorld(world);
   router.navigate(path, { replace: true });
+  return render(IndexHarness, {
+    props: {
+      client: stub.client,
+      externalBureau: true,
+      ...(scopes === undefined ? {} : { scopes: scopes as never }),
+    },
+  });
 }
 
-describe('ScheduleList', () => {
-  beforeEach(() => {
-    resetLocation();
+/** The rows, in the order they are listed. */
+function rows(container: HTMLElement): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>('li[data-schedule]')];
+}
+
+const titleOf = (row: HTMLElement): string =>
+  row.querySelector('.cinder-stacked-list-item__title')?.textContent?.trim() ?? '';
+
+const lineTwoOf = (row: HTMLElement): string =>
+  (row.querySelector('.cinder-stacked-list-item__meta')?.textContent ?? '')
+    .replaceAll(/\s+/g, ' ')
+    .trim();
+
+const nextOf = (row: HTMLElement): string =>
+  row.querySelector('[data-testid="schedule-next"]')?.textContent?.trim() ?? '';
+
+/** A filter segment by its word and its count, whose accessible name is "All, 4". */
+function segment(view: ReturnType<typeof within>, word: string, count: number): HTMLElement {
+  return view.getByRole('radio', { name: new RegExp(`^${word}\\s*,\\s*${String(count)}$`) });
+}
+
+/** The list once the Bureau has said what the schedules start and what needs attention. */
+async function listed(container: HTMLElement): Promise<HTMLElement[]> {
+  await waitFor(() => {
+    const listed = rows(container);
+    expect(listed).toHaveLength(4);
+    // The workflow whose file can't load has its agent from the last saved version.
+    expect(lineTwoOf(listed[1] as HTMLElement)).toContain('Tool runner');
+  });
+  return rows(container);
+}
+
+describe('the heading and the header action', () => {
+  test('is Schedules, with its timetable subtitle and a "+" that makes a schedule', async () => {
+    const { container, findByRole } = open();
+    await listed(container);
+
+    expect(within(container).getByRole('heading', { level: 1, name: 'Schedules' })).not.toBeNull();
+    expect(container.textContent).toMatch(/Runs that start on a timetable\. Times are in .+\./);
+    const create = await findByRole('button', { name: 'New schedule' });
+    expect(create.textContent?.trim()).toBe('');
+    expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+    await fireEvent.click(create);
+    expect(router.pathname).toBe('/schedules/new');
   });
 
-  test('a filter that matches nothing is the filtered empty state, and Clear filters takes it out', async () => {
-    resetLocation('/schedules?status=cancelled');
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+  test('is inert, and says why, for a caller who may not write schedules', async () => {
+    const { container, findByRole } = open('/schedules', sampleWorld(), ['schedules:read']);
+    await listed(container);
 
-    try {
-      const { findByText, getByRole } = render(ScheduleListHarness, { props: { client } });
+    const create = await findByRole('button', { name: 'New schedule' });
+    expect(create.getAttribute('aria-disabled')).toBe('true');
+    await fireEvent.click(create);
+    expect(router.pathname).toBe('/schedules');
+  });
+});
 
-      expect(await findByText('No matching schedules')).not.toBeNull();
-      await fireEvent.click(getByRole('button', { name: 'Clear filters' }));
-      await waitFor(() => expect(window.location.search).toBe(''));
-      await waitFor(() => expect(row('nightly-rollup')).not.toBeNull());
-    } finally {
-      await server.stop();
-    }
+describe('the rows', () => {
+  test('are listed with the schedule that missed runs first, then the active ones soonest first, then the paused', async () => {
+    const { container } = open();
+    const listedRows = await listed(container);
+
+    expect(listedRows.map(titleOf)).toEqual([
+      'Daily summary',
+      'Weekly refund audit',
+      'Release notes digest',
+      'Inbox triage',
+    ]);
+    expect(listedRows.map((row) => row.dataset['statusWord'])).toEqual([
+      'Missed runs · 4',
+      'Active',
+      'Active',
+      'Paused',
+    ]);
   });
 
-  test('is a table of every schedule with the workflow each one runs, whichever way it was made', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      timeZone: 'America/Los_Angeles',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+  test('say the next run at the right: the day and time, due and won’t start, or no next run', async () => {
+    const { container } = open();
+    const [daily, refund, release, inbox] = await listed(container);
 
-    try {
-      const { getByRole, getAllByRole } = render(ScheduleListHarness, { props: { client } });
-
-      await waitFor(() => expect(row('nightly-rollup')).not.toBeNull());
-      expect(getAllByRole('columnheader').map((cell) => cell.textContent?.trim())).toEqual([
-        'Schedule',
-        'Runs',
-        'Repeats',
-        'Next run',
-        'Last run',
-        'Status',
-        'Actions',
-      ]);
-      // The workflow it runs is a link, and the zone a cron is read in is named.
-      expect(
-        within(getByRole('table')).getByRole('link', { name: 'inventory-sync-sweep' }),
-      ).not.toBeNull();
-      expect(row('nightly-rollup')?.textContent).toContain('in America/Los Angeles');
-      expect(row('nightly-rollup')?.getAttribute('data-status-word')).toBe('Scheduled');
-      expect(row('nightly-rollup')?.getAttribute('data-kind')).toBe('code');
-    } finally {
-      await server.stop();
-    }
+    expect(nextOf(daily as HTMLElement)).toMatch(/^Next /);
+    expect(nextOf(refund as HTMLElement)).toMatch(/^Due .+ · won’t start$/);
+    expect(
+      (refund as HTMLElement)
+        .querySelector('[data-testid="schedule-next"]')
+        ?.getAttribute('data-tone'),
+    ).toBe('warning');
+    expect(nextOf(release as HTMLElement)).toMatch(/^Next /);
+    expect(nextOf(inbox as HTMLElement)).toBe('No next run');
   });
 
-  test('renders a schedule row with its status badge and human-readable cadence', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+  test('say the kind first on line two, and a reason straight after it', async () => {
+    const { container } = open();
+    const [daily, refund, release, inbox] = await listed(container);
 
-    try {
-      const { getByText, getByRole } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      await waitFor(() => expect(getByText('Nightly rollup')).not.toBeNull());
-      const { getByText: getByTextInList } = within(getByRole('table'));
-      // An active schedule needs no badge; one that is not says so.
-      expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active');
-      expect(getByText('Every day at 02:00')).not.toBeNull();
-      expect(getByTextInList('inventory-sync-sweep')).not.toBeNull();
-      // The row shows what the schedule is called, and nowhere its identifier.
-      expect(row('nightly-rollup')?.textContent).not.toContain('nightly-rollup');
-    } finally {
-      await server.stop();
-    }
+    expect(lineTwoOf(daily as HTMLElement)).toMatch(
+      /^Workflow · Chat with an agent · Assistant · Every day at .+ · Last run [A-Z][a-z]{2} \d{1,2}$/,
+    );
+    expect(lineTwoOf(refund as HTMLElement)).toMatch(
+      /^Workflow · order-refund can’t load · Tool runner · Every Monday at .+ · Never run$/,
+    );
+    // The workflow's file name is small and monospaced, and "can't load" is in red.
+    const reason = (refund as HTMLElement).querySelector('code.ib-identifier');
+    expect(reason?.textContent).toBe('order-refund');
+    expect(
+      (refund as HTMLElement)
+        .querySelector('.ib-schedule-line__part[data-tone="danger"]')
+        ?.textContent?.trim(),
+    ).toBe('can’t load');
+    expect(lineTwoOf(release as HTMLElement)).toMatch(
+      /^Workflow · Release notes · From a workflow file · Every Friday at .+ · Last run /,
+    );
+    expect(lineTwoOf(inbox as HTMLElement)).toMatch(
+      /^Workflow · Triage inbox · Assistant · Every day at .+ · Last run /,
+    );
   });
 
-  test('a paused schedule shows the Paused badge', async () => {
-    const server = await startLiveSourceTestServer();
-    const handle = await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'weekly-digest',
-      description: 'Weekly digest',
-      cron: '0 9 * * 1',
-      input: { warehouseId: 'wh-main' },
+  test('are one link to the schedule, with no menu of actions', async () => {
+    const { container, getAllByRole } = open();
+    await listed(container);
+
+    const link = within(rows(container)[0] as HTMLElement).getByRole('link', {
+      name: 'Daily summary',
     });
-    await handle.pause();
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByText, getByRole } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      await waitFor(() => expect(getByText('Weekly digest')).not.toBeNull());
-      const { getByText: getByTextInList } = within(getByRole('table'));
-      expect(getByTextInList('Paused')).not.toBeNull();
-      expect(row('weekly-digest')?.getAttribute('data-status-word')).toBe('Paused');
-    } finally {
-      await server.stop();
-    }
+    expect(link.getAttribute('href')).toBe('/schedules/daily');
+    expect(getAllByRole('link', { name: /./ }).length).toBeGreaterThan(0);
+    expect(container.querySelector('[aria-label^="Actions for"]')).toBeNull();
+    await fireEvent.click(link);
+    expect(router.pathname).toBe('/schedules/daily');
   });
 
-  /**
-   * T9.4 accessibility pass: before this fix, the row's ONLY navigation
-   * affordance was `Table.Row`'s `onclick` — Cinder's `table-row.svelte`
-   * spreads `onclick` straight onto a bare `<tr>` with no `tabindex`/keydown
-   * handling, so the row was reachable by mouse only. A real `<a href>` is
-   * the keyboard path (Tab reaches it, Enter activates it natively — no app
-   * JS needed for that part), mirroring `workflow-table.svelte`'s identical
-   * id-link pattern.
-   */
-  test('the schedule id renders as a real link to the detail URL (keyboard-reachable, not row-onclick-only)', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+  test('never put a can’t-load or provider reason on a schedule that runs a scripted agent', async () => {
+    const { container } = open();
+    const [daily] = await listed(container);
 
-    try {
-      const { getByRole } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      const link = await waitFor(() => getByRole('link', { name: 'Nightly rollup' }));
-      expect(link.getAttribute('href')).toBe('/schedules/nightly-rollup');
-    } finally {
-      await server.stop();
-    }
+    expect(daily?.textContent).not.toContain('can’t load');
+    expect(daily?.textContent).not.toContain('provider');
+    expect(nextOf(daily as HTMLElement)).not.toContain('won’t start');
   });
 
-  test('clicking a row navigates to the schedule detail URL', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
+  test('say a provider is missing, and not a file, for a workflow that loads when its agent needs a model', async () => {
+    const world = sampleWorld();
+    world.files = world.files.map((file) =>
+      file.id === 'order-refund'
+        ? readyFile('order-refund', {
+            title: 'Order refund',
+            steps: [{ handler: 'agent', input: { agent: 'tool-runner' } }],
+            schedule: { id: REFUND_SCHEDULE, status: 'active', nextFireAt: null },
+          })
+        : file,
+    );
+    world.definitions.push(sourceDefinition('order-refund'));
+    world.scheduleBlockers = {};
+    const refund = world.schedules.find((schedule) => schedule.id === REFUND_SCHEDULE);
+    if (refund === undefined) throw new Error('expected the schedule');
+    refund.status = 'active';
+    const { container } = open('/schedules', world);
+    await waitFor(() => {
+      const row = rows(container).find((candidate) => titleOf(candidate) === 'Weekly refund audit');
+      expect(lineTwoOf(row as HTMLElement)).toContain('won’t run until a provider is connected');
     });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    const row = rows(container).find((candidate) => titleOf(candidate) === 'Weekly refund audit');
+    expect(lineTwoOf(row as HTMLElement)).toMatch(
+      /^Workflow · Order refund · won’t run until a provider is connected · Tool runner · /,
+    );
+    expect(lineTwoOf(row as HTMLElement)).not.toContain('can’t load');
+  });
+});
 
-    try {
-      const { getByText } = render(ScheduleListHarness, {
-        props: { client },
-      });
+describe('a schedule whose workflow was deleted', () => {
+  test('is Can’t find workflow, names the identifier, and has no next run', async () => {
+    const world = sampleWorld();
+    world.schedules.push(
+      scheduleFixture('cleanup', 'weekly-cleanup', {
+        description: 'Weekly cleanup',
+        status: 'paused',
+        cronExpression: '0 2 * * 0',
+        lastFireAt: Date.now() - 8 * DAY,
+      }),
+    );
+    world.savedSteps['weekly-cleanup'] = [{ handler: 'agent', input: { agent: 'tool-runner' } }];
+    const { container } = open('/schedules', world);
+    await waitFor(() => {
+      const row = rows(container).find((candidate) => titleOf(candidate) === 'Weekly cleanup');
+      expect(row?.dataset['statusWord']).toBe("Can't find workflow");
+      // The agent comes from the workflow's last saved version, which is read after the list.
+      expect(lineTwoOf(row as HTMLElement)).toContain('Tool runner');
+    });
+    const row = rows(container).find((candidate) => titleOf(candidate) === 'Weekly cleanup');
+    expect(row?.dataset['statusKey']).toBe('cannot-find');
+    expect(lineTwoOf(row as HTMLElement)).toMatch(
+      /^Workflow · weekly-cleanup was deleted · Tool runner · Every Sunday at .+ · Last run /,
+    );
+    expect(nextOf(row as HTMLElement)).toBe('No next run');
+    // The schedule itself is paused, so it counts there: All 5, Active 4, Paused 1.
+    const view = within(container);
+    expect(segment(view, 'All', 5)).not.toBeNull();
+    expect(segment(view, 'Active', 3)).not.toBeNull();
+    expect(segment(view, 'Paused', 2)).not.toBeNull();
+  });
+});
 
-      const idCell = await waitFor(() => {
-        const cell = getByText('Nightly rollup');
-        expect(cell).not.toBeNull();
-        return cell;
-      });
-      await fireEvent.click(idCell);
+describe('the filters', () => {
+  test('carry the counts of the segments, which partition the list, and of the Missed runs chip', async () => {
+    const { container } = open();
+    await listed(container);
+    const view = within(container);
 
-      expect(window.location.pathname).toBe('/schedules/nightly-rollup');
-    } finally {
-      await server.stop();
-    }
+    expect(segment(view, 'All', 4)).not.toBeNull();
+    expect(segment(view, 'Active', 3)).not.toBeNull();
+    expect(segment(view, 'Paused', 1)).not.toBeNull();
+    expect(view.getByRole('button', { name: /Missed runs\s*1/ })).not.toBeNull();
+    // The chip is not a fourth segment: a schedule can be Active and have missed runs.
+    expect(view.queryByRole('radio', { name: /Missed runs/ })).toBeNull();
   });
 
-  test('a schedule that has fired says how its last run ended, and one that has not says so', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'fired-probe',
-      description: 'Fired probe',
-      every: '50ms',
-      input: { warehouseId: 'wh-main' },
-    });
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'idle-probe',
-      description: 'Idle probe',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    for await (const _ of awakeTurns()) {
-      const runs = await client.list({ scheduleId: 'fired-probe', limit: 5 });
-      if (runs.items.some((run) => run.status === 'completed')) break;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+  test('a segment narrows the list and goes in the address', async () => {
+    const { container } = open();
+    await listed(container);
 
-    try {
-      render(ScheduleListHarness, { props: { client } });
-
-      await waitFor(() =>
-        expect(
-          row('fired-probe')
-            ?.querySelector('[data-testid="schedule-last-fire"]')
-            ?.getAttribute('data-outcome'),
-        ).toBe('succeeded'),
-      );
-      expect(row('idle-probe')?.textContent).toContain('not fired yet');
-    } finally {
-      await server.stop();
-    }
+    await fireEvent.click(segment(within(container), 'Paused', 1));
+    await waitFor(() => expect(rows(container).map(titleOf)).toEqual(['Inbox triage']));
+    expect(window.location.search).toBe('?status=paused');
   });
 
-  test('sets a cron expression it cannot put in words in monospace', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'weekday-probe',
-      description: 'Weekday probe',
-      cron: '0 9 * * 1-5',
-      input: { warehouseId: 'wh-main' },
-    });
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'daily-probe',
-      description: 'Daily probe',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+  test('the Missed runs chip narrows to schedules that missed runs, and goes in the address', async () => {
+    const { container } = open();
+    await listed(container);
 
-    try {
-      render(ScheduleListHarness, { props: { client } });
-
-      await waitFor(() =>
-        expect(row('weekday-probe')?.textContent).toContain('Cron · 0 9 * * 1-5'),
-      );
-      const codes = (id: string) =>
-        Array.from(
-          row(id)?.querySelectorAll('code.ib-identifier') ?? [],
-          (code) => code.textContent,
-        );
-      expect(codes('weekday-probe')).toContain('0 9 * * 1-5');
-      // A cadence in words has no expression to set.
-      expect(codes('daily-probe')).not.toContain('0 2 * * *');
-    } finally {
-      await server.stop();
-    }
+    await fireEvent.click(within(container).getByRole('button', { name: /Missed runs\s*1/ }));
+    await waitFor(() => expect(rows(container).map(titleOf)).toEqual(['Daily summary']));
+    expect(window.location.search).toBe('?missed=1');
   });
 
-  test('a schedule whose last run failed says so', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'system-failure-demo',
-      id: 'failing-probe',
-      description: 'Failing probe',
-      every: '50ms',
-      input: { orderId: 'order-1' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    for await (const _ of awakeTurns()) {
-      const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
-      if (runs.items.some((run) => run.status === 'failed')) break;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-
-    try {
-      render(ScheduleListHarness, { props: { client } });
-
-      await waitFor(() =>
-        expect(
-          row('failing-probe')
-            ?.querySelector('[data-testid="schedule-last-fire"]')
-            ?.getAttribute('data-outcome'),
-        ).toBe('failed'),
-      );
-    } finally {
-      await server.stop();
-    }
+  test('an address names the filters, and the counts are those of the agent and workflow it leaves', async () => {
+    const { container } = open('/schedules?agent=tool-runner&status=paused');
+    await waitFor(() => expect(segment(within(container), 'All', 1)).not.toBeNull());
+    const view = within(container);
+    expect(segment(view, 'Active', 1)).not.toBeNull();
+    expect(segment(view, 'Paused', 0)).not.toBeNull();
+    // Paused with Tool runner matches nothing: the filtered empty state, which clears the filters.
+    expect(await view.findByText('No matching schedules')).not.toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Clear filters' }));
+    await waitFor(() => expect(window.location.search).toBe(''));
   });
+});
 
-  test('the actions menu resumes a paused schedule, opens its editor, and copies its identifier', async () => {
-    const server = await startLiveSourceTestServer();
-    const handle = await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    await handle.pause();
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    const written: string[] = [];
-    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-    Object.defineProperty(navigator, 'clipboard', {
+describe('on a phone', () => {
+  function phoneViewport(): void {
+    Object.defineProperty(window, 'matchMedia', {
       configurable: true,
-      value: { writeText: (text: string) => (written.push(text), Promise.resolve()) },
+      value: (query: string) => ({
+        media: query,
+        matches: query.includes('640'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+      }),
     });
+  }
 
-    try {
-      const { getByRole, findByText } = render(ScheduleListHarness, { props: { client } });
-      const actions = await waitFor(() =>
-        getByRole('button', { name: 'Actions for Nightly rollup' }),
-      );
-
-      // The identifier is copied, and the person is told so.
-      await fireEvent.click(actions);
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy ID' })));
-      await waitFor(() => expect(written).toEqual(['nightly-rollup']));
-      expect(await findByText('Schedule ID copied')).not.toBeNull();
-
-      await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Resume/ })));
-      await waitFor(() =>
-        expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active'),
-      );
-
-      await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Edit' })));
-      expect(window.location.pathname).toBe('/schedules/nightly-rollup/edit');
-    } finally {
-      if (original) Object.defineProperty(navigator, 'clipboard', original);
-      else Reflect.deleteProperty(navigator, 'clipboard');
-      await server.stop();
-    }
-  });
-
-  test('says when the identifier could not be copied', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: () => Promise.reject(new Error('Clipboard blocked')) },
-    });
-
-    try {
-      const { getByRole, findByText } = render(ScheduleListHarness, { props: { client } });
-      await fireEvent.click(
-        await waitFor(() => getByRole('button', { name: 'Actions for Nightly rollup' })),
-      );
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy ID' })));
-
-      expect(await findByText(/The schedule ID was not copied/)).not.toBeNull();
-    } finally {
-      if (original) Object.defineProperty(navigator, 'clipboard', original);
-      else Reflect.deleteProperty(navigator, 'clipboard');
-      await server.stop();
-    }
-  });
-
-  test('an ?agent= filter that matches nothing says so, and keeps the agent in the filter', async () => {
-    resetLocation('/schedules?agent=assistant');
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByRole, findByText } = render(ScheduleListHarness, { props: { client } });
-
-      expect(await findByText('No matching schedules')).not.toBeNull();
-      await fireEvent.click(getByRole('button', { name: 'Clear filters' }));
-      await waitFor(() => expect(window.location.search).toBe(''));
-    } finally {
-      await server.stop();
-    }
-  });
-
-  test('the New schedule button is disabled with a reason when schedules:write is missing', async () => {
-    const server = await startLiveSourceTestServer();
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByRole } = render(ScheduleListHarness, {
-        props: { client, scopes: ['schedules:read'] },
-      });
-
-      await waitFor(() => {
-        expect(
-          requireElement(getByRole('button', { name: 'New schedule' }), HTMLButtonElement).disabled,
-        ).toBe(true);
-      });
-      // The reason is the disabled button's own title, not a second control beside it.
-      expect(getByRole('button', { name: 'New schedule' }).getAttribute('title')).toBe(
-        'Requires schedules:write',
-      );
-    } finally {
-      await server.stop();
-    }
-  });
-
-  test('the New schedule button is enabled with schedules:write granted', async () => {
-    const server = await startLiveSourceTestServer();
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByRole, queryByText } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      await waitFor(() => {
-        expect(
-          requireElement(getByRole('button', { name: 'New schedule' }), HTMLButtonElement).disabled,
-        ).toBe(false);
-      });
-      expect(queryByText('Requires schedules:write')).toBeNull();
-    } finally {
-      await server.stop();
-    }
-  });
-
-  test('pausing an active schedule updates its badge to Paused', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByText, getByRole } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      await waitFor(() => {
-        expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active');
-      });
-
-      await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Pause/ })));
-
-      await waitFor(() => {
-        expect(within(getByRole('table')).getByText('Paused')).not.toBeNull();
-      });
-      expect(getByText('Nightly rollup')).not.toBeNull();
-    } finally {
-      await server.stop();
-    }
-  });
-
-  test('cancelling a schedule requires Tier-2 confirmation before it takes effect (T8.2 tier sweep)', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByText, getByRole, queryByText } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      await waitFor(() => {
-        expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active');
-      });
-
-      await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Cancel/ })));
-
-      // Opening the menu item shows the confirm dialog — the schedule must
-      // NOT be cancelled yet (this is exactly the gap the tier sweep fixed:
-      // the row action previously mutated on click with no confirm step at
-      // all).
-      await waitFor(() => {
-        expect(getByText('Cancel this schedule?')).not.toBeNull();
-      });
-      expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active');
-
-      await fireEvent.click(getByRole('button', { name: 'Cancel schedule' }));
-
-      await waitFor(() => {
-        expect(within(getByRole('table')).getByText('Canceled')).not.toBeNull();
-      });
-      expect(queryByText('Cancel this schedule?')).toBeNull();
-    } finally {
-      await server.stop();
-    }
-  });
-
-  test('dismissing the cancel confirm dialog leaves the schedule active', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByText, getByRole, queryByText } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      await waitFor(() => {
-        expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active');
-      });
-
-      await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Cancel/ })));
-      await waitFor(() => {
-        expect(getByText('Cancel this schedule?')).not.toBeNull();
-      });
-
-      await fireEvent.click(getByRole('button', { name: 'Cancel' }));
-
-      flushSync();
-      expect(queryByText('Cancel this schedule?')?.outerHTML ?? null).toBeNull();
-      expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active');
-    } finally {
-      await server.stop();
-    }
-  });
-
-  test('a fault (unreachable server) renders the fault banner with a retry action', async () => {
-    const client = new HttpClient({ baseUrl: 'http://127.0.0.1:1' });
-
-    const { getByRole } = render(ScheduleListHarness, {
-      props: { client },
-    });
-
-    await waitFor(() => expect(getByRole('button', { name: 'Retry' })).not.toBeNull());
-  });
-
-  test('a ?status= URL query param (dashboard-card deep link) pre-filters the status Select', async () => {
-    resetLocation('/schedules?status=paused');
-    const server = await startLiveSourceTestServer();
-    const handle = await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'weekly-digest',
-      description: 'Weekly digest',
-      cron: '0 9 * * 1',
-      input: { warehouseId: 'wh-main' },
-    });
-    await handle.pause();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByRole, getByText, queryByText } = render(ScheduleListHarness, {
-        props: { client },
-      });
-
-      await waitFor(() => expect(getByText('Weekly digest')).not.toBeNull());
-      expect(queryByText('Nightly rollup')).toBeNull();
+  test('the status moves to line two, the next run stays at the right of line one, and a third line says why and when', async () => {
+    phoneViewport();
+    const { container } = open();
+    await waitFor(() => {
+      const listed = rows(container);
+      expect(listed).toHaveLength(4);
       expect(
-        getByRole('combobox', { name: 'Status' }).querySelector('.cinder-select__value')
-          ?.textContent,
-      ).toBe('Paused');
-    } finally {
-      await server.stop();
-    }
-  });
+        listed[1]?.querySelector('[data-testid="schedule-line-three"]')?.textContent,
+      ).toContain('provider');
+    });
+    const [daily, refund, release, inbox] = rows(container);
 
-  test('choosing a status updates the address, replacing history, and choosing Any takes it out', async () => {
-    resetLocation('/schedules');
-    const server = await startLiveSourceTestServer();
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const view = render(ScheduleListHarness, { props: { client } });
-      await waitFor(() => view.getByRole('combobox', { name: 'Status' }));
-
-      await chooseFilterOption(view, 'Status', 'Paused');
-      await waitFor(() => expect(window.location.search).toBe('?status=paused'));
-
-      await chooseFilterOption(view, 'Status', SCHEDULE_COPY.anyStatus);
-      await waitFor(() => expect(window.location.search).toBe(''));
-    } finally {
-      await server.stop();
-    }
+    expect(lineTwoOf(daily as HTMLElement)).toBe('Workflow · Chat with an agent · Assistant');
+    expect(nextOf(inbox as HTMLElement)).toBe('—');
+    const third = (row: HTMLElement | undefined) =>
+      (row?.querySelector('[data-testid="schedule-line-three"]')?.textContent ?? '')
+        .replaceAll(/\s+/g, ' ')
+        .trim();
+    expect(third(daily)).toMatch(/^Missed 4 times since [A-Z][a-z]{2} \d{1,2} · every day at /);
+    expect(third(refund)).toMatch(
+      /^Order refund can’t load · won’t run until a provider is connected · Mondays at /,
+    );
+    expect(
+      refund?.querySelector('[data-testid="schedule-line-three"] [data-tone="danger"]')
+        ?.textContent,
+    ).toBe('Order refund can’t load');
+    expect(third(release)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2} · Fridays at /);
+    expect(third(inbox)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2} · every day at /);
   });
 });

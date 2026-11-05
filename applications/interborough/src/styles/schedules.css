@@ -4,6 +4,20 @@
   min-width: 0;
 }
 
+/* A part of a row's second line in a tone: "can't load" is red, a schedule that won't start amber. */
+.ib-schedule-line__part[data-tone='danger'] {
+  color: var(--cinder-status-danger-text);
+}
+
+.ib-schedule-line__part[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
+/* The next run at the right of a row's first line; amber when the schedule is due and won't start. */
+.ib-schedule-next[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
 .ib-schedule__sentence {
   display: flex;
   flex-wrap: wrap;

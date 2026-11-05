@@ -64,3 +64,53 @@ export async function listAttentionAlerts(options?: {
       : [];
   });
 }
+
+const attentionMissedRunsSchema = z.object({
+  kind: z.literal('missed-runs'),
+  scheduleId: z.string(),
+  count: z.number().int(),
+  since: z.number(),
+});
+
+/** What the schedule rows need from the attention list: who missed runs, and whether a model can answer. */
+export interface ScheduleAttention {
+  /** The schedules that missed runs in the last seven days and have not fired since, by schedule id. */
+  readonly missedRuns: ReadonlyMap<
+    string,
+    {
+      /** How many occurrences it missed in the window. */
+      readonly count: number;
+      /** The first missed occurrence in the window, in epoch milliseconds. */
+      readonly since: number;
+    }
+  >;
+  /** Whether no model provider is connected, so a schedule that runs a model agent will not start. */
+  readonly noProvider: boolean;
+}
+
+/**
+ * What the schedule rows read of `bureau.health.attention`: the schedules that missed runs, and
+ * whether no model provider is connected. A caller without `bureau.diagnostics:read` is refused
+ * with a fault, which the caller lets through so the rows can fall back to what the engine says.
+ */
+export async function readScheduleAttention(options?: {
+  readonly signal?: AbortSignal;
+  readonly fetch?: Fetcher;
+}): Promise<ScheduleAttention> {
+  const { items } = attentionItemsSchema.parse(
+    await callBureau('bureau.health.attention', {}, options),
+  );
+  const missedRuns = new Map<string, { count: number; since: number }>();
+  let noProvider = false;
+  for (const item of items) {
+    if (item.kind === 'no-provider') noProvider = true;
+    const missed = attentionMissedRunsSchema.safeParse(item);
+    if (missed.success) {
+      missedRuns.set(missed.data.scheduleId, {
+        count: missed.data.count,
+        since: missed.data.since,
+      });
+    }
+  }
+  return { missedRuns, noProvider };
+}

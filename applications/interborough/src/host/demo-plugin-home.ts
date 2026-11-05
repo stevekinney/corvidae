@@ -31,6 +31,21 @@ async function readDocument(path: string): Promise<Record<string, unknown>> {
 }
 
 /**
+ * Gives a home its deployment identity, which Bungalow refuses to open a directory without once the
+ * directory holds anything. A home that is written to before its host starts (provider keys, saved
+ * tool sources, workflow files) is bound first, so the host finds an identity beside the files.
+ * Binding an already bound home changes nothing.
+ */
+export async function bindHome(home: string): Promise<void> {
+  await mkdir(home, { recursive: true });
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { NODE_ENV: 'test', INTERBOROUGH_HOME: home },
+  });
+  bungalow.close();
+}
+
+/**
  * Turn each plugin `choices` names on or off in `home`'s `configuration.json`, keeping every other
  * key it holds, the plugins' configurations included.
  */
@@ -38,12 +53,7 @@ export async function setPluginsEnabled(
   home: string,
   choices: Readonly<Record<string, boolean>>,
 ): Promise<void> {
-  await mkdir(home, { recursive: true });
-  const bungalow = await openBungalow({
-    name: 'interborough',
-    environment: { NODE_ENV: 'test', INTERBOROUGH_HOME: home },
-  });
-  bungalow.close();
+  await bindHome(home);
   const path = join(home, 'configuration.json');
   const document = await readDocument(path);
   const plugins: Record<string, unknown> = isRecord(document['plugins'])

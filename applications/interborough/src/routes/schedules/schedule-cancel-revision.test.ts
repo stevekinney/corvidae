@@ -1,6 +1,6 @@
 /**
- * Cancelling a schedule sends the revision the operator confirmed, on the list and on one
- * schedule's page. Both pages read the schedule again while a confirmation is open, so a cancel
+ * Cancelling a schedule sends the revision the operator confirmed, on one schedule's page. The
+ * page reads the schedule again while a confirmation is open, so a cancel
  * that looked the schedule up when the operator confirmed would send the newest revision, and a
  * version the operator never saw would be canceled instead of being refused as stale.
  *
@@ -66,35 +66,6 @@ async function changeAndRefetch(refetch: () => Promise<void> | undefined): Promi
   // The page did read it again.
   expect(stub?.calls.length ?? 0).toBeGreaterThan(before);
 }
-
-describe('cancelling from the list', () => {
-  test('sends the revision the operator asked to cancel, not the newest one, and says it is stale', async () => {
-    const { view, refetch } = open('/schedules');
-    const body = within(view.container.ownerDocument.body);
-    await waitFor(() =>
-      expect(
-        view.container.querySelector<HTMLElement>(`tr[data-schedule="${SCHEDULE}"]`)?.dataset[
-          'kind'
-        ],
-      ).toBe('agent-run'),
-    );
-    await fireEvent.click(body.getByRole('button', { name: /^Actions for / }));
-    await fireEvent.click(body.getByRole('menuitem', { name: /Cancel/ }));
-    const confirm = await body.findByRole('button', { name: 'Cancel schedule' });
-
-    await changeAndRefetch(refetch);
-    await fireEvent.click(confirm);
-
-    await waitFor(() => expect(stub?.callsTo('bureau.schedules.cancel').length).toBe(1));
-    expect(stub?.callsTo('bureau.schedules.cancel')[0]?.params).toEqual({
-      scheduleId: SCHEDULE,
-      expectedRevision: CONFIRMED_REVISION,
-    });
-    // Refused as stale: nothing was canceled.
-    await body.findByTestId('schedule-notice');
-    expect(stub?.world.schedules[0]?.status).toBe('active');
-  });
-});
 
 describe('cancelling from one schedule’s page', () => {
   test('sends the revision the operator asked to cancel, not the newest one, and says it is stale', async () => {

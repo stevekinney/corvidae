@@ -118,6 +118,13 @@ type StackedListItemBase = ForwardedLiAttributes & {
    */
   meta?: Snippet;
   /**
+   * A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is
+   * ever cut. A schedule row on a phone puts the reason it won't run first and the cadence last
+   * on it; the cadence is the part a narrow screen can lose, so it is the last thing the line
+   * says. It starts under the title, and is not drawn on a row with `details`.
+   */
+  detail?: Snippet;
+  /**
    * A row whose own details failed to load: line two says this message beside a warning glyph, in
    * the danger text colour, in place of `meta`, and the rest of the list stays live (there is no
    * banner and no full-page error). Pass `onRetryClick` for the secondary "Try again" button that

@@ -41,6 +41,22 @@ const viewSchema = z.object({
   skippedCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * Why the schedule will not start, or `null` when nothing blocks it: a workflow file's schedule
+   * whose file stopped parsing is kept from the file's last good version and starts nothing until
+   * the file parses again. `status` then reads as the schedule holds it (`active` when it was
+   * active, although the engine holds it paused).
+   */
+  blocker: z
+    .object({
+      kind: z.literal('workflow-cannot-load'),
+      /** The workflow whose file cannot load. */
+      workflow: z.string(),
+      /** What is wrong with the file. */
+      message: z.string(),
+    })
+    .nullable()
+    .default(null),
 });
 
 /** One schedule as `bureau.schedules.list`, `get`, and `create` show it. */

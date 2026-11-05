@@ -132,6 +132,12 @@ const schema = {
         description: 'Secondary description below the title.',
       },
       {
+        name: 'detail',
+        reason: 'function-or-snippet',
+        description:
+          "A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is\never cut. A schedule row on a phone puts the reason it won't run first and the cadence last\non it; the cadence is the part a narrow screen can lose, so it is the last thing the line\nsays. It starts under the title, and is not drawn on a row with `details`.",
+      },
+      {
         name: 'details',
         reason: 'function-or-snippet',
         description:

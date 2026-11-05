@@ -7,7 +7,8 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  *
  * - Amber (`warning`) is only for waiting on you and Needs attention: "Waiting on you", "Missed
  *   runs", "Disconnected", "Needs attention" and "Needs sign-in".
- * - Red (`danger`) is only for "Failed", "Gave up", "Can't load" and "Not loaded".
+ * - Red (`danger`) is only for "Failed", "Gave up", "Can't load", "Not loaded" and "Can't find
+ *   workflow" (a schedule whose workflow was deleted, which can't run at all).
  * - Everything else that finished or stopped is neutral, and "Waiting" and "Scheduled" are the
  *   hollow `pending` ring.
  *
@@ -31,6 +32,7 @@ export const statusDotWordTones = {
   Failed: 'danger',
   'Gave up': 'danger',
   "Can't load": 'danger',
+  "Can't find workflow": 'danger',
   'Not loaded': 'danger',
   Canceled: 'neutral',
   Stopped: 'neutral',

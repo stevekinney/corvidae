@@ -206,7 +206,7 @@ export const routes: readonly RouteDefinition[] = [
   // schedule: its route comes before `/schedules/:schedule`.
   {
     pattern: '/schedules',
-    kind: 'reading',
+    kind: 'table',
     crumb: VIEW_COPY.schedules.label,
     view: 'schedules',
     load: schedulesArea,

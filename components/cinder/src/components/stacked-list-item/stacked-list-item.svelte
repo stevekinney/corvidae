@@ -56,6 +56,7 @@
     description,
     meta,
     metaTooltip,
+    detail,
     error,
     onRetryClick,
     retryLabel = 'Try again',
@@ -312,6 +313,8 @@
             <div id={detailsId} class="cinder-stacked-list-item__details" hidden={!expanded}>
               {@render details()}
             </div>
+          {:else if detail && error === undefined}
+            <div class="cinder-stacked-list-item__detail">{@render detail()}</div>
           {/if}
         {:else}
           {#if description}
