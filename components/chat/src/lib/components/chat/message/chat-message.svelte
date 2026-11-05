@@ -144,7 +144,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
-  import { mediaDisplayUrl } from '../builders.ts';
+  import { isStreamingMessage, mediaDisplayUrl } from '../builders.ts';
   import {
     deriveMessageParts,
     getMessageRoleLabel,
@@ -725,8 +725,9 @@
   </article>
 
   {#if transcript}
-    <!-- A reply that is still streaming has no line under it yet: no time, Copy or Quote until it ends. -->
-    {#if !isEditing && !systemRow && !streaming}
+    <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
+         line under it yet: no time, Copy or Quote until it ends. -->
+    {#if !isEditing && !systemRow && !streaming && !isStreamingMessage(message)}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}

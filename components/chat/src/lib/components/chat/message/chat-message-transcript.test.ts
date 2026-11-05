@@ -170,6 +170,21 @@ describe('transcript presentation', () => {
     expect(source).not.toMatch(/chat-message-streaming-progress\)::after/u);
   });
 
+  test('a reply whose stream dropped has no line under it either, though nothing is streaming now', () => {
+    const { container } = mount({
+      message: message({
+        role: 'assistant',
+        content: 'Order 4471 is $42.00.',
+        metadata: { __streaming: true },
+      }),
+      streaming: false,
+    });
+
+    expect(container.querySelector('.chat-message-line')).toBeNull();
+    // Its text is at full contrast with no caret: only a reply streaming now is shimmering.
+    expect(container.querySelector('.message-content-streaming')).toBeNull();
+  });
+
   test('a run’s notes are outside the bubble, and a failed run’s stop note takes the host action', () => {
     const { container, getByRole } = mount({
       message: message({ role: 'assistant', content: 'Order 4398 is' }),
