@@ -170,4 +170,17 @@ describe('CLI chat control', () => {
       'bureau.assets.uploads.complete',
     ]);
   });
+
+  // spawn-free: injected fetch proves explicit cancellation is separate from SIGINT detach.
+  test('cancels only when the explicit cancel command is used', async () => {
+    let method = '';
+    const result = await executeCli(['chats', 'cancel', '--run', 'run-1'], {
+      fetch: async (_input, init) => {
+        method = init?.method ?? '';
+        return Response.json({ runId: 'run-1', status: 'aborting' });
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(method).toBe('POST');
+  });
 });

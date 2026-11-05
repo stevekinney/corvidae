@@ -267,6 +267,18 @@ export async function executeChat(
     configure: 'bureau.contexts.steer',
   };
   if (parsed.command === 'chats' && action !== undefined) {
+    if (action === 'cancel') {
+      const runId = option(parsed, 'run') ?? parsed.arguments[1];
+      if (runId === undefined)
+        throw Object.assign(new Error('chats cancel requires --run <id>.'), { usage: true });
+      return request(
+        target,
+        `/bureau/ag-ui/runs/${encodeURIComponent(runId)}/cancel`,
+        parsed,
+        dependencies,
+        { method: 'POST' },
+      );
+    }
     const method = methodByAction[action];
     if (method === undefined)
       throw Object.assign(new Error(`Unknown chats action: ${action}.`), { usage: true });

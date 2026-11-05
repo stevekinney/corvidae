@@ -217,6 +217,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'permission-mode',
     'expected-revision',
     'provider',
+    'run',
   ],
   reviews: [
     'help',
