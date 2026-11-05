@@ -88,7 +88,7 @@ function spawn(
   return { process, stdout, stderr: new Response(process.stderr).text(), output: () => output };
 }
 
-async function waitForListening(
+export async function waitForListening(
   probe: Probe,
   timeout = TIMEOUT,
 ): Promise<{ port: number; text: string }> {
@@ -107,7 +107,7 @@ async function waitForListening(
   }
 }
 
-async function waitForHttp(url: string, timeout = TIMEOUT): Promise<Response> {
+export async function waitForHttp(url: string, timeout = TIMEOUT): Promise<Response> {
   const start = Date.now();
   for (;;) {
     try {
@@ -333,7 +333,7 @@ export async function runInstalled(
     throw new Error(`Restart did not report a replacement port: ${probe.output()}`);
   if (port !== 0 && secondPort !== port)
     throw new Error(`Explicit port changed across restart: ${port} -> ${secondPort}`);
-  const second = await waitForHttp(`http://127.0.0.1:${secondPort}`);
+  const second = await processOperations.waitForHttp(`http://127.0.0.1:${secondPort}`);
   if (!second.ok) throw new Error('Restart did not preserve listener');
   const restartedAgent = await runFixtureAgent(
     `http://127.0.0.1:${secondPort}`,
@@ -373,20 +373,20 @@ export async function runInstalled(
   for (const listener of [`http://127.0.0.1:${listening.port}`, `http://127.0.0.1:${secondPort}`]) {
     let open = false;
     try {
-      const response = await fetch(listener);
+      const response = await processOperations.fetch(listener);
       open = response.ok;
     } catch {
       /* closed */
     }
     if (open) throw new Error(`Listener remained after SIGTERM: ${listener}`);
   }
-  const reacquire = spawn(
+  const reacquire = processOperations.spawn(
     executable,
     ['start', '--port', String(secondPort), '--home', home],
     home,
     cwd,
   );
-  await waitForListening(reacquire);
+  await processOperations.waitForListening(reacquire);
   reacquire.process.kill('SIGTERM');
   if ((await reacquire.process.exited) !== 0)
     throw new Error('State lock could not be reacquired after clean shutdown');

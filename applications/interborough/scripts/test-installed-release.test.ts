@@ -3,12 +3,15 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { mcp, runFixtureAgent } from './test-installed-release-transport.ts';
 import {
   parseInstalledReleaseArguments,
   parseRunStartedRunId,
   referencedAssets,
   runInstalled,
   runInstalledRelease,
+  waitForHttp,
+  waitForListening,
 } from './test-installed-release.ts';
 
 describe('installed-release harness arguments', () => {
@@ -46,6 +49,61 @@ describe('installed-release harness arguments', () => {
       '/app.js',
       '/app.css',
     ]);
+  });
+
+  test('covers MCP JSON, SSE, HTTP, and malformed responses', async () => {
+    const request = async (_url: string, _init?: RequestInit) =>
+      new Response('{"result":{"ok":true}}', { status: 200 });
+    await expect(mcp('http://host', 1, 'tools/list', {}, request)).resolves.toEqual({
+      result: { ok: true },
+    });
+    await expect(
+      mcp(
+        'http://host',
+        1,
+        'tools/list',
+        {},
+        async () => new Response('data: {"result":{"ok":true}}\n\n', { status: 200 }),
+      ),
+    ).resolves.toEqual({ result: { ok: true } });
+    await expect(
+      mcp('http://host', 1, 'tools/list', {}, async () => new Response('no', { status: 500 })),
+    ).rejects.toThrow('returned 500');
+    await expect(
+      mcp('http://host', 1, 'tools/list', {}, async () => new Response('no', { status: 200 })),
+    ).rejects.toThrow('no JSON');
+  });
+
+  test('covers fixture agent success, HTTP failure, and malformed RUN_STARTED', async () => {
+    const request = async () =>
+      new Response('data: {"type":"RUN_STARTED","runId":"run-1"}\n\n', { status: 200 });
+    await expect(runFixtureAgent('http://host', request)).resolves.toMatchObject({
+      runId: 'run-1',
+    });
+    await expect(
+      runFixtureAgent('http://host', async () => new Response('failed', { status: 503 })),
+    ).rejects.toThrow('did not start');
+    await expect(
+      runFixtureAgent('http://host', async () => new Response('data: {}\n\n', { status: 200 })),
+    ).rejects.toThrow('RUN_STARTED');
+  });
+
+  test('covers readiness success, child exit, and HTTP timeout branches', async () => {
+    const readyProbe = {
+      process: { exitCode: null } as ReturnType<typeof Bun.spawn>,
+      output: () => 'Interborough is listening on http://127.0.0.1:43210',
+      stdout: Promise.resolve(''),
+      stderr: Promise.resolve(''),
+    };
+    await expect(waitForListening(readyProbe)).resolves.toMatchObject({ port: 43210 });
+    const exitedProbe = {
+      process: { exitCode: 1 } as ReturnType<typeof Bun.spawn>,
+      output: () => 'failed',
+      stdout: Promise.resolve(''),
+      stderr: Promise.resolve('stderr'),
+    };
+    await expect(waitForListening(exitedProbe)).rejects.toThrow('exited 1');
+    await expect(waitForHttp('http://127.0.0.1:9', 0)).rejects.toThrow('Timed out');
   });
 
   test('orchestrates archive and relocation through injectable process seams', async () => {
@@ -102,6 +160,64 @@ describe('installed-release harness arguments', () => {
           },
         }),
       ).rejects.toThrow('shell readiness failed');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('drives the full installed lifecycle through deterministic operations', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'installed-release-full-seam-'));
+    const marker = join(root, 'tool-marker.txt');
+    const process = {
+      exitCode: null,
+      exited: Promise.resolve(0),
+      kill: () => true,
+    } as unknown as ReturnType<typeof Bun.spawn>;
+    const probe = {
+      process,
+      stdout: Promise.resolve(''),
+      stderr: Promise.resolve(''),
+      output: () =>
+        'Interborough is listening on http://127.0.0.1:43123\n' +
+        'Interborough is listening on http://127.0.0.1:43123\n' +
+        'Started the host (process 999991)\nStarted the host (process 999992)',
+    };
+    const response = (body: unknown, status = 200) =>
+      new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+    const fetcher = async (input: string | URL | Request) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      if (url.startsWith('http://127.0.0.1:') && new URL(url).pathname === '/')
+        return response({}, 404);
+      if (url.includes('/ag-ui/')) {
+        await writeFile(marker, 'fixture-owned-dependency');
+        return response(
+          'data: {"type":"RUN_STARTED","runId":"run-1"}\n\ndata: fixture greeted Ada\n',
+        );
+      }
+      if (url.endsWith('/host/plugins'))
+        return response({
+          plugins: [{ descriptor: { name: 'installed-fixture' }, status: 'running' }],
+          unloaded: [{ error: 'missing-installed-import' }],
+        });
+      if (url.endsWith('/host/mcp-apps'))
+        return response({ apps: [{ plugin: 'installed-fixture', app: 'fixture-panel' }] });
+      if (url.includes('/fixture-panel'))
+        return response({ html: '<main>Installed fixture MCP panel</main>', ui: { csp: {} } });
+      if (url.includes('/run-inspector'))
+        return response({ html: '<div id="root"></div>', ui: { csp: {} } });
+      if (url.endsWith('/bureau/mcp')) return response({ result: { taskId: 'run-1' } });
+      if (url.endsWith('/host/restart')) return response({}, 202);
+      return response({}, 200);
+    };
+    try {
+      await runInstalled('/bin/true', root, false, 43123, root, {
+        spawn: () => probe,
+        waitForListening: async () => ({ port: 43123, text: 'listening' }),
+        waitForHttp: async () => response('<script src="/app.js"></script><link href="/app.css">'),
+        fetch: fetcher,
+        assertBrowser: async () => undefined,
+      });
+      expect(await Bun.file(marker).text()).toBe('fixture-owned-dependency');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
