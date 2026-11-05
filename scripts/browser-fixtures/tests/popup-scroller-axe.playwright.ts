@@ -47,11 +47,11 @@ const scenarios: Scenario[] = [
   {
     name: 'Combobox',
     slug: 'combobox',
-    open: async (page) => page.locator('#fruit').click(),
-    scroller: '.cinder-combobox__panel',
+    open: async (page) => page.getByRole('combobox', { name: 'Favorite fruit' }).click(),
+    scroller: '#fruit-listbox',
     reachLastRow: async (page) => {
       await page.keyboard.press('End');
-      const active = page.locator('.cinder-combobox__panel [role="option"][data-cinder-active]');
+      const active = page.locator('#fruit-listbox [role="option"][data-cinder-active]');
       await expect(active).toHaveText(/Raspberry/);
       return active;
     },
