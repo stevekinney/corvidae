@@ -95,11 +95,11 @@ function serve(
   return served;
 }
 
-function mount(agentName = 'tool-runner') {
+function mount(agentName = 'tool-runner', isNew = false) {
   return render(QueryPage, {
     props: {
       page: ChatConversation,
-      pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName },
+      pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName, isNew },
       client: createQueryClient(),
     },
   } as never);
@@ -152,6 +152,18 @@ describe('a blocked composer', () => {
     expect(buttons[0]?.getAttribute('href')).toBe('/settings/models');
     expect(composer(container)).toBeNull();
     expect(container.querySelector('.chat-input-footer')).toBeNull();
+  });
+
+  test('on a new chat also offers Use Assistant, which switches to the scripted agent and brings the composer back', async () => {
+    serve({}, { hasKey: false });
+    const { container, findByRole } = mount('tool-runner', true);
+
+    await waitFor(() => expect(row(container)).not.toBeNull());
+    expect(row(container)?.textContent).toContain(COPY.noProvider);
+    await fireEvent.click(await findByRole('button', { name: COPY.useAssistant }));
+
+    await waitFor(() => expect(row(container)).toBeNull());
+    expect(composer(container)?.placeholder).toBe('Message Assistant…');
   });
 
   test('leaves a scripted agent’s composer alone, since it needs no provider', async () => {

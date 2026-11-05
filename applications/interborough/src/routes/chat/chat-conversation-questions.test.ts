@@ -112,9 +112,19 @@ describe('the composer while a question waits', () => {
     await findByRole('button', { name: 'production' });
 
     const box = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
-    expect(box.placeholder).toBe('Choose an answer above, or type your own…');
+    await waitFor(() => expect(box.placeholder).toBe('Choose an answer above, or type your own…'));
     expect(container.querySelector('button[aria-label="Answer"]')?.textContent).toContain('Answer');
     expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
+  });
+
+  test('says only Answer for a question with no choices to pick, which the composer answers', async () => {
+    serve(ask(undefined));
+    const { findByText, container } = await open();
+    await findByText('Which environment should the release go to?');
+
+    const box = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    await waitFor(() => expect(box.placeholder).toBe('Answer'));
+    expect(container.querySelector('button[aria-label="Answer"]')).not.toBeNull();
   });
 });
 

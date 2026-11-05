@@ -260,14 +260,18 @@
     }),
     undefined,
   );
+  // The agents are read once and then known; until then the composer holds Model and Effort back, so
+  // a scripted agent's composer never shows them for a moment, and no provider is asked for.
   // Whether the agent runs on a model, which is what needs a provider and what Model and Effort
   // change. A scripted agent names none (`media` is null) and offers no model to switch to, so its
   // composer has Permissions only.
   const agentSummary = $derived(agents.data?.find((entry) => entry.name === agent));
+  const agentKnown = $derived(!agents.isPending);
   const usesModel = $derived(
-    agentSummary === undefined ||
-      agentSummary.media !== null ||
-      (models.data?.models.length ?? 0) > 0,
+    agentKnown &&
+      (agentSummary === undefined ||
+        agentSummary.media !== null ||
+        (models.data?.models.length ?? 0) > 0),
   );
   // Whether any provider holds a key, the rule the first-run checklist states. Until the host has
   // answered, the composer is not blocked.
@@ -358,6 +362,14 @@
       : SETTINGS.applies.nextRun(name, value);
   }
 
+  // Assistant is the scripted agent a chat can fall back on without a provider: the host's own
+  // (`assistant`) or the Demo plugin's copy (`demo:assistant`).
+  const assistantName = $derived(
+    (
+      agents.data?.find((entry) => entry.name === 'assistant') ??
+      agents.data?.find((entry) => entry.name.endsWith(':assistant'))
+    )?.name,
+  );
   const composerStatus = $derived(
     composerStatusOf({
       unreachable: connection.unreachable,
@@ -373,10 +385,8 @@
       noProvider,
       connectHref: router.href('/settings/models'),
       useAssistant:
-        choosing &&
-        agent !== 'assistant' &&
-        agents.data?.some((entry) => entry.name === 'assistant')
-          ? () => chooseAgent('assistant')
+        choosing && assistantName !== undefined && agent !== assistantName
+          ? () => chooseAgent(assistantName)
           : undefined,
       newChatHref: router.href('/chats/new'),
       reconnectAttempt: session.reconnectAttempt,
@@ -562,6 +572,11 @@
 
   /** Whether an answer is held for its Undo window, which keeps the composer from taking a second. */
   let answerHeld = $state(false);
+  // The composer answers while a question waits (or its answer is held for the Undo window): it reads
+  // the choices above when the question draws some, and Answer when it takes free text.
+  const answering = $derived(
+    (session.humanRequests.length > 0 && !session.streaming) || answerHeld,
+  );
   /** The question whose answer was just sent, kept on show as "You answered" while the run goes on. */
   let sentRequest = $state.raw<(typeof session.humanRequests)[number] | undefined>();
   // The run reports a question as it parks, a moment before the turn that carried it is over; a
@@ -890,9 +905,13 @@
       streaming={session.streaming}
       surfaceMode="transparent"
       disabled={session.disconnected || gone || answerHeld}
-      composerPlaceholder={CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
+      composerPlaceholder={answering
+        ? pickable
+          ? CHAT_COPY.composer.answerPlaceholder
+          : CHAT_COPY.questionAnswerLabel
+        : CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
       {composerStatus}
-      composerAnswering={(session.humanRequests.length > 0 && !session.streaming) || answerHeld}
+      composerAnswering={answering}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
         attachments: attachable && !gone,

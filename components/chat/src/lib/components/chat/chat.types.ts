@@ -202,7 +202,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerControls?: Snippet | undefined;
   /** The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`. */
   composerPlaceholder?: string | undefined;
-  /** Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode, its button reads `Answer`, and its placeholder reads `Choose an answer above, or type your own…`. Chat sets this itself while a question it draws is open in the composer. Default `false`. */
+  /** Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`. */
   composerAnswering?: boolean;
   /** The line of help under the composer while no status shows. Default `Enter to send · Shift and Enter for a new line`; `false` hides it. */
   composerHint?: string | false | undefined;

@@ -167,7 +167,7 @@ describe('the composer’s settings', () => {
     expect(shown(container, 'weft-chat-permission')).toBe('Read-only');
   });
 
-  test('shows the model of an agent that allows one, or names none, though it offers no choice', async () => {
+  test('shows the model of an agent that allows one though it offers no choice, and none for an agent that names no model', async () => {
     serve({
       'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
     });
@@ -178,11 +178,11 @@ describe('the composer’s settings', () => {
     cleanup();
     restore?.();
 
+    // An agent that names no model has none to show: its composer holds Permissions only.
     serve({ 'bureau.agents.models': () => ({ selectable: true, models: [], default: null }) });
     const other = mount();
-    await waitFor(() =>
-      expect(shown(other.container, 'weft-chat-model')).toBe(SETTINGS.agentDefault),
-    );
+    await waitFor(() => expect(control(other.container, 'weft-chat-permission')).not.toBeNull());
+    await waitFor(() => expect(control(other.container, 'weft-chat-model')).toBeNull());
   });
 
   test('says what each permission mode means, as the Bureau defines it, under its option', async () => {

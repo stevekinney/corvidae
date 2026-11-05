@@ -51,7 +51,7 @@ const schema = {
     composerAnswering: {
       type: 'boolean',
       description:
-        "Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode, its button reads `Answer`, and its placeholder reads `Choose an answer above, or type your own…`. Chat sets this itself while a question it draws is open in the composer. Default `false`.",
+        "Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`.",
     },
     disabled: {
       type: 'boolean',

@@ -241,7 +241,7 @@ describe('a choice that takes your own answer, in the composer', () => {
     expect(answers).toEqual(['staging']);
   });
 
-  test('a host that draws the question itself puts the composer in answer mode with composerAnswering', async () => {
+  test('a host that draws the question itself puts the composer in answer mode with composerAnswering, and words the placeholder itself', async () => {
     const { container } = render(Chat, {
       id: 'q-host',
       conversation: createConversationHistory({ id: 'q-host' }),
@@ -250,7 +250,7 @@ describe('a choice that takes your own answer, in the composer', () => {
     });
     await tick();
 
-    expect(composerOf(container).placeholder).toBe('Choose an answer above, or type your own…');
+    expect(composerOf(container).placeholder).toBe('Message Tool runner…');
     expect(container.querySelector('button[aria-label="Answer"]')).not.toBeNull();
   });
 

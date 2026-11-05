@@ -1215,14 +1215,13 @@
   // The line under the composer is the host's. A pending approval is shown in the transcript, so
   // the composer keeps its hint and stays live (a message sent now steers the run).
   const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
-  // While a question waits on the composer, its placeholder says what to do: a free-text question
-  // just reads Answer; a choice says the choices are above and an answer of your own is welcome.
+  // While a question Chat draws waits on the composer, its placeholder says what to do: a free-text
+  // question just reads Answer; a choice says the choices are above and an answer of your own is
+  // welcome. A host that draws its own question (`composerAnswering`) words the placeholder itself.
   const composerAnswerPlaceholder = $derived.by(() => {
     const target = questions.composerTarget;
-    if (target !== undefined) {
-      return target.kind === 'text' ? 'Answer' : 'Choose an answer above, or type your own…';
-    }
-    return composerAnswering ? 'Choose an answer above, or type your own…' : undefined;
+    if (target === undefined) return undefined;
+    return target.kind === 'text' ? 'Answer' : 'Choose an answer above, or type your own…';
   });
   // A dropped stream is a run that is still going on the server: while the host says it is
   // reconnecting, the composer keeps Stop, though nothing is streaming into the transcript now.

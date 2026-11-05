@@ -2790,6 +2790,8 @@ export const CHAT_COPY = {
     },
     ended: 'This chat has ended. The server stopped it when it restarted.',
     newChat: 'New chat',
+    /** The composer's placeholder while a question that draws choices waits. */
+    answerPlaceholder: 'Choose an answer above, or type your own…',
     noProvider: 'Connect a model provider to chat',
     connectProvider: 'Connect a provider',
     useAssistant: 'Use Assistant',
