@@ -297,6 +297,8 @@ test.describe('Restart', () => {
       )
       .toBe(1);
     await expect(back).toContainText('Back up');
+    // The board's success banner leads with a check-circle (design rows 48a and 50c).
+    await expect(back.locator('.cinder-banner__icon svg.lucide-circle-check')).toHaveCount(1);
     await expect(back).toContainText(
       '1 change applied: Workflow claim renew interval. Running work picked up where it stopped; reviews stayed waiting.',
     );

@@ -162,10 +162,12 @@
     margin-block-start: var(--cinder-space-2-5);
   }
 
-  /* The full-page layout has no card: it is centred in the region it fills, with a 48px disc and
-   * 8px of extra bottom padding for optical centre. */
+  /* The full-page layout has no card: it is centred both ways in the region it fills, as an empty
+   * state is (`min-block-size: 100%` makes it fill a region of known height; in an auto-height
+   * parent it is ignored), with a 48px disc and 8px of extra bottom padding for optical centre. */
   .cinder-access-gate[data-cinder-variant='section'][data-cinder-layout='page'] {
     justify-content: center;
+    min-block-size: 100%;
     padding-block: var(--cinder-space-2) var(--cinder-space-4);
     border: 0;
     border-radius: 0;

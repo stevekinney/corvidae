@@ -48,6 +48,16 @@ for (const width of WIDTHS) {
     // Row 12x: the neutral disc holds a search glyph, and the breadcrumb is in words.
     await expect(frame.locator('.cinder-empty-state svg.lucide-search')).toBeVisible();
     await expect(page.locator('header.weft-shell-topbar')).toContainText('Not found');
+    // Row 04f: the parent keeps its whole word while the current page, which gives way first,
+    // truncates; "Runs" never reads "Ru…" because a fraction of a pixel was taken from it.
+    const parentCrumb = page.locator(
+      width < 768 ? '.cinder-breadcrumbs__back-label' : '.cinder-breadcrumbs__link',
+    );
+    await expect(parentCrumb).toHaveText('Runs');
+    expect(
+      await parentCrumb.evaluate((element) => element.scrollWidth - element.clientWidth),
+      'the parent crumb is not truncated',
+    ).toBeLessThanOrEqual(0);
     await captureAt(page, width, '/runs/no-such-run', 'not-found');
   });
 
@@ -82,6 +92,17 @@ for (const width of WIDTHS) {
     await expect(frame.getByRole('link', { name: 'Back to Home' })).toBeVisible();
     await expect(frame.locator('[data-cinder-variant="primary"]')).toHaveCount(0);
     await expect(frame.getByRole('button', { name: /request access/i })).toHaveCount(0);
+    // Row 12z: the gate's content is centred in the outlet like the not-found page, not drawn at its top.
+    await expect
+      .poll(
+        async () => {
+          const outlet = await page.locator('main.weft-shell-outlet').boundingBox();
+          const gate = await frame.getByRole('heading', { level: 1 }).boundingBox();
+          return (gate?.y ?? 0) - (outlet?.y ?? 0);
+        },
+        { message: 'the space above the title' },
+      )
+      .toBeGreaterThan(100);
     await captureAt(page, width, '/hooks', 'forbidden');
   });
 }

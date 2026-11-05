@@ -36,13 +36,16 @@
   }
 
   /* The last item holds the current crumb, and it gives way first (design rows 03l and 04f). It
-   shrinks far faster than the ancestors, so a long title ellipsizes while the ancestors stay whole,
-   and it stops at a floor of four characters, enough for a glyph or two and an ellipsis; only
-   then do the ancestors shrink. Plain flex cannot express strict source-order priority; the lopsided shrink
-   factors approximate it while guaranteeing the leaf never overflows the container without its own
-   ellipsis engaging. */
+   shrinks so much faster than the ancestors that a long title ellipsizes while the ancestors keep
+   every pixel of their words, and it stops at a floor of four characters, enough for a glyph or two
+   and an ellipsis; only then do the ancestors shrink. Plain flex cannot express strict
+   source-order priority, and a proportional ratio such as 100 to 1 still takes a fraction of a pixel
+   from an ancestor, which is enough for its ellipsis to engage on a label that fits. So the ratio
+   is lopsided enough (100000 to 1, here and on the phone trail's list) that the fraction is below
+   what layout resolves, while the leaf still never overflows the container without its own
+   ellipsis. */
   .cinder-breadcrumbs__item:last-child {
-    flex-shrink: 100;
+    flex-shrink: 100000;
     min-inline-size: min(4ch, 100%);
   }
 
@@ -172,8 +175,9 @@
     min-inline-size: 0;
   }
 
-  /* The back link keeps its label while there is room: the current page, with its far higher shrink
-   factor, truncates first (design row 04f), and the link shrinks only once that is at its floor. */
+  /* The back link keeps its whole label while there is room: the current page, with its far higher
+   shrink factor, truncates first (design row 04f), and the link shrinks only once that is at its
+   floor. */
   .cinder-breadcrumbs__back {
     box-sizing: border-box;
     display: inline-flex;
@@ -222,7 +226,7 @@
   }
 
   .cinder-breadcrumbs[data-cinder-collapsed] .cinder-breadcrumbs__list {
-    flex: 1 100 auto;
+    flex: 1 100000 auto;
     min-inline-size: 3rem;
     font-size: var(--cinder-text-base);
   }

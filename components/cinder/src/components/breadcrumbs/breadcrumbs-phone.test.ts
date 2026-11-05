@@ -141,7 +141,7 @@ describe('Breadcrumbs phone form', () => {
       /\.cinder-breadcrumbs__back\s*\{[^}]*min-block-size:\s*var\(--cinder-touch-target-min\)/,
     );
     expect(stylesheet).toMatch(
-      /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 100 auto/,
+      /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 100000 auto/,
     );
   });
 
@@ -159,6 +159,21 @@ describe('Breadcrumbs phone form', () => {
     expect(shrink(/\.cinder-breadcrumbs__item:last-child/)).toBeGreaterThan(
       shrink(/\.cinder-breadcrumbs__item/),
     );
+  });
+
+  test('the current crumb outweighs an ancestor so far that no fraction of a pixel reaches it', () => {
+    // A ratio of 100 to 1 still shrinks a four-character "Runs" by a third of a pixel when the
+    // current title is long, which is enough for its ellipsis to engage on a label that fits ("Ru…").
+    const listFactor = Number(
+      /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 (\d+) auto/.exec(
+        stylesheet,
+      )?.[1],
+    );
+    const leafFactor = Number(
+      /\.cinder-breadcrumbs__item:last-child\s*\{[^}]*flex-shrink:\s*(\d+)/.exec(stylesheet)?.[1],
+    );
+    expect(listFactor).toBeGreaterThanOrEqual(100_000);
+    expect(leafFactor).toBeGreaterThanOrEqual(100_000);
   });
 });
 
