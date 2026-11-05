@@ -124,7 +124,9 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because
   // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau.
   reviews: { scopes: [], canBeEmpty: false },
-  workers: { scopes: ['system:read'], canBeEmpty: false },
+  // The Health tab keeps its heading, its tab bar and its Live indicator in every state, so the page
+  // draws its own loading, empty and failed states under them (`routes/workers/workers-states.svelte`).
+  workers: { scopes: ['system:read'], canBeEmpty: false, ownsStates: true },
   storage: { scopes: ['storage:admin'], canBeEmpty: false },
   // Holds no console scope: the Bureau shows each caller the records about what it owns, and a
   // principal that may see none is answered with an empty page, so owner scoping is the gate.

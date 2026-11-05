@@ -40,6 +40,7 @@
     workerStatusOf,
   } from './worker-model.ts';
   import WorkerDetailView from './worker-detail-view.svelte';
+  import WorkersHeading from './workers-heading.svelte';
 
   interface Props {
     readonly workers: readonly WorkerSummary[];
@@ -107,8 +108,7 @@
   >
     {#snippet header()}
       <div class="ib-workers__head">
-        <h2 class="ib-workers__title">{copy.list.title}</h2>
-        <p class="weft-workers-frame__summary" data-testid="workers-summary">{summary}</p>
+        <WorkersHeading line={summary} />
         <SearchField
           aria-label={copy.list.filterLabel}
           placeholder={copy.list.filterPlaceholder}
@@ -208,11 +208,5 @@
     flex-direction: column;
     gap: var(--cinder-space-2);
     min-width: 0;
-  }
-
-  .ib-workers__title {
-    margin: 0;
-    font-size: var(--cinder-text-lg);
-    font-weight: 600;
   }
 </style>

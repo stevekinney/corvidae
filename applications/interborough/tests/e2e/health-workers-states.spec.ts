@@ -681,3 +681,209 @@ test('below the push width one pane shows at a time, with a Back button', async 
   await page.getByRole('button', { name: 'Back' }).click();
   await expect(rows(page)).toHaveCount(4);
 });
+
+const STATE_WIDTHS = [1280, 375] as const;
+
+/** The region the page draws below its heading while it has no worker to list. */
+const stateRegion = (page: Page) => page.getByTestId('workers-state');
+
+/** Holds the read of the workers until `release` is called, answering the rest as the host does. */
+async function holdWorkersRead(page: Page): Promise<{ release: () => void }> {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/jsonrpc', async (route: Route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+    if (body.method !== 'weft.workers.list') {
+      await route.fallback();
+      return;
+    }
+    await gate;
+    await route.fallback();
+  });
+  return { release };
+}
+
+for (const width of STATE_WIDTHS) {
+  test(`the sample world draws the empty state: where work runs and how to connect a worker, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/health/workers');
+    const region = stateRegion(page);
+
+    // 78a, 78b: Health's header with Workers active; the shell's own rows are `shell-chrome.spec.ts`.
+    await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
+    if (width >= 640) {
+      await expect(page.getByRole('tab', { name: 'Workers', selected: true })).toBeVisible();
+    } else {
+      await expect(page.locator('.cinder-tabs__collapse')).toContainText('Section: Workers');
+    }
+    // 78c: one line under the section heading.
+    await expect(region).toHaveAttribute('data-state', 'empty');
+    await expect(region.getByRole('heading', { level: 2, name: 'Workers' })).toBeVisible();
+    await expect(page.getByTestId('workers-summary')).toHaveText(
+      'Work runs inside Interborough · 0 running · 0 waiting',
+    );
+    // 78d: an empty state in a bordered card, with one secondary button that opens the guide.
+    const card = region.locator('.cinder-empty-state');
+    await expect(card).toHaveAttribute('data-cinder-bordered', '');
+    await expect(card.getByRole('heading', { name: 'No workers connected' })).toBeVisible();
+    await expect(
+      card.getByText('Work runs inside Interborough. Connect a worker to run it elsewhere.'),
+    ).toBeVisible();
+    const guide = card.getByRole('link', { name: 'How to connect a worker' });
+    await expect(guide).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(guide).toHaveAttribute('target', '_blank');
+    await expect(card.getByRole('button')).toHaveCount(0);
+    // 78e: no worker row, no status word, no amber or red tone.
+    await expect(page.locator('[data-worker-row], [data-status-word]')).toHaveCount(0);
+    await expect(region.locator('[role="alert"], .cinder-banner')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+
+    await captureForDesignReview(page, {
+      route: '/health/workers',
+      state: 'empty',
+      source: SOURCE,
+    });
+    await checkA11y(`workers—the empty state at ${width}px`);
+
+    // 78e: nothing on the page counts toward Needs attention, which lists no worker.
+    await page.goto('/health');
+    await expect(page.getByTestId('needs-attention')).toBeVisible();
+    await expect(page.locator('[data-attention^="worker-"]')).toHaveCount(0);
+  });
+
+  test(`while the workers are read: real text at once, four rows after 300 ms, Still loading with Cancel after 10 s, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.clock.install();
+    const held = await holdWorkersRead(page);
+    await page.goto('/health/workers');
+    const region = stateRegion(page);
+
+    // 78x: the heading and the line are text from the first paint; nothing else for 300 ms.
+    await expect(region).toHaveAttribute('data-state', 'loading');
+    await expect(region.getByRole('heading', { level: 2, name: 'Workers' })).toBeVisible();
+    await expect(region.getByText('Loading workers…')).toBeVisible();
+    await expect(region.locator('.cinder-skeleton-row')).toHaveCount(0);
+    await page.clock.runFor(300);
+    await expect(region.locator('.cinder-skeleton-row')).toHaveCount(4);
+    await expect(
+      region.locator('.cinder-skeleton-status-bar[data-cinder-marker="dot"]'),
+    ).toHaveCount(4);
+    await captureForDesignReview(page, {
+      route: '/health/workers',
+      state: 'loading',
+      source: SOURCE,
+    });
+    await checkA11y(`workers—loading at ${width}px`);
+
+    // 78y: after 10 s Cinder's own line and a ghost Cancel, not a banner.
+    await page.clock.runFor(10_000);
+    await expect(
+      region.getByText('Still loading. This is taking longer than usual.'),
+    ).toBeVisible();
+    await expect(region.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
+      'data-cinder-variant',
+      'ghost',
+    );
+    await expect(page.locator('.cinder-banner')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/health/workers',
+      state: 'loading-slow',
+      source: SOURCE,
+    });
+
+    // Cancel stops the read and says so; Try again reads again.
+    await region.getByRole('button', { name: 'Cancel' }).click();
+    await expect(region).toHaveAttribute('data-state', 'cancelled');
+    held.release();
+    await region.getByRole('button', { name: 'Try again' }).click();
+    await expect(region).toHaveAttribute('data-state', 'empty');
+  });
+
+  test(`a failed read is the error state in the Workers section, with Try again and Open Health, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // An answer of 500 is asked again with a back-off before the read gives up, and the clock runs
+    // the waits in moments.
+    await page.clock.install();
+    let failing = true;
+    await page.route('**/jsonrpc', async (route: Route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        id?: unknown;
+        method?: string;
+      };
+      if (!failing || body.method !== 'weft.workers.list') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: body.id ?? 1,
+          error: {
+            code: -32000,
+            message: 'The engine broke.',
+            data: { httpStatus: 500, weftCode: 'EngineFailure' },
+          },
+        },
+      });
+    });
+    await page.goto('/health/workers');
+    const region = stateRegion(page);
+    await expect(async () => {
+      await page.clock.runFor(10_000);
+      // load-proof: a miss only runs the fake clock further and tries again, so a slow host adds attempts, never a failure.
+      await expect(region).toHaveAttribute('data-state', 'failed', { timeout: 1_000 });
+    }).toPass();
+
+    // 78z: a red disc with a warning glyph, the status named, and no banner beside it.
+    await expect(region.getByRole('heading', { level: 2, name: 'Workers' })).toBeVisible();
+    await expect(
+      region.getByRole('heading', { level: 3, name: 'Couldn’t load workers' }),
+    ).toBeVisible();
+    await expect(
+      region.getByText(
+        'The server answered with an error (500). Nothing you did caused it. Workers keep running while this page is down.',
+      ),
+    ).toBeVisible();
+    await expect(region.locator('.cinder-error-state[data-cinder-tone="danger"]')).toHaveAttribute(
+      'data-cinder-bordered',
+      '',
+    );
+    await expect(region.getByRole('button', { name: 'Try again' })).toHaveAttribute(
+      'data-cinder-variant',
+      'secondary',
+    );
+    await expect(region.getByRole('link', { name: 'Open Health' })).toHaveAttribute(
+      'data-cinder-variant',
+      'link',
+    );
+    await expect(page.locator('.cinder-banner')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+
+    await captureForDesignReview(page, {
+      route: '/health/workers',
+      state: 'error',
+      source: SOURCE,
+    });
+    await checkA11y(`workers—a failed read at ${width}px`);
+
+    // Open Health goes to the Overview; Try again reads again once the server answers.
+    failing = false;
+    await region.getByRole('button', { name: 'Try again' }).click();
+    await expect(region).toHaveAttribute('data-state', 'empty');
+  });
+}

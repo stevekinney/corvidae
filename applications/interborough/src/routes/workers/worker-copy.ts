@@ -51,6 +51,49 @@ export const WORKER_COPY = {
       `No worker with the ID ${id} is listed by the server. It was forgotten, or it never connected here.`,
     backToList: 'Back to all workers',
   },
+  /**
+   * The page while it has no worker to list (rows 78c to 78e, 78x to 78z): empty because work runs
+   * inside Interborough, being read, or not read.
+   */
+  states: {
+    regionLabel: 'Workers',
+    /** The line under the heading while the workers are read; the design's text, with its ellipsis. */
+    loadingLine: 'Loading workers…',
+    /** Cinder's loading rule: a read that finishes inside it never flashes a placeholder. */
+    loadingDelayMilliseconds: 300,
+    /** How long a read runs before the placeholders say it is taking longer than usual. */
+    stillLoadingMilliseconds: 10_000,
+    empty: {
+      /** The one line under the heading when nothing is connected: nothing runs elsewhere, so nothing is counted. */
+      summary: 'Work runs inside Interborough · 0 running · 0 waiting',
+      title: 'No workers connected',
+      description: 'Work runs inside Interborough. Connect a worker to run it elsewhere.',
+      howToConnect: 'How to connect a worker',
+      /** The guide that says how: Weft's remote workers guide, in the public repository. */
+      guideAddress:
+        'https://github.com/stevekinney/corvidae/blob/main/packages/weft/documentation/guides/remote-workers.md',
+    },
+    failed: {
+      title: 'Couldn’t load workers',
+      /** A server error: the status it answered with, then what is and is not at fault. */
+      answered: (status: number): string =>
+        `The server answered with an error (${String(status)}). Nothing you did caused it. Workers keep running while this page is down.`,
+      /** A refusal (401 or 403) is something to fix, so it carries the server's own words. */
+      refused: (status: number, message: string): string =>
+        `The server answered with an error (${String(status)}): ${message.replace(/[.\s]+$/, '')}. Workers keep running while this page is down.`,
+      noAnswer:
+        'The server didn’t answer. Nothing you did caused it. Workers keep running while this page is down.',
+      unknown:
+        'Something went wrong reading the workers. Nothing you did caused it. Workers keep running while this page is down.',
+      /** What the read says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+      cancelledTitle: 'Stopped loading workers',
+      cancelledDescription:
+        'You stopped the read, so the list is not shown. Workers keep running while this page is stopped.',
+      tryAgain: 'Try again',
+      openHealth: 'Open Health',
+      openHealthPath: '/health',
+    },
+  },
   detail: {
     forget: 'Forget this worker',
     drain: 'Drain this worker',

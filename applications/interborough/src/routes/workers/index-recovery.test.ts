@@ -63,13 +63,13 @@ describe('Workers route — a read that failed', () => {
 
     const view = renderRoute();
 
-    expect(await view.findByText('Not authorized')).not.toBeNull();
+    expect(await view.findByText('Couldn’t load workers')).not.toBeNull();
     scripted.routeJsonRpcMethod('weft.workers.list', {
       items: [worker({ id: 'wkr_back' })],
       deployments: [],
       routingPolicy: 'least-loaded',
     });
-    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await view.findByRole('button', { name: 'Try again' }));
     const summary = await view.findByTestId('workers-summary');
     expect(summary.textContent).toContain('1 of 1 connected');
   });

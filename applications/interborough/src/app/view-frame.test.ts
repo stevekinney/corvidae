@@ -371,14 +371,16 @@ describe('a view that finds something to show', () => {
 });
 
 describe('a view that owns its states', () => {
-  test('is a list page that keeps its header, which the schedules list is', () => {
-    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual(['schedules']);
+  test('is a page that keeps its header: the schedules list and the Health Workers tab', () => {
+    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual(['schedules', 'workers']);
   });
 
   for (const view of VIEWS_THAT_OWN_THEIR_STATES) {
     const copy = VIEW_COPY[view];
 
     test(`${view} renders its page, and says empty in data-state, when its probe finds nothing`, async () => {
+      // A view that cannot be empty has no empty state to say (the Workers tab draws its own).
+      if (!VIEWS[view].canBeEmpty) return;
       stub(view, 'empty');
       const { container, findByTestId, queryByRole } = mount(view);
       expect(await findByTestId('content')).not.toBeNull();

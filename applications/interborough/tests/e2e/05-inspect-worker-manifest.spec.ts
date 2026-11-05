@@ -7,9 +7,9 @@ test('operator inspects a server-accepted canonical worker manifest', async ({
 }) => {
   await page.goto('/health/workers?tab=queues');
 
-  // A worker is connected, so the page is the full fleet view and not the in-process sentence.
+  // A worker is connected, so the page is the full fleet view and not its empty state.
   await expect(page.getByRole('tablist', { name: 'Workers views' })).toBeVisible();
-  await expect(page.getByText('This server runs its work in-process')).toHaveCount(0);
+  await expect(page.getByText('No workers connected')).toHaveCount(0);
 
   const workerRow = page.locator('[data-worker-row="e2e-fleet-worker-1"]');
   await expect(workerRow).toBeVisible();

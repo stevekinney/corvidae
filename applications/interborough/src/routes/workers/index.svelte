@@ -70,7 +70,7 @@
   import ConformancePanel from './conformance-panel.svelte';
   import DeploymentsPanel from './deployments-panel.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
-  import InProcessNotice from './in-process-notice.svelte';
+  import WorkersStates from './workers-states.svelte';
   import { runsInProcessOnly } from './in-process-engine.ts';
   import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
   import TaskDeliveryHistory from './task-delivery-history.svelte';
@@ -631,6 +631,26 @@
       diagnosticsQuery.data !== undefined &&
       runsInProcessOnly(workersQuery.data, queuesQuery.data, diagnosticsQuery.data, router.search),
   );
+  // "Cancel" in the "Still loading" line stops the three reads the page waits for. TanStack puts a
+  // first load that is cancelled back to pending, so the page keeps what it was told here: the
+  // person stopped it, and "Try again" asks again.
+  let loadStopped = $state(false);
+  function stopLoading(): void {
+    loadStopped = true;
+    for (const queryKey of [
+      queryKeys.workers.list(),
+      queryKeys.queues.list(),
+      queryKeys.diagnostics(),
+    ]) {
+      void queryClient.cancelQueries({ queryKey });
+    }
+  }
+  function readFleetAgain(): void {
+    loadStopped = false;
+    void workersQuery.refetch();
+    void queuesQuery.refetch();
+    void diagnosticsQuery.refetch();
+  }
   const fleetError = $derived(workersQuery.error ?? null);
   const queuesError = $derived(queuesQuery.error ?? null);
   const diagnosticsLoading = $derived(diagnosticsTabQuery.isPending);
@@ -660,20 +680,21 @@
     {#if locked}
       <Alert variant="warning">{scopeReason('system:read')} to read the workers.</Alert>
     {:else if fleetSettling}
-      <div
-        class="weft-workers-route__skeleton"
-        role="status"
-        aria-busy="true"
-        aria-label="Loading fleet"
-      >
-        <Skeleton height="1.5rem" width="40%" />
-        <Skeleton height="8rem" />
-      </div>
+      <WorkersStates
+        kind={loadStopped ? 'cancelled' : 'loading'}
+        onCancel={stopLoading}
+        onRetry={readFleetAgain}
+      />
     {:else if inProcessOnly}
-      <InProcessNotice />
+      <WorkersStates kind="empty" onCancel={stopLoading} onRetry={readFleetAgain} />
     {:else}
       {#if fleetError}
-        <QueryFaultBanner error={fleetError} onRetry={() => void workersQuery.refetch()} />
+        <WorkersStates
+          kind="failed"
+          error={fleetError}
+          onCancel={stopLoading}
+          onRetry={readFleetAgain}
+        />
       {:else}
         <WorkersListDetail
           workers={workersQuery.data?.items ?? []}
