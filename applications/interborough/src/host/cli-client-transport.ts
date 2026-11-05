@@ -33,12 +33,19 @@ export async function request(
     if (init?.headers !== undefined) {
       for (const [name, value] of new Headers(init.headers)) headers.set(name, value);
     }
-    const response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), {
-      ...init,
-      headers,
-      redirect: 'error',
-      signal: controller.signal,
-    });
+    let response: Response;
+    try {
+      response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), {
+        ...init,
+        headers,
+        redirect: 'error',
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (init?.method === 'POST' && error instanceof DOMException && error.name === 'AbortError')
+        throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
+      throw error;
+    }
     const text = await response.text();
     let body: unknown;
     try {
@@ -93,12 +100,19 @@ export async function stream(
   try {
     const headers = new Headers(target.headers);
     for (const [name, value] of new Headers(init.headers)) headers.set(name, value);
-    const response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), {
-      ...init,
-      headers,
-      redirect: 'error',
-      signal: controller.signal,
-    });
+    let response: Response;
+    try {
+      response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), {
+        ...init,
+        headers,
+        redirect: 'error',
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (init.method === 'POST' && error instanceof DOMException && error.name === 'AbortError')
+        throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
+      throw error;
+    }
     if (!response.ok) {
       const body = await response.text();
       let message = `HTTP ${response.status}`;

@@ -156,7 +156,7 @@ describe('CLI chat control', () => {
           if (body.method === 'bureau.assets.uploads.append') {
             const chunk = body.params['chunk'];
             expect(typeof chunk).toBe('string');
-            expect(Buffer.from(String(chunk), 'base64')).toEqual(new Uint8Array([0, 255, 1]));
+            expect(Buffer.from(String(chunk), 'base64')).toEqual(Buffer.from([0, 255, 1]));
             return Response.json({ result: { uploadId: 'u-1' } });
           }
           return sse({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });

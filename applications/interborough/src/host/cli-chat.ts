@@ -48,10 +48,11 @@ function messageFromEvent(event: RecordValue): string | undefined {
 function eventKind(event: RecordValue): string {
   const type = typeof event['type'] === 'string' ? event['type'] : 'UNKNOWN';
   if (type.startsWith('TOOL_CALL_')) return 'tool';
+  if (type === 'RUN_FINISHED' && record(event['outcome'])?.['interrupts'] !== undefined)
+    return 'awaiting-input';
   if (type === 'RUN_FINISHED') return 'terminal';
   if (type === 'RUN_ERROR') return 'error';
   if (type === 'RUN_STARTED') return 'started';
-  if (type === 'RUN_FINISHED' && event['interrupt'] !== undefined) return 'awaiting-input';
   return 'event';
 }
 
