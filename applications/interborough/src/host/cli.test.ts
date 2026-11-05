@@ -45,7 +45,7 @@ const productionServer = Bun.serve({
   port: 0,
   async fetch(request) {
     productionRequests.push(request.clone());
-    if (new URL(request.url).pathname.startsWith('/ag-ui/')) {
+    if (new URL(request.url).pathname.startsWith('/bureau/ag-ui/')) {
       const stream = new TransformStream<Uint8Array, Uint8Array>();
       const writer = stream.writable.getWriter();
       const encoder = new TextEncoder();
@@ -142,7 +142,10 @@ const sigintCall = spawnWithHangGuard(
 );
 await Bun.sleep(50);
 await waitUntil(
-  () => productionRequests.some((request) => new URL(request.url).pathname.startsWith('/ag-ui/')),
+  () =>
+    productionRequests.some((request) =>
+      new URL(request.url).pathname.startsWith('/bureau/ag-ui/'),
+    ),
   {
     message: 'compiled chat to connect to the AG-UI stream',
     yieldTurn: () => Bun.sleep(10),

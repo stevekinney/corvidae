@@ -148,6 +148,7 @@ const optionNames = new Set([
   'signal-name',
   'call-id',
   'attachment',
+  'provider',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -215,6 +216,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'effort',
     'permission-mode',
     'expected-revision',
+    'provider',
   ],
   reviews: [
     'help',
@@ -391,6 +393,8 @@ function envelope(result: CliCommandResult): Record<string, unknown> {
 
 function render(parsed: Parsed, result: CliCommandResult): string {
   const value = envelope(result);
+  if (parsed.output === 'jsonl' && isRecord(result.data) && Array.isArray(result.data['events']))
+    return result.data['events'].map((event) => JSON.stringify(event)).join('\n');
   if (parsed.output === 'jsonl' && Array.isArray(result.data))
     return result.data.map((item) => JSON.stringify({ ...value, data: item })).join('\n');
   if (parsed.output === 'json') return JSON.stringify(value, null, 2);

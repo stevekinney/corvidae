@@ -15,7 +15,7 @@ async function call(
   method: string,
   params: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const response = await request(target, '/jsonrpc', parsed, dependencies, {
+  const response = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method, params }),
@@ -34,7 +34,6 @@ export async function uploadAttachment(
   const bytes = await readFile(path);
   const created = await call(target, parsed, dependencies, 'bureau.assets.uploads.create', {
     declaredByteLength: bytes.byteLength,
-    declaredMediaType: 'application/octet-stream',
   });
   const uploadId = typeof created['uploadId'] === 'string' ? created['uploadId'] : undefined;
   if (uploadId === undefined) throw new Error('The host returned no asset upload identifier.');

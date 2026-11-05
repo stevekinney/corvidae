@@ -114,6 +114,7 @@ export async function stream(
       throw error;
     }
     if (!response.ok) {
+      clearTimeout(timer);
       const body = await response.text();
       let message = `HTTP ${response.status}`;
       try {
@@ -125,9 +126,20 @@ export async function stream(
       }
       throw makeCliFailure(message, { status: response.status });
     }
-    if (response.body === null) throw makeCliFailure('The host returned an empty event stream.');
-    return response;
-  } finally {
+    if (response.body === null) {
+      clearTimeout(timer);
+      throw makeCliFailure('The host returned an empty event stream.');
+    }
+    const body = response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({ flush: () => clearTimeout(timer) }),
+    );
+    return new Response(body, {
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
+  } catch (error) {
     clearTimeout(timer);
+    throw error;
   }
 }

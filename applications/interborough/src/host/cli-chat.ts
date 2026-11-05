@@ -28,7 +28,7 @@ async function rpc(
   method: string,
   params: RecordValue,
 ): Promise<CliCommandResult> {
-  const result = await request(target, '/jsonrpc', parsed, dependencies, {
+  const result = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: id('cli'), method, params }),
@@ -124,7 +124,7 @@ async function runStream(
   let resynced = false;
   const events: RecordValue[] = [];
   const seen = new Set<string>();
-  const write = dependencies.writeStdout;
+  const write = parsed.output === 'text' ? dependencies.writeStdout : undefined;
   try {
     for (;;) {
       const next = await reader.read();
@@ -142,6 +142,11 @@ async function runStream(
         const outcome = record(event['outcome']);
         if (event['type'] === 'RUN_FINISHED' && Array.isArray(outcome?.['interrupts']))
           pendingInterrupts = outcome['interrupts'];
+        if (event['type'] === 'RUN_ERROR') {
+          const message =
+            typeof event['message'] === 'string' ? event['message'] : 'The agent run failed.';
+          throw new Error(message);
+        }
         if (requestedCursor !== undefined && event['type'] === 'MESSAGES_SNAPSHOT') resynced = true;
         const metadata = record(event['metadata']);
         const bureau = record(metadata?.['@lostgradient/bureau']);
@@ -174,7 +179,7 @@ async function runStream(
         resume: pendingInterrupts.map((interrupt) => ({
           interruptId: record(interrupt)?.['id'],
           status: 'resolved',
-          payload: { answer },
+          payload: { decision: 'approve', answer },
         })),
       });
     }
@@ -219,9 +224,11 @@ export async function executeChat(
       const assetId = asset['assetId'];
       if (typeof assetId !== 'string')
         throw new Error('The host returned no completed asset identifier.');
+      const modality =
+        asset['modality'] === 'image' || asset['modality'] === 'audio' ? asset['modality'] : 'file';
       content = [
         { type: 'text', text: message },
-        { type: 'file', provider: 'bureau', value: assetId },
+        { type: modality, source: { type: 'file', provider: 'bureau', value: assetId } },
       ];
     }
     const threadId = option(parsed, 'thread') ?? id('thread');
@@ -231,14 +238,14 @@ export async function executeChat(
         target,
         parsed,
         dependencies,
-        `/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
+        `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
       );
     }
     return runStream(
       target,
       parsed,
       dependencies,
-      `/ag-ui/agents/${encodeURIComponent(agent)}/run`,
+      `/bureau/ag-ui/agents/${encodeURIComponent(agent)}/run`,
       {
         threadId,
         runId,
@@ -278,11 +285,18 @@ export async function executeChat(
     if (action === 'delete') params['waitMilliseconds'] = Number(option(parsed, 'wait') ?? 0);
     if (action === 'configure') {
       params['commandId'] = option(parsed, 'command-id') ?? id('steer');
-      params['expectedRevision'] = Number(option(parsed, 'expected-revision') ?? 0);
+      if (option(parsed, 'expected-revision') !== undefined)
+        params['expectedRevision'] = Number(option(parsed, 'expected-revision'));
       const setting = option(parsed, 'effort') ?? option(parsed, 'permission-mode');
-      if (option(parsed, 'model') !== undefined)
-        params['override'] = { model: option(parsed, 'model') };
-      else if (option(parsed, 'effort') !== undefined) params['effort'] = setting;
+      if (option(parsed, 'model') !== undefined) {
+        const model = option(parsed, 'model')!;
+        const separator = model.indexOf('/');
+        params['override'] = {
+          provider:
+            option(parsed, 'provider') ?? (separator === -1 ? model : model.slice(0, separator)),
+          model: separator === -1 ? model : model.slice(separator + 1),
+        };
+      } else if (option(parsed, 'effort') !== undefined) params['effort'] = setting;
       else params['permissionMode'] = setting;
     }
     return rpc(target, parsed, dependencies, method, params);
@@ -304,13 +318,15 @@ export async function executeReviewsOrRuns(
     if (action === 'list') return rpc(target, parsed, dependencies, 'bureau.reviews.list', {});
     const reviewId = option(parsed, 'review-id') ?? parsed.arguments[1];
     if (action === 'get')
-      return rpc(target, parsed, dependencies, 'bureau.reviews.get', { reviewId });
+      return rpc(target, parsed, dependencies, 'bureau.reviews.get', { id: reviewId });
     if (action === 'approve' || action === 'reject')
       return rpc(target, parsed, dependencies, 'bureau.reviews.resolve', {
-        reviewId,
+        id: reviewId,
         decision: action === 'approve' ? 'approve' : 'reject',
         ...(action === 'reject' ? { reason: option(parsed, 'reason') ?? 'Rejected by user.' } : {}),
-        round: Number(option(parsed, 'round') ?? 0),
+        ...(option(parsed, 'round') === undefined
+          ? {}
+          : { round: Number(option(parsed, 'round')) }),
       });
   }
   if (parsed.command === 'runs' && parsed.arguments[0] === 'respond') {
