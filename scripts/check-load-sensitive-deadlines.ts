@@ -760,8 +760,7 @@ export function findDeadlineViolations(
         if (
           budget !== undefined &&
           isNumberLike(budget) &&
-          isShort(budget, constants, { unresolvedIsShort: true, allowZero: false }) &&
-          !isLoadProof(sourceFile, node)
+          isShort(budget, constants, { unresolvedIsShort: true, allowZero: false })
         ) {
           const removal =
             ts.isObjectLiteralExpression(unwrapped) && option !== undefined
