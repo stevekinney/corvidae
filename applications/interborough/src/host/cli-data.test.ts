@@ -48,12 +48,13 @@ let holdAppend = false;
 let releaseAppend: (() => void) | undefined;
 const appendAdmitted = Promise.withResolvers<void>();
 const uploadedChunks: Uint8Array[] = [];
+const observedKeys: string[] = [];
 const server = Bun.serve({
   hostname: '127.0.0.1',
   port: 0,
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === '/assets/asset-1/content')
+    if (url.pathname === '/bureau/assets/asset-1/content')
       return new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });
     if (url.pathname.endsWith('/content'))
       return Response.json({ message: 'obsolete route' }, { status: 404 });
@@ -203,22 +204,33 @@ const realBureau = await createBureau({
 });
 const realHandler = createBureauHandler(realBureau, {
   authentication: {
-    resolveApiKeyPrincipal: async (key) =>
-      key === 'ALICE_KEY' || key === 'BOB_KEY'
+    resolveApiKeyPrincipal: async (key) => {
+      observedKeys.push(key);
+      return key === 'ALICE_KEY' || key === 'BOB_KEY'
         ? principalFromApiKey({
             subject: key === 'ALICE_KEY' ? 'alice' : 'bob',
             scopes: [...BUREAU_SCOPES],
           })
-        : null,
+        : null;
+    },
   },
 });
-const realServer = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: realHandler });
+const realServer = Bun.serve({
+  hostname: '127.0.0.1',
+  port: 0,
+  fetch: (request) => {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith('/bureau/')) return new Response('Not found', { status: 404 });
+    url.pathname = url.pathname.slice('/bureau'.length) || '/';
+    return realHandler(new Request(url, request));
+  },
+});
 async function realRpc(
   key: string,
   method: string,
   params: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(`http://127.0.0.1:${realServer.port}/jsonrpc`, {
+  const response = await fetch(`http://127.0.0.1:${realServer.port}/bureau/jsonrpc`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
     body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method, params }),
@@ -233,6 +245,11 @@ const bobMemory = await realRpc('BOB_KEY', 'bureau.memory.remember', {
   content: 'bob-only-memory',
 });
 const bobMemoryId = (bobMemory['memory'] as { id: string }).id;
+const aliceMemory = await realRpc('ALICE_KEY', 'bureau.memory.remember', {
+  agentId: 'agent-a',
+  content: 'alice-only-memory',
+});
+const aliceMemoryId = (aliceMemory['memory'] as { id: string }).id;
 const bobUpload = await realRpc('BOB_KEY', 'bureau.assets.uploads.create', {
   declaredByteLength: bytes.byteLength,
   declaredMediaType: 'application/octet-stream',
@@ -577,6 +594,25 @@ test('compiled loopback credentials cannot read another owner', async () => {
     { ALICE_KEY: 'ALICE_KEY', BOB_KEY: 'BOB_KEY' },
   );
   expect(bob.exitCode).toBe(0);
+  const bobSelf = await invoke(
+    ['memory', 'get', bobMemoryId, '--agent', 'agent-a', '--connection', 'bob'],
+    { ALICE_KEY: 'ALICE_KEY', BOB_KEY: 'BOB_KEY' },
+  );
+  expect(bobSelf.exitCode).toBe(0);
+  expect(bobSelf.stdout.toString()).toContain('bob-only-memory');
+  const aliceSelf = await invoke(
+    ['memory', 'get', aliceMemoryId, '--agent', 'agent-a', '--connection', 'alice'],
+    { ALICE_KEY: 'ALICE_KEY', BOB_KEY: 'BOB_KEY' },
+  );
+  expect(aliceSelf.exitCode).toBe(0);
+  expect(aliceSelf.stdout.toString()).toContain('alice-only-memory');
+  const bobAssetPath = join(directory, 'bob-self.bin');
+  const bobAssetSelf = await invoke(
+    ['assets', 'download', bobAssetId, '--output-file', bobAssetPath, '--connection', 'bob'],
+    { ALICE_KEY: 'ALICE_KEY', BOB_KEY: 'BOB_KEY' },
+  );
+  expect(bobAssetSelf.exitCode).toBe(0);
+  expect(await readFile(bobAssetPath)).toEqual(Buffer.from(bytes));
   const deniedMemory = await invoke(
     ['memory', 'get', bobMemoryId, '--agent', 'agent-a', '--connection', 'alice'],
     { ALICE_KEY: 'ALICE_KEY', BOB_KEY: 'BOB_KEY' },
@@ -597,4 +633,6 @@ test('compiled loopback credentials cannot read another owner', async () => {
   );
   expect(deniedAsset.exitCode).toBe(1);
   expect(await Bun.file(join(directory, 'denied.bin')).exists()).toBe(false);
+  expect(observedKeys).toContain('ALICE_KEY');
+  expect(observedKeys).toContain('BOB_KEY');
 });

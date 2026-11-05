@@ -100,7 +100,7 @@ async function download(
     throw new Error('The asset is not available for download.');
   const response = await requestBytes(
     target,
-    `/assets/${encodeURIComponent(assetId)}/content`,
+    `/bureau/assets/${encodeURIComponent(assetId)}/content`,
     parsed,
     dependencies,
   );
