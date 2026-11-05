@@ -17,7 +17,8 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
-import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import type { BureauOwnTools } from '@lostgradient/bureau';
+import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createWorkflowLogStore, Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -166,6 +167,63 @@ const chatProofParent = createAgent({
   }) satisfies GenerateFunction,
 });
 
+const workflowRevisionAgent = (tools: BureauOwnTools) =>
+  createAgent({
+    name: 'workflow-revision',
+    description: 'Proposes a scripted workflow revision for Chat review.',
+    tools: {
+      'bureau:workflows-get': tools['bureau:workflows-get']!,
+      'bureau:workflows-propose-update': tools['bureau:workflows-propose-update']!,
+    },
+    generate: (async ({ conversation }) => {
+      const messages = conversation.getMessages();
+      const opener = messages.find((message) => message.role === 'user');
+      const content = typeof opener?.content === 'string' ? opener.content : '';
+      const id = 'cor-2034-chat-workflow';
+      const read = messages.findLast((message) => message.toolResult !== undefined);
+      const readContent = read?.toolResult?.content;
+      const currentHash =
+        typeof readContent === 'object' && readContent !== null
+          ? Reflect.get(readContent, 'hash')
+          : undefined;
+      if (messages.some((message) => message.toolCall?.name === 'bureau__workflows-get')) {
+        if (typeof currentHash !== 'string')
+          return { content: 'The workflow could not be read.', toolCalls: [] };
+        const stale = /stale:([^\s]+)/.exec(content)?.[1] ?? currentHash;
+        const invalid = content.includes('invalid');
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'cor-2034-workflow-proposal',
+              name: 'bureau__workflows-propose-update',
+              arguments: {
+                id,
+                expectedHash: stale,
+                trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
+                steps: [
+                  {
+                    kind: 'activity',
+                    handler: 'agent',
+                    title: 'Write the revised digest',
+                    input: { agent: 'demo:assistant', message: 'Write the revised digest.' },
+                  },
+                ],
+              },
+            },
+          ],
+        };
+      }
+      return {
+        content: '',
+        toolCalls: [
+          { id: 'cor-2034-workflow-read', name: 'bureau__workflows-get', arguments: { id } },
+        ],
+      };
+    }) satisfies GenerateFunction,
+    stopWhen: stopWhen.noToolCalls(),
+  });
+
 // Three workflow files, in the directory the Bureau reads at start (`26-workflows.spec.ts`): one
 // that loads and is started by a schedule, one started by a signal whose one step waits for another,
 // and one the Bureau cannot use. Each is written as a person would write it, by hand.
@@ -205,6 +263,7 @@ const host = await startHost({
       ...createQuestionAgents(),
       ...createModelAgents(),
     },
+    withBureauTools: { 'workflow-revision': workflowRevisionAgent },
   },
   environment: { INTERBOROUGH_HOME: home },
   // A chat whose first message carries an access marker is scripted to call a tool (`access-provider.ts`).

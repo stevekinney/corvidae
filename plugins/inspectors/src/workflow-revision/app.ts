@@ -36,7 +36,10 @@ function isResult(
   value: unknown,
 ): value is { readonly status: string; readonly currentHash?: string; readonly id?: string } {
   return (
-    typeof value === 'object' && value !== null && typeof Reflect.get(value, 'status') === 'string'
+    typeof value === 'object' &&
+    value !== null &&
+    (typeof Reflect.get(value, 'status') === 'string' ||
+      typeof Reflect.get(value, 'hash') === 'string')
   );
 }
 
@@ -185,7 +188,10 @@ async function start(): Promise<void> {
       arguments: { id: argumentsOfCall['id'], expectedHash: baseHash, definition: proposed },
     });
     const outcome = structured(result, isResult);
-    if (outcome?.status === 'ok')
+    if (
+      outcome !== undefined &&
+      (outcome.status === 'ok' || typeof Reflect.get(outcome, 'hash') === 'string')
+    )
       show('applied', `Applied. New hash: ${String(Reflect.get(outcome, 'hash') ?? '')}`);
     else if (outcome?.status === 'conflict')
       show(
