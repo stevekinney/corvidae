@@ -32,6 +32,7 @@ describe('parseArguments', () => {
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
       'tests/e2e/restart.spec.ts',
+      'tests/e2e/settings-general.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
@@ -64,6 +65,7 @@ describe('parseArguments', () => {
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
       'tests/e2e/restart.spec.ts',
+      'tests/e2e/settings-general.spec.ts',
       'tests/e2e/first-run.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
@@ -80,6 +82,7 @@ describe('parseArguments', () => {
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
       'tests/e2e/restart.spec.ts',
+      'tests/e2e/settings-general.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);

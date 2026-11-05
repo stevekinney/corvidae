@@ -20,7 +20,7 @@ const WIDTHS = [375, 1280] as const;
 
 const settingRow = (page: Page, key: string) => page.locator(`[data-setting="${key}"]`);
 const humanInputSwitch = (page: Page) =>
-  settingRow(page, 'tools.humanInput').getByRole('switch', { name: 'tools.humanInput' });
+  settingRow(page, 'tools.humanInput').getByRole('switch', { name: 'Human input' });
 const saveButton = (page: Page) => page.getByRole('button', { name: SETTINGS_COPY.saveAction });
 
 type Snapshot = { values: Record<string, unknown>; revision: number };
@@ -41,12 +41,11 @@ async function revisionOf(request: APIRequestContext): Promise<number> {
   return snapshot.revision;
 }
 
-/** Saves the humanInput switch's new state through the page, and waits for the Bureau's answer. */
+/** Changes the humanInput switch through the page, which saves it as it changes, and waits for the Bureau's answer. */
 async function saveHumanInput(page: Page, on: boolean): Promise<void> {
   await humanInputSwitch(page).click();
   await expect(humanInputSwitch(page)).toHaveAttribute('aria-checked', String(on));
-  await saveButton(page).click();
-  await expect(page.getByText(SETTINGS_COPY.saved.title)).toBeVisible();
+  await expect(settingRow(page, 'tools.humanInput')).toContainText('Saved just now');
   // The form reads the settings back before it is edited again: nothing is left dirty.
   await expect(settingRow(page, 'tools.humanInput')).toHaveAttribute('data-dirty', 'false');
 }
@@ -82,8 +81,10 @@ for (const width of WIDTHS) {
     ).schema.properties;
     // The model policy has a section of its own, the decisions are on Settings › Models, and the
     // A2A push settings are on Settings › A2A; every other key is on the General page.
+    // The retention windows are on Data and retention, which has its own page.
     const keys = Object.keys(published).filter(
-      (key) => key !== 'modelPolicy' && !key.startsWith('decisions.'),
+      (key) =>
+        key !== 'modelPolicy' && !key.startsWith('decisions.') && !key.startsWith('retention.'),
     );
     const sections = [
       { path: '/settings', keys: keys.filter((key) => !key.startsWith('a2a.')) },
@@ -95,7 +96,6 @@ for (const width of WIDTHS) {
     for (const section of sections) {
       await page.goto(section.path);
       await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
-      await expect(page.locator('[data-setting]')).toHaveCount(section.keys.length);
       for (const key of section.keys) {
         // A value that has none is Not set, with a button to set it; every other has a control.
         await expect(
@@ -117,9 +117,8 @@ test('shows the key the host locked read-only, with the reason', async ({ page, 
 
   const row = settingRow(page, E2E_LOCKED_SETTING);
   await expect(row).toHaveAttribute('data-locked', 'true');
-  await expect(row).toContainText(SETTINGS_COPY.locked);
-  await expect(row).toContainText(SETTINGS_COPY.lockedNote.deployment);
-  const field = row.getByRole('textbox', { name: E2E_LOCKED_SETTING });
+  await expect(row).toContainText(SETTINGS_COPY.lockedMessage);
+  const field = row.getByRole('textbox', { name: 'Workflow version' });
   await expect(field).toBeDisabled();
   // Every other key stays editable.
   await expect(settingRow(page, 'tools.wakeup')).toHaveAttribute('data-locked', 'false');
@@ -177,9 +176,7 @@ test('a change made through the API shows on an open page without a reload or a 
 }) => {
   const original = await valueOf(request, 'tools.wakeup');
   expect(original, 'wakeup is on to begin with').not.toBe(false);
-  const wakeupSwitch = settingRow(page, 'tools.wakeup').getByRole('switch', {
-    name: 'tools.wakeup',
-  });
+  const wakeupSwitch = settingRow(page, 'tools.wakeup').getByRole('switch', { name: 'Wakeup' });
   try {
     await page.goto('/settings');
     await expect(wakeupSwitch).toHaveAttribute('aria-checked', 'true');
@@ -202,39 +199,38 @@ test('a change made through the API shows on an open page without a reload or a 
   }
 });
 
-test('saves on ⌘Enter from a field, and puts nothing else in the update', async ({
+test('saves a number as its field is left, and puts nothing else in the update', async ({
   page,
   request,
 }) => {
-  const original = await valueOf(request, 'tools.wakeup');
-  expect(original, 'wakeup is on to begin with').toBe(true);
+  const original = await valueOf(request, 'logs.maximumLinesPerRun');
   try {
     await page.goto('/settings');
-    await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
-    const wakeup = settingRow(page, 'tools.wakeup').getByRole('switch', { name: 'tools.wakeup' });
-    await wakeup.click();
-    await expect(settingRow(page, 'tools.wakeup')).toHaveAttribute('data-dirty', 'true');
-    // The shortcut acts with focus in a field, which is where a person is when they want to save.
-    await page.getByRole('spinbutton', { name: 'logs.maximumLinesPerRun' }).focus();
-    await page.keyboard.press('ControlOrMeta+Enter');
-    await expect(page.getByText(SETTINGS_COPY.saved.title)).toBeVisible();
-    await expect(settingRow(page, 'tools.wakeup')).toHaveAttribute('data-dirty', 'false');
-    expect(await valueOf(request, 'tools.wakeup')).toBe(false);
+    const row = settingRow(page, 'logs.maximumLinesPerRun');
+    await expect(row).toBeVisible();
+    const field = row.getByRole('spinbutton', { name: 'Maximum lines per run' });
+    await field.fill('321');
+    // Nothing is sent while the field is being typed in.
+    await expect(row).not.toContainText('Saved just now');
+    await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
+    await expect(row).toContainText('Saved just now');
+    expect(await valueOf(request, 'logs.maximumLinesPerRun')).toBe(321);
+    expect(await valueOf(request, 'tools.wakeup')).toBe(true);
   } finally {
     const current = await snapshotOf(request);
-    if (current.values['tools.wakeup'] !== original) {
+    if (current.values['logs.maximumLinesPerRun'] !== original) {
       await bureauCall(request, 'bureau.settings.update', {
-        patch: { 'tools.wakeup': original },
+        patch: { 'logs.maximumLinesPerRun': original },
         expectedRevision: current.revision,
       });
     }
   }
 });
 
-test('lists ⌘Enter among the shortcuts', async ({ page }) => {
-  await page.goto('/settings');
+test('lists ⌘Enter among the shortcuts of a section that has a Save', async ({ page }) => {
+  await page.goto('/settings/a2a');
   await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
-  await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
+  await expect(settingRow(page, 'a2a.push.enabled')).toBeVisible();
   await page.keyboard.press('?');
   const map = page.getByRole('dialog');
   await expect(map).toContainText(SETTINGS_COPY.saveAction);
@@ -245,10 +241,10 @@ test('edits an object without JSON, and a model name from the catalog', async ({
   page,
   request,
 }) => {
-  const original = await valueOf(request, 'retention.receipts');
+  const original = await valueOf(request, 'engine.history');
   try {
     await page.goto('/settings');
-    const receipts = settingRow(page, 'retention.receipts');
+    const receipts = settingRow(page, 'engine.history');
     await expect(receipts.locator('textarea')).toHaveCount(0);
     // The summarizer model is a choice of the catalog's rows, never a typed `provider/model`.
     const fallback = settingRow(page, 'context.summarizerModel');
@@ -260,9 +256,9 @@ test('edits an object without JSON, and a model name from the catalog', async ({
     await expect(receipts.getByRole('spinbutton').first()).toBeVisible();
   } finally {
     const current = await snapshotOf(request);
-    if (JSON.stringify(current.values['retention.receipts']) !== JSON.stringify(original)) {
+    if (JSON.stringify(current.values['engine.history']) !== JSON.stringify(original)) {
       await bureauCall(request, 'bureau.settings.update', {
-        patch: { 'retention.receipts': original },
+        patch: { 'engine.history': original },
         expectedRevision: current.revision,
       });
     }

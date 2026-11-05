@@ -62,6 +62,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/shell-search.spec.ts',
   'tests/e2e/shell-states.spec.ts',
   'tests/e2e/restart.spec.ts',
+  'tests/e2e/settings-general.spec.ts',
   'tests/e2e/first-run.spec.ts',
 ] as const;
 
