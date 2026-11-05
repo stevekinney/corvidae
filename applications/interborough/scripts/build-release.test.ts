@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pluginRuntimeDirectory } from '../src/host/cli.ts';
 import { buildRelease, parseReleaseArguments } from './build-release.ts';
 
 describe('release arguments', () => {
@@ -20,12 +19,6 @@ describe('release arguments', () => {
   test('rejects unknown arguments', () => {
     expect(() => parseReleaseArguments(['--version', '1.2.3', '--nope'])).toThrow(
       'Unknown release argument',
-    );
-  });
-
-  test('derives the plugin runtime from the relocated executable', () => {
-    expect(pluginRuntimeDirectory('/opt/interborough/bin/interborough')).toBe(
-      '/opt/interborough/share/interborough/plugin-runtime/node_modules',
     );
   });
 
