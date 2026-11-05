@@ -11,6 +11,7 @@ import {
   lookupRequestsFor,
   narrowEvents,
   NO_LOOKUPS,
+  pastTense,
   recordKey,
   reviewIdOf,
   summaryOf,
@@ -168,9 +169,11 @@ describe('what was done, in words', () => {
       },
     });
     expect(describeRecord(ran, LOOKUPS)).toMatchObject({
-      action: 'Ran Issue refund',
+      action: 'Refunded order 4471',
       target: '$42.00 · Issue refund',
     });
+    // Without the review to read, the tool is named instead.
+    expect(describeRecord(ran, NO_LOOKUPS)?.action).toBe('Ran Issue refund');
     const corrected = record({
       type: 'memory.corrected',
       principal: null,
@@ -258,6 +261,17 @@ describe('what was done, in words', () => {
       'Chat › Please refund order 4471, it arrived damaged.',
       'Tool runner',
     ]);
+  });
+});
+
+describe('a tool’s sentence in the past', () => {
+  test('takes -ed, -d after an e and -ied after a consonant and y, and a few verbs their own form', () => {
+    expect(pastTense('Refund order 4472')).toBe('Refunded order 4472');
+    expect(pastTense('Delete the draft')).toBe('Deleted the draft');
+    expect(pastTense('Notify the customer')).toBe('Notified the customer');
+    expect(pastTense('Play a song')).toBe('Played a song');
+    expect(pastTense('Send 3 emails')).toBe('Sent 3 emails');
+    expect(pastTense('Run the report')).toBe('Ran the report');
   });
 });
 

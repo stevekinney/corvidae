@@ -146,6 +146,43 @@ function withoutAmount(summary: string): string {
   return summary.replace(/\s+for\s+[$€£]\d[\d,]*(?:\.\d+)?$/, '');
 }
 
+/** The few verbs a tool's sentence is likely to start with that do not take -ed. */
+const IRREGULAR_PAST = new Map([
+  ['build', 'built'],
+  ['do', 'did'],
+  ['find', 'found'],
+  ['get', 'got'],
+  ['give', 'gave'],
+  ['make', 'made'],
+  ['pay', 'paid'],
+  ['put', 'put'],
+  ['read', 'read'],
+  ['reset', 'reset'],
+  ['run', 'ran'],
+  ['send', 'sent'],
+  ['set', 'set'],
+  ['take', 'took'],
+  ['write', 'wrote'],
+]);
+
+/**
+ * A tool's own sentence told in the past: "Refund order 4472" reads "Refunded order 4472". Its
+ * first word is the verb, which takes -ed (-d after an e, -ied after a consonant and y) unless it is
+ * one of the few that do not.
+ */
+export function pastTense(sentence: string): string {
+  const [verb = '', ...rest] = sentence.split(' ');
+  const lower = verb.toLowerCase();
+  const past =
+    IRREGULAR_PAST.get(lower) ??
+    (/[^aeiou]y$/.test(lower)
+      ? `${lower.slice(0, -1)}ied`
+      : lower.endsWith('e')
+        ? `${lower}d`
+        : `${lower}ed`);
+  return [`${past.charAt(0).toUpperCase()}${past.slice(1)}`, ...rest].join(' ');
+}
+
 /**
  * What a call was about, from its arguments: the first identifier-like argument, named by its key
  * ("orderId" with 4471 reads "order 4471"), or `undefined` when the arguments hold none.
@@ -295,7 +332,11 @@ function wordingOf(
       const amount = amountOf(summary);
       const detail = amount ?? callLabel;
       return {
-        action: copy.ranTool(tool),
+        // The tool's own sentence in the past ("Refunded order 4472") when its review can be read.
+        action:
+          summary !== undefined && text(record, 'status') === 'success'
+            ? pastTense(withoutAmount(summary))
+            : copy.ranTool(tool),
         target: detail === undefined ? tool : `${detail} · ${tool}`,
       };
     }

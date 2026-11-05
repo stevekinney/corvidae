@@ -198,6 +198,12 @@ test.describe('Health › Audit log on the sample world', () => {
       'Started a run',
       'Chat › Please refund order 4471, it arrived damaged.',
     ]);
+    expect(await cellsOf(page, 3)).toEqual([
+      '10:33 AM',
+      'Tool runner',
+      'Refunded order 4472',
+      '$18.50 · Issue refund',
+    ]);
     expect(await cellsOf(page, 4)).toEqual([
       '10:33 AM',
       'You',
