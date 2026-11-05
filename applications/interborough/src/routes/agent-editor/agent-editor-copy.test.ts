@@ -105,6 +105,7 @@ describe('the seed of a copy', () => {
       costBudget: null,
       toolBudget: null,
       toolApproval: null,
+      childAgents: null,
       instructions: 'Help the person.',
     });
   });

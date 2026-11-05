@@ -16,7 +16,7 @@
  * scenario is a named function below; the `scenarios` table is the extension
  * point for further crash scenarios.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
@@ -529,7 +529,7 @@ async function childWaitParked(): Promise<void> {
   };
   const agentsPath = join(dirname(markerPath as string), 'agents');
   mkdirSync(agentsPath, { recursive: true });
-  writeFileSync(
+  publishChildFile(
     join(agentsPath, 'planner.md'),
     [
       '---',

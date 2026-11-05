@@ -1010,8 +1010,13 @@ describe('bureau.agents.catalog', () => {
     const served = await serve();
     const response = await callAs(served.owner, 'bureau.agents.catalog', {});
     // COR-1710: Bureau's own settings tools are in every catalog, for an agent file to name, and so
-    // is the built-in `bureau` plugin's `bureau:discover-agents` (COR-1890).
+    // are the built-in `bureau` plugin's discovery and child-run tools (COR-1890/COR-2028).
     expect(response.result?.['tools']).toEqual([
+      expect.objectContaining({ name: 'bureau:child-runs-cancel', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-dispatch', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-get', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-list', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-wait', source: 'bureau' }),
       expect.objectContaining({ name: 'bureau:discover-agents', source: 'bureau' }),
       expect.objectContaining({
         name: 'lookup-order',
