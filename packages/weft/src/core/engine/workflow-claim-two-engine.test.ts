@@ -2798,7 +2798,9 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
 
       gate.release.resolve();
-      await cancellation;
+      expect(await throwingRejectionOf(cancellation)).toThrow(
+        `Workflow "${id}" was replaced before it was cancelled.`,
+      );
       releaseReplacementActivity = undefined;
       await engineA.signal(id, 'go');
       await waitForCondition(() => releaseReplacementActivity !== undefined, {
