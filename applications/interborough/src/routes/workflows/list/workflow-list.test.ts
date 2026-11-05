@@ -87,32 +87,11 @@ describe('WorkflowList', () => {
     expect(await findByText('No workflows match')).not.toBeNull();
   });
 
-  test('renders the table once the list query resolves', async () => {
-    fetchScript.routeUrl('/workflows', {
-      items: [summary()],
-      total: 1,
-      offset: 0,
-      limit: 50,
-    });
-
-    const { findByText } = render(WorkflowListHarness, {
-      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
-    });
-
-    expect(await findByText('order-processing')).not.toBeNull();
-  });
-
   test('correlates provenance by the visible filtered-page id, not a newest-runs page', async () => {
     resetLocation('/health/runs?offset=50');
     const visibleId = 'wf_older_agent_run';
     fetchScript.routeUrl('/workflows', {
-      items: [
-        summary({
-          id: visibleId,
-          status: 'running',
-          tags: ['origin:agent-run'],
-        }),
-      ],
+      items: [summary({ id: visibleId, status: 'running', tags: ['origin:agent-run'] })],
       total: 51,
       offset: 50,
       limit: 50,
@@ -133,7 +112,9 @@ describe('WorkflowList', () => {
     });
 
     await waitFor(() => expect(container.textContent).toContain('order-processing'));
-    await waitFor(() => expect(container.textContent).toContain('Started by assistant'));
+    await waitFor(() =>
+      expect(container.textContent).toContain("An agent's tool call · assistant"),
+    );
     expect(fetchScript.calls.some((call) => call.init?.body?.toString().includes('runs.get'))).toBe(
       true,
     );
@@ -143,6 +124,21 @@ describe('WorkflowList', () => {
     expect(
       fetchScript.calls.filter((call) => call.init?.body?.toString().includes('runs.list')),
     ).toHaveLength(0);
+  });
+
+  test('renders the table once the list query resolves', async () => {
+    fetchScript.routeUrl('/workflows', {
+      items: [summary()],
+      total: 1,
+      offset: 0,
+      limit: 50,
+    });
+
+    const { findByText } = render(WorkflowListHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+
+    expect(await findByText('order-processing')).not.toBeNull();
   });
 
   test('rows across several types issue one active-pointer fetch per distinct type and render the comparison badges (COR-15)', async () => {

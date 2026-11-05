@@ -110,7 +110,7 @@ describe('WorkflowTable', () => {
       },
     });
 
-    expect(container.textContent).toContain('Started by journey-author');
+    expect(container.textContent).toContain("An agent's tool call · journey-author");
     expect(container.textContent).toContain('prod');
     expect(container.textContent).not.toContain('origin:agent-run');
     expect(getByRole('link', { name: 'Calling run' }).getAttribute('href')).toBe(

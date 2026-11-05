@@ -46,6 +46,7 @@
   import type { RevisionActiveComparison } from '../../../lib/workflow-revision.ts';
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import RevisionComparisonBadge from '../revision-comparison-badge.svelte';
+  import { STARTED_BY_LABELS } from '../runs/started-by.ts';
   import { workflowStatusBadge } from './workflow-status-badge.ts';
   import WorkflowStatusIcon from './workflow-status-icon.svelte';
 
@@ -182,8 +183,10 @@
             {#if workflowOrigin !== undefined}
               <span class="weft-workflows-table__origin">
                 <span>
-                  <span class="weft-workflows-table__origin-label">Started by</span>
-                  {workflowOrigin.agentId}
+                  <span class="weft-workflows-table__origin-label"
+                    >{STARTED_BY_LABELS['agent-run']}</span
+                  >
+                  · {workflowOrigin.agentId}
                 </span>
                 <a href={router.href(`/runs/${workflowOrigin.runId}`)}>Calling run</a>
               </span>
