@@ -228,6 +228,15 @@ describe('release arguments', () => {
     expect(lines).toEqual(['/tmp/interborough.tar.gz']);
   });
 
+  test('uses the command boundary defaults', async () => {
+    await expect(
+      runReleaseCommand(undefined, async () => '/tmp/interborough-default.tar.gz', [
+        '--version',
+        '0.0.0-test',
+      ]),
+    ).resolves.toBe('/tmp/interborough-default.tar.gz');
+  });
+
   test('rejects an existing release output before installing or staging', async () => {
     if (process.platform !== 'darwin' || process.arch !== 'arm64') return;
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-collision-'));
