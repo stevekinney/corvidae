@@ -2667,8 +2667,10 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engineA.signal(id, 'go');
       releaseFileActivity?.();
       await waitForCondition(
-        async () =>
-          (await new EventLog(storage, id).loadHead()).sequence > headBeforeCancel.sequence,
+        async () => {
+          const head = await new EventLog(storage, id).loadHead();
+          return head.sequence > headBeforeCancel.sequence;
+        },
         { label: 'checkpoint after cancellation race signal' },
       );
       gate.release.resolve();

@@ -5,6 +5,7 @@ import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { EventLog, type EventHeadRecord } from '../event-log.ts';
 import type { EngineInternals } from './internals.ts';
+import { resolveWorkflowSourceForExecution } from './source-resolution.ts';
 
 const FILE_WORKFLOW_TAG = 'file-workflow';
 
@@ -35,25 +36,49 @@ async function workflowIdentity(
   return state.type === undefined ? undefined : { type: state.type, revision: state.revision };
 }
 
-function fileWorkflowDefinition(
+async function resolvePinnedWorkflowDefinition(
+  internals: EngineInternals,
+  identity: { type: string; revision: string },
+): Promise<unknown> {
+  const resolved = internals.sources.resolved.get(identity.type);
+  const exact = resolved?.get(identity.revision);
+  if (exact !== undefined) return exact.definition;
+  if (!internals.sources.byName.get(identity.type)?.has(identity.revision)) return undefined;
+  const engine = internals.engine as Parameters<typeof resolveWorkflowSourceForExecution>[0];
+  await resolveWorkflowSourceForExecution(engine, identity.type, identity.revision);
+  return internals.sources.resolved.get(identity.type)?.get(identity.revision)?.definition;
+}
+
+async function fileWorkflowDefinition(
   internals: EngineInternals,
   identity: { type: string; revision?: string | undefined },
-) {
+): Promise<unknown> {
   const resolved = internals.sources.resolved.get(identity.type);
   if (identity.revision !== undefined) {
-    const exact = resolved?.get(identity.revision);
-    if (exact !== undefined) return exact.definition;
+    const pinned = await resolvePinnedWorkflowDefinition(internals, {
+      type: identity.type,
+      revision: identity.revision,
+    });
+    if (pinned !== undefined) return pinned;
     if (resolved !== undefined) return undefined;
   }
   if (resolved?.size === 1) return [...resolved.values()][0]?.definition;
   return internals.workflowDefinitionsByName.get(identity.type);
 }
 
-async function isFileWorkflow(internals: EngineInternals, workflowId: string): Promise<boolean> {
+async function isFileWorkflow(
+  internals: EngineInternals,
+  workflowId: string,
+  surfaceSourceErrors = false,
+): Promise<boolean> {
   const identity = await workflowIdentity(internals, workflowId);
-  return (
-    identity !== undefined && isTaggedFileWorkflow(fileWorkflowDefinition(internals, identity))
-  );
+  if (identity === undefined) return false;
+  try {
+    return isTaggedFileWorkflow(await fileWorkflowDefinition(internals, identity));
+  } catch (error) {
+    if (surfaceSourceErrors) throw error;
+    return false;
+  }
 }
 
 function eventKey(event: FileWorkflowEvent): string {
@@ -77,20 +102,23 @@ function stepKind(
 }
 
 function stepIndex(operation: ContextOperationRequest, fallback: number): number {
-  return operation.type === 'activity' && operation.step !== undefined ? operation.step : fallback;
+  return (
+    (operation as ContextOperationRequest & { documentStep?: number }).documentStep ??
+    (operation.type === 'activity' ? operation.step : undefined) ??
+    fallback
+  );
 }
 
 async function existingFileWorkflowEvents(
   internals: EngineInternals,
   workflowId: string,
-  initialHead: EventHeadRecord,
 ): Promise<Set<string>> {
   const keys = new Set<string>();
-  const log = new EventLog(internals.storage, workflowId, internals.options.getNow);
-  for await (const entry of log.scan({ fromSequence: Math.max(0, initialHead.sequence - 8) })) {
-    if (entry.type.startsWith('file-workflow:')) {
-      keys.add(eventKey({ type: entry.type, payload: entry.payload as Record<string, unknown> }));
-    }
+  for await (const [, bytes] of internals.storage.scan(
+    KEYS.fileWorkflowEventReceiptPrefix(workflowId),
+  )) {
+    const receipt = decode(bytes) as { eventKey?: string };
+    if (receipt.eventKey !== undefined) keys.add(receipt.eventKey);
   }
   return keys;
 }
@@ -110,6 +138,11 @@ function appendEvents(
     const key = eventKey(event);
     if (existing.has(key) || appended.has(key)) continue;
     head = log.appendToBatch(event, operations, head).newHead;
+    operations.push({
+      type: 'put',
+      key: KEYS.fileWorkflowEventReceipt(workflowId, key),
+      value: encode({ eventKey: key, type: event.type, payload: event.payload }),
+    });
     appended.add(key);
   }
   return head;
@@ -117,32 +150,48 @@ function appendEvents(
 
 function completionEvents(
   pending:
-    | { operationType: string; operationLabel: string; stepIndex?: number; status: string }
+    | {
+        operationType: string;
+        operationLabel: string;
+        stepIndex?: number;
+        documentStep?: number;
+        status: string;
+      }
     | undefined,
 ): FileWorkflowEvent[] {
   if (pending?.status !== 'completed') return [];
-  const step = pending.stepIndex ?? 0;
-  const events: Record<string, FileWorkflowEvent[]> = {
-    activity: [
-      {
-        type: 'file-workflow:activity-completed',
-        payload: { step, handler: pending.operationLabel },
-      },
-      { type: 'file-workflow:step-completed', payload: { step, kind: 'activity' } },
+  if (pending.documentStep === undefined && pending.operationType !== 'activity') return [];
+  const step = pending.documentStep ?? pending.stepIndex ?? 0;
+  const events = new Map<string, FileWorkflowEvent[]>([
+    [
+      'activity',
+      [
+        {
+          type: 'file-workflow:activity-completed',
+          payload: { step, handler: pending.operationLabel },
+        },
+        { type: 'file-workflow:step-completed', payload: { step, kind: 'activity' } },
+      ],
     ],
-    'wait-signal': [
-      {
-        type: 'file-workflow:signal-received',
-        payload: { step, signal: pending.operationLabel },
-      },
-      { type: 'file-workflow:step-completed', payload: { step, kind: 'await-signal' } },
+    [
+      'wait-signal',
+      [
+        {
+          type: 'file-workflow:signal-received',
+          payload: { step, signal: pending.operationLabel },
+        },
+        { type: 'file-workflow:step-completed', payload: { step, kind: 'await-signal' } },
+      ],
     ],
-    sleep: [{ type: 'file-workflow:step-completed', payload: { step, kind: 'sleep' } }],
-  };
-  return events[pending.operationType] ?? [];
+    ['sleep', [{ type: 'file-workflow:step-completed', payload: { step, kind: 'sleep' } }]],
+  ]);
+  return events.get(pending.operationType) ?? [];
 }
 
 function startEvents(operation: ContextOperationRequest, step: number): FileWorkflowEvent[] {
+  const documentStep = (operation as ContextOperationRequest & { documentStep?: number })
+    .documentStep;
+  if (documentStep === undefined && operation.type !== 'activity') return [];
   const kind = stepKind(operation);
   if (kind === undefined) return [];
   const events: FileWorkflowEvent[] = [
@@ -171,7 +220,7 @@ export async function appendFileWorkflowCheckpointEvents(
   initialHead: EventHeadRecord,
 ): Promise<EventHeadRecord> {
   if (!(await isFileWorkflow(internals, workflowId))) return initialHead;
-  const existing = await existingFileWorkflowEvents(internals, workflowId, initialHead);
+  const existing = await existingFileWorkflowEvents(internals, workflowId);
   const pending = internals.pendingTimelineEntries.get(workflowId)?.entry;
   const events = [
     ...completionEvents(pending),
@@ -185,11 +234,16 @@ export async function prepareFileWorkflowTerminalHistory(
   workflowId: string,
   status: 'completed' | 'failed' | 'cancelled' | 'timed-out',
 ): Promise<PreparedTerminalHistory | undefined> {
-  if (!(await isFileWorkflow(internals, workflowId))) return undefined;
-  const initialHead =
-    internals.eventLogHeads.get(workflowId) ??
-    (await new EventLog(internals.storage, workflowId, internals.options.getNow).loadHead());
-  const existing = await existingFileWorkflowEvents(internals, workflowId, initialHead);
+  if (
+    !(await isFileWorkflow(internals, workflowId, status === 'cancelled' || status === 'timed-out'))
+  )
+    return undefined;
+  const initialHead = await new EventLog(
+    internals.storage,
+    workflowId,
+    internals.options.getNow,
+  ).loadHead();
+  const existing = await existingFileWorkflowEvents(internals, workflowId);
   const pending = internals.pendingTimelineEntries.get(workflowId)?.entry;
   const terminal: FileWorkflowEvent = {
     type: 'file-workflow:run-terminal',
@@ -240,9 +294,11 @@ export async function fileWorkflowHistoryHeadChanged(
     workflowId,
     internals.options.getNow,
   ).loadHead();
-  return (
-    current.sequence !== prepared.head().sequence || current.lastHash !== prepared.head().lastHash
-  );
+  const expected = prepared.condition().expectedValue;
+  if (expected === null) return current.sequence >= 0;
+  const actual = encode(current);
+  if (actual.length !== expected.length) return true;
+  return actual.some((byte, index) => byte !== expected[index]);
 }
 
 export async function shouldRetryFileWorkflowTermination(

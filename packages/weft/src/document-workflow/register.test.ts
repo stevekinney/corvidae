@@ -601,6 +601,29 @@ describe('restarting after a crash', () => {
     expect(pointer?.revision).toBe(active!.revision);
   });
 
+  it('records cancellation for a suspended retained revision while a newer revision is active', async () => {
+    const storage = new MemoryStorage();
+    const version1 = createDocument('retained-cancel', [{ kind: 'await-signal', signal: 'go' }]);
+    const version2 = createDocument('retained-cancel', [{ kind: 'activity', handler: 'version' }]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [version1] });
+      await original.start('retained-cancel', null, { id: 'retained-cancel-run' });
+      await waitForParkedOnSignal(original, 'retained-cancel-run');
+    }
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [version2], retained: [version1] });
+    await restarted.cancel('retained-cancel-run');
+
+    const events = await restarted.getEvents('retained-cancel-run');
+    const fileEvents = events.filter((event) => event.type.startsWith('file-workflow:'));
+    expect(fileEvents.at(-1)).toMatchObject({
+      type: 'file-workflow:run-terminal',
+      data: { status: 'cancelled' },
+    });
+  });
+
   it('resumes an instance parked on sleep from that step', async () => {
     const storage = new MemoryStorage();
     const document = createDocument('crash-sleep', [

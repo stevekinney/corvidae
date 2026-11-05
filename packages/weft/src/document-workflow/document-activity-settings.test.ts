@@ -62,6 +62,18 @@ describe('a document activity registered as a definition', () => {
     await engine.advanceTime(200);
     expect(await handle.result()).toBe('succeeded after 3');
     expect(attempts).toEqual([0, 100, 300]);
+    const events = await engine.getEvents('retried');
+    const fileEvents = events.filter((event) => event.type.startsWith('file-workflow:'));
+    expect(fileEvents.filter((event) => event.type === 'file-workflow:step-started')).toMatchObject(
+      [{ type: 'file-workflow:step-started', data: { step: 0, kind: 'activity' } }],
+    );
+    expect(
+      fileEvents.some(
+        (event) =>
+          event.type === 'file-workflow:step-started' &&
+          (event.data as { kind?: string }).kind === 'sleep',
+      ),
+    ).toBe(false);
   });
 
   it('fails with the last error when the retry policy is exhausted', async () => {

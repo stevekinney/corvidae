@@ -137,6 +137,13 @@ export function appendTimelineBatchOperations(
   const entry: WorkflowTimelineEntry = {
     step,
     stepIndex,
+    ...((operation as ContextOperationRequest & { documentStep?: number }).documentStep ===
+    undefined
+      ? {}
+      : {
+          documentStep: (operation as ContextOperationRequest & { documentStep?: number })
+            .documentStep,
+        }),
     operationType: operation.type,
     operationLabel: getTimelineOperationLabel(operation),
     inputSummary: getTimelineInputSummary(operation),

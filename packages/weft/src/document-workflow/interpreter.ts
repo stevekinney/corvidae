@@ -6,6 +6,7 @@
  * @module document-workflow/interpreter
  */
 
+import type { ContextOperationRequest } from '../core/context/operation-request.ts';
 import {
   activity,
   signal,
@@ -32,6 +33,22 @@ function distinctStepValues(
     if (value !== undefined) values.add(value);
   }
   return [...values];
+}
+
+function* documentOperation<T>(
+  operation: Generator<unknown, T, unknown>,
+  documentStep: number,
+): Generator<ContextOperationRequest, T, unknown> {
+  let input: unknown;
+  while (true) {
+    const result = operation.next(input);
+    if (result.done) return result.value;
+    const request = result.value as ContextOperationRequest;
+    if (request.type === 'activity' || request.type === 'sleep' || request.type === 'wait-signal') {
+      request.documentStep = documentStep;
+    }
+    input = yield request;
+  }
 }
 
 /**
@@ -96,11 +113,11 @@ export async function buildDocumentWorkflowDefinition(
           });
           break;
         case 'sleep':
-          yield* context.sleep(step.duration);
+          yield* documentOperation(context.sleep(step.duration), index);
           previous = null;
           break;
         case 'await-signal':
-          previous = yield* context.waitForSignal(step.signal);
+          previous = yield* documentOperation(context.waitForSignal(step.signal), index);
           break;
       }
     }
