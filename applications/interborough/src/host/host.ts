@@ -223,6 +223,8 @@ const LOOPBACK = '127.0.0.1';
  * secret of its own.
  */
 export const APPROVAL_SECRET_KEY = 'approval-secret';
+/** Bungalow secret used to sign durable child-run authority grants. */
+export const DELEGATION_SECRET_KEY = 'delegation-secret';
 
 /**
  * The restart-applied settings a remote host holds to their code options (COR-1797): ownership,
@@ -582,6 +584,19 @@ async function approvalSecret(bungalow: Bungalow): Promise<string> {
   return created;
 }
 
+async function delegationSecret(bungalow: Bungalow): Promise<string> {
+  const existing = await bungalow.deploymentSecrets.read(DELEGATION_SECRET_KEY);
+  if (existing !== undefined) return existing;
+  if (bungalow.mode === 'remote') {
+    throw new Error(
+      `${bungalow.deploymentSecrets.location(DELEGATION_SECRET_KEY)} is not set. Remote mode needs it: it signs durable child-run authority grants every host verifies.`,
+    );
+  }
+  const created = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+  await bungalow.deploymentSecrets.write(DELEGATION_SECRET_KEY, created);
+  return created;
+}
+
 /** Where the `/bureau` prefix comes off a request before the Bureau handler sees it. */
 function withoutBureauPrefix(request: Request): Request {
   const url = new URL(request.url);
@@ -731,6 +746,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         for (const variable of [
           'INTERBOROUGH_SECRET_APPROVAL_SECRET',
           'INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY',
+          'INTERBOROUGH_SECRET_DELEGATION_SECRET',
         ]) {
           if (environment[variable] === undefined || environment[variable] === '') {
             throw new Error(`${variable} is not set. Remote mode needs it on every host.`);
@@ -756,6 +772,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const workspaceSecrets = createWorkspaceSecrets(bungalow);
     await workspaceSecrets.reconcile();
     const approval = await approvalSecret(bungalow);
+    const delegation = await delegationSecret(bungalow);
     // The A2A key and public origin (COR-1904), read as early, so a public origin without a key
     // stops the host before anything listens.
     const a2aExposure = await resolveA2aExposure(
@@ -820,7 +837,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         if (isProviderPlugin(plugin)) await held.providers?.reload();
       },
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
-      reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
+      reservedSecretKeys: [APPROVAL_SECRET_KEY, DELEGATION_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
       reservedSecretPrefixes: [ANSWER_ENCRYPTION_KEY, TOOL_SOURCE_SECRET_PREFIX],
     });
     held.plugins = pluginManager;
@@ -1031,6 +1048,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,
+      children: {
+        delegation: {
+          secret: delegation,
+          rootAuthority: { levels: 2, budget: { concurrentChildren: 4, totalDescendants: 16 } },
+        },
+      },
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowSource: createWorkflowSource(bungalow, workflowContent),

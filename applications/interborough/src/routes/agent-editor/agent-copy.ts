@@ -48,6 +48,7 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
     skillDescriptors: codeDefinition.skillDescriptors,
     // A file agent has only the skills it names, so the copy names what the original can activate.
     allowedSkills: codeDefinition.skills.length === 0 ? null : codeDefinition.skills,
+    childAgents: null,
     a2a: false,
     stepLimit: null,
     retry: null,

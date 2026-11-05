@@ -182,6 +182,7 @@ export class AgentEditorState {
    * that left them out would keep the file's too, but a create would have none.
    */
   readonly allowedSkills: readonly string[] | null;
+  readonly childAgents: readonly string[] | null;
   /**
    * The models a session may be switched to (COR-1559), as the file lists them, or `null` when it
    * lists none. Carried through a save untouched, like `skillDescriptors`: the editor shows no control for
@@ -269,6 +270,7 @@ export class AgentEditorState {
     this.#editedId = detail?.id;
     this.skillDescriptors = definition?.skillDescriptors ?? [];
     this.allowedSkills = definition?.allowedSkills ?? null;
+    this.childAgents = definition?.childAgents ?? null;
     this.models = definition?.models ?? null;
     this.#writtenEffort = definition?.defaultEffort ?? null;
     this.#warnAt = definition?.costBudget?.warnAt;
@@ -572,6 +574,7 @@ export class AgentEditorState {
       tools: chosen,
       skillDescriptors: this.skillDescriptors,
       ...(this.allowedSkills === null ? {} : { allowedSkills: this.allowedSkills }),
+      ...(this.childAgents === null ? {} : { childAgents: this.childAgents }),
       a2a: this.a2a,
       ...this.#carried,
       ...(toolApproval === undefined ? {} : { toolApproval }),

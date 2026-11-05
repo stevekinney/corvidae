@@ -1,6 +1,6 @@
 /**
  * COR-1890 — Bureau's own tools reach agents as the built-in `bureau` plugin's contributions:
- * `bureau:discover-agents` and the `bureau:workflows-*` tools. The plugin is required, holds the
+ * `bureau:discover-agents`, five `bureau:child-runs-*`, and the eleven `bureau:workflows-*` tools. The plugin is required, holds the
  * name `bureau` before any other plugin, and the events its tools cause carry `source: 'bureau'`.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -62,6 +62,13 @@ const WORKFLOW_TOOLS = [
   'workflows-revisions-list',
   'workflows-revisions-get',
 ];
+const CHILD_RUN_TOOLS = [
+  'child-runs-dispatch',
+  'child-runs-list',
+  'child-runs-get',
+  'child-runs-wait',
+  'child-runs-cancel',
+];
 
 function twin(source: BureauPluginEntry['source'], location: string): BureauPluginEntry {
   return {
@@ -99,7 +106,7 @@ describe('the built-in bureau plugin', () => {
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([]);
     expect(listing?.contributions.map(({ kind, id }) => `${kind} ${id}`).toSorted()).toEqual(
-      ['discover-agents', ...WORKFLOW_TOOLS]
+      ['discover-agents', ...CHILD_RUN_TOOLS, ...WORKFLOW_TOOLS]
         .map(
           (name) =>
             `tool bureau:${name}@${name === 'discover-agents' ? BUREAU_PLUGIN_VERSION : '1.0.0'}`,
@@ -182,6 +189,16 @@ describe('the built-in bureau plugin', () => {
         .filter((tool) => tool.name.startsWith('bureau:'))
         .every((tool) => tool.source === 'bureau'),
     ).toBe(true);
+  });
+
+  it('registers all five child-run tools under Bureau with their authority metadata', async () => {
+    const harness = await start();
+    const tools = harness.bureau.agents.tools();
+    for (const name of CHILD_RUN_TOOLS) {
+      expect(tools.find((tool) => tool.name === `bureau:${name}`)).toMatchObject({
+        source: 'bureau',
+      });
+    }
   });
 
   it('skips a folder plugin named bureau with name-clash: first is the built-in, second is the folder', async () => {

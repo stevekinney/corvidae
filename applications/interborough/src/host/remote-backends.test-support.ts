@@ -13,6 +13,9 @@ export const TEST_DEMO_APPROVAL_SECRET = 'remote-test-demo-approval-secret-01234
 /** The key secret answers are sealed with (base64url of 32 bytes), for the remote hosts a test starts. */
 export const TEST_ANSWER_ENCRYPTION_KEY = 'AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw';
 
+/** The shared HMAC secret for durable child-run delegation grants in remote hosts. */
+export const TEST_DELEGATION_SECRET = 'remote-test-delegation-secret-0123456789abcdef';
+
 /**
  * A database no earlier run touched, on the server `database` names: a supplied server is shared
  * between runs, so a suite makes its own. `password` is put in the returned URL, which a trusting
@@ -54,5 +57,6 @@ export function remoteEnvironment(
     INTERBOROUGH_SECRET_APPROVAL_SECRET: TEST_APPROVAL_SECRET,
     INTERBOROUGH_SECRET_DEMO_APPROVAL_SECRET: TEST_DEMO_APPROVAL_SECRET,
     INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY: TEST_ANSWER_ENCRYPTION_KEY,
+    INTERBOROUGH_SECRET_DELEGATION_SECRET: TEST_DELEGATION_SECRET,
   };
 }
