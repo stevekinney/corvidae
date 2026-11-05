@@ -27,6 +27,9 @@ test('fully composed host captures its routes and its engine discovery catalog',
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).toContain('GET /host/providers');
     expect(keys).toContain('POST /host/restart');
+    expect(
+      host.routeInventory.find((entry) => entry.key === 'GET /host/status')?.resourceClass,
+    ).toBe('deployment-operator');
     expect(keys).toContain('* /bureau/*');
     const bureauRoute = host.routeInventory.find((entry) => entry.key === '* /bureau/*');
     expect(bureauRoute?.resourceClass).toBeNull();

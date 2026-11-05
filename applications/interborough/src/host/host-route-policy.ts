@@ -45,6 +45,7 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'POST /host/tool-sources/:id/authorize': 'administrator-shared',
   'GET /host/oauth/callback/:id': 'administrator-shared',
   'GET /host/restart': 'deployment-operator',
+  'GET /host/status': 'deployment-operator',
   'POST /host/restart': 'deployment-operator',
   'GET /host/storage': 'deployment-operator',
   'GET /host/paths': 'deployment-operator',
