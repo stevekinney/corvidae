@@ -147,6 +147,7 @@ describe('a run of a workflow file the engine does not hold', () => {
       result: null,
       error: null,
       finishReason: null,
+      origin: { kind: 'agent-run', runId: 'calling-run-1', agentId: 'assistant' },
     });
 
     const view = mount(id);
@@ -160,6 +161,12 @@ describe('a run of a workflow file the engine does not hold', () => {
     const link = [...rail.querySelectorAll('a')].find((one) => one.textContent === 'e2e-approval');
     expect(link?.getAttribute('href')).toBe(router.href('/workflows/e2e-approval'));
     expect(view.queryByText('No workflow found')).toBeNull();
+    const lineage = view.getByTestId('run-lineage');
+    expect(lineage.textContent).toContain("An agent's tool call");
+    expect(lineage.textContent).toContain('assistant');
+    expect(lineage.querySelector('a')?.getAttribute('href')).toBe(
+      router.href('/runs/calling-run-1'),
+    );
   });
 
   test('says the run could not be loaded when the Bureau fails, rather than that it is missing', async () => {

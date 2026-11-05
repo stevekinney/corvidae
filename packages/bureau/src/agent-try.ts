@@ -46,6 +46,9 @@ const REFUSED_TOOLS: Readonly<Record<string, string>> = Object.freeze({
   'bureau:workflows-update': 'changes workflows, which run on schedules',
   'bureau:workflows-pause': 'changes workflows, which run on schedules',
   'bureau:workflows-resume': 'changes workflows, which run on schedules',
+  'bureau:workflows-start': 'starts workflows, which leave durable runs',
+  'bureau:workflows-signal': 'starts or changes workflows, which leave durable runs',
+  'bureau:workflows-runs-cancel': 'cancels durable workflow runs',
   'settings-update': 'changes the deployment’s settings',
 });
 

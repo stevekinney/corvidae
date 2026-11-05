@@ -12,6 +12,7 @@
 
   import { RUN_PAGE_COPY } from '../../../app/copy.ts';
   import type { ChatContext } from '../../../lib/bureau-client.ts';
+  import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { formatDuration } from '../../../lib/format/index.ts';
@@ -39,11 +40,7 @@
     workflow?: WorkflowState | undefined;
     /** The workflow a run of a workflow file belongs to, from the Bureau's record of it. */
     recordWorkflow?: string | undefined;
-    workflowOrigin?: {
-      readonly kind: 'agent-run';
-      readonly runId: string;
-      readonly agentId: string;
-    } | null;
+    workflowOrigin?: Extract<WorkflowFileRun['origin'], { readonly kind: 'agent-run' }> | null;
     /** When the run started and last changed, in milliseconds. */
     startedAt?: number | undefined;
     updatedAt?: number | undefined;

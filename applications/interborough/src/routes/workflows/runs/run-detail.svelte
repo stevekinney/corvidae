@@ -472,7 +472,7 @@
           engine={workflow === undefined ? undefined : engine}
           {workflow}
           recordWorkflow={record?.workflow}
-          workflowOrigin={record?.origin ?? null}
+          workflowOrigin={record?.origin?.kind === 'agent-run' ? record.origin : null}
           startedAt={summary.startedAt}
           updatedAt={summary.updatedAt}
           over={summary.over}

@@ -97,6 +97,17 @@ describe('the operations list', () => {
       expect(BUREAU_HANDLER_OPERATIONS).toContain(operation);
     }
   });
+
+  it('keeps run cancellation strict HTTP-only and destructive', () => {
+    const cancel = bureauWorkflowsOperations.find(
+      (operation) => operation.name === 'bureau.workflows.runs.cancel',
+    );
+    expect(cancel).toMatchObject({
+      mcpExposable: false,
+      destructive: true,
+      transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+    });
+  });
 });
 
 /** The state of the world the operations act on, as the file system and the Bureau see it. */
@@ -718,6 +729,10 @@ describe('results', () => {
       error: null,
       result: { content: 'written', output: null, finishReason: 'stop-condition' },
     });
+    const cancelled = await ownerRpc(served.owner, 'bureau.workflows.runs.cancel', {
+      runId: 'digest-run',
+    });
+    expect(cancelled.result).toEqual({ runId: 'digest-run', status: 'cancel-requested' });
     const none = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
       workflow: 'unknown-flow',
     });

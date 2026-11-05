@@ -270,6 +270,20 @@ describe('instances in flight across a restart', () => {
 });
 
 describe('history', () => {
+  it('projects the real file-workflow event union without raw payloads', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'history'));
+    const { engine, runtime } = await w.boot();
+    await engine.start('digest', null, { id: 'history-run' });
+    await parkedOnSignal(engine, 'history-run');
+
+    const history = await runtime.workflows.historyRuns('history-run', 500);
+    expect(history?.events.length).toBeGreaterThan(0);
+    expect(history?.events.every((event) => event.type.startsWith('file-workflow:'))).toBe(true);
+    expect(history?.events.every((event) => !Object.hasOwn(event, 'data'))).toBe(true);
+    expect(history?.events.map((event) => event.type)).toContain('file-workflow:step-started');
+  });
+
   it('lists the revisions that have run, newest first, and a revision that never ran is not listed', async () => {
     const w = await world();
     await w.put('digest', parked('digest', 'a'));

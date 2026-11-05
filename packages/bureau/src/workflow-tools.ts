@@ -33,6 +33,7 @@ import {
   WorkflowFileError,
 } from './workflow-file';
 import { type BureauWorkflows, WorkflowApplyError } from './workflow-runtime';
+import { WorkflowInputInvalidError } from './workflow-schema.ts';
 
 /**
  * The names of the eight tools within the `bureau` plugin. Hyphens, because provider tool-name
@@ -313,6 +314,10 @@ function resultOfFailure(error: unknown, id: string): WorkflowToolResult {
     return { status: 'invalid', code: error.code, issues: issuesOf(error) };
   }
   throw error;
+}
+
+function inputIssuesOf(error: WorkflowInputInvalidError): readonly WorkflowToolIssue[] {
+  return error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }));
 }
 
 /** The identifier of the run that made `context`'s call, when it carries one. */
@@ -777,6 +782,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           })),
         };
       } catch (error) {
+        if (error instanceof WorkflowInputInvalidError)
+          return { status: 'invalid' as const, code: error.code, issues: inputIssuesOf(error) };
         if (error instanceof WorkflowFileError && error.code === 'workflow-file-not-found')
           return { status: 'not-found' as const, id: input.id };
         if (error instanceof WorkflowFileError)

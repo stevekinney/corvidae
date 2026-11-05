@@ -30,5 +30,6 @@ function isStartedBy(kind: string): kind is StartedBy {
 }
 
 /** Every kind of origin, in the order the filter lists them. */
-export const STARTED_BY_KINDS: readonly StartedBy[] =
-  Object.keys(STARTED_BY_LABELS).filter(isStartedBy);
+export const STARTED_BY_KINDS: readonly StartedBy[] = Object.keys(STARTED_BY_LABELS).filter(
+  (kind): kind is StartedBy => kind !== 'agent-run' && isStartedBy(kind),
+);

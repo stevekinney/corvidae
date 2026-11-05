@@ -315,4 +315,29 @@ describe('the newest instances of a file', () => {
       limit: 5,
     });
   });
+
+  test('accepts every persisted origin shape, including person starts', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        runs: [
+          runFixture('person', 'one', {
+            origin: { kind: 'person', principal: 'person:steve', surface: 'web' },
+          }),
+          runFixture('chat', 'one', {
+            origin: {
+              kind: 'chat',
+              contextId: 'chat-1',
+              agentName: 'assistant',
+              principal: 'person:steve',
+            },
+          }),
+          runFixture('agent', 'one', {
+            origin: { kind: 'agent', parentRunId: 'parent-1', agentName: 'assistant' },
+          }),
+        ],
+      }),
+    );
+    const runs = await listWorkflowFileRuns('one', 10);
+    expect(runs.map((run) => run.origin?.kind).toSorted()).toEqual(['agent', 'chat', 'person']);
+  });
 });

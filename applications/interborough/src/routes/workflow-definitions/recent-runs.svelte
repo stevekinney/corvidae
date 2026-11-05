@@ -18,6 +18,8 @@
   import { workflowRunsPath } from '../../lib/workflow-type-paths.ts';
   import { workflowStatusBadge } from '../workflows/list/workflow-status-badge.ts';
   import WorkflowStatusIcon from '../workflows/list/workflow-status-icon.svelte';
+  import { STARTED_BY_LABELS } from '../workflows/runs/started-by.ts';
+  import type { WorkflowFileRun } from '../../lib/workflow-files.ts';
 
   interface Props {
     /** The workflow's type, which is its file's identifier for an agent-authored workflow. */
@@ -42,11 +44,7 @@
     readonly status: Parameters<typeof workflowStatusBadge>[0];
     readonly createdAt: number;
     readonly updatedAt: number;
-    readonly origin: {
-      readonly kind: 'agent-run';
-      readonly runId: string;
-      readonly agentId: string;
-    } | null;
+    readonly origin: WorkflowFileRun['origin'];
   };
 
   const runs = createQuery(
@@ -152,6 +150,7 @@
       {#each runs.data as run (run.id)}
         {@const status = workflowStatusBadge(run.status)}
         {@const took = durationOf(run)}
+        {@const origin = run.origin ?? null}
         <li data-run={run.id} data-status={run.status}>
           <a
             class="ib-workflow__run-status"
@@ -162,7 +161,13 @@
             {status.label}
           </a>
           <span>{formatRelativeTime(run.createdAt)}</span>
-          <span>{run.origin === null ? 'Not recorded' : "An agent's tool call"}</span>
+          <span>
+            {origin === null
+              ? 'Not recorded'
+              : origin.kind === 'agent-run'
+                ? `${STARTED_BY_LABELS['agent-run']} · ${origin.agentId}`
+                : STARTED_BY_LABELS[origin.kind]}
+          </span>
           {#if took !== undefined}<span class="ib-workflow__muted"
               >{copy.page.runDuration(took)}</span
             >{/if}
