@@ -24,6 +24,7 @@ import {
   createTestEmbedders,
 } from '@lostgradient/memory';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { type Storage, textValueStore } from '@lostgradient/storage';
 import {
   type AnyToolbox,
@@ -37,7 +38,8 @@ import {
 import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
-import type { Bureau } from '../types';
+import type { Bureau, RecoverableStartedApproval } from '../types';
+import type { BureauAssetOptions } from '../index';
 import type { AgentDefinitions } from '../agent-catalog';
 import { createSqliteStorageFixture } from './storage-fixtures';
 
@@ -205,6 +207,10 @@ export interface HarnessBureauOptions {
   readonly generate: GenerateFunction;
   readonly toolbox: AnyToolbox;
   readonly memory?: GovernedMemory;
+  readonly recoverableStartedApprovals?: ReadonlyMap<string, RecoverableStartedApproval>;
+  readonly requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
+  readonly runtime?: RuntimeServices;
+  readonly assets?: BureauAssetOptions;
   /** Wires `requestHumanInput` into the run (the COR-1409 park scenario). */
 }
 
@@ -221,8 +227,13 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
       }),
     },
     storage: options.storage,
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+    ...(options.assets === undefined ? {} : { assets: options.assets }),
     durable: true,
-    requestAuthorityValidator: () => true,
+    requestAuthorityValidator: options.requestAuthorityValidator ?? (() => true),
+    ...(options.recoverableStartedApprovals === undefined
+      ? {}
+      : { recoverableStartedApprovals: options.recoverableStartedApprovals }),
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -268,6 +279,39 @@ export function createInterruptedApprovalToolbox(
             status: 'needs_approval',
             reason: 'Operator approval required',
             action: { message: 'Approve append' },
+          };
+        },
+      },
+    },
+  );
+}
+
+/** COR-2051: the peer-shaped approval used by the real SQLite recovery scenarios. */
+export function createPeerApprovalToolbox(
+  afterExecute: () => void | Promise<void> = () => {},
+): AnyToolbox {
+  return createToolbox(
+    [
+      createTool({
+        name: 'ask-peer',
+        version: '1.0.0',
+        description: 'Ask a peer for an answer',
+        input: z.object({ message: z.string().min(1) }),
+        async execute() {
+          await afterExecute();
+          return 'peer answer';
+        },
+      }),
+    ],
+    {
+      approvalSecret: INTERRUPTED_APPROVAL_SECRET,
+      policy: {
+        beforeExecute() {
+          return {
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Ask the peer' },
           };
         },
       },
