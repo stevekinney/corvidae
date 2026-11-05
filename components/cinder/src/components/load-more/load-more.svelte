@@ -10,7 +10,7 @@
    * @avoidWhen The dataset is bounded and benefits from discrete jumps — use `Pagination` instead.
    * @related pagination, virtual-list
    */
-  export type { LoadMoreProps } from './load-more.types.ts';
+  export type { LoadMoreProps, LoadMoreVariant } from './load-more.types.ts';
 </script>
 
 <script lang="ts">
@@ -18,6 +18,7 @@
   import { untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
+  import { formatNumber } from '../../utilities/format-number.ts';
   import { useIntersection } from '../../utilities/use-intersection.svelte.ts';
   import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
 
@@ -36,12 +37,16 @@
     countNoun,
     itemLabel = 'items',
     errorMessage,
+    failed = false,
+    variant = 'centered',
     maxRetries = 5,
     class: customClassName,
   }: LoadMoreProps = $props();
 
   let requestInFlight = $state(false);
-  let errorState = $state(false);
+  // Starts latched when the caller already knows the last load failed, and latches again when
+  // `failed` turns true later; a press of the button clears it, and a rejection sets it again.
+  let errorState = $state(untrack(() => failed));
   let sentinelRequestCount = $state(0);
   let sentinelArmed = $state(true);
   let sentinelIntersecting = $state(false);
@@ -76,15 +81,14 @@
   // more to give, so the footer keeps the rows' count next to its button.
   const progressText = $derived(
     isCount(loadedCount) && isCount(totalCount)
-      ? `Showing ${Math.trunc(loadedCount)} of ${Math.trunc(totalCount)}${countNoun === undefined ? '' : ` ${countNoun}`}`
+      ? `Showing ${formatNumber(Math.trunc(loadedCount))} of ${formatNumber(Math.trunc(totalCount))}${countNoun === undefined ? '' : ` ${countNoun}`}`
       : undefined,
   );
   // After a failed load the footer keeps the count and says what went wrong, once, in words:
   // "Couldn’t load more runs. Showing 10 of 19."
-  const failureText = $derived(
-    errorMessage ??
-      `Couldn’t load more ${itemLabel}.${progressText === undefined ? '' : ` ${progressText}.`}`,
-  );
+  const failureLead = $derived(`Couldn’t load more ${itemLabel}.`);
+  const failureRest = $derived(progressText === undefined ? '' : ` ${progressText}.`);
+  const failureText = $derived(errorMessage ?? `${failureLead}${failureRest}`);
 
   function isCount(value: number | undefined): value is number {
     return value !== undefined && Number.isFinite(value) && value >= 0;
@@ -95,6 +99,10 @@
   // a prop *transition* — not a derivable value — so the previous-value diff is
   // intentional. `statusText` (pure) is a `$derived` above; `requestInFlight` is
   // cleared in `requestNextPage`'s `finally`, so neither needs an effect.
+  $effect(() => {
+    if (failed) errorState = true;
+  });
+
   $effect(() => {
     if (!previousHasMore && hasMore) {
       sentinelRequestCount = 0;
@@ -202,13 +210,20 @@
   }
 </script>
 
-<div class={mergedClassName} aria-busy={busy}>
+<div
+  class={mergedClassName}
+  aria-busy={busy}
+  data-cinder-variant={variant === 'footer' ? 'footer' : undefined}
+>
   {#if hasMore && !errorState}
     <div aria-hidden="true" class="cinder-load-more__sentinel" {@attach sentinelIntersection}></div>
   {/if}
 
   {#if errorState}
-    <span class="cinder-load-more__summary" data-cinder-error="" role="alert">{failureText}</span>
+    <span class="cinder-load-more__summary" data-cinder-error="" role="alert"
+      >{#if variant === 'footer' && errorMessage === undefined}<strong>{failureLead}</strong
+        >{failureRest}{:else}{failureText}{/if}</span
+    >
   {:else if progressText !== undefined}
     <span class="cinder-load-more__summary">{progressText}</span>
   {/if}

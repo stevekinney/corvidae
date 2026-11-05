@@ -188,4 +188,54 @@ describe('LoadMore', () => {
     const secondFailure = await second.findByRole('alert');
     expect(secondFailure.textContent).toBe('The server said no.');
   });
+
+  test('opens in the failed state when failed is set, with the count and a retry button', () => {
+    const { getByRole, getByText } = render(LoadMore, {
+      props: {
+        onLoadMore: () => {},
+        hasMore: true,
+        failed: true,
+        loadedCount: 10,
+        totalCount: 4236,
+        itemLabel: 'keys',
+        retryLabel: 'Load more',
+      },
+    });
+
+    expect(getByRole('alert').textContent).toBe('Couldn’t load more keys. Showing 10 of 4,236.');
+    expect(getByText('Load more')).toBeDefined();
+  });
+
+  test('the footer variant bolds the first sentence of the failure and leaves the count plain', () => {
+    const { container } = render(LoadMore, {
+      props: {
+        onLoadMore: () => {},
+        hasMore: true,
+        failed: true,
+        variant: 'footer',
+        loadedCount: 10,
+        totalCount: 19,
+        itemLabel: 'keys',
+      },
+    });
+
+    const root = requiredInstance(container.querySelector('.cinder-load-more'), HTMLElement);
+    expect(root.getAttribute('data-cinder-variant')).toBe('footer');
+    const strong = requiredInstance(container.querySelector('strong'), HTMLElement);
+    expect(strong.textContent).toBe('Couldn’t load more keys.');
+    expect(
+      requiredInstance(container.querySelector('[role="alert"]'), HTMLElement).textContent,
+    ).toBe('Couldn’t load more keys. Showing 10 of 19.');
+  });
+
+  test('the centered footer keeps the failure as one plain sentence', () => {
+    const { container } = render(LoadMore, {
+      props: { onLoadMore: () => {}, hasMore: true, failed: true, itemLabel: 'runs' },
+    });
+
+    expect(container.querySelector('strong')).toBeNull();
+    expect(container.querySelector('.cinder-load-more')?.hasAttribute('data-cinder-variant')).toBe(
+      false,
+    );
+  });
 });

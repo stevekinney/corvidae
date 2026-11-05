@@ -51,6 +51,18 @@ const schema = {
       description:
         'Replaces the whole failure message shown after `onLoadMore` rejects. By default it reads\n"Couldn’t load more {itemLabel}." followed by the count when `loadedCount` and `totalCount`\nare set.',
     },
+    failed: {
+      type: 'boolean',
+      description:
+        'Opens in the failed state: the footer says "Couldn’t load more {itemLabel}." with the count and\noffers the retry button, as if the last load had rejected. For a list whose own trigger (a\ntable that loads as its end scrolls into view) made the request and it failed, so the footer\ncan take over with the same retry any keyboard user can press. Pressing the button clears it,\nand a rejection sets it again.',
+      default: false,
+    },
+    variant: {
+      enum: ['centered', 'footer'],
+      description:
+        "Where the footer sits. `'centered'` puts the count, the message and the button in one centered\nrow. `'footer'` is for the foot of a framed table or list: the count or message at the start\nand the button at the end, and a failure in the warning tone with its first sentence in bold.",
+      default: 'centered',
+    },
     endOfListMessage: {
       type: 'string',
       description: 'Politely announced when the end of the list is reached.',

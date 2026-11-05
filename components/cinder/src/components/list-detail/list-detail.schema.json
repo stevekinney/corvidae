@@ -49,6 +49,11 @@
       "description": "Width in pixels of the component below which it shows one pane at a time: the list, then the\ndetail with a Back button. It is measured on the component, not the viewport.",
       "default": 600
     },
+    "stackBelow": {
+      "type": "number",
+      "description": "Width in pixels of the component below which, down to `pushBelow`, the two panes are shown one\nabove the other, the detail under the list, instead of side by side. The default `0` never\nstacks them: the panes sit side by side until `pushBelow` and show one at a time under it.",
+      "default": 0
+    },
     "flushDetail": {
       "type": "boolean",
       "description": "Removes the detail pane's inner padding, for a detail view that lays out its own header, body\nand footer edge to edge (an open chat, a table, a code frame).",
@@ -58,6 +63,11 @@
       "type": "number",
       "description": "Width in pixels of the list pane before the divider is moved.",
       "default": 280
+    },
+    "maximumListWidth": {
+      "type": "number",
+      "description": "Widest width in pixels the divider can give the list pane, and the most a remembered or default\nwidth can be. Raise it for a list that is a table, whose columns need more than a list of rows.",
+      "default": 560
     },
     "backLabel": {
       "type": "string",

@@ -645,7 +645,7 @@ export type {
 } from './components/list-detail/index.ts';
 
 export { default as LoadMore } from './components/load-more/index.ts';
-export type { LoadMoreProps } from './components/load-more/index.ts';
+export type { LoadMoreProps, LoadMoreVariant } from './components/load-more/index.ts';
 
 export { default as Marquee } from './components/marquee/index.ts';
 export type { MarqueeDirection, MarqueeProps } from './components/marquee/index.ts';
