@@ -1,5 +1,30 @@
 import { chromium } from '@playwright/test';
 
+type BrowserPage = {
+  on(event: 'pageerror', listener: (error: Error) => void): void;
+  goto(url: string): Promise<{ status(): number } | null>;
+  locator(selector: string): { waitFor(): Promise<void> };
+  waitForFunction(callback: () => boolean): Promise<void>;
+  route(
+    url: string,
+    handler: (route: {
+      fulfill(options: { contentType: string; body: string }): Promise<void>;
+    }) => Promise<void>,
+  ): Promise<void>;
+  addScriptTag(options: { content: string; type: string }): Promise<void>;
+  evaluate<T>(callback: (value: any) => Promise<T>, value?: any): Promise<T>;
+  frameLocator(selector: string): {
+    getByText(text: string): { count(): Promise<number> };
+    getByRole(role: string, options: { level: number; name: string }): { count(): Promise<number> };
+  };
+};
+type BrowserSession = { newPage(): Promise<BrowserPage>; close(): Promise<void> };
+export type InstalledBrowserOperations = {
+  readonly build?: (options: Parameters<typeof Bun.build>[0]) => Promise<any>;
+  readonly launch?: (options: { headless: true }) => Promise<BrowserSession>;
+  readonly fetch?: typeof fetch;
+};
+
 type BrowserReferenceHost = {
   readonly mount: (
     html: string,
@@ -38,8 +63,12 @@ export async function assertInstalledAppsInChromium(
   panelUrl: string,
   inspectorUrl: string,
   runId: string,
+  operations: InstalledBrowserOperations = {},
 ): Promise<void> {
-  const referenceHost = await Bun.build({
+  const build = operations.build ?? Bun.build;
+  const launch = operations.launch ?? chromium.launch.bind(chromium);
+  const fetcher = operations.fetch ?? fetch;
+  const referenceHost = await build({
     entrypoints: [new URL('../tests/mcp-apps/reference-host.ts', import.meta.url).pathname],
     target: 'browser',
     format: 'esm',
@@ -47,7 +76,7 @@ export async function assertInstalledAppsInChromium(
   if (!referenceHost.success)
     throw new AggregateError(referenceHost.logs, 'Reference host failed to build');
   const hostScript = await referenceHost.outputs[0]!.text();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launch({ headless: true });
   const shellErrors: string[] = [];
   try {
     const page = await browser.newPage();
@@ -59,19 +88,19 @@ export async function assertInstalledAppsInChromium(
     if (shellErrors.length > 0)
       throw new Error(`Installed shell JavaScript failed: ${shellErrors.join('; ')}`);
 
-    const panelResponse = await fetch(panelUrl);
+    const panelResponse = await fetcher(panelUrl);
     const panelPayload = validateInstalledUi(
       panelResponse,
       (await panelResponse.json()) as InstalledUi,
       'panel',
     );
-    const inspectorResponse = await fetch(inspectorUrl);
+    const inspectorResponse = await fetcher(inspectorUrl);
     const inspectorPayload = validateInstalledUi(
       inspectorResponse,
       (await inspectorResponse.json()) as InstalledUi,
       'inspector',
     );
-    const inspectionResponse = await fetch(`${installedUrl}/bureau/mcp`, {
+    const inspectionResponse = await fetcher(`${installedUrl}/bureau/mcp`, {
       method: 'POST',
       headers: {
         accept: 'application/json, text/event-stream',
