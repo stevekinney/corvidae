@@ -41,6 +41,7 @@ import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';
 import { purgeWorkflow } from './bulk-operations-purge.ts';
 import { TERMINAL_CLEANUP_DELAY_MS } from './bulk-operations.ts';
+import { prepareFileWorkflowTerminalHistory } from './file-workflow-history.ts';
 import { decodeGeneration } from './generation-codec.ts';
 import {
   ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING,
@@ -3068,6 +3069,95 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     } finally {
       gate.release.resolve();
     }
+  });
+
+  it('commits remote file cancellation when the optional generation read fails', async () => {
+    const id = `file-cancel-generation-read-failure-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    await using owner = await createEngine(storage);
+    await owner.start(FILE_RACE_TYPE, null, { id });
+    await owner[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+    let generationReads = 0;
+    const unreadable = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'get') {
+          return async (key: string) => {
+            if (key === KEYS.workflowGeneration(id) && generationReads++ === 0) {
+              throw new Error('generation unreadable');
+            }
+            return target.get(key);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await using terminator = await createEngine(unreadable);
+
+    await terminator.cancel(id);
+
+    expect((await terminator.get(id))?.status).toBe('cancelled');
+    expect(
+      (await terminator.getEvents(id)).filter((event) => event.type.startsWith('file-workflow:')),
+    ).toEqual([]);
+  });
+
+  it('fences terminal history when the persisted generation is absent on both reads', async () => {
+    const id = `file-cancel-missing-generation-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    await using owner = await createEngine(storage);
+    await owner.start(FILE_RACE_TYPE, null, { id });
+    await owner[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    await storage.delete(KEYS.workflowGeneration(id));
+    await using terminator = await createEngine(storage);
+
+    await terminator.cancel(id);
+
+    expect((await terminator.get(id))?.status).toBe('cancelled');
+    expect(
+      (await terminator.getEvents(id)).filter(
+        (event) => event.type === 'file-workflow:run-terminal',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('skips completed terminal history when the pinned source disappears during preparation', async () => {
+    const id = `file-terminal-source-disappears-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const revision = 'revision-1';
+    await storage.put(
+      KEYS.workflow(id),
+      encode({
+        id,
+        type: FILE_RACE_TYPE,
+        revision,
+        status: 'completed',
+        workflowExecutionToken: 'token-1',
+      }),
+    );
+    class SourceMap extends Map<string, { definition: unknown }> {
+      private lookups = 0;
+
+      override get(key: string): { definition: unknown } | undefined {
+        this.lookups += 1;
+        if (this.lookups > 1) throw new Error('source disappeared');
+        return super.get(key);
+      }
+    }
+    const resolved = new SourceMap([[revision, { definition: { tags: ['file-workflow'] } }]]);
+    const internals = {
+      storage,
+      options: { getNow: () => 1_000 },
+      workflowTypeByWorkflowId: new Map([[id, { type: FILE_RACE_TYPE, revision }]]),
+      workflowDefinitionsByName: new Map(),
+      sources: {
+        byName: new Map(),
+        resolved: new Map([[FILE_RACE_TYPE, resolved]]),
+      },
+    } as never;
+
+    expect(await prepareFileWorkflowTerminalHistory(internals, id, 'completed')).toBeUndefined();
   });
 });
 

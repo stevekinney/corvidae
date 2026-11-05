@@ -94,6 +94,34 @@ describe('attribute and tag helpers', () => {
     expect(result).toMatchObject({ kind: 'refused', reason: 'replaced' });
   });
 
+  it('refuses a terminal update when the expected run has no execution token', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'state-update-missing-token';
+    await storage.put(
+      KEYS.workflow(workflowId),
+      encode(
+        createWorkflowState(workflowId, {
+          status: 'running',
+          workflowExecutionToken: 'replacement-token',
+        }),
+      ),
+    );
+
+    const result = await updateWorkflowState(
+      createInternals(storage),
+      workflowId,
+      { status: 'cancelled' },
+      'external-terminal',
+      { allowedStatuses: ['running'], expectedWorkflowExecutionToken: null },
+    );
+
+    expect(result).toMatchObject({ kind: 'refused', reason: 'replaced' });
+    expect(await readWorkflowState(storage, workflowId)).toMatchObject({
+      status: 'running',
+      workflowExecutionToken: 'replacement-token',
+    });
+  });
+
   it('loads persisted attributes when cleaning indexes without an explicit attribute map', async () => {
     const storage = new MemoryStorage();
     const internals = createInternals(storage);
