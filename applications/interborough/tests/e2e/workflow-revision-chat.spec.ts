@@ -100,6 +100,18 @@ test.describe('workflow revision review in Chat', () => {
     expect(frameText).toBe(hostMuted);
     await frame.locator('.revision-comparison').focus();
     await expect(frame.locator('.revision-comparison')).toBeFocused();
+    const ringWidth = await page
+      .locator('html')
+      .evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--cinder-ring-width').trim(),
+      );
+    const frameRing = await frame.locator('.revision-comparison').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { outline: style.outlineWidth, shadow: style.boxShadow };
+    });
+    expect(ringWidth).toBe('2px');
+    expect(frameRing.outline).toBe(ringWidth);
+    expect(frameRing.shadow).toMatch(/0px 0px 0px 2px/);
     await captureForDesignReview(page, {
       route: `/chats/${thread}`,
       state: 'workflow revision proposal',
@@ -343,6 +355,12 @@ test.describe('workflow revision review in Chat', () => {
       `invalid proposal for ${WORKFLOW_ID}`,
     );
     await page.goto(`/chats/${invalidThread}`);
+    const invalidTool = page.locator('.ib-tool[data-tool-call-row="cor-2034-workflow-proposal"]');
+    await expect(invalidTool).toBeVisible();
+    await invalidTool
+      .getByRole('button', { name: /Details for bureau__workflows-propose-update/ })
+      .click();
+    await expect(invalidTool.locator('.ib-tool__details')).toContainText('expectedHash');
     await expect(page.locator('iframe[title="Review workflow revision"]')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: `/chats/${invalidThread}`,

@@ -27,7 +27,10 @@ const STYLE_MAP: ReadonlyArray<readonly [McpUiStyleVariableKey, string]> = [
   ['--font-text-xs-size', '--cinder-text-xs'],
   ['--font-text-xs-line-height', '--cinder-leading-normal'],
   ['--border-radius-sm', '--cinder-radius-sm'],
-  ['--border-width-regular', '--cinder-border-width'],
+  // The MCP contract has one shared width slot for focus affordances. Keep it
+  // aligned with Cinder's public ring token so embedded inspectors reserve the
+  // same 2px focus channel as host controls.
+  ['--border-width-regular', '--cinder-ring-width'],
 ];
 
 function themeOf(root: HTMLElement): 'light' | 'dark' {
