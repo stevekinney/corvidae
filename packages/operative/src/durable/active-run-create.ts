@@ -301,16 +301,19 @@ export function createDurableActiveRun(
     abortController.abort(reason);
 
     if (driveStarted) {
-      cancelSettled ??= context.engine.cancel(runId).catch(async (error: unknown) => {
-        try {
-          const state = await context.engine.get(runId);
-          if (state?.status === 'suspended') {
-            rejectCancelGate?.(error);
+      cancelSettled ??= context.engine
+        .cancel(runId)
+        .then(() => undefined)
+        .catch(async (error: unknown) => {
+          try {
+            const state = await context.engine.get(runId);
+            if (state?.status === 'suspended') {
+              rejectCancelGate?.(error);
+            }
+          } catch {
+            // The cancellation result remains authoritative when state lookup fails.
           }
-        } catch {
-          // The cancellation result remains authoritative when state lookup fails.
-        }
-      });
+        });
     }
   }
 
