@@ -1,9 +1,9 @@
 /**
  * COR-1494 and COR-1654: the schedules area, as an operator uses it. A schedule is named by what it
  * does and never by its identifier: the seeded one is "Daily summary", runs `assistant` every day at
- * 09:00, and sends its text; its identifier is "Copy ID" in the actions menu. Each schedule says what
- * it starts and links to it: an agent run links to its agent, and a workflow's is its trigger and
- * links to the workflow. The seeded schedule is paused and resumed from the list, its cadence is
+ * 09:00, and sends its text. A row of the list says the kind first and is one link to the schedule,
+ * whose own page links to what it starts: an agent run to its agent, and a workflow's trigger to the
+ * workflow. The seeded schedule is paused and resumed from its page, its cadence is
  * edited on the page an agent run has, which holds the cadence, the description, and whether to
  * skip a fire while a run is going, and the next fire time changes. A workflow file's schedule is
  * paused and resumed too, and is edited in the workflow. A schedule is made on its own page, from a
@@ -64,10 +64,10 @@ async function restoreSeeded(request: APIRequestContext, id: string): Promise<vo
   });
 }
 
-const row = (page: Page, id: string) => page.locator(`tr[data-schedule="${id}"]`);
+const row = (page: Page, id: string) => page.locator(`li[data-schedule="${id}"]`);
 
-/** A row's actions menu, which is named for the schedule's name and not its identifier. */
-const actionsOf = (target: Locator) => target.getByRole('button', { name: /^Actions for / });
+/** The switch on a schedule's page, which pauses and resumes it. */
+const activeSwitch = (page: Page): Locator => page.getByRole('switch', { name: 'On' });
 
 // The schedules the Bureau holds are listed by a console that runs on the Bureau's own engine, so the
 // specs about them open the second host (`e2e-constants.ts`). The main host's console is the
@@ -86,17 +86,17 @@ test.describe('what each schedule starts', () => {
       await page.goto('/schedules');
 
       await expect(row(page, id)).toHaveAttribute('data-kind', 'agent-run');
-      // What it is called, which agent, how often in words, and what it sends; never the identifier.
+      // What it is called, the kind first, and how often in words; never the identifier.
       await expect(row(page, id)).toContainText(SEEDED_DESCRIPTION);
-      await expect(row(page, id)).toContainText('Every day at 09:00');
-      await expect(row(page, id).getByTestId('schedule-input')).toHaveText(`“${SEEDED_INPUT}”`);
+      await expect(row(page, id)).toContainText('Workflow · Chat with an agent');
+      await expect(row(page, id)).toContainText(/every day at/i);
       await expect(row(page, id)).not.toContainText(id);
-      const link = row(page, id).getByRole('link', { name: 'demo:assistant' });
-      await expect(link).toHaveAttribute('href', '/agents/demo%3Aassistant');
+      const link = row(page, id).getByRole('link', { name: SEEDED_DESCRIPTION });
+      await expect(link).toHaveAttribute('href', `/schedules/${id}`);
       await checkA11y(`schedules — the list at ${width}px`);
 
       await link.click();
-      await expect(page).toHaveURL(/\/agents\/demo%3Aassistant$/);
+      await expect(page).toHaveURL(new RegExp(`/schedules/${id}$`));
     });
 
     test(`links the same agent from the schedule's own page, at ${width} pixels`, async ({
@@ -128,45 +128,52 @@ test.describe('what each schedule starts', () => {
     });
   }
 
-  test('labels a workflow file’s schedule, linked to its workflow', async ({ page }) => {
+  test('labels a workflow file’s schedule by kind, and its page links to its workflow', async ({
+    page,
+  }) => {
     await page.goto('/schedules');
 
-    const file = page.locator('tr[data-kind="workflow-file"]').first();
-    await expect(file).toContainText(SCHEDULE_COPY.kind['workflow-file']);
-    await expect(file.getByRole('link', { name: 'e2e-digest', exact: true })).toHaveAttribute(
-      'href',
-      '/workflows/e2e-digest',
-    );
+    const file = page.locator('li[data-kind="workflow-file"]').first();
+    await expect(file).toContainText('Workflow · ');
+    await file.getByRole('link').first().click();
+    await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
+    await expect(
+      page.getByRole('link', { name: 'e2e-digest', exact: true }).first(),
+    ).toHaveAttribute('href', '/workflows/e2e-digest');
   });
 
   test.describe('a code-defined schedule, on the host whose console is the fixtures’ engine', () => {
     test.use({ baseURL: E2E_BASE_URL });
 
-    test('is labelled and linked to its workflow', async ({ page }) => {
+    test('is a row that says the kind first and links to the schedule', async ({ page }) => {
       await page.goto('/schedules');
 
-      const code = page.locator('tr[data-kind="code"]').first();
-      await expect(code).toContainText(SCHEDULE_COPY.kind.code);
-      await expect(code.locator('a[href^="/workflows/"]')).toHaveCount(1);
+      const code = page.locator('li[data-kind="code"]').first();
+      await expect(code).toContainText('Workflow · ');
+      await expect(code.getByRole('link').first()).toHaveAttribute('href', /^\/schedules\//);
     });
   });
 });
 
 test.describe('the seeded agent run', () => {
-  test('is paused and resumed from the list', async ({ page, request }) => {
+  test('is paused and resumed from its own page, and the list follows', async ({
+    page,
+    request,
+  }) => {
     const id = await seededScheduleId(request);
     try {
-      await page.goto('/schedules');
-      await expect(row(page, id)).toHaveAttribute('data-status', 'active');
+      await page.goto(`/schedules/${id}`);
+      await expect(activeSwitch(page)).toHaveAttribute('aria-checked', 'true');
 
-      await actionsOf(row(page, id)).click();
-      // The identifier is reachable from here, and shown nowhere else.
-      await expect(page.getByRole('menuitem', { name: 'Copy ID' })).toBeVisible();
-      await page.getByRole('menuitem', { name: /Pause/ }).click();
+      await activeSwitch(page).click();
+      await expect(activeSwitch(page)).toHaveAttribute('aria-checked', 'false');
+      await page.goto('/schedules');
       await expect(row(page, id)).toHaveAttribute('data-status', 'paused');
 
-      await actionsOf(row(page, id)).click();
-      await page.getByRole('menuitem', { name: /Resume/ }).click();
+      await page.goto(`/schedules/${id}`);
+      await activeSwitch(page).click();
+      await expect(activeSwitch(page)).toHaveAttribute('aria-checked', 'true');
+      await page.goto('/schedules');
       await expect(row(page, id)).toHaveAttribute('data-status', 'active');
     } finally {
       await restoreSeeded(request, id);
@@ -220,26 +227,22 @@ test.describe('the seeded agent run', () => {
 });
 
 test.describe('a workflow file’s schedule', () => {
-  test('is paused and resumed from the list, through its file, and is edited in the workflow', async ({
+  test('is paused and resumed from its page, through its file, and is edited in the workflow', async ({
     page,
   }) => {
     await page.goto('/schedules');
-    const file = page.locator('tr[data-kind="workflow-file"]').filter({ hasText: 'e2e-digest' });
+    const file = page.locator('li[data-kind="workflow-file"]').filter({ hasText: 'e2e-digest' });
     await expect(file).toHaveAttribute('data-status', 'active');
+    await file.getByRole('link').first().click();
 
-    await actionsOf(file).click();
+    await activeSwitch(page).click();
+    await expect(activeSwitch(page)).toHaveAttribute('aria-checked', 'false');
+    await activeSwitch(page).click();
+    await expect(activeSwitch(page)).toHaveAttribute('aria-checked', 'true');
+
     // It has no Edit or Cancel of its own, because its cadence is the trigger in its file.
-    await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('menuitem', { name: /Cancel/ })).toHaveCount(0);
-    await page.getByRole('menuitem', { name: /Pause/ }).click();
-    await expect(file).toHaveAttribute('data-status', 'paused');
-
-    await actionsOf(file).click();
-    await page.getByRole('menuitem', { name: /Resume/ }).click();
-    await expect(file).toHaveAttribute('data-status', 'active');
-
-    await actionsOf(file).click();
-    await page.getByRole('menuitem', { name: SCHEDULE_COPY.editWorkflowAction }).click();
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+    await page.getByRole('link', { name: SCHEDULE_COPY.editWorkflowAction }).click();
     await expect(page).toHaveURL(/\/workflows\/e2e-digest\/edit$/);
   });
 });

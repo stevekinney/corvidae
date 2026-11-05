@@ -146,7 +146,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/chats/:chat (approval waiting)': /Refund order order-1001 for/,
   '/reviews (review open)': /wwwwwwwwww/,
   '/reviews (done tab, review open)': /wwwwwwwwww/,
-  '/schedules': /inventory-sync/,
+  // The list prints the long-named schedule's title, which clamps at two lines.
+  '/schedules': /ssssssssss/,
   // Before a workflow is chosen, which `reveal` does for the variants, the page prints its lead.
   '/schedules/new': /A schedule runs a workflow on a timer/,
   '/schedules/new (chat)': /A schedule runs a workflow on a timer/,

@@ -72,8 +72,7 @@ for (const width of WIDTHS) {
     const refund = words.nth(1);
     await expect(refund).toContainText('can’t load');
     if (width >= 640) {
-      await expect(refund).toContainText('Due today');
-      await expect(refund).toContainText('won’t start');
+      await expect(refund).toContainText(/Due .+ · won’t start/);
       await expect(refund).not.toContainText('provider');
     } else {
       // A phone's third line says the workflow first, then the provider, then the cadence.
@@ -82,7 +81,8 @@ for (const width of WIDTHS) {
       );
       // Rows are at least 44px tall.
       for (const row of await words.all()) {
-        expect((await row.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+        const box = await row.boundingBox();
+        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
       }
     }
     await captureForDesignReview(page, { route: '/schedules', state: 'ready', source: SOURCE });

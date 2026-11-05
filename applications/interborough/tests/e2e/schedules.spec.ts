@@ -46,23 +46,21 @@ test.afterEach(async ({ request }) => {
   await request.delete(`/v1/schedules/${SCHEDULE_ID}`);
 });
 
-test('lists every schedule in a table with the workflow each one runs', async ({
+test('lists every schedule as a row that links to it, with the workflow each one runs', async ({
   page,
   checkA11y,
 }) => {
   await page.goto('/schedules');
-  const table = page.getByRole('table', { name: /Schedules, with the workflow each one runs/ });
-  const row = table.locator(`tr[data-schedule="${SCHEDULE_ID}"]`);
+  const row = page.locator(`li[data-schedule="${SCHEDULE_ID}"]`);
   await expect(row).toBeVisible();
   await expect(row.getByRole('link', { name: DESCRIPTION })).toHaveAttribute(
     'href',
     `/schedules/${SCHEDULE_ID}`,
   );
-  await expect(row.getByRole('link', { name: 'inventory-sync-sweep' })).toBeVisible();
-  // A cron's zone is named beside its cadence.
-  await expect(row).toContainText('in Asia/Tokyo');
-  await expect(row).toHaveAttribute('data-status-word', 'Scheduled');
-  await checkA11y('schedules — the table');
+  // Line two says the kind first, then the workflow.
+  await expect(row).toContainText('Workflow · Inventory sync sweep');
+  await expect(row).toHaveAttribute('data-status-word', 'Active');
+  await checkA11y('schedules — the list');
 });
 
 for (const width of WIDTHS) {

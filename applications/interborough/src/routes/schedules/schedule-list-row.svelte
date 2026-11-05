@@ -51,6 +51,8 @@
   tooltip={row.title}
   {...phone ? { detail: phoneDetail } : { metaTooltip: lineTwoText }}
   data-schedule={row.id}
+  data-kind={row.kind.kind}
+  data-status={row.status}
   data-status-key={row.statusKey}
   data-status-word={row.statusWord}
 >

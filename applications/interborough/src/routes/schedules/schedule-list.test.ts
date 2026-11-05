@@ -377,6 +377,8 @@ describe('the filters', () => {
     const { container } = open('/schedules?agent=tool-runner&status=paused');
     await waitFor(() => expect(segment(within(container), 'All', 1)).not.toBeNull());
     const view = within(container);
+    // The applied chip names the agent as a person reads it, not by its identifier.
+    expect(container.textContent).toContain('Agent: Tool runner');
     expect(segment(view, 'Active', 1)).not.toBeNull();
     expect(segment(view, 'Paused', 0)).not.toBeNull();
     // Paused with Tool runner matches nothing: the filtered empty state, which clears the filters.
