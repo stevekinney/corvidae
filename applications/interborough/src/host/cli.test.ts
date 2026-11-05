@@ -39,6 +39,28 @@ const invoke = (arguments_: string[], env: Record<string, string> = {}) =>
     env: { ...environment, ...env },
   });
 
+const productionRequests: Request[] = [];
+const productionServer = Bun.serve({
+  hostname: '127.0.0.1',
+  port: 0,
+  async fetch(request) {
+    productionRequests.push(request.clone());
+    if (request.headers.get('authorization') !== 'Bearer production-secret')
+      return Response.json({ message: 'Forbidden' }, { status: 403 });
+    if (new URL(request.url).pathname === '/host/status')
+      return Response.json({
+        deploymentId: 'production-deployment',
+        incarnationId: 'production-incarnation',
+        diagnostics: { providers: [] },
+      });
+    if (new URL(request.url).pathname === '/openrpc.json')
+      return Response.json({ methods: [{ name: 'weft.alerts.list' }] });
+    const body = (await request.json()) as { params?: unknown };
+    return Response.json({ jsonrpc: '2.0', id: 'production', result: body.params });
+  },
+});
+afterAll(() => productionServer.stop(true));
+
 const untouched = join(directory, 'untouched');
 const informationEnvironment = { INTERBOROUGH_HOME: untouched, INTERBOROUGH_PORT: 'bad' };
 const help = await invoke(['--help'], informationEnvironment);
@@ -46,6 +68,46 @@ const startHelp = await invoke(['start', '--help'], informationEnvironment);
 const release = await invoke(['--version'], informationEnvironment);
 const startRelease = await invoke(['start', '--version'], informationEnvironment);
 const createdHome = existsSync(untouched) || existsSync(join(directory, '.interborough'));
+const productionConnection = await invoke(
+  [
+    'connection',
+    'add',
+    'production',
+    '--url',
+    `http://127.0.0.1:${productionServer.port}`,
+    '--credential-reference',
+    'INTERBOROUGH_TOKEN',
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
+const productionStatus = await invoke(['status', '--connection', 'production'], {
+  INTERBOROUGH_TOKEN: 'production-secret',
+});
+const productionCall = spawnWithHangGuard(
+  [
+    executable,
+    'api',
+    'call',
+    'weft.alerts.list',
+    '--yes',
+    '--connection',
+    'production',
+    '--input',
+    '-',
+  ],
+  {
+    cwd: directory,
+    env: { ...environment, INTERBOROUGH_TOKEN: 'production-secret' },
+    stdin: 'pipe',
+  },
+);
+productionCall.stdin.write('{"revision":"r1","idempotencyKey":"i1"}');
+productionCall.stdin.end();
+const [productionCallStdout, productionCallStderr, productionCallExitCode] = await Promise.all([
+  new Response(productionCall.stdout).text(),
+  new Response(productionCall.stderr).text(),
+  productionCall.exited,
+]);
 
 test('compiled help and version write stdout without validating or creating a home', () => {
   for (const result of [help, startHelp]) {
@@ -59,6 +121,16 @@ test('compiled help and version write stdout without validating or creating a ho
     expect(result.stderr.toString()).toBe('');
   }
   expect(createdHome).toBe(false);
+});
+
+test('compiled commands use the production environment and preserve piped JSON parameters', () => {
+  expect(productionConnection.exitCode).toBe(0);
+  expect(productionStatus.exitCode).toBe(0);
+  expect(productionStatus.stdout.toString()).toContain('production-deployment');
+  expect(productionCallExitCode).toBe(0);
+  expect(productionCallStderr).toBe('');
+  expect(JSON.parse(productionCallStdout)).toEqual({ revision: 'r1', idempotencyKey: 'i1' });
+  expect(productionRequests[0]?.headers.get('authorization')).toBe('Bearer production-secret');
 });
 
 const invalidOptions = [
@@ -113,16 +185,22 @@ async function exerciseStart() {
     await waitForUrl(1);
     const first = urls()[0];
     if (first === undefined) throw new Error('Missing startup URL.');
+    const beforeStatus = await fetch(new URL('/host/status', first));
+    const beforeIdentity = await beforeStatus.json();
     const homeCreated = existsSync(join(directory, 'relative-home'));
     const restart = await fetch(new URL(HOST_RESTART_ROUTE, first), { method: 'POST' });
     await waitForUrl(2);
     const second = urls()[1];
     if (second === undefined) throw new Error('Missing restarted URL.');
+    const afterStatus = await fetch(new URL('/host/status', second));
+    const afterIdentity = await afterStatus.json();
     const response = await fetch(second);
     evidence = {
       port: new URL(first).port,
       homeCreated,
       restartStatus: restart.status,
+      beforeIdentity,
+      afterIdentity,
       html: await response.text(),
     };
   } finally {
@@ -138,6 +216,10 @@ test('starts itself, resolves the port and relative home flags, restarts and for
   expect(started.port).not.toBe('0');
   expect(started.homeCreated).toBe(true);
   expect(started.restartStatus).toBe(202);
+  expect(started.beforeIdentity.deploymentId).toBe(started.afterIdentity.deploymentId);
+  expect(started.beforeIdentity.incarnationId).not.toBe(started.afterIdentity.incarnationId);
+  expect(started.afterIdentity.diagnostics).toBeDefined();
+  expect(JSON.stringify(started.afterIdentity)).not.toContain('secret');
   expect(started.html).toContain('<title>Interborough</title>');
   expect(started.exitCode).toBe(0);
   expect(started.output.match(/Started the host/g)).toHaveLength(2);
