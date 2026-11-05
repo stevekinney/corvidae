@@ -229,6 +229,17 @@ test('rotation retains admitted versions and missing versions never fall back to
   expect((error as Error).cause).toBeUndefined();
 });
 
+test('a peer startup snapshot keeps its secret version across rotation', async () => {
+  using home = await openTemporaryBungalow({ name: 'secret-test' });
+  const secrets = createWorkspaceSecrets(home);
+  await secrets.write('peer-bearer', 'first', 'first');
+  const configuration = await home.readConfiguration();
+  await secrets.write('peer-bearer', 'second', 'second');
+
+  expect(await secrets.read('peer-bearer', configuration)).toBe('first');
+  expect(await secrets.read('peer-bearer')).toBe('second');
+});
+
 test('provider unavailability never changes a pending operation into abandonment', async () => {
   using home = await openTemporaryBungalow({ name: 'secret-test' });
   await home.secretProvider.prepare({

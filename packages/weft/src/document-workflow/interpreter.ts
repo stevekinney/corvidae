@@ -6,6 +6,7 @@
  * @module document-workflow/interpreter
  */
 
+import type { ContextOperationRequest } from '../core/context/operation-request.ts';
 import {
   activity,
   signal,
@@ -32,6 +33,50 @@ function distinctStepValues(
     if (value !== undefined) values.add(value);
   }
   return [...values];
+}
+
+function* documentOperation<T>(
+  operation: Generator<unknown, T, unknown>,
+  documentStep: number,
+): Generator<ContextOperationRequest, T, unknown> {
+  let input: unknown;
+  while (true) {
+    const result = operation.next(input);
+    if (result.done) return result.value;
+    const request = result.value as ContextOperationRequest;
+    if (request.type === 'activity' || request.type === 'sleep' || request.type === 'wait-signal') {
+      request.documentStep = documentStep;
+    }
+    input = yield request;
+  }
+}
+
+/**
+ * Activity retry backoff is an engine operation, not a document step. Mark only
+ * the activity dispatches yielded by the retry generator so a retry does not
+ * create a file-workflow sleep event or inherit the engine's step counter.
+ */
+function* documentActivityOperation<T>(
+  operation: Generator<unknown, T, unknown>,
+  documentStep: number,
+): Generator<ContextOperationRequest, T, unknown> {
+  let input: unknown;
+  while (true) {
+    const result = operation.next(input);
+    if (result.done) return result.value;
+    const request = result.value as ContextOperationRequest;
+    if (request.type === 'activity') request.documentStep = documentStep;
+    try {
+      input = yield request;
+    } catch (error) {
+      if (operation.throw === undefined) throw error;
+      const thrown = operation.throw(error);
+      if (thrown.done) return thrown.value;
+      const thrownRequest = thrown.value as ContextOperationRequest;
+      if (thrownRequest.type === 'activity') thrownRequest.documentStep = documentStep;
+      input = yield thrownRequest;
+    }
+  }
 }
 
 /**
@@ -87,20 +132,23 @@ export async function buildDocumentWorkflowDefinition(
         case 'activity':
           // The activity itself, not its name: `ctx.run` reads the retry policy and the
           // per-attempt timeout from the activity it is given, and a name carries neither.
-          previous = yield* context.run(activities.get(step.handler)!, {
-            input: step.input ?? null,
-            trigger: firedBy,
-            previous,
-            workflowId: context.workflowId,
-            step: index,
-          });
+          previous = yield* documentActivityOperation(
+            context.run(activities.get(step.handler)!, {
+              input: step.input ?? null,
+              trigger: firedBy,
+              previous,
+              workflowId: context.workflowId,
+              step: index,
+            }),
+            index,
+          );
           break;
         case 'sleep':
-          yield* context.sleep(step.duration);
+          yield* documentOperation(context.sleep(step.duration), index);
           previous = null;
           break;
         case 'await-signal':
-          previous = yield* context.waitForSignal(step.signal);
+          previous = yield* documentOperation(context.waitForSignal(step.signal), index);
           break;
       }
     }
@@ -111,6 +159,7 @@ export async function buildDocumentWorkflowDefinition(
   const builder = workflow({
     name: document.name,
     version: await workflowDocumentVersion(document),
+    tags: ['file-workflow'],
   }).activities(Object.fromEntries(activities));
   // A document that awaits no signal declares none, so its contract carries no `signals` entry.
   return signalNames.length === 0

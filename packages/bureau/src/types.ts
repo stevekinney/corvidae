@@ -507,6 +507,8 @@ export interface BureauReceiptRetentionOption {
 }
 
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
+  /** Supplies the peer-call journal before durable boot recovery begins. */
+  peerCallsReady?: (journal: PeerCallJournal) => void;
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
    * `bureau.events` subscription names.

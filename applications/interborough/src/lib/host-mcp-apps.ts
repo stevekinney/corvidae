@@ -21,6 +21,7 @@ const appsSchema = z.object({
       title: z.string(),
       uri: z.string().min(1),
       opensFromTool: z.string().min(1),
+      opensFromAgentTool: z.string().min(1).optional(),
     }),
   ),
 });

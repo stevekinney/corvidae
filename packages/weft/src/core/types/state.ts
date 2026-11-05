@@ -224,6 +224,8 @@ export type WorkflowTimelineEntry = {
    * this field existed.
    */
   stepIndex?: number;
+  /** Optional document step identity for file-workflow lifecycle history. */
+  documentStep?: number;
   operationType: string;
   operationLabel: string;
   inputSummary: string;

@@ -72,7 +72,11 @@ for (const [label, ownership] of OWNERSHIPS) {
         'waiter.json',
         workflowFileText('waiter', {
           trigger,
-          steps: [{ kind: 'await-signal', signal: 'go' }, agentStep('waiter original')],
+          steps: [
+            { kind: 'await-signal', signal: 'go' },
+            agentStep('waiter original 1'),
+            agentStep('waiter original 2'),
+          ],
         }),
       );
       await first.put(
@@ -122,7 +126,27 @@ for (const [label, ownership] of OWNERSHIPS) {
         second.calls
           .map((call) => call.message.split('\n')[0])
           .toSorted((left, right) => (left ?? '').localeCompare(right ?? '')),
-      ).toEqual(['midstep original', 'sleeper original', 'waiter original']);
+      ).toEqual(['midstep original', 'sleeper original', 'waiter original 1', 'waiter original 2']);
+      const waiterEvents = await second.bureau.durableEngine()!.getEvents('waiter-run');
+      expect(
+        waiterEvents
+          .filter((event) => event.type.startsWith('file-workflow:'))
+          .map(({ type, data }) => ({ type, data })),
+      ).toEqual([
+        { type: 'file-workflow:step-started', data: { step: 0, kind: 'await-signal' } },
+        { type: 'file-workflow:signal-waiting', data: { step: 0, signal: 'go' } },
+        { type: 'file-workflow:signal-received', data: { step: 0, signal: 'go' } },
+        { type: 'file-workflow:step-completed', data: { step: 0, kind: 'await-signal' } },
+        { type: 'file-workflow:step-started', data: { step: 1, kind: 'activity' } },
+        { type: 'file-workflow:activity-started', data: { step: 1, handler: 'agent' } },
+        { type: 'file-workflow:activity-completed', data: { step: 1, handler: 'agent' } },
+        { type: 'file-workflow:step-completed', data: { step: 1, kind: 'activity' } },
+        { type: 'file-workflow:step-started', data: { step: 2, kind: 'activity' } },
+        { type: 'file-workflow:activity-started', data: { step: 2, handler: 'agent' } },
+        { type: 'file-workflow:activity-completed', data: { step: 2, handler: 'agent' } },
+        { type: 'file-workflow:step-completed', data: { step: 2, kind: 'activity' } },
+        { type: 'file-workflow:run-terminal', data: { status: 'completed' } },
+      ]);
     });
   });
 }
