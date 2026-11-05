@@ -8,6 +8,10 @@ const required = [
   'READY_FILE',
   'RUN_FILE',
   'JOURNAL_FILE',
+  'REVIEW_FILE',
+  'APPROVE_FILE',
+  'GO_FILE',
+  'KEY_FILE',
   'RESULT_FILE',
   'ERROR_FILE',
   'PEER_PORT',
@@ -70,6 +74,12 @@ const host = await startHost({
     allowInsecureHttp: true,
   }),
 });
+const peerCalls = host.bureau.peerCalls;
+const originalWrite = peerCalls.write.bind(peerCalls);
+peerCalls.write = async (key, entry) => {
+  await originalWrite(key, entry);
+  await Bun.write(value('KEY_FILE'), JSON.stringify(key));
+};
 await Bun.write(value('READY_FILE'), 'ready');
 await Bun.write(environment['URL_FILE'] ?? `${home}/caller-url`, host.url.href);
 
@@ -85,13 +95,32 @@ if (environment['RESTART'] === '1') {
     });
     await Bun.write(value('RUN_FILE'), run.id);
     for (;;) {
-      const entry = await host.bureau.peerCalls.read({
-        parentRunId: run.id,
-        operationKey: 'peer-call-1',
-      });
-      if (entry !== undefined) {
-        await Bun.write(value('JOURNAL_FILE'), JSON.stringify(entry));
+      const review = host.bureau.reviews.list().find((candidate) => candidate.runId === run.id);
+      if (review !== undefined) {
+        await Bun.write(value('REVIEW_FILE'), review.id);
         break;
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    while (!(await Bun.file(value('APPROVE_FILE')).exists()))
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    const reviewId = (await Bun.file(value('REVIEW_FILE')).text()).trim();
+    void host.bureau.reviews
+      .resolve({ id: reviewId, decision: 'approve', principal: 'anonymous:local' })
+      .catch(() => undefined);
+    while (!(await Bun.file(value('GO_FILE')).exists()))
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    journal: for (;;) {
+      if (await Bun.file(value('KEY_FILE')).exists()) {
+        const key = JSON.parse(await Bun.file(value('KEY_FILE')).text()) as {
+          parentRunId: string;
+          operationKey: string;
+        };
+        const entry = await peerCalls.read(key);
+        if (entry !== undefined) {
+          await Bun.write(value('JOURNAL_FILE'), JSON.stringify({ key, entry }));
+          break journal;
+        }
       }
       await new Promise<void>((resolve) => setImmediate(resolve));
     }

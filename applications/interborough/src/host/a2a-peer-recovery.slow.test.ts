@@ -14,9 +14,8 @@ const hosts: Host[] = [];
 const children: ReturnType<typeof spawnWithHangGuard>[] = [];
 async function exists(path: string, text?: string): Promise<boolean> {
   try {
-    if (text === undefined) return true;
     const contents = await readFile(path, 'utf8');
-    return contents.includes(text);
+    return text === undefined || contents.includes(text);
   } catch {
     return false;
   }
@@ -101,56 +100,35 @@ const recovery = await (async () => {
     READY_FILE: join(callerHome, 'ready_file'),
     RUN_FILE: join(callerHome, 'run_file'),
     JOURNAL_FILE: join(callerHome, 'journal_file'),
+    APPROVE_FILE: join(callerHome, 'approve_file'),
+    GO_FILE: join(callerHome, 'go_file'),
+    KEY_FILE: join(callerHome, 'key_file'),
+    REVIEW_FILE: join(callerHome, 'review_file'),
     RESULT_FILE: join(callerHome, 'result_file'),
     ERROR_FILE: join(callerHome, 'error_file'),
+    URL_FILE: join(callerHome, 'caller-url-first'),
   };
   const env = { ...files, PEER_PORT: peer.url.port };
   const first = await startCaller(callerHome, env);
-  const originPath = join(callerHome, 'caller-url');
-  const origin = async () => new URL(await readFile(originPath, 'utf8'));
-  let pendingReview: { id: string } | undefined;
-  await waitUntil(
-    async () => {
-      try {
-        const response = await fetch(new URL('/bureau/jsonrpc', await origin()), {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'bureau.reviews.list',
-            params: {},
-          }),
-        });
-        const body = (await response.json()) as { result?: { reviews?: { id: string }[] } };
-        pendingReview = body.result?.reviews?.[0];
-        return pendingReview !== undefined;
-      } catch {
-        return false;
-      }
-    },
-    { message: 'caller approval' },
-  );
-  void fetch(new URL('/bureau/jsonrpc', await origin()), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 3,
-      method: 'bureau.reviews.resolve',
-      params: { id: pendingReview?.id, decision: 'approve' },
-    }),
-  }).catch(() => undefined);
+  expect(await exists(files.JOURNAL_FILE)).toBe(false);
+  await waitUntil(() => exists(files.REVIEW_FILE), { message: 'caller approval' });
+  await writeFile(files.APPROVE_FILE, 'approve');
   await waitUntil(() => state.active, { message: 'peer send' });
+  await writeFile(files.GO_FILE, 'read journal');
   if (state.sends !== 1)
     throw new Error(`expected one peer send before restart, got ${state.sends}`);
   await waitUntil(() => exists(files.JOURNAL_FILE), { message: 'peer journal' });
+  const journalMarker = JSON.parse(await readFile(files.JOURNAL_FILE, 'utf8')) as {
+    entry?: { taskId?: string };
+  };
+  expect(journalMarker.entry?.taskId).toBeString();
   first.kill('SIGKILL');
   await first.exited;
   const second = await startCaller(callerHome, {
     ...env,
     RESTART: '1',
     READY_FILE: join(callerHome, 'ready-second'),
+    URL_FILE: join(callerHome, 'caller-url-second'),
   });
   state.release();
   await waitUntil(() => exists(files.RESULT_FILE, 'completed'), { message: 'replayed result' });
