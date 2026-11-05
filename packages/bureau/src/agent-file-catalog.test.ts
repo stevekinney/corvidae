@@ -2,7 +2,7 @@
  * COR-1524 — which files in the agent directory are agents, how they are identified, and what the
  * catalog reports about them.
  */
-import { mkdir, symlink } from 'node:fs/promises';
+import { mkdir, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -139,5 +139,32 @@ describe('loading the agent directory', () => {
     const first = catalog.find('one');
     await catalog.refresh();
     expect(catalog.find('one')).toBe(first);
+  });
+
+  it('clears a child-agent reference problem when the deleted target is restored exactly', async () => {
+    const { catalog, put, directory } = await start({ watch: false });
+    const reviewer = validAgentFile('Review carefully.\n');
+    const planner = agentFileText({
+      name: 'Planner',
+      model: KNOWN_MODEL,
+      childAgents: '[reviewer]',
+    });
+    await put('reviewer.md', reviewer);
+    await put('planner.md', planner);
+    await catalog.refresh();
+    expect(catalog.find('planner')).toBeDefined();
+
+    await rm(join(directory, 'reviewer.md'));
+    await catalog.refresh();
+    expect(catalog.list().find((listing) => listing.id === 'planner')).toMatchObject({
+      state: 'invalid',
+    });
+
+    await put('reviewer.md', reviewer);
+    await catalog.refresh();
+    expect(catalog.find('planner')).toBeDefined();
+    expect(catalog.list().find((listing) => listing.id === 'planner')).toMatchObject({
+      state: 'ready',
+    });
   });
 });

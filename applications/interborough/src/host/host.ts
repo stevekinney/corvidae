@@ -213,6 +213,7 @@ const LOOPBACK = '127.0.0.1';
  * secret of its own.
  */
 export const APPROVAL_SECRET_KEY = 'approval-secret';
+/** Bungalow secret used to sign durable child-run authority grants. */
 export const DELEGATION_SECRET_KEY = 'delegation-secret';
 
 /**

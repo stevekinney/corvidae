@@ -1761,6 +1761,62 @@ describe('delegation grants', () => {
     return load.grant;
   }
 
+  it('persists root authority budgets and attenuates depth across descendants', async () => {
+    const fixture = createFixture({
+      delegation: {
+        ...delegation,
+        rootAuthority: { levels: 3, budget: { concurrentChildren: 4, totalDescendants: 16 } },
+      },
+      parents: {
+        'parent-1': { agentName: 'planner', live: true },
+        'child-a': { agentName: 'worker', live: true },
+        'grandchild-a': { agentName: 'worker', live: true },
+        'great-grandchild-a': { agentName: 'worker', live: true },
+      },
+    });
+    for (const childRunId of ['child-a', 'child-b', 'child-c', 'child-d']) {
+      expect(
+        await fixture.topology.children.dispatch({
+          parentRunId: 'parent-1',
+          agentName: 'worker',
+          input: 'x',
+          childRunId,
+        }),
+      ).toMatchObject({ outcome: 'started', grant: { depth: 2 } });
+    }
+    expect(
+      await fixture.topology.children.dispatch({
+        parentRunId: 'parent-1',
+        agentName: 'worker',
+        input: 'x',
+        childRunId: 'child-e',
+      }),
+    ).toMatchObject({ outcome: 'rejected', code: 'budget-exhausted' });
+    const grandchild = await fixture.topology.children.dispatch({
+      parentRunId: 'child-a',
+      agentName: 'worker',
+      input: 'x',
+      childRunId: 'grandchild-a',
+    });
+    expect(grandchild).toMatchObject({ outcome: 'started' });
+    expect(
+      await fixture.topology.children.dispatch({
+        parentRunId: 'grandchild-a',
+        agentName: 'worker',
+        input: 'x',
+        childRunId: 'great-grandchild-a',
+      }),
+    ).toMatchObject({ outcome: 'started', grant: { depth: 0 } });
+    expect(
+      await fixture.topology.children.dispatch({
+        parentRunId: 'great-grandchild-a',
+        agentName: 'worker',
+        input: 'x',
+        childRunId: 'depth-exhausted',
+      }),
+    ).toMatchObject({ outcome: 'rejected', code: 'depth-exhausted' });
+  });
+
   it('issues a signed grant for a top-level dispatch and discloses only what its policy allows', async () => {
     const fixture = createFixture({ delegation });
     const now = fixture.runtime.clock.now();

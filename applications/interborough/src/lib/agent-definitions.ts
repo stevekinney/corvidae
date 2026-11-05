@@ -309,6 +309,7 @@ export type AgentDefinitionInput = {
    * `null` removes it, and an empty list grants none.
    */
   readonly allowedSkills?: readonly string[] | null;
+  /** File agents this definition may dispatch as durable children. */
   readonly childAgents?: readonly string[] | null;
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
   readonly a2a?: boolean;

@@ -965,8 +965,6 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     }
     const resources = checkResources(definition);
     if ('problem' in resources) return resources;
-    const childProblem = childAgentsProblem(id, definition);
-    if (childProblem !== undefined) return { problem: childProblem };
     if (definition.compaction?.enabled === true && options.models.summarizer() === undefined) {
       const message =
         'Compaction is enabled, but the deployment has no summarizer model. Set the context.summarizerModel setting to a model in the catalog, or turn compaction off.';
@@ -985,11 +983,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   function childAgentsProblem(
     id: string,
     definition: AgentFileDefinition,
+    entries?: Iterable<FileEntry>,
   ): AgentFileProblem | undefined {
     const names = definition.childAgents;
     if (names === undefined) return undefined;
     const available = new Set(options.reservedIdentifiers);
-    for (const entry of directoryWatcher?.entries().values() ?? []) {
+    for (const entry of entries ?? directoryWatcher?.entries().values() ?? []) {
       if (entry.id !== id && entry.problem === undefined) available.add(entry.id);
     }
     const issues = names.flatMap((name, index) => {
@@ -1484,6 +1483,51 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         entry = await withReferences(entry);
         settled.set(id, entry);
       }
+      if (
+        isChildAgentsProblem(entry.problem) &&
+        entry.definition !== undefined &&
+        entry.hash !== undefined
+      ) {
+        const definition = entry.definition;
+        const childProblem = childAgentsProblem(id, definition, loaded.values());
+        if (childProblem === undefined) {
+          const definitionRevision = recorded.get(id)?.revision ?? 1;
+          const resources = checkResources(definition);
+          if ('problem' in resources) {
+            settled.set(id, { ...entry, problem: resources.problem });
+            continue;
+          }
+          const descriptor =
+            entry.descriptor ??
+            [...loaded.values()].find(
+              (candidate) =>
+                candidate.definition?.model === entry.definition?.model &&
+                candidate.descriptor !== undefined,
+            )?.descriptor ??
+            resources.descriptor;
+          if (descriptor === undefined) continue;
+          const { problem: _problem, ...withoutProblem } = entry;
+          try {
+            entry = {
+              ...withoutProblem,
+              descriptor,
+              agent: buildAgent(
+                id,
+                entry.identity ?? entry.hash,
+                definition,
+                descriptor,
+                definitionRevision,
+                entry.documents,
+              ),
+              definitionRevision,
+            };
+            settled.set(id, entry);
+          } catch (error) {
+            entry = { ...withoutProblem, problem: modelSetupProblem(definition, error) };
+            settled.set(id, entry);
+          }
+        }
+      }
       if (entry.problem !== undefined || entry.hash === undefined) continue;
       if (entry.definition === undefined) continue; // A ready entry always has one.
       const revision = await revisionOf(id, entry);
@@ -1494,14 +1538,18 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     // Child references are resolved only after every file has been loaded, so deleting or restoring
     // a referenced file updates the referrer's state in the same catalog rebuild.
     for (const [id, entry] of settled) {
-      if (entry.definition === undefined || entry.problem?.code === 'invalid-frontmatter') continue;
-      const problem = childAgentsProblem(id, entry.definition);
+      if (entry.definition === undefined) continue;
+      const problem = childAgentsProblem(id, entry.definition, settled.values());
       if (problem !== undefined) {
         const { agent: _agent, ...withoutAgent } = entry;
         settled.set(id, { ...withoutAgent, problem });
       }
     }
     return settled;
+  }
+
+  function isChildAgentsProblem(problem: AgentFileProblem | undefined): boolean {
+    return problem?.issues?.some((issue) => issue.path.startsWith('childAgents.')) === true;
   }
 
   const directoryWatcher = createDefinitionScanner<FileEntry>({

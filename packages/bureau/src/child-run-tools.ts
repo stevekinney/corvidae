@@ -4,7 +4,6 @@ import { createTool, type Tool, type ToolContext } from 'armorer';
 import { z } from 'zod';
 
 import type { BureauChildren } from './child-topology';
-import type { BureauChildParentCancellation } from './child-topology-store';
 import type { AgentInput } from '@lostgradient/operative';
 import type { AgentFileDetail } from './agent-file-catalog';
 
@@ -85,7 +84,7 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
         input: input.input as AgentInput,
         ...(input.parentCancellation === undefined
           ? {}
-          : { parentCancellation: input.parentCancellation as BureauChildParentCancellation }),
+          : { parentCancellation: input.parentCancellation }),
         ...(context?.meta?.callId === undefined ? {} : { toolCallId: context.meta.callId }),
         ...(calling.principal === undefined ? {} : { principal: calling.principal }),
       });
