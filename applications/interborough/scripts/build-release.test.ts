@@ -88,7 +88,6 @@ if (behavior === 'missing-link') {
   process.exit(0);
 }
 if (behavior === 'wrong-link') {
-  await rm(runtime, { recursive: true, force: true });
   await Bun.sleep(1000);
   process.exit(0);
 }
