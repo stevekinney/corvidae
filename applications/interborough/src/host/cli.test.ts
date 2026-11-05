@@ -65,6 +65,9 @@ const productionRequests: Request[] = [];
 const uploadChunks: Buffer[] = [];
 const uploadedChatBodies: Record<string, unknown>[] = [];
 const compiledStreamHandshakes: string[] = [];
+const compiledRunHandshakes: string[] = [];
+const compiledRunCancelCalls: string[] = [];
+const compiledRunRequests: Array<{ method: string; params?: Record<string, unknown> }> = [];
 const productionServer = Bun.serve({
   hostname: '127.0.0.1',
   port: 0,
@@ -76,6 +79,34 @@ const productionServer = Bun.serve({
         method?: string;
         params?: Record<string, unknown>;
       };
+      if (typeof body.method === 'string')
+        compiledRunRequests.push({
+          method: body.method,
+          ...(body.params === undefined ? {} : { params: body.params }),
+        });
+      if (body.method === 'bureau.tasks.cancel' || body.method === 'weft.workflows.cancel') {
+        compiledRunCancelCalls.push(body.method);
+        return Response.json({
+          result: { ...body.params, receipt: 'cancel-requested', status: 'cancel-requested' },
+        });
+      }
+      if (body.method === 'bureau.tasks.list')
+        return Response.json({
+          result: {
+            tasks: [{ id: 'compiled-run', status: 'running' }],
+            nextPageToken: 'compiled-next',
+          },
+        });
+      if (body.method === 'bureau.workflows.runs.list')
+        return Response.json({
+          result: { runs: [{ id: 'compiled-run', status: 'running' }], nextOffset: 1 },
+        });
+      if (
+        body.method === 'bureau.tasks.get' ||
+        body.method === 'bureau.tasks.inspect' ||
+        body.method === 'bureau.workflows.runs.get'
+      )
+        return Response.json({ result: { id: 'compiled-run', status: 'running' } });
       if (body.method === 'bureau.assets.uploads.create')
         return Response.json({ result: { uploadId: 'compiled-upload' } });
       if (body.method === 'bureau.assets.uploads.append') {
@@ -89,6 +120,35 @@ const productionServer = Bun.serve({
         return Response.json({ result: { assetId: 'compiled-asset' } });
       if (body.method === 'bureau.assets.uploads.abort') return Response.json({ result: {} });
       return Response.json({ jsonrpc: '2.0', id: 'production', result: body.params });
+    }
+    if (pathname === '/bureau/v1/subscriptions/bureau.tasks.events') {
+      const taskId = new URL(request.url).searchParams.get('taskId');
+      const stream = new TransformStream<Uint8Array, Uint8Array>();
+      const writer = stream.writable.getWriter();
+      const encoder = new TextEncoder();
+      const send = (id: string, event: Record<string, unknown>) =>
+        writer.write(encoder.encode(`id: ${id}\ndata: ${JSON.stringify(event)}\n\n`));
+      compiledRunHandshakes.push(`task:${taskId ?? 'unknown'}`);
+      void (async () => {
+        if (taskId === 'compiled-run') {
+          await send('compiled-1', { kind: 'task.status', status: 'running' });
+          await Bun.sleep(200);
+          await send('compiled-2', { kind: 'task.status', status: 'completed' });
+          await writer.close();
+        } else if (taskId === 'compiled-eof') {
+          await send('compiled-eof', { kind: 'task.status', status: 'running' });
+          await writer.close();
+        } else if (taskId === 'compiled-failed') {
+          await send('compiled-failed', { kind: 'task.status', status: 'failed' });
+          await writer.close();
+        } else if (taskId === 'compiled-pending') {
+          await send('compiled-pending', { kind: 'task.status', status: 'input-required' });
+          await writer.close();
+        } else {
+          await send('compiled-open', { kind: 'task.status', status: 'running' });
+        }
+      })();
+      return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
     }
     if (pathname.startsWith('/bureau/ag-ui/')) {
       const input =
@@ -385,6 +445,169 @@ const compiledUpload = await invoke([
   '--url',
   `http://127.0.0.1:${productionServer.port}`,
 ]);
+
+const compiledRunStream = spawnWithHangGuard(
+  [
+    executable,
+    'runs',
+    'watch',
+    '--kind',
+    'task',
+    'compiled-run',
+    '--output',
+    'jsonl',
+    '--url',
+    `http://127.0.0.1:${productionServer.port}`,
+  ],
+  { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
+);
+const compiledRunReader = compiledRunStream.stdout.getReader();
+const compiledRunFirstChunk = await compiledRunReader.read();
+const compiledRunSecondChunk = await compiledRunReader.read();
+await compiledRunReader.cancel();
+const compiledRunStreamExit = await compiledRunStream.exited;
+
+const compiledRunSigint = spawnWithHangGuard(
+  [
+    executable,
+    'runs',
+    'watch',
+    '--kind',
+    'task',
+    'compiled-open',
+    '--url',
+    `http://127.0.0.1:${productionServer.port}`,
+  ],
+  { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
+);
+await waitUntil(() => compiledRunHandshakes.includes('task:compiled-open'), {
+  message: 'compiled task run watch to connect',
+  yieldTurn: () => Bun.sleep(10),
+});
+compiledRunSigint.kill('SIGINT');
+const [compiledRunSigintStdout, compiledRunSigintStderr, compiledRunSigintExit] = await Promise.all(
+  [
+    new Response(compiledRunSigint.stdout).text(),
+    new Response(compiledRunSigint.stderr).text(),
+    compiledRunSigint.exited,
+  ],
+);
+const compiledRunCancelCountAfterSigint = compiledRunCancelCalls.length;
+
+const compiledRunTimeout = await invoke([
+  'runs',
+  'watch',
+  '--kind',
+  'task',
+  'compiled-open',
+  '--timeout',
+  '50',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledRunCancelCountAfterTimeout = compiledRunCancelCalls.length;
+const compiledRunEof = await invoke([
+  'runs',
+  'watch',
+  '--kind',
+  'task',
+  'compiled-eof',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledRunFailed = await invoke([
+  'runs',
+  'watch',
+  '--kind',
+  'task',
+  'compiled-failed',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledRunPending = await invoke([
+  'runs',
+  'watch',
+  '--kind',
+  'task',
+  'compiled-pending',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledRunTaskList = await invoke([
+  'runs',
+  'list',
+  '--kind',
+  'task',
+  '--cursor',
+  'compiled-next',
+  '--status',
+  'running',
+  '--output',
+  'json',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledRunWorkflowList = await invoke([
+  'runs',
+  'list',
+  '--kind',
+  'workflow',
+  '--cursor',
+  '2',
+  '--output',
+  'json',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+
+test('compiled runs watch emits incremental terminal records before stream close', () => {
+  const decoder = new TextDecoder();
+  const first = decoder.decode(compiledRunFirstChunk.value);
+  const second = decoder.decode(compiledRunSecondChunk.value);
+  expect(compiledRunFirstChunk.done).toBe(false);
+  expect(first).toContain('running');
+  expect(second).toContain('completed');
+  expect(compiledRunStreamExit).toBe(0);
+});
+
+test('compiled run observation detaches on SIGINT and timeout without cancellation', () => {
+  expect(compiledRunSigintExit).toBe(130);
+  expect(compiledRunSigintStdout).toContain('compiled-open');
+  expect(compiledRunSigintStderr).toContain('no cancellation');
+  expect(compiledRunTimeout.exitCode).toBe(130);
+  expect(compiledRunTimeout.stderr.toString()).toContain('no cancellation');
+  expect(compiledRunCancelCountAfterSigint).toBe(0);
+  expect(compiledRunCancelCountAfterTimeout).toBe(0);
+});
+
+test('compiled run terminal and EOF outcomes are fail-closed and resumable', () => {
+  expect(compiledRunEof.exitCode).toBe(1);
+  expect(compiledRunEof.stderr.toString()).toContain('task:compiled-eof');
+  expect(compiledRunFailed.exitCode).toBe(1);
+  expect(compiledRunPending.exitCode).toBe(5);
+  expect(compiledRunPending.stderr.toString()).toContain('task:compiled-pending');
+});
+
+test('compiled run list forwards kind, cursor, status, and both list methods', () => {
+  const taskRequest = compiledRunRequests.find(
+    (request) =>
+      request.method === 'bureau.tasks.list' && request.params?.['pageToken'] === 'compiled-next',
+  );
+  const workflowRequest = compiledRunRequests.find(
+    (request) =>
+      request.method === 'bureau.workflows.runs.list' && request.params?.['offset'] === 2,
+  );
+  expect(compiledRunTaskList.exitCode).toBe(0);
+  expect(compiledRunWorkflowList.exitCode).toBe(0);
+  expect(taskRequest?.params).toMatchObject({ pageToken: 'compiled-next', status: 'running' });
+  expect(workflowRequest?.params).toMatchObject({ offset: 2 });
+  expect(JSON.parse(compiledRunTaskList.stdout.toString()).data.tasks[0].id).toBe(
+    'task:compiled-run',
+  );
+  expect(JSON.parse(compiledRunWorkflowList.stdout.toString()).data.runs[0].id).toBe(
+    'workflow:compiled-run',
+  );
+});
 
 test('compiled help and version write stdout without validating or creating a home', () => {
   for (const result of [help, startHelp]) {
