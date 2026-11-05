@@ -138,6 +138,7 @@ async function run(arguments_: string[]): Promise<number> {
     const result = await executeCli(arguments_, {
       environment: processEnvironment(),
       stdin: () => Bun.stdin.text(),
+      writeStdout: (chunk) => process.stdout.write(chunk),
     });
     if (result.stdout !== '') process.stdout.write(`${result.stdout}\n`);
     if (result.stderr !== '') console.error(result.stderr);

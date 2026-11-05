@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import { createCatalogSnapshot } from '@lostgradient/weft';
 
+import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
 import { request } from './cli-client-transport.ts';
@@ -73,6 +74,8 @@ export type CliClientDependencies = {
   readonly stdin?: () => Promise<string>;
   /** Optional interrupt signal. */
   readonly signal?: AbortSignal;
+  /** Optional sink used by interactive streams for incremental terminal output. */
+  readonly writeStdout?: (chunk: string) => void;
 };
 
 /** Unserialized command payload before output formatting. */
@@ -116,6 +119,30 @@ const optionNames = new Set([
   'url',
   'workspace',
   'yes',
+  'agent',
+  'message-file',
+  'message',
+  'thread',
+  'run',
+  'context',
+  'input-id',
+  'command-id',
+  'through-message-id',
+  'title',
+  'wait',
+  'model',
+  'effort',
+  'permission-mode',
+  'expected-revision',
+  'review-id',
+  'round',
+  'reason',
+  'task-id',
+  'message-id',
+  'answer',
+  'decision',
+  'signal-name',
+  'call-id',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -150,6 +177,65 @@ const commandOptions: Record<string, readonly string[]> = {
     'limit',
     'yes',
   ],
+  chat: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'agent',
+    'message-file',
+    'message',
+    'thread',
+    'run',
+  ],
+  chats: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'context',
+    'message',
+    'input-id',
+    'command-id',
+    'through-message-id',
+    'title',
+    'wait',
+    'model',
+    'effort',
+    'permission-mode',
+    'expected-revision',
+  ],
+  reviews: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'review-id',
+    'round',
+    'reason',
+    'yes',
+  ],
+  runs: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'task-id',
+    'message-id',
+    'answer',
+    'decision',
+    'signal-name',
+    'call-id',
+    'reason',
+  ],
 };
 
 const helpText: Record<string, string> = {
@@ -161,6 +247,10 @@ const helpText: Record<string, string> = {
   open: 'Usage: interborough open [options]',
   restart: 'Usage: interborough restart [options]\n\n  --yes  Confirm the restart request',
   api: 'Usage: interborough api <list|describe|call> [operation] [options]\n\n  --input-file <path>  JSON input, or - for stdin\n  --all  Explicitly request all pages',
+  chat: 'Usage: interborough chat --agent <name> [message]\n\n  --message-file <path>  Read one message from a file',
+  chats: 'Usage: interborough chats <list|get|send|fork|rename|delete|configure> [options]',
+  reviews: 'Usage: interborough reviews <list|get|approve|reject> [options]',
+  runs: 'Usage: interborough runs respond <task> [options]',
 };
 const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
@@ -213,7 +303,7 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
   const outputValue = values.get('output') ?? 'text';
   if (outputValue !== 'text' && outputValue !== 'json' && outputValue !== 'jsonl')
     return usage('Option --output must be text, json, or jsonl.');
-  if (outputValue === 'jsonl' && command !== 'api')
+  if (outputValue === 'jsonl' && command !== 'api' && command !== 'chat')
     return usage('JSONL output is only supported for streams.');
   if (outputValue === 'jsonl' && command === 'api' && values.get('help') !== true)
     return usage('JSONL output is only supported for streaming API calls.');
@@ -335,6 +425,10 @@ async function execute(
     )(resolved.url);
     return { data: { url: resolved.url } };
   }
+  if (parsed.command === 'chat' || parsed.command === 'chats')
+    return executeChat(resolved, parsed, dependencies);
+  if (parsed.command === 'reviews' || parsed.command === 'runs')
+    return executeReviewsOrRuns(resolved, parsed, dependencies);
   if (parsed.command === 'restart') {
     if (parsed.options.get('yes') !== true)
       throw makeCliFailure(
@@ -551,7 +645,14 @@ export async function executeCli(
         exitCode: 3,
       };
     }
-    return { stdout: render(parsed, result), stderr: '', exitCode: 0 };
+    return {
+      stdout:
+        result.metadata?.['streamed'] === true && parsed.output === 'text'
+          ? ''
+          : render(parsed, result),
+      stderr: '',
+      exitCode: 0,
+    };
   } catch (error) {
     const status =
       isRecord(error) && typeof error['status'] === 'number' ? error['status'] : undefined;
@@ -577,9 +678,12 @@ export async function executeCli(
     const renderedFailure = {
       schemaVersion: CLI_SCHEMA_VERSION,
       error: { code: `CLI_${exitCode}`, message, retryable: exitCode === 6 },
+      ...(isRecord(error) && isRecord(error['identifiers'])
+        ? { identifiers: error['identifiers'] }
+        : {}),
     };
     return {
-      stdout: parsed.output === 'text' ? '' : JSON.stringify(renderedFailure),
+      stdout: parsed.output === 'text' && exitCode !== 5 ? '' : JSON.stringify(renderedFailure),
       stderr: message,
       exitCode,
     };
