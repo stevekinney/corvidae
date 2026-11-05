@@ -83,10 +83,11 @@ if (behavior !== 'missing-link') {
   await mkdir(join(home, 'plugins'), { recursive: true });
   await symlink(behavior === 'wrong-link' ? home : runtime, join(home, 'plugins', 'node_modules'));
 }
-if (behavior === 'missing-link' || behavior === 'wrong-link') {
+if (behavior === 'missing-link') {
   await Bun.sleep(50);
   process.exit(0);
 }
+process.on('SIGTERM', () => process.exit(0));
 if (behavior === 'poll-error') await Bun.sleep(100);
 const server = Bun.serve({ port, fetch(request) {
   const pathname = new URL(request.url).pathname;
