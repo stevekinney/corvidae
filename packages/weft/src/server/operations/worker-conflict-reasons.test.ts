@@ -20,6 +20,7 @@ describe('worker Conflict reasons', () => {
       workflowNotTerminal: 'workflow-not-terminal',
       noWorkerBinding: 'no-worker-binding',
       policyNotAutoUpgrade: 'policy-not-auto-upgrade',
+      workerStillConnected: 'worker-still-connected',
       noRoutedDeployment: 'no-routed-deployment',
     });
     expect(UPGRADE_REFUSAL_REASON_PREFIX).toBe('upgrade-');

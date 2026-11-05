@@ -46,6 +46,7 @@ import { installWorkflowRevisionRestBinding } from './install-workflow-revision.
 import { listAlertsRestBinding } from './list-alerts.ts';
 import { listCatalogSourcesRestBinding } from './list-catalog-sources.ts';
 import { listCheckpointsRestBinding } from './list-checkpoints.ts';
+import { listQueueTasksRestBinding } from './list-queue-tasks.ts';
 import { listReviewsRestBinding } from './list-reviews.ts';
 import { listScheduleMissedFiresRestBinding } from './list-schedule-missed-fires.ts';
 import { listSchedulesRestBinding } from './list-schedules.ts';
@@ -174,6 +175,7 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   // after the other /v1/tasks/... bindings on general principle — matchRestBinding
   // is first-match-wins in array order.
   getTaskDiagnosticsRestBinding,
+  listQueueTasksRestBinding,
   clearTaskDeadLetterRestBinding,
   getTaskDetailRestBinding,
   getTaskResultDeliveriesRestBinding,

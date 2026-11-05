@@ -46,6 +46,7 @@ import { installWorkflowRevisionOperation } from './install-workflow-revision.ts
 import { listAlertsOperation } from './list-alerts.ts';
 import { listCatalogSourcesOperation } from './list-catalog-sources.ts';
 import { listCheckpointsOperation } from './list-checkpoints.ts';
+import { listQueueTasksOperation } from './list-queue-tasks.ts';
 import { listReviewsOperation } from './list-reviews.ts';
 import { listScheduleMissedFiresOperation } from './list-schedule-missed-fires.ts';
 import { listSchedulesOperation } from './list-schedules.ts';
@@ -171,6 +172,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   workflowEventsSubscriptionOperation,
   fleetEventsSubscriptionOperation,
   clearTaskDeadLetterOperation,
+  listQueueTasksOperation,
   retryTaskDeadLetterOperation,
   getTaskDetailOperation,
   getTaskResultDeliveriesOperation,
