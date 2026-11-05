@@ -105,6 +105,7 @@
     density = 'comfortable',
     variant = 'bubble',
     notSent,
+    composerCompact = false,
     onRemoveQueued,
     noteAction,
     bottomThreshold = DEFAULT_SCROLL_CONFIGURATION.bottomThreshold,
@@ -2054,6 +2055,7 @@
           paused={disabled}
           sending={composerSending}
           allowFollowUp={followUpsEnabled}
+          compact={composerCompact}
           actions={composerActions}
           toolbar={composerToolbar}
           formattingToolbar={composerFormattingToolbar}

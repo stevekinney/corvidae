@@ -573,10 +573,7 @@
   const shown = $derived(
     withoutAssetParts(
       withTypedAnswers(
-        withStopLine(session.conversation, {
-          tools: toolInfo,
-          liveFailure: runGoing ? undefined : session.runFailure,
-        }),
+        withStopLine(session.conversation, { tools: toolInfo }),
         session.schemaOfAnswer,
       ),
     ),
@@ -807,13 +804,12 @@
   );
   // A call with no answer that nothing is working on any more was interrupted.
   // A failure the transcript already says, on the row it belongs to, is not said again above it: a
-  // message that was not sent is marked "Not sent", and a run that stopped has its status line.
+  // message that never got an answer is marked "Not sent".
   const failureShownInTranscript = $derived(
-    session.runFailure !== undefined ||
-      (session.failureWasTransport &&
-        Object.values(session.conversation.messages).some(
-          (row) => row.metadata['_deliveryStatus'] === 'failed',
-        )),
+    session.failureWasTransport &&
+      Object.values(session.conversation.messages).some(
+        (row) => row.metadata['_deliveryStatus'] === 'failed',
+      ),
   );
   const lastRowId = $derived(
     shown.ids.findLast((rowId) => shown.messages[rowId]?.hidden === false),
@@ -845,7 +841,7 @@
       return CHAT_COPY.status.waiting;
     }
     if (runGoing) return CHAT_COPY.status.running;
-    if (session.runFailure !== undefined || hasFailedStop(shown)) return CHAT_COPY.status.failed;
+    if (hasFailedStop(shown)) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
   const activity = $derived(
@@ -1240,9 +1236,7 @@
             class="chat-message-action-button"
             size="xs"
             variant="ghost"
-            aria-label={message.role === 'user'
-              ? CHAT_COPY.branch.before
-              : CHAT_COPY.branch.action}
+            aria-label={message.role === 'user' ? CHAT_COPY.branch.before : CHAT_COPY.branch.action}
             disabled={branching}
             onclick={() => void branchThrough(branchAt.messageId)}
           >

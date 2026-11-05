@@ -355,11 +355,21 @@ export const AGENT_EDITOR_COPY = {
     /** Said when the agent stopped to ask before a tool, which a trial cannot answer. */
     approvalEnded:
       'The agent stopped to ask before using a tool, and a trial cannot take that answer, so the trial ended. Set the tool to run without asking, or save the agent and chat with it.',
-    messageLabel: 'First message',
-    messagePlaceholder: 'Say something to the agent',
-    send: 'Start chatting',
+    /** The line under the title: what the trial runs on. */
+    usesChanges: 'Uses your unsaved changes',
+    messagePlaceholder: 'Send a test message',
+    /** The line under the composer, said while no other status is. */
+    hint: 'Tools run for real, under this agent’s approval rules. Test chats aren’t saved and leave no memories.',
     chatLabel: 'Trial chat',
-    startOver: 'Start over',
+    /** Ends the chat and starts a fresh one with the form as it is now. */
+    startOver: 'Reset',
+    /** The title of a test answer that failed, and what it adds to the reason: the trial saves nothing. */
+    failureTitle: 'Couldn’t get an answer',
+    nothingSaved: 'Nothing was saved.',
+    tryAgain: 'Try again',
+    /** The name of a tool call that is running, "Using Lookup order…", and one that finished. */
+    usingTool: 'Using',
+    usedTool: 'Used',
     close: 'End trial',
     /** Said when the form has changed since the trial chat started. */
     changed: 'The form changed after this chat started, so the agent here is the earlier version.',

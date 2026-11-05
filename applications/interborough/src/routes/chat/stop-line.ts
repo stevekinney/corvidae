@@ -69,32 +69,25 @@ function notesOf(row: ConversationHistory['messages'][string]): MessageNoteInfo[
   return resolveMessageNotes(row) ?? [];
 }
 
-function lastVisibleRowId(conversation: ConversationHistory): string | undefined {
-  return conversation.ids.findLast((id) => conversation.messages[id]?.hidden === false);
-}
-
 /**
  * `conversation` with the stop note of a run that failed worded as the status line. A stored note
- * (`failed: true`, from the run's own record) is reworded in place; a failure the page saw while it
- * watched (`liveFailure`) becomes the note on the turn's last row when the run's record has not
- * said so yet. A stop the person asked for stays the plain line it was.
+ * (`failed: true`, from the run's own record, read when the page opens on the chat) is reworded in
+ * place from what the run was in the middle of. A stop the person asked for stays the plain line it
+ * was.
  */
 export function withStopLine(
   conversation: ConversationHistory,
   options: {
     readonly tools: ReadonlyMap<string, ToolInfo>;
-    readonly liveFailure?: string | undefined;
   },
 ): ConversationHistory {
   const interrupted = interruptedTool(conversation, options.tools);
   let current = conversation;
-  let found = false;
   for (const id of conversation.ids) {
     const row = conversation.messages[id];
     if (row === undefined) continue;
     const notes = notesOf(row);
     if (!notes.some((note) => note.kind === 'stopped' && note.failed === true)) continue;
-    found = true;
     const reworded = notes.map((note) =>
       note.kind === 'stopped' && note.failed === true
         ? { ...note, reason: stopSentence(note.reason, interrupted) }
@@ -108,26 +101,7 @@ export function withStopLine(
       },
     };
   }
-  if (found || options.liveFailure === undefined) return current;
-  const target = lastVisibleRowId(current);
-  const row = target === undefined ? undefined : current.messages[target];
-  if (target === undefined || row === undefined) return current;
-  const note: MessageNoteInfo = {
-    kind: 'stopped',
-    id: STOPPED_NOTE_ID,
-    failed: true,
-    reason: stopSentence(options.liveFailure, interrupted),
-  };
-  return {
-    ...current,
-    messages: {
-      ...current.messages,
-      [target]: {
-        ...row,
-        metadata: { ...row.metadata, [CINDER_NOTES_METADATA_KEY]: [...notesOf(row), note] },
-      },
-    },
-  };
+  return current;
 }
 
 /** Whether a note on the conversation says its run failed. */

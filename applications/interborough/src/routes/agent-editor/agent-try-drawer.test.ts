@@ -36,18 +36,27 @@ afterEach(() => {
   stub = undefined;
 });
 
-function bureau(handlers: Record<string, BureauHandler> = {}): BureauStub {
-  stub = installBureauStub({
-    'bureau.agents.catalog': () => catalogFixture(),
-    'bureau.agents.definitions.get': () => readyAgent(),
-    'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
-    'bureau.agents.versions.list': () => ({ versions: [] }),
-    'bureau.agents.definitions.create': () => ({ id: 'x', hash: 'created' }),
-    'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
-    'bureau.agents.try': () => TRIED,
-    'bureau.contexts.delete': (params) => ({ contextId: params['contextId'], receipt: 'applied' }),
-    ...handlers,
-  });
+function bureau(
+  handlers: Record<string, BureauHandler> = {},
+  options: Parameters<typeof installBureauStub>[1] = {},
+): BureauStub {
+  stub = installBureauStub(
+    {
+      'bureau.agents.catalog': () => catalogFixture(),
+      'bureau.agents.definitions.get': () => readyAgent(),
+      'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.definitions.create': () => ({ id: 'x', hash: 'created' }),
+      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
+      'bureau.agents.try': () => TRIED,
+      'bureau.contexts.delete': (params) => ({
+        contextId: params['contextId'],
+        receipt: 'applied',
+      }),
+      ...handlers,
+    },
+    options,
+  );
   return stub;
 }
 
@@ -64,8 +73,8 @@ async function type(element: HTMLElement, value: string): Promise<void> {
 /** Opens the drawer and starts a chat with `message`. */
 async function startChat(view: View, message = 'Hello there'): Promise<void> {
   await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
-  await type(await view.findByRole('textbox', { name: copy.try.messageLabel }), message);
-  await fireEvent.click(view.getByRole('button', { name: copy.try.send }));
+  await type(await view.findByRole('textbox', { name: 'Message' }), message);
+  await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
 }
 
 describe('Try it', () => {
@@ -128,7 +137,7 @@ describe('Try it', () => {
     );
     // Opening it again starts from the composer, not the old chat.
     await fireEvent.click(view.getByRole('button', { name: copy.try.action }));
-    await view.findByRole('textbox', { name: copy.try.messageLabel });
+    await view.findByRole('textbox', { name: 'Message' });
     expect(view.queryByRole('region', { name: copy.try.chatLabel })).toBeNull();
   });
 
@@ -188,8 +197,8 @@ describe('Try it', () => {
     await waitFor(() =>
       expect(calls.callsTo('bureau.contexts.delete')[0]?.params).toEqual({ contextId: 'ctx-1' }),
     );
-    await type(await view.findByRole('textbox', { name: copy.try.messageLabel }), 'Again');
-    await fireEvent.click(view.getByRole('button', { name: copy.try.send }));
+    await type(await view.findByRole('textbox', { name: 'Message' }), 'Again');
+    await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
     await view.findByRole('region', { name: copy.try.chatLabel });
     expect(calls.callsTo('bureau.agents.try')[1]?.params).toMatchObject({
       definition: { instructions: 'Different now.' },
@@ -238,7 +247,7 @@ describe('Try it', () => {
     expect(view.queryByRole('region', { name: copy.try.chatLabel })).toBeNull();
     expect(calls.callsTo('bureau.contexts.delete')).toEqual([]);
     // The composer is back, so a corrected form can be tried.
-    expect(view.getByRole('textbox', { name: copy.try.messageLabel })).not.toBeNull();
+    expect(view.getByRole('textbox', { name: 'Message' })).not.toBeNull();
   });
 
   test('does not warn about a chat that is already gone, and warns about one that cannot be removed', async () => {
@@ -282,5 +291,30 @@ describe('Try it', () => {
     expect((button as HTMLButtonElement).disabled).toBe(false);
     await type(await view.findByRole('textbox', { name: /^Steps per run/ }), 'many');
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(true));
+  });
+  test('with no model provider connected the shared blocked row stands in for the composer, over an empty transcript', async () => {
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: false }] });
+    const view = mount();
+    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
+
+    await view.findByText('Connect a model provider to chat');
+    await view.findByText('Connect a provider');
+    expect(view.queryByRole('textbox', { name: 'Message' })).toBeNull();
+    expect(view.getByText(copy.try.usesChanges)).not.toBeNull();
+    // Reset has nothing to reset until a chat has started.
+    expect(
+      (view.getByRole('button', { name: copy.try.startOver }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  test('the composer is one line, “Send a test message”, with the line about real tools under it', async () => {
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    const view = mount();
+    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
+
+    const field = await view.findByRole('textbox', { name: 'Message' });
+    expect(field.getAttribute('placeholder')).toBe(copy.try.messagePlaceholder);
+    expect(view.getByText(copy.try.hint)).not.toBeNull();
+    expect(view.queryByText('Connect a model provider to chat')).toBeNull();
   });
 });

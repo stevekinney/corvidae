@@ -1,7 +1,16 @@
 import type { ConversationHistory } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
-import { DEFAULT_DENIAL, DENIED_CODE, toolGroups } from './tool-activity.ts';
+import {
+  DEFAULT_DENIAL,
+  DENIED_CODE,
+  interruptedWords,
+  keyInput,
+  railCall,
+  toolDisplayName,
+  toolGroups,
+  type ToolInfo,
+} from './tool-activity.ts';
 
 type Row = ConversationHistory['messages'][string];
 
@@ -132,5 +141,73 @@ describe('a call the person refused', () => {
       state: 'failed',
       summary: 'Timed out',
     });
+  });
+});
+
+describe('a call the run ended on', () => {
+  const ended = conversation(
+    row({ id: 'u1', role: 'user', content: 'Refund it' }),
+    call('s0', 'c1', 'issue-refund', { orderId: 4471, reason: 'Arrived damaged' }),
+  );
+  const tools = new Map<string, ToolInfo>([
+    ['issue-refund', { title: 'Issue refund', tier: 'dangerous' }],
+  ]);
+
+  test('is running while the run goes, and interrupted once nothing is working on it', () => {
+    const live = toolGroups(ended, { runActive: true, tools }).groups.get('s0')?.entries[0];
+    const over = toolGroups(ended, { runActive: false, tools }).groups.get('s0')?.entries[0];
+    expect(live?.state).toBe('running');
+    expect(over?.state).toBe('interrupted');
+  });
+
+  test('keeps the key input, the tool’s name for a person and what it may do', () => {
+    const entry = toolGroups(ended, { runActive: false, tools }).groups.get('s0')?.entries[0];
+    expect(entry).toMatchObject({ title: 'Issue refund', tier: 'dangerous', input: '4471' });
+  });
+
+  test('says it may have run for a tool that changes things or that nothing classifies, and did not finish for one that only reads', () => {
+    expect(interruptedWords({ tier: 'mutating' })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: 'dangerous' })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: null })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: undefined })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: 'read-only' })).toBe('Interrupted · didn’t finish');
+  });
+
+  test('is a rail row that never carries an arrow, a result or a green dot', () => {
+    const entry = toolGroups(ended, { runActive: false, tools }).groups.get('s0')!.entries[0]!;
+    expect(railCall(entry, false)).toMatchObject({
+      status: 'interrupted',
+      name: 'Issue refund',
+      identifier: 'issue-refund',
+      input: '4471',
+      result: 'Interrupted · may have run',
+    });
+  });
+
+  test('a call that has its answer is never interrupted, whether or not the run still goes', () => {
+    const answered = conversation(
+      call('s0', 'c1', 'lookup-order', { orderId: 'o1' }),
+      result('s0:r', 'c1', 'success', { status: 'delivered' }),
+    );
+    expect(toolGroups(answered, { runActive: false }).groups.get('s0')?.entries[0]?.state).toBe(
+      'done',
+    );
+  });
+});
+
+describe('how a call is named', () => {
+  test('the first scalar it was given is its key input', () => {
+    expect(keyInput({ orderId: 4471, reason: 'x' })).toBe('4471');
+    expect(keyInput({ nested: { a: 1 }, name: 'Parcelly' })).toBe('Parcelly');
+    expect(keyInput('  multi\nline  ')).toBe('multi line');
+    expect(keyInput({})).toBe('');
+    expect(keyInput(undefined)).toBe('');
+  });
+
+  test('a tool with no title reads as its identifier in words', () => {
+    expect(toolDisplayName('lookup-order')).toBe('Lookup order');
+    expect(toolDisplayName('issue_refund', null)).toBe('Issue refund');
+    expect(toolDisplayName('lookup-order', 'Find an order')).toBe('Find an order');
+    expect(toolDisplayName('', null)).toBe('');
   });
 });

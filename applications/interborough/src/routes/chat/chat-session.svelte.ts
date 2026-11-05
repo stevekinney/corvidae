@@ -113,14 +113,6 @@ export class ChatSessionState {
   failure = $state<string | undefined>(undefined);
 
   /**
-   * Why the last run stopped when this page watched it fail after its message was delivered. The
-   * page says so as a status line under the turn, with a Retry (`retryTurn`), instead of an alert,
-   * because it is a fact about the reply and not about the page. A message that could not be sent is
-   * not a stopped run: its row says "Not sent". It clears when the next turn begins.
-   */
-  runFailure = $state<string | undefined>(undefined);
-
-  /**
    * Whether the last send failed because the request never got an answer (the network, or a server
    * that could not be reached), as opposed to an answer that refused it. A message that did not go
    * through for that reason says "Not sent" on its row and nothing more; a refusal has a reason of
@@ -259,10 +251,7 @@ export class ChatSessionState {
           // turn that reads a run the page joins is nobody's attempt: it is how the page finds out
           // what to say next, and must not wipe what the refusal before it said.
           if (streaming) {
-            if (!this.attaching) {
-              this.failure = undefined;
-              this.runFailure = undefined;
-            }
+            if (!this.attaching) this.failure = undefined;
           }
           // A turn that ended in an error or a stop has no history to carry the assets it
           // announced, so they are put on their rows here, as a completed turn's are.
@@ -285,13 +274,6 @@ export class ChatSessionState {
           // refused as busy, and every other refusal, is.
           if (refusal?.resume !== true || !refusal.busy) this.failure = failure;
           this.failureWasTransport = error instanceof TypeError;
-          const undelivered = Object.values(this.conversation.messages).some(
-            (row) => row.metadata['_deliveryStatus'] === 'failed',
-          );
-          // Only a run that got as far as a partial reply or a call is a reply that stopped: a start
-          // the Bureau refused has said nothing, and its words stay in the alert.
-          if (!undelivered && refusal === undefined && this.#turnLeftRows())
-            this.runFailure = failure;
           if (this.#attachedRun && !this.#readerAbort?.signal.aborted)
             this.#scheduleReconnect(error);
         },
@@ -504,7 +486,6 @@ export class ChatSessionState {
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;
-    this.runFailure = undefined;
   }
 
   /**
@@ -529,7 +510,6 @@ export class ChatSessionState {
         this.conversation,
       );
     this.failure = undefined;
-    this.runFailure = undefined;
     return this.send(text);
   }
 
@@ -539,15 +519,6 @@ export class ChatSessionState {
     const id = this.#lastUserRowId();
     const row = id === undefined ? undefined : this.conversation.messages[id];
     return row !== undefined && retryText(row) !== undefined;
-  }
-
-  /** Whether the last person's message has a reply, or a call, after it: the run said something. */
-  #turnLeftRows(): boolean {
-    const id = this.#lastUserRowId();
-    if (id === undefined) return false;
-    return this.conversation.ids
-      .slice(this.conversation.ids.indexOf(id) + 1)
-      .some((rowId) => this.conversation.messages[rowId]?.hidden === false);
   }
 
   #lastUserRowId(): string | undefined {

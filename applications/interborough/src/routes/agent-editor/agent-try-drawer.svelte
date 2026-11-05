@@ -7,17 +7,35 @@
    * tools are real. A question the agent asks is answered here; a tool that would ask first ends the
    * trial, because the drawer has no approval to give.
    *
-   * Closing the drawer, starting over, and leaving the page each end the chat, which deletes its
+   * The composer is one line, "Send a test message", with Send, which becomes Stop while an answer
+   * streams (and the field is disabled). With no model provider connected the shared blocked row
+   * stands in its place and the transcript is empty. A tool call reads "Using Lookup order…", and an
+   * answer that failed is a titled danger block under the message with Try again.
+   *
+   * Closing the drawer, resetting, and leaving the page each end the chat, which deletes its
    * context and the agent with it. The agent in the chat is the form as it was when the chat
-   * started; the drawer says so once the form has changed, and Start over tries the new one.
+   * started; the drawer says so once the form has changed, and Reset tries the new one.
    */
   import { onDestroy } from 'svelte';
 
-  import { Alert, Button, Drawer, Textarea } from '@lostgradient/cinder';
-  import { Chat, ChatQuestion } from '@lostgradient/chat';
+  import { Alert, Button, Drawer } from '@lostgradient/cinder';
+  import {
+    Chat,
+    ChatQuestion,
+    createConversationHistory,
+    type ChatAdapter,
+    type ConversationHistory,
+  } from '@lostgradient/chat';
+  import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_EDITOR_COPY, CHAT_COPY } from '../../app/copy.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
+  import { getAgentCatalog } from '../../lib/agent-definitions.ts';
+  import { getProviders } from '../../lib/host-providers.ts';
+  import { queryKeys } from '../../lib/query.ts';
+  import { router } from '../../lib/router.svelte.ts';
+  import { composerStatusOf } from '../chat/composer-state.ts';
+  import { toolDisplayName } from '../chat/tool-activity.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
   import { AgentTrySession } from './agent-try-session.svelte.ts';
 
@@ -32,13 +50,88 @@
   const connection = getConnection();
   const trial = new AgentTrySession();
 
-  let message = $state('');
-
   const changed = $derived(
     trial.phase === 'chatting' && JSON.stringify(editor.toTryDefinition()) !== trial.triedWith,
   );
   const references = $derived(editor.references);
-  const startable = $derived(message.trim() !== '' && trial.phase === 'idle');
+
+  // With no model provider connected nothing can be answered, so the shared blocked row stands in
+  // the composer's place and says so.
+  const providers = createQuery(
+    () => ({
+      queryKey: queryKeys.hostProviders(),
+      queryFn: ({ signal }) => getProviders({ signal }),
+      enabled: open,
+      retry: false,
+    }),
+    undefined,
+  );
+  const noProvider = $derived(
+    providers.data !== undefined && !providers.data.providers.some((provider) => provider.hasKey),
+  );
+  const composerStatus = $derived(
+    composerStatusOf({
+      unreachable: connection.unreachable,
+      restarting: false,
+      ended: false,
+      noProvider,
+      connectHref: router.href('/settings/models'),
+      newChatHref: router.href('/chats/new'),
+      reconnectAttempt: 0,
+      queuedFollowUps: 0,
+      working: false,
+    }),
+  );
+
+  // A tool call is named the way the tool names itself, "Using Lookup order…".
+  const catalog = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.catalog(),
+      queryFn: ({ signal }) => getAgentCatalog({ signal }),
+      enabled: open,
+      retry: false,
+    }),
+    undefined,
+  );
+  const titles = $derived(
+    new Map((catalog.data?.tools ?? []).map((tool) => [tool.name, tool.title])),
+  );
+
+  /** The chat's adapter with the words of a tool call that is running, or that finished. */
+  function describedBy(adapter: ChatAdapter): ChatAdapter {
+    return {
+      ...adapter,
+      describeToolCall: (call, result) => {
+        const name = toolDisplayName(call.name, titles.get(call.name));
+        return result === undefined
+          ? { verb: copy.usingTool, detail: `${name}…`, tense: 'present' }
+          : { verb: copy.usedTool, detail: name, tense: 'past' };
+      },
+    };
+  }
+
+  // Before a first message there is no chat: sending one starts it.
+  const idleConversation = createConversationHistory({ id: 'agent-try-idle' });
+  const idleAdapter: ChatAdapter = {
+    sendMessage: async (message) => {
+      const text = typeof message.content === 'string' ? message.content.trim() : '';
+      if (text !== '') await trial.start(editor.toTryDefinition(), text);
+    },
+  };
+
+  /** The conversation as the drawer shows it: a message the trial could not answer is not "Not sent". */
+  function answered(conversation: ConversationHistory): ConversationHistory {
+    const failed = Object.entries(conversation.messages).filter(
+      ([, row]) => row.metadata['_deliveryStatus'] === 'failed',
+    );
+    if (failed.length === 0) return conversation;
+    const messages = { ...conversation.messages };
+    for (const [id, row] of failed) {
+      const { _deliveryStatus: _unused, ...metadata } = row.metadata;
+      messages[id] = { ...row, metadata };
+    }
+    return { ...conversation, messages };
+  }
 
   // Closing the drawer ends the chat: there is nothing to come back to.
   $effect(() => {
@@ -57,14 +150,6 @@
     void trial.end();
   });
 
-  function start(event: SubmitEvent): void {
-    event.preventDefault();
-    if (!startable) return;
-    const first = message.trim();
-    message = '';
-    void trial.start(editor.toTryDefinition(), first);
-  }
-
   function startOver(): void {
     void trial.end();
   }
@@ -72,7 +157,19 @@
 
 <Drawer bind:open title={copy.title} size="md">
   <div class="weft-agent-try" data-testid="agent-try" data-context-id={trial.contextId}>
-    <p class="weft-agent-try__note">{copy.description}</p>
+    <div class="weft-agent-try__bar">
+      <p class="weft-agent-try__note">{copy.usesChanges}</p>
+      <Button
+        data-changes
+        type="button"
+        size="sm"
+        variant="secondary"
+        label={copy.startOver}
+        disabled={trial.phase === 'idle'}
+        onclick={startOver}
+      />
+    </div>
+    <p class="weft-agent-try__description">{copy.description}</p>
 
     {#if references.length > 0}
       <Alert variant="info">
@@ -102,12 +199,6 @@
           <p class="weft-agent-try__alert-body" data-testid="agent-try-changed">{copy.changed}</p>
         </Alert>
       {/if}
-      {#if chat.failure !== undefined}
-        <Alert variant="danger" dismissible onDismiss={() => chat.dismissFailure()}>
-          <p class="weft-agent-try__alert-title">{CHAT_COPY.failureTitle}</p>
-          <p class="weft-agent-try__alert-body">{chat.failure}</p>
-        </Alert>
-      {/if}
       {#if chat.disconnected}
         <Alert variant="warning">
           <p class="weft-agent-try__alert-title">{CHAT_COPY.disconnected.title}</p>
@@ -120,60 +211,86 @@
       <div class="weft-agent-try__chat" role="region" aria-label={copy.chatLabel}>
         <Chat
           id={`try-${chat.sessionId}`}
-          conversation={chat.conversation}
-          adapter={chat.chatAdapter}
+          conversation={answered(chat.conversation)}
+          adapter={describedBy(chat.chatAdapter)}
           streaming={chat.streaming}
+          surfaceMode="transparent"
+          variant="transcript"
+          composerCompact
+          composerPlaceholder={copy.messagePlaceholder}
+          composerHint={copy.hint}
+          {composerStatus}
           disabled={connection.unreachable || chat.disconnected}
           streamingStatus={chat.stopping ? CHAT_COPY.stopping : ''}
           capabilities={{ attachments: false, editing: false, quote: false }}
-        />
+        >
+          {#snippet trailing()}
+            {#if chat.failure !== undefined && !chat.streaming}
+              <div class="weft-agent-try__failure" data-testid="agent-try-answer-failure">
+                <Alert variant="danger">
+                  <p class="weft-agent-try__alert-title">{copy.failureTitle}</p>
+                  <p class="weft-agent-try__alert-body">{chat.failure} {copy.nothingSaved}</p>
+                  <Button
+                    data-changes
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    label={copy.tryAgain}
+                    disabled={!chat.canRetryTurn}
+                    onclick={() => void chat.retryTurn()}
+                  />
+                </Alert>
+              </div>
+            {/if}
+            <!-- The run reports a question as it parks, a moment before the turn that carried it is
+                 over; a message sent in between would be a follow-up, so the question waits for the
+                 turn's end. -->
+            {#each chat.streaming ? [] : chat.humanRequests.slice(0, 1) as request (request.interruptId)}
+              <div class="weft-agent-try__question" data-testid="agent-try-question">
+                <p class="weft-agent-try__alert-body">
+                  {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+                </p>
+                <ChatQuestion
+                  {...{ 'data-changes': true }}
+                  id={`try-question-${request.interruptId}`}
+                  schema={request.schema ?? {
+                    type: 'string',
+                    title: CHAT_COPY.questionAnswerLabel,
+                  }}
+                  answerInComposer
+                  busy={chat.attaching}
+                  onSubmit={(value) => void chat.answerQuestion(request.interruptId, value)}
+                />
+              </div>
+            {/each}
+          {/snippet}
+        </Chat>
       </div>
-      <!-- The run reports a question as it parks, a moment before the turn that carried it is over;
-           a message sent in between would be a follow-up, so the question waits for the turn's end. -->
-      {#each chat.streaming ? [] : chat.humanRequests.slice(0, 1) as request (request.interruptId)}
-        <div class="weft-agent-try__question" data-testid="agent-try-question">
-          <p class="weft-agent-try__alert-body">
-            {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
-          </p>
-          <ChatQuestion
-            {...{ 'data-changes': true }}
-            id={`try-question-${request.interruptId}`}
-            schema={request.schema ?? { type: 'string', title: CHAT_COPY.questionAnswerLabel }}
-            answerInComposer
-            busy={chat.attaching}
-            onSubmit={(value) => void chat.answerQuestion(request.interruptId, value)}
-          />
-        </div>
-      {/each}
     {:else}
-      <form class="weft-agent-try__start" onsubmit={start}>
-        <Textarea
-          id="agent-try-message"
-          label={copy.messageLabel}
-          placeholder={copy.messagePlaceholder}
-          rows={4}
-          disabled={trial.phase === 'starting'}
-          bind:value={message}
-        />
-        <div class="weft-agent-try__actions">
-          <Button
-            data-changes
-            type="submit"
-            variant="primary"
-            loading={trial.phase === 'starting'}
-            disabled={!startable}>{copy.send}</Button
-          >
-        </div>
-      </form>
+      <!-- No chat exists yet, so there is no trial chat to name: this is the composer that starts it. -->
+      <div class="weft-agent-try__chat">
+        <Chat
+          id="agent-try-idle"
+          conversation={idleConversation}
+          adapter={idleAdapter}
+          surfaceMode="transparent"
+          variant="transcript"
+          composerCompact
+          composerPlaceholder={copy.messagePlaceholder}
+          composerHint={copy.hint}
+          {composerStatus}
+          disabled={trial.phase === 'starting' || connection.unreachable}
+          capabilities={{ attachments: false, editing: false, quote: false }}
+        >
+          {#snippet empty()}
+            <span></span>
+          {/snippet}
+        </Chat>
+      </div>
     {/if}
   </div>
 
   {#snippet footer()}
-    {#if trial.phase === 'chatting'}
-      <Button data-changes type="button" variant="secondary" onclick={startOver}
-        >{copy.startOver}</Button
-      >
-    {/if}
     <!-- Ending the trial deletes its chat: a write to the Bureau. -->
     <Button data-changes type="button" variant="primary" onclick={() => (open = false)}
       >{copy.close}</Button
@@ -190,12 +307,21 @@
   }
 
   .weft-agent-try__note,
+  .weft-agent-try__description,
   .weft-agent-try__alert-title,
   .weft-agent-try__alert-body {
     margin: 0;
   }
 
-  .weft-agent-try__note {
+  .weft-agent-try__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+  }
+
+  .weft-agent-try__note,
+  .weft-agent-try__description {
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
   }
@@ -215,16 +341,5 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
-  }
-
-  .weft-agent-try__start {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-3);
-  }
-
-  .weft-agent-try__actions {
-    display: flex;
-    justify-content: flex-end;
   }
 </style>

@@ -163,6 +163,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    *   (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).
    */
   variant?: 'bubble' | 'flat' | 'transcript';
+  /** A one-line composer for a small surface, such as a test chat in a side panel: the field and Send (or Stop, while a reply streams and the field is disabled) share one row, with no controls, attachments or formatting; the hint stays under it. Default `false`. */
+  composerCompact?: boolean;
   /** With `variant="transcript"`, the words of the "Not sent" popover on a message that was not delivered, and whether its Retry works now. */
   notSent?: ChatNotSent | undefined;
   /** With `variant="transcript"`, called when the person removes a queued follow-up. Remove shows only when this is set, because only the host knows whether a message it has sent can still be taken back. */

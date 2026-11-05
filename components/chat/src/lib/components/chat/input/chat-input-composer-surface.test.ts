@@ -258,3 +258,43 @@ describe('attachments', () => {
     unmount(instance);
   });
 });
+
+describe('the compact composer', () => {
+  test('is marked compact, and Send becomes Stop with the field disabled while a reply streams', () => {
+    const idle = render(ChatInput, {
+      props: {
+        id: 'compact',
+        compact: true,
+        placeholder: 'Send a test message',
+        onsubmit: () => {},
+      },
+    } as never);
+    const form = idle.container.querySelector('form.chat-input');
+    expect(form?.hasAttribute('data-compact')).toBe(true);
+    expect(idle.container.querySelector('textarea')?.getAttribute('placeholder')).toBe(
+      'Send a test message',
+    );
+    expect(idle.container.querySelector('.chat-input-send')?.hasAttribute('data-stop')).toBe(false);
+    idle.unmount();
+
+    const streaming = render(ChatInput, {
+      props: {
+        id: 'compact-streaming',
+        compact: true,
+        sending: true,
+        disabled: true,
+        onstop: () => {},
+        onsubmit: () => {},
+      },
+    } as never);
+    expect(streaming.container.querySelector('.chat-input-send')?.hasAttribute('data-stop')).toBe(true);
+    expect(streaming.container.querySelector('textarea')?.disabled).toBe(true);
+  });
+
+  test('a composer that is not compact carries no such mark', () => {
+    const { container } = render(ChatInput, {
+      props: { id: 'regular', onsubmit: () => {} },
+    } as never);
+    expect(container.querySelector('form.chat-input')?.hasAttribute('data-compact')).toBe(false);
+  });
+});

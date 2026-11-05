@@ -41,6 +41,11 @@
      * disabled, so it keeps focus and its text, and takes keys again once this clears.
      */
     paused?: boolean;
+    /**
+     * A one-line composer for a small surface: the field and Send (or Stop) share one row, with no
+     * controls, attachments or formatting, and the hint stays under it. Default `false`.
+     */
+    compact?: boolean;
     /** Whether a submission is in progress */
     sending?: boolean;
     /**
@@ -245,6 +250,7 @@
     composerAriaAutocomplete,
     disabled = false,
     paused = false,
+    compact = false,
     sending = false,
     allowFollowUp = false,
     error,
@@ -1204,6 +1210,7 @@
     <form
       bind:this={formElement}
       class={classNames('chat-input', isDragOver && 'chat-input-dragover', className)}
+      data-compact={compact || undefined}
       method="POST"
       {action}
       onsubmit={handleSubmit}
@@ -1487,6 +1494,25 @@
 </div>
 
 <style>
+  /* Compact: the field and Send (or Stop) are one row, with no controls beside them. */
+  .chat-input[data-compact] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-2);
+  }
+
+  .chat-input[data-compact] .chat-input-footer,
+  .chat-input[data-compact] .chat-input-footer-right {
+    display: contents;
+  }
+
+  .chat-input[data-compact] .chat-input-footer-left,
+  .chat-input[data-compact] :global(.chat-input-send svg) {
+    display: none;
+  }
+
   .chat-input {
     position: relative;
     container-type: inline-size;
