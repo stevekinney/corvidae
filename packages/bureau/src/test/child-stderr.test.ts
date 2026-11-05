@@ -7,6 +7,8 @@ import { unexpectedChildStderr } from './child-stderr';
 
 const holdLine = (runId: string) =>
   `[bureau] Run "${runId}" reached recovery before the bureau finished composing; holding it until composition completes.\n`;
+const resolverHoldLine = (runId?: string) =>
+  `[bureau] ${runId === undefined || runId === '' ? 'A run' : `Run "${runId}"`} needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog.\n`;
 
 describe('unexpectedChildStderr', () => {
   it('drops every composition-hold line and nothing else', () => {
@@ -14,6 +16,38 @@ describe('unexpectedChildStderr', () => {
     expect(unexpectedChildStderr(`${holdLine('run-1')}boom\n`)).toBe('boom\n');
     expect(unexpectedChildStderr('[bureau] Run "run-1" failed\n')).toBe(
       '[bureau] Run "run-1" failed\n',
+    );
+  });
+
+  it('drops every exact resolver-hold line and preserves near matches', () => {
+    expect(unexpectedChildStderr(resolverHoldLine('run-1') + resolverHoldLine('run-2'))).toBe('');
+    expect(unexpectedChildStderr(resolverHoldLine())).toBe('');
+    expect(unexpectedChildStderr(`${resolverHoldLine('run-1')}boom\n`)).toBe('boom\n');
+    expect(
+      unexpectedChildStderr(
+        '[bureau] Run "run-1" needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog\n',
+      ),
+    ).toBe(
+      '[bureau] Run "run-1" needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog\n',
+    );
+    expect(
+      unexpectedChildStderr(
+        '[bureau] Run "run-1" needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog.\ntrailing\n',
+      ),
+    ).toBe('trailing\n');
+    expect(
+      unexpectedChildStderr(
+        '[bureau] A runner needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog.\n',
+      ),
+    ).toBe(
+      '[bureau] A runner needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog.\n',
+    );
+    expect(
+      unexpectedChildStderr(
+        '[bureau] Run "" needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog.\n',
+      ),
+    ).toBe(
+      '[bureau] Run "" needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog.\n',
     );
   });
 
