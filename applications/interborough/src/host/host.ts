@@ -105,6 +105,7 @@ import {
   type AgentDefinitions,
   type AgentWithBureauTools,
   type Bureau,
+  type BureauOptions,
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
@@ -856,6 +857,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       configuration.text,
       bungalow.configurationLocation,
     );
+    const recoverableStartedApprovals = new Map<
+      string,
+      NonNullable<BureauOptions['recoverableStartedApprovals']> extends ReadonlyMap<
+        string,
+        infer Approval
+      >
+        ? Approval
+        : never
+    >();
     let peerCalls: PeerCallJournal | undefined;
     const peerCallHandoff: PeerCallJournal = {
       read: (key) => {
@@ -872,6 +882,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       readSecret: (key) => bungalow.readSecret(key),
       egressPolicy: options.a2aPeerEgressPolicy ?? createEgressPolicy(),
       peerCalls: peerCallHandoff,
+      recoverableStartedApprovals,
       warn: options.warn ?? ((message) => console.warn(message)),
     });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
@@ -916,6 +927,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       peerCallsReady: (journal) => {
         peerCalls = journal;
       },
+      recoverableStartedApprovals,
       id: bungalow.workspaceId,
       ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       agents: { ...options.extraAgents?.agents },

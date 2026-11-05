@@ -23,6 +23,7 @@ async function exists(path: string, text?: string): Promise<boolean> {
 async function startCaller(
   home: string,
   env: Record<string, string>,
+  readyFile = true,
 ): Promise<ReturnType<typeof spawnWithHangGuard>> {
   const child = spawnWithHangGuard(
     [process.execPath, '--no-install', join(import.meta.dir, 'a2a-peer-recovery-caller.ts')],
@@ -35,7 +36,9 @@ async function startCaller(
     },
   );
   children.push(child);
-  await waitUntil(() => exists(env['READY_FILE'] ?? ''), { message: 'caller ready' });
+  await waitUntil(() => exists(env[readyFile ? 'READY_FILE' : 'BOOT_FILE'] ?? ''), {
+    message: readyFile ? 'caller ready' : 'caller booted',
+  });
   return child;
 }
 afterEach(async () => {
@@ -98,6 +101,7 @@ const recovery = await (async () => {
   await writeFile(configurationPath, JSON.stringify(configuration));
   const files = {
     READY_FILE: join(callerHome, 'ready_file'),
+    BOOT_FILE: join(callerHome, 'boot_file'),
     RUN_FILE: join(callerHome, 'run_file'),
     JOURNAL_FILE: join(callerHome, 'journal_file'),
     APPROVE_FILE: join(callerHome, 'approve_file'),
@@ -124,12 +128,17 @@ const recovery = await (async () => {
   expect(journalMarker.entry?.taskId).toBeString();
   first.kill('SIGKILL');
   await first.exited;
-  const second = await startCaller(callerHome, {
-    ...env,
-    RESTART: '1',
-    READY_FILE: join(callerHome, 'ready-second'),
-    URL_FILE: join(callerHome, 'caller-url-second'),
-  });
+  const second = await startCaller(
+    callerHome,
+    {
+      ...env,
+      RESTART: '1',
+      READY_FILE: join(callerHome, 'ready-second'),
+      BOOT_FILE: join(callerHome, 'boot-second'),
+      URL_FILE: join(callerHome, 'caller-url-second'),
+    },
+    false,
+  );
   state.release();
   await waitUntil(() => exists(files.RESULT_FILE, 'completed'), { message: 'replayed result' });
   const resultObserved = await exists(files.RESULT_FILE, 'completed');

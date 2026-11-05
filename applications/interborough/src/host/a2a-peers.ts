@@ -1,5 +1,6 @@
 /** Startup configuration and host tools for authenticated A2A peers. */
 
+import type { BureauOptions } from '@lostgradient/bureau';
 import { sha256HexSync } from '@lostgradient/cryptography';
 import { createPeerCallTool, type PeerCallJournal } from '@lostgradient/operative';
 import { createA2APeerClient, type EgressPolicy } from '@lostgradient/weft/a2a';
@@ -151,9 +152,19 @@ export type A2APeerToolOptions = {
   readonly egressPolicy?: EgressPolicy;
   /** The journal handoff installed before Bureau boot recovery. */
   readonly peerCalls?: PeerCallJournal;
+  /** Receives attach-only adapters keyed by the wrapper tool's canonical revision. */
+  readonly recoverableStartedApprovals?: Map<string, RecoverableStartedApproval>;
   /** Receives startup diagnostics. */
   readonly warn: (message: string) => void;
 };
+
+type RecoverableStartedApproval =
+  NonNullable<BureauOptions['recoverableStartedApprovals']> extends ReadonlyMap<
+    string,
+    infer Approval
+  >
+    ? Approval
+    : never;
 
 /** Builds the peer tools before Bureau starts; the journal resolves lazily after it exists. */
 export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record<string, Tool>> {
@@ -191,7 +202,7 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
         ? {}
         : { redactPeerText: (value: string) => redactText(value, secret) }),
     });
-    tools[peerTool.name] = createTool({
+    const tool = createTool({
       name: peer.id,
       namespace: 'a2a-peer',
       version: peerToolVersion(peer),
@@ -210,6 +221,27 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
           scrubbed.name = error instanceof Error ? error.name : 'Error';
           throw scrubbed;
         }
+      },
+    });
+    tools[peerTool.name] = tool;
+    options.recoverableStartedApprovals?.set(tool.id, {
+      version: 1,
+      attach: async (input) => {
+        const task = await client.attach({
+          taskId: input.journalEntry.taskId,
+          contextId: input.journalEntry.contextId,
+          signal: input.signal,
+        });
+        const outcome = await task.result();
+        const successful = outcome.state === 'completed';
+        return {
+          callId: input.callId,
+          toolCallId: input.callId,
+          toolName: tool.name,
+          outcome: successful ? 'success' : 'error',
+          content: outcome.message,
+          result: successful ? outcome.message : `Peer task ended ${outcome.state}.`,
+        };
       },
     });
   }

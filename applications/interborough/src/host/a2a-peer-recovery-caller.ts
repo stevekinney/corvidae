@@ -6,6 +6,7 @@ import { startHost, type HostOptions } from './host.ts';
 const environment = process.env;
 const required = [
   'READY_FILE',
+  'BOOT_FILE',
   'RUN_FILE',
   'JOURNAL_FILE',
   'REVIEW_FILE',
@@ -35,6 +36,7 @@ function isPeerCallKey(candidate: unknown): candidate is {
 }
 const home = value('INTERBOROUGH_HOME');
 for (const key of required) value(key);
+await Bun.write(value('BOOT_FILE'), 'booting');
 
 const calls = { count: 0 };
 const client = {
