@@ -87,6 +87,10 @@ if (behavior === 'missing-link') {
   await Bun.sleep(50);
   process.exit(0);
 }
+if (behavior === 'wrong-link') {
+  await Bun.sleep(1000);
+  process.exit(0);
+}
 process.on('SIGTERM', () => process.exit(0));
 if (behavior === 'poll-error') await Bun.sleep(100);
 const server = Bun.serve({ port, fetch(request) {
