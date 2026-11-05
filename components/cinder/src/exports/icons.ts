@@ -42,6 +42,7 @@ export {
   Strikethrough,
   Terminal,
   Trash2,
+  TriangleAlert,
   Undo2,
   Unlink,
   X,

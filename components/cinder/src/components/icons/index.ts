@@ -44,6 +44,7 @@ export { default as Square } from '@lucide/svelte/icons/square';
 export { default as Strikethrough } from '@lucide/svelte/icons/strikethrough';
 export { default as Terminal } from '@lucide/svelte/icons/terminal';
 export { default as Trash2 } from '@lucide/svelte/icons/trash';
+export { default as TriangleAlert } from '@lucide/svelte/icons/triangle-alert';
 export { default as Undo2 } from '@lucide/svelte/icons/undo-2';
 export { default as Unlink } from '@lucide/svelte/icons/unlink';
 export { default as X } from '@lucide/svelte/icons/x';

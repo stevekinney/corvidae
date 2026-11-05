@@ -33,6 +33,19 @@ describe('icons/index', () => {
     }
   });
 
+  it('exports TriangleAlert, the warning glyph of a blocked row, from the package root and the icon set', async () => {
+    const { TriangleAlert } = await import('@lostgradient/cinder');
+    expect(icons.TriangleAlert).toBe(TriangleAlert);
+    const result = render(TriangleAlert, { 'aria-hidden': 'true' });
+    try {
+      expect(result.container.querySelector('svg')?.getAttribute('class')).toContain(
+        'lucide-triangle-alert',
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
   it('types every exported icon as an IconComponent that takes size and stroke props alone', () => {
     // A type-level regression as much as a runtime one: `@lucide/svelte`'s own
     // `IconProps` requires icon data and its icons are Svelte 5 function

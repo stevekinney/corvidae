@@ -118,6 +118,10 @@
     loadingEarlierLabel = 'Loading earlier messages',
     header,
     composerActions,
+    composerControls,
+    composerPlaceholder,
+    composerAnswering = false,
+    composerHint,
     composerToolbar,
     composerFormattingToolbar = false,
     composerMarkdownStyling = true,
@@ -690,7 +694,7 @@
         typeof schema === 'object' &&
         schema !== null &&
         !Array.isArray(schema) &&
-        classifyQuestion(schema as Record<string, unknown>) === 'text' &&
+        ['text', 'choice-other'].includes(classifyQuestion(schema as Record<string, unknown>)) &&
         !questions.answers.has(callId)
       ) {
         openCallId = callId;
@@ -1208,13 +1212,18 @@
   }
   // The adapter opting in to run input is what keeps the composer live during a run.
   const followUpsEnabled = $derived(adapter?.sendRunInput !== undefined);
-  // The host's status wins; otherwise say when an approval is holding the run.
-  const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(
-    composerStatus ??
-      (commandActions.hasPendingApproval()
-        ? { kind: 'waiting', steers: followUpsEnabled }
-        : undefined),
-  );
+  // The line under the composer is the host's. A pending approval is shown in the transcript, so
+  // the composer keeps its hint and stays live (a message sent now steers the run).
+  const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
+  // While a question waits on the composer, its placeholder says what to do: a free-text question
+  // just reads Answer; a choice says the choices are above and an answer of your own is welcome.
+  const composerAnswerPlaceholder = $derived.by(() => {
+    const target = questions.composerTarget;
+    if (target !== undefined) {
+      return target.kind === 'text' ? 'Answer' : 'Choose an answer above, or type your own…';
+    }
+    return composerAnswering ? 'Choose an answer above, or type your own…' : undefined;
+  });
   const handleRetry = commandActions.handleRetry;
   const handleEdit = commandActions.handleEdit;
   const handleApprovalResolve = commandActions.resolveToolApproval;
@@ -2026,7 +2035,10 @@
           id={inputId}
           bind:this={inputRef}
           onsubmit={handleComposerSubmit}
-          {...questions.composerTarget === undefined ? {} : { placeholder: 'Answer' }}
+          placeholder={composerAnswerPlaceholder ?? composerPlaceholder}
+          answering={questions.composerTarget !== undefined || composerAnswering}
+          hint={composerHint}
+          controls={composerControls}
           disabled={streaming && !followUpsEnabled}
           paused={disabled}
           sending={streaming}

@@ -192,6 +192,7 @@ export type {
   ChatAttachmentFailure,
   ChatAttachmentReference,
   ChatAttachmentUpload,
+  ChatComposerBlockedAction,
   ChatComposerFormat,
   ChatComposerStatus,
   ChatComposerToolbarContext,

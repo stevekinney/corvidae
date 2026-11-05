@@ -37,11 +37,17 @@ When Chat accepts snippets or arbitrary children, the caller owns the semantics 
 
 ## Follow-ups during a run
 
-When the adapter provides `sendRunInput`, the composer textarea stays enabled while `streaming` is `true`, so keyboard focus is never pulled out of it mid-run. Stop becomes a separate button beside Send, each with its own accessible name ("Stop generating", "Send message"), and the composer's shortcut description names the key the composer's `submitOn` listens for, so a modifier-Enter composer never announces a bare Enter. When the run ends and the side Stop button unmounts while it has focus, focus moves to Send, or to the textarea while Send is disabled. A follow-up that is waiting for the transport shows a visible "Sending…" label rather than relying on color or opacity; the row adds no live region of its own, because the transcript's log region announces the added message. One that the transport rejected shows the existing "Failed to send" alert with a Retry button.
+When the adapter provides `sendRunInput`, the composer textarea stays enabled while `streaming` is `true`, so keyboard focus is never pulled out of it mid-run. While the box is empty Stop takes Send's place as one button named "Stop generating"; once a follow-up is typed, Send comes back beside it as a second button named "Send message", so the message can be sent without a keyboard too. The composer's shortcut description names the key the composer's `submitOn` listens for, so a modifier-Enter composer never announces a bare Enter. When the run ends and the side Stop button unmounts while it has focus, focus moves to Send, or to the textarea while Send is disabled; when the main button turns back from Stop to a disabled Send while it has focus, focus moves to the textarea. A follow-up that is waiting for the transport shows a visible "Sending…" label rather than relying on color or opacity; the row adds no live region of its own, because the transcript's log region announces the added message. One that the transport rejected shows the existing "Failed to send" alert with a Retry button.
 
 ## Composer actions
 
 `composerActions` renders host-owned controls in the composer footer, before Send, so they sit in the tab order between the attachment button and Send. The host owns their semantics: give a `Select` or `Combobox` an accessible name (a visually hidden `label` works when the footer has no room for a visible one), and keep their state announced the way the control already does. Chat does not disable them while a run streams or a tool approval is pending; if the host locks a control during a run, it should disable it natively so the state is exposed.
+
+## Composer controls, the hint and the blocked row
+
+`composerControls` renders the host's selects right after the attach button, in the tab order before Send; give each a name with a visually hidden `label`, and draw its visible words (`Model`, `Effort`, `Permissions`) with `valuePrefix`, which is hidden from assistive technology. The hint under the box ("Enter to send · Shift and Enter for a new line") is for sighted readers and is `aria-hidden`: the composer's hidden shortcut description is what Send and the textarea point at. `composerStatus` replaces the hint with a line of the host's own, and its change is announced politely through the composer's live region.
+
+With `composerStatus` of `kind: 'blocked'` the composer is one `group` named "Composer unavailable": a decorative warning glyph, the reason as text, and an optional button and link. There is no text box to focus, so the reason is also announced politely when the row appears. A draft typed before the row came, and files attached before it, are kept and return with the composer.
 
 ## Quoting agent messages
 

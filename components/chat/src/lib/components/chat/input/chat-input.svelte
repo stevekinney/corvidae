@@ -20,7 +20,7 @@
     /** Current markdown content (two-way bindable) */
     value?: string;
     /** Placeholder text */
-    placeholder?: string;
+    placeholder?: string | undefined;
     /** Accessible label passed to the inner message editor */
     composerLabel?: string;
     /** Explicit role for the inner message editor, for overlay patterns such as ARIA comboboxes. */
@@ -117,11 +117,31 @@
     markdownStyling?: boolean;
     /** Show Bold, Italic, Code, Link, and List buttons in the footer. Default `false`. */
     formattingToolbar?: boolean;
-    /** The status line under the composer: an approval waiting, a reconnect, or queued follow-ups. */
+    /**
+     * The line under the composer (a reconnect, queued follow-ups, a note of the host's own), or,
+     * with `kind: 'blocked'`, the whole composer: sending is not possible, so one compact row says
+     * why in place of the text box and the controls.
+     */
     status?: ChatComposerStatus | undefined;
+    /**
+     * The composer is answering a question the run asked: the button reads `Answer` instead of
+     * `Send`, and the placeholder is the host's to set. Default `false`.
+     */
+    answering?: boolean;
+    /**
+     * The line of help under the composer while no status is showing. Default
+     * `Enter to send · Shift and Enter for a new line` (worded for the `submitOn` gesture);
+     * `false` hides it.
+     */
+    hint?: string | false | undefined;
 
     // Snippets for extensibility
-    /** Custom actions area (e.g., additional buttons) */
+    /**
+     * Controls at the start of the footer, right after the attach button: the host's own selects
+     * for the model, effort and permissions. They stay interactive while a run streams.
+     */
+    controls?: Snippet | undefined;
+    /** Custom actions area (e.g., additional buttons) beside Send, such as a context meter. */
     actions?: Snippet | undefined;
     /** Toolbar slot at the start of the footer, given a `format` command for the selection. */
     toolbar?: Snippet<[ChatComposerToolbarContext]> | undefined;
@@ -166,6 +186,7 @@
     SendHorizontal,
     Square,
     Tooltip,
+    TriangleAlert,
     X,
   } from '@lostgradient/cinder';
   import {
@@ -249,6 +270,9 @@
     markdownStyling = true,
     formattingToolbar = false,
     status,
+    answering = false,
+    hint,
+    controls,
     actions,
     toolbar,
     ...rest
@@ -272,10 +296,6 @@
     syncBackdropScroll();
   });
 
-  // Derived: show stop button when sending and onstop is provided. In follow-up
-  // mode Stop sits beside Send rather than taking its place.
-  const showStopButton = $derived(sending && onstop !== undefined && !allowFollowUp);
-  const showSideStopButton = $derived(sending && onstop !== undefined && allowFollowUp);
   const showSendingSpinner = $derived(sending && !allowFollowUp);
   const sendBlocked = $derived(sending && !allowFollowUp);
   // Names the key the composer's `submitOn` actually listens for, so a
@@ -291,21 +311,11 @@
   });
 
   // Refs
+  let sendButtonRef = $state<HTMLElement | null>(null);
+  let stopButtonRef = $state<HTMLElement | null>(null);
   let formElement = $state<HTMLFormElement | null>(null);
   let editorElement = $state<HTMLTextAreaElement | null>(null);
   let fileInputRef = $state<HTMLInputElement | null>(null);
-  let sendButtonRef = $state<HTMLButtonElement | null>(null);
-  let stopButtonRef = $state<HTMLButtonElement | null>(null);
-
-  // When the run ends the side Stop button unmounts. If it held focus, hand focus
-  // to Send (or the textarea while Send is disabled) before it goes, so focus is
-  // not dropped to the document body.
-  $effect.pre(() => {
-    if (showSideStopButton) return;
-    const stopButton = untrack(() => stopButtonRef);
-    if (stopButton === null || document.activeElement !== stopButton) return;
-    (canSubmit ? sendButtonRef : editorElement)?.focus();
-  });
 
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);
@@ -355,14 +365,61 @@
   );
   const sendTooltipText = $derived.by(() => {
     if (hasPendingAttachments) return 'Wait for attachments';
-    if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
-      return 'Add a message or attachment';
-    }
     if (showStopButton) return 'Stop generating';
+    if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
+      return answering ? 'Type an answer' : 'Add a message or attachment';
+    }
     if (submitOn === 'modifier-enter') return 'Send (Command or Control + Enter)';
     if (submitOn === 'enter-if-single-line' && value.includes('\n')) return 'Send message';
-    return 'Send (Enter)';
+    return answering ? 'Answer (Enter)' : 'Send (Enter)';
   });
+  /** Remembers a button the composer owns, so its tooltip can anchor to it. */
+  function holdButton(assign: (element: HTMLElement | null) => void) {
+    return (element: Element): (() => void) => {
+      assign(element as HTMLElement);
+      return () => assign(null);
+    };
+  }
+  // Stop takes Send's place while the chat is working. In follow-up mode Send comes back beside
+  // Stop once a message is typed, so the message can still be sent without a keyboard.
+  const stopOffered = $derived(sending && onstop !== undefined);
+  const showStopButton = $derived(stopOffered && (!allowFollowUp || !canSubmit));
+  const showSideStopButton = $derived(stopOffered && allowFollowUp && canSubmit);
+  // When the run ends, Stop goes away: the side button unmounts, and the main button turns back into
+  // a Send that is disabled while the box is empty. If either held focus, hand focus to Send (or
+  // the textarea while Send is disabled) before it goes, so focus is not dropped to the body.
+  $effect.pre(() => {
+    const send = untrack(() => sendButtonRef);
+    if (!showSideStopButton) {
+      const stopButton = untrack(() => stopButtonRef);
+      if (stopButton !== null && document.activeElement === stopButton) {
+        (canSubmit ? send : editorElement)?.focus();
+      }
+    }
+    if (!showStopButton && !canSubmit && send !== null && send.hasAttribute('data-stop')) {
+      if (document.activeElement === send) editorElement?.focus();
+    }
+  });
+
+  const sendLabel = $derived(answering ? 'Answer' : 'Send');
+  const sendAccessibleName = $derived(
+    showStopButton
+      ? 'Stop generating'
+      : showSendingSpinner
+        ? 'Sending message'
+        : answering
+          ? 'Answer'
+          : 'Send message',
+  );
+  const hintText = $derived.by(() => {
+    if (hint === false) return undefined;
+    if (hint !== undefined) return hint;
+    if (submitOn === 'modifier-enter') {
+      return 'Command or Control and Enter to send · Enter for a new line';
+    }
+    return 'Enter to send · Shift and Enter for a new line';
+  });
+  const blocked = $derived(status?.kind === 'blocked' ? status : undefined);
 
   // Determine if we're in form action mode
   const isFormActionMode = $derived(!!action);
@@ -1041,265 +1098,329 @@
   // Cleanup
   // =========================================================================
 
-  function revokeAttachmentPreviewsOnDestroy(_form: HTMLFormElement): { destroy(): void } {
-    return {
-      destroy() {
-        abortUploads();
-        attachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
-      },
-    };
-  }
+  // The composer's own teardown rather than the form's: a blocked row replaces the form for a
+  // while, and the files attached before it came must outlive it.
+  $effect(() => () => {
+    abortUploads();
+    attachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
+  });
 </script>
 
-<form
-  use:revokeAttachmentPreviewsOnDestroy
-  bind:this={formElement}
-  class={classNames('chat-input', isDragOver && 'chat-input-dragover', className)}
-  method="POST"
-  {action}
-  onsubmit={handleSubmit}
-  onpaste={handlePaste}
-  ondrop={handleDrop}
-  ondragenter={handleDragEnter}
-  ondragover={handleDragOver}
-  ondragleave={handleDragLeave}
-  oncompositionstart={handleCompositionStart}
-  oncompositionend={handleCompositionEnd}
-  aria-label="Chat message composer"
-  aria-busy={sending || undefined}
-  {...rest}
->
-  {#if isDragOver}
-    <div class="chat-input-drop-overlay" aria-hidden="true">
-      <Paperclip class="cinder-icon-md" />
-      <span>Drop files to attach</span>
-    </div>
-  {/if}
-  <!-- Hidden input for form action mode -->
-  {#if isFormActionMode}
-    <input type="hidden" {name} {value} />
-  {/if}
-
-  <!-- Attachment previews -->
-  {#if attachments.length > 0}
-    <div class="chat-input-attachments" role="list" aria-label="Attached files">
-      {#each attachments as attachment (attachment.id)}
-        <div class="chat-input-attachment-wrapper" role="listitem">
-          <ChatAttachmentPreview {attachment} />
-          <button
-            type="button"
-            class="chat-input-attachment-remove"
-            onclick={() => removeAttachment(attachment.id)}
-            aria-label={`Remove ${attachment.file.name}`}
-          >
-            <X class="cinder-icon-xs" />
-          </button>
+<div class="chat-input-shell">
+  {#if blocked !== undefined}
+    <div
+      class={classNames('chat-input', 'chat-input-blocked', className)}
+      data-chat-composer-status="blocked"
+      role="group"
+      aria-label="Composer unavailable"
+    >
+      <TriangleAlert class="chat-input-blocked-glyph cinder-icon-sm" aria-hidden="true" />
+      <p class="chat-input-blocked-reason">{blocked.reason}</p>
+      {#if blocked.action !== undefined || blocked.link !== undefined}
+        <div class="chat-input-blocked-actions">
+          {#if blocked.action !== undefined}
+            {#if blocked.action.href !== undefined}
+              <Button
+                variant="secondary"
+                size="sm"
+                href={blocked.action.href}
+                label={blocked.action.label}
+                onclick={blocked.action.onclick}
+              />
+            {:else}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                label={blocked.action.label}
+                onclick={blocked.action.onclick}
+              />
+            {/if}
+          {/if}
+          {#if blocked.link !== undefined}
+            {#if blocked.link.href !== undefined}
+              <Button
+                variant="ghost"
+                size="sm"
+                href={blocked.link.href}
+                label={blocked.link.label}
+                onclick={blocked.link.onclick}
+              />
+            {:else}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                label={blocked.link.label}
+                onclick={blocked.link.onclick}
+              />
+            {/if}
+          {/if}
         </div>
-      {/each}
+      {/if}
     </div>
-    {#each attachments.filter((a) => a.status === 'error' && a.error) as failed (failed.id)}
-      <p class="chat-input-attachment-error" data-attachment-error={failed.id}>
-        {failed.file.name}: {failed.error}
-      </p>
-    {/each}
-  {/if}
-
-  <!-- Editor area -->
-  <div class="chat-input-editor-container">
-    {#if markdownStyling}
-      <div bind:this={markdownBackdrop} class="chat-input-markdown" aria-hidden="true">
-        {#each markdownSegments as segment, index (index)}<span
-            class={`chat-input-markdown-${segment.kind}`}>{segment.text}</span
-          >{/each}{#if value === '' || value.endsWith('\n')}&#8203;{/if}
-      </div>
-    {/if}
-    <textarea
-      bind:this={editorElement}
-      id={`${id}-editor`}
-      bind:value
-      onkeydown={handleKeyDown}
-      onbeforeinput={handleBeforeInput}
-      oninput={handleInput}
-      onpointerup={oncomposerselectionchange}
-      onselect={oncomposerselectionchange}
-      onblur={oncomposerblur}
-      onscroll={syncBackdropScroll}
-      {placeholder}
-      role={composerRole}
-      aria-label={resolvedComposerLabel}
-      aria-expanded={composerAriaExpanded}
-      aria-controls={composerAriaControls}
-      aria-activedescendant={composerAriaActiveDescendant}
-      aria-autocomplete={composerAriaAutocomplete}
-      {disabled}
-      readonly={paused}
-      class={classNames('chat-input-editor', markdownStyling && 'chat-input-editor-styled')}
-      aria-describedby={shortcutDescriptionId}
-      rows="1"></textarea>
-  </div>
-
-  <!-- Footer with actions -->
-  <div class="chat-input-footer">
-    <div class="chat-input-footer-left">
-      {#if allowAttachments}
-        <input
-          bind:this={fileInputRef}
-          id={`${id}-file-picker`}
-          type="file"
-          accept={acceptedTypes.join(',')}
-          multiple
-          class="cinder-sr-only"
-          onchange={handleFileSelect}
-          aria-label="Attach files"
-          aria-hidden="true"
-          tabindex={-1}
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onclick={() => fileInputRef?.click()}
-          disabled={disabled || paused || sendBlocked}
-          aria-label="Attach file"
-        >
-          <Paperclip class="cinder-icon-sm" />
-        </Button>
+  {:else}
+    <form
+      bind:this={formElement}
+      class={classNames('chat-input', isDragOver && 'chat-input-dragover', className)}
+      method="POST"
+      {action}
+      onsubmit={handleSubmit}
+      onpaste={handlePaste}
+      ondrop={handleDrop}
+      ondragenter={handleDragEnter}
+      ondragover={handleDragOver}
+      ondragleave={handleDragLeave}
+      oncompositionstart={handleCompositionStart}
+      oncompositionend={handleCompositionEnd}
+      aria-label="Chat message composer"
+      aria-busy={sending || undefined}
+      {...rest}
+    >
+      {#if isDragOver}
+        <div class="chat-input-drop-overlay" aria-hidden="true">
+          <Paperclip class="cinder-icon-md" />
+          <span>Drop files to attach</span>
+        </div>
+      {/if}
+      <!-- Hidden input for form action mode -->
+      {#if isFormActionMode}
+        <input type="hidden" {name} {value} />
       {/if}
 
-      {#if formattingToolbar}
-        <div class="chat-input-toolbar" role="toolbar" aria-label="Formatting">
-          {#each FORMATTING_BUTTONS as button (button.format)}
+      <!-- Attachment previews -->
+      {#if attachments.length > 0}
+        <div class="chat-input-attachments" role="list" aria-label="Attached files">
+          {#each attachments as attachment (attachment.id)}
+            <div class="chat-input-attachment-wrapper" role="listitem">
+              <ChatAttachmentPreview {attachment} />
+              <button
+                type="button"
+                class="chat-input-attachment-remove"
+                onclick={() => removeAttachment(attachment.id)}
+                aria-label={`Remove ${attachment.file.name}`}
+              >
+                <X class="cinder-icon-xs" />
+              </button>
+            </div>
+          {/each}
+        </div>
+        {#each attachments.filter((a) => a.status === 'error' && a.error) as failed (failed.id)}
+          <p class="chat-input-attachment-error" data-attachment-error={failed.id}>
+            {failed.file.name}: {failed.error}
+          </p>
+        {/each}
+      {/if}
+
+      <!-- Editor area -->
+      <div class="chat-input-editor-container">
+        {#if markdownStyling}
+          <div bind:this={markdownBackdrop} class="chat-input-markdown" aria-hidden="true">
+            {#each markdownSegments as segment, index (index)}<span
+                class={`chat-input-markdown-${segment.kind}`}>{segment.text}</span
+              >{/each}{#if value === '' || value.endsWith('\n')}&#8203;{/if}
+          </div>
+        {/if}
+        <textarea
+          bind:this={editorElement}
+          id={`${id}-editor`}
+          bind:value
+          onkeydown={handleKeyDown}
+          onbeforeinput={handleBeforeInput}
+          oninput={handleInput}
+          onpointerup={oncomposerselectionchange}
+          onselect={oncomposerselectionchange}
+          onblur={oncomposerblur}
+          onscroll={syncBackdropScroll}
+          {placeholder}
+          role={composerRole}
+          aria-label={resolvedComposerLabel}
+          aria-expanded={composerAriaExpanded}
+          aria-controls={composerAriaControls}
+          aria-activedescendant={composerAriaActiveDescendant}
+          aria-autocomplete={composerAriaAutocomplete}
+          {disabled}
+          readonly={paused}
+          class={classNames('chat-input-editor', markdownStyling && 'chat-input-editor-styled')}
+          aria-describedby={shortcutDescriptionId}
+          rows="1"></textarea>
+      </div>
+
+      <!-- Footer with actions -->
+      <div class="chat-input-footer">
+        <div class="chat-input-footer-left">
+          {#if allowAttachments}
+            <input
+              bind:this={fileInputRef}
+              id={`${id}-file-picker`}
+              type="file"
+              accept={acceptedTypes.join(',')}
+              multiple
+              class="cinder-sr-only"
+              onchange={handleFileSelect}
+              aria-label="Attach files"
+              aria-hidden="true"
+              tabindex={-1}
+            />
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              aria-label={button.label}
-              aria-keyshortcuts={button.keyshortcuts}
+              onclick={() => fileInputRef?.click()}
               disabled={disabled || paused || sendBlocked}
-              onmousedown={(event: MouseEvent) => event.preventDefault()}
-              onclick={() => applyFormat(button.format)}
+              aria-label="Attach file"
             >
-              <button.icon class="cinder-icon-sm" />
+              <Paperclip class="cinder-icon-sm" />
             </Button>
-          {/each}
+          {/if}
+
+          {#if formattingToolbar}
+            <div class="chat-input-toolbar" role="toolbar" aria-label="Formatting">
+              {#each FORMATTING_BUTTONS as button (button.format)}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={button.label}
+                  aria-keyshortcuts={button.keyshortcuts}
+                  disabled={disabled || paused || sendBlocked}
+                  onmousedown={(event: MouseEvent) => event.preventDefault()}
+                  onclick={() => applyFormat(button.format)}
+                >
+                  <button.icon class="cinder-icon-sm" />
+                </Button>
+              {/each}
+            </div>
+          {/if}
+          {#if toolbar}
+            {@render toolbar(toolbarContext)}
+          {/if}
+          {#if controls}
+            {@render controls()}
+          {/if}
+
+          <!-- Visually hidden shortcut description: always in the accessibility tree even when hint is container-queried away -->
+          <span id={shortcutDescriptionId} class="cinder-sr-only">
+            {#if showStopButton && !allowFollowUp}
+              Response is streaming. Use the stop button to stop generation.
+            {:else if showStopButton || showSideStopButton}
+              Response is streaming. {followUpInstruction} Use the stop button to stop generation.
+            {:else if submitOn === 'modifier-enter'}
+              Press Command+Enter or Control+Enter to send. Press Enter for a newline.
+            {:else if submitOn === 'enter-if-single-line' && value.includes('\n')}
+              This message has multiple lines. Use the send button to send it. Press Enter for a
+              newline.
+            {:else if submitOn === 'enter-if-single-line'}
+              Press Enter to send a single-line message. Press Shift+Enter for a newline.
+            {:else}
+              Press Enter to send. Press Shift+Enter for a newline.
+            {/if}
+          </span>
         </div>
-      {/if}
-      {#if toolbar}
-        {@render toolbar(toolbarContext)}
-      {/if}
 
-      <!-- Visually hidden shortcut description: always in the accessibility tree even when hint is container-queried away -->
-      <span id={shortcutDescriptionId} class="cinder-sr-only">
-        {#if showStopButton}
-          Response is streaming. Use the stop button to stop generation.
-        {:else if showSideStopButton}
-          Response is streaming. {followUpInstruction} Use the stop button to stop generation.
-        {:else if submitOn === 'modifier-enter'}
-          Press Command+Enter or Control+Enter to send. Press Enter for a newline.
-        {:else if submitOn === 'enter-if-single-line' && value.includes('\n')}
-          This message has multiple lines. Use the send button to send it. Press Enter for a
-          newline.
-        {:else if submitOn === 'enter-if-single-line'}
-          Press Enter to send a single-line message. Press Shift+Enter for a newline.
-        {:else}
-          Press Enter to send. Press Shift+Enter for a newline.
-        {/if}
-      </span>
-    </div>
+        <div class="chat-input-footer-right">
+          {#if actions}
+            {@render actions()}
+          {/if}
 
-    <div class="chat-input-footer-right">
-      {#if actions}
-        {@render actions()}
-      {/if}
+          {#if showSideStopButton}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              class="chat-input-send"
+              data-chat-side-stop=""
+              data-stop=""
+              {@attach holdButton((element) => (stopButtonRef = element))}
+              label="Stop"
+              aria-label="Stop generating"
+              aria-describedby={shortcutDescriptionId}
+              onclick={() => onstop?.()}
+            >
+              {#snippet leadingIcon()}<Square class="cinder-icon-sm" />{/snippet}
+            </Button>
+            <Tooltip
+              text="Stop generating"
+              class="chat-input-tooltip"
+              placement="top"
+              triggerRef={stopButtonRef}
+            />
+          {/if}
 
-      {#if showSideStopButton}
-        <button
-          bind:this={stopButtonRef}
-          type="button"
-          class="chat-input-send"
-          data-stop=""
-          onclick={() => onstop?.()}
-          aria-label="Stop generating"
-          aria-describedby={shortcutDescriptionId}
-        >
-          <Square class="cinder-icon-sm" />
-        </button>
-        <Tooltip
-          text="Stop generating"
-          class="chat-input-tooltip"
-          placement="top"
-          triggerRef={stopButtonRef}
-        />
-      {/if}
-
-      <!-- Send/Stop trigger stays mounted so Tooltip does not tear down while focus leaves it. -->
-      <button
-        bind:this={sendButtonRef}
-        type={showStopButton ? 'button' : 'submit'}
-        class="chat-input-send"
-        data-stop={showStopButton ? '' : undefined}
-        disabled={showStopButton ? false : !canSubmit}
-        onclick={handleSendButtonClick}
-        aria-label={showStopButton
-          ? 'Stop generating'
-          : showSendingSpinner
-            ? 'Sending message'
-            : 'Send message'}
-        aria-describedby={shortcutDescriptionId}
-      >
-        {#if showStopButton}
-          <Square class="cinder-icon-sm" />
-        {:else if showSendingSpinner}
-          <svg
-            class="chat-input-spinner"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
+          <!-- One Send/Stop/Answer button stays mounted, so focus is never dropped as the run starts and ends. -->
+          <Button
+            type={showStopButton ? 'button' : 'submit'}
+            variant="secondary"
+            size="sm"
+            class="chat-input-send"
+            data-chat-send=""
+            {@attach holdButton((element) => (sendButtonRef = element))}
+            data-stop={showStopButton ? '' : undefined}
+            disabled={showStopButton ? false : !canSubmit}
+            label={showStopButton ? 'Stop' : sendLabel}
+            aria-label={sendAccessibleName}
+            aria-describedby={shortcutDescriptionId}
+            onclick={handleSendButtonClick}
           >
-            <circle
-              class="spinner-track"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            ></circle>
-            <path
-              class="spinner-head"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-        {:else}
-          <SendHorizontal class="cinder-icon-sm" />
-        {/if}
-      </button>
-      <Tooltip
-        text={sendTooltipText}
-        class="chat-input-tooltip"
-        placement="top"
-        triggerRef={sendButtonRef}
-      />
-    </div>
-  </div>
+            {#snippet leadingIcon()}
+              {#if showStopButton}
+                <Square class="cinder-icon-sm" />
+              {:else if showSendingSpinner}
+                <svg
+                  class="chat-input-spinner"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle
+                    class="spinner-track"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="spinner-head"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+              {:else}
+                <SendHorizontal class="cinder-icon-sm" />
+              {/if}
+            {/snippet}
+          </Button>
+          <Tooltip
+            text={sendTooltipText}
+            class="chat-input-tooltip"
+            placement="top"
+            triggerRef={sendButtonRef}
+          />
+        </div>
+      </div>
 
-  {#if statusText}
-    <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
+      <!-- Error display -->
+      {#if error}
+        <p id={errorId} class="chat-input-error" role="alert">
+          {error}
+        </p>
+      {/if}
+    </form>
   {/if}
-
-  <!-- Error display -->
-  {#if error}
-    <p id={errorId} class="chat-input-error" role="alert">
-      {error}
-    </p>
+  {#if blocked === undefined}
+    {#if statusText}
+      <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
+    {:else if hintText !== undefined}
+      <p class="chat-input-hint" aria-hidden="true">{hintText}</p>
+    {/if}
   {/if}
-
   <!-- Screen reader announcements -->
   <div aria-live="polite" aria-atomic="true" class="cinder-sr-only">
     {announcer.message}
   </div>
-</form>
+</div>
 
 <style>
   .chat-input {
@@ -1512,11 +1633,61 @@
     gap: 2px;
   }
 
-  .chat-input-status {
+  .chat-input-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  /* The line under the box: a status reads from the box's left edge, the hint is centred. */
+  .chat-input-status,
+  .chat-input-hint {
     margin: 0;
     padding-inline: var(--cinder-space-1);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
+  }
+
+  .chat-input-hint {
+    text-align: center;
+  }
+
+  /* The blocked row: one compact row the height of the control row, in place of the composer. */
+  .chat-input-blocked {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+  }
+
+  .chat-input-blocked:focus-within {
+    border-color: var(--cinder-control-border);
+  }
+
+  .chat-input-blocked :global(.chat-input-blocked-glyph) {
+    flex: none;
+    color: var(--cinder-status-warning-text);
+  }
+
+  .chat-input-blocked-reason {
+    flex: 1 1 14rem;
+    min-inline-size: 0;
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  /* On a narrow card the actions drop to a second line instead of overlapping the reason. */
+  .chat-input-blocked-actions {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    margin-inline-start: auto;
   }
 
   .chat-input-editor:focus {
@@ -1544,107 +1715,32 @@
     gap: var(--cinder-space-2);
   }
 
+  .chat-input-footer-left {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    min-inline-size: 0;
+  }
+
+  .chat-input-footer-right {
+    flex: none;
+  }
+
   @media (pointer: coarse) {
     :global(.chat-input-tooltip.cinder-tooltip) {
       display: none !important;
     }
   }
 
-  /* Send button: a 32px icon button. A coarse pointer keeps the 44px WCAG 2.2 AA touch target
-   * (--cinder-touch-target-min) as its hit area, not its drawn size: the ::after below extends the
-   * element's own hit-testable box, so a tap within 6px of the button still lands on it. */
-  .chat-input-send {
-    /* An absolutely positioned ::after is measured from the PADDING box, so the stop state's 1px
-     * border has to come back out of the extension for the hit area to be the full 44px. */
-    --_cinder-chat-send-edge: 0px;
-
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    padding: 0;
-    border: none;
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-accent-solid);
-    color: var(--cinder-accent-contrast);
-    cursor: pointer;
-    transition:
-      background var(--cinder-duration-fast) var(--cinder-ease-standard),
-      transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  @media (hover: hover) {
-    .chat-input-send:hover:not(:disabled) {
-      background: color-mix(in oklch, var(--cinder-accent-solid), black 15%);
-    }
-  }
-
-  .chat-input-send:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-
-  .chat-input-send:disabled {
-    background: transparent;
-    box-shadow: none;
-    color: var(--cinder-text-disabled);
-    cursor: not-allowed;
+  /* Send, Answer and Stop are secondary Cinder buttons with an icon and a word. Disabled is
+   * Cinder's own quiet look; Stop keeps a faint danger border so it reads as the one way out. */
+  .chat-input-footer-right :global(.chat-input-send[data-stop]) {
+    border-color: var(--cinder-status-danger-border);
   }
 
   @media (any-pointer: coarse) {
-    .chat-input-send::after {
-      content: '';
-      position: absolute;
-      inset: calc((var(--cinder-touch-target-min) - 2rem) / -2 - var(--_cinder-chat-send-edge));
-    }
-
-    /* Send and Stop sit side by side while a follow-up is allowed, so their extended hit areas must
-     * not overlap: the gap has to be at least the two 6px extensions. */
+    /* Send and Stop sit side by side once a follow-up is typed, so their hit areas must not touch. */
     .chat-input-footer-right {
       gap: var(--cinder-space-3);
-    }
-  }
-
-  .chat-input-send:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    outline-offset: 3px;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  /* The send button is a solid accent fill: gap, then ring (COR-1498). The
-     tinted stop state keeps the tight ring. */
-  .chat-input-send:not([data-stop]):focus-visible {
-    box-shadow: var(--_cinder-focus-ring-filled-shadow);
-  }
-
-  @media (forced-colors: active) {
-    .chat-input-send:not([data-stop]):focus-visible {
-      outline: var(--cinder-ring-width) solid Highlight;
-      outline-offset: 3px;
-    }
-  }
-
-  /* Stop button variant - danger-tinted to signal urgency during streaming */
-  .chat-input-send[data-stop] {
-    --_cinder-chat-send-edge: 1px;
-
-    background: var(--cinder-status-danger-background);
-    color: var(--cinder-status-danger-text);
-    border: 1px solid var(--cinder-status-danger-border);
-  }
-
-  @media (hover: hover) {
-    .chat-input-send[data-stop]:hover {
-      background: var(--cinder-status-danger-border);
-      border-color: var(--cinder-status-danger-border);
-    }
-  }
-
-  @media (forced-colors: active) {
-    .chat-input-send:focus-visible {
-      outline: var(--cinder-ring-width) solid Highlight;
-      outline-offset: 3px;
     }
   }
 

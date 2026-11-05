@@ -99,7 +99,7 @@ function approvalConversation(id: string): ConversationHistory {
 }
 
 describe('Chat follow-ups during a run', () => {
-  test('keeps the composer live with Send and Stop side by side and submits through sendRunInput', async () => {
+  test('keeps the composer live with Stop in Send place and submits through sendRunInput', async () => {
     const runInput: Array<{ id: string; content: unknown }> = [];
     const sent: unknown[] = [];
     let stops = 0;
@@ -126,7 +126,8 @@ describe('Chat follow-ups during a run', () => {
     });
 
     expect(composerOf(container).disabled).toBe(false);
-    expect(container.querySelector('button[aria-label="Send message"]')).not.toBeNull();
+    // Nothing typed: Stop replaces Send.
+    expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
     const stop = container.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]');
     expect(stop).not.toBeNull();
 

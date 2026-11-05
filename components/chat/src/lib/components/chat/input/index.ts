@@ -22,4 +22,8 @@ export {
   type ComposerMarkdownSegment,
   type ComposerMarkdownSegmentKind,
 } from './composer-markdown.ts';
-export { composerStatusText, type ChatComposerStatus } from './composer-status.ts';
+export {
+  composerStatusText,
+  type ChatComposerBlockedAction,
+  type ChatComposerStatus,
+} from './composer-status.ts';

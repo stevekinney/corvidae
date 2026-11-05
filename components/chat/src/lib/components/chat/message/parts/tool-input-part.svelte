@@ -81,12 +81,15 @@
     }
   }
 
-  // An open free-text question is the one the composer answers, when the host says so.
+  // An open free-text question, or a choice that takes the person's own answer, is the one the
+  // composer answers, when the host says so.
   $effect(() => {
-    if (sharedStore === undefined || !answerInComposer || kind !== 'text') return;
+    if (sharedStore === undefined || !answerInComposer) return;
+    if (kind !== 'text' && kind !== 'choice-other') return;
     if (resolved || answered || onInputSubmit === undefined) return;
     return sharedStore.registerComposerTarget({
       toolCallId: part.toolCallId,
+      kind,
       submit: (text) => submitAnswer(text),
     });
   });

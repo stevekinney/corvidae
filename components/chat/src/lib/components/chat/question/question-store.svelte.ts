@@ -15,10 +15,12 @@ import type { QuestionAnswerRecord } from './question-answer.ts';
 /** The largest file a file question takes when the host sets no limit: the composer's own default. */
 export const DEFAULT_MAXIMUM_FILE_SIZE = 10 * 1024 * 1024;
 
-/** A free-text question the composer answers. */
+/** A question the composer answers: free text, or a choice that also takes the person's own answer. */
 export interface ComposerQuestionTarget {
   /** The tool call the question parked. */
   readonly toolCallId: string;
+  /** What the question asks: `text`, or `choice-other`, picked from choices or typed in the composer. */
+  readonly kind: 'text' | 'choice-other';
   /** Submits `text` as the answer; resolves `true` when the host accepted it. */
   readonly submit: (text: string) => Promise<boolean>;
 }
@@ -82,7 +84,7 @@ export class QuestionStore {
     return this.#maxFileSize() ?? DEFAULT_MAXIMUM_FILE_SIZE;
   }
 
-  /** The free-text question the composer answers now: the most recent one that is still open. */
+  /** The question the composer answers now: the most recent one that is still open. */
   get composerTarget(): ComposerQuestionTarget | undefined {
     if (!this.#answerInComposer()) return undefined;
     let latest: ComposerQuestionTarget | undefined;

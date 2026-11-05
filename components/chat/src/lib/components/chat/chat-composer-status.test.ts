@@ -1,7 +1,7 @@
 /**
- * The composer status line and the one-row approval, as Chat wires them: a
- * pending approval shows "Waiting for your approval" until it is resolved, the
- * host's own status wins, and the row's Approve and Deny reach the adapter.
+ * The line under the composer and the one-row approval, as Chat wires them: a pending approval
+ * leaves the composer's hint alone, the host's own status (a note, a reconnect, queued follow-ups,
+ * a blocked composer) replaces it, and the row's Approve and Deny reach the adapter.
  */
 
 /// <reference lib="dom" />
@@ -80,16 +80,19 @@ function statusLine(container: HTMLElement): string | undefined {
 }
 
 describe('Chat composer status and approval row', () => {
-  test('shows no status line when nothing is waiting', () => {
+  test('shows the hint, and no status line, when nothing is waiting', () => {
     const { container } = render(Chat, {
       id: 'chat-status-idle',
       conversation: appendUserMessage(createConversationHistory({ id: 'idle' }), 'hi'),
     });
 
     expect(statusLine(container)).toBeUndefined();
+    expect(container.querySelector('.chat-input-hint')?.textContent).toBe(
+      'Enter to send · Shift and Enter for a new line',
+    );
   });
 
-  test('a pending approval shows waiting, and steering when follow-ups are on', () => {
+  test('a pending approval keeps the hint and the composer live, with a quiet disabled Send', () => {
     const adapter: ChatAdapter = {
       sendMessage: async () => undefined,
       sendRunInput: async () => undefined,
@@ -101,17 +104,39 @@ describe('Chat composer status and approval row', () => {
       adapter,
     });
 
-    expect(statusLine(container)).toBe('Waiting for your approval · a message now steers the run');
+    expect(statusLine(container)).toBeUndefined();
+    expect(container.querySelector('.chat-input-hint')).not.toBeNull();
+    const send = container.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
+    expect(send.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(send.disabled).toBe(true);
   });
 
-  test("the host's status wins over the derived one", () => {
+  test("the host's status replaces the hint", () => {
     const { container } = render(Chat, {
       id: 'chat-status-host',
       conversation: approvalConversation('host'),
-      composerStatus: { kind: 'reconnecting', attempt: 2 },
+      composerStatus: { kind: 'reconnecting', attempt: 3 },
     });
 
-    expect(statusLine(container)).toBe('Reconnecting… attempt 2');
+    expect(statusLine(container)).toBe('Reconnecting… attempt 3');
+    expect(container.querySelector('.chat-input-hint')).toBeNull();
+  });
+
+  test.each([
+    [{ kind: 'steering' }, 'A message now steers the run.'],
+    [
+      { kind: 'note', text: 'Effort High applies from the next step.' },
+      'Effort High applies from the next step.',
+    ],
+    [{ kind: 'queued' }, 'Follow-up queued · sends when the run is ready'],
+  ] as const)('shows %j under the composer', (composerStatus, text) => {
+    const { container } = render(Chat, {
+      id: `chat-status-${composerStatus.kind}`,
+      conversation: createConversationHistory({ id: composerStatus.kind }),
+      composerStatus,
+    });
+
+    expect(statusLine(container)).toBe(text);
   });
 
   test('the approval row approves through the adapter and the wait clears', async () => {

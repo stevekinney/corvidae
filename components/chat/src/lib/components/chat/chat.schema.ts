@@ -43,6 +43,16 @@ const schema = {
       description:
         'Whether the composer answers an open free-text question. A free-text question then reads "Answer below", the composer\'s placeholder reads "Answer", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. Without it (a reviews inbox, which has no composer) a text field is drawn in the question. Every other kind of question is answered in place either way. Default `false`.',
     },
+    composerPlaceholder: {
+      type: 'string',
+      description:
+        "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`.",
+    },
+    composerAnswering: {
+      type: 'boolean',
+      description:
+        "Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode, its button reads `Answer`, and its placeholder reads `Choose an answer above, or type your own…`. Chat sets this itself while a question it draws is open in the composer. Default `false`.",
+    },
     disabled: {
       type: 'boolean',
       description:
@@ -178,6 +188,18 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           'Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before.',
+      },
+      {
+        name: 'composerControls',
+        reason: 'function-or-snippet',
+        description:
+          "Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet takes no arguments and stays interactive while a run streams; the caller owns the semantics inside it.",
+      },
+      {
+        name: 'composerHint',
+        reason: 'unknown-shape',
+        description:
+          'The line of help under the composer while no status shows. Default `Enter to send · Shift and Enter for a new line`; `false` hides it.',
       },
       {
         name: 'conversation',
