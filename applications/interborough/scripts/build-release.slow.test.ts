@@ -7,6 +7,7 @@ import { buildRelease } from './build-release.ts';
 
 describe('the signed release archive', () => {
   // load-proof: real signed archive build deterministically verifies relocated host artifacts.
+  // spawn-free: the real archive witness is the process-boundary behavior under test.
   test('builds and inspects a real relocated release archive', async () => {
     if (process.platform !== 'darwin' || process.arch !== 'arm64') return;
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-test-'));
