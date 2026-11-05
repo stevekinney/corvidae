@@ -32,7 +32,7 @@ import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflo
 import { toScheduleSpec } from './schedule-spec';
 import { toWeftDocumentInput } from './workflow-document-handlers';
 import { AGENT_STEP_HANDLER, scheduleTriggerExtensionIssue, TRIGGER_KEYS } from './workflow-file';
-import { checkWorkflowSchema } from './workflow-schema';
+import { checkWorkflowSchema, workflowInputOf } from './workflow-schema';
 
 export interface WorkflowCatalog {
   readonly stepKinds: readonly {
@@ -300,7 +300,17 @@ function block(label: string, value: unknown): string {
  */
 export function composeAgentMessage(message: string, trigger: unknown, previous: unknown): string {
   let composed = message;
-  if (trigger !== undefined && trigger !== null) composed += block('Trigger:', trigger);
+  if (trigger !== undefined && trigger !== null) {
+    const visibleTrigger =
+      typeof trigger === 'object' && workflowInputOf(trigger) !== trigger
+        ? Object.fromEntries(
+            Object.entries(trigger).filter(
+              ([key]) => key !== 'workspaceAuthority' && key !== 'authorityHold',
+            ),
+          )
+        : trigger;
+    composed += block('Trigger:', visibleTrigger);
+  }
   if (previous !== undefined && previous !== null) composed += block('Previous step:', previous);
   return composed;
 }

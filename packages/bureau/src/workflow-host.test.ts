@@ -31,6 +31,27 @@ describe('composeAgentMessage', () => {
     );
   });
 
+  it('keeps durable authority out of agent messages while preserving the trigger payload', () => {
+    const trigger = {
+      kind: 'schedule',
+      scheduleId: 's',
+      input: { workspaceAuthority: 'user value' },
+    };
+    const bound = {
+      ...trigger,
+      workspaceAuthority: {
+        version: 1,
+        workspaceId: 'workspace-a',
+        actorId: 'actor-a',
+        authorizingOwner: 'owner-a',
+        membershipRevision: 'revision-a',
+      },
+      authorityHold: 'resuming',
+    };
+    expect(composeAgentMessage('Go', bound, null)).toBe(composeAgentMessage('Go', trigger, null));
+    expect(bound.workspaceAuthority.actorId).toBe('actor-a');
+  });
+
   it('appends the previous step’s result when it is present and not null', () => {
     expect(composeAgentMessage('Go', undefined, { content: 'hi', output: null })).toBe(
       `Go\n\nPrevious step:\n${FENCE}json\n{\n  "content": "hi",\n  "output": null\n}\n${FENCE}`,
