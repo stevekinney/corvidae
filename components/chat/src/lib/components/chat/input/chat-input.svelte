@@ -46,6 +46,7 @@
      * controls, attachments or formatting, and the hint stays under it. Default `false`.
      */
     compact?: boolean;
+    /**
      * Why typing and sending are paused, as muted text beside Send. Shown only while `paused`, and
      * named by Send's `aria-describedby`, so a screen reader hears the reason on the button.
      */

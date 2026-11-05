@@ -39,7 +39,8 @@ describe('ChatInput — shortcut accessibility', () => {
     const stopButtonMatch = chatInputSource.match(/data-chat-side-stop[\s\S]*?<\/Button>/);
     expect(stopButtonMatch?.[0]).toMatch(/aria-describedby=\{shortcutDescriptionId\}/);
     const mainButtonMatch = chatInputSource.match(/data-chat-send[\s\S]*?<\/Button>/);
-    expect(mainButtonMatch?.[0]).toMatch(/aria-describedby=\{shortcutDescriptionId\}/);
+    // Send also names the paused reason while one is shown, so the description id leads a ternary.
+    expect(mainButtonMatch?.[0]).toMatch(/aria-describedby=\{[^}]*shortcutDescriptionId/);
   });
 
   test('send button does not reference the visible hint id via aria-describedby', () => {
