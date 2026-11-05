@@ -1464,7 +1464,8 @@
     title={CHAT_COPY.composer.enableDialog.title(pluginTitle)}
     description={CHAT_COPY.composer.enableDialog.description}
     confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
-    onConfirm={() => void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
+    onConfirm={() =>
+      void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
   />
   <RestartDialog flow={restart} />
 </section>
