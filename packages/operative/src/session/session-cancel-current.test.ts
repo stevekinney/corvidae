@@ -28,6 +28,7 @@ describe('session.cancel() — handle ownership', () => {
     const fakeEngine = createSessionEngine({
       cancel: async (id: string) => {
         cancelledIds.push(id);
+        return { workflowId: id, status: 'cancel-requested' };
       },
       signal: async () => {},
       update: async () => {},
@@ -120,9 +121,10 @@ describe('session.cancel() — handle ownership', () => {
       return { content: `done ${index}`, toolCalls: [] };
     };
     const engine = createSessionEngine({
-      cancel: async () => {
+      cancel: async (id: string) => {
         cancelStarted.resolve();
         await releaseCancel.promise;
+        return { workflowId: id, status: 'cancel-requested' };
       },
     });
     const store = createSessionStore(textValueStore(new MemoryStorage()));
@@ -163,6 +165,7 @@ describe('session.cancel() — handle ownership', () => {
     const fakeEngine = createSessionEngine({
       cancel: async (id: string) => {
         cancelledIds.push(id);
+        return { workflowId: id, status: 'cancel-requested' };
       },
       signal: async () => {},
       update: async () => {},

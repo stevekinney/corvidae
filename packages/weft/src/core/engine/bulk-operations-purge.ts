@@ -428,6 +428,7 @@ async function addWorkflowPrefixDeleteKeys(
   deleteKeys: Set<string>,
   workflowId: string,
 ): Promise<void> {
+  deleteKeys.add(KEYS.signalSequence(workflowId));
   for (const prefix of workflowPurgePrefixes(workflowId)) {
     const keys = await collectKeysForPrefix(storage, prefix);
     for (const key of keys) deleteKeys.add(key);

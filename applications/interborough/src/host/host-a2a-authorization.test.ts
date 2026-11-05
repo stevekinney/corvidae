@@ -374,7 +374,7 @@ async function makeHome(key: string | undefined): Promise<string> {
       environment: { INTERBOROUGH_HOME: home },
     });
     try {
-      bungalow.writeSecret('a2a-api-key', key);
+      await bungalow.deploymentSecrets.write('a2a-api-key', key);
     } finally {
       bungalow.close();
     }

@@ -44,6 +44,7 @@ import {
   type BulkSignalAllDryRunOptions,
   type BulkSignalResult,
   type BulkTagResult,
+  type CancelWorkflowResult,
   type CheckpointState,
   type CheckpointSummary,
   type CoordinatedUpdateResult,
@@ -2106,15 +2107,15 @@ export class Engine<
           this.#createLifecycleCallbacks(),
         ),
       abandon: () =>
-        abandonPreparedWorkflowFromLifecycle(getInternals(this), context, (workflowId) =>
-          terminateWorkflowFromTermination(
+        abandonPreparedWorkflowFromLifecycle(getInternals(this), context, async (workflowId) => {
+          await terminateWorkflowFromTermination(
             getInternals(this),
             workflowId,
             'cancelled',
             this.#createTerminationCallbacks(),
             PREPARED_WORKFLOW_ABANDONED_REASON,
-          ),
-        ),
+          );
+        }),
     };
   }
   /**
@@ -3048,8 +3049,8 @@ export class Engine<
         finalizePendingTimelineEntry(getInternals(this), workflowId, status, output),
     });
   }
-  async cancel(workflowId: string): Promise<void> {
-    await cancelWorkflowFromTermination(
+  async cancel(workflowId: string): Promise<CancelWorkflowResult> {
+    return await cancelWorkflowFromTermination(
       getInternals(this),
       workflowId,
       this.#createTerminationCallbacks(),

@@ -6,6 +6,7 @@ import type {
   BulkRetryFailedResult,
   BulkSignalResult,
   BulkTagResult,
+  CancelWorkflowResult,
   CoordinatedUpdateResult,
   ForkOptions,
   ListFilter,
@@ -427,10 +428,15 @@ export function getScheduleRequest(
 export function cancelWorkflowRequest(
   context: HttpClientRequestContext,
   id: string,
-): Promise<void> {
-  return request<void>(context.baseUrl, `/workflows/${encodeURIComponent(id)}`, context.headers, {
-    method: 'DELETE',
-  });
+): Promise<CancelWorkflowResult> {
+  return request<CancelWorkflowResult>(
+    context.baseUrl,
+    `/workflows/${encodeURIComponent(id)}`,
+    context.headers,
+    {
+      method: 'DELETE',
+    },
+  );
 }
 
 /** Force-timeout a workflow (`POST /v1/workflows/:id/timeout`). */

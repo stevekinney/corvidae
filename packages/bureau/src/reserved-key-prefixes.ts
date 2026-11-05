@@ -302,15 +302,9 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
     'watch-event:',
     'a workflow watch’s event: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
   ),
-  purgedButUnexercised(
-    'sig:',
-    'a pending workflow signal: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
-  ),
+  purged('sig:'),
   purged('sigres:'),
-  purgedButUnexercised(
-    'sigseq:',
-    'a workflow signal sequence: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
-  ),
+  purged('sigseq:'),
   purgedButUnexercised(
     'review:',
     'Weft’s own review record: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',

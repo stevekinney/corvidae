@@ -295,6 +295,7 @@ describe('CancelTask', () => {
     engine.cancel = async (id: string) => {
       await engine.signal(id, 'input', 'raced');
       await waitForState(agent, id, alice(), TaskState.TASK_STATE_COMPLETED);
+      return { workflowId: id, status: 'already-terminal', terminalStatus: 'completed' };
     };
 
     expect(

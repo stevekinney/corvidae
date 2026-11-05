@@ -258,6 +258,7 @@ import {
 } from './bureau-session-persistence';
 import {
   type BureauChildren,
+  type ChildTopology,
   type ChildTopologyParent,
   createChildTopology,
 } from './child-topology';
@@ -1107,7 +1108,7 @@ export function isDurableRunUnsettled(status: string): boolean {
  */
 export interface CancelDurableRunDependencies {
   getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  cancel: (runId: string) => Promise<void>;
+  cancel: (runId: string) => Promise<unknown>;
 }
 
 /** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
@@ -2996,6 +2997,41 @@ async function constructBureau<const D extends AgentDefinitions>(
   const workflowFileTypes: { current: ((type: string) => boolean) | undefined } = {
     current: undefined,
   };
+  let childTopologyForWait: ChildTopology | undefined;
+  function configureChildWaitServices(services: DurableRunDeps, principal: string): void {
+    services.deferredChildCallIds ??= new Set<string>();
+    services.childWaitPrincipal = principal;
+    services.requestChildWait = (request) => {
+      if (services.childWaitPrincipal !== request.principal)
+        return { parked: false, reason: 'unauthorized' };
+      if (
+        services.pendingChildWait !== undefined ||
+        services.pendingHumanWait !== undefined ||
+        services.pendingWakeup !== undefined
+      )
+        return { parked: false, reason: 'already-parked' };
+      services.pendingChildWait = { schemaVersion: 1, ...request };
+      services.deferredChildCallIds?.add(request.toolCallId);
+      return { parked: true };
+    };
+    services.resolveChildWait = async (request) => {
+      const topology = childTopologyForWait;
+      if (topology === undefined) return { status: 'not-found' };
+      const outcome = await topology.children.wait(
+        {
+          parentRunId: request.parentRunId,
+          childRunId: request.childRunId,
+        },
+        { signal: AbortSignal.abort() },
+      );
+      if (outcome.outcome === 'settled')
+        return { status: 'settled', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'unobservable')
+        return { status: 'unobservable', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'wait-aborted') return { status: 'pending' };
+      return { status: 'not-found' };
+    };
+  }
   const assetServiceHolder: { current: AssetService | undefined } = {
     current: assetServiceInstance,
   };
@@ -3035,6 +3071,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      configureDurableRun: (_runId, services, principal) => {
+        configureChildWaitServices(services, principal);
+      },
       // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
       // on every line, so a change to `logs.maximumLinesPerRun` applies to the next one.
       ...(options.logs === undefined
@@ -9605,12 +9644,12 @@ async function constructBureau<const D extends AgentDefinitions>(
         decide: decideWiring,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
       });
-      const durableServicesOnServices =
-        wantsHumanInput || wantsWakeup
-          ? (services: DurableRunDeps) => {
-              servicesRef.current = services;
-            }
-          : undefined;
+      const durableServicesOnServices = runtime.durable
+        ? (services: DurableRunDeps) => {
+            servicesRef.current = services;
+            configureChildWaitServices(services, owner);
+          }
+        : undefined;
 
       // AB-67/AB-199 — steering is scoped to in-memory (process-local)
       // sessions only: a durably-configured bureau's `submitSteeringCommand`
@@ -11732,7 +11771,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               verdict: 'cancel',
               rejection: 'prepared-not-launched',
             });
-            cancelNeverLaunched(handle.id, durable.engine.cancel(handle.id));
+            cancelNeverLaunched(
+              handle.id,
+              durable.engine.cancel(handle.id).then(() => undefined),
+            );
           }
           continue;
         }
@@ -12720,7 +12762,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function cancelDurableRun(runId: string): Promise<CancelDurableRunOutcome> {
     const outcome = await resolveCancelDurableRun(runId, {
       getDurableRun,
-      cancel: (id) => runtime.durable!.engine.cancel(id),
+      cancel: (id) => runtime.durable!.engine.cancel(id).then(() => undefined),
     });
     // AB-46: only an ACTUALLY-committed cancellation ('requested') terminates
     // the run — 'already-terminal'/'not-found'/'failed'/'unsupported-capability'
@@ -22431,6 +22473,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (shutdownPromise) return;
         void childTopology.parentCancelled(runId, reason);
       },
+      configureDurableRun: (_runId, services, principal) => {
+        configureChildWaitServices(services, principal);
+      },
     });
 
   /**
@@ -22630,10 +22675,19 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
     // parent this process does not hold has no action log here, and the record is dropped.
-    announce: (announcement) => {
+    announce: async (announcement) => {
       const action = childActionOf(announcement);
       if (action !== undefined) {
         store.recordAction(announcement.record.parentRunId, action.type, action.detail);
+      }
+      if (announcement.kind === 'settled') {
+        void runtime.durable?.engine
+          .signal(
+            announcement.record.parentRunId,
+            `durable-child:${announcement.record.parentRunId}:${announcement.record.childRunId}`,
+            null,
+          )
+          .catch(() => undefined);
       }
     },
     resolveParent: resolveChildParent,
@@ -22650,6 +22704,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     defaultTimeToLiveMilliseconds: () =>
       currentSettings()['children.delegation.defaultTimeToLiveMilliseconds'],
   });
+  childTopologyForWait = childTopology;
 
   // COR-1670 — the journal behind `createPeerCallTool({ durable })`.
   const peerCalls: PeerCallJournal = {

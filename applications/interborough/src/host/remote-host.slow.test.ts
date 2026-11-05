@@ -155,9 +155,9 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     expect(String(paths['configurationFile'])).toStartWith(prefix);
     expect(String(paths['configurationFile'])).toEndWith('/configuration.json');
     expect(paths['providers']).toEqual([
-      { name: 'anthropic', secretFile: 'INTERBOROUGH_SECRET_ANTHROPIC_API_KEY' },
-      { name: 'openai', secretFile: 'INTERBOROUGH_SECRET_OPENAI_API_KEY' },
-      { name: 'gemini', secretFile: 'INTERBOROUGH_SECRET_GEMINI_API_KEY' },
+      { name: 'anthropic', secretFile: `workspace:${host.workspaceId}/anthropic-api-key` },
+      { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
+      { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
     ]);
     for (const secret of [PASSWORD, client.secretAccessKey, client.accessKeyId]) {
       expect(body).not.toContain(secret);

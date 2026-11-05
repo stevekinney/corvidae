@@ -1,4 +1,4 @@
-import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
+import { initializeWorkspaceHome, storedWorkspaceSecret } from './workspace-home.test-support.ts';
 /**
  * COR-1930: the host reads the `toolSources` in `configuration.json`, loads them before the Bureau
  * is built, lists their tools by `<id>__<tool>` with the capability tiers Armorer maps, keeps every
@@ -209,7 +209,9 @@ describe('saved tool sources', () => {
     expect(await filesHolding(path, API_KEY)).toEqual([]);
     const present = await filesUnder(path);
     const files = [...present.keys()];
-    expect(files.some((file) => file.endsWith(join('secrets', 'tool-source-files')))).toBe(true);
+    const active = await storedWorkspaceSecret(path, 'tool-source-files');
+    expect(files).toContain(active.path);
+    expect(active.value?.length).toBeGreaterThan(0);
     expect(await readFile(join(path, 'configuration.json'), 'utf8')).toContain('"files"');
   });
 
@@ -353,7 +355,9 @@ describe('saved tool sources', () => {
     expect(new URL(location).pathname).toBe('/host/oauth/callback/calendar');
     // The verifier and state are stored while the sign-in waits, and are not in plaintext.
     const during = await filesUnder(path);
-    expect([...during.keys()].some((file) => file.endsWith('tool-source-calendar'))).toBe(true);
+    const waiting = await storedWorkspaceSecret(path, 'tool-source-calendar');
+    expect(during.has(waiting.path)).toBe(true);
+    expect(JSON.parse(waiting.value ?? '')).toHaveProperty('oauth');
 
     const callback = await fetch(location);
     expect(callback.status).toBe(200);
@@ -505,7 +509,12 @@ describe('saved tool sources', () => {
       'toolSources',
     );
     expect(await sourcesOf(host)).toEqual([]);
-    expect(await readFile(join(path, 'secrets', 'tool-source-pets'), 'utf8')).toBe('');
+    const cleared = await storedWorkspaceSecret(path, 'tool-source-pets');
+    expect(JSON.parse(cleared.value ?? '')).toEqual({
+      version: 1,
+      sourceId: 'pets',
+      credentials: {},
+    });
     expect(await statusOf(send(host, 'DELETE', '/host/tool-sources/pets'))).toBe(404);
   });
 

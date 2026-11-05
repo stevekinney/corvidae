@@ -118,6 +118,8 @@ export interface RequestHumanInputContext {
    * refuses a human-input request, because a step parks on at most one request (COR-1578).
    */
   readonly pendingWakeup: PendingWakeup | undefined;
+  /** A child-wait request already won this step, so human input must refuse. */
+  readonly pendingChildWait?: import('./durable/types').PendingChildWait | undefined;
   /**
    * Optional run id, used in the emitted event so observers can correlate the
    * park event to a specific run. Falls back to `''` when omitted.
@@ -294,6 +296,7 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
       const refusal = refuseIfStepIsParked({
         pendingHumanWait: context.pendingHumanWait,
         pendingWakeup: context.pendingWakeup,
+        pendingChildWait: context.pendingChildWait,
       });
       if (refusal !== undefined) {
         return { parked: false, signalName: input.signalName, ...refusal };

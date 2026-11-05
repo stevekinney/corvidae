@@ -355,7 +355,7 @@ export interface ChildTopologyDependencies {
    * Told of each child that started and each that settled, after the audit entry is written, so
    * the parent run's stream can show it. A failure is a diagnostic and never changes the child.
    */
-  readonly announce?: ((announcement: ChildAnnouncement) => void) | undefined;
+  readonly announce?: ((announcement: ChildAnnouncement) => void | Promise<void>) | undefined;
   readonly resolveParent: (parentRunId: string) => Promise<ChildTopologyParent | undefined>;
   /**
    * Whether `runId` already names a run or workflow Bureau knows, other than
@@ -690,9 +690,12 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     };
   }
 
-  function announce(kind: ChildAnnouncement['kind'], record: BureauChildRecord): void {
+  async function announce(
+    kind: ChildAnnouncement['kind'],
+    record: BureauChildRecord,
+  ): Promise<void> {
     try {
-      dependencies.announce?.({ kind, record });
+      await dependencies.announce?.({ kind, record });
     } catch (error) {
       diagnose({
         level: 'error',
@@ -1058,7 +1061,6 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     await audit(`child.${record.status}`, record, {
       dedupeKey: `child.${record.status}:${record.childRunId}`,
     });
-    announce('settled', record);
     try {
       await releaseReservation(record);
     } catch (error) {
@@ -1069,6 +1071,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         cause: error,
       });
     }
+    await announce('settled', record);
     if (record.status === 'aborted') {
       await parentCancelled(record.childRunId, record.outcome?.reason ?? 'aborted');
     }
@@ -1474,7 +1477,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       dedupeKey: `child.started:${childRunId}`,
       ...(record.principal === undefined ? {} : { principal: record.principal }),
     });
-    announce('started', record);
+    await announce('started', record);
 
     const entry = ensureTracked(childRunId);
     const contract = contractFor(request.agentName);
@@ -1817,6 +1820,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   }
 
   async function reconcileRecovery(): Promise<void> {
+    const unobservableRecovery = new Set<string>();
     const ordered = [...pendingRecovery.values()].toSorted(
       (left, right) => depthOf(left) - depthOf(right),
     );
@@ -1825,6 +1829,10 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         await reconcileOne(record);
       } catch (error) {
         release(record.childRunId, undefined);
+        const current = await store.get(record.childRunId).catch(() => undefined);
+        if (current?.status === 'running' && current.parentRunId === record.parentRunId) {
+          unobservableRecovery.add(record.childRunId);
+        }
         diagnose({
           level: 'error',
           scope: 'recovery',
@@ -1836,6 +1844,31 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     pendingRecovery.clear();
     pendingRecoveryToolCapabilities.clear();
     pendingRecoveryAuthorizationFailures.clear();
+
+    // A parent can have checkpointed its child-wait memo and durable signal park, then lose the
+    // process after this child's terminal record committed but before the live notifier delivered
+    // its wake. Re-issue only the exact wake names still present in the recovered parent's
+    // persisted wait list. The parent re-reads the child record, so this is a notification repair,
+    // never trusted result delivery; the engine's signal deduplication makes repeated recovery
+    // passes harmless.
+    const engine = dependencies.getEngine();
+    if (engine === undefined) return;
+    const signalMethod = (
+      engine as ChildTopologyEngine & {
+        signal?: (workflowId: string, signalName: string, payload: unknown) => Promise<void>;
+      }
+    ).signal;
+    if (signalMethod === undefined) return;
+    const signalChild = signalMethod.bind(engine);
+    for (const record of await store.listAll()) {
+      if (record.status === 'running' && !unobservableRecovery.has(record.childRunId)) continue;
+      const current = await store.get(record.childRunId);
+      if (current?.parentRunId !== record.parentRunId) continue;
+      const parentState = await engine.get(record.parentRunId).catch(() => undefined);
+      const signalName = `durable-child:${record.parentRunId}:${record.childRunId}`;
+      if (parentState?.waitingForSignals?.includes(signalName) !== true) continue;
+      await signalChild(record.parentRunId, signalName, null).catch(() => undefined);
+    }
   }
 
   function recoveredRunContext(

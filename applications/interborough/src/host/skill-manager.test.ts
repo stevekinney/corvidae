@@ -44,6 +44,8 @@ async function fakeHome(
   const options: SkillManagerOptions = {
     bungalow: {
       mode,
+      configurationWriteCapability:
+        mode === 'remote' ? ('read-only' as const) : ('writable' as const),
       configurationLocation: 's3://bucket/configuration.json',
       readConfiguration: async () => ({
         text,

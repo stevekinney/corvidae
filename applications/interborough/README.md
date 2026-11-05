@@ -73,11 +73,11 @@ Interborough reads none of the `S3_*` variables itself. Bungalow builds the `Bun
 | --- | --- |
 | `P` + `deployment-id` | The deployment's existing stable identifier, written once with `If-None-Match: *`. Hosts that start together agree on the one value the store kept. Do not edit it. |
 | `P` + `workspace-id` | The immutable workspace marker, claimed atomically after `deployment-id`. A mismatch refuses startup before Bureau recovery or plugin setup. Do not edit it. |
-| `P` + `configuration.json` | The plugins' choices, with each provider plugin's allowlist, and the catalog edits (see "Model providers" and "Plugins"). A missing object means every plugin's defaults, and no model is offered until a provider has a key. Put it there yourself; a remote host cannot write it. |
+| `P` + `configuration.json` | The plugins' choices, with each provider plugin's allowlist, and the catalog edits (see "Model providers" and "Plugins"). A missing object means every plugin's defaults, and no model is offered until a provider has a key. It is read-only by default; trusted composition may enable revision-checked writes. |
 | `P` + `agents/<id>.md` | One agent per object, in the Markdown file format of "Agent files". The agent editor writes here. |
 | `P` + `workflows/<id>.json` | One workflow per object, in the format of "Workflow files". The Workflows pages write here. |
 
-The Settings page and the editors show these as `s3://<bucket>/<prefix>...`, and show a provider's key as its variable name. They never show the database URL or an S3 credential, and neither does `/host/paths`. It reports the `mode` and the `database` (a SQLite file's path, or a Postgres server's host, port, and database name), the same `database` the host hands its embedder.
+The Settings page and the editors show these as `s3://<bucket>/<prefix>...`, and identify managed provider keys by their workspace and logical key. They never show the database URL or an S3 credential, and neither does `/host/paths`. It reports the `mode` and the `database` (a SQLite file's path, or a Postgres server's host, port, and database name), the same `database` the host hands its embedder.
 
 A different Bureau ID or S3 prefix does not isolate tenants when hosts point at the same raw database. Workspace identity is trusted deployment configuration, not request data: workspace administrators cannot install executable plugins, configure local commands, or select arbitrary filesystem roots through the workspace surface. Deployment operators own those resource selections.
 
@@ -88,6 +88,18 @@ A different Bureau ID or S3 prefix does not isolate tenants when hosts point at 
 **Conditional writes and deletes.** The sources write and delete with `If-Match` on the ETag they just read, so two hosts or a host and a person do not overwrite each other. The in-process S3 server the tests run against (`@lostgradient/testing/s3-server`, modeled on a Railway bucket) honors `If-Match` on `DELETE`, and `host-remote.test.ts` probes it. AWS S3 honors it on `DELETE` only for directory buckets, so on a general-purpose bucket a delete is unconditional after the source's own hash check. Probe the store you use before relying on it.
 
 **The overlap test.** `src/host/remote-overlap.slow.test.ts` starts two hosts at once on one fresh Postgres database and one bucket. Both define an agent that calls a counting tool and then `requestHumanInput`. It asserts that both hosts start, that one schedule exists (the enabled `demo` plugin seeds it from both hosts), that both report one `deploymentId`, that a task started on the first parks with the counter at 1, that after the first closes the review is resolved through the second and the task completes, and that the counter is still 1. Run it with `bun run --filter=@lostgradient/interborough test:slow`. It needs `initdb` and `pg_ctl` on `PATH` or `WEFT_TEST_POSTGRES_URL`, and skips without either.
+
+## Managed secret versions
+
+The trusted `startHost` composition accepts a `secretProvider(workspaceId)` factory. Its provider is bound to the backing store's immutable workspace before plugins start; request payloads cannot select a provider or workspace. Local homes use private files, remote homes default to captured read-only environment secrets, and an injected provider advertises its actual capabilities. Remote configuration publication additionally requires `writableConfiguration: true`.
+
+Managed writes prepare an immutable version, then publish its opaque reference in the host-owned `secretBindings` configuration map through a revision-checked write. Preparing a version does not activate it. Readers resolve the exact committed version; a missing or unavailable version never falls back to a legacy key or a newer version. Existing flat local and environment keys remain readable until a committed binding replaces them. The configuration contains references only, never plaintext credentials. Tool-source credentials retain their existing encrypted envelope and answer-key keyring.
+
+Each preparation binds an operation ID to its workspace, logical key, value, and expected configuration revision. The provider durably claims `prepared` to `publishing` before one configuration publication attempt. A lost response is `unknown`; reconciliation checks the exact committed reference and never resends that attempt or rolls back another writer's credential. Startup and the existing nightly/manual cleanup reconcile operation metadata. Host diagnostics expose pending operation IDs and states without values.
+
+Only terminally abandoned versions proven never published and currently unreferenced can be reclaimed automatically. Published and uncertain versions have no automatic expiry. Infrastructure operators may explicitly revoke a retained version; subsequent use fails unavailable rather than substituting another credential. A rollback binary must understand version references. Bootstrap storage/provider credentials, approval signing inputs, and root answer-encryption keys remain deployment inputs, independent of the managed provider; a failed read never generates a replacement key.
+
+The conformance fixtures exercise an external HTTP service that outlives application-host replacement, two concurrent clients, workspace isolation, crash recovery, and lost acknowledgements. This establishes the provider interface, not a cloud vendor's availability or durability. No vendor adapter or new encryption algorithm is included.
 
 ## Model providers
 

@@ -68,12 +68,13 @@ describe('openBungalow layout', () => {
     expect(handle.logs).toBe(join(root, 'logs'));
     expect(handle.database).toEqual({ kind: 'sqlite', path: join(root, 'database.sqlite') });
     expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
-    expect(handle.secretLocation('api-key')).toBe(join(root, 'secrets', 'api-key'));
+    expect(handle.deploymentSecrets.location('api-key')).toBe(join(root, 'secrets', 'api-key'));
     expect(existsSync(join(root, 'database.sqlite'))).toBe(false);
     expect(existsSync(handle.configurationLocation)).toBe(false);
     const configurationSnapshot1 = await handle.readConfiguration();
     expect(configurationSnapshot1.text).toBeUndefined();
     expect(readdirSync(root).toSorted()).toEqual([
+      '.managed-secrets',
       'deployment-id',
       'lock',
       'logs',
@@ -155,6 +156,7 @@ describe('deploymentId', () => {
     const repaired = '01ARYZ6S41TSV4RRFFQ69G5FAV';
     writeFileSync(join(root, 'deployment-id'), `${repaired}\n`);
     writeFileSync(join(root, 'workspace-id'), `${repaired}\n`);
+    writeFileSync(join(root, '.managed-secrets', 'workspace-id'), `${repaired}\n`);
     using handle = await openIn(root);
     expect(handle.deploymentId).toBe(repaired);
   });
@@ -211,6 +213,7 @@ describe('writeConfiguration', () => {
     expect(configurationSnapshot6.text).toBe('{"second":2}\n');
     expect(modeOf(handle.configurationLocation)).toBe(0o600);
     expect(readdirSync(root).toSorted()).toEqual([
+      '.managed-secrets',
       'configuration.json',
       'deployment-id',
       'lock',
@@ -289,49 +292,55 @@ describe('secrets', () => {
     const root = temporaryDirectory();
     using handle = await openIn(root);
     const secrets = join(root, 'secrets');
-    handle.writeSecret('api-key', 'line one\nline two ');
-    handle.writeSecret('token', 'second');
-    expect(handle.readSecret('api-key')).toBe('line one\nline two ');
-    expect(handle.readSecret('token')).toBe('second');
-    expect(modeOf(handle.secretLocation('api-key'))).toBe(0o600);
-    expect(modeOf(handle.secretLocation('token'))).toBe(0o600);
+    await handle.deploymentSecrets.write('api-key', 'line one\nline two ');
+    await handle.deploymentSecrets.write('token', 'second');
+    expect(await handle.deploymentSecrets.read('api-key')).toBe('line one\nline two ');
+    expect(await handle.deploymentSecrets.read('token')).toBe('second');
+    expect(modeOf(handle.deploymentSecrets.location('api-key'))).toBe(0o600);
+    expect(modeOf(handle.deploymentSecrets.location('token'))).toBe(0o600);
     expect(readdirSync(secrets).toSorted()).toEqual(['api-key', 'token']);
   });
 
   test('returns undefined for a missing key', async () => {
     using handle = await openIn(temporaryDirectory());
-    expect(handle.readSecret('missing')).toBeUndefined();
+    expect(await handle.deploymentSecrets.read('missing')).toBeUndefined();
   });
 
   test('replaces an earlier value, leaving no temporary file behind', async () => {
     using handle = await openIn(temporaryDirectory());
-    handle.writeSecret('token', 'first');
-    handle.writeSecret('token', 'second');
-    expect(handle.readSecret('token')).toBe('second');
-    expect(readdirSync(dirname(handle.secretLocation('token')))).toEqual(['token']);
-    expect(modeOf(handle.secretLocation('token'))).toBe(0o600);
+    await handle.deploymentSecrets.write('token', 'first');
+    await handle.deploymentSecrets.write('token', 'second');
+    expect(await handle.deploymentSecrets.read('token')).toBe('second');
+    expect(readdirSync(dirname(handle.deploymentSecrets.location('token'))).toSorted()).toEqual([
+      'token',
+    ]);
+    expect(modeOf(handle.deploymentSecrets.location('token'))).toBe(0o600);
   });
 
   test('stores an empty value distinctly from a missing key', async () => {
     using handle = await openIn(temporaryDirectory());
-    handle.writeSecret('blank', '');
-    expect(handle.readSecret('blank')).toBe('');
+    await handle.deploymentSecrets.write('blank', '');
+    expect(await handle.deploymentSecrets.read('blank')).toBe('');
   });
 
   test('persists across reopen', async () => {
     const root = temporaryDirectory();
     const first = await openIn(root);
-    first.writeSecret('token', 'kept');
+    await first.deploymentSecrets.write('token', 'kept');
     first.close();
     using second = await openIn(root);
-    expect(second.readSecret('token')).toBe('kept');
+    expect(await second.deploymentSecrets.read('token')).toBe('kept');
   });
 
   test.each(['../x', 'Key', '', 'a.b', '-a'])('rejects the key %p', async (key) => {
     using handle = await openIn(temporaryDirectory());
-    expect(() => handle.writeSecret(key, 'value')).toThrow(BungalowInputError);
-    expect(() => handle.readSecret(key)).toThrow(BungalowInputError);
-    expect(() => handle.secretLocation(key)).toThrow(BungalowInputError);
+    expect(await throwingRejectionOf(handle.deploymentSecrets.write(key, 'value'))).toThrow(
+      BungalowInputError,
+    );
+    expect(await throwingRejectionOf(handle.deploymentSecrets.read(key))).toThrow(
+      BungalowInputError,
+    );
+    expect(() => handle.deploymentSecrets.location(key)).toThrow(BungalowInputError);
   });
 });
 
@@ -354,13 +363,17 @@ describe('close', () => {
     const handle = await openIn(temporaryDirectory());
     handle.close();
     expect(() => handle.content('agents')).toThrow(BungalowStateError);
-    expect(() => handle.secretLocation('token')).toThrow(BungalowStateError);
+    expect(() => handle.deploymentSecrets.location('token')).toThrow(BungalowStateError);
     expect(await throwingRejectionOf(handle.readConfiguration())).toThrow(BungalowStateError);
-    expect(() => handle.writeSecret('token', 'value')).toThrow(BungalowStateError);
-    expect(() => handle.readSecret('token')).toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(handle.deploymentSecrets.write('token', 'value'))).toThrow(
+      BungalowStateError,
+    );
+    expect(await throwingRejectionOf(handle.deploymentSecrets.read('token'))).toThrow(
+      BungalowStateError,
+    );
   });
 
-  test('can be retried after the lock fails to release, and releases once it succeeds', () => {
+  test('can be retried after the lock fails to release, and releases once it succeeds', async () => {
     let releases = 0;
     const handle = openAtRoot(TEST_NAME, temporaryDirectory(), {
       acquireLock: () => ({
@@ -372,12 +385,14 @@ describe('close', () => {
     });
     expect(() => handle.close()).toThrow(BungalowFilesystemError);
     // The root is still in use: the failed release did not end the handle.
-    handle.writeSecret('token', 'still open');
-    expect(handle.readSecret('token')).toBe('still open');
+    await handle.deploymentSecrets.write('token', 'still open');
+    expect(await handle.deploymentSecrets.read('token')).toBe('still open');
 
     handle.close();
     expect(releases).toBe(2);
-    expect(() => handle.readSecret('token')).toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(handle.deploymentSecrets.read('token'))).toThrow(
+      BungalowStateError,
+    );
     handle.close();
     expect(releases).toBe(2);
   });
@@ -491,7 +506,7 @@ describe('a root that already exists', () => {
     writeFileSync(path, 'loose');
     chmodSync(path, 0o644);
     using handle = await openIn(root);
-    expect(handle.readSecret('token')).toBe('loose');
+    expect(await handle.deploymentSecrets.read('token')).toBe('loose');
     expect(modeOf(path)).toBe(0o600);
   });
 
@@ -500,7 +515,9 @@ describe('a root that already exists', () => {
     using handle = await openIn(root);
     const path = join(root, 'secrets', 'blocked');
     mkdirSync(path, { mode: 0o755 });
-    expect(() => handle.readSecret('blocked')).toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(handle.deploymentSecrets.read('blocked'))).toThrow(
+      BungalowStateError,
+    );
     expect(modeOf(path)).toBe(0o755);
   });
 
@@ -535,8 +552,8 @@ describe('openTemporaryBungalow', () => {
     try {
       expect(root.startsWith(tmpdir())).toBe(true);
       expect(modeOf(root)).toBe(0o700);
-      handle.writeSecret('token', 'value');
-      expect(handle.readSecret('token')).toBe('value');
+      await handle.deploymentSecrets.write('token', 'value');
+      expect(await handle.deploymentSecrets.read('token')).toBe('value');
       expect(isUlid(handle.deploymentId)).toBe(true);
     } finally {
       handle.close();

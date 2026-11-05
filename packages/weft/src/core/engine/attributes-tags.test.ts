@@ -60,6 +60,40 @@ async function readWorkflowState(
 }
 
 describe('attribute and tag helpers', () => {
+  it('reports a refused update when its captured workflow disappears during commit', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'state-update-disappears';
+    await storage.put(
+      KEYS.workflow(workflowId),
+      encode(createWorkflowState(workflowId, { status: 'running' })),
+    );
+    const originalConditionalBatch = storage.conditionalBatch.bind(storage);
+    const originalGet = storage.get.bind(storage);
+    let failedCommit = false;
+    let workflowReads = 0;
+    storage.conditionalBatch = async (...arguments_) => {
+      if (!failedCommit) {
+        failedCommit = true;
+        throw new Error('simulated conditional race');
+      }
+      return originalConditionalBatch(...arguments_);
+    };
+    storage.get = async (key) => {
+      if (key === KEYS.workflow(workflowId) && workflowReads++ > 0) return null;
+      return originalGet(key);
+    };
+
+    const result = await updateWorkflowState(
+      createInternals(storage),
+      workflowId,
+      { status: 'cancelled' },
+      'external-terminal',
+      { allowedStatuses: ['running'] },
+    );
+
+    expect(result).toMatchObject({ kind: 'refused', reason: 'replaced' });
+  });
+
   it('loads persisted attributes when cleaning indexes without an explicit attribute map', async () => {
     const storage = new MemoryStorage();
     const internals = createInternals(storage);

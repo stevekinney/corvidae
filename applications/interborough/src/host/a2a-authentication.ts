@@ -54,22 +54,22 @@ export type A2aExposure = {
  * origin without a key, stop the host: either would leave A2A open where the operator meant to close
  * it. Refusals are reported through `warn`, without the key or anything derived from it.
  */
-export function resolveA2aExposure(
+export async function resolveA2aExposure(
   bungalow: Bungalow,
   publicOrigin: URL | undefined,
   warn: (message: string) => void,
-): A2aExposure {
-  const stored = bungalow.readSecret(A2A_API_KEY_SECRET_KEY);
+): Promise<A2aExposure> {
+  const stored = await bungalow.deploymentSecrets.read(A2A_API_KEY_SECRET_KEY);
   const key = stored?.trim();
   if (key === '') {
     throw new Error(
-      `${bungalow.secretLocation(A2A_API_KEY_SECRET_KEY)} is empty. Store the A2A key there, or remove it to keep A2A on loopback without one.`,
+      `${bungalow.deploymentSecrets.location(A2A_API_KEY_SECRET_KEY)} is empty. Store the A2A key there, or remove it to keep A2A on loopback without one.`,
     );
   }
   if (key === undefined) {
     if (publicOrigin !== undefined) {
       throw new Error(
-        `${A2A_PUBLIC_ORIGIN_VARIABLE} is set but ${bungalow.secretLocation(A2A_API_KEY_SECRET_KEY)} is not. A public origin needs the A2A key every remote caller presents.`,
+        `${A2A_PUBLIC_ORIGIN_VARIABLE} is set but ${bungalow.deploymentSecrets.location(A2A_API_KEY_SECRET_KEY)} is not. A public origin needs the A2A key every remote caller presents.`,
       );
     }
     return {};

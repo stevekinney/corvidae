@@ -54,7 +54,6 @@ import {
 } from '@lostgradient/bureau/skills';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
-import { hostWriteLocks } from './locations.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseProviderConfiguration } from './providers.ts';
 import {
@@ -167,7 +166,11 @@ export type SkillManagerOptions = {
   /** The open home. Its mode decides whether a write is allowed. */
   readonly bungalow: Pick<
     Bungalow,
-    'mode' | 'configurationLocation' | 'readConfiguration' | 'writeConfiguration'
+    | 'mode'
+    | 'configurationLocation'
+    | 'readConfiguration'
+    | 'writeConfiguration'
+    | 'configurationWriteCapability'
   >;
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
@@ -227,7 +230,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
   /** Changes that were applied and not recorded, oldest first. In memory: a restart drops them. */
   const unrecorded: SkillAuditEntry[] = [];
 
-  const lockReason = (): SettingLockReason | undefined => hostWriteLocks(bungalow).configuration;
+  const lockReason = (): SettingLockReason | undefined =>
+    bungalow.configurationWriteCapability === 'writable' ? undefined : 'deployment';
   const serialized = <Result>(work: () => Promise<Result>): Promise<Result> =>
     configurationQueue.run(() => {
       if (closed) throw new Error('The host is shutting down.');

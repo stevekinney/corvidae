@@ -40,22 +40,22 @@ export function retiredAnswerEncryptionKey(keyId: string): string {
  * anything is written when a remote host has no key.
  */
 export async function answerEncryptionKeys(bungalow: Bungalow): Promise<AnswerEncryptionKeys> {
-  let encoded = bungalow.readSecret(ANSWER_ENCRYPTION_KEY);
+  let encoded = await bungalow.deploymentSecrets.read(ANSWER_ENCRYPTION_KEY);
   if (encoded === undefined) {
     if (bungalow.mode === 'remote') {
       throw new Error(
-        `${bungalow.secretLocation(ANSWER_ENCRYPTION_KEY)} is not set. Remote mode needs it: it seals the secret answers every host reads.`,
+        `${bungalow.deploymentSecrets.location(ANSWER_ENCRYPTION_KEY)} is not set. Remote mode needs it: it seals the secret answers every host reads.`,
       );
     }
     encoded = await exportEncryptionKey(await generateEncryptionKey());
-    bungalow.writeSecret(ANSWER_ENCRYPTION_KEY, encoded);
+    await bungalow.deploymentSecrets.write(ANSWER_ENCRYPTION_KEY, encoded);
   }
   const current = await importEncryptionKey(encoded);
   return {
     current,
     retired: async (keyId) => {
       if (!KEY_ID_PATTERN.test(keyId)) return undefined;
-      const stored = bungalow.readSecret(retiredAnswerEncryptionKey(keyId));
+      const stored = await bungalow.deploymentSecrets.read(retiredAnswerEncryptionKey(keyId));
       if (stored === undefined) return undefined;
       const key = await importEncryptionKey(stored).catch(() => undefined);
       // A file under the id holds the key with that id, or none at all.

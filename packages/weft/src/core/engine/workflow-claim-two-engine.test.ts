@@ -2537,7 +2537,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
 
       gate.release.resolve();
-      await cancelled;
+      await rejectionOf(cancelled);
       await quietFor(50);
 
       // The cancel meant the old run; the replacement is untouched and still running.
@@ -2736,7 +2736,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       expect(await replacement.result()).toBe('P1:NEW');
 
       gate.release.resolve();
-      await cancelOld;
+      await rejectionOf(cancelOld);
 
       const settled = await oldOutcome;
       expect(settled).toContain('rejected:');
@@ -2765,7 +2765,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
 
       gate.release.resolve();
-      await cancelOld;
+      await rejectionOf(cancelOld);
 
       // The old waiter settled as the old run's, not the replacement's, and the replacement lives on.
       expect(await oldOutcome).toContain('rejected:');

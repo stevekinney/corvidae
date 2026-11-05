@@ -4,8 +4,10 @@ export type {
   ContentLocation,
   DatabaseLocation,
   DatabaseWorkspaceClaim,
+  DeploymentSecrets,
   OpenBungalowOptions,
   OpenTemporaryBungalowOptions,
+  SecretProviderFactory,
 } from './bungalow.ts';
 export {
   BungalowError,
@@ -18,9 +20,29 @@ export {
 export { bungalowHomeVariable, resolveBungalowRoot } from './resolve-root.ts';
 export type { BungalowEnvironment, ResolveBungalowRootOptions } from './resolve-root.ts';
 
+export {
+  SecretProviderError,
+  createLocalSecretProvider,
+  parseSecretReference,
+} from './secret-provider.ts';
+export type {
+  LocalSecretProviderOptions,
+  PrepareSecretInput,
+  SecretOperationMetadata,
+  SecretOperationState,
+  SecretOperationTransition,
+  SecretProvider,
+  SecretProviderCapabilities,
+  SecretProviderErrorCode,
+  SecretReference,
+} from './secret-provider.ts';
+
 export type {
   ConfigurationSnapshot,
   ConfigurationWriteCapability,
   ConfigurationWriteCondition,
   ConfigurationWriteResult,
 } from './configuration.ts';
+
+export { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
+export type { EnvironmentSecretProviderOptions } from './environment-secret-provider.ts';

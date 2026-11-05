@@ -61,6 +61,14 @@ export type WorkflowStateUpdateResult = {
   fence: TerminalFence;
 };
 
+type TerminalWorkflowState = WorkflowState & {
+  readonly status: Extract<WorkflowStatus, 'completed' | 'failed' | 'cancelled' | 'timed-out'>;
+};
+
+export type WorkflowStateUpdateRefusal =
+  | { readonly kind: 'refused'; readonly state: TerminalWorkflowState; readonly reason: 'terminal' }
+  | { readonly kind: 'refused'; readonly state: WorkflowState; readonly reason: 'replaced' };
+
 /**
  * Whether this update must not be written: the record now belongs to another run than the one the
  * first attempt decided on, the status guard refuses it, or the caller's `skipCommitIf` does.
@@ -75,6 +83,19 @@ function updateIsRefused(
   }
   if (options.allowedStatuses && !options.allowedStatuses.includes(state.status)) return true;
   return options.skipCommitIf?.(state) === true;
+}
+
+function refusalFor(
+  state: WorkflowState,
+  decided: StateUpdateDecision | undefined,
+): WorkflowStateUpdateRefusal {
+  if (decided !== undefined && state.workflowExecutionToken !== decided.workflowExecutionToken) {
+    return { kind: 'refused', state, reason: 'replaced' };
+  }
+  if (isTerminalWorkflowStatus(state.status)) {
+    return { kind: 'refused', state: { ...state, status: state.status }, reason: 'terminal' };
+  }
+  return { kind: 'refused', state, reason: 'replaced' };
 }
 
 /**
@@ -97,11 +118,16 @@ async function settleLostDecision(
   error: unknown,
   options: WorkflowStateUpdateOptions,
   decided: StateUpdateDecision,
-): Promise<'retry' | 'refused'> {
+): Promise<'retry' | WorkflowStateUpdateRefusal> {
   const current = await internals.storage.get(KEYS.workflow(workflowId));
-  if (current === null) return 'refused';
+  if (current === null) {
+    return { kind: 'refused', state: decodeWorkflowState(loadedBytes), reason: 'replaced' };
+  }
   if (bytesEqual(current, loadedBytes)) throw error;
-  if (updateIsRefused(decodeWorkflowState(current), options, decided)) return 'refused';
+  const currentState = decodeWorkflowState(current);
+  if (updateIsRefused(currentState, options, decided)) {
+    return refusalFor(currentState, decided);
+  }
   if (attempt + 1 >= FENCED_RETRY_BUDGET) throw error;
   await sleep(retryDelay(attempt));
   return 'retry';
@@ -129,7 +155,7 @@ export async function updateWorkflowState(
   updates: Partial<WorkflowState>,
   category: WorkflowStateTransitionCategory,
   options: WorkflowStateUpdateOptions = {},
-): Promise<WorkflowStateUpdateResult | null> {
+): Promise<WorkflowStateUpdateResult | WorkflowStateUpdateRefusal | null> {
   return await runSerializedWorkflowStateWrite(internals, workflowId, () =>
     attemptWorkflowStateUpdate(internals, workflowId, updates, category, options, undefined, 0),
   );
@@ -143,7 +169,7 @@ async function attemptWorkflowStateUpdate(
   options: WorkflowStateUpdateOptions,
   decided: StateUpdateDecision | undefined,
   attempt: number,
-): Promise<WorkflowStateUpdateResult | null> {
+): Promise<WorkflowStateUpdateResult | WorkflowStateUpdateRefusal | null> {
   const bytes = await internals.storage.get(KEYS.workflow(workflowId));
   if (!bytes) {
     return null;
@@ -151,7 +177,7 @@ async function attemptWorkflowStateUpdate(
 
   const state = decodeWorkflowState(bytes);
   if (updateIsRefused(state, options, decided)) {
-    return null;
+    return refusalFor(state, decided);
   }
 
   const updatedAt = internals.options.getNow();
@@ -206,7 +232,7 @@ async function attemptWorkflowStateUpdate(
       options,
       keep,
     );
-    if (next === 'refused') return null;
+    if (next !== 'retry') return next;
     return attemptWorkflowStateUpdate(
       internals,
       workflowId,
