@@ -18,7 +18,9 @@ import {
   resolveA2aPublicOrigin,
   resolvePort,
 } from './environment-configuration.ts';
+import { PLUGIN_RUNTIME_DIRECTORY_VARIABLE } from './folder-plugins.ts';
 import { launchCommandEnvironment, shellQuote } from './launch-command.ts';
+import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE } from './mcp-app-mounts.ts';
 import { serveHost } from './serve.ts';
 import { supervise } from './supervisor.ts';
 
@@ -27,6 +29,11 @@ declare const INTERBOROUGH_RELEASE_VERSION: string;
 
 const HOME_VARIABLE = 'INTERBOROUGH_HOME';
 const INTERNAL_HOST_COMMAND = '__interborough-host';
+
+/** The plugin runtime directory relative to a relocated compiled executable. */
+export function pluginRuntimeDirectory(executable: string): string {
+  return join(dirname(executable), '..', 'share', 'interborough', 'plugin-runtime', 'node_modules');
+}
 
 const HELP = `Usage: interborough start [options]
 
@@ -187,6 +194,14 @@ async function run(arguments_: string[]): Promise<number> {
     environment: {
       ...result.environment,
       [BUILD_DIRECTORY_VARIABLE]: buildDirectory,
+      [PLUGIN_RUNTIME_DIRECTORY_VARIABLE]: pluginRuntimeDirectory(executable),
+      [MCP_APP_PREBUILT_DIRECTORY_VARIABLE]: join(
+        dirname(executable),
+        '..',
+        'share',
+        'interborough',
+        'mcp-apps',
+      ),
       ...launchCommandEnvironment({
         command: [executable, ...arguments_].map(shellQuote).join(' '),
         directory: cwd,

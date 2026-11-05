@@ -162,7 +162,12 @@ import {
   resolveA2aPublicOrigin,
   resolvePort,
 } from './environment-configuration.ts';
-import { HOST_DEPENDENCIES, loadFolderPlugins, PLUGIN_FOLDER_NAME } from './folder-plugins.ts';
+import {
+  HOST_DEPENDENCIES,
+  loadFolderPlugins,
+  PLUGIN_FOLDER_NAME,
+  PLUGIN_RUNTIME_DIRECTORY_VARIABLE,
+} from './folder-plugins.ts';
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
 import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
@@ -188,7 +193,7 @@ import {
   redactDatabase,
   type HostDatabase,
 } from './locations.ts';
-import { mcpAppMounts } from './mcp-app-mounts.ts';
+import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE, mcpAppMounts } from './mcp-app-mounts.ts';
 import { mcpAppRoutes } from './mcp-app-routes.ts';
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
@@ -796,7 +801,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
       directory: content.kind === 'directory' ? content.path : undefined,
-      dependencies: HOST_DEPENDENCIES,
+      dependencies: environment[PLUGIN_RUNTIME_DIRECTORY_VARIABLE]?.trim() || HOST_DEPENDENCIES,
       developmentPaths: developmentPlugins,
     });
     // The built-in `bureau` plugin (COR-1890) is listed first so the Plugins page shows it and the
@@ -1155,7 +1160,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The handler is built once the listener has a port, because the Agent Card of an agent that
     // opts into A2A names the URL it is served at (COR-1819). Until then `/bureau/*` answers 503,
     // which only a client that guessed the port could see.
-    const mcpMounts = await mcpAppMounts(bureau.plugins.mcpApps());
+    const mcpMounts = await mcpAppMounts(
+      bureau.plugins.mcpApps(),
+      environment[MCP_APP_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
+    );
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
     // never stops the host from starting.
     for (const failure of mcpMounts.failures) {
