@@ -64,7 +64,7 @@
   );
 </script>
 
-<div style="block-size: 26rem;">
+<div style="block-size: 30rem;">
   <Chat
     id="composer-setting-note"
     {conversation}
