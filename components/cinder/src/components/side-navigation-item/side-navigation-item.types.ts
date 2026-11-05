@@ -71,6 +71,12 @@ export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
      * "Reviews, 2 need you". The pill's own name is the count plus these words.
      */
     countLabel?: string;
+    /**
+     * The words that follow the label in the accessible name and tooltip when `count` is zero or
+     * absent: "nothing needs attention" gives "Health, nothing needs attention". Without it a row
+     * with no count is named by its label alone.
+     */
+    emptyLabel?: string;
     /** Tone of the count pill. Defaults to `'warning'`, the amber of a count that needs attention. */
     countTone?: BadgeVariant;
     /**

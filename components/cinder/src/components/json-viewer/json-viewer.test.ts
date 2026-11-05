@@ -331,3 +331,53 @@ describe('JsonViewer — unserializable fallback', () => {
     expect(fallback?.textContent).not.toContain('Infinity');
   });
 });
+
+describe('JsonViewer — collapsed summary, large arrays and abbreviation', () => {
+  test('a collapsed node reads "… N items" between its braces', () => {
+    const { container } = render(JsonViewer, { value: { attachments: [1, 2] }, initialDepth: 1 });
+    const summary = container.querySelector('.cinder-json-viewer__summary');
+    expect(summary?.textContent).toBe('… 2 items');
+    expect(summary?.parentElement?.textContent).toContain('[');
+  });
+
+  test('an array above largeArrayAbove shows its first two items and how many more there are', () => {
+    const value = { items: Array.from({ length: 2140 }, (_, index) => ({ sku: `SKU-${index}` })) };
+    const { container } = render(JsonViewer, { value, largeArrayAbove: 50, initialDepth: 2 });
+    const omitted = container.querySelector('.cinder-json-viewer__omitted');
+    expect(omitted?.textContent).toBe('… 2,138 more');
+    const itemsNode = container.querySelector(
+      '[role="treeitem"][aria-label="items: array, 2140 items"]',
+    );
+    expect(itemsNode).not.toBeNull();
+    expect(itemsNode?.querySelectorAll('[role="treeitem"][aria-level="3"]').length).toBe(2);
+  });
+
+  test('an array at or under largeArrayAbove shows every item', () => {
+    const { container } = render(JsonViewer, {
+      value: { items: [1, 2, 3] },
+      largeArrayAbove: 3,
+    });
+    expect(container.querySelector('.cinder-json-viewer__omitted')).toBeNull();
+    expect(container.textContent).toContain('3');
+  });
+
+  test('no limit shows every item of a large array', () => {
+    const { container } = render(JsonViewer, {
+      value: { items: Array.from({ length: 200 }, (_, i) => i) },
+    });
+    expect(container.querySelector('.cinder-json-viewer__omitted')).toBeNull();
+  });
+
+  test('maxKeyLength and maxStringLength cut long names and values with an ellipsis', () => {
+    const { container } = render(JsonViewer, {
+      value: { ['k'.repeat(50)]: 'v'.repeat(50) },
+      maxKeyLength: 10,
+      maxStringLength: 12,
+      initialDepth: 2,
+    });
+    const key = container.querySelector('.cinder-json-viewer__key');
+    const value = container.querySelector('.cinder-json-viewer__value');
+    expect(key?.textContent).toBe(`${'k'.repeat(10)}…:`);
+    expect(value?.textContent?.trim()).toBe(`"${'v'.repeat(12)}…"`);
+  });
+});

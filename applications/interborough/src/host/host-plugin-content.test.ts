@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1977: the workflow and skill files a running folder plugin ships (`content/workflows` and
  * `content/skills` under its `content` URL) reach the real host. Its workflows are a read-only
@@ -79,6 +80,7 @@ async function startShipper(
   shipperContent: URL | null = url,
 ): Promise<Host> {
   const home = await scratch('interborough-plugin-content-home-');
+  await initializeWorkspaceHome(home);
   await writeFile(
     join(home, 'configuration.json'),
     JSON.stringify({ plugins: { shipper: { enabled } } }),

@@ -104,6 +104,7 @@
               value={replay.checkpoint.locals}
               label="Checkpoint locals"
               view="json"
+              redact={[]}
             />
           {/if}
         </div>
@@ -121,6 +122,7 @@
               value={replay.accumulatedResults}
               label="Accumulated results"
               view="json"
+              redact={[]}
             />
           {/if}
         </div>

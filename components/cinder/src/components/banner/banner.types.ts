@@ -111,7 +111,8 @@ export type BannerProps = Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'cla
   titleLayout?: 'inline' | 'stacked';
   /**
    * A glyph at the start of the banner, drawn decoratively (`aria-hidden`). The `offline`,
-   * `unreachable` and `stopped` presets supply their own connection glyph.
+   * `unreachable` and `stopped` presets supply their own connection glyph, and a `success` banner
+   * leads with a check-circle unless this draws another.
    */
   icon?: Snippet;
   /** Keeps the banner at the top of its scroll container while the page scrolls under it. */

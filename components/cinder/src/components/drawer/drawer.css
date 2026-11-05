@@ -126,6 +126,9 @@
   /* Width tokens size the side placements. The bottom-placement block below
    is declared LATER at equal specificity, so its full-viewport width wins
    over any size token without per-rule exclusions. */
+  .cinder-drawer__panel[data-cinder-size='xs'] {
+    width: min(17.5rem, 100vw);
+  }
   .cinder-drawer__panel[data-cinder-size='sm'] {
     width: min(20rem, 100vw);
   }
@@ -245,6 +248,17 @@
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: calc(var(--cinder-ring-width) * -1);
     }
+  }
+
+  /* A close control with words ("Close"), as on the shared sheets: a link-coloured text button
+   that keeps the 44px touch height instead of the square icon button. */
+  .cinder-drawer__close[data-cinder-close-label] {
+    width: auto;
+    padding-inline: var(--cinder-space-2);
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
   }
 
   .cinder-drawer__close-icon {

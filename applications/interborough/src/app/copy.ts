@@ -12,6 +12,12 @@ export type ViewEmptyCopy = ViewStateCopy & {
   readonly action?: { readonly label: string; readonly href: string };
 };
 
+/** The words for a view's forbidden page: its title, and the scope that opens it when it is known. */
+export type ViewForbiddenCopy = {
+  readonly title: string;
+  readonly requirement?: string;
+};
+
 export type ViewCopy = {
   /** The name of the view in navigation and headings. */
   readonly label: string;
@@ -19,7 +25,12 @@ export type ViewCopy = {
   /** Absent for a view that is never empty (`views.ts`, `canBeEmpty`). */
   readonly empty?: ViewEmptyCopy;
   readonly error: ViewStateCopy;
-  readonly forbidden: Pick<ViewStateCopy, 'title'>;
+  /**
+   * The words for a locked view: the title ("Your sign-in can’t open Hooks") and, when the missing
+   * scope is known, the scope that opens it, which the page shows small and monospaced as
+   * "requires bureau.hooks:read".
+   */
+  readonly forbidden: ViewForbiddenCopy;
   /** Present only for a view that opens one item by its address. */
   readonly notFound?: ViewStateCopy;
   /** The words for a route of the view whose missing thing is not the one `notFound` names. */
@@ -34,7 +45,7 @@ export type ViewCopy = {
    * The words for a route of the view whose lock is not a scope the principal lacks: the server
    * said no, and says in these words why.
    */
-  readonly forbiddenByPattern?: Readonly<Record<string, ViewStateCopy>>;
+  readonly forbiddenByPattern?: Readonly<Record<string, ViewForbiddenCopy>>;
 };
 
 /** The words the run detail page (`/runs/:run`) uses for its attributes, streams and updates. */
@@ -269,14 +280,16 @@ export const RUN_PAGE_COPY = {
 } as const;
 
 /**
- * What the application says when the server does not answer: the banner above the page, the title
- * a turned-off control shows, and the page that replaces a view with nothing to show.
+ * What the application says when the server does not answer: the title a turned-off control shows,
+ * and the page that replaces a view with nothing to show. The banner's own words come from Cinder's
+ * `offline`, `unreachable` and `stopped` presets, so no page words them differently.
  */
 export const CONNECTION_COPY = {
-  /** The banner's sentence; the age of the data on screen follows it. */
-  banner: 'The server is not answering. Changes are turned off until it is back.',
-  /** The title of a control that changes something while the server is unreachable. */
-  changesOff: 'Turned off while the server is unreachable',
+  /**
+   * The reason a control that changes something is off while the server is unreachable: its title,
+   * and the visible text beside a composer's Send.
+   */
+  changesOff: 'Off until it’s back',
   /** The page of a view that has nothing to show because its first request got no answer. */
   page: {
     title: 'Server unreachable',
@@ -302,13 +315,40 @@ export const ROUTE_LOAD_FAILURE_COPY = {
 } as const;
 
 /**
+ * The words every not-found page shares (design rows 12x and 12y): the sentence under the title,
+ * the breadcrumb that replaces the missing thing's name, and the two secondary buttons. The title
+ * names the thing ("This run doesn’t exist") and is each view's own.
+ */
+export const NOT_FOUND_COPY = {
+  description: 'It may have been deleted. The address might also be mistyped.',
+  /** The last part of the breadcrumb, in words: Runs › Not found. */
+  breadcrumb: 'Not found',
+  /** The name of the button that returns to the list the missing thing belonged to. */
+  back: (label: string): string => `Back to ${label}`,
+  search: 'Search everything',
+} as const;
+
+/**
  * The words for an address no route matches. It is not one of a view's states: no view owns the
- * address, so the outlet shows this in its own frame (`data-view="not-found"`).
+ * address, so the outlet shows this in its own frame (`data-view="not-found"`), and it leads back
+ * to Home.
  */
 export const NOT_FOUND_ROUTE_COPY = {
-  title: 'This page does not exist',
-  description: 'That address is not a page in Interborough.',
-  action: { label: 'Go to chats', href: '/chats' },
+  title: 'This page doesn’t exist',
+  description: NOT_FOUND_COPY.description,
+} as const;
+
+/**
+ * The words every forbidden page shares (design rows 12z and 13a): the sentence under the title,
+ * which points at the page that shows what the session may do, and the two secondary buttons.
+ * There is no request-access button, because single-user v1 has no such flow.
+ */
+export const FORBIDDEN_COPY = {
+  /** The title of a view that is locked: "Your sign-in can’t open Hooks". */
+  title: (label: string): string => `Your sign-in can’t open ${label}`,
+  description: 'Settings › API reference › Your scopes shows what it can do.',
+  scopes: { label: 'See your scopes', href: '/settings/api-reference?group=scopes' },
+  home: 'Back to Home',
 } as const;
 
 /** The words for a reasoning effort, from least to most: the agent editor, the agent page and Model policy say them alike. */
@@ -1134,8 +1174,8 @@ export const SCHEDULE_COPY = {
     loadFailed: 'The schedule could not be loaded',
     locked: { title: 'Schedule is locked' },
     notFound: {
-      title: 'Schedule not found',
-      description: 'No schedule with this address exists. It may have been cancelled and purged.',
+      title: 'This schedule doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     onSwitch: 'On',
     onSwitchLabel: 'Schedule on',
@@ -1612,6 +1652,105 @@ export const MODELS_COPY = {
   },
 } as const;
 
+/** "1 change" or "3 changes". */
+function changeCount(count: number): string {
+  return `${String(count)} ${count === 1 ? 'change' : 'changes'}`;
+}
+
+/** Names joined as a person says them: "A", "A and B", "A, B and C". */
+export function nameList(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+}
+
+/**
+ * The words of the restart the shell shows (`app/restart`, board SettingsShell "Restart ·" frames):
+ * the question before it, the dialog while the host stops and starts, how it ends when the host
+ * never answers, and the banner that says what applied once it is back. Running work always picks up
+ * where it stopped and reviews wait, so nothing here says that nothing is running.
+ */
+export const RESTART_COPY = {
+  confirm: {
+    title: 'Restart Interborough now?',
+    description: (changes: number): string =>
+      `Interborough stops and starts again to apply ${changeCount(Math.max(changes, 1))}. Running work picks up where it stopped; reviews stay waiting.`,
+    confirm: 'Restart now',
+    cancel: 'Cancel',
+  },
+  /** The steps of the restarting dialog, in order. */
+  steps: ['Saved your choice', 'Stopped the server', 'Starting Interborough', 'Checking plugins'],
+  restarting: {
+    description: 'This takes a few seconds. Your changes are saved.',
+    unloading: (plugin: string): string =>
+      `Unloading ${plugin}. Running work picks up where it stopped; reviews stay waiting.`,
+  },
+  failed: {
+    check:
+      'That Interborough is still running on this machine, and that its address is reachable from this browser.',
+    /** What was saved before the host stopped, which is what applies once it starts. */
+    description: (changes: number, disabling: string | undefined): string => {
+      const answered = 'It didn’t answer after 8 tries.';
+      if (disabling !== undefined) {
+        return `${answered} Your choice to disable ${disabling} was saved before it stopped, so it applies once Interborough starts.`;
+      }
+      return changes > 1
+        ? `${answered} Your changes were saved before it stopped, so they apply once it starts.`
+        : `${answered} Your change was saved before it stopped, so they apply once it starts.`;
+    },
+  },
+  unconfirmed: {
+    title: 'Interborough has not restarted',
+    description:
+      'The host is still answering as it did before, so the change has not applied. It may not be supervised, so restart it where it runs.',
+    dismiss: 'Dismiss',
+  },
+  /** Why a restart did not begin. */
+  refusal: {
+    locked: 'This host keeps its configuration in its deployment, so it cannot be restarted here.',
+    refused: 'This host cannot restart itself. Restart it where it runs.',
+    unreachable: 'Interborough did not answer, so it was not asked to restart. Try again.',
+  },
+  back: {
+    title: 'Back up',
+    dismiss: 'Dismiss',
+    /** The lead of a restart that unloaded one plugin: "Back up. Web search is disabled." */
+    disabled: (plugin: string): string => `Back up. ${plugin} is disabled.`,
+    /** What applied and what became of the work in flight. */
+    applied: (changes: readonly string[]): string =>
+      `${changeCount(Math.max(changes.length, 1))} applied${changes.length === 0 ? '' : `: ${changes.join(', ')}`}. Running work picked up where it stopped; reviews stayed waiting.`,
+    /** The plugins by standing, such as "1 plugin running (Files); Anthropic and OpenAI need setup." */
+    standing: (
+      running: readonly string[],
+      needSetup: readonly string[],
+      disabled: readonly string[],
+      notLoaded: readonly string[],
+    ): string => {
+      const parts: string[] = [];
+      if (running.length > 0) {
+        parts.push(
+          `${String(running.length)} ${running.length === 1 ? 'plugin' : 'plugins'} running (${nameList(running)})`,
+        );
+      }
+      if (needSetup.length > 0) {
+        parts.push(`${nameList(needSetup)} ${needSetup.length === 1 ? 'needs' : 'need'} setup`);
+      }
+      if (disabled.length > 0) {
+        parts.push(`${nameList(disabled)} ${disabled.length === 1 ? 'is' : 'are'} disabled`);
+      }
+      if (notLoaded.length > 0) {
+        parts.push(`${nameList(notLoaded)} did not load`);
+      }
+      return parts.length === 0 ? '' : `${parts.join('; ')}.`;
+    },
+    /** What stopped working because a plugin was turned off, or that nothing did. */
+    unavailable: (plugin: string, unavailable: string | undefined): string =>
+      unavailable === undefined
+        ? `Nothing used ${plugin}, so nothing became unavailable.`
+        : `${unavailable} used ${plugin} and now show as unavailable.`,
+    enableAgain: 'Enable it again at any time.',
+  },
+} as const;
+
 /**
  * The words of Settings › Plugins: what Interborough loaded at startup, what each plugin adds and
  * what names it, the choices an owner makes (enabled, configuration, secrets), and the restart that
@@ -1761,32 +1900,6 @@ export const PLUGINS_COPY = {
     reassurance: 'Nothing is deleted. Enable it again and restart, and it works as before.',
     cancel: 'Cancel',
     confirm: 'Disable and restart',
-  },
-  restart: {
-    title: 'Restarting Interborough',
-    steps: {
-      saving: 'Saving your changes',
-      requesting: 'Asking Interborough to restart',
-      stopping: 'Waiting for it to stop',
-      starting: 'Waiting for it to start again',
-    },
-    back: {
-      title: 'Interborough is back up',
-      summary: (running: number, needSetup: number, disabled: number): string => {
-        const parts = [`${String(running)} ${running === 1 ? 'plugin' : 'plugins'} running`];
-        if (needSetup > 0)
-          parts.push(`${String(needSetup)} ${needSetup === 1 ? 'needs' : 'need'} setup`);
-        if (disabled > 0) parts.push(`${String(disabled)} disabled`);
-        return `${parts.join(', ')}.`;
-      },
-      close: 'Close',
-    },
-    unconfirmed: {
-      title: 'Interborough has not restarted',
-      description:
-        'The host is still answering with the old plugins loaded. It may not be supervised, so restart it where it runs.',
-      close: 'Close',
-    },
   },
   /**
    * One card per problem code (COR-1895). The table of the first six is the owner's wording
@@ -2011,6 +2124,16 @@ export const MODEL_POLICY_COPY = {
 
 /** The words the settings page (`/settings`) uses outside its view states. */
 export const SETTINGS_COPY = {
+  /**
+   * The keyboard preference on the General page (design row 03f): it lives in this browser, so it is
+   * not one of the deployment's settings above it.
+   */
+  keyboard: {
+    title: 'Keyboard',
+    singleKeyLabel: 'Use single-key shortcuts',
+    singleKeyDescription:
+      'Press G then a letter to go somewhere, or C for a new chat. They never act while you type in a field. Shortcuts held with ⌘ and the ? map always work. This applies to this browser only.',
+  },
   /** What the A2A section asks before it saves. */
   confirmA2a: {
     title: 'Save the A2A settings?',
@@ -3429,9 +3552,8 @@ export const TASK_COPY = {
   goalAttemptNoteBureauOnly: 'A goal made this run, so there is no task for it.',
   /** A run the Bureau does not know, to a caller who may not read the engine either. */
   notFound: {
-    title: 'This run was not found',
-    description:
-      'It may have been removed, or it may belong to someone else. Open a run from the list.',
+    title: 'This run doesn’t exist',
+    description: NOT_FOUND_COPY.description,
   },
   engineOnlyNote:
     'There is no task for this run. The sections below show what the workflow recorded.',
@@ -3640,8 +3762,13 @@ export const REVIEWS_COPY = {
 /** The words of the ⌘K palette. */
 export const PALETTE_COPY = {
   label: 'Command palette',
-  placeholder: 'Search everything, > for actions, @ for agents',
+  /** The top bar's search field, which opens the palette: its words are the design's, no hints. */
+  trigger: 'Search everything',
+  /** The palette's own field says the same; the footer carries the `>` and `@` hints (design row 03c). */
+  placeholder: 'Search everything',
   untitledChat: CHAT_COPY.untitled,
+  /** What a run no chat began and no agent ran is called. */
+  untitledRun: 'Run',
   emptyTitle: 'Search the console',
   emptyDescription: 'Type the name of a chat or an agent, or an ID, to jump to it.',
   noMatchesTitle: 'No matches',
@@ -3661,15 +3788,37 @@ export const PALETTE_COPY = {
     reviews: 'Reviews',
     agents: 'Agents',
     tools: 'Tools',
+    /** One heading for the agents and the tools, in that order (design row 03g). */
+    agentsAndTools: 'Agents and tools',
     actions: 'Actions',
   },
-  /** What reads between a shortcut's keys when they are pressed one after the other. */
-  keysThen: ' then ',
+  /** What a waiting row says after its sentence: the kind of wait. */
+  waitingMeta: {
+    approval: 'Approval · waiting',
+    question: 'Question',
+  },
+  /** What a run row says about how it stands, after its agent. */
+  runWaiting: {
+    approval: 'waiting for approval',
+    answer: 'waiting for your answer',
+  },
+  /** What an agent's row and a tool's row call themselves, after their identifier. */
+  agentKind: 'agent',
+  toolKind: 'tool',
+  /** The action that starts a chat on what was typed ("New chat about refund"). */
+  newChatAbout: (topic: string): string => `New chat about ${topic}`,
+  /** The key hints under the list: the prefixes that narrow a search, and the key that opens a row. */
+  footer: {
+    actions: 'actions',
+    agents: 'agents',
+    open: 'Enter to open',
+  },
 } as const;
 
 /**
- * The words of the notification bell: what needs the person, and what finished. Each sentence
- * names the agent and is followed by the chat or schedule it is about, never a run.
+ * The words of the notification bell: what needs the person, and what finished. Each item is a
+ * sentence and a second line that says what kind of wait it is and whose it is, or what the
+ * sentence is about, never a run.
  */
 export const NOTIFICATION_COPY = {
   panelTitle: 'Notifications',
@@ -3689,25 +3838,30 @@ export const NOTIFICATION_COPY = {
   /** Where email or webhooks are set up, and where the bell's own settings are. */
   linksLabel: 'Where notifications are set up',
   settingsLink: 'Notification settings',
-  hooksLink: 'Hooks for email or webhooks',
-  /** What the bell button is called; the count says how many items need the person. */
+  hooksLink: 'Email or webhooks: set up a hook ›',
+  /** What the bell button is called; the count says how many items are unread. */
   bellLabel: (count: number): string =>
-    count === 0 ? 'Notifications' : `Notifications, ${count} need${count === 1 ? 's' : ''} you`,
-  needsApproval: (agent: string): string => `${agent} needs your approval`,
-  askedQuestion: (agent: string): string => `${agent} asked a question`,
-  answered: (agent: string): string => `${agent} answered`,
+    count === 0 ? 'Notifications' : `Notifications, ${String(count)} unread`,
+  /** The count after the popover's title, "Notifications · 3 unread"; nothing when none is unread. */
+  unreadSummary: (count: number): string => `· ${String(count)} unread`,
+  /** What the dot before an unread row is called, for a screen reader. */
+  unreadMark: 'Unread',
+  /** The second line of a review: what it waits for, and whose it is. */
+  waiting: (kind: 'approval' | 'answer', agent: string): string =>
+    `${kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer'} · ${agent}`,
   failed: (subject: string): string => `${subject} failed`,
   budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
-  missedFire: (subject: string): string => `${subject} missed a run`,
-  /** Why a schedule did not fire: the host was down or too slow to start it, or its time did not exist on the clock. */
-  missedLate: 'The host was down or too slow to start it',
+  /** A schedule that did not fire: "Daily summary missed its 3:00 AM run". */
+  missedRun: (subject: string, time: string): string => `${subject} missed its ${time} run`,
+  /** How many fires a schedule missed and since when: "4 missed since Oct 30". */
+  missedSince: (count: number, since: string): string => `${String(count)} missed since ${since}`,
+  /** The one fire a schedule missed because its time did not exist on the clock. */
   missedClockGap: 'Its time was skipped by a clock change',
+  /** The host's storage rule is firing; the second line says how much is used. */
+  storageOverWarning: 'Storage passed its warning level',
+  storageUsed: (size: string): string => `${size} used`,
   /** What an agent is called when the Bureau names none. */
   unnamedAgent: 'An agent',
-  /** Read between a sentence and the chat it is about, by a screen reader only. */
-  inJoiner: ' in ',
-  /** Read between a failed schedule and the first line of its error. */
-  errorJoiner: ': ',
   noErrorText: 'No reason was given',
 } as const;
 
@@ -3724,7 +3878,21 @@ export const NAVIGATION_COPY = {
   /** The button that folds the sidebar to its icon rail, and opens it again. */
   collapseSidebar: 'Collapse sidebar',
   expandSidebar: 'Expand sidebar',
-  /** What the engine status dot says, by the state of the live feed. */
+  /** The product's name, as text at the top of the sidebar and of its drawer. */
+  productName: 'Interborough',
+  /** The names of the sidebar's sections; Home sits above them with none. */
+  groups: { work: 'Work', build: 'Build', system: 'System' },
+  /** The top bar's button that opens the navigation drawer. */
+  openNavigation: 'Open navigation',
+  /** The drawer's own button that closes it again. */
+  closeNavigation: 'Close navigation',
+  /** What follows "Reviews" in the row's name and tooltip: "Reviews, 2 need you". */
+  reviewsCountLabel: 'need you',
+  /** What follows "Health" in the row's name and tooltip: "Health, 3 need attention". */
+  healthCountLabel: 'need attention',
+  /** What follows "Health" in the row's name when nothing needs attention. */
+  healthEmptyLabel: 'nothing needs attention',
+  /** What the engine status says in the notification bell, by the state of the live feed. */
   engineStatus: {
     connecting: 'Server connecting',
     live: 'Server healthy',
@@ -3752,11 +3920,11 @@ export const SHORTCUT_COPY = {
 export const QUICK_SETTINGS_COPY = {
   trigger: 'Quick settings',
   theme: 'Theme',
-  density: 'Density',
-  comfortable: 'Comfortable',
-  compact: 'Compact',
+  /** The name of the theme switch's radiogroup (its positions are Light, System and Dark). */
+  themeLabel: 'Color theme',
   sidebar: 'Sidebar',
-  collapsed: 'Collapse to icons',
+  expanded: 'Expanded',
+  collapsed: 'Collapsed',
   allSettings: 'All settings',
 } as const;
 
@@ -4127,6 +4295,15 @@ export const CAPABILITIES_COPY = {
  * frame writes it from the scopes the view requires.
  */
 export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
+  home: {
+    label: 'Home',
+    loading: { title: 'Loading Home', description: 'Reading what needs you and what is running.' },
+    error: {
+      title: 'Home is unavailable',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: FORBIDDEN_COPY.title('Home') },
+  },
   chat: {
     label: 'Chat',
     loading: {
@@ -4143,17 +4320,16 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Chat is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Chat is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Chat'), requirement: 'bureau.contexts:read' },
     notFound: {
-      title: 'This conversation was not found',
-      description:
-        'It may have been deleted, or it may belong to someone else. Open a conversation from the list.',
+      title: 'This conversation doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     // A new chat is for an agent, and it is the agent that is missing.
     notFoundByPattern: {
       '/chats/new': {
-        title: 'This agent was not found',
-        description: 'It may have been deleted. Choose an agent from the list to start a chat.',
+        title: 'This agent doesn’t exist',
+        description: NOT_FOUND_COPY.description,
       },
     },
     // A new chat with no `?agent=` starts with the first agent that can run; with none, there is
@@ -4181,10 +4357,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Agents are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Agents are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Agents'), requirement: 'bureau.agents:read' },
     notFound: {
-      title: 'This agent was not found',
-      description: 'It may have been deleted. Open one from the list.',
+      title: 'This agent doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     // An agent's memory page (`/agents/:agent/memories`) asks the Bureau for what the agent remembers.
     loadingByPattern: {
@@ -4202,9 +4378,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     forbiddenByPattern: {
       '/agents/:agent/memories': {
-        title: 'Memory is locked',
-        description:
-          'Reading what an agent remembers needs the bureau.memory:read scope, even for your own chats. Ask whoever runs this installation to grant it.',
+        title: FORBIDDEN_COPY.title('this agent’s memory'),
+        // Memory is the one kind a credential does not reach by owning it, even for your own chats.
+        requirement: 'bureau.memory:read',
       },
     },
   },
@@ -4218,9 +4394,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The agent editor is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The agent editor is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('the agent editor') },
     notFound: {
-      title: 'This agent was not found',
+      title: 'This agent doesn’t exist',
       description:
         'There is no agent with this identifier that you can edit. It may have been deleted, or it may be defined in code, which cannot be edited here.',
     },
@@ -4241,15 +4417,14 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Workflows are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Workflows are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Workflows') },
     notFound: {
-      title: 'This workflow was not found',
-      description:
-        'It may have been deleted, or its file may be gone. Open a workflow from the list.',
+      title: 'This workflow doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     notFoundByPattern: {
       '/workflows/:workflow/edit': {
-        title: 'This workflow was not found',
+        title: 'This workflow doesn’t exist',
         description:
           'There is no workflow file with this name that you can edit. It may have been deleted, or it may be defined in code, which cannot be edited here.',
       },
@@ -4273,7 +4448,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Runs are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Runs are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Runs'), requirement: 'bureau.tasks:read' },
   },
   schedules: {
     label: 'Schedules',
@@ -4287,7 +4462,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Schedules are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Schedules are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Schedules') },
   },
   reviews: {
     label: 'Reviews',
@@ -4299,7 +4474,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Reviews are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Reviews are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Reviews'), requirement: 'bureau.reviews:read' },
   },
   workers: {
     label: 'Workers',
@@ -4311,7 +4486,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Workers are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Workers are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Workers') },
   },
   storage: {
     label: 'Storage',
@@ -4323,7 +4498,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Storage is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Storage is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Storage') },
   },
   audit: {
     label: 'Audit log',
@@ -4339,7 +4514,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The audit trail is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The audit trail is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('the audit log'), requirement: 'bureau.audit:read' },
   },
   settings: {
     label: 'Settings',
@@ -4351,7 +4526,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Settings are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Settings are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Settings'), requirement: 'bureau.settings:read' },
   },
   capabilities: {
     label: 'Capabilities',
@@ -4363,7 +4538,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Capabilities are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Capabilities are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Capabilities') },
   },
   goals: {
     label: 'Goals',
@@ -4378,10 +4553,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Goals are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Goals are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Goals'), requirement: 'bureau.goals:read' },
     notFound: {
-      title: 'This goal was not found',
-      description: 'It may belong to someone else. Open a goal from the list.',
+      title: 'This goal doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
   },
   hooks: {
@@ -4397,10 +4572,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Hooks are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Hooks are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'bureau.hooks:read' },
     notFound: {
-      title: 'This hook was not found',
-      description: 'It may belong to someone else, or it was deleted. Open a hook from the list.',
+      title: 'This hook doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
   },
   health: {
@@ -4410,7 +4585,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The server is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The health overview is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Health') },
   },
 };
 

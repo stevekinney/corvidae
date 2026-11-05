@@ -192,8 +192,12 @@ test.describe('fixture interaction rendering', () => {
   });
 });
 
-async function assertRows(page: import('@playwright/test').Page, selector: string) {
-  const result = await page.locator(selector).evaluateAll((rows, expectedSelector) => {
+async function assertRows(
+  page: import('@playwright/test').Page,
+  selector: string,
+  scope: import('@playwright/test').Locator = page.locator('body'),
+) {
+  const result = await scope.locator(selector).evaluateAll((rows, expectedSelector) => {
     const pseudo = (row: Element) => getComputedStyle(row, '::after').content !== 'none';
     return rows.map((row) => {
       const siblings = Array.from(row.parentElement?.children ?? []);
@@ -680,21 +684,24 @@ for (const theme of THEMES) {
       componentPage,
     }) => {
       const page = await openAssertionFixture(componentPage, 'combobox', theme, width);
-      const input = page.getByLabel('Favorite fruit');
+      const input = page.getByRole('combobox', { name: 'Favorite fruit' });
       await input.click();
-      await expect(page.locator('.cinder-combobox__option').first()).toBeVisible();
+      const controls = await input.getAttribute('aria-controls');
+      expect(controls).toBeTruthy();
+      const listbox = page.locator(`#${controls}`);
+      await expect(listbox.locator('.cinder-combobox__option').first()).toBeVisible();
       await input.press('ArrowDown');
       await input.fill('apri');
-      await expect(page.locator('.cinder-combobox__option:visible')).toHaveCount(1);
-      await expect(page.locator('.cinder-combobox__option:visible')).toHaveText(/Apricot/);
-      await expect(page.locator('.cinder-combobox__option[data-cinder-active]')).toHaveText(
+      await expect(listbox.locator('.cinder-combobox__option:visible')).toHaveCount(1);
+      await expect(listbox.locator('.cinder-combobox__option:visible')).toHaveText(/Apricot/);
+      await expect(listbox.locator('.cinder-combobox__option[data-cinder-active]')).toHaveText(
         /Apricot/,
       );
-      await assertRows(page, '.cinder-combobox__option');
+      await assertRows(page, '.cinder-combobox__option', listbox);
       await input.fill('');
-      await expect(page.locator('.cinder-combobox__option:visible')).toHaveCount(10);
+      await expect(listbox.locator('.cinder-combobox__option:visible')).toHaveCount(10);
       await expect(input).toBeFocused();
-      await assertRows(page, '.cinder-combobox__option');
+      await assertRows(page, '.cinder-combobox__option', listbox);
     });
 
     test(`dropdown dividers appear only between visible items: native select keyboard behavior ${theme}-${width}`, async ({

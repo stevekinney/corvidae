@@ -2,7 +2,7 @@
   /**
    * The selected key: its group, size and name, Copy key and Copy value, and the value, which
    * `PayloadInspector` shows as fields with a switch to the JSON itself when it is a JSON object, and
-   * as it is otherwise. A key the
+   * as the value alone, quoted in the JSON view, otherwise. A key the
    * application manages shows a lock and why, and offers no Edit or Delete. Any other key can be
    * edited, where the value is text, and deleted, each after a confirmation.
    *

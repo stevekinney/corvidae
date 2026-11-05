@@ -26,6 +26,18 @@ export type SidebarProps = Omit<
    * its icon rail.
    */
   mobileBreakpoint?: string;
+  /**
+   * A parenthesized media query that also turns the sidebar into the drawer, beside the width
+   * breakpoint, for a layout that depends on more than width: `'(pointer: coarse) and
+   * (max-width: 1023.98px)'` gives touch devices the drawer at every width below 1024, because an
+   * icon rail with tooltip-only labels has no labels on touch. Read after the page loads; the
+   * server markup is the inline column.
+   */
+  drawerQuery?: string;
+  /**
+   * Accessible name of the drawer's close button. Default `'Close navigation'`.
+   */
+  closeLabel?: string;
   /** Additional CSS class merged with `.cinder-sidebar`. */
   class?: string;
   /**

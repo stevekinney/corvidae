@@ -296,6 +296,7 @@
     {
       "files": [
         "**/components/cinder/src/components/json-viewer/_json-viewer-node.svelte",
+        "**/components/cinder/src/components/payload-inspector/_payload-fields.svelte",
         "**/components/cinder/src/components/json-schema-editor/property-editor.svelte",
         "**/components/cinder/src/components/json-schema-editor/property-list.svelte"
       ],

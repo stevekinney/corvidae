@@ -420,3 +420,38 @@ describe('SideNavigationGroup — contains-active', () => {
     }).not.toThrow();
   });
 });
+
+describe('SideNavigationGroup static section (collapsible={false})', () => {
+  test('renders its label as plain text over an always-visible list, with no control', () => {
+    const { container } = render(SideNavigationGroup, {
+      props: { label: 'Work', collapsible: false, children: itemSnippet() },
+    });
+    const root = container.querySelector('li.cinder-side-navigation-group');
+    expect(root?.hasAttribute('data-cinder-static')).toBe(true);
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.querySelector('.cinder-side-navigation-group__chevron')).toBeNull();
+    const heading = container.querySelector('.cinder-side-navigation-group__heading');
+    expect(heading?.textContent).toBe('Work');
+    const list = container.querySelector('ul.cinder-side-navigation-group__panel');
+    expect(list?.hasAttribute('hidden')).toBe(false);
+    expect(list?.getAttribute('aria-labelledby')).toBe(heading?.getAttribute('id'));
+  });
+
+  test('ignores expanded=false, because nothing opens or closes it', () => {
+    const { container } = render(SideNavigationGroup, {
+      props: { label: 'Build', collapsible: false, expanded: false, children: itemSnippet() },
+    });
+    expect(
+      container.querySelector('ul.cinder-side-navigation-group__panel')?.hasAttribute('hidden'),
+    ).toBe(false);
+    expect(container.querySelector('li')?.hasAttribute('data-cinder-expanded')).toBe(false);
+  });
+
+  test('a collapsible group is unchanged', () => {
+    const { container } = render(SideNavigationGroup, {
+      props: { label: 'Projects', children: itemSnippet() },
+    });
+    expect(container.querySelector('button.cinder-side-navigation-group__trigger')).not.toBeNull();
+    expect(container.querySelector('li')?.hasAttribute('data-cinder-static')).toBe(false);
+  });
+});

@@ -1,0 +1,360 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* The running marker is a Spinner arc, so its styles travel with the panel. */
+@import '../spinner/spinner.css';
+@layer cinder.components {
+  /* ========================================
+ * TOOL CALL PANEL
+ * One tool call's side panel: its name and state, Input and Result as fields, a failure's message
+ * first, and a waiting call's note and decision. Docked beside the conversation from 1280px; below
+ * that it is a Drawer, a right overlay on a scrim or a bottom sheet on a phone.
+ * ======================================== */
+
+  .cinder-tool-call-panel,
+  .cinder-tool-call-panel-drawer {
+    --_cinder-tool-call-panel-width: 21.25rem;
+    --_cinder-tool-call-panel-gap: var(--cinder-space-4);
+  }
+
+  .cinder-tool-call-panel {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    inline-size: var(--_cinder-tool-call-panel-width);
+    max-inline-size: 100%;
+    min-block-size: 0;
+    max-block-size: 100%;
+    overflow: hidden;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: 1.25rem;
+  }
+
+  /* Below the docking width the panel is a right sheet of the same width as the docked one. */
+  .cinder-tool-call-panel-drawer .cinder-drawer__panel[data-cinder-placement='right'] {
+    inline-size: min(var(--_cinder-tool-call-panel-width), 100vw);
+  }
+
+  /* A phone sheet fills to the shared sheet's cap, so a retry button rests at its foot. */
+  .cinder-tool-call-panel-drawer .cinder-drawer__panel[data-cinder-placement='bottom'] {
+    block-size: calc(90dvh - var(--_cinder-keyboard-inset, 0px));
+  }
+
+  .cinder-tool-call-panel-drawer {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: 1.25rem;
+  }
+
+  /* ----------------------------------------
+ * Header: the name, its identifier, and where the call stands
+ * ---------------------------------------- */
+
+  .cinder-tool-call-panel__header {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-4);
+    border-block-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-tool-call-panel__heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  .cinder-tool-call-panel__title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cinder-space-0-5) var(--cinder-space-2);
+    margin: 0;
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    line-height: 1.375rem;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-tool-call-panel__identifier {
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-tool-call-panel__status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-tool-call-panel__marker {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .cinder-tool-call-panel .cinder-spinner[data-cinder-size='sm'],
+  .cinder-tool-call-panel-drawer .cinder-spinner[data-cinder-size='sm'] {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+  }
+
+  .cinder-tool-call-panel__dot {
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-text-subtle);
+  }
+
+  .cinder-tool-call-panel__glyph {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .cinder-tool-call-panel__status[data-cinder-status='approved'] .cinder-tool-call-panel__dot {
+    background: var(--cinder-status-success-solid);
+  }
+
+  .cinder-tool-call-panel__status[data-cinder-status='failed'] .cinder-tool-call-panel__dot {
+    background: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-tool-call-panel__status[data-cinder-status='failed']
+    .cinder-tool-call-panel__status-word {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-tool-call-panel__status[data-cinder-status='waiting'] .cinder-tool-call-panel__marker,
+  .cinder-tool-call-panel__status[data-cinder-status='waiting']
+    .cinder-tool-call-panel__status-word {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-tool-call-panel__status-word {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  /* The middot between the words and the timing reads only where there is no marker to separate them. */
+  .cinder-tool-call-panel__separator {
+    display: none;
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet'] .cinder-tool-call-panel__separator {
+    display: inline;
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet'] .cinder-tool-call-panel__marker {
+    display: none;
+  }
+
+  /* On a sheet a failed call's whole line reads in danger text: "Failed · 10.0s · call 28 of 30". */
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet'] .cinder-tool-call-panel__status {
+    gap: 0 var(--cinder-space-1);
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet']
+    .cinder-tool-call-panel__status[data-cinder-status='failed'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet']
+    .cinder-tool-call-panel__status-word {
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet']
+    .cinder-tool-call-panel__status[data-cinder-status='failed']
+    .cinder-tool-call-panel__status-word {
+    color: inherit;
+  }
+
+  /* ----------------------------------------
+ * Body and its sections
+ * ---------------------------------------- */
+
+  .cinder-tool-call-panel__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--_cinder-tool-call-panel-gap);
+    min-block-size: 0;
+  }
+
+  .cinder-tool-call-panel > .cinder-tool-call-panel__body {
+    flex: 1;
+    padding: var(--cinder-space-4);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .cinder-drawer__body > .cinder-tool-call-panel__body {
+    min-block-size: 100%;
+  }
+
+  .cinder-tool-call-panel__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-tool-call-panel__heading-label {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-tool-call-panel__quiet {
+    margin: 0;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-tool-call-panel__note {
+    margin: 0;
+    color: var(--cinder-text-default);
+    line-height: 1.1875rem;
+  }
+
+  /* The block that holds fields or JSON: inset from the panel, and tinted red for an error. */
+  .cinder-tool-call-panel__block {
+    padding: var(--cinder-space-2-5) var(--cinder-space-3);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface);
+    min-inline-size: 0;
+  }
+
+  .cinder-tool-call-panel__block[data-cinder-tone='danger'] {
+    border-color: var(--cinder-status-danger-border);
+    background: var(--cinder-status-danger-background);
+  }
+
+  .cinder-tool-call-panel__fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
+  }
+
+  .cinder-tool-call-panel__field {
+    display: grid;
+    grid-template-columns: minmax(4.5rem, 6.5rem) minmax(0, 1fr);
+    column-gap: var(--cinder-space-3);
+    align-items: baseline;
+  }
+
+  .cinder-tool-call-panel__field dt {
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-tool-call-panel__field dd {
+    margin: 0;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-tool-call-panel__field dd[data-cinder-kind='code'] {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-tool-call-panel__field dd[data-cinder-kind='number'] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-tool-call-panel__field dd[data-cinder-kind='none'],
+  .cinder-tool-call-panel__field dd[data-cinder-kind='empty'],
+  .cinder-tool-call-panel__field dd[data-cinder-kind='secret'] {
+    color: var(--cinder-text-muted);
+    font-style: italic;
+  }
+
+  .cinder-tool-call-panel__json {
+    margin: 0;
+    overflow-x: auto;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    line-height: 1.375rem;
+    white-space: pre;
+  }
+
+  .cinder-tool-call-panel__block:has(.cinder-tool-call-panel__json) {
+    background: var(--cinder-surface-inset);
+    border-color: transparent;
+  }
+
+  /* ----------------------------------------
+ * Actions: the retry, the copy buttons, and a waiting call's note and decision
+ * ---------------------------------------- */
+
+  .cinder-tool-call-panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-tool-call-panel .cinder-tool-call-panel__copy,
+  .cinder-tool-call-panel-drawer .cinder-tool-call-panel__copy {
+    padding-block: var(--cinder-space-1-5);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-tool-call-panel__decision {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-tool-call-panel__decision-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--cinder-space-2);
+  }
+
+  /* On a phone a sheet's buttons are 44px, the retry rests at the foot, and Deny and Approve share the row equally. */
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet'] .cinder-tool-call-panel__body {
+    flex: 1;
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet'] .cinder-tool-call-panel__retry {
+    margin-block-start: auto;
+    min-block-size: var(--cinder-touch-target-min);
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet'] .cinder-tool-call-panel__actions {
+    display: none;
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet']
+    .cinder-tool-call-panel__decision-actions
+    > * {
+    flex: 1;
+    min-block-size: var(--cinder-touch-target-min);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tool-call-panel__dot {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+
+    .cinder-tool-call-panel__block[data-cinder-tone='danger'] {
+      border-color: CanvasText;
+    }
+  }
+}

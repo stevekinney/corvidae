@@ -116,6 +116,10 @@ describe('Input and output', () => {
     });
 
     expect(view.container.querySelector('.ib-run__answer strong')?.textContent).toBe('ready');
+    // Paragraphs keep Cinder's Markdown rhythm instead of running together.
+    expect(view.container.querySelector('.ib-run__answer')?.classList).toContain(
+      'cinder-markdown-content',
+    );
     expect(view.getByText('The answer was cut short.')).not.toBeNull();
     expect(view.queryByText('The agent has not answered yet.')).toBeNull();
   });

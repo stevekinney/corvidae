@@ -332,6 +332,10 @@ export function probeFor(
         await client.operations['weft.storage.capabilities']({});
         return { empty: false };
       };
+    case 'home':
+      // Home reads what other views read, each card on its own, so one failing read shows its own
+      // state inside its own card and never replaces the page.
+      return undefined;
     case 'health':
       // The page reads the engine band by band, each with its own scope and its own failure, so a
       // principal holding only one of the page's scopes is not turned away by a probe that needs

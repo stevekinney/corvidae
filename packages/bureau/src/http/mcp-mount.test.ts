@@ -1,6 +1,6 @@
 /**
  * COR-839 — Bureau's v1 MCP adapter: the official MCP SDK client, in both
- * protocol eras, lists the twenty-one "observe and steer" tools and calls them as
+ * protocol eras, lists the twenty-two "observe and steer" tools and calls them as
  * the authenticated caller, through the catalog pipeline and each operation's
  * owner predicate.
  */
@@ -41,6 +41,7 @@ const V1_TOOLS = [
   'bureau.workflows.list',
   'bureau.workflows.runs.get',
   'bureau.workflows.runs.list',
+  'bureau.workflows.validate',
 ];
 
 type Mode = { pin: string } | 'legacy';
@@ -91,7 +92,7 @@ async function startRun(opened: OpenedBureau, principal: string) {
 }
 
 describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => {
-  it('lists exactly the twenty-one v1 tools', async () => {
+  it('lists exactly the twenty-two v1 tools', async () => {
     const opened = await open();
     const client = await connect(opened.handler, 'alice-key', mode);
     expect(client.getNegotiatedProtocolVersion()).toBe(version);

@@ -305,6 +305,6 @@ test('opens from the sidebar and from g then h', async ({ page }) => {
   await page.goto('/chats');
   await page.getByRole('heading', { level: 1 }).first().waitFor();
   await page.keyboard.press('g');
-  await page.keyboard.press('h');
+  await page.keyboard.press('k');
   await expect(page).toHaveURL(/\/hooks$/);
 });

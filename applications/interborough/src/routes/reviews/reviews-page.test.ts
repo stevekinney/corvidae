@@ -421,7 +421,7 @@ describe('one list failing', () => {
     const { container, findByRole } = openFailing(new StubFault('Forbidden', 403, 'No.'), {
       weftReviews: [weftPending()],
     });
-    await findByRole('heading', { level: 1, name: 'Reviews are locked' });
+    await findByRole('heading', { level: 1, name: 'Your sign-in can’t open Reviews' });
     expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
       'forbidden',
     );

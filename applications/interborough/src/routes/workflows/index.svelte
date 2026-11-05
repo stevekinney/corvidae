@@ -12,12 +12,10 @@
    * aggregate view read the engine, so a caller without `workflows:read` is told so here instead of
    * being sent to a form the engine would refuse.
    */
-  import { EmptyState } from '@lostgradient/cinder';
-  import { Lock } from '@lucide/svelte';
-
   import { VIEW_COPY } from '../../app/copy.ts';
+  import ForbiddenState from '../../app/forbidden-state.svelte';
   import { router } from '../../lib/router.svelte.ts';
-  import { getPrincipalStore, scopeReason } from '../../lib/scopes.svelte.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import AggregateView from './aggregate/aggregate-view.svelte';
   import RunDetail from './runs/run-detail.svelte';
   import RunList from './runs/run-list.svelte';
@@ -32,14 +30,7 @@
 {#if runId}
   {#key runId}<RunDetail {runId} />{/key}
 {:else if (view === 'start' || view === 'aggregate') && !engineAllowed}
-  <EmptyState
-    kind="first-use"
-    title={VIEW_COPY.runs.forbidden.title}
-    description={scopeReason('workflows:read')}
-    headingLevel={1}
-  >
-    {#snippet icon()}<Lock size={28} aria-hidden="true" />{/snippet}
-  </EmptyState>
+  <ForbiddenState title={VIEW_COPY.runs.forbidden.title} requirement="workflows:read" />
 {:else if view === 'start'}
   <StartPicker />
 {:else if view === 'aggregate'}

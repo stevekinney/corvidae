@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1901: a local host writes the provider configuration and a provider's key, and reloads the
  * catalog without a restart. The provider path runs against a fake client, and every key is a
@@ -42,6 +43,7 @@ const agentFile = [
 
 async function home(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'interborough-provider-changes-'));
+  await initializeWorkspaceHome(directory);
   directories.push(directory);
   return directory;
 }

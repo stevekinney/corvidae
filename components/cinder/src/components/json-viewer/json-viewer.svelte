@@ -26,6 +26,9 @@
     initialDepth = 1,
     maxDepth = 50,
     maxBytes = 1_048_576,
+    largeArrayAbove,
+    maxKeyLength,
+    maxStringLength,
     class: className,
   }: JsonViewerProps = $props();
 
@@ -128,7 +131,18 @@
     </div>
   {:else}
     <div role="tree" aria-label="JSON tree" tabindex="-1" onkeydown={handleTreeKeydown}>
-      <JsonViewerNode {value} depth={0} {initialDepth} {maxDepth} position={1} setSize={1} root />
+      <JsonViewerNode
+        {value}
+        depth={0}
+        {initialDepth}
+        {maxDepth}
+        {largeArrayAbove}
+        {maxKeyLength}
+        {maxStringLength}
+        position={1}
+        setSize={1}
+        root
+      />
     </div>
   {/if}
 </div>

@@ -342,6 +342,14 @@ describe('PageHeader', () => {
       }
     }
 
+    test('in a narrow container the title takes the row and the actions drop beneath it (W05)', () => {
+      expect(stylesheet).toMatch(/\.cinder-page-header\s*\{[^}]*container-type:\s*inline-size/);
+      const narrow = stylesheet.slice(stylesheet.indexOf('@container cinder-page-header'));
+      expect(narrow).toMatch(/__row\s*\{\s*flex-wrap:\s*wrap/);
+      expect(narrow).toMatch(/__heading-group\s*\{\s*flex-basis:\s*100%/);
+      expect(narrow).toMatch(/__actions\s*\{[^}]*flex-basis:\s*100%/);
+    });
+
     test('clamps to two lines and never uses the native title attribute', () => {
       const { container } = render(Harness, { props: { title: longTitle } });
 

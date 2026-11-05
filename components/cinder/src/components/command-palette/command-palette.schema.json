@@ -30,6 +30,18 @@
       "description": "Viewport width below which the palette opens as a bottom sheet instead of a centred panel: it\ndocks to the bottom edge with a grabber, a search field with a Close button, 44px rows, and a\nheight capped so the list scrolls inside it. It rides above the on-screen keyboard and\nrespects the bottom safe area. A CSS length such as `\"640px\"`, or `false` to keep the centred\npanel at every width.",
       "default": "640px"
     },
+    "escapeHint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "The key hint at the end of the search field, drawn as a `Kbd` (\"esc\"), which says how to close\nthe palette. `false` leaves it out. The bottom sheet shows a Close button instead and never\nthe hint.",
+      "default": "esc"
+    },
     "closeLabel": {
       "type": "string",
       "description": "Accessible name and visible text of the Close button the sheet form shows beside the search\nfield.",

@@ -173,6 +173,8 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
       ...remoteEnvironment(await createFreshDatabaseUrl(database), server, prefix),
       INTERBOROUGH_SECRET_ANTHROPIC_API_KEY: 'fixture-anthropic-key-remote',
     };
+    const initialized = await startHost({ environment, port: 0 });
+    await initialized.close();
     server.put(
       `${prefix}configuration.json`,
       JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),

@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1930: the host reads the `toolSources` in `configuration.json`, loads them before the Bureau
  * is built, lists their tools by `<id>__<tool>` with the capability tiers Armorer maps, keeps every
@@ -510,6 +511,7 @@ describe('saved tool sources', () => {
 
   test('stops the host, naming the field, for a toolSources entry it cannot use', async () => {
     const path = await home();
+    await initializeWorkspaceHome(path);
     await writeFile(
       join(path, 'configuration.json'),
       JSON.stringify({

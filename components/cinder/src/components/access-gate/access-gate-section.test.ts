@@ -136,6 +136,9 @@ describe('AccessGate section layouts', () => {
     );
     expect(page.get('border')).toBe('0');
     expect(page.get('justify-content')).toBe('center');
+    // It fills the region it is given, like an empty state, so it sits at the optical centre of the
+    // page rather than at the top (design row 12z).
+    expect(page.get('min-block-size')).toBe('100%');
     const disc = declarationsFor(
       css,
       ".cinder-access-gate[data-cinder-layout='page'] .cinder-access-gate__section-icon",

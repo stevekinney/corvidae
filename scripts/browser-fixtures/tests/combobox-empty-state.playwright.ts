@@ -14,18 +14,18 @@ test.describe('combobox empty state', () => {
   }) => {
     await page.goto(fixtureRoute('combobox'));
 
-    const field = page.getByLabel('Favorite fruit');
+    const field = page.getByRole('combobox', { name: 'Favorite fruit' });
     await field.click();
     await field.fill('zzz-audit');
 
-    const listbox = page.locator('.cinder-combobox').getByRole('listbox');
-    await expect(listbox).toBeVisible();
+    const controls = await field.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    const listbox = page.locator(`#${controls}`);
+    await expect(listbox).toHaveAttribute('hidden', '');
     await expect(listbox.getByRole('option')).toHaveCount(0);
-    // The visible copy lives inside the listbox surface itself; the separate
-    // sr-only status region (asserted below via aria-describedby) also
-    // contains the same text for assistive technology, so this locator is
-    // scoped to the listbox to avoid matching both.
-    await expect(listbox.getByText('No results', { exact: true })).toBeVisible();
+    // The visible copy belongs to the surrounding portaled panel, while the
+    // aria-controls-linked listbox is intentionally hidden when it has no options.
+    await expect(page.locator('.cinder-combobox__empty')).toBeVisible();
 
     await expect(field).toHaveAttribute('aria-describedby', /\S/);
     const fieldDescribedBy = await field.getAttribute('aria-describedby');
@@ -47,10 +47,13 @@ test.describe('combobox empty state', () => {
   }) => {
     await page.goto(fixtureRoute('combobox'));
 
-    const field = page.getByLabel('Favorite fruit');
+    const field = page.getByRole('combobox', { name: 'Favorite fruit' });
     await field.click();
     await field.fill('zzz-audit');
-    await expect(page.locator('.cinder-combobox').getByRole('listbox')).toBeVisible();
+    const controls = await field.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    await expect(page.locator(`#${controls}`)).toHaveAttribute('hidden', '');
+    await expect(page.locator('.cinder-combobox__empty')).toBeVisible();
 
     await field.press('ArrowDown');
     await field.press('ArrowUp');
@@ -65,15 +68,17 @@ test.describe('combobox empty state', () => {
   }) => {
     await page.goto(fixtureRoute('combobox'));
 
-    const field = page.getByLabel('Favorite fruit');
+    const field = page.getByRole('combobox', { name: 'Favorite fruit' });
     await field.click();
     await field.fill('zzz-audit');
     await expect(
-      page.locator('.cinder-combobox').getByRole('listbox').getByRole('option'),
+      page.locator(`#${await field.getAttribute('aria-controls')}`).getByRole('option'),
     ).toHaveCount(0);
 
     await field.fill('');
-    const listbox = page.locator('.cinder-combobox').getByRole('listbox');
+    const controls = await field.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    const listbox = page.locator(`#${controls}`);
     await expect(listbox.getByRole('option').first()).toBeVisible();
     await field.press('ArrowDown');
     await expect(field).toHaveAttribute('aria-activedescendant', /\S/);

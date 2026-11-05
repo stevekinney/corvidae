@@ -6,6 +6,7 @@
 
   .cinder-side-navigation-group {
     list-style: none;
+    margin: 0;
   }
 
   /* ----------------------------------------
@@ -166,5 +167,28 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-1);
+  }
+
+  /* ----------------------------------------
+ * Static section (`collapsible={false}`)
+ *
+ * A labelled list that never closes, such as "Work" and "Build" in an app's navigation. The label
+ * is plain text, 11.5px and in sentence case, and the list sits flush with the rest of the
+ * sidebar's rows at the sidebar's own row gap.
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group__heading {
+    display: block;
+    padding-block: calc(var(--cinder-space-2) + 1px) calc(var(--cinder-space-2) - 1px);
+    padding-inline: var(--cinder-space-2);
+    color: var(--cinder-text-muted);
+    font-size: 0.71875rem;
+    font-weight: var(--cinder-font-semibold);
+    line-height: 1rem;
+  }
+
+  .cinder-side-navigation-group[data-cinder-static] > .cinder-side-navigation-group__panel {
+    padding-inline-start: 0;
+    gap: var(--cinder-side-navigation-list-gap, var(--cinder-space-1));
   }
 }

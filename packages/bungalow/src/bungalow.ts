@@ -38,7 +38,7 @@ const TEMPORARY_SUFFIX =
   '\\.\\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp';
 /** The only temporary files Bungalow writes in the root: beside `deployment-id` and `configuration.json`. */
 const ROOT_TEMPORARY_FILE = new RegExp(
-  `^(?:deployment-id|configuration\\.json)${TEMPORARY_SUFFIX}$`,
+  `^(?:deployment-id|configuration\\.json|workspace-id)${TEMPORARY_SUFFIX}$`,
 );
 /** The only temporary files Bungalow writes in `secrets/`: beside a valid secret key. */
 const SECRET_TEMPORARY_FILE = new RegExp(`^[a-z0-9][a-z0-9-]*${TEMPORARY_SUFFIX}$`);
@@ -76,6 +76,8 @@ export type Bungalow = {
   readonly logs: string | undefined;
   /** A ULID generated when the root was first opened and the same on every reopen. */
   readonly deploymentId: string;
+  /** The immutable workspace identity bound to this backing store. */
+  readonly workspaceId: string;
   /**
    * Where the content named `name` lives: a mode-0700 `<root>/<name>` directory locally, created if
    * absent, or `{ kind: 's3', bucket, prefix: '<prefix><name>/' }` remotely, which creates nothing.
@@ -117,12 +119,24 @@ export type Bungalow = {
   [Symbol.dispose](): void;
 };
 
+/** Trusted composition hook: undefined identity checks an empty database before bootstrap;
+ * a persisted identity atomically binds the raw store before workspace publication. */
+export type DatabaseWorkspaceClaim = (
+  databaseUrl: string,
+  resourceLocation: string,
+  workspaceId: string | undefined,
+) => Promise<void>;
+
 export type OpenBungalowOptions = {
   readonly name: string;
   /** Defaults to the process environment. */
   readonly environment?: BungalowEnvironment;
   /** Defaults to the user's home directory. */
   readonly homeDirectory?: string;
+  /** An operator-supplied workspace identity; omitted means the persisted deployment identity. */
+  readonly workspaceId?: string;
+  /** Required in remote mode: the application binds the database it owns before recovery. */
+  readonly databaseWorkspaceClaim?: DatabaseWorkspaceClaim;
 };
 
 export type OpenTemporaryBungalowOptions = {
@@ -208,10 +222,38 @@ function loadDeploymentId(path: string): string {
   }
   if (!isUlid(stored)) {
     throw new BungalowStateError(
-      'The deployment-id file does not hold a ULID. Remove it to generate a new identity.',
+      'The deployment-id file does not hold a ULID. Restore the original identity from a backup.',
     );
   }
   return stored;
+}
+
+const WORKSPACE_MARKER = 'workspace-id';
+
+function assertWorkspaceId(value: string): string {
+  const normalized = value.trim();
+  if (normalized === '' || normalized.includes('\n')) {
+    throw new BungalowInputError('The workspace identity must be non-empty text.');
+  }
+  return normalized;
+}
+
+function bindWorkspaceId(path: string, deploymentId: string, configured?: string): string {
+  const expected = assertWorkspaceId(configured ?? deploymentId);
+  const marker = readEntry(path, 'workspace identity file')?.trim();
+  if (marker !== undefined && marker === '') {
+    throw new BungalowStateError('The workspace identity file is malformed.');
+  }
+  if (marker !== undefined && marker !== expected) {
+    throw new BungalowStateError('The backing store belongs to a different workspace.');
+  }
+  if (configured !== undefined && configured.trim() !== deploymentId) {
+    throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
+  }
+  if (marker === undefined) {
+    writePrivateFile(path, `${expected}\n`);
+  }
+  return expected;
 }
 
 /** What `openAtRoot` takes from outside, so a test can describe a lock that fails to release. */
@@ -220,6 +262,7 @@ export type OpenAtRootDependencies = {
   readonly onClose?: () => void;
   /** Replaces the rename that publishes a written configuration, so a test can fail it. */
   readonly renameConfiguration?: (from: string, to: string) => void;
+  readonly workspaceId?: string;
 };
 
 /**
@@ -231,7 +274,12 @@ export function openAtRoot(
   root: string,
   dependencies: OpenAtRootDependencies = {},
 ): Bungalow {
-  const { acquireLock = acquireRootLock, onClose, renameConfiguration } = dependencies;
+  const {
+    acquireLock = acquireRootLock,
+    onClose,
+    renameConfiguration,
+    workspaceId: configuredWorkspaceId,
+  } = dependencies;
   filesystem('prepare the root directory', () =>
     ensureDirectory(root, 'root directory', { privateMode: true }),
   );
@@ -240,18 +288,32 @@ export function openAtRoot(
   const logs = join(root, 'logs');
   const configurationLocation = join(root, 'configuration.json');
   let deploymentId: string;
+  let workspaceId: string;
   try {
+    const deploymentPath = join(root, 'deployment-id');
+    filesystem('remove leftover temporary root files', () =>
+      removeTemporaryFiles(root, ROOT_TEMPORARY_FILE),
+    );
+    const deployment = readEntry(deploymentPath, 'deployment-id file')?.trim();
+    const existingEntries = readdirSync(root).filter((entry) => entry !== 'lock');
+    if (deployment === undefined && existingEntries.length > 0) {
+      throw new BungalowStateError(
+        'The existing backing store has no persisted deployment identity.',
+      );
+    }
+    deploymentId = filesystem('persist the deployment identifier', () =>
+      loadDeploymentId(deploymentPath),
+    );
+    workspaceId = filesystem('bind the workspace identity', () =>
+      bindWorkspaceId(join(root, WORKSPACE_MARKER), deploymentId, configuredWorkspaceId),
+    );
     filesystem('prepare the secrets directory', () =>
       ensureDirectory(secrets, 'secrets directory', { privateMode: true }),
     );
     filesystem('prepare the logs directory', () => ensureDirectory(logs, 'logs directory'));
     filesystem('remove leftover temporary files', () => {
-      removeTemporaryFiles(root, ROOT_TEMPORARY_FILE);
       removeTemporaryFiles(secrets, SECRET_TEMPORARY_FILE);
     });
-    deploymentId = filesystem('persist the deployment identifier', () =>
-      loadDeploymentId(join(root, 'deployment-id')),
-    );
   } catch (error) {
     try {
       lock.release();
@@ -286,6 +348,7 @@ export function openAtRoot(
     configurationLocation,
     logs,
     deploymentId,
+    workspaceId,
     s3Client() {
       assertOpen();
       return undefined;
@@ -385,7 +448,17 @@ export async function openBungalowWithDependencies(
   assertBungalowName(options.name);
   const environment = options.environment ?? processEnvironment();
   const remote = remoteConfiguration(options.name, environment);
-  if (remote !== undefined) return openRemoteBungalow(options.name, remote);
+  if (remote !== undefined) {
+    if (options.databaseWorkspaceClaim === undefined) {
+      throw new BungalowInputError('Remote mode requires a database workspace binding callback.');
+    }
+    return openRemoteBungalow(
+      options.name,
+      remote,
+      options.workspaceId,
+      options.databaseWorkspaceClaim,
+    );
+  }
   const variable = bungalowHomeVariable(options.name);
   const underTest =
     environment['NODE_ENV'] === 'test' || processEnvironment()['NODE_ENV'] === 'test';
@@ -396,7 +469,13 @@ export async function openBungalowWithDependencies(
     );
   }
   const root = resolveOpenRoot({ ...options, environment });
-  return openAtRoot(options.name, root, dependencies);
+  return openAtRoot(
+    options.name,
+    root,
+    options.workspaceId === undefined
+      ? dependencies
+      : { ...dependencies, workspaceId: options.workspaceId },
+  );
 }
 
 /** The temporary directory as an absolute path, since `TMPDIR` is allowed to be relative. */

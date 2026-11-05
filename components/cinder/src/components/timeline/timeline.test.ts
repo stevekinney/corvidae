@@ -167,13 +167,65 @@ describe('Timeline', () => {
       ".cinder-timeline-item[data-cinder-connector-after='hidden'] .cinder-timeline-item__event::before",
     );
     // The connector's bottom must reach the NEXT marker center: it extends past
-    // the event box by the item padding (space-4) PLUS the next marker's
-    // margin-top (space-1) PLUS that marker's center-y. Dropping the space-1 term
-    // is the off-by-one-token regression that left stub gaps.
+    // the event box by the item gap (space-4 by default) PLUS the next marker's
+    // offset (space-1 by default) PLUS that marker's center-y. Dropping the offset
+    // term is the off-by-one-token regression that left stub gaps. All three are
+    // variables, so the rows variant can change them and the connector follows.
     expect(flat).toContain(
-      'bottom: calc( -1 * (var(--cinder-space-4) + var(--cinder-space-1) + var(--_cinder-timeline-marker-center-y)) )',
+      'bottom: calc( -1 * ( var(--_cinder-timeline-item-gap) + var(--_cinder-timeline-marker-offset) + var(--_cinder-timeline-marker-center-y) ) )',
     );
+    expect(flat).toContain('--_cinder-timeline-item-gap: var(--cinder-space-4)');
+    expect(flat).toContain('--_cinder-timeline-marker-offset: var(--cinder-space-1)');
     expect(css).not.toContain('.cinder-timeline-item::before {');
+  });
+
+  test('the rows variant draws only the marker and the children of each entry', () => {
+    const { container } = render(Wrapper, {
+      items: [
+        { id: 'a', datetime: '', timestamp: '', title: 'Search', body: 'first row' },
+        { id: 'b', datetime: '', timestamp: '', title: 'Lookup', body: 'second row' },
+      ],
+      variant: 'rows',
+    });
+
+    const list = container.querySelector('ol.cinder-timeline');
+    expect(list?.getAttribute('data-cinder-variant')).toBe('rows');
+    const lis = Array.from(container.querySelectorAll('li.cinder-timeline-item'));
+    expect(lis.map((li) => li.getAttribute('data-cinder-bare'))).toEqual(['', '']);
+    // No timestamp, no title header and no body wrapper: the row is whatever children draws.
+    expect(container.querySelector('.cinder-timeline-item__header')).toBeNull();
+    expect(container.querySelector('time')).toBeNull();
+    expect(container.querySelector('.cinder-timeline-item__body')).toBeNull();
+    expect(
+      lis.map((li) => li.querySelector('.cinder-timeline-item__content')?.textContent?.trim()),
+    ).toEqual(['first row', 'second row']);
+    // The marker column and the connector are still Timeline's: the last row ends the line.
+    expect(lis.map((li) => li.querySelector('[data-testid^="marker-"]') !== null)).toEqual([
+      true,
+      true,
+    ]);
+    expect(lis[0]?.getAttribute('data-cinder-connector-after')).toBe('visible');
+    expect(lis[1]?.getAttribute('data-cinder-connector-after')).toBe('hidden');
+  });
+
+  test('the other variants still draw the timestamp and title header', () => {
+    const { container } = render(Wrapper, { items, variant: 'rail' });
+
+    expect(container.querySelector('li[data-cinder-bare]')).toBeNull();
+    expect(container.querySelectorAll('.cinder-timeline-item__header').length).toBe(2);
+  });
+
+  test('the rows variant moves the connector with its two public properties', async () => {
+    const css = await Bun.file(new URL('./timeline.css', import.meta.url).pathname).text();
+    const flat = css.replace(/\s+/g, ' ');
+
+    expect(flat).toContain(
+      "[data-cinder-variant='rows'] { --_cinder-timeline-rail-size: 0.875rem; --_cinder-timeline-marker-size: 0.875rem; --_cinder-timeline-marker-offset: var(--cinder-timeline-row-marker-offset, 0.375rem); --_cinder-timeline-item-gap: var(--cinder-timeline-row-gap, var(--cinder-space-0-5));",
+    );
+    // The rows marker has no ring, so a dot or a glyph sits on the line.
+    expect(flat).toMatch(
+      /\[data-cinder-variant='rows'\] \.cinder-timeline-item__marker \{ border: 0; background: transparent; \}/,
+    );
   });
 
   test('timeline css contains horizontal flow and connector rules', async () => {

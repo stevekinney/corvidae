@@ -190,8 +190,11 @@
     gap: 16px;
   }
 
+  /* At 320px the segments and the status do not fit side by side, so the status wraps beneath them
+   * instead of pushing the page sideways (design row 05h). */
   .weft-metrics-tab__toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
   }

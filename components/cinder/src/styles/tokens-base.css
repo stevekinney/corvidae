@@ -669,8 +669,8 @@
   --cinder-selectable-row-leading-gap: var(--cinder-space-3);
   /* Gap between trailing action items. */
   --cinder-selectable-row-trailing-actions-gap: var(--cinder-space-2);
-  /* Gap between top-level navigation items. */
-  --cinder-side-navigation-list-gap: var(--cinder-space-1);
+  /* Gap between top-level navigation items: 2px, so a 30px row sits on a 32px pitch. */
+  --cinder-side-navigation-list-gap: var(--cinder-space-0-5);
   /* Spinner arc color. Default is `currentColor` (inherits from context); the reduced-motion static state re-asserts the same track-color fallback explicitly. `$value` aliases `text.default` as the closest resolvable stand-in for `currentColor`'s typical resolution. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer does not apply this fixed color in place of the real, context-inheriting `currentColor`. */
   --cinder-spinner-indicator: currentColor;
   /* Spinner diameter (md default; 24px). */

@@ -41,6 +41,11 @@ type Setup = {
 /** A home directory holding the configuration file and secrets a test names. */
 async function prepareHome(setup: Setup): Promise<string> {
   const home = await scratch();
+  const initialized = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
+  initialized.close();
   if (setup.configuration !== undefined) {
     await writeFile(join(home, 'configuration.json'), JSON.stringify(setup.configuration));
   }

@@ -53,7 +53,9 @@
   <p class="weft-artifact-text">{rendered.text}</p>
 {:else if rendered.kind === 'markdown'}
   <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-  <div class="weft-artifact-markdown">{@html renderMarkdown(rendered.markdown).html}</div>
+  <div class="cinder-markdown-content weft-artifact-markdown">
+    {@html renderMarkdown(rendered.markdown).html}
+  </div>
 {:else if rendered.kind === 'image'}
   <img class="weft-artifact-image" src={rendered.imageUrl} alt="Review artifact" />
 {:else if rendered.kind === 'html'}
@@ -64,5 +66,5 @@
     srcdoc={rendered.html}
   ></iframe>
 {:else}
-  <PayloadInspector value={inspectorValue} {label} />
+  <PayloadInspector value={inspectorValue} {label} redact={[]} />
 {/if}

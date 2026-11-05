@@ -98,7 +98,12 @@
         />
       {:else}
         <!-- `renderMarkdown` sanitizes before it returns HTML. -->
-        <div class="ib-agent-document" data-testid="agent-instructions-body">{@html html}</div>
+        <div
+          class="cinder-markdown-content ib-agent-document"
+          data-testid="agent-instructions-body"
+        >
+          {@html html}
+        </div>
       {/if}
     </section>
 

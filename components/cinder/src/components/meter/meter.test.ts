@@ -579,3 +579,136 @@ describe('Meter', () => {
     }
   });
 });
+
+describe('Meter segments', () => {
+  const contextShares = [
+    { label: 'Instructions and tools', value: 28_000, valueLabel: '28K' },
+    { label: 'Conversation', value: 33_000, valueLabel: '33K' },
+    { label: 'Tool results', value: 15_000, valueLabel: '15K' },
+  ];
+
+  test('stacks the shares in order, each as a share of the range', () => {
+    const { container } = render(Meter, {
+      props: {
+        segments: contextShares,
+        max: 200_000,
+        ariaLabel: 'Context',
+        ariaValueText: '76K of 200K tokens',
+      },
+    });
+    const shares = [...container.querySelectorAll<HTMLElement>('.cinder-meter__share')];
+
+    expect(shares.map((share) => share.style.inlineSize)).toEqual(['14%', '16.5%', '7.5%']);
+    expect(shares.map((share) => share.dataset['cinderTier'])).toEqual(['0', '1', '2']);
+    expect(container.querySelector('.cinder-meter__fill')).toBeNull();
+  });
+
+  test('reads as one meter whose value is the sum of the shares', () => {
+    const { container } = render(Meter, {
+      props: {
+        segments: contextShares,
+        max: 200_000,
+        ariaLabel: 'Context',
+        ariaValueText: '76K of 200K tokens',
+      },
+    });
+    const meter = container.querySelector('[role="meter"]');
+
+    expect(meter?.getAttribute('aria-valuenow')).toBe('76000');
+    expect(meter?.getAttribute('aria-valuemax')).toBe('200000');
+    expect(meter?.getAttribute('aria-valuetext')).toBe('76K of 200K tokens');
+  });
+
+  test('lists every share in a legend with its words, then the room left', () => {
+    const { container } = render(Meter, {
+      props: {
+        segments: contextShares,
+        max: 200_000,
+        remainder: { label: 'Free', valueLabel: '124K' },
+        ariaLabel: 'Context',
+      },
+    });
+    const rows = [...container.querySelectorAll('.cinder-meter__legend-item')].map((row) =>
+      [
+        row.querySelector('.cinder-meter__legend-label')?.textContent,
+        row.querySelector('.cinder-meter__legend-value')?.textContent,
+      ].join(' '),
+    );
+
+    expect(rows).toEqual([
+      'Instructions and tools 28K',
+      'Conversation 33K',
+      'Tool results 15K',
+      'Free 124K',
+    ]);
+    expect(container.querySelector('[data-cinder-remainder] .cinder-meter__swatch')).not.toBeNull();
+  });
+
+  test('computes the remainder from what is left of the range when no text is given', () => {
+    const { container } = render(Meter, {
+      props: {
+        segments: [{ label: 'Used', value: 30 }],
+        remainder: { label: 'Free' },
+        ariaLabel: 'Disk',
+      },
+    });
+    const rows = [...container.querySelectorAll('.cinder-meter__legend-value')].map(
+      (value) => value.textContent,
+    );
+
+    expect(rows).toEqual(['30', '70']);
+  });
+
+  test('never draws past the end of the track when the shares overflow the range', () => {
+    const { container } = render(Meter, {
+      props: {
+        segments: [
+          { label: 'A', value: 80 },
+          { label: 'B', value: 60 },
+          { label: 'C', value: -5 },
+        ],
+        ariaLabel: 'Overflow',
+      },
+    });
+    const shares = [...container.querySelectorAll<HTMLElement>('.cinder-meter__share')];
+
+    expect(shares.map((share) => share.style.inlineSize)).toEqual(['80%', '20%', '0%']);
+    expect(container.querySelector('[role="meter"]')?.getAttribute('aria-valuenow')).toBe('100');
+  });
+
+  test('gives every share past the fourth the lightest tone but keeps it in the legend', () => {
+    const { container } = render(Meter, {
+      props: {
+        segments: ['a', 'b', 'c', 'd', 'e'].map((label) => ({ label, value: 5 })),
+        ariaLabel: 'Many',
+      },
+    });
+    const tiers = [...container.querySelectorAll<HTMLElement>('.cinder-meter__share')].map(
+      (share) => share.dataset['cinderTier'],
+    );
+
+    expect(tiers).toEqual(['0', '1', '2', '3', '3']);
+    expect(container.querySelectorAll('.cinder-meter__legend-item')).toHaveLength(5);
+  });
+
+  test('does not draw threshold regions or warn about the unused value', () => {
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(' '));
+    };
+    try {
+      const { container } = render(Meter, {
+        props: { segments: contextShares, max: 200_000, low: 30, high: 70, ariaLabel: 'Context' },
+      });
+
+      expect(container.querySelector('.cinder-meter__segments')).toBeNull();
+      expect(container.querySelector('[role="meter"]')?.hasAttribute('data-cinder-state')).toBe(
+        false,
+      );
+      expect(warnings.filter((warning) => warning.includes('outside the [min,max]'))).toEqual([]);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+});

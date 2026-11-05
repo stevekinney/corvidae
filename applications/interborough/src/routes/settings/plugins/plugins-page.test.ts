@@ -7,7 +7,8 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { PLUGINS_COPY } from '../../../app/copy.ts';
+import { PLUGINS_COPY, RESTART_COPY } from '../../../app/copy.ts';
+import { restartProbing } from '../../../app/restart/host-restart-flow.svelte.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
@@ -17,7 +18,6 @@ import {
   type FakePluginHost,
   type PluginFixture,
 } from './plugins-host.test-support.ts';
-import { restartProbing } from './restart-flow.svelte.ts';
 
 const SECRET = 'tsk-live-0123456789-never-print-this';
 
@@ -65,6 +65,7 @@ const probing = { ...restartProbing };
 
 beforeEach(() => {
   restartProbing.delayMs = 0;
+  restartProbing.retryDelayMs = () => 0;
 });
 
 afterEach(() => {
@@ -98,14 +99,36 @@ const banner = (container: HTMLElement) =>
 const bannerText = (container: HTMLElement) => banner(container)?.textContent ?? null;
 const bodyOf = (container: HTMLElement) => within(container.ownerDocument.body);
 
-/** The restart's progress and ending, which stays one element from the first step to the last. */
-async function restartPanel(container: HTMLElement): Promise<HTMLElement> {
+/** Restart now asks first (`RESTART_COPY.confirm`): this presses it and confirms. */
+async function restartNow(container: HTMLElement): Promise<void> {
+  await fireEvent.click(
+    within(container).getByRole('button', { name: PLUGINS_COPY.banner.restartNow }),
+  );
+  const question = await bodyOf(container).findByRole('dialog', {
+    name: RESTART_COPY.confirm.title,
+  });
+  await fireEvent.click(
+    within(question).getByRole('button', { name: RESTART_COPY.confirm.confirm }),
+  );
+}
+
+/** The restart dialog's card, which carries the phase it shows. */
+async function restartCard(container: HTMLElement): Promise<HTMLElement> {
   return waitFor(() => {
-    const panel = container.ownerDocument.body.querySelector<HTMLElement>(
-      '[data-testid="plugins-restart"]',
+    const card = container.ownerDocument.body.querySelector<HTMLElement>(
+      '.cinder-restart-state__card',
     );
-    expect(panel).not.toBeNull();
-    return panel!;
+    expect(card).not.toBeNull();
+    return card!;
+  });
+}
+
+/** The banner that says what applied once the host is back. */
+async function backBanner(container: HTMLElement): Promise<HTMLElement> {
+  return waitFor(() => {
+    const back = container.querySelector<HTMLElement>('[data-testid="restart-back"]');
+    expect(back).not.toBeNull();
+    return back!;
   });
 }
 
@@ -392,47 +415,74 @@ describe('disabling a plugin', () => {
 });
 
 describe('restarting', () => {
-  test('Restart now writes the changes, posts to the restart route, and shows the reconnecting state until the host answers again', async () => {
+  test('Restart now asks first, and nothing is written or restarted until it is confirmed', async () => {
+    const { container, getByRole } = open('demo');
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+
+    const question = await bodyOf(container).findByRole('dialog', {
+      name: RESTART_COPY.confirm.title,
+    });
+    // It names the effect on running work, and never says nothing is running.
+    expect(question.textContent).toContain(RESTART_COPY.confirm.description(1));
+    expect(question.textContent).toContain('Running work picks up where it stopped');
+    await fireEvent.click(
+      within(question).getByRole('button', { name: RESTART_COPY.confirm.cancel }),
+    );
+    await waitFor(() =>
+      expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(writes()).toEqual([]);
+  });
+
+  test('Restart now writes the changes, posts to the restart route, and says what applied once the host answers again', async () => {
     const { container, getByRole } = open('demo');
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
     await waitFor(() => expect(bannerText(container)).not.toBeNull());
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
-    const status = await restartPanel(container);
-    await waitFor(() => expect(status.getAttribute('data-phase')).toBe('back'));
+    const back = await backBanner(container);
     expect(writes()).toEqual([
       { method: 'PUT', path: '/host/plugins/demo', body: { enabled: true } },
       { method: 'POST', path: '/host/restart', body: undefined },
     ]);
-    // The reads that failed while the host was down came between the request and the answer.
-    expect(status.textContent).toContain(PLUGINS_COPY.restart.back.summary(4, 1, 0));
-
-    await fireEvent.click(
-      within(status).getByRole('button', { name: PLUGINS_COPY.restart.back.close }),
-    );
-    await waitFor(() =>
-      expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull(),
+    // The dialog is gone; the banner says what applied and how the plugins stand now.
+    expect(bodyOf(container).queryByRole('dialog')).toBeNull();
+    expect(back.textContent).toContain(RESTART_COPY.back.title);
+    expect(back.textContent).toContain(RESTART_COPY.back.applied(['demo']));
+    expect(back.textContent).toContain(
+      '4 plugins running (linear, anthropic, bureau and demo); typesafe needs setup.',
     );
     expect(bannerText(container)).toBeNull();
     expect(rowOf(container, 'demo')?.textContent).toContain(PLUGINS_COPY.status.running);
+
+    await fireEvent.click(within(back).getByRole('button', { name: RESTART_COPY.back.dismiss }));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="restart-back"]')?.outerHTML ?? null).toBeNull(),
+    );
   });
 
-  test('shows the starting step while the host does not answer, and not the end before it does', async () => {
-    const { container, getByRole } = open('demo', { downFor: 50 });
+  test('counts the reconnect attempts while the host does not answer, and not the end before it does', async () => {
+    restartProbing.retryDelayMs = () => 60_000;
+    const { container, getByRole } = open('demo', { downFor: 1 });
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
-    const status = await restartPanel(container);
-    await waitFor(() => expect(status.textContent).toContain(PLUGINS_COPY.restart.steps.starting));
-    expect(status.getAttribute('data-phase')).toBe('starting');
-    expect(
-      within(status).queryByRole('button', { name: PLUGINS_COPY.restart.back.close }),
-    ).toBeNull();
+    const card = await restartCard(container);
+    await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('reconnecting'));
+    expect(card.textContent).toContain('Attempt 1 of 8.');
+    expect(within(card).getByRole('button', { name: 'Retry now' })).not.toBeNull();
+    expect(container.querySelector('[data-testid="restart-back"]')).toBeNull();
     // The page does not offer a second restart while one runs.
     expect(writes().filter((request) => request.path === '/host/restart')).toHaveLength(1);
+
+    // Retry now probes at once, without waiting out the minute the countdown has left.
+    await fireEvent.click(within(card).getByRole('button', { name: 'Retry now' }));
+    await backBanner(container);
   });
 
   test('knows the host is back when it answers with nothing pending, even if it was never seen down', async () => {
@@ -440,13 +490,62 @@ describe('restarting', () => {
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
-    const status = await restartPanel(container);
-    await waitFor(() => expect(status.getAttribute('data-phase')).toBe('back'));
+    await backBanner(container);
   });
 
-  test('Disable and restart disables the plugin and restarts the host', async () => {
+  test('says the host did not come back after 8 tries, with what to check, the launch command and Keep waiting', async () => {
+    const { container, getByRole } = open('demo', { downFor: 1_000 });
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    await restartNow(container);
+
+    const card = await restartCard(container);
+    await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('failed'));
+    expect(card.querySelector('h2')?.textContent).toContain('Interborough didn’t come back');
+    expect(card.textContent).toContain(RESTART_COPY.failed.description(1, undefined));
+    expect(card.textContent).toContain(RESTART_COPY.failed.check);
+    expect(card.textContent).toContain('Show the error details');
+    // The command is the one the host reported before it stopped.
+    expect(card.querySelector('code.cinder-restart-state__command-text')?.textContent).toBe(
+      'bun run start',
+    );
+    expect(within(card).getByRole('button', { name: 'Copy' })).not.toBeNull();
+    // There is no restart-again action: the route that restarts lives on the host that is not answering.
+    expect(within(card).getByRole('button', { name: 'Keep waiting' })).not.toBeNull();
+    expect(within(card).queryByRole('button', { name: /restart/i })).toBeNull();
+    // The dialog cannot be dismissed, and no banner claims the host is back.
+    expect(container.querySelector('[data-testid="restart-back"]')).toBeNull();
+  });
+
+  test('Keep waiting watches again, and the host coming back ends the failed state', async () => {
+    const { container, getByRole } = open('demo', { downFor: 12 });
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    await restartNow(container);
+
+    const card = await restartCard(container);
+    await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('failed'));
+    await fireEvent.click(within(card).getByRole('button', { name: 'Keep waiting' }));
+
+    await backBanner(container);
+    expect(bodyOf(container).queryByRole('dialog')).toBeNull();
+  });
+
+  test('leaves the command out of the failed state when the host cannot say how it was launched', async () => {
+    const { container, getByRole } = open('demo', { downFor: 1_000 });
+    host!.launch = null;
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    await restartNow(container);
+
+    const card = await restartCard(container);
+    await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('failed'));
+    expect(card.querySelector('.cinder-restart-state__command')).toBeNull();
+  });
+
+  test('Disable and restart disables the plugin, restarts the host, and says what became of it', async () => {
     const { container, getByRole } = open('linear');
     await loaded(container, 'linear');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
@@ -456,13 +555,18 @@ describe('restarting', () => {
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
     );
 
-    const status = await restartPanel(container);
-    await waitFor(() => expect(status.getAttribute('data-phase')).toBe('back'));
+    const back = await backBanner(container);
     expect(writes()).toEqual([
       { method: 'PUT', path: '/host/plugins/linear', body: { enabled: false } },
       { method: 'POST', path: '/host/restart', body: undefined },
     ]);
-    expect(status.textContent).toContain(PLUGINS_COPY.restart.back.summary(2, 1, 2));
+    expect(back.textContent).toContain(RESTART_COPY.back.disabled('linear'));
+    expect(back.textContent).toContain(
+      '2 plugins running (anthropic and bureau); typesafe needs setup; linear and demo are disabled.',
+    );
+    // The references it counted before the restart say what stopped working.
+    expect(back.textContent).toContain('1 agent, 2 schedules and 1 waiting run used linear');
+    expect(back.textContent).toContain(RESTART_COPY.back.enableAgain);
   });
 
   test('applies a staged switch together with the plugin it disables', async () => {
@@ -480,7 +584,7 @@ describe('restarting', () => {
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
     );
 
-    await restartPanel(container);
+    await backBanner(container);
     await waitFor(() =>
       expect(writes().map((request) => `${request.method} ${request.path}`)).toEqual([
         'PUT /host/plugins/linear',
@@ -496,7 +600,7 @@ describe('restarting', () => {
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
     host!.refuseNext = Response.json({ error: 'failed', message: '' }, { status: 500 });
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
     await waitFor(() =>
       expect(container.querySelector('[data-testid="plugins-restart-refused"]')).not.toBeNull(),
@@ -513,16 +617,22 @@ describe('restarting', () => {
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
-    const status = await restartPanel(container);
-    await waitFor(() => expect(status.getAttribute('data-phase')).toBe('unconfirmed'));
-    expect(status.textContent).toContain(PLUGINS_COPY.restart.unconfirmed.description);
-    await fireEvent.click(
-      within(status).getByRole('button', { name: PLUGINS_COPY.restart.unconfirmed.close }),
-    );
+    const notice = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>(
+        '[data-testid="plugins-restart-unconfirmed"]',
+      );
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(notice.textContent).toContain(RESTART_COPY.unconfirmed.description);
+    expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull();
+    await fireEvent.click(within(notice).getByRole('button', { name: /dismiss/i }));
     await waitFor(() =>
-      expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull(),
+      expect(
+        container.querySelector('[data-testid="plugins-restart-unconfirmed"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
     // The change is stored and still waits for a restart.
     expect(banner(container)?.textContent).toContain(PLUGINS_COPY.banner.changes(1));
@@ -534,7 +644,7 @@ describe('restarting', () => {
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
     host!.refuseRestart = Response.json({ error: 'failed', message: '' }, { status: 404 });
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
     await waitFor(() =>
       expect(container.querySelector('[data-testid="plugins-restart-refused"]')).not.toBeNull(),
@@ -545,7 +655,7 @@ describe('restarting', () => {
 
 describe('a change the host applies at once', () => {
   test('is saved without a restart, and is not left pending', async () => {
-    const { container, getByRole } = open('anthropic', {}, [
+    const { container } = open('anthropic', {}, [
       {
         name: 'anthropic',
         liveConfiguration: true,
@@ -560,7 +670,7 @@ describe('a change the host applies at once', () => {
     });
     await waitFor(() => expect(bannerText(container)).not.toBeNull());
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
     await waitFor(() => expect(bannerText(container)).toBeNull());
     expect(writes()).toEqual([
@@ -570,9 +680,7 @@ describe('a change the host applies at once', () => {
         body: { configuration: { allowlist: ['a', 'b'] } },
       },
     ]);
-    expect(
-      container.ownerDocument.body.querySelector('[data-testid="plugins-restart"]'),
-    ).toBeNull();
+    expect(container.ownerDocument.body.querySelector('.cinder-restart-state__card')).toBeNull();
     expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull();
     expect(configurationField(container, 'anthropic').value).toContain('"b"');
     expect(container.ownerDocument.body.textContent).toContain(PLUGINS_COPY.banner.saved);
@@ -593,17 +701,16 @@ describe('a change the host applies at once', () => {
     );
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
-    const status = await restartPanel(container);
-    await waitFor(() => expect(status.getAttribute('data-phase')).toBe('back'));
+    await backBanner(container);
     expect(writes().filter((request) => request.path === '/host/restart')).toHaveLength(1);
   });
 });
 
 describe('a write the host rejects', () => {
   test('names the plugin, the field and the host message beside that plugin editor', async () => {
-    const { container, getByRole } = open('linear');
+    const { container } = open('linear');
     await loaded(container, 'linear');
     await fireEvent.input(configurationField(container, 'linear'), {
       target: { value: '{ "teamKey": 7 }' },
@@ -613,7 +720,7 @@ describe('a write the host rejects', () => {
       { status: 400 },
     );
 
-    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(container);
 
     const rejection = await waitFor(() => {
       const found = container.querySelector<HTMLElement>('[data-testid="plugin-write-rejected"]');
@@ -697,7 +804,7 @@ describe('disabling with other changes waiting', () => {
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
     );
 
-    await restartPanel(container);
+    await backBanner(container);
     await waitFor(() =>
       expect(writes().map((request) => `${request.method} ${request.path}`)).toEqual([
         'PUT /host/plugins/linear',
@@ -751,7 +858,7 @@ describe('a restart that cannot begin', () => {
     await loaded(opened.container, 'demo');
     await fireEvent.click(opened.getByRole('switch', { name: PLUGINS_COPY.enabled }));
     setup(host!);
-    await fireEvent.click(opened.getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+    await restartNow(opened.container);
     await waitFor(() =>
       expect(
         opened.container.querySelector('[data-testid="plugins-restart-refused"]'),

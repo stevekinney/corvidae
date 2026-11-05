@@ -9,11 +9,23 @@ const schema = {
       properties: {
         name: {
           type: 'string',
-          description: 'Human-readable tool name requesting approval.',
+          description:
+            "The tool's identifier, such as `issue-refund`. The `row` layout writes it small and monospaced.",
+        },
+        label: {
+          type: 'string',
+          description:
+            "The tool's human name, such as `Issue refund`, written before the identifier. Omit it when the surrounding rows already name the call.",
         },
         risk: {
           enum: ['low', 'medium', 'high'],
-          description: 'Risk level assigned by the policy evaluator.',
+          description:
+            'Risk level assigned by the policy evaluator. Read as Reads, Changes things or Dangerous in muted text; the glyph carries the alert.',
+        },
+        irreversible: {
+          type: 'boolean',
+          description:
+            'True when the operation cannot be reversed. Adds "Can\'t be undone", which never breaks across lines.',
         },
       },
       additionalProperties: false,
@@ -167,7 +179,15 @@ const schema = {
       description: 'Optional ISO timestamp after which a pending approval is treated as expired.',
     },
     state: {
-      enum: ['pending', 'approved', 'approved_with_edits', 'denied', 'expired', 'cancelled'],
+      enum: [
+        'pending',
+        'approved',
+        'approved_with_edits',
+        'denied',
+        'expired',
+        'cancelled',
+        'unavailable',
+      ],
       description: 'Persisted approval state.',
     },
     editableArgs: {
@@ -182,15 +202,150 @@ const schema = {
       default: 3,
     },
     layout: {
-      enum: ['card', 'row'],
+      enum: ['card', 'row', 'detail'],
       description:
-        "Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`.",
+        "Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`.",
       default: 'card',
     },
     question: {
       type: 'string',
       description:
-        'Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`.',
+        'The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`.',
+    },
+    source: {
+      type: 'string',
+      description: 'Who asked, written after the source prefix: `Tool runner`, or `the agent`.',
+    },
+    sourcePrefix: {
+      type: 'string',
+      description:
+        'The words before `source`. Default `Approval from`, or `Asked by` in the `detail` layout.',
+    },
+    sourceHref: {
+      type: 'string',
+      description:
+        'Where the source\'s name leads, in the `detail` layout: the name is written as a link ("Asked by Tool runner in a chat").',
+    },
+    sourceIn: {
+      type: 'string',
+      description:
+        'Where it was asked, written after "in" in the `detail` layout, such as the chat\'s title: "Asked by Tool runner in Please refund order 4471".',
+    },
+    sourceInHref: {
+      type: 'string',
+      description: 'Where `sourceIn` leads, written as a link in the `detail` layout.',
+    },
+    said: {
+      type: 'string',
+      description:
+        'What the source said when it asked, in the `detail` layout: a collapsed line under who asked, "Tool runner said Order 4471 is $42.00…", that opens in place to the whole text.',
+    },
+    eyebrow: {
+      type: 'string',
+      description:
+        'The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`.',
+    },
+    toolPrefix: {
+      type: 'string',
+      description:
+        'The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`.',
+    },
+    requestedAt: {
+      type: 'string',
+      description:
+        'When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending.',
+    },
+    consequence: {
+      type: 'string',
+      description:
+        'What approving does, in one line, such as `Sends $42.00 back to the original card`.',
+    },
+    rememberScope: {
+      type: 'string',
+      description:
+        'Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always.',
+    },
+    decidedBy: {
+      type: 'string',
+      description: 'Who decided, once the approval is decided: `you`. Written as "Denied by you".',
+    },
+    decidedAt: {
+      type: 'string',
+      description:
+        'When the approval was decided, as an ISO timestamp, written as a time of day after the outcome.',
+    },
+    decisionNote: {
+      type: 'string',
+      description:
+        'The note the approver left with the decision, written under the outcome as "Your note", the note, and a caption saying where it went.',
+    },
+    disabledReason: {
+      type: 'string',
+      description:
+        'Why Deny and Approve are off while the approval is still pending. Written above the actions and named by both buttons.',
+    },
+    unavailableReason: {
+      type: 'string',
+      description: 'Why an `unavailable` approval cannot be answered now, written beneath it.',
+    },
+    resolving: {
+      enum: ['approve', 'deny'],
+      description:
+        'The answer that is on its way: `approve` writes "Approving…" with a spinner on Approve, `deny` writes "Denying…" on Deny, and both buttons, the note and the checkbox turn off until the host clears it.',
+    },
+    failure: {
+      type: 'object',
+      properties: {
+        summary: {
+          type: 'string',
+          description: "What failed, in a few words, such as `Couldn't approve.`.",
+        },
+        detail: {
+          type: 'string',
+          description:
+            "The reason and what is still true, such as `Interborough couldn't reach the agent. Nothing was refunded.`.",
+        },
+      },
+      additionalProperties: false,
+      required: ['summary'],
+      description:
+        'Why the last answer did not go through, written as a red-toned inline message below the consequence. Nothing was decided, so Deny and Approve stay live; Approve is the retry.',
+    },
+    notice: {
+      type: 'string',
+      description:
+        'A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired.',
+    },
+    result: {
+      type: 'string',
+      description:
+        'What the approval led to, once it is decided: written as "Result: Refunded $18.50 to the original card.".',
+    },
+    decidedIn: {
+      type: 'string',
+      description:
+        'Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM".',
+    },
+    outcomeLabel: {
+      type: 'string',
+      description:
+        'Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request\'s question is then the sentence beneath, with no tool named.',
+    },
+    footnote: {
+      type: 'string',
+      description:
+        'A line of text written under the buttons while the approval is pending, such as what happens once you decide.',
+    },
+    inputLabel: {
+      type: 'string',
+      description:
+        'What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card.',
+    },
+    view: {
+      enum: ['fields', 'json'],
+      description:
+        'Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch can govern every payload on a page. Default `fields`.',
+      default: 'fields',
     },
     class: {
       type: 'string',
@@ -202,10 +357,16 @@ const schema = {
   metadata: {
     unsupportedProps: [
       {
+        name: 'context',
+        reason: 'function-or-snippet',
+        description:
+          'A line of context written above the question, such as "Test chat · this runs for real".',
+      },
+      {
         name: 'onResolve',
         reason: 'function-or-snippet',
         description:
-          'Called for approve, approve-with-edits, deny, and dismiss with the complete resolution payload.',
+          'Called for approve, approve-with-edits, and deny with the complete resolution payload.',
       },
     ],
   },

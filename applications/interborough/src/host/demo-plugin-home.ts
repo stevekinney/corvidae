@@ -9,6 +9,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { openBungalow } from '@lostgradient/bungalow';
+
 /** Whether `value` is a plain object, so its keys can be read. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -36,6 +38,12 @@ export async function setPluginsEnabled(
   home: string,
   choices: Readonly<Record<string, boolean>>,
 ): Promise<void> {
+  await mkdir(home, { recursive: true });
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { NODE_ENV: 'test', INTERBOROUGH_HOME: home },
+  });
+  bungalow.close();
   const path = join(home, 'configuration.json');
   const document = await readDocument(path);
   const plugins: Record<string, unknown> = isRecord(document['plugins'])
@@ -45,7 +53,6 @@ export async function setPluginsEnabled(
     const entry = Object.hasOwn(plugins, name) ? plugins[name] : undefined;
     plugins[name] = { ...(isRecord(entry) ? entry : {}), enabled };
   }
-  await mkdir(home, { recursive: true });
   await writeFile(path, JSON.stringify({ ...document, plugins }));
 }
 

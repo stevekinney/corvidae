@@ -3,8 +3,10 @@
    * `/settings/plugins`: the plugins Interborough loaded at startup, with the open one beside the
    * list. A plugin's switch and configuration are drafts the page holds (`plugin-drafts.svelte.ts`),
    * and a banner counts them with Discard and Restart now. Restart now writes each changed plugin
-   * and restarts the host (`restart-flow.svelte.ts`), then waits for the host to answer again.
-   * Turning a plugin off asks first and lists what depends on it. A secret is saved at once, because
+   * and restarts the host (`restart-flow.svelte.ts`), then waits for the host to answer again; the
+   * restart asks first, shows its progress in the shell's restart dialog (`app/restart`) and, once
+   * the host is back, says what applied in a banner. Turning a plugin off asks first and lists what
+   * depends on it. A secret is saved at once, because
    * it needs no restart. The page reads `GET /host/plugins`; whether the host may be changed at all
    * is the host's to say (`lockReason`).
    */
@@ -22,11 +24,16 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 
-  import { PLUGINS_COPY, RETRY_LABEL } from '../../../app/copy.ts';
+  import { PLUGINS_COPY, RESTART_COPY, RETRY_LABEL } from '../../../app/copy.ts';
+  import type { RestartIntent } from '../../../app/restart/host-restart-flow.svelte.ts';
+  import RestartBackBanner from '../../../app/restart/restart-back-banner.svelte';
+  import RestartConfirmDialog from '../../../app/restart/restart-confirm-dialog.svelte';
+  import RestartDialog from '../../../app/restart/restart-dialog.svelte';
   import { showToast } from '../../../app/toast-host.svelte';
   import {
     getPlugins,
     type PluginProblem,
+    type PluginsSnapshot,
     type PluginStanding,
   } from '../../../lib/host-plugins.ts';
   import { queryKeys } from '../../../lib/query.ts';
@@ -39,10 +46,11 @@
     clashCounterpart,
     isShadowed,
     listKey,
+    restartBackWords,
     sourceWord,
     statusOf,
+    unavailableAfterDisable,
   } from './plugin-presentation.ts';
-  import RestartDialog from './restart-dialog.svelte';
   import { RestartFlow } from './restart-flow.svelte.ts';
   import SecretDialog, { type SecretTarget } from './secret-dialog.svelte';
   import UnloadedFolders from './unloaded-folders.svelte';
@@ -66,6 +74,7 @@
   onDestroy(() => flow.dispose());
 
   let disabling = $state<PluginStanding | null>(null);
+  let confirmingRestart = $state(false);
   let secret = $state<SecretTarget | null>(null);
   // The open plugin's key. The list fills it from the address, and a problem's `Show both` sets it.
   let openKey = $state<string | null>(null);
@@ -115,11 +124,39 @@
     }
   });
 
-  function restart(): void {
+  /**
+   * What the restart applies, in the plugins' own names: the ones the page holds a change for, and
+   * the ones the host already stores a change for that wait for a restart.
+   */
+  function intentFor(current: PluginsSnapshot, turningOff?: PluginStanding): RestartIntent {
+    const titles = new Map(
+      current.plugins.map((plugin) => [plugin.descriptor.name, plugin.descriptor.title]),
+    );
+    const changed = new Set(drafts.pendingWrites(current).map((change) => change.name));
+    for (const plugin of current.plugins) {
+      if (plugin.restartRequired) changed.add(plugin.descriptor.name);
+    }
+    const changes = [...changed].map((name) => titles.get(name) ?? name);
+    // The plugin turned off is the only change: the banner then says what became of it.
+    const alone =
+      turningOff !== undefined && changed.size === 1 && changed.has(turningOff.descriptor.name);
+    return alone
+      ? {
+          changes,
+          disabling: {
+            title: turningOff.descriptor.title,
+            unavailable: unavailableAfterDisable(turningOff),
+          },
+        }
+      : { changes };
+  }
+
+  function restart(turningOff?: PluginStanding): void {
     if (snapshot === undefined || invalid) return;
     void flow.run(
       drafts.writes(snapshot),
       snapshot.plugins.some((plugin) => plugin.restartRequired),
+      intentFor(snapshot, turningOff),
     );
   }
 
@@ -137,7 +174,7 @@
     if (invalid) return;
     drafts.setEnabled(plugin, false);
     disabling = null;
-    restart();
+    restart(plugin);
   }
 
   // What `Show both` does for a name clash: open the other plugin that holds the name, or nothing
@@ -196,13 +233,28 @@
           variant="primary"
           size="sm"
           disabled={invalid || flow.running}
-          onclick={restart}>{copy.banner.restartNow}</Button
+          onclick={() => (confirmingRestart = true)}>{copy.banner.restartNow}</Button
         >
       {/snippet}
     </Banner>
     {#if invalid}
       <p class="ib-plugins__hint">{copy.banner.invalid}</p>
     {/if}
+  {/if}
+
+  {#if flow.phase === 'back'}
+    {@const back = restartBackWords(flow.intent, flow.result)}
+    <RestartBackBanner title={back.title} text={back.text} onDismiss={() => flow.close()} />
+  {:else if flow.phase === 'unconfirmed'}
+    <Alert
+      variant="warning"
+      dismissible
+      onDismiss={() => flow.close()}
+      data-testid="plugins-restart-unconfirmed"
+    >
+      <p class="ib-plugins__alert-title">{RESTART_COPY.unconfirmed.title}</p>
+      <p class="ib-plugins__alert-body">{RESTART_COPY.unconfirmed.description}</p>
+    </Alert>
   {/if}
 
   {#if refusalWords !== ''}
@@ -300,6 +352,11 @@
   onCancel={() => (disabling = null)}
 />
 <SecretDialog bind:target={secret} />
+<RestartConfirmDialog
+  bind:open={confirmingRestart}
+  changes={pendingCount}
+  onConfirm={() => restart()}
+/>
 <RestartDialog {flow} />
 
 <style>

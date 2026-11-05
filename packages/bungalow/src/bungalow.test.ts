@@ -72,7 +72,13 @@ describe('openBungalow layout', () => {
     expect(existsSync(join(root, 'database.sqlite'))).toBe(false);
     expect(existsSync(handle.configurationLocation)).toBe(false);
     expect(await handle.readConfiguration()).toBeUndefined();
-    expect(readdirSync(root).toSorted()).toEqual(['deployment-id', 'lock', 'logs', 'secrets']);
+    expect(readdirSync(root).toSorted()).toEqual([
+      'deployment-id',
+      'lock',
+      'logs',
+      'secrets',
+      'workspace-id',
+    ]);
   });
 
   test('reopens an existing root without altering what is in it', async () => {
@@ -125,6 +131,7 @@ describe('deploymentId', () => {
     first.close();
     expect(identifier).toMatch(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
     expect(readFileSync(join(root, 'deployment-id'), 'utf8').trim()).toBe(identifier);
+    expect(readFileSync(join(root, 'workspace-id'), 'utf8').trim()).toBe(identifier);
     expect(modeOf(join(root, 'deployment-id'))).toBe(0o600);
 
     using second = await openIn(root);
@@ -143,9 +150,38 @@ describe('deploymentId', () => {
     writeFileSync(join(root, 'deployment-id'), 'not-a-ulid\n');
     expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowStateError);
     // The failed open released its lock, so a repaired file opens.
-    writeFileSync(join(root, 'deployment-id'), '01ARYZ6S41TSV4RRFFQ69G5FAV\n');
+    const repaired = '01ARYZ6S41TSV4RRFFQ69G5FAV';
+    writeFileSync(join(root, 'deployment-id'), `${repaired}\n`);
+    writeFileSync(join(root, 'workspace-id'), `${repaired}\n`);
     using handle = await openIn(root);
-    expect(handle.deploymentId).toBe('01ARYZ6S41TSV4RRFFQ69G5FAV');
+    expect(handle.deploymentId).toBe(repaired);
+  });
+
+  test('refuses a nonempty root without a persisted identity', async () => {
+    const root = temporaryDirectory();
+    writeFileSync(join(root, 'database.sqlite'), 'existing database');
+    expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowStateError);
+    expect(existsSync(join(root, 'deployment-id'))).toBe(false);
+    expect(readFileSync(join(root, 'database.sqlite'), 'utf8')).toBe('existing database');
+  });
+
+  test('recovers a fresh home interrupted before its identity rename', async () => {
+    const root = temporaryDirectory();
+    const temporary = join(root, 'deployment-id.4242-12345678-1234-1234-1234-123456789abc.tmp');
+    writeFileSync(temporary, 'interrupted identity');
+    using bungalow = await openIn(root);
+    expect(bungalow.workspaceId).toBe(bungalow.deploymentId);
+    expect(existsSync(temporary)).toBe(false);
+  });
+
+  test('refuses a workspace marker mismatch without rewriting either identity', async () => {
+    const root = temporaryDirectory();
+    await openAndClose(root);
+    const deployment = readFileSync(join(root, 'deployment-id'), 'utf8');
+    writeFileSync(join(root, 'workspace-id'), 'different-workspace\n');
+    expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowStateError);
+    expect(readFileSync(join(root, 'deployment-id'), 'utf8')).toBe(deployment);
+    expect(readFileSync(join(root, 'workspace-id'), 'utf8')).toBe('different-workspace\n');
   });
 });
 
@@ -166,6 +202,7 @@ describe('writeConfiguration', () => {
       'lock',
       'logs',
       'secrets',
+      'workspace-id',
     ]);
   });
 
@@ -413,7 +450,7 @@ describe('resolveOpenRoot', () => {
 describe('a root that already exists', () => {
   test('is tightened to 0700, along with its secrets directory', async () => {
     const root = temporaryDirectory();
-    mkdirSync(join(root, 'secrets'), { mode: 0o755 });
+    await openAndClose(root);
     chmodSync(root, 0o755);
     chmodSync(join(root, 'secrets'), 0o755);
     using handle = await openIn(root);

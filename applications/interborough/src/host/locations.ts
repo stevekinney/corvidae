@@ -9,7 +9,7 @@ import {
   workflowFileDirectory,
   workflowObjectSource,
 } from '@lostgradient/bureau/sources';
-import type { Storage } from '@lostgradient/storage';
+import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { PostgresStorage } from '@lostgradient/storage-postgres';
 import type { Tool } from 'armorer';
@@ -24,6 +24,43 @@ import { fileURLToPath } from 'node:url';
  * one interval.
  */
 export const REMOTE_POLL_INTERVAL_MILLISECONDS = 30_000;
+
+/** One immutable binding for the raw Postgres database, independent of URL spelling or S3 prefix. */
+export const WORKSPACE_BINDING_KEY = 'bungalow:workspace-binding';
+
+const textEncoder = new TextEncoder();
+
+/** Atomically bind a database to one workspace and resource prefix. */
+export async function claimWorkspaceBinding(
+  storage: Storage,
+  prefix: string,
+  workspaceId: string | undefined,
+): Promise<void> {
+  if (workspaceId === undefined) {
+    const entries = storage.scan('', { limit: 1 })[Symbol.asyncIterator]();
+    try {
+      const first = await entries.next();
+      if (!first.done) {
+        throw new Error(
+          'Existing database state has no persisted deployment identity. Restore it from a backup.',
+        );
+      }
+    } finally {
+      await entries.return?.();
+    }
+    return;
+  }
+  const value = textEncoder.encode(JSON.stringify({ prefix, workspaceId }));
+  await storageConditionalBatch(
+    storage,
+    [{ key: WORKSPACE_BINDING_KEY, expectedValue: null }],
+    [{ type: 'put', key: WORKSPACE_BINDING_KEY, value }],
+  );
+  const stored = await storage.get(WORKSPACE_BINDING_KEY);
+  if (stored === null || new TextDecoder().decode(stored) !== new TextDecoder().decode(value)) {
+    throw new Error('The Postgres database is already bound to another workspace.');
+  }
+}
 
 /**
  * Where the host's database is, without anything that authenticates to it: a SQLite file's path, or

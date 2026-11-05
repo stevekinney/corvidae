@@ -7,6 +7,7 @@ import {
   branchGroupHasCurrentStep,
   branchOutcomeSummary,
   branchStartsCollapsed,
+  describeSegments,
   hasProgress,
   hiddenNestedStepLabel,
   isCurrent,
@@ -29,6 +30,8 @@ const ALL_STATUSES: RunStepStatus[] = [
   'skipped',
   'retrying',
   'waiting_approval',
+  'waiting',
+  'recorded',
 ];
 
 describe('status mapping', () => {
@@ -44,6 +47,8 @@ describe('status mapping', () => {
       skipped: 'neutral',
       retrying: 'warning',
       waiting_approval: 'accent',
+      waiting: 'pending',
+      recorded: 'neutral',
     });
   });
 
@@ -53,6 +58,8 @@ describe('status mapping', () => {
     }
     expect(statusLabel('waiting_approval')).toBe('Waiting approval');
     expect(statusLabel('timed-out')).toBe('Timed out');
+    expect(statusLabel('cancelled')).toBe('Canceled');
+    expect(statusLabel('waiting')).toBe('Waiting');
   });
 
   test('badgeVariant maps every status to a badge variant', () => {
@@ -67,6 +74,8 @@ describe('status mapping', () => {
       skipped: 'neutral',
       retrying: 'warning',
       waiting_approval: 'accent',
+      waiting: 'neutral',
+      recorded: 'neutral',
     });
   });
 
@@ -77,8 +86,14 @@ describe('status mapping', () => {
       'timed-out',
       'cancelled',
       'skipped',
+      'recorded',
     ]);
-    expect(ALL_STATUSES.filter(isCurrent)).toEqual(['running', 'retrying', 'waiting_approval']);
+    expect(ALL_STATUSES.filter(isCurrent)).toEqual([
+      'running',
+      'retrying',
+      'waiting_approval',
+      'waiting',
+    ]);
     expect(isTerminal('pending')).toBe(false);
     expect(isCurrent('pending')).toBe(false);
   });
@@ -278,5 +293,34 @@ describe('exhaustiveness guards', () => {
     expect(() => laneOutcomeBadgeVariant('sideways' as never)).toThrow(
       'Unexpected exhaustive value: sideways',
     );
+  });
+});
+
+describe('describeSegments', () => {
+  test('renders the parts between backticks as code', () => {
+    expect(
+      describeSegments('Waiting for signal `notes-approved`. It starts again when sent.'),
+    ).toEqual([
+      { text: 'Waiting for signal ', code: false },
+      { text: 'notes-approved', code: true },
+      { text: '. It starts again when sent.', code: false },
+    ]);
+  });
+
+  test('keeps plain text, an unmatched backtick and an empty pair as text', () => {
+    expect(describeSegments('Found the last release')).toEqual([
+      { text: 'Found the last release', code: false },
+    ]);
+    expect(describeSegments('one ` two')).toEqual([{ text: 'one ` two', code: false }]);
+    expect(describeSegments('a `` b')).toEqual([{ text: 'a `` b', code: false }]);
+    expect(describeSegments('')).toEqual([]);
+  });
+
+  test('handles code at either end and several pairs', () => {
+    expect(describeSegments('`a` and `b`')).toEqual([
+      { text: 'a', code: true },
+      { text: ' and ', code: false },
+      { text: 'b', code: true },
+    ]);
   });
 });

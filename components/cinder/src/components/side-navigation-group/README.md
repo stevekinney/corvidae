@@ -13,6 +13,7 @@ Collapsible group header that organises related items within a side navigation.
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional CSS class merged with `.cinder-side-navigation-group`. |
+| `collapsible` | `boolean` | no | — | Whether the group opens and closes. Default: true. Set `false` for a static section: its label is plain text over an always-visible list, and in a collapsed sidebar the label gives way to a hairline between sections. `expanded` and `disabled` do nothing on a static group. |
 | `disabled` | `boolean` | no | — | When true, the disclosure button is disabled. Default: false. |
 | `expanded` | `boolean` | no | — | Whether the group is expanded. Bindable. Default: true. |
 | `id` | `string` | no | — | Optional stable id for the root <li>. Trigger uses `${id}-trigger`, panel uses `${id}-panel`. If omitted, generated via useId. |

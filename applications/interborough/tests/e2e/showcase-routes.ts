@@ -17,6 +17,7 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
   const goal = encodeURIComponent(world.goals.sayHello);
   const hook = encodeURIComponent(world.hooks.pageOnCall);
   return {
+    '/': '/',
     '/chats': '/chats',
     '/chats/new': '/chats/new',
     '/chats/:chat': `/chats/${chat}`,

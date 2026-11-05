@@ -89,7 +89,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
   });
 
   for (const width of WIDTHS) {
-    test(`opens / on /chats with a welcome and a New chat link, not on the goal's session, at ${width} pixels`, async ({
+    test(`opens /chats with a welcome and a New chat link, not on the goal's session, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -101,7 +101,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       );
       await page.setViewportSize({ width, height: 900 });
 
-      await page.goto('/');
+      await page.goto('/chats');
 
       await expect(page).toHaveURL(/\/chats$/);
       const frame = page.locator('[data-view="chat"]');
@@ -120,13 +120,15 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
         'demo:echo',
         'demo:model-switcher',
         'demo:internal',
+        'demo:release-helper',
+        'demo:changelog-writer',
       ]);
       await expect(agents.locator('code.ib-identifier').first()).toHaveCSS('font-family', /mono/i);
       await checkA11y(`chat — the welcome at ${width}px`);
     });
   }
 
-  test('New chat reaches a working /chats/new, and the chat started there is listed and opened by /', async ({
+  test('New chat reaches a working /chats/new, and the chat started there is listed', async ({
     page,
   }) => {
     await page.goto('/chats');
@@ -144,11 +146,9 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     const rows = page.getByRole('region', { name: 'Chats' }).getByRole('listitem');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
-    await page.goto('/');
-    await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`));
   });
 
-  test('a schedule’s fire makes a session that neither / nor /chats shows, though it is newer than the chat', async ({
+  test('a schedule’s fire makes a session that /chats does not show, though it is newer than the chat', async ({
     page,
     request,
   }) => {
@@ -189,8 +189,6 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     const rows = page.getByRole('region', { name: 'Chats' }).getByRole('listitem');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
-    await page.goto('/');
-    await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`));
   });
 
   for (const width of WIDTHS) {
@@ -226,33 +224,6 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     await page.getByRole('link', { name: TASK_COPY.openSession }).click();
     await expect(page).toHaveURL(new RegExp(`/chats/${fireContextId}$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(fireInput);
-  });
-});
-
-test.describe('the home screen', () => {
-  test('opens the chat that was updated most recently', async ({ page, request }) => {
-    await runToEnd(request, 'demo:assistant', newThreadId('older'), 'An older chat');
-    const newest = newThreadId('newest');
-    await runToEnd(request, 'demo:assistant', newest, 'The newest chat');
-
-    await page.goto('/');
-
-    await expect(page).toHaveURL(new RegExp(`/chats/${newest}$`));
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('The newest chat');
-  });
-
-  test('replaces its own history entry, so Back does not return to it', async ({
-    page,
-    request,
-  }) => {
-    await runToEnd(request, 'demo:assistant', newThreadId('home'), 'Chat for the home screen');
-    await page.goto('/agents');
-
-    await page.goto('/');
-    await expect(page).toHaveURL(sessionUrl);
-    await page.goBack();
-
-    await expect(page).toHaveURL(/\/agents$/);
   });
 });
 

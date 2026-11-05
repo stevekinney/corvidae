@@ -20,6 +20,18 @@
       "title": "Inherited color",
       "description": "Text takes its color from the container, so it follows any surface it is placed on.",
       "code": "<script lang=\"ts\">\n  import { Text } from '@lostgradient/cinder';\n</script>\n\n<div style=\"padding: var(--cinder-space-4); background: var(--cinder-accent-solid); color: var(--cinder-text-inverse);\">\n  <Text variant=\"h3\">Inherits from the container</Text>\n  <Text>The color comes from the surrounding element.</Text>\n</div>\n"
+    },
+    {
+      "id": "clamp",
+      "title": "Clamped run with Show all",
+      "description": "A long run holds to three lines; Show all opens the rest in place and the page's own link sits beside it.",
+      "code": "<script lang=\"ts\">\n  import { Text } from '@lostgradient/cinder';\n\n  const reply =\n    'Here is where the refund queue stands. Four refunds are waiting for approval: 4455 ($18.50, arrived damaged), 4456 ($42.00, wrong size), 4457 ($9.99, duplicate charge) and 4458 ($27.00, never arrived). Three of them look routine and I would approve them. 4458 needs a look first, because the carrier shows it as delivered. I have not issued anything; each refund asks you first. If you want, I can draft a note to the customer for 4458 while you decide on the others.';\n</script>\n\n<div style=\"max-inline-size: 24rem;\">\n  <Text clamp={3}>\n    {reply}\n    {#snippet actions()}\n      <a href=\"#raw\">Show raw payloads</a>\n    {/snippet}\n  </Text>\n</div>\n"
+    },
+    {
+      "id": "truncate-middle",
+      "title": "Cut in the middle",
+      "description": "A long identifier keeps its last four characters when the line is too narrow; the tooltip carries the whole id.",
+      "code": "<script lang=\"ts\">\n  import { Text } from '@lostgradient/cinder';\n</script>\n\n<div style=\"inline-size: 12rem;\">\n  <Text truncate=\"middle\" text=\"payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68\" />\n</div>\n"
     }
   ]
 }

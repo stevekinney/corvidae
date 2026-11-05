@@ -17,15 +17,21 @@ import {
   matchChats,
   matchDefinitions,
   matchNewChats,
+  matchRuns,
   matchTools,
   matchWaiting,
   memoizeRead,
+  newChatAboutPath,
   newChatLabel,
+  newChatTopic,
   NO_RESULTS as NOTHING,
   parseQuery,
+  runMeta,
+  runTitle,
   searchConsole,
   toolPath,
   waitingLabel,
+  waitingMeta,
   type CatalogTool,
 } from './command-palette-search.ts';
 
@@ -191,15 +197,20 @@ describe('the chat and agent matches', () => {
     expect(matchChats(many, 'echo')).toHaveLength(5);
   });
 
-  test('an agent matches on its name, display name, or description', () => {
+  test('an agent matches on its name or display name, and never on a description its row does not show', () => {
     const named = agent({ name: 'tool-runner', displayName: 'Tool runner' });
     expect(matchAgents([named, ECHO_AGENT], 'ech').map((match) => match.name)).toEqual(['echo']);
     expect(matchAgents([named, ECHO_AGENT], 'runner').map((match) => match.name)).toEqual([
       'tool-runner',
     ]);
-    expect(matchAgents([named, ECHO_AGENT], 'last message').map((match) => match.name)).toEqual([
-      'echo',
-    ]);
+    // ECHO_AGENT's description reads "Repeats the last message it was sent."
+    expect(matchAgents([named, ECHO_AGENT], 'last message')).toEqual([]);
+    const refunds = agent({
+      name: 'tool-runner',
+      displayName: 'Tool runner',
+      description: 'Helps with orders and refunds.',
+    });
+    expect(matchAgents([refunds], 'refund')).toEqual([]);
   });
 
   test('offers a new chat with every agent, whether or not it opts into A2A, by the words of the command', () => {
@@ -291,9 +302,7 @@ function waitingItem(overrides: Partial<NotificationItem>): NotificationItem {
     tier: 'warning',
     icon: 'shield-question-mark',
     title: 'echo needs your approval',
-    identifiers: ['echo'],
     detail: 'Refund order 1234',
-    joiner: ' in ',
     href: '/chats/refund',
     emittedAtMs: 2_000,
     read: false,
@@ -336,7 +345,7 @@ describe('the workflow and tool matches', () => {
 });
 
 describe('what is waiting and the actions', () => {
-  test('lists only what needs a decision or an answer, the oldest first, and every one for an empty query', () => {
+  test('lists only what needs a decision or an answer, the newest first, and every one for an empty query', () => {
     const items = [
       waitingItem({
         id: 'review:new',
@@ -349,25 +358,41 @@ describe('what is waiting and the actions', () => {
         kind: 'question',
         title: 'echo asked a question',
       }),
-      waitingItem({ id: 'task:done', kind: 'answered', tier: 'info', title: 'echo answered' }),
+      waitingItem({
+        id: 'alert:storage',
+        kind: 'alert',
+        tier: 'info',
+        title: 'Storage passed its warning level',
+      }),
       waitingItem({ id: 'task:failed', kind: 'failed', title: 'echo failed' }),
     ];
-    expect(matchWaiting(items, '').map((item) => item.id)).toEqual(['review:old', 'review:new']);
+    expect(matchWaiting(items, '').map((item) => item.id)).toEqual(['review:new', 'review:old']);
     expect(matchWaiting(items, 'tool-runner').map((item) => item.id)).toEqual(['review:new']);
     expect(matchWaiting(items, 'refund order').map((item) => item.id)).toEqual([
-      'review:old',
       'review:new',
+      'review:old',
     ]);
     expect(matchWaiting(items, 'zzz')).toEqual([]);
-    expect(waitingLabel(items[0]!)).toBe('tool-runner needs your approval in Refund order 1234');
+    expect(waitingLabel(items[0]!)).toBe('tool-runner needs your approval · Refund order 1234');
     expect(waitingLabel(waitingItem({ detail: '' }))).toBe('echo needs your approval');
+  });
+
+  test('a waiting item is found by the title of the chat it is about as well as by what it asks', () => {
+    const items = [
+      waitingItem({ id: 'review:a', title: 'Run issue-refund?', chat: 'Please refund order 4471' }),
+    ];
+
+    expect(matchWaiting(items, 'order 4471').map((item) => item.id)).toEqual(['review:a']);
+    expect(matchWaiting(items, 'issue-refund').map((item) => item.id)).toEqual(['review:a']);
+    expect(matchWaiting(items, 'nothing like it')).toEqual([]);
   });
 
   test('an action matches on its name, and an empty query lists them all up to the limit', () => {
     const run = () => {};
     const actions = Array.from({ length: 12 }, (_, index) => ({
       label: index === 3 ? 'Go to Reviews' : `Do thing ${String(index)}`,
-      keys: ['G', 'V'],
+      keys: ['G', 'R'],
+      group: 'Go to',
       run,
     }));
     expect(matchActions(actions, 'reviews').map((action) => action.label)).toEqual([
@@ -375,6 +400,161 @@ describe('what is waiting and the actions', () => {
     ]);
     expect(matchActions(actions, '')).toHaveLength(8);
     expect(matchActions(actions, '', 20)).toHaveLength(12);
+  });
+});
+
+describe('the order of the actions (row 03c)', () => {
+  const run = () => {};
+  const action = (label: string, group: string) => ({ label, keys: [], group, run });
+  const registered = [
+    action('Show keyboard shortcuts', 'General'),
+    action('New chat', 'Chat'),
+    action('Go to Home', 'Go to'),
+    action('Do a thing', 'Elsewhere'),
+    action('Go to Chat', 'Go to'),
+  ];
+
+  test('lists the Go to rows, then New chat, then the rest, with the shortcut map last', () => {
+    expect(matchActions(registered, '').map((match) => match.label)).toEqual([
+      'Go to Home',
+      'Go to Chat',
+      'New chat',
+      'Do a thing',
+      'Show keyboard shortcuts',
+    ]);
+  });
+
+  test('reads the topic of a "New chat about" action from what was typed', () => {
+    expect(newChatTopic('  refund ')).toBe('refund');
+    expect(newChatTopic('   ')).toBeUndefined();
+    expect(newChatAboutPath('refund & more')).toBe('/chats/new?about=refund%20%26%20more');
+  });
+});
+
+describe('what a waiting row says after its sentence (rows 03c, 03g)', () => {
+  test('an approval is "Approval · waiting" and a question is "Question"', () => {
+    expect(waitingMeta(waitingItem({ kind: 'approval' }))).toBe('Approval · waiting');
+    expect(waitingMeta(waitingItem({ kind: 'question' }))).toBe('Question');
+  });
+});
+
+describe('runs (row 03g)', () => {
+  const refundChat = chat({
+    id: 'refund-chat',
+    agentName: 'tool-runner',
+    title: 'Please refund order 4471, it arrived damaged.',
+  });
+  const task = (overrides: Record<string, unknown>) =>
+    ({
+      id: 'run-1',
+      contextId: 'refund-chat',
+      agentName: 'tool-runner',
+      owner: 'me',
+      actor: null,
+      kind: 'chat',
+      status: 'input-required',
+      finishReason: null,
+      statusMessage: null,
+      createdAt: '2026-11-02T16:42:00.000Z',
+      updatedAt: '2026-11-02T16:42:00.000Z',
+      cleanup: null,
+      openWaits: [{ kind: 'tool-approval', reviewId: 'review-1', callId: 'call-1' }],
+      ...overrides,
+    }) as Parameters<typeof matchRuns>[0][number];
+  const names = new Map([['tool-runner', 'Tool runner']]);
+
+  test('a run is called after the first clause of the chat that began it', () => {
+    expect(runTitle(refundChat, 'Tool runner')).toBe('Refund order 4471');
+    expect(runTitle(chat({ title: 'Please refund order 4472, $18.50.' }), undefined)).toBe(
+      'Refund order 4472',
+    );
+    expect(runTitle(chat({ title: 'Ship the release notes fix.' }), undefined)).toBe(
+      'Ship the release notes fix',
+    );
+    expect(runTitle(chat({ title: 'Say hello' }), undefined)).toBe('Say hello');
+    expect(runTitle(chat({ title: 'Check v1.2 today' }), undefined)).toBe('Check v1.2 today');
+  });
+
+  test('a run no chat began is called after its agent, and a run with neither is "Run"', () => {
+    expect(runTitle(undefined, 'Tool runner')).toBe('Tool runner');
+    expect(runTitle(chat({ title: null }), undefined)).toBe('Run');
+  });
+
+  test('finds a run by its title, its agent or its identifier, and says what it waits on', () => {
+    const tasks = [
+      task({}),
+      task({ id: 'run-2', contextId: 'other', status: 'completed', openWaits: [] }),
+    ];
+    const [found] = matchRuns(tasks, [refundChat], names, 'refund order');
+    expect(found).toEqual({
+      id: 'run-1',
+      title: 'Refund order 4471',
+      agentName: 'tool-runner',
+      status: 'input-required',
+      waiting: 'approval',
+    });
+    expect(matchRuns(tasks, [refundChat], names, 'Tool runner').map((run) => run.id)).toEqual([
+      'run-1',
+      'run-2',
+    ]);
+    expect(matchRuns(tasks, [refundChat], names, 'run-2').map((run) => run.id)).toEqual(['run-2']);
+    expect(matchRuns(tasks, [refundChat], names, 'zzz')).toEqual([]);
+  });
+
+  test('an identifier finds its run from its start, never from its middle (row 03g)', () => {
+    const goalAttempt = task({
+      id: 'goal-abc-sample-goal-summarize-open-refunds-a1',
+      contextId: 'goal-attempt',
+      kind: 'catalog',
+      status: 'canceled',
+      openWaits: [],
+    });
+    expect(matchRuns([goalAttempt], [], names, 'refund')).toEqual([]);
+    expect(matchRuns([goalAttempt], [], names, 'goal-abc').map((run) => run.id)).toEqual([
+      goalAttempt.id,
+    ]);
+  });
+
+  test('only the newest run of a chat is called after the chat; an earlier one is called after its agent (row 03g)', () => {
+    const tasks = [
+      task({ id: 'run-new' }),
+      task({ id: 'run-old', status: 'completed', openWaits: [] }),
+    ];
+    expect(matchRuns(tasks, [refundChat], names, 'refund').map((run) => run.id)).toEqual([
+      'run-new',
+    ]);
+    expect(matchRuns(tasks, [refundChat], names, 'Tool runner')).toEqual([
+      expect.objectContaining({ id: 'run-new', title: 'Refund order 4471' }),
+      expect.objectContaining({ id: 'run-old', title: 'Tool runner' }),
+    ]);
+  });
+
+  test('a run row says its agent, then how it stands, and never names its agent twice', () => {
+    const run = {
+      id: 'run-1',
+      title: 'Refund order 4471',
+      agentName: 'tool-runner',
+      status: 'input-required' as const,
+      waiting: 'approval' as const,
+    };
+    expect(runMeta(run, 'Tool runner')).toBe('Tool runner · waiting for approval');
+    expect(runMeta({ ...run, waiting: 'answer' }, 'Tool runner')).toBe(
+      'Tool runner · waiting for your answer',
+    );
+    expect(runMeta({ ...run, status: 'completed', waiting: null }, 'Tool runner')).toBe(
+      'Tool runner · done',
+    );
+    expect(
+      runMeta({ ...run, title: 'Tool runner', status: 'canceled', waiting: null }, 'Tool runner'),
+    ).toBe('canceled');
+    expect(runMeta({ ...run, agentName: null }, undefined)).toBe('waiting for approval');
+  });
+
+  test('a run that waits for an answer says so, and one that is over waits for nothing', () => {
+    const answer = task({ openWaits: [{ kind: 'human-wait', reviewId: 'r', signalName: 's' }] });
+    const done = task({ status: 'completed', openWaits: [] });
+    expect(matchRuns([answer], [], names, '')[0]?.waiting).toBe('answer');
+    expect(matchRuns([done], [], names, '')[0]?.waiting).toBeNull();
   });
 });
 
@@ -406,6 +586,47 @@ describe('searchConsole by kind and scope', () => {
 
       expect(results.definitions.map((match) => match.name)).toEqual(['refund-flow']);
       expect(results.tools.map((match) => match.name)).toEqual(['issue-refund']);
+    } finally {
+      restore();
+    }
+  });
+
+  test('names a schedule by its description or what it starts, never by its identifier', async () => {
+    const restore = noAgents();
+    try {
+      const client = {
+        listSchedules: async () => ({
+          items: [
+            {
+              id: 'bureau-workflow-schedule:order-refund:1',
+              workflowType: 'order-refund',
+              description: 'Weekly refund audit',
+            },
+            { id: 'bureau-workflow-schedule:refund-digest:1', workflowType: 'refund-digest' },
+          ],
+        }),
+      } as unknown as HttpClient;
+      const results = await searchConsole(client, 'refund', {
+        scheduleReadGate: OPEN,
+        workflowReadGate: LOCKED,
+        reviewReadGate: LOCKED,
+        systemReadGate: LOCKED,
+        readTools: async () => [],
+      });
+
+      expect(results.schedules.map((schedule) => schedule.name)).toEqual([
+        'Weekly refund audit',
+        'Schedule for refund-digest',
+      ]);
+      expect(results.schedules.map((schedule) => schedule.identifiers)).toEqual([
+        [],
+        ['refund-digest'],
+      ]);
+      // The type shows beside a description, and not beside a name that already says it.
+      expect(results.schedules.map((schedule) => schedule.workflowTypeShown)).toEqual([
+        'order-refund',
+        null,
+      ]);
     } finally {
       restore();
     }

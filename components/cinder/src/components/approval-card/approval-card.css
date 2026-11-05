@@ -3,21 +3,27 @@
  * internally, so `cinder/approval-card/styles` must include their styling when
  * consumers import the component-specific style sidecar. Sibling paths mirror
  * between `src/` and generated `dist/`. */
+@import '../alert/alert.css';
 @import '../badge/badge.css';
 @import '../button/button.css';
 @import '../card/card.css';
+@import '../checkbox/checkbox.css';
 @import '../code-block/code-block.css';
 @import '../collapsible/collapsible.css';
 @import '../copy-button/copy-button.css';
 @import '../json-editor/json-editor.css';
 @import '../json-viewer/json-viewer.css';
+@import '../link/link.css';
 @import '../payload-inspector/payload-inspector.css';
 @import '../status-dot/status-dot.css';
+@import '../textarea/textarea.css';
 @import '../tooltip/tooltip.css';
 
 @layer cinder.components {
   .cinder-approval-card {
     display: block;
+    /* Narrow rules ask about the card's own width, so a phone and a narrow pane read the same. */
+    container-type: inline-size;
   }
 
   .cinder-approval-card__surface {
@@ -29,30 +35,19 @@
   }
 
   /* ----------------------------------------
-   * Header
+   * Header: risk glyph, then source, question, tool and risk word
    * ---------------------------------------- */
 
   .cinder-approval-card__header {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--cinder-space-2) var(--cinder-space-4);
+    gap: var(--cinder-space-2) var(--cinder-space-3);
     padding: var(--cinder-space-4);
-    background: var(--cinder-surface-inset);
+    /* Neutral: no warning fill, even for a dangerous tool. The glyph carries the alert. */
+    background: var(--cinder-surface-raised);
   }
 
-  .cinder-approval-card[data-cinder-risk='high'] .cinder-approval-card__header {
-    background: var(--cinder-status-danger-background);
-  }
-
-  /* Title and badges stay on one row whenever they both fit — `flex-wrap`
-     reacts to the actual rendered width of this title (which varies with the
-     tool name) instead of guessing a fixed container breakpoint. Below
-     `min-inline-size`, the title wraps its own text first; badges only drop
-     to their own row once nothing more can give. On that solo-item row,
-     `justify-content: space-between` on the header collapses to flex-start,
-     so no separate narrow-container override is needed. */
   .cinder-approval-card__title-group {
     display: flex;
     flex-direction: column;
@@ -61,16 +56,48 @@
     min-inline-size: 10rem;
   }
 
+  .cinder-approval-card__eyebrow,
+  .cinder-approval-card__tool-line,
+  .cinder-approval-card__risk-line,
+  .cinder-approval-card__consequence {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
   .cinder-approval-card__title {
     margin: 0;
     color: var(--cinder-text-default);
-    font-size: var(--cinder-text-lg);
+    font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-tight);
+    overflow-wrap: anywhere;
   }
 
-  .cinder-approval-card__title-tool {
+  .cinder-approval-card__title-tool,
+  .cinder-approval-card__tool-identifier {
     font-family: var(--cinder-font-mono);
+  }
+
+  .cinder-approval-card__tool-identifier {
+    font-size: var(--cinder-text-xs);
+    white-space: nowrap;
+  }
+
+  .cinder-approval-card__tool-label {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* Risk words are muted regular text everywhere, "Dangerous" included. */
+  .cinder-approval-card__risk-word {
+    font-weight: var(--cinder-font-normal);
+  }
+
+  /* "Can't be undone" never breaks across lines. */
+  .cinder-approval-card__undone {
+    white-space: nowrap;
   }
 
   .cinder-approval-card__badges {
@@ -84,30 +111,28 @@
 
   /* StatusDot and Badge each define their own type scale per size step, and
      those scales don't line up 1:1 (StatusDot's "sm" label text is larger
-     than Badge's "sm" text). Force every status/risk/expiry indicator in this
+     than Badge's "sm" text). Force every status/expiry indicator in this
      row to the same font-size so the row reads as one cohesive unit. */
   .cinder-approval-card__badges .cinder-status-dot[data-cinder-size='sm'],
   .cinder-approval-card__badges .cinder-badge[data-cinder-size='sm'] {
     font-size: var(--cinder-text-xs);
   }
 
+  /* One glyph for every risk: the shield carries the alert in amber while the approval waits
+   * on someone, and goes quiet once it is decided or cannot be answered. */
   .cinder-approval-card__risk-icon {
     display: inline-flex;
+    flex: none;
     align-items: center;
+    margin-block-start: 2px;
     border-radius: var(--cinder-radius-sm);
+    color: var(--cinder-status-warning-text);
     font: inherit;
   }
 
-  .cinder-approval-card__risk-icon[data-cinder-risk='low'] {
-    color: var(--cinder-status-success-text);
-  }
-
-  .cinder-approval-card__risk-icon[data-cinder-risk='medium'] {
-    color: var(--cinder-status-warning-text);
-  }
-
-  .cinder-approval-card__risk-icon[data-cinder-risk='high'] {
-    color: var(--cinder-status-danger-text);
+  .cinder-approval-card__risk-icon[data-cinder-risk='low'],
+  .cinder-approval-card:not([data-cinder-state='pending']) .cinder-approval-card__risk-icon {
+    color: var(--cinder-text-subtle);
   }
 
   .cinder-approval-card__risk-icon:focus-visible {
@@ -117,6 +142,10 @@
     box-shadow:
       0 0 0 var(--cinder-ring-offset, 1px) var(--cinder-ring-offset-color),
       0 0 0 calc(var(--cinder-ring-offset, 1px) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  .cinder-approval-card__separator {
+    margin-inline: 0.25em;
   }
 
   /* ----------------------------------------
@@ -219,10 +248,66 @@
     gap: var(--cinder-space-2);
   }
 
-  .cinder-approval-card__control-label {
+  /* A line of context above the question, such as "Test chat · this runs for real". */
+  .cinder-approval-card__context {
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* Why the last answer did not go through: Alert's tinted, bordered danger message, drawn as one
+   * compact line of a glyph, the bold summary and the reason. */
+  .cinder-approval-card__failure.cinder-alert {
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-2-5) var(--cinder-space-3);
+    border-radius: var(--cinder-radius-md);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__failure .cinder-alert__icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-approval-card__failure-summary {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* What the approval led to, once it is decided. */
+  .cinder-approval-card__result {
+    margin: 0;
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__result-label {
     font-weight: var(--cinder-font-semibold);
+  }
+
+  /* What happens once the approver decides, under the buttons. */
+  .cinder-approval-card__footnote {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+    text-align: end;
+  }
+
+  /* The "Allow <tool> for ..." checkbox sits on its own line before Deny and Approve. */
+  .cinder-approval-card__remember {
+    display: flex;
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* Why Deny and Approve are off, or why an approval cannot be answered now. */
+  .cinder-approval-card__reason {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
   }
 
   .cinder-approval-card__action-row {
@@ -238,47 +323,6 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-2);
     margin-inline-start: auto;
-  }
-
-  .cinder-approval-card__textarea {
-    min-block-size: 10rem;
-    resize: vertical;
-    border: 1px solid var(--cinder-control-border);
-    border-radius: var(--cinder-control-radius);
-    padding: var(--cinder-space-2);
-    background: var(--cinder-control-background);
-    color: var(--cinder-text-default);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .cinder-approval-card__textarea--reason {
-    min-block-size: 3.5rem;
-  }
-
-  .cinder-approval-card__textarea:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    /* Ring replaces the border while focused rather than stacking on it — the two
-       together read as one heavier shape than either was designed to be. */
-    border-color: transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  .cinder-approval-card__remember-control {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-    color: var(--cinder-text-default);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .cinder-approval-card__remember-control input {
-    margin: 0;
-    accent-color: var(--cinder-accent-solid);
-  }
-
-  .cinder-approval-card__remember-control input:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   .cinder-approval-card__editor {
@@ -312,17 +356,16 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* In the row the notice lines up with the question, past the glyph. */
+  .cinder-approval-card--row > .cinder-approval-card__readonly-summary {
+    margin-inline-start: calc(16px + var(--cinder-space-2));
+  }
+
   .cinder-approval-card__readonly-summary[data-cinder-state='approved'],
   .cinder-approval-card__readonly-summary[data-cinder-state='approved_with_edits'] {
     border-color: var(--cinder-status-success-border);
     background: var(--cinder-status-success-background);
     color: var(--cinder-status-success-text);
-  }
-
-  .cinder-approval-card__readonly-summary[data-cinder-state='denied'] {
-    border-color: var(--cinder-status-danger-border);
-    background: var(--cinder-status-danger-background);
-    color: var(--cinder-status-danger-text);
   }
 
   /* ----------------------------------------
@@ -422,47 +465,540 @@
   }
 
   /* ----------------------------------------
-   * Row layout: one 40px row on a neutral surface
+   * Row layout: the shared approval row on a neutral raised surface
    * ---------------------------------------- */
 
   .cinder-approval-card--row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    box-sizing: border-box;
     border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface);
+    border-radius: var(--cinder-radius-lg);
+    padding: var(--cinder-space-3) 14px;
+    background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
   }
 
   .cinder-approval-card__row {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    min-block-size: 40px;
-    padding-block: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-3) var(--cinder-space-1);
-    box-sizing: border-box;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
   }
 
-  .cinder-approval-card__row-question {
+  .cinder-approval-card__row-main {
+    display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
     min-inline-size: 0;
+  }
+
+  /* The question may wrap: a long title never truncates. */
+  .cinder-approval-card__row-question {
     margin: 0;
-    overflow: hidden;
-    font-size: inherit;
-    font-weight: var(--cinder-font-normal);
+    overflow-wrap: anywhere;
     color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-approval-card__line {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* The line may wrap between the identifier, the risk word and "Can't be undone", but never inside
+   * one of them: a piece stays whole with the middot that follows it, so a middot never starts a
+   * line or stands alone, and a phone never cuts "Can't be undone" off at the card's edge. */
+  .cinder-approval-card__keep {
+    white-space: nowrap;
+  }
+
+  .cinder-approval-card__line time,
+  .cinder-approval-card__eyebrow time,
+  .cinder-approval-card__detail-ask time {
+    white-space: nowrap;
+  }
+
+  /* The state word at the right of the title: neutral, never a colour. */
+  .cinder-approval-card__state-word {
+    flex: none;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    white-space: nowrap;
+  }
+
+  /* Everything below the title lines up with the question, past the glyph. */
+  .cinder-approval-card__row-body,
+  .cinder-approval-card--row > .cinder-approval-card__result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    padding-inline-start: calc(16px + var(--cinder-space-2));
+  }
+
+  .cinder-approval-card--row > .cinder-approval-card__outcome {
+    padding-inline-start: calc(16px + var(--cinder-space-2));
+  }
+
+  /* Running text, so a long chat title wraps and a middot stays with what it follows. */
+  .cinder-approval-card__outcome {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* The outcome is running text, so its spaces already separate a middot from what is around it. */
+  .cinder-approval-card__outcome .cinder-approval-card__separator {
+    margin-inline: 0;
+  }
+
+  /* A decision reads as neutral text with a quiet dot, whatever was decided. */
+  .cinder-approval-card__outcome-word {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__outcome-dot {
+    flex: none;
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-text-subtle);
+  }
+
+  /* An approval is green; a denial, an expiry and every other decision stay neutral. */
+  .cinder-approval-card__outcome[data-cinder-tone='success'] .cinder-approval-card__outcome-dot {
+    background: var(--cinder-status-success-solid);
+  }
+
+  /* Where the question was asked, after the outcome and its time. */
+  .cinder-approval-card__outcome-trailing {
+    overflow-wrap: anywhere;
+  }
+
+  /* The note the approver left: "Your note", the note, then where it went. */
+  .cinder-approval-card__decision-note {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-approval-card__decision-note-label {
+    margin-inline-end: var(--cinder-space-1);
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__decision-note-caption {
+    margin-inline-start: var(--cinder-space-1);
+    color: var(--cinder-text-subtle);
+  }
+
+  /* Under a decided row, the note and the input summary line up with the question. */
+  .cinder-approval-card--row > .cinder-approval-card__decision-note,
+  .cinder-approval-card--row > .cinder-approval-card__decided-input {
+    padding-inline-start: calc(16px + var(--cinder-space-2));
+  }
+
+  .cinder-approval-card__decided-input .cinder-approval-card__input-word {
+    margin-inline-end: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__input {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__input-toggle {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-text-subtle);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-approval-card__input-toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-approval-card__input-toggle svg {
+    flex: none;
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-approval-card__input-toggle svg[data-cinder-open] {
+    transform: rotate(90deg);
+  }
+
+  .cinder-approval-card__input-word {
+    flex: none;
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* The summary is one line: a few short pairs, cut with an ellipsis only if it must. */
+  .cinder-approval-card__input-pairs {
+    min-inline-size: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .cinder-approval-card__input-summary {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-approval-card__pair-value {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-approval-card__pair-value[data-cinder-muted] {
+    color: var(--cinder-text-subtle);
+    font-style: italic;
   }
 
   .cinder-approval-card__row-input {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
-    padding: 0 var(--cinder-space-3) var(--cinder-space-3);
   }
 
   .cinder-approval-card__row-input[hidden] {
     display: none;
+  }
+
+  .cinder-approval-card__note {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cinder-approval-card__row-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__row-spacer {
+    flex: 1 1 0;
+  }
+
+  /* "Add a note" is a link in the accent colour, not a button. */
+  .cinder-approval-card__note-toggle {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  @media (hover: hover) {
+    .cinder-approval-card__note-toggle:hover {
+      color: var(--cinder-accent-text-hover);
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
+    }
+  }
+
+  .cinder-approval-card__note-toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* ----------------------------------------
+   * Detail layout: an approval's own page
+   * ---------------------------------------- */
+
+  .cinder-approval-card--detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__detail-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  /* Who asked is running text, so a long chat title wraps and the middot stays with what it follows. */
+  .cinder-approval-card__detail-ask,
+  .cinder-approval-card__detail-tool {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-approval-card__detail-eyebrow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 var(--cinder-space-1);
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__detail-eyebrow {
+    gap: var(--cinder-space-2);
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__detail-eyebrow .cinder-approval-card__risk-icon {
+    margin-block-start: 0;
+  }
+
+  .cinder-approval-card__detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  /* The risk glyph line under Input: what cannot be undone and what approving does. */
+  .cinder-approval-card__detail-risk {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    color: var(--cinder-text-default);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__detail-risk > svg {
+    flex: none;
+    margin-block-start: 2px;
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-approval-card--detail:not([data-cinder-state='pending'])
+    .cinder-approval-card__detail-risk
+    > svg,
+  .cinder-approval-card--detail[data-cinder-risk='low'] .cinder-approval-card__detail-risk > svg {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-approval-card--detail .cinder-approval-card__consequence {
+    color: inherit;
+    font-size: inherit;
+  }
+
+  /* "Can't be undone." leads the consequence line in semibold, as the board sets it. */
+  .cinder-approval-card__detail-risk .cinder-approval-card__undone {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* What the source said when it asked: a collapsed line that opens in place to the whole text. */
+  .cinder-approval-card__said {
+    display: flex;
+  }
+
+  .cinder-approval-card__said-toggle {
+    appearance: none;
+    display: flex;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-text-muted);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-approval-card__said-toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-approval-card__said-toggle svg {
+    flex: none;
+    align-self: center;
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-approval-card__said-toggle svg[data-cinder-open] {
+    transform: rotate(90deg);
+  }
+
+  .cinder-approval-card__said-label {
+    flex: none;
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* Closed it is one line cut with an ellipsis; open it wraps in full. */
+  .cinder-approval-card__said-text {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-approval-card__said-text[data-cinder-open] {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* ----------------------------------------
+   * Answered somewhere else: the card gives way to what happened and who did it
+   * ---------------------------------------- */
+
+  .cinder-approval-card--elsewhere {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
+    box-sizing: border-box;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    padding: var(--cinder-space-3) var(--cinder-space-4);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card--elsewhere > svg {
+    flex: none;
+    margin-block-start: 2px;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-approval-card__elsewhere-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-approval-card__elsewhere-title {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__elsewhere-body {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
+  }
+
+  /* ----------------------------------------
+   * Narrow cards (a phone, a side panel) and touch
+   * ---------------------------------------- */
+
+  /* Where the whole line cannot fit, who asked and when sit on a line of their own, so the
+   * line never breaks in the middle of "issue-refund · Dangerous · Can't be undone". */
+  @container (inline-size < 40rem) {
+    .cinder-approval-card__line-source {
+      display: block;
+    }
+
+    .cinder-approval-card__line-source > .cinder-approval-card__separator:first-child {
+      display: none;
+    }
+  }
+
+  /* Where even "who asked · when" cannot fit on a line, the time takes a line of its own and the
+   * middot that led to it goes, instead of stranding at the end of the line above. The row's line
+   * is short and sits beside the glyph; the card's eyebrow and the detail's ask line are longer. */
+  @container (inline-size < 17rem) {
+    .cinder-approval-card__line .cinder-approval-card__time-separator {
+      display: none;
+    }
+
+    .cinder-approval-card__line time {
+      display: block;
+    }
+  }
+
+  @container (inline-size < 19rem) {
+    .cinder-approval-card__eyebrow .cinder-approval-card__time-separator,
+    .cinder-approval-card__detail-ask .cinder-approval-card__time-separator {
+      display: none;
+    }
+
+    .cinder-approval-card__eyebrow time,
+    .cinder-approval-card__detail-ask time {
+      display: block;
+    }
+  }
+
+  /* Deny and Approve are equal-width 44px targets in a narrow card, with "Add a note" above
+   * them, and everywhere on a touch screen. The selectors repeat the button's own attribute so
+   * they outrank the compact desktop height without a cross-component custom property. */
+  @container (inline-size < 32rem) {
+    /* The input line wraps rather than cutting its values, so a phone still reads all of it. */
+    .cinder-approval-card__input-toggle {
+      align-items: flex-start;
+    }
+
+    .cinder-approval-card__input-pairs {
+      overflow: visible;
+      white-space: normal;
+    }
+
+    .cinder-approval-card__note-toggle {
+      flex: 1 1 100%;
+      text-align: start;
+    }
+
+    .cinder-approval-card__row-spacer {
+      display: none;
+    }
+
+    .cinder-approval-card__row-actions .cinder-button[data-cinder-size],
+    .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
+      flex: 1 1 0;
+      min-height: var(--cinder-touch-target-min);
+    }
+
+    .cinder-approval-card__action-buttons {
+      flex: 1 1 100%;
+      margin-inline-start: 0;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .cinder-approval-card__row-actions .cinder-button[data-cinder-size],
+    .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
+      min-height: var(--cinder-touch-target-min);
+    }
   }
 
   /* ----------------------------------------
@@ -474,16 +1010,16 @@
       color: CanvasText;
     }
 
-    .cinder-approval-card__risk-icon:focus-visible {
+    .cinder-approval-card__risk-icon:focus-visible,
+    .cinder-approval-card__input-toggle:focus-visible,
+    .cinder-approval-card__note-toggle:focus-visible {
       outline: 2px solid CanvasText;
       outline-offset: 2px;
       box-shadow: none;
     }
 
-    .cinder-approval-card__textarea:focus-visible,
-    .cinder-approval-card__remember-control input:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      box-shadow: none;
+    .cinder-approval-card__outcome-dot {
+      background: CanvasText;
     }
   }
 }
