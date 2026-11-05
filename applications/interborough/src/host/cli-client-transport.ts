@@ -1,6 +1,6 @@
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
-type CliFailure = Error & { status?: number; exitCode?: 7 };
+type CliFailure = Error & { status?: number; exitCode?: number };
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -80,6 +80,50 @@ export async function request(
   } catch (error) {
     if (init?.method === 'POST' && error instanceof DOMException && error.name === 'AbortError')
       throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Fetch an authenticated binary response without interpreting its bytes as text. */
+export async function requestBytes(
+  target: CliTarget,
+  path: string,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+): Promise<Response> {
+  const controller = new AbortController();
+  dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  // poll-reason: timer
+  const timer = setTimeout(() => controller.abort(), parsed.timeout);
+  try {
+    const response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), {
+      headers: target.headers,
+      redirect: 'error',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      let message = `HTTP ${response.status}`;
+      try {
+        const parsedBody: unknown = JSON.parse(body);
+        if (isRecord(parsedBody) && typeof parsedBody['message'] === 'string')
+          message = parsedBody['message'];
+      } catch {
+        // Keep the status when a failed binary response is not JSON.
+      }
+      throw makeCliFailure(message, { status: response.status });
+    }
+    const bytes = await response.arrayBuffer();
+    return new Response(bytes, {
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError')
+      throw makeCliFailure('The asset download was interrupted.', { exitCode: 6 });
     throw error;
   } finally {
     clearTimeout(timer);
