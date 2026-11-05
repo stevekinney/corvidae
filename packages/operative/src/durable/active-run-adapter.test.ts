@@ -4607,6 +4607,44 @@ describe('AB-317: durable toolbox listeners survive abort() until the settle-awa
       context.engine[Symbol.dispose]();
     }
   });
+
+  it('does not forward a provisional settlement for a deferred child call', () => {
+    const tool = createTool({
+      name: 'deferred_child',
+      description: 'A deferred child wait fixture',
+      input: z.object({}),
+      execute: async () => 'ok',
+    });
+    const toolbox = createToolbox([tool]);
+    const runId = 'deferred-child-forwarder';
+    const deferredChildCallIds = new Set(['deferred-call']);
+    const services = {
+      options: runOptions(async () => ({ content: 'unused', toolCalls: [] })),
+      toolbox,
+      deferredChildCallIds,
+    };
+    const surface = createRecoveredRunEventSurface(services, runId, 'reattach-agent');
+    const settled: ToolSettledBubbleEvent[] = [];
+    surface.emitter.addEventListener('tool.settled', (event) => settled.push(event));
+    toolbox.dispatchEvent(
+      new ToolboxSettledEvent({
+        tool,
+        call: { id: 'deferred-call', name: tool.name, arguments: {} },
+        result: { status: 'parked' },
+        ownerId: runId,
+      }),
+    );
+    toolbox.dispatchEvent(
+      new ToolboxSettledEvent({
+        tool,
+        call: { id: 'ordinary-call', name: tool.name, arguments: {} },
+        result: 'ok',
+        ownerId: runId,
+      }),
+    );
+    expect(settled.map((event) => event.toolCallId)).toEqual(['ordinary-call']);
+    surface.stopToolboxForward();
+  });
 });
 
 describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow record write', () => {

@@ -559,7 +559,7 @@ async function childWaitParked(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -595,16 +595,17 @@ async function childWaitParked(): Promise<void> {
     JSON.stringify({ runId: parent.id, childRunId: 'child-1', contextId: parent.contextId }),
   );
   allowParent.resolve();
-  await pollUntil(
-    'parent park',
-    async () => (await bureau.tasks.workflow(parent.id))?.status === 'running',
-  );
-  await pollUntil(
-    'child terminal record',
-    async () =>
-      (await bureau.children.get({ parentRunId: parent.id, childRunId: 'child-1' }))?.status ===
-      'completed',
-  );
+  await pollUntil('parent park', async () => {
+    const workflow = await bureau.tasks.workflow(parent.id);
+    return workflow?.status === 'running';
+  });
+  await pollUntil('child terminal record', async () => {
+    const childRecord = await bureau.children.get({
+      parentRunId: parent.id,
+      childRunId: 'child-1',
+    });
+    return childRecord?.status === 'completed';
+  });
 }
 
 async function peerApprovalThenCrash(): Promise<void> {
