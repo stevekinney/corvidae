@@ -538,25 +538,24 @@
       (panel) => panel.opensFromAgentTool === 'bureau:workflows-propose-update',
     ),
   );
-  const isRevisionProposal = (entry: ToolCallEntry) => {
-    const result =
-      typeof entry.result === 'string'
-        ? (() => {
-            try {
-              return JSON.parse(entry.result) as unknown;
-            } catch {
-              return undefined;
-            }
-          })()
-        : entry.result;
-    return (
-      typeof result === 'object' &&
-      result !== null &&
-      !Array.isArray(result) &&
-      Reflect.get(result, 'status') === 'ok' &&
-      typeof Reflect.get(result, 'baseHash') === 'string' &&
-      typeof Reflect.get(result, 'proposedText') === 'string'
-    );
+  const revisionProposalText = (entry: ToolCallEntry): string | undefined => {
+    const serialized =
+      typeof entry.result === 'string' ? entry.result : JSON.stringify(entry.result);
+    if (serialized === undefined) return undefined;
+    try {
+      const parsed = JSON.parse(serialized) as unknown;
+      return typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        Reflect.get(parsed, 'status') === 'ok' &&
+        typeof Reflect.get(parsed, 'id') === 'string' &&
+        typeof Reflect.get(parsed, 'baseHash') === 'string' &&
+        typeof Reflect.get(parsed, 'proposedText') === 'string'
+        ? serialized
+        : undefined;
+    } catch {
+      return undefined;
+    }
   };
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
@@ -1034,7 +1033,8 @@
                   candidate.opensFromAgentTool === entry.name ||
                   candidate.opensFromAgentTool === entry.name.replace('__', ':'),
               )}
-              {#if panel !== undefined && entry.state === 'done' && isRevisionProposal(entry)}
+              {@const proposalText = revisionProposalText(entry)}
+              {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
                 {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
                 {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
                 <McpApp
@@ -1047,9 +1047,7 @@
                   toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
                   toolResult={{
                     content: [],
-                    ...(typeof entry.result === 'object' && entry.result !== null
-                      ? { structuredContent: entry.result }
-                      : {}),
+                    structuredContent: proposalText,
                   }}
                 />
               {/if}

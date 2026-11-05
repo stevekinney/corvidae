@@ -47,6 +47,13 @@ function structured<T>(
 }
 
 function structuredResult(value: { structuredContent?: unknown; content?: unknown }): unknown {
+  if (typeof value.structuredContent === 'string') {
+    try {
+      return JSON.parse(value.structuredContent) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
   if (value.structuredContent !== undefined) return value.structuredContent;
   if (!Array.isArray(value.content)) return undefined;
   const textBlock = value.content.find(
@@ -174,11 +181,16 @@ function changedRows(current: Definition, proposed: Definition): HTMLElement[] {
   return rows;
 }
 
+function changedCount(rows: readonly HTMLElement[]): number {
+  return rows.filter((row) => row.dataset['state'] !== 'unchanged').length;
+}
+
 function render(
   root: HTMLElement,
   current: Definition,
   proposed: Definition,
   state: RevisionState,
+  changeCount: number,
   message: string | undefined,
   onApply: () => void,
   onCheckHash: () => void,
@@ -211,7 +223,7 @@ function render(
                     ? 'The update returned an unknown result. Check the current definition before retrying.'
                     : state === 'retryable'
                       ? 'The base hash is current. Retry Apply when ready.'
-                      : 'Review the four visible changes before applying.');
+                      : `Review ${String(changeCount)} visible change${changeCount === 1 ? '' : 's'} before applying.`);
   root.append(status);
   const comparison = document.createElement('div');
   comparison.className = 'revision-comparison';
@@ -229,7 +241,8 @@ function render(
   changeHeading.textContent = 'Change';
   currentHeading.textContent = 'Current';
   proposedHeading.textContent = 'Proposed';
-  comparison.append(heading, columns, ...changedRows(current, proposed));
+  const rows = changedRows(current, proposed);
+  comparison.append(heading, columns, ...rows);
   root.append(comparison);
   const footer = document.createElement('footer');
   if (state === 'offline' || state === 'unknown' || state === 'retryable') {
@@ -250,7 +263,7 @@ function render(
         : state === 'retryable'
           ? 'Retry Apply'
           : 'Apply';
-  apply.disabled = !['changed', 'applying', 'retryable'].includes(state);
+  apply.disabled = !['changed', 'retryable'].includes(state);
   apply.addEventListener('click', onApply);
   footer.append(apply);
   root.append(footer);
@@ -269,6 +282,7 @@ async function start(): Promise<void> {
   let baseHash = '';
   let current: Workflow | undefined;
   let proposed: Definition | undefined;
+  let applying = false;
   let tornDown = false;
   const loading = document.createElement('p');
   loading.setAttribute('role', 'status');
@@ -285,6 +299,7 @@ async function start(): Promise<void> {
       currentDefinition,
       proposed,
       state,
+      changedCount(changedRows(currentDefinition, proposed)),
       message,
       () => void apply(),
       () => void checkHash(),
@@ -328,7 +343,8 @@ async function start(): Promise<void> {
     }
   };
   const apply = async (): Promise<void> => {
-    if (proposed === undefined || typeof argumentsOfCall['id'] !== 'string') return;
+    if (applying || proposed === undefined || typeof argumentsOfCall['id'] !== 'string') return;
+    applying = true;
     show('applying');
     try {
       const result = await app.callServerTool({
@@ -359,6 +375,8 @@ async function start(): Promise<void> {
       else show('unknown');
     } catch {
       show('offline');
+    } finally {
+      applying = false;
     }
   };
   app.ontoolinput = (params) => {

@@ -214,6 +214,7 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
         const invalid = content.includes('invalid');
         const noChange = content.includes('no-change');
         const longValues = content.includes('long-values');
+        const singleChange = content.includes('single-change');
         const currentDefinition = (() => {
           try {
             const parsed = JSON.parse(
@@ -231,22 +232,32 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
             ? Object.fromEntries(
                 Object.entries(currentDefinition).filter(([key]) => key !== 'name'),
               )
-            : {
-                trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
-                steps: [
-                  {
-                    kind: 'activity',
-                    handler: 'agent',
-                    title: 'Write the revised digest',
-                    input: {
-                      agent: 'demo:assistant',
-                      message: longValues
-                        ? 'Write the revised digest with this deliberately long value: '.repeat(8)
-                        : 'Write the revised digest.',
-                    },
+            : singleChange && currentDefinition !== undefined
+              ? {
+                  ...Object.fromEntries(
+                    Object.entries(currentDefinition).filter(([key]) => key !== 'name'),
+                  ),
+                  trigger: {
+                    ...(isRecord(currentDefinition['trigger']) ? currentDefinition['trigger'] : {}),
+                    name: 'single-change',
                   },
-                ],
-              };
+                }
+              : {
+                  trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
+                  steps: [
+                    {
+                      kind: 'activity',
+                      handler: 'agent',
+                      title: 'Write the revised digest',
+                      input: {
+                        agent: 'demo:assistant',
+                        message: longValues
+                          ? 'Write the revised digest with this deliberately long value: '.repeat(8)
+                          : 'Write the revised digest.',
+                      },
+                    },
+                  ],
+                };
         return {
           content: '',
           toolCalls: [

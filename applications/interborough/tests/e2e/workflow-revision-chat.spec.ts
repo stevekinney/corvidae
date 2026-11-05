@@ -75,6 +75,9 @@ test.describe('workflow revision review in Chat', () => {
         '.revision-row[data-state="changed"], .revision-row[data-state="added"], .revision-row[data-state="removed"]',
       ),
     ).toHaveCount(4);
+    await expect(
+      frame.locator('.revision-value--proposed pre').filter({ hasText: 'workflow-revision' }),
+    ).toBeVisible();
     const hostText = await page
       .locator('html')
       .evaluate((element) =>
@@ -243,6 +246,7 @@ test.describe('workflow revision review in Chat', () => {
     const applyingFrame = page.frameLocator('iframe[title="Review workflow revision"]');
     await expect(applyingFrame.getByRole('button', { name: 'Apply' })).toBeEnabled();
     let releaseApply!: () => void;
+    let updateCalls = 0;
     const applyHeld = new Promise<void>((resolve) => {
       releaseApply = resolve;
     });
@@ -251,13 +255,18 @@ test.describe('workflow revision review in Chat', () => {
       async (route) => {
         const body = route.request().postDataJSON() as { name?: string };
         if (body.name === 'bureau.workflows.update') {
+          updateCalls += 1;
           await applyHeld;
         }
         await route.continue();
       },
     );
-    await applyingFrame.getByRole('button', { name: 'Apply' }).click();
+    await applyingFrame.getByRole('button', { name: 'Apply' }).evaluate((button) => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
     await expect(applyingFrame.getByRole('status')).toContainText('Applying the approved revision');
+    await expect(applyingFrame.getByRole('button', { name: 'Applying…' })).toBeDisabled();
     await captureForDesignReview(page, {
       route: `/chats/${applyingThread}`,
       state: 'workflow revision applying',
@@ -265,6 +274,7 @@ test.describe('workflow revision review in Chat', () => {
     });
     releaseApply();
     await expect(applyingFrame.getByRole('status')).toContainText('Applied. New hash:');
+    expect(updateCalls).toBe(1);
     await page.unroute('**/host/plugins/inspectors/apps/workflow-revision-review/tool-calls');
   });
 
@@ -462,5 +472,30 @@ test.describe('workflow revision review in Chat', () => {
     await expect(page.locator('iframe[title="Review workflow revision"]')).toHaveCount(0);
     await page.getByRole('button', { name: 'Show tool calls' }).click();
     await expect(page.getByText('bureau__workflows-propose-update', { exact: true })).toBeVisible();
+  });
+
+  test('counts a single real proposal change', async ({ page, request }) => {
+    await createWorkflowFile(request, WORKFLOW_ID, {
+      agent: 'workflow-revision',
+      description: 'Owner note: Platform Operations',
+    });
+    const thread = newThreadId('workflow-revision-single-change');
+    threads.push(thread);
+    await runToEnd(
+      request,
+      'workflow-revision',
+      thread,
+      `single-change proposal for ${WORKFLOW_ID}`,
+    );
+    await page.goto(`/chats/${thread}`);
+    const frame = page.frameLocator('iframe[title="Review workflow revision"]');
+    await expect(frame.getByRole('status')).toContainText(
+      'Review 1 visible change before applying.',
+    );
+    await captureForDesignReview(page, {
+      route: `/chats/${thread}`,
+      state: 'workflow revision one change',
+      source: 'workflow-revision-chat.spec.ts',
+    });
   });
 });
