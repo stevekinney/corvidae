@@ -93,6 +93,28 @@ describe('Interborough command client', () => {
   });
 
   // spawn-free: injected fetch and no process opener stand in for command execution.
+  test('paginates connection profiles without implicit all-pages fetching', async () => {
+    const fixture_ = await fixture();
+    for (const name of ['one', 'two', 'three']) {
+      const added = await executeCli(
+        ['connection', 'add', name, '--url', 'http://localhost'],
+        fixture_,
+      );
+      expect(added.exitCode).toBe(0);
+    }
+    const page = await executeCli(
+      ['connection', 'list', '--limit', '2', '--output', 'json'],
+      fixture_,
+    );
+    expect(JSON.parse(page.stdout)).toMatchObject({
+      data: [{ name: 'one' }, { name: 'two' }],
+      metadata: { cursor: '2', page: { limit: 2, all: false } },
+    });
+    const all = await executeCli(['connection', 'list', '--all', '--output', 'json'], fixture_);
+    expect(JSON.parse(all.stdout).metadata).toMatchObject({ cursor: null, page: { all: true } });
+  });
+
+  // spawn-free: injected fetch and no process opener stand in for command execution.
   test('discovers and describes only the externally served API document', async () => {
     const fixture_ = await fixture();
     const result = await executeCli(

@@ -119,7 +119,16 @@ const optionNames = new Set([
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
-  connection: ['help', 'output', 'no-input', 'url', 'credential-reference'],
+  connection: [
+    'help',
+    'output',
+    'no-input',
+    'url',
+    'credential-reference',
+    'limit',
+    'cursor',
+    'all',
+  ],
   whoami: ['help', 'output', 'no-input', 'connection', 'url', 'timeout'],
   status: ['help', 'output', 'no-input', 'connection', 'url', 'timeout'],
   doctor: ['help', 'output', 'no-input', 'connection', 'url', 'timeout'],
@@ -503,7 +512,7 @@ async function execute(
       } catch {
         throw makeCliFailure('Input must contain valid JSON.', { usage: true });
       }
-      return request(resolved, '/jsonrpc', parsed, dependencies, {
+      const response = await request(resolved, '/jsonrpc', parsed, dependencies, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -513,6 +522,9 @@ async function execute(
           params,
         }),
       });
+      return isRecord(response.data) && Object.hasOwn(response.data, 'result')
+        ? { ...response, data: response.data['result'] }
+        : response;
     }
     throw Object.assign(new Error('Usage: api list|describe <operation>|call <operation>.'), {
       usage: true,

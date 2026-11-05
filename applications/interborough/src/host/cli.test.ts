@@ -129,7 +129,7 @@ test('compiled commands use the production environment and preserve piped JSON p
   expect(productionStatus.stdout.toString()).toContain('production-deployment');
   expect(productionCallExitCode).toBe(0);
   expect(productionCallStderr).toBe('');
-  expect(productionCallStdout).toContain('revision');
+  expect(JSON.parse(productionCallStdout)).toEqual({ revision: 'r1', idempotencyKey: 'i1' });
   expect(productionRequests[0]?.headers.get('authorization')).toBe('Bearer production-secret');
 });
 
