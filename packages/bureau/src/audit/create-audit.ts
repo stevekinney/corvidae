@@ -161,6 +161,69 @@ function detailOf(detail: unknown): AuditQueryRecord['detail'] {
   return Object.keys(projected).length === 0 ? null : projected;
 }
 
+const SHARED_CONFIGURATION_EVENTS: Readonly<Record<string, string>> = {
+  'agent.created': 'agent:',
+  'agent.updated': 'agent:',
+  'agent.deleted': 'agent:',
+  'workflow.created': 'workflow:',
+  'workflow.updated': 'workflow:',
+  'workflow.paused': 'workflow:',
+  'workflow.resumed': 'workflow:',
+  'workflow.deleted': 'workflow:',
+  'schedule.created': 'schedule:',
+  'schedule.paused': 'schedule:',
+  'schedule.resumed': 'schedule:',
+  'schedule.cancelled': 'schedule:',
+  'settings.changed': 'settings',
+  'provider.connected': 'provider:',
+  'provider.disconnected': 'provider:',
+  'provider.configured': 'provider:',
+  'tool.source.connected': 'tool-source:',
+  'tool.source.removed': 'tool-source:',
+  'tool.source.authorized': 'tool-source:',
+  'tool.source.tools-configured': 'tool-source:',
+  'plugin.configured': 'plugin:',
+};
+
+const SHARED_CONFIGURATION_FIELDS = new Set([
+  'id',
+  'hash',
+  'previousHash',
+  'revision',
+  'previousRevision',
+  'keys',
+  'changedKeys',
+  'provider',
+  'sourceId',
+  'status',
+  'outcome',
+]);
+
+function isSharedConfiguration(record: AuditRecord): boolean {
+  if (!Object.hasOwn(SHARED_CONFIGURATION_EVENTS, record.type)) return false;
+  const prefix = SHARED_CONFIGURATION_EVENTS[record.type];
+  return (
+    prefix !== undefined &&
+    (prefix === 'settings' ? record.runId === prefix : record.runId.startsWith(prefix))
+  );
+}
+
+function sharedConfigurationView(record: AuditRecord): AuditQueryRecord {
+  const view = viewOf(record);
+  const detail =
+    typeof record.detail === 'object' && record.detail !== null
+      ? Object.fromEntries(
+          Object.entries(record.detail).flatMap(([key, value]) => {
+            const scalar = scalarOf(value);
+            return SHARED_CONFIGURATION_FIELDS.has(key) && scalar !== undefined
+              ? [[key, scalar]]
+              : [];
+          }),
+        )
+      : {};
+  return { ...view, detail: Object.keys(detail).length === 0 ? null : detail };
+}
+
 function viewOf(record: AuditRecord): AuditQueryRecord {
   return {
     sequence: record.sequence ?? null,
@@ -243,7 +306,7 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
       cursor,
       limit = DEFAULT_AUDIT_PAGE_LIMIT,
     } = filter;
-    const { owner } = options;
+    const { owner, includeSharedConfiguration = false } = options;
     const refuse = (message: string): Error => dependencies.refusal(message, 'BAD_REQUEST');
     if (!Number.isInteger(limit) || limit < 1 || limit > MAXIMUM_AUDIT_PAGE_LIMIT) {
       throw refuse(`limit must be an integer from 1 to ${MAXIMUM_AUDIT_PAGE_LIMIT}`);
@@ -275,6 +338,7 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
     const owners = new Map<string, string | undefined>();
     const mayRead = async (record: AuditRecord): Promise<boolean> => {
       if (owner === undefined) return true;
+      if (includeSharedConfiguration && isSharedConfiguration(record)) return true;
       // A session's deletion entry names its owner in its own detail, so it cannot be cached by id.
       const cacheable = !record.runId.startsWith('session:');
       if (cacheable && owners.has(record.runId)) return owners.get(record.runId) === owner;
@@ -295,7 +359,14 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
       for (const record of chunk) {
         // The trail is oldest first, so the first record past `until` ends the scan: no later one is in range.
         if (until !== undefined && record.timestampMs > until) {
-          return { records: page.map(viewOf), nextCursor: null };
+          return {
+            records: page.map((entry) =>
+              includeSharedConfiguration && isSharedConfiguration(entry)
+                ? sharedConfigurationView(entry)
+                : viewOf(entry),
+            ),
+            nextCursor: null,
+          };
         }
         // The actor filter drops a record the way the owner filter does: the cursor moves past it.
         if (principal !== undefined && record.principal !== principal) {
@@ -309,12 +380,27 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
         // One more than the page: it is what says there is a next page.
         if (page.length === limit) {
           const last = page[limit - 1]!;
-          return { records: page.map(viewOf), nextCursor: encodeCursor(last) };
+          return {
+            records: page.map((entry) =>
+              includeSharedConfiguration && isSharedConfiguration(entry)
+                ? sharedConfigurationView(entry)
+                : viewOf(entry),
+            ),
+            nextCursor: encodeCursor(last),
+          };
         }
         page.push(record);
         after = { timestampMs: record.timestampMs, sequence: record.sequence ?? -1 };
       }
-      if (chunk.length < SCAN_CHUNK) return { records: page.map(viewOf), nextCursor: null };
+      if (chunk.length < SCAN_CHUNK)
+        return {
+          records: page.map((record) =>
+            includeSharedConfiguration && isSharedConfiguration(record)
+              ? sharedConfigurationView(record)
+              : viewOf(record),
+          ),
+          nextCursor: null,
+        };
     }
   }
 

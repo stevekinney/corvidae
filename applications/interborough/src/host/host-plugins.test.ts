@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1880: the host lists the plugins it loads, persists the owner's choices for them in
@@ -17,6 +18,7 @@ import type { ProviderDefinition } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,7 +26,7 @@ import { z } from 'zod';
 
 import { startHost, type Host } from './host.ts';
 import { createHostMemory } from './memory.ts';
-import { createPluginManager } from './plugin-manager.ts';
+import { createPluginManager, type PluginAuditEntry } from './plugin-manager.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -164,6 +166,35 @@ function put(host: Host, path: string, body: unknown, headers: Record<string, st
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
+}
+
+function managerHome(options: { readonly outcome?: 'conflict' | 'unknown' } = {}) {
+  let configuration: string | undefined;
+  const writes: string[] = [];
+  return {
+    writes,
+    configurationText: () => configuration,
+    bungalow: {
+      mode: 'local' as const,
+      configurationLocation: '/home/configuration.json',
+      readConfiguration: async () => ({
+        text: configuration,
+        revision: configuration === undefined ? null : Bun.hash(configuration).toString(),
+      }),
+      writeConfiguration: async (text: string, condition: { expectedRevision: string | null }) => {
+        const revision = configuration === undefined ? null : Bun.hash(configuration).toString();
+        if (condition.expectedRevision !== revision) return { outcome: 'conflict' as const };
+        writes.push('configuration');
+        if (options.outcome === 'conflict') return { outcome: 'conflict' as const };
+        if (options.outcome === 'unknown') return { outcome: 'unknown' as const };
+        configuration = text;
+        return { outcome: 'committed' as const };
+      },
+      readSecret: () => undefined,
+      writeSecret: () => undefined,
+      secretLocation: (key: string) => `/home/secrets/${key}`,
+    },
+  };
 }
 
 /** The plugin `name` as `GET /host/plugins` reports it now. */
@@ -658,6 +689,83 @@ describe('a remote home', () => {
     expect(home.writes).toEqual([]);
     const snapshot = await manager.snapshot();
     expect(snapshot.lockReason).toBe('deployment');
+  });
+});
+
+describe('plugin configuration audit metadata', () => {
+  async function managerFor(home: ReturnType<typeof managerHome>, audits: PluginAuditEntry[]) {
+    const manager = await createPluginManager({
+      bungalow: home.bungalow,
+      plugins: fixturePlugins(),
+      listing: async () => [],
+      reservedSecretKeys: [],
+      reservedSecretPrefixes: [],
+      audit: async (entry) => {
+        audits.push(entry);
+      },
+    });
+    return manager;
+  }
+
+  test('records committed enable and configuration changes without request values', async () => {
+    const audits: PluginAuditEntry[] = [];
+    const home = managerHome();
+    const manager = await managerFor(home, audits);
+
+    await manager.update('limited', { configuration: { limit: 7 } });
+    const firstConfiguration = home.configurationText();
+    if (firstConfiguration === undefined) throw new Error('expected first configuration');
+    await manager.update('quiet', { enabled: true });
+    const secondConfiguration = home.configurationText();
+    if (secondConfiguration === undefined) throw new Error('expected second configuration');
+
+    expect(audits).toHaveLength(2);
+    expect(audits[0]).toMatchObject({
+      runId: 'plugin:limited',
+      type: 'plugin.configured',
+      principal: 'anonymous:local',
+      detail: {
+        outcome: 'committed',
+        changedKeys: ['configuration'],
+        hash: createHash('sha256').update(firstConfiguration).digest('hex'),
+        previousRevision: null,
+      },
+    });
+    expect(audits[1]).toMatchObject({
+      runId: 'plugin:quiet',
+      type: 'plugin.configured',
+      principal: 'anonymous:local',
+      detail: {
+        outcome: 'committed',
+        changedKeys: ['enabled'],
+        hash: createHash('sha256').update(secondConfiguration).digest('hex'),
+        previousRevision: Bun.hash(firstConfiguration).toString(),
+      },
+    });
+    for (const audit of audits) {
+      expect(Object.keys(audit.detail).toSorted()).toEqual([
+        'changedKeys',
+        'hash',
+        'outcome',
+        'previousRevision',
+      ]);
+    }
+  });
+
+  test('does not audit configuration conflicts or uncertain writes', async () => {
+    const conflictAudits: PluginAuditEntry[] = [];
+    const conflictManager = await managerFor(managerHome({ outcome: 'conflict' }), conflictAudits);
+    expect(
+      await rejectionOf(conflictManager.update('limited', { configuration: { limit: 7 } })),
+    ).toMatchObject({ message: 'Configuration write outcome: conflict. Reload before retrying.' });
+    expect(conflictAudits).toEqual([]);
+
+    const uncertainAudits: PluginAuditEntry[] = [];
+    const uncertainManager = await managerFor(managerHome({ outcome: 'unknown' }), uncertainAudits);
+    expect(
+      await rejectionOf(uncertainManager.update('limited', { configuration: { limit: 7 } })),
+    ).toMatchObject({ message: 'Configuration write outcome: unknown. Reload before retrying.' });
+    expect(uncertainAudits).toEqual([]);
   });
 });
 

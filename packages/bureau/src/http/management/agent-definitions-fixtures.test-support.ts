@@ -65,10 +65,16 @@ export async function serve(options: Parameters<typeof startFileBureau>[0] = {})
   });
   harnesses.push(harness);
   const { bureau } = harness;
-  const keyed = createBureauHandler(bureau, { authentication, a2aAgents: ['alpha'] });
+  const workspace = options.overrides?.workspace;
+  const keyed = createBureauHandler(bureau, {
+    authentication,
+    a2aAgents: ['alpha'],
+    ...(workspace === undefined ? {} : { workspace }),
+  });
   const local = createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
     a2aAgents: ['alpha'],
+    ...(workspace === undefined ? {} : { workspace }),
   });
   const noBureauScopes = new Set<AuthorizationScope>(
     [...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES)].filter(

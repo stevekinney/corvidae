@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.agents.overrides.get` and `bureau.agents.overrides.update` (COR-2009): what a person
  * changed on a built-in agent, a code agent the host defines. Such an agent has no file, so its
@@ -61,6 +63,7 @@ export const agentOverridesGetOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.overrides.get',
+  authorize: authorizeWorkspaceOperation('bureau.agents.overrides.get'),
   mcpExposable: false,
   summary: 'Read the saved overrides of a built-in agent',
   description:
@@ -113,6 +116,7 @@ export const agentOverridesUpdateOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.overrides.update',
+  authorize: authorizeWorkspaceOperation('bureau.agents.overrides.update'),
   mcpExposable: false,
   summary: 'Save the overrides of a built-in agent as a new version',
   description:

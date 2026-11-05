@@ -291,6 +291,8 @@ export interface WorkflowRunCounts {
 }
 
 export interface WorkflowRunFilter {
+  /** Filter private ownership before ordering, counts, or pagination. */
+  readonly mayReadRun?: ((runId: string) => Promise<boolean>) | undefined;
   readonly workflow?: string | undefined;
   readonly status?: WorkflowStatus | undefined;
   readonly limit: number;
@@ -395,7 +397,10 @@ export interface BureauWorkflows {
    * The revisions of `id` that have run, newest first, each with its compatibility verdict against
    * the workflow's current revision; `undefined` when there is no such workflow.
    */
-  readonly revisions: (id: string) => Promise<readonly WorkflowRevisionReport[] | undefined>;
+  readonly revisions: (
+    id: string,
+    mayReadRun?: (runId: string) => Promise<boolean>,
+  ) => Promise<readonly WorkflowRevisionReport[] | undefined>;
   /**
    * The saved versions of `id`, newest first, each with its number (`1.0.0`, `1.1.0`, …), when and
    * how it was saved, what changed from the version before and whether a run in flight could carry
@@ -471,7 +476,11 @@ export interface BureauWorkflows {
   readonly signal: (
     name: string,
     payload: unknown,
-    options?: { readonly signalId?: string | undefined },
+    options?: {
+      readonly signalId?: string | undefined;
+      readonly owner?: string | undefined;
+      readonly maySignalRun?: ((runId: string) => Promise<boolean>) | undefined;
+    },
   ) => Promise<WorkflowSignalResult>;
 }
 
@@ -1607,6 +1616,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     name: string,
     payload: unknown,
     signalId: string | undefined,
+    maySignalRun?: (runId: string) => Promise<boolean>,
   ): Promise<string[]> {
     const delivered: string[] = [];
     const waitsAt = async (id: string): Promise<boolean> => {
@@ -1616,6 +1626,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     try {
       for (const type of [...registeredTypes].toSorted()) {
         for (const id of await runningInstances(type)) {
+          if (maySignalRun !== undefined && !(await maySignalRun(id))) continue;
           if (!(await waitsAt(id))) continue;
           // Read again, right before the delivery: the listing and the first read can be stale.
           if (!(await waitsAt(id))) continue;
@@ -1729,7 +1740,36 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     delete: (id, guard) =>
       write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
 
-    async revisions(id) {
+    async revisions(id, mayReadRun) {
+      if (mayReadRun !== undefined) {
+        const usage = new Map<string, { first: string; last: string }>();
+        for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
+          const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
+          for (const run of page.items) {
+            if (!(await mayReadRun(run.id))) continue;
+            const at = new Date(run.createdAt).toISOString();
+            const previous = usage.get(run.version);
+            usage.set(run.version, {
+              first: previous === undefined || at < previous.first ? at : previous.first,
+              last: previous === undefined || at > previous.last ? at : previous.last,
+            });
+          }
+          offset += page.items.length;
+          if (page.items.length === 0 || offset >= page.total) break;
+        }
+        const visible: WorkflowRevision[] = [];
+        for (const snapshot of await snapshots.snapshotsOf(id)) {
+          const times = usage.get(snapshot.workflowVersion);
+          if (times !== undefined)
+            visible.push({ ...snapshot, firstRunAt: times.first, lastRunAt: times.last });
+        }
+        if (visible.length > 0)
+          return withCompatibility(
+            id,
+            visible.toSorted((left, right) => right.lastRunAt.localeCompare(left.lastRunAt)),
+          );
+        return catalog.list().some((entry) => entry.id === id) ? [] : undefined;
+      }
       await Promise.allSettled(pendingStamps);
       // The engine's own record of when each revision's instances began is the source of truth: a
       // start event can arrive after the call that made the instance, or never (a crash).
@@ -1806,7 +1846,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             limit: 100,
             offset,
           });
-          found.push(...page.items.map(summarize));
+          for (const run of page.items) {
+            if (filter.mayReadRun === undefined || (await filter.mayReadRun(run.id)))
+              found.push(summarize(run));
+          }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
         }
@@ -1900,8 +1943,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     async signal(name, payload, signalOptions) {
       // Delivery first, and it finishes before any instance starts, so an instance this call
       // starts whose first step awaits `name` is not satisfied by the payload it was started with.
-      validateSignal(name, payload, signalOptions?.signalId);
-      const delivered = await deliverSignal(name, payload, signalOptions?.signalId);
+      const signalId = signalOptions?.signalId;
+      const signalOwner = signalOptions?.owner;
+      const maySignalRun = signalOptions?.maySignalRun;
+      validateSignal(name, payload, signalId);
+      const payloadSnapshot: unknown = structuredClone(payload ?? null);
+      const delivered = await deliverSignal(name, payloadSnapshot, signalId, maySignalRun);
       if (applyPending) queueApply();
       await settled();
       if (applyFailure !== undefined) {
@@ -1912,7 +1959,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           applyFailure,
         );
       }
-      const trigger = { kind: 'signal', name, payload: payload ?? null };
+      const origin: TaskOrigin | undefined =
+        signalOwner === undefined
+          ? undefined
+          : { kind: 'person', principal: signalOwner, surface: 'api' };
+      const trigger = {
+        kind: 'signal',
+        name,
+        payload: payloadSnapshot,
+        ...(origin === undefined ? {} : { origin }),
+      };
       const startedIds: string[] = [];
       const rejected: WorkflowSignalResult['rejected'] = [];
       for (const listing of catalog.list()) {
@@ -1932,7 +1988,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           rejected.push({ id: file.id, issues });
           continue;
         }
-        const handle = await engine.start(weftNameOf(file.id), trigger);
+        const handle = await engine.start(
+          weftNameOf(file.id),
+          trigger,
+          origin === undefined ? undefined : { tags: [taskOriginTag(origin)] },
+        );
         startedIds.push(handle.id);
       }
       return { started: startedIds, delivered, rejected };

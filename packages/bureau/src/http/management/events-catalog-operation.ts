@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.events.catalog` (COR-1940): the published Bureau event kinds, each with a description and
  * the shape of its payload. It is what a person choosing the `events` of a hook reads, and what a
@@ -57,6 +59,7 @@ export const eventsCatalogOperation = defineOperation<
   object
 >({
   name: 'bureau.events.catalog',
+  authorize: authorizeWorkspaceOperation('bureau.events.catalog'),
   mcpExposable: false,
   summary: 'List the published event kinds',
   description:

@@ -69,12 +69,12 @@ type Mutation = (loaded: LoadedRecord) => Change | Promise<Change>;
 async function transition(
   internals: AssetInternals,
   assetId: string,
-  check: (record: AssetRecord | undefined) => AssetRecord,
+  check: (record: AssetRecord | undefined) => AssetRecord | Promise<AssetRecord>,
   mutate: Mutation,
 ): Promise<AssetRecord> {
   return internals.withLock(assetId, async () => {
     const loaded = await loadRecord(internals.storage, assetId);
-    check(loaded?.record);
+    await check(loaded?.record);
     const change = await mutate(loaded!);
     if (!change) return loaded!.record;
     await replaceRecord(internals.storage, loaded!, change.next, change.extra);
@@ -132,7 +132,7 @@ export async function retain(
   const record = await transition(
     internals,
     assetId,
-    (current) => requireAvailable(authorize(current, assetId, principal)),
+    async (current) => requireAvailable(await authorize(current, assetId, principal)),
     ({ record: current }) => {
       const existing = current.references.find((entry) => entry.holderId === reference.holderId);
       // Renewal is monotonic: a claim is extended, never shortened.
@@ -250,8 +250,8 @@ export async function placeHold(
   const record = await transition(
     internals,
     assetId,
-    (current) => {
-      const authorized = authorizePrivileged(current, assetId, principal, 'place a hold on');
+    async (current) => {
+      const authorized = await authorizePrivileged(current, assetId, principal, 'place a hold on');
       if (authorized.state === 'deleted')
         throw new AssetUnavailableError(assetId, authorized.state);
       return authorized;
@@ -501,7 +501,7 @@ export function startProviderTransfer(
       if (!transport)
         throw new AssetAdmissionError('unsupported-source', 'The provider is not configured.');
       const loaded = await context.track(loadRecord(internals.storage, assetId));
-      const record = requireAvailable(authorize(loaded?.record, assetId, principal));
+      const record = requireAvailable(await authorize(loaded?.record, assetId, principal));
       if (record.custody !== 'bureau') throw new AssetUnavailableError(assetId, record.state);
       const bytes = await readVerifiedBytes(internals, record, context.track);
       const uploaded = await context.track(
@@ -513,7 +513,7 @@ export function startProviderTransfer(
         committed = await transition(
           internals,
           assetId,
-          (current) => requireAvailable(authorize(current, assetId, principal)),
+          async (current) => requireAvailable(await authorize(current, assetId, principal)),
           ({ record: current }) => ({
             next: bump(internals, current, { providerCopies: [...current.providerCopies, copy] }),
           }),

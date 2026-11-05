@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { localWorkspaceMembership } from './workspace-principal.ts';
 
 test('only the explicit local composition grants the local owner deployment authority', async () => {
-  const local = localWorkspaceMembership('workspace-a');
+  const local = localWorkspaceMembership('workspace-a', true);
   expect(
     await local.resolveMembership({ method: 'unauthenticated-local', subject: undefined }),
   ).toEqual({
@@ -24,4 +24,19 @@ test('only the explicit local composition grants the local owner deployment auth
     capabilities: ['workspace:use'],
   });
   expect(await local.resolveMembership({ method: 'jwt', subject: 'first-user' })).toBeNull();
+});
+
+test('runtime directory recognizes only configured local and A2A owners', async () => {
+  const disabled = localWorkspaceMembership('workspace-a');
+  expect(await disabled.resolveOwnerMembership?.('anonymous:local')).toMatchObject({
+    actorKind: 'local',
+  });
+  expect(await disabled.resolveOwnerMembership?.('api-key:a2a')).toBeNull();
+  expect(await disabled.resolveMembership({ method: 'api-key', subject: 'a2a' })).toBeNull();
+  const enabled = localWorkspaceMembership('workspace-a', true);
+  expect(await enabled.resolveOwnerMembership?.('api-key:a2a')).toMatchObject({
+    actorKind: 'service',
+  });
+  expect(await enabled.resolveOwnerMembership?.('api-key:invented')).toBeNull();
+  expect(await enabled.resolveMembership({ method: 'api-key', subject: 'invented' })).toBeNull();
 });

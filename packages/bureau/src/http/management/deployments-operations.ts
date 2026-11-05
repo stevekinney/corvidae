@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.deployments.*` (COR-1813): the routing of a worker deployment, read and moved. `get`
  * reads the pointer (the current build, the ramping build and its share, and the previous build a
@@ -187,6 +189,7 @@ export const deploymentsGetOperation = defineOperation<
   BureauWorkerDeploymentsOperationHost
 >({
   name: 'bureau.deployments.get',
+  authorize: authorizeWorkspaceOperation('bureau.deployments.get'),
   mcpExposable: false,
   summary: 'Read a worker deployment’s routing',
   description:
@@ -239,6 +242,7 @@ export const deploymentsRampOperation = defineOperation<
   BureauWorkerDeploymentsOperationHost
 >({
   name: 'bureau.deployments.ramp',
+  authorize: authorizeWorkspaceOperation('bureau.deployments.ramp'),
   mcpExposable: false,
   summary: 'Ramp a build of a worker deployment',
   description:
@@ -276,6 +280,7 @@ export const deploymentsPromoteOperation = defineOperation<
   BureauWorkerDeploymentsOperationHost
 >({
   name: 'bureau.deployments.promote',
+  authorize: authorizeWorkspaceOperation('bureau.deployments.promote'),
   mcpExposable: false,
   summary: 'Promote the ramping build of a worker deployment',
   description:
@@ -309,6 +314,7 @@ export const deploymentsRollBackOperation = defineOperation<
   BureauWorkerDeploymentsOperationHost
 >({
   name: 'bureau.deployments.rollback',
+  authorize: authorizeWorkspaceOperation('bureau.deployments.rollback'),
   mcpExposable: false,
   summary: 'Roll a worker deployment back to its previous build',
   description:

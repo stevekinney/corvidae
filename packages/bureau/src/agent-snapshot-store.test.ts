@@ -555,3 +555,24 @@ describe('referencedRevisions', () => {
     expect(await store.referencedRevisions('helper')).toEqual(new Set());
   });
 });
+
+describe('owner-filtered used revisions', () => {
+  it('derives usage only from permitted retained run references', async () => {
+    const { clock, store } = setup();
+    const source = { id: 'helper', hash: 'shared', definition: definition('shared definition') };
+    await store.recordRun(source, 'foreign-earlier');
+    clock.now += 1000;
+    await store.recordRun(source, 'own-run');
+    clock.now += 1000;
+    await store.recordRun(source, 'foreign-later');
+    await store.recordRun({ ...source, hash: 'foreign-only' }, 'foreign-revision');
+    const visible = await store.revisions('helper', async (runId) => runId === 'own-run');
+    expect(visible).toHaveLength(1);
+    expect(visible[0]?.hash).toBe('shared');
+    expect(visible[0]?.firstRunAt).toBe(new Date(START + 1000).toISOString());
+    expect(visible[0]?.lastRunAt).toBe(new Date(START + 1000).toISOString());
+    expect(await store.revisions('helper', async () => false)).toEqual([]);
+    await store.releaseRun('own-run');
+    expect(await store.revisions('helper', async (runId) => runId === 'own-run')).toEqual([]);
+  });
+});

@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.diagnostics.get`: what the Bureau is holding right now (COR-1731), through
  * `Bureau.internals.diagnostics()`.
@@ -106,6 +108,7 @@ export const diagnosticsGetOperation = defineOperation<
   BureauDiagnosticsOperationHost
 >({
   name: 'bureau.diagnostics.get',
+  authorize: authorizeWorkspaceOperation('bureau.diagnostics.get'),
   mcpExposable: false,
   summary: 'Read the Bureau’s diagnostics',
   description:

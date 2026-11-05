@@ -43,6 +43,19 @@ const principal = {
   claims: undefined,
   hasScope: () => false,
 } as unknown as Principal;
+const workspaceMembership = {
+  version: 1,
+  workspaceId: 'workspace-a',
+  actorId: 'alice',
+  actorKind: 'user',
+  owner,
+  membershipRevision: '1',
+  capabilities: ['workspace:use'],
+} as const;
+const workspacePrincipal = {
+  ...principal,
+  workspace: workspaceMembership,
+} as unknown as Principal;
 const input = { taskId: 'run-1', messageId: 'm1', answer: 'go' };
 const identity: CommandLedgerIdentity = {
   callerId: owner,
@@ -284,23 +297,61 @@ describe('bureau.tasks.respond and a fresh claim', () => {
 });
 
 describe('bureau.tasks.respond after task retention removed the task', () => {
-  it('returns the original receipt to an exact retry while the ledger still retains it', async () => {
-    const ledger = newLedger();
-    const claimed = await ledger.claim(identity, digest, { reviewId });
-    await ledger.complete(claimed.entry as never, original);
+  it.each([
+    ['standalone', principal],
+    ['workspace', workspacePrincipal],
+  ] as const)(
+    'returns the original receipt to its %s caller after task retention',
+    async (_kind, caller) => {
+      const ledger = newLedger();
+      const claimed = await ledger.claim(identity, digest, { reviewId });
+      await ledger.complete(claimed.entry as never, original);
 
-    const retried = await tasksRespondOperation.invoke({
-      input,
-      host: hostOver(ledger, {
-        openWaits: [],
-        getReview: async () => undefined,
-        taskGone: true,
-      }),
-      principal,
-    } as never);
+      const retried = await tasksRespondOperation.invoke({
+        input,
+        host: hostOver(ledger, {
+          openWaits: [],
+          getReview: async () => undefined,
+          taskGone: true,
+        }),
+        principal: caller,
+      } as never);
 
-    expect(retried).toEqual(original);
-  });
+      expect(retried).toEqual(original);
+    },
+  );
+
+  it.each([false, true])(
+    'never gives another workspace member the retained receipt through an operator scope (administrator=%s)',
+    async (administrator) => {
+      const ledger = newLedger();
+      const claimed = await ledger.claim(identity, digest, { reviewId });
+      await ledger.complete(claimed.entry as never, original);
+      const other = {
+        ...workspacePrincipal,
+        subject: 'bob',
+        hasScope: () => true,
+        workspace: {
+          ...workspaceMembership,
+          actorId: 'bob',
+          owner: apiKeyOwner('bob'),
+          capabilities: administrator ? ['workspace:use', 'workspace:manage'] : ['workspace:use'],
+        },
+      } as unknown as Principal;
+      const error = await rejectionOf(
+        tasksRespondOperation.invoke({
+          input,
+          host: hostOver(ledger, {
+            openWaits: [],
+            getReview: async () => undefined,
+            taskGone: true,
+          }),
+          principal: other,
+        } as never),
+      );
+      expect(error).toMatchObject({ code: 'NotFound' });
+    },
+  );
 
   it('still refuses a fresh command as a missing task', async () => {
     const refused = await faultOf(

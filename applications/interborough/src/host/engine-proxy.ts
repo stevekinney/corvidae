@@ -29,7 +29,7 @@ import {
 export const LOCAL_SUBJECT = 'anonymous:local';
 
 /** The path prefixes Weft's server owns; the relay forwards exactly these. */
-const ENGINE_PATH_PREFIXES = [
+export const ENGINE_PATH_PREFIXES = [
   '/api',
   '/v1',
   '/openapi.json',

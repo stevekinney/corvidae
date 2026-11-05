@@ -1,3 +1,4 @@
+import type { WorkspaceMembershipOptions } from './http/workspace-principal.ts';
 import type { AgentContributions } from './agent-contributions';
 import type { AgentWithBureauTools } from './agents-with-bureau-tools';
 import type { BureauWorkflows, WorkflowScheduleBlocker } from './workflow-runtime';
@@ -793,6 +794,8 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * memory hooks for. See {@link BureauMemoryAuthorityOptions}.
    */
   memoryAuthority?: BureauMemoryAuthorityOptions;
+  /** Trusted workspace directory used by run and tool authorization. */
+  workspace?: WorkspaceMembershipOptions;
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
@@ -1741,6 +1744,8 @@ export type AuditQuery = {
 
 /** Who is asking, for {@link BureauAudit.query}. */
 export type BureauAuditQueryOptions = {
+  /** Include only metadata of shared configuration changes, never private execution events. */
+  readonly includeSharedConfiguration?: boolean | undefined;
   /**
    * Only records about resources this owner owns (the `api-key:<subject>` or `anonymous:local`
    * string `ownerOf` returns). A record about a resource with no owner is never returned for an
@@ -2828,6 +2833,8 @@ export interface BureauInternals {
 }
 
 export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
+  /** Immutable construction binding shared with the transport handler; directory results stay live. */
+  readonly workspaceBinding: Readonly<WorkspaceMembershipOptions> | undefined;
   /** This bureau's identity — {@link BureauOptions.id}, or a generated one. */
   readonly id: string;
 

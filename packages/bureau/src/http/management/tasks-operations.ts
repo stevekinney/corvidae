@@ -17,7 +17,11 @@ import { TaskListingTokenError } from '../../task-list-snapshots.ts';
 import { TASK_ORIGIN_KINDS } from '../../task-origin.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import {
+  mayUseCrossOwnerScope,
+  type BureauOwnershipHost,
+  ownerOfPrincipal,
+} from '../owner-predicate.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   resourceNotFound,
@@ -27,6 +31,7 @@ import {
   unknownKeyPolicy,
   waitMillisecondsField,
 } from './management-schemas.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /** What the task operations read from the handler's `host`. */
 export type BureauTasksOperationHost = BureauOwnershipHost & {
@@ -51,7 +56,7 @@ export async function mayAccessTask(
   taskId: string,
   operatorScope: BureauScope,
 ): Promise<boolean> {
-  const resourceOwner = holdsScope(principal, operatorScope)
+  const resourceOwner = mayUseCrossOwnerScope(principal, operatorScope)
     ? undefined
     : await host.tasks.ownerOf(taskId);
   return host.ownership.mayAccess({ principal, resourceOwner, operatorScope });
@@ -131,6 +136,7 @@ export const tasksListOperation = defineOperation<
   BureauTasksOperationHost
 >({
   name: 'bureau.tasks.list',
+  authorize: authorizeWorkspaceOperation('bureau.tasks.list'),
   mcpExposable: true,
   summary: 'List tasks',
   description:
@@ -145,7 +151,7 @@ export const tasksListOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const everyOwner = holdsScope(principal, 'bureau.tasks:read');
+    const everyOwner = mayUseCrossOwnerScope(principal, 'bureau.tasks:read');
     const owner = everyOwner ? undefined : ownerOfPrincipal(principal);
     // A principal that can own nothing owns no task.
     if (!everyOwner && owner === undefined) return { tasks: [], nextPageToken: null };
@@ -195,6 +201,7 @@ export const tasksGetOperation = defineOperation<
   BureauTasksOperationHost
 >({
   name: 'bureau.tasks.get',
+  authorize: authorizeWorkspaceOperation('bureau.tasks.get'),
   mcpExposable: true,
   summary: 'Read one task',
   description:
@@ -250,6 +257,7 @@ export const tasksCancelOperation = defineOperation<
   BureauTasksOperationHost
 >({
   name: 'bureau.tasks.cancel',
+  authorize: authorizeWorkspaceOperation('bureau.tasks.cancel'),
   mcpExposable: true,
   summary: 'Cancel a task',
   description:

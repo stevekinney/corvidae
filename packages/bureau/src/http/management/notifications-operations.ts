@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.notifications.*`: the caller's own notifications (COR-1941), through `Bureau.notifications`.
  *
@@ -127,6 +129,7 @@ export const notificationsListOperation = defineOperation<
   BureauNotificationsOperationHost
 >({
   name: 'bureau.notifications.list',
+  authorize: authorizeWorkspaceOperation('bureau.notifications.list'),
   mcpExposable: false,
   summary: 'List the caller’s notifications',
   description:
@@ -183,6 +186,7 @@ export const notificationsMarkReadOperation = defineOperation<
   BureauNotificationsOperationHost
 >({
   name: 'bureau.notifications.markread',
+  authorize: authorizeWorkspaceOperation('bureau.notifications.markread'),
   mcpExposable: false,
   summary: 'Mark notifications read',
   description:
@@ -215,6 +219,7 @@ export const notificationsDismissOperation = defineOperation<
   BureauNotificationsOperationHost
 >({
   name: 'bureau.notifications.dismiss',
+  authorize: authorizeWorkspaceOperation('bureau.notifications.dismiss'),
   mcpExposable: false,
   summary: 'Dismiss notifications',
   description:

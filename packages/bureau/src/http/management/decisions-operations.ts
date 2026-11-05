@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.decisions.decide`: put a typed question to a model through `Bureau.decisions.decide`
  * (COR-1709).
@@ -129,6 +131,7 @@ export const decisionsDecideOperation = defineOperation<
   BureauDecisionsOperationHost
 >({
   name: 'bureau.decisions.decide',
+  authorize: authorizeWorkspaceOperation('bureau.decisions.decide'),
   mcpExposable: false,
   summary: 'Put a typed question to a model',
   description:

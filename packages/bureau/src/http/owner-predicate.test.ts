@@ -1,11 +1,16 @@
 import {
+  type WorkspaceIdentity,
   anonymousPrincipal,
   principalFromApiKey,
   principalFromJwtClaims,
 } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
+import {
+  mayAccessOwnedResource,
+  mayUseCrossOwnerScope,
+  ownerOfPrincipal,
+} from './owner-predicate.ts';
 
 const alice = principalFromApiKey({ subject: 'alice', scopes: [] });
 const reviewer = principalFromApiKey({ subject: 'reviewer', scopes: ['bureau.reviews:read'] });
@@ -74,6 +79,54 @@ describe('mayAccessOwnedResource', () => {
           resourceOwner: 'api-key:alice',
         }),
       ),
+    ).toBe(false);
+  });
+});
+
+describe('workspace private ownership', () => {
+  const identity: WorkspaceIdentity = {
+    version: 1,
+    workspaceId: 'workspace-a',
+    actorId: 'alice',
+    actorKind: 'user',
+    owner: 'workspace-a:alice',
+    membershipRevision: 'revision-1',
+    capabilities: ['workspace:use', 'workspace:manage'],
+  };
+
+  it('never lets administrator or operator scopes bypass private ownership', () => {
+    const principal = { ...reviewer, workspace: identity };
+    expect(mayUseCrossOwnerScope(principal, 'bureau.reviews:read')).toBe(false);
+    expect(mayUseCrossOwnerScope(reviewer, 'bureau.reviews:read')).toBe(true);
+    for (const resourceOwner of ['workspace-a:bob', 'workspace-b:alice', undefined]) {
+      expect(
+        mayAccessOwnedResource({ principal, resourceOwner, operatorScope: 'bureau.reviews:read' }),
+      ).toBe(false);
+    }
+    expect(
+      mayAccessOwnedResource({
+        principal,
+        resourceOwner: identity.owner,
+        operatorScope: 'bureau.reviews:read',
+      }),
+    ).toBe(true);
+  });
+
+  it('does not treat a missing use capability or an internal owner override as membership', () => {
+    const principal = { ...reviewer, workspace: identity, owner: 'workspace-a:bob' };
+    expect(
+      mayAccessOwnedResource({
+        principal,
+        resourceOwner: 'workspace-a:bob',
+        operatorScope: 'bureau.reviews:read',
+      }),
+    ).toBe(false);
+    expect(
+      mayAccessOwnedResource({
+        principal: { ...principal, workspace: { ...identity, capabilities: [] } },
+        resourceOwner: identity.owner,
+        operatorScope: 'bureau.reviews:read',
+      }),
     ).toBe(false);
   });
 });

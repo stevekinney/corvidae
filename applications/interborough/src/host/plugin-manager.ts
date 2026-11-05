@@ -23,10 +23,11 @@
  * @module plugin-manager
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { Bungalow } from '@lostgradient/bungalow';
 import {
+  ANONYMOUS_LOCAL_OWNER,
   pluginLoadOrder,
   type BureauPluginEntry,
   type BureauPluginSecrets,
@@ -247,12 +248,31 @@ export type PluginManagerOptions = {
    * (COR-2009). Bureau's watchers have already heard by then.
    */
   readonly applySecret?: (plugin: string) => Promise<void>;
+  /** Records committed plugin configuration metadata without exposing request values. */
+  readonly audit?: (entry: PluginAuditEntry) => Promise<void>;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
   /** Secret keys the host keeps for itself: a plugin that declares one is skipped, since it would read or overwrite it. */
   readonly reservedSecretKeys: readonly string[];
   /** Prefixes of secret keys the host keeps for itself, such as the tool sources' credentials. */
   readonly reservedSecretPrefixes: readonly string[];
+};
+
+/** Metadata emitted after a plugin configuration write commits. */
+export type PluginAuditEntry = {
+  /** Stable configuration resource key in the audit trail. */
+  readonly runId: string;
+  /** Committed plugin configuration event discriminator. */
+  readonly type: 'plugin.configured';
+  /** Verified owner responsible for the committed edit. */
+  readonly principal: string;
+  /** Metadata describing the commit, excluding configuration values and secrets. */
+  readonly detail: {
+    readonly outcome: 'committed';
+    readonly changedKeys: readonly string[];
+    readonly hash: string;
+    readonly previousRevision: string | null;
+  };
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -567,6 +587,9 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (problem !== undefined) throw new PluginInputError(problem.field, problem.message);
       }
       const live = options.appliesConfigurationLive?.(name) === true;
+      let changedKeys: string[] = [];
+      let committedText = '';
+      let previousRevision: string | null = null;
       const change = await serialized(async () => {
         assertWritable();
         const snapshot = await bungalow.readConfiguration();
@@ -586,6 +609,10 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
           ...(nextEnabled === undefined ? {} : { enabled: nextEnabled }),
           ...(nextConfiguration === undefined ? {} : { configuration: nextConfiguration }),
         };
+        changedKeys = [
+          ...(enabled !== undefined && enabled !== existing.enabled ? ['enabled'] : []),
+          ...(configuration !== undefined || clearsConfiguration ? ['configuration'] : []),
+        ];
         const nextDocument = { ...document, plugins: { ...declared, [name]: nextEntry } };
         // The same check the next start applies, before a byte is written.
         const applied = parsePluginSettings(nextDocument, location);
@@ -599,6 +626,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
             throw new Error(
               `Configuration write outcome: ${result.outcome}. Reload before retrying.`,
             );
+          committedText = `${JSON.stringify(nextDocument, null, 2)}\n`;
+          previousRevision = snapshot.revision;
         } catch (error) {
           // A write that throws may still have replaced the file, so the disk decides what is reported.
           try {
@@ -615,6 +644,19 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (enabledIn(persisted, entry)) generate();
         return changeOf(entry);
       });
+      await options
+        .audit?.({
+          runId: `plugin:${name}`,
+          type: 'plugin.configured',
+          principal: ANONYMOUS_LOCAL_OWNER,
+          detail: {
+            outcome: 'committed',
+            changedKeys,
+            hash: createHash('sha256').update(committedText).digest('hex'),
+            previousRevision,
+          },
+        })
+        .catch(() => undefined);
       // Applied outside the queue, which the work shares. A change to `enabled` alone waits for a restart.
       if (live && (configuration !== undefined || clearsConfiguration)) {
         await options.applyConfiguration?.(name);

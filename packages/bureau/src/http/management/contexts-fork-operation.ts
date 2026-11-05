@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.contexts.fork`: branch a context (a Bureau session) at the end of a turn, or before its
  * first message, through `Bureau.contexts.fork` (COR-1560, COR-1910). Editing a sent message is a
@@ -112,6 +114,7 @@ export const contextsForkOperation = defineOperation<
   BureauContextsForkOperationHost
 >({
   name: 'bureau.contexts.fork',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.fork'),
   mcpExposable: false,
   summary: 'Branch a context at a reply or before its first message',
   description:
