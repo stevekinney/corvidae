@@ -69,6 +69,23 @@ function toolResultOf(message: unknown): Record<string, unknown> | undefined {
   return Object.fromEntries(Object.entries(result));
 }
 
+/** Turn a direct JSON-RPC fault into the same MCP result shape the panel already consumes. */
+function toolErrorOf(message: unknown): Record<string, unknown> | undefined {
+  if (typeof message !== 'object' || message === null || Array.isArray(message)) return undefined;
+  const error: unknown = Reflect.get(message, 'error');
+  if (typeof error !== 'object' || error === null || Array.isArray(error)) return undefined;
+  const code = Reflect.get(error, 'code');
+  const messageText = Reflect.get(error, 'message');
+  if (typeof code !== 'number' || typeof messageText !== 'string') return undefined;
+  const data = Reflect.get(error, 'data');
+  return {
+    content: [{ type: 'text', text: messageText }],
+    isError: true,
+    ...(data === undefined ? {} : { structuredContent: data }),
+    _rpc: { code },
+  };
+}
+
 /**
  * The routes to merge into the host's `routes`. `apps` is what the host built at startup and
  * `callBureau` reaches the Bureau's handler.
@@ -108,7 +125,8 @@ export function mcpAppRoutes(
     }
     // A request of the host's own making: none of the browser's headers, so none of its
     // credentials, and the Bureau serves it as the local owner.
-    const mcpUrl = new URL('/mcp', request.url);
+    const hostOnly = app.hostOnlyTools.includes(name);
+    const mcpUrl = new URL(hostOnly ? '/jsonrpc' : '/mcp', request.url);
     const answer = await callBureau(
       new Request(mcpUrl, {
         method: 'POST',
@@ -120,15 +138,28 @@ export function mcpAppRoutes(
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
-          method: 'tools/call',
-          params: { name, arguments: Object.fromEntries(Object.entries(args)) },
+          method: hostOnly ? name : 'tools/call',
+          params: hostOnly
+            ? Object.fromEntries(Object.entries(args))
+            : { name, arguments: Object.fromEntries(Object.entries(args)) },
         }),
         signal: request.signal,
       }),
     );
     let result: Record<string, unknown> | undefined;
     try {
-      result = answer.ok ? toolResultOf(messageOf(await answer.text())) : undefined;
+      const responseText = await answer.text();
+      const message = answer.ok ? messageOf(responseText) : undefined;
+      const directResult = hostOnly ? toolResultOf(message) : undefined;
+      result =
+        directResult !== undefined && !Array.isArray(directResult['content'])
+          ? {
+              content: [{ type: 'text', text: JSON.stringify(directResult) }],
+              structuredContent: directResult,
+            }
+          : (directResult ??
+            toolResultOf(message) ??
+            (hostOnly ? toolErrorOf(message) : undefined));
     } catch {
       result = undefined;
     }

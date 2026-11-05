@@ -167,6 +167,8 @@ export interface PluginMcpApp {
   readonly styles?: string;
   /** The Bureau MCP tool names the panel may call. A panel may call no other tool. */
   readonly allowedTools: string[];
+  /** Bureau tools callable only by this host panel, outside the generic MCP inventory. */
+  readonly hostOnlyTools?: string[];
   /** An agent tool id that may open this app in an inline Chat tool call. */
   readonly opensFromAgentTool?: string;
   /**

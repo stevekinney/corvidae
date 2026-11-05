@@ -54,6 +54,8 @@ export type ServedMcpApp = {
   readonly opensFromAgentTool?: string;
   /** The Bureau MCP tool names the panel may call, and no others. */
   readonly allowedTools: readonly string[];
+  /** Bureau tools callable only by this host panel, outside the generic MCP inventory. */
+  readonly hostOnlyTools: readonly string[];
   /** The built, self-contained page. */
   readonly html: string;
 };
@@ -119,6 +121,7 @@ export async function mcpAppMounts(contributed: ContributedMcpApps) {
         ? {}
         : { opensFromAgentTool: app.opensFromAgentTool }),
       allowedTools: [...app.allowedTools],
+      hostOnlyTools: [...(app.hostOnlyTools ?? [])],
       html: page.html,
     });
     toolMeta[app.opensFromTool] = {

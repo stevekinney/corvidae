@@ -45,6 +45,7 @@ export const workflowRevisionReview: PluginMcpApp = {
   entry: new URL('./workflow-revision/app.ts', import.meta.url),
   styles: WORKFLOW_REVISION_STYLES,
   allowedTools: ['bureau.workflows.get', 'bureau.workflows.update'],
+  hostOnlyTools: ['bureau.workflows.update'],
   opensFromTool: 'bureau.workflows.update',
   opensFromAgentTool: 'bureau:workflows-propose-update',
 };

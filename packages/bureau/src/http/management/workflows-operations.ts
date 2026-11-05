@@ -519,7 +519,7 @@ export const workflowsUpdateOperation = defineOperation<
 >({
   name: 'bureau.workflows.update',
   authorize: authorizeWorkspaceOperation('bureau.workflows.update'),
-  mcpExposable: true,
+  mcpExposable: false,
   summary: 'Replace a workflow file',
   description:
     'Replaces the workflow file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',

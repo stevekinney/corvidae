@@ -102,6 +102,7 @@ describe('the MCP apps the host serves', () => {
         uri: 'ui://test/one/v1',
         opensFromTool: 'a.second',
         allowedTools: ['a.first', 'a.second'],
+        hostOnlyTools: [],
         html: expect.any(String),
       },
     ]);

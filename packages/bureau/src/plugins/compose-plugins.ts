@@ -309,6 +309,13 @@ function planOf(
         `setup returned the MCP app "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
       );
     }
+    for (const tool of app.hostOnlyTools ?? []) {
+      if (!app.allowedTools.includes(tool) || !tool.startsWith('bureau.')) {
+        throw new TypeError(
+          `setup returned the MCP app "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
+        );
+      }
+    }
     if (
       app.opensFromAgentTool !== undefined &&
       agentTools !== undefined &&
