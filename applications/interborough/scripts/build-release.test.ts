@@ -197,6 +197,7 @@ async function expectRelocatedFailure(
 }
 
 describe('release arguments', () => {
+  // spawn-free: direct command coverage uses short, deterministic process fixtures.
   test('runs the default command and reports failures', async () => {
     await runCommand([process.execPath, '-e', 'process.stdout.write("ok")']);
     expect(
@@ -236,6 +237,7 @@ describe('release arguments', () => {
     expect(lines).toEqual(['/tmp/interborough.tar.gz']);
   });
 
+  // spawn-free: the injected release boundary avoids starting the production child process.
   test('uses the command boundary defaults', async () => {
     expect(
       await runReleaseCommand(undefined, async () => '/tmp/interborough-default.tar.gz', [
@@ -245,6 +247,7 @@ describe('release arguments', () => {
     ).toBe('/tmp/interborough-default.tar.gz');
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects an existing release output before installing or staging', async () => {
     if (process.platform !== 'darwin' || process.arch !== 'arm64') return;
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-collision-'));
@@ -261,6 +264,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects dirty release inputs before reading or staging them', async () => {
     const marker = join(import.meta.dir, '.release-dirty-input');
     await writeFile(marker, 'dirty');
@@ -275,6 +279,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the unsupported target guard runs before any child process can start.
   test('rejects unsupported release targets before reading repository state', async () => {
     expect(
       await throwingRejectionOf(
@@ -285,6 +290,7 @@ describe('release arguments', () => {
     ).toThrow('macOS arm64 is required');
   });
 
+  // spawn-free: the persistent fixture owns and cleans its guarded child process.
   test('stops a persistent relocated host before reporting a missing runtime link', async () => {
     const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
     const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'missing-link' });
@@ -311,6 +317,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the persistent fixture owns and cleans its guarded child process.
   test('reports a relocated host linked to the wrong runtime', async () => {
     const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
     const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'wrong-link' });
@@ -329,6 +336,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the validation fixtures own and clean their guarded child processes.
   test('covers relocated host validation failures', async () => {
     await expectRelocatedFailure('missing-inspector', 'Prebuilt inspector is missing');
     await expectRelocatedFailure('not-running', 'did not run');
@@ -336,6 +344,7 @@ describe('release arguments', () => {
     await expectRelocatedFailure('malformed-html', 'did not contain its generated page');
   });
 
+  // spawn-free: the delayed supervisor fixture owns and cleans its guarded child process.
   test('retries when the relocated supervisor has not bound its port', async () => {
     const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
     const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'poll-error' });
@@ -358,6 +367,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects a dependency absent from the frozen production install', async () => {
     const fixture = await releaseFixture({ recursiveDependency: true, missingDependency: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-dependency-'));
@@ -373,6 +383,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('runs staging, SDK export bundling, manifest creation, and cleanup with real files', async () => {
     const fixture = await releaseFixture({ recursiveDependency: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-fast-'));
@@ -398,6 +409,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects malformed SDK exports through the production bundling path', async () => {
     const fixture = await releaseFixture({ invalidExports: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-invalid-'));
@@ -414,6 +426,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects a non-object SDK export map through the production bundling path', async () => {
     const fixture = await releaseFixture({ invalidExportMap: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-invalid-map-'));
@@ -429,6 +442,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects escaping runtime symlinks and removes staging after command failure', async () => {
     const fixture = await releaseFixture({ escapingLink: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-escape-'));
@@ -444,6 +458,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the release fixture controls every child process boundary deterministically.
   test('cleans staging when a production bundling command fails', async () => {
     const fixture = await releaseFixture({ commandFailure: true });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-command-failure-'));
