@@ -96,6 +96,10 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await page.goto('/schedules/new');
   await page.getByRole('combobox', { name: /^Workflow/ }).click();
   await page.getByRole('option', { name: /Order processing/ }).click();
+  // Create waits for the workflow's input fields, which the page draws before it asks.
+  await expect(page.getByTestId('new-schedule-input')).toBeVisible();
+  // Another flow of this run made a schedule named for the workflow, and a name is one schedule's.
+  await page.getByLabel(/^Name/).fill('Order processing for the revision flow');
   await page.getByRole('button', { name: 'Create schedule' }).click();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);

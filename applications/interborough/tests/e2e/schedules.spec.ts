@@ -173,11 +173,11 @@ test('a schedule made on the new schedule page fires in the zone that was chosen
     page.getByRole('heading', { level: 1, name: SCHEDULE_COPY.create.title }),
   ).toBeVisible();
 
-  // Chosen from the picker, which shows the workflow's description under its name.
+  // Chosen from the picker, which shows the workflow's name and, under it, what it says it is for.
   await page.getByRole('combobox', { name: /^Workflow/ }).click();
   await page.getByRole('option', { name: /Inventory sync sweep/ }).click();
   await expect(page.getByRole('combobox', { name: /^Workflow/ })).toContainText(
-    'Counts the stock of every warehouse.',
+    'Inventory sync sweep',
   );
 
   await page.getByLabel('Repeats', { exact: true }).selectOption('daily');
