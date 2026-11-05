@@ -1,5 +1,5 @@
 import { bureau } from './agent-support.ts';
-import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
+import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkflowFile, readWorkflow, removeWorkflow } from './workflow-support.ts';
 
@@ -25,7 +25,7 @@ test.describe('workflow revision review in Chat', () => {
 
     const frame = page.frameLocator('iframe[title="Review workflow revision"]');
     await expect(frame.getByRole('heading', { name: 'Review workflow revision' })).toBeVisible();
-    await expect(frame.locator('.revision-row[data-state="changed"]')).toHaveCount(2);
+    await expect(frame.locator('.revision-row[data-state="changed"]')).toHaveCount(4);
     await frame.getByRole('button', { name: 'Apply' }).click();
     await expect(frame.getByRole('status')).toContainText('Applied. New hash:');
 
@@ -113,6 +113,7 @@ test.describe('workflow revision review in Chat', () => {
     );
     await page.goto(`/chats/${staleThread}`);
     await expect(page.locator('iframe[title="Review workflow revision"]')).toHaveCount(0);
-    await expect(conversation(page)).toContainText('workflows-propose-update');
+    await page.getByRole('button', { name: 'Show tool calls' }).click();
+    await expect(page.getByText('bureau__workflows-propose-update', { exact: true })).toBeVisible();
   });
 });

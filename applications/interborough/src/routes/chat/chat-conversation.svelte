@@ -523,7 +523,16 @@
     ),
   );
   const isRevisionProposal = (entry: ToolCallEntry) => {
-    const result = entry.result;
+    const result =
+      typeof entry.result === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(entry.result) as unknown;
+            } catch {
+              return undefined;
+            }
+          })()
+        : entry.result;
     return (
       typeof result === 'object' &&
       result !== null &&

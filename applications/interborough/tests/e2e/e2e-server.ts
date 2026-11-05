@@ -180,13 +180,29 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
       const opener = messages.find((message) => message.role === 'user');
       const content = typeof opener?.content === 'string' ? opener.content : '';
       const id = 'cor-2034-chat-workflow';
+      const calls = messages.filter((message) => message.toolCall !== undefined).length;
       const read = messages.findLast((message) => message.toolResult !== undefined);
       const readContent = read?.toolResult?.content;
-      const currentHash =
-        typeof readContent === 'object' && readContent !== null
-          ? Reflect.get(readContent, 'hash')
-          : undefined;
-      if (messages.some((message) => message.toolCall?.name === 'bureau__workflows-get')) {
+      const currentHash = (() => {
+        if (typeof readContent === 'object' && readContent !== null) {
+          const direct = Reflect.get(readContent, 'hash');
+          if (typeof direct === 'string') return direct;
+        }
+        const serialized =
+          typeof readContent === 'string' ? readContent : JSON.stringify(readContent);
+        if (serialized === undefined) return undefined;
+        try {
+          const parsed: unknown = JSON.parse(serialized);
+          return typeof parsed === 'object' &&
+            parsed !== null &&
+            typeof Reflect.get(parsed, 'hash') === 'string'
+            ? Reflect.get(parsed, 'hash')
+            : undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+      if (calls === 1) {
         if (typeof currentHash !== 'string')
           return { content: 'The workflow could not be read.', toolCalls: [] };
         const stale = /stale:([^\s]+)/.exec(content)?.[1] ?? currentHash;
@@ -200,6 +216,7 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
               arguments: {
                 id,
                 expectedHash: stale,
+                description: 'Updated in Chat.',
                 trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
                 steps: [
                   {
@@ -214,6 +231,8 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
           ],
         };
       }
+      if (calls > 1)
+        return { content: 'The workflow revision is ready for review.', toolCalls: [] };
       return {
         content: '',
         toolCalls: [
@@ -392,6 +411,7 @@ const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 // schedule, so the seeded agent run is not the only schedule it has.
 const bureauHome = join(scratch, 'bureau-home');
 const bureauWorkflowDirectory = join(bureauHome, 'workflows');
+await writeProviderHome(bureauHome);
 await mkdir(bureauWorkflowDirectory, { recursive: true });
 await writeFile(
   join(bureauWorkflowDirectory, 'e2e-digest.json'),

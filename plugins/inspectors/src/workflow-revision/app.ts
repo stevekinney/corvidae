@@ -22,6 +22,21 @@ function structured<T>(
     : undefined;
 }
 
+function structuredResult(value: { structuredContent?: unknown; content?: unknown }): unknown {
+  if (value.structuredContent !== undefined) return value.structuredContent;
+  if (!Array.isArray(value.content)) return undefined;
+  const textBlock = value.content.find(
+    (block): block is { readonly text: string } =>
+      isRecord(block) && block['type'] === 'text' && typeof block['text'] === 'string',
+  );
+  if (textBlock === undefined) return undefined;
+  try {
+    return JSON.parse(textBlock.text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 function isWorkflow(value: unknown): value is Workflow {
   return (
     typeof value === 'object' &&
@@ -187,13 +202,14 @@ async function start(): Promise<void> {
       name: 'bureau.workflows.update',
       arguments: { id: argumentsOfCall['id'], expectedHash: baseHash, definition: proposed },
     });
-    const outcome = structured(result, isResult);
+    const outcomeValue = structuredResult(result);
+    const outcome = isResult(outcomeValue) ? outcomeValue : undefined;
     if (
       outcome !== undefined &&
       (outcome.status === 'ok' || typeof Reflect.get(outcome, 'hash') === 'string')
     )
       show('applied', `Applied. New hash: ${String(Reflect.get(outcome, 'hash') ?? '')}`);
-    else if (outcome?.status === 'conflict')
+    else if (outcome?.status === 'conflict' || result.isError === true)
       show(
         'conflict',
         'The file changed since the proposal. Check the current definition before retrying.',

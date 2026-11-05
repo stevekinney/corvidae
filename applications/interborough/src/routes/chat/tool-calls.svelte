@@ -136,4 +136,9 @@
       {/if}
     </div>
   {/each}
+  {#if folded && mcpApp !== undefined}
+    {#each entries.filter((entry) => entry.state === 'done') as entry (entry.callId)}
+      {@render mcpApp(entry)}
+    {/each}
+  {/if}
 </div>
