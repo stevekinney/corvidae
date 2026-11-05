@@ -130,6 +130,11 @@ const recovery = await (async () => {
     RESULT_FILE: join(callerHome, 'result_file'),
     ERROR_FILE: join(callerHome, 'error_file'),
     SEND_FILE: join(callerHome, 'send_file'),
+    ATTACH_FILE: join(callerHome, 'attach_file'),
+    AUTH_ATTACH_FILE: join(callerHome, 'auth_attach_file'),
+    AUDIT_FILE: join(callerHome, 'audit_file'),
+    SESSION_ID_FILE: join(callerHome, 'session_id_file'),
+    SESSION_FILE: join(callerHome, 'session_file'),
     URL_FILE: join(callerHome, 'caller-url-first'),
   };
   const env = { ...files, PEER_PORT: peer.url.port };
@@ -145,7 +150,8 @@ const recovery = await (async () => {
   const journalMarker = JSON.parse(await readFile(files.JOURNAL_FILE, 'utf8')) as {
     entry?: { taskId?: string };
   };
-  expect(journalMarker.entry?.taskId).toBeString();
+  const journalTaskId = journalMarker.entry?.taskId;
+  if (typeof journalTaskId !== 'string') throw new Error('journal marker has no task ID');
   first.kill('SIGKILL');
   await first.exited;
   const second = await startCaller(
@@ -159,10 +165,37 @@ const recovery = await (async () => {
     },
     false,
   );
+  await waitUntil(() => exists(files.ATTACH_FILE), { message: 'authenticated recovery attach' });
+  await waitUntil(() => exists(files.AUTH_ATTACH_FILE), {
+    message: 'successful authenticated GetTask',
+  });
+  const authAttachMarker = JSON.parse(await readFile(files.AUTH_ATTACH_FILE, 'utf8')) as {
+    method: string;
+    status: number;
+    taskId: string;
+  };
+  expect(authAttachMarker.status).toBe(200);
+  expect(['GetTask', 'SubscribeToTask']).toContain(authAttachMarker.method);
+  expect(authAttachMarker.taskId).toBe(journalTaskId);
+  const attachMarker = JSON.parse(await readFile(files.ATTACH_FILE, 'utf8')) as {
+    method: string;
+    taskId: string;
+    status?: number;
+  };
+  expect(attachMarker.taskId).toBe(journalTaskId);
   state.release();
   await waitUntil(() => exists(files.RESULT_FILE, 'completed'), { message: 'replayed result' });
+  await waitUntil(() => exists(files.AUDIT_FILE), { message: 'persisted recovery audit' });
+  await waitUntil(() => exists(files.SESSION_FILE), { message: 'persisted recovered session' });
   const resultText = await readFile(files.RESULT_FILE, 'utf8');
   expect(resultText).not.toContain(PEER_BEARER);
+  const auditText = await readFile(files.AUDIT_FILE, 'utf8');
+  expect(auditText).not.toContain(PEER_BEARER);
+  expect(auditText).toContain('peer-call-1');
+  const sessionText = await readFile(files.SESSION_FILE, 'utf8');
+  expect(sessionText).not.toContain(PEER_BEARER);
+  expect(sessionText).toContain('peer-call-1');
+  expect(sessionText).toContain('[REDACTED]');
   expect(await readFile(files.SEND_FILE, 'utf8')).toBe('1');
   const resultObserved = await exists(files.RESULT_FILE, 'completed');
   if (!resultObserved) throw new Error('replayed result was not observed');

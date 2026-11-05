@@ -3,7 +3,7 @@
 import type { BureauOptions } from '@lostgradient/bureau';
 import { sha256HexSync } from '@lostgradient/cryptography';
 import { createPeerCallTool, type PeerCallJournal } from '@lostgradient/operative';
-import { createA2APeerClient, type EgressPolicy } from '@lostgradient/weft/a2a';
+import { createA2APeerClient, type A2APeerUpdate, type EgressPolicy } from '@lostgradient/weft/a2a';
 import type { Tool } from 'armorer';
 import { createTool } from 'armorer';
 import { z } from 'zod';
@@ -157,6 +157,8 @@ export type A2APeerToolOptions = {
   readonly readSecret: (key: string) => string | undefined;
   /** Fetch implementation for the peer transport; tests use this to observe JSON-RPC boundaries. */
   readonly fetch?: typeof fetch;
+  /** Observes nonterminal task updates while a durable recovery attachment is opening. */
+  readonly onRecoveryUpdate?: (update: A2APeerUpdate) => void;
   /** Egress policy applied before card and task requests. */
   readonly egressPolicy?: EgressPolicy;
   /** The journal handoff installed before Bureau boot recovery. */
@@ -242,6 +244,7 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
             taskId: input.journalEntry.taskId,
             contextId: input.journalEntry.contextId,
             signal: input.signal,
+            onUpdate: options.onRecoveryUpdate,
           });
           const outcome = await task.result();
           const successful = outcome.state === 'completed';
@@ -250,7 +253,7 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
           return {
             callId: input.callId,
             toolCallId: input.callId,
-            toolName: tool.name,
+            toolName: peerTool.name,
             outcome: successful ? 'success' : 'error',
             content: safeMessage,
             result: successful

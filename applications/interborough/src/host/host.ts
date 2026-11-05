@@ -129,7 +129,7 @@ import {
   type ServeOptions,
   type WeftServer,
 } from '@lostgradient/weft';
-import { createEgressPolicy, type EgressPolicy } from '@lostgradient/weft/a2a';
+import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lostgradient/weft/a2a';
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
@@ -345,6 +345,8 @@ export type HostOptions = {
   readonly a2aPeerEgressPolicy?: EgressPolicy;
   /** Fetch implementation for configured peers; used by end-to-end fixtures to observe requests. */
   readonly a2aPeerFetch?: typeof fetch;
+  /** Observes nonterminal updates from a configured peer during durable recovery. */
+  readonly a2aPeerRecoveryUpdate?: (update: A2APeerUpdate) => void;
   /**
    * The code-defined agents that opt into A2A (COR-1819): each is served at
    * `/bureau/a2a/<name>` with an Agent Card, as a file agent with `a2a: true` is. Every name must
@@ -893,6 +895,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       peers: configuredPeers,
       readSecret: (key) => bungalow.readSecret(key),
       ...(options.a2aPeerFetch === undefined ? {} : { fetch: options.a2aPeerFetch }),
+      ...(options.a2aPeerRecoveryUpdate === undefined
+        ? {}
+        : { onRecoveryUpdate: options.a2aPeerRecoveryUpdate }),
       egressPolicy: options.a2aPeerEgressPolicy ?? createEgressPolicy(),
       peerCalls: peerCallHandoff,
       recoverableStartedApprovals,
