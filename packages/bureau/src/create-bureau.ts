@@ -170,6 +170,7 @@ import { bureauOwnTools, withAgentsBuiltFromBureauTools } from './agents-with-bu
 import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
+import { createAssetTools } from './asset-tools';
 import { createPluginRegistry } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
@@ -2757,6 +2758,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
   // COR-1890: the `bureau` namespace and the `built-in` source are the built-in plugin's.
   validateBuiltInPluginOptions(options, toBadRequest);
+  const assetServiceHolder: { current: AssetService | undefined } = { current: undefined };
   // COR-1890: the built-in `bureau` plugin contributes Bureau's own tools through the plugin API.
   // The tools read the Bureau when they are called, which is after construction has finished.
   const bureauTools = [
@@ -2773,8 +2775,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     ),
     ...createChildRunTools({
       children: () => childTopologyForWait?.children,
+      assets: () => assetServiceHolder.current,
+      ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
       agentDetail: (id) => agentCatalog.detail(id),
       runAgent: async (runId) => runAttribution.get(runId)?.agentName,
+    }),
+    ...createAssetTools({
+      assets: () => assetServiceHolder.current,
+      ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
     }),
     ...(options.workflowSource === undefined
       ? []
@@ -3014,6 +3022,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const assetServiceInstance: AssetService | undefined = options.assets
     ? await createAssetService({ ...options.assets, runtime: runtimeServices })
     : undefined;
+  assetServiceHolder.current = assetServiceInstance;
   if (assetServiceInstance !== undefined) {
     stopForwarding.push(
       forwardAssetEvents(assetServiceInstance, (event) => emitter.dispatch(event)),
@@ -3059,9 +3068,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       return { status: 'not-found' };
     };
   }
-  const assetServiceHolder: { current: AssetService | undefined } = {
-    current: assetServiceInstance,
-  };
   // COR-1585 — these two are read by the composition's `claimHolderFor` callback below, so they
   // are declared before the composition is awaited, not with the rest of the run bookkeeping.
   const runSessionIdentifiers = new WeakMap<ActiveRun, string>();

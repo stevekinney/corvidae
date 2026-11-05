@@ -6,11 +6,16 @@ import { z } from 'zod';
 import type { BureauChildren } from './child-topology';
 import type { AgentInput } from '@lostgradient/operative';
 import type { AgentFileDetail } from './agent-file-catalog';
+import type { AssetService } from './assets/types';
+import { managedAssetPart } from './asset-tools';
+import { AssetNotFoundError } from './assets/errors';
 
 const referenceInput = z.object({ childRunId: z.string().min(1) });
 
 export interface ChildRunToolHost {
   readonly children: () => BureauChildren | undefined;
+  readonly assets: () => AssetService | undefined;
+  readonly ownerOfRun: (runId: string) => Promise<string | undefined>;
   readonly agentDetail: (id: string) => Promise<AgentFileDetail | undefined>;
   readonly runAgent: (runId: string) => Promise<string | undefined>;
 }
@@ -56,6 +61,7 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
     input: z.object({
       agent: z.string().min(1),
       input: z.unknown(),
+      assets: z.array(z.string().min(1)).optional(),
       parentCancellation: z.enum(['cascade', 'detach']).optional(),
     }),
     execute: async (input, context) => {
@@ -72,10 +78,47 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
           reason: `The calling agent is not allowed to dispatch "${input.agent}".`,
         };
       }
+      let childInput = input.input as AgentInput;
+      if (input.assets !== undefined && input.assets.length > 0) {
+        const service = host.assets();
+        if (service === undefined) return { status: 'not-found' as const };
+        const owner = await host.ownerOfRun(calling.parentRunId);
+        if (owner === undefined) return { status: 'not-found' as const };
+        const parts = [];
+        for (const assetId of input.assets) {
+          let descriptor;
+          try {
+            const resolved = await service.resolve(
+              { assetId },
+              {
+                // The tool-execution principal may be synthesized per run; the persisted owner is
+                // the authorization identity for managed assets.
+                id: owner,
+              },
+            );
+            descriptor = resolved.descriptor;
+          } catch (error) {
+            if (error instanceof AssetNotFoundError)
+              return { status: 'refused' as const, reason: 'An asset reference is unavailable.' };
+            throw error;
+          }
+          parts.push(managedAssetPart(descriptor));
+        }
+        if (typeof childInput === 'string') {
+          childInput = [{ type: 'text', text: childInput }, ...parts];
+        } else if (Array.isArray(childInput)) {
+          childInput = [...childInput, ...parts];
+        } else {
+          return {
+            status: 'refused' as const,
+            reason: 'assets cannot be added to a conversation input.',
+          };
+        }
+      }
       const outcome = await calling.children.dispatch({
         parentRunId: calling.parentRunId,
         agentName: input.agent,
-        input: input.input as AgentInput,
+        input: childInput,
         ...(input.parentCancellation === undefined
           ? {}
           : { parentCancellation: input.parentCancellation }),

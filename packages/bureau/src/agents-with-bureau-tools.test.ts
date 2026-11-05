@@ -68,6 +68,8 @@ describe('agentsWithBureauTools', () => {
       'bureau:child-runs-get',
       'bureau:child-runs-wait',
       'bureau:child-runs-cancel',
+      'bureau:assets-publish',
+      'bureau:assets-read',
     ]);
     expect(bureau.agents.list().map(({ id }) => id)).toEqual(['helper', 'finder']);
 

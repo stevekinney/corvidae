@@ -519,4 +519,30 @@ describe('registered child-run tools on file agents', () => {
     ).toBeUndefined();
     await task.abort('test cleanup');
   });
+
+  it('refuses missing and unreadable asset refs before any child record is written', async () => {
+    for (const principal of ['alice', 'bob']) {
+      let dispatched = false;
+      const { bureau } = await open({
+        childAgents: '[worker]',
+        approval: 'bureau:child-runs-dispatch=never',
+        parent: async () => {
+          if (dispatched) return { content: 'done', toolCalls: [] };
+          dispatched = true;
+          return {
+            content: '',
+            toolCalls: [
+              {
+                name: 'bureau__child-runs-dispatch',
+                arguments: { agent: 'worker', input: 'x', assets: ['missing-asset'] },
+              },
+            ],
+          };
+        },
+      });
+      const task = await bureau.tasks.start('parent', 'missing asset', { principal });
+      await task.result();
+      expect(await bureau.children.list(task.id)).toEqual([]);
+    }
+  });
 });
