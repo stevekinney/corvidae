@@ -25,8 +25,10 @@ describe('CLI chat control', () => {
   // spawn-free: injected fetch and stdout sink exercise the client without a child process.
   test('streams text incrementally and projects only public lifecycle events', async () => {
     const chunks: string[] = [];
+    let keepalive: boolean | undefined;
     const result = await executeCli(['chat', '--agent', 'demo', 'hello'], {
       fetch: async (_input, init) => {
+        keepalive = init?.keepalive;
         expect(init?.headers).toBeDefined();
         return sse(
           { type: 'RUN_STARTED', threadId: 'thread-1', runId: 'run-1', metadata: { secret: 'no' } },
@@ -42,6 +44,17 @@ describe('CLI chat control', () => {
     expect(result.exitCode).toBe(0);
     expect(chunks.join('')).toBe('Hello world.');
     expect(result.stdout).toBe('');
+    expect(keepalive).toBe(false);
+  });
+
+  // spawn-free: injected fetch replaces the process boundary for stream termination testing.
+  test('fails closed when a stream ends without a terminal event', async () => {
+    const result = await executeCli(['chat', '--agent', 'demo', '--message', 'hello'], {
+      fetch: async () => sse({ type: 'RUN_STARTED', threadId: 'thread-1', runId: 'run-1' }),
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('ended before a terminal result');
+    expect(result.stderr).toContain('thread-1');
   });
 
   // spawn-free: injected fetch exercises the non-interactive stream contract in-process.
@@ -113,6 +126,7 @@ describe('CLI chat control', () => {
     expect(starts).toBe(2);
   });
 
+  // spawn-free: injected fetch and prompt dependencies replace child-process boundaries.
   test('does not prompt on a TTY when --no-input is set', async () => {
     let prompted = false;
     const result = await executeCli(
@@ -134,6 +148,7 @@ describe('CLI chat control', () => {
     expect(prompted).toBe(false);
   });
 
+  // spawn-free: injected fetch replaces the HTTP process boundary for projection testing.
   test('redacts reasoning and private tool fields from structured output and renders snapshots', async () => {
     const result = await executeCli(
       ['chat', '--agent', 'demo', '--message', 'hello', '--output', 'json'],

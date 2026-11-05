@@ -183,6 +183,7 @@ async function runStream(
   let runId = typeof body?.['runId'] === 'string' ? body['runId'] : identifiers?.runId;
   let text = '';
   let pendingInterrupts: unknown[] | undefined;
+  let terminalSeen = false;
   let resynced = false;
   const events: PublicEvent[] = [];
   const seenDurable = new Set<string>();
@@ -213,8 +214,10 @@ async function runStream(
         if (typeof event['threadId'] === 'string') threadId = event['threadId'];
         if (typeof event['runId'] === 'string') runId = event['runId'];
         const outcome = record(event['outcome']);
-        if (event['type'] === 'RUN_FINISHED' && Array.isArray(outcome?.['interrupts']))
-          pendingInterrupts = outcome['interrupts'];
+        if (event['type'] === 'RUN_FINISHED') {
+          terminalSeen = true;
+          if (Array.isArray(outcome?.['interrupts'])) pendingInterrupts = outcome['interrupts'];
+        }
         if (event['type'] === 'RUN_ERROR') {
           const message =
             typeof event['message'] === 'string' ? event['message'] : 'The agent run failed.';
@@ -247,6 +250,13 @@ async function runStream(
     }
     throw error;
   }
+  if (!terminalSeen)
+    throw Object.assign(
+      new Error(
+        `The chat stream ended before a terminal result (thread ${threadId ?? 'unknown'}, run ${runId ?? 'unknown'}).`,
+      ),
+      { identifiers: { threadId, runId, cursor } },
+    );
   if (pendingInterrupts !== undefined && pendingInterrupts.length > 0) {
     if (!parsed.noInput && dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
       const firstInterrupt = record(pendingInterrupts[0]);
@@ -334,6 +344,25 @@ export async function executeChat(
             return direct || '';
           })()
         : await readFile(messageFile, 'utf8');
+    if (!message && parsed.noInput)
+      throw Object.assign(new Error('chat requires a message when --no-input is set.'), {
+        exitCode: 5,
+      });
+    if (!message && dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
+      try {
+        message = await dependencies.prompt('Message: ', dependencies.signal);
+      } catch (error) {
+        if (dependencies.signal?.aborted)
+          throw Object.assign(
+            new Error('Chat stream detached; resume with the reported identifiers.'),
+            {
+              exitCode: 130,
+              identifiers: { threadId, runId },
+            },
+          );
+        throw error;
+      }
+    }
     if (!message && dependencies.stdin !== undefined) message = await dependencies.stdin();
     if (!message)
       throw Object.assign(new Error('chat requires a message or --message-file.'), { usage: true });

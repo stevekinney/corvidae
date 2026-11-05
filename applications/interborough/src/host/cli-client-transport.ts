@@ -105,6 +105,7 @@ export async function stream(
       response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), {
         ...init,
         headers,
+        keepalive: false,
         redirect: 'error',
         signal: controller.signal,
       });

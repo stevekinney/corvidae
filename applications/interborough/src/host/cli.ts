@@ -141,12 +141,13 @@ async function run(arguments_: string[]): Promise<number> {
     process.once('SIGINT', onInterrupt);
     const result = await executeCli(arguments_, {
       environment: processEnvironment(),
-      stdin: () => Bun.stdin.text(),
+      ...(process.stdin.isTTY ? {} : { stdin: () => Bun.stdin.text() }),
       writeStdout: (chunk) => process.stdout.write(chunk),
       stdinIsTTY: process.stdin.isTTY,
       signal: interrupt.signal,
       prompt: async (question, signal) => {
         const readline = createInterface({ input: process.stdin, output: process.stderr });
+        readline.on('SIGINT', onInterrupt);
         try {
           return await readline.question(question, { signal });
         } finally {
