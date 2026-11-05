@@ -37,6 +37,18 @@ describe('editForkPoint', () => {
     expect(editForkPoint(TURNS, 'u1', points)).toBeNull();
   });
 
+  test('does not count the agent’s instructions as what precedes the first message', () => {
+    const withInstructions = appendMessages(
+      createConversationHistory({ id: 'session-1' }),
+      { id: 's1', role: 'system', content: 'You are Tool runner.' },
+      { id: 'u1', role: 'user', content: 'u1' },
+      { id: 'a1', role: 'assistant', content: 'a1' },
+    );
+    expect(
+      editForkPoint(withInstructions, 'u1', branchPointIds(withInstructions, false)),
+    ).toBeNull();
+  });
+
   test('branches through the reply before a later message', () => {
     expect(editForkPoint(TURNS, 'u2', points)).toBe('a1');
   });

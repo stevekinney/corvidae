@@ -16,9 +16,11 @@ export function editForkPoint(
   messageId: string,
   branchPoints: ReadonlySet<string>,
 ): string | null | undefined {
+  // The agent's instructions open the transcript but are not part of what was said, so they do not
+  // count as what precedes the first message.
   const visible = conversation.ids.flatMap((id) => {
     const message = conversation.messages[id];
-    return message === undefined || message.hidden ? [] : [message];
+    return message === undefined || message.hidden || message.role === 'system' ? [] : [message];
   });
   const index = visible.findIndex((message) => message.id === messageId);
   if (index === -1 || visible[index]?.role !== 'user') return undefined;

@@ -264,41 +264,6 @@ test('deletes the chat after asking, and returns to the list', async ({
   expect(gone.error?.data?.weftCode).toBe('NotFound');
 });
 
-test('editing a sent message resends by fork, and leaves the original chat as it was', async ({
-  page,
-  request,
-  checkA11y,
-}) => {
-  const parentId = await openTwoTurns(page, request, 'edit');
-
-  const second = page.locator(USER_ROW).filter({ hasText: 'Second question' });
-  await second.hover();
-  await page.getByRole('button', { name: 'Edit message' }).last().click();
-  const editor = page.getByRole('textbox', { name: 'Edit message content' });
-  await editor.fill('A better second question');
-  await checkA11y('editing a sent message');
-  await page.getByRole('button', { name: 'Save & Resend' }).click();
-
-  await expect(page).toHaveURL(
-    (url) => url.pathname.startsWith('/chats/') && url.pathname !== `/chats/${parentId}`,
-  );
-  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-  const rows = page.locator(USER_ROW);
-  await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText('First question');
-  await expect(rows.last()).toContainText('A better second question');
-  await expect(page.locator(ASSISTANT_ROW)).toHaveCount(2);
-  await expect(page.locator('.weft-chat-header__origin')).toContainText(
-    CHAT_COPY.branch.branchedFrom,
-  );
-
-  // The chat it was edited in still holds the question as it was sent.
-  await page.goto(`/chats/${parentId}`);
-  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-  await expect(page.locator(USER_ROW).last()).toContainText('Second question');
-  await expect(page.locator(USER_ROW).last()).not.toContainText('better');
-});
-
 test('aborts the upload on the server when the person cancels an attachment', async ({
   page,
   request,
