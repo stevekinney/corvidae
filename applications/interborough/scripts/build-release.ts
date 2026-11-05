@@ -132,6 +132,7 @@ async function verifyFrozenInstall(): Promise<void> {
 
 async function verifyRelocatedHost(root: string): Promise<void> {
   const home = await mkdtemp(join('/tmp', 'interborough-release-home-'));
+  await writeFile(join(home, 'deployment-id'), '01ARZ3NDEKTSV4RRFFQ69G5FAV\n');
   const plugin = join(home, 'plugins', 'runtime-proof');
   await mkdir(plugin, { recursive: true });
   await writeFile(
@@ -150,6 +151,8 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       stderr: 'pipe',
     },
   );
+  const stdout = new Response(childProcess.stdout).text();
+  const stderr = new Response(childProcess.stderr).text();
   try {
     const deadline = Date.now() + 20_000;
     const link = join(home, 'plugins', 'node_modules');
@@ -164,12 +167,21 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
     try {
       await lstat(link);
     } catch {
-      throw new Error('Relocated host did not create plugin runtime link');
+      const [, errorOutput] = await Promise.all([stdout, stderr]);
+      throw new Error(
+        `Relocated host did not create plugin runtime link (exit ${childProcess.exitCode ?? 'running'}): ${errorOutput}`,
+      );
     }
     const target = await readlink(link);
-    const expected = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
-    if (realpath(resolve(home, target)) !== realpath(expected))
-      throw new Error('Relocated plugin link targets the wrong runtime');
+    const expected = join(
+      await realpath(root),
+      'share',
+      'interborough',
+      'plugin-runtime',
+      'node_modules',
+    );
+    if ((await realpath(resolve(join(home, 'plugins'), target))) !== (await realpath(expected)))
+      throw new Error(`Relocated plugin link targets the wrong runtime: ${target} !== ${expected}`);
     if (
       !(await Bun.file(
         join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'),
@@ -179,6 +191,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
   } finally {
     childProcess.kill('SIGTERM');
     await childProcess.exited;
+    await Promise.all([stdout, stderr]);
     await rm(home, { recursive: true, force: true });
   }
 }
