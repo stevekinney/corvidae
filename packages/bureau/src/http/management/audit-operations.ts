@@ -19,7 +19,11 @@
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { auditRecordsToJsonLines, decodeAuditCursor } from '../../audit/create-audit.ts';
+import {
+  auditRecordsToJsonLines,
+  decodeAuditCursor,
+  MAXIMUM_AUDIT_TYPES,
+} from '../../audit/create-audit.ts';
 import type { AuditQueryPage, BureauAudit } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
@@ -56,6 +60,13 @@ const queryInput = z.object({
       'Only records about this resource: a run id, or `schedule:<id>`, `session:<id>`, and so on.',
     ),
   type: z.string().min(1).max(128).optional().describe('Only records of this type.'),
+  types: z
+    .array(z.string().min(1).max(128))
+    .max(MAXIMUM_AUDIT_TYPES)
+    .optional()
+    .describe(
+      'Only records of one of these types, up to 64. It combines with `type`; an empty list matches nothing.',
+    ),
   since: z
     .number()
     .int()
@@ -146,7 +157,7 @@ export const auditQueryOperation = defineOperation<
   mcpExposable: false,
   summary: 'Query the audit trail',
   description:
-    "Returns audit records, oldest first (or newest first with `order: 'newest'`), as metadata only: `timestamp`, `type`, `resource` (what the record is about), `principal` (the actor), and a few scalar fields in `detail`. No record carries a secret, transcript, tool argument, tool result, or memory content. A caller sees the records about the resources it owns; a caller holding `bureau.audit:read` sees every record, and a record about a resource with no owner is read only through that scope. `runId` narrows to one resource, `type` to one kind, `principal` to one actor, and `since` and `until` to a time range (both ends inclusive). `format: 'jsonl'` returns the page as JSON Lines in `body` (one record per line, with the same redaction) instead of `records`, for export. `includeTotal: true` also returns `total`, how many records match and the caller may see. Pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page, and a page is filled from the records the caller may see, so a cursor advances across any number of records it may not.",
+    "Returns audit records, oldest first (or newest first with `order: 'newest'`), as metadata only: `timestamp`, `type`, `resource` (what the record is about), `principal` (the actor), and a few scalar fields in `detail`. No record carries a secret, transcript, tool argument, tool result, or memory content. A caller sees the records about the resources it owns; a caller holding `bureau.audit:read` sees every record, and a record about a resource with no owner is read only through that scope. `runId` narrows to one resource, `type` to one kind, `types` to any of several kinds, `principal` to one actor, and `since` and `until` to a time range (both ends inclusive). `format: 'jsonl'` returns the page as JSON Lines in `body` (one record per line, with the same redaction) instead of `records`, for export. `includeTotal: true` also returns `total`, how many records match and the caller may see. Pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page, and a page is filled from the records the caller may see, so a cursor advances across any number of records it may not.",
   destructive: false,
   tags: ['Audit'],
   inputSchema: queryInput,

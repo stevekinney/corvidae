@@ -122,3 +122,51 @@ describe('bureau.audit.query total', () => {
     expect(bounded.total).toBe(3);
   });
 });
+
+describe('bureau.audit.query types', () => {
+  /** Records one second apart, cycling through three types, so a type list leaves gaps to cross. */
+  const mixed = Array.from({ length: 12 }, (_, index) => ({
+    ...record(index + 1),
+    type: ['host.started', 'step.completed', 'run.started'][index % 3] ?? 'run.started',
+  }));
+
+  it('returns only the listed types, pages across the records it drops, and counts only those', async () => {
+    const audit = auditOf(mixed);
+    const first = await audit.query({
+      types: ['host.started', 'run.started'],
+      order: 'newest',
+      limit: 3,
+      includeTotal: true,
+    });
+    expect(first.records.map((entry) => entry.type)).toEqual([
+      'run.started',
+      'host.started',
+      'run.started',
+    ]);
+    expect(seconds(first)).toEqual([12, 10, 9]);
+    expect(first.total).toBe(8);
+    const second = await audit.query({
+      types: ['host.started', 'run.started'],
+      order: 'newest',
+      limit: 3,
+      ...(first.nextCursor === null ? {} : { cursor: first.nextCursor }),
+    });
+    expect(seconds(second)).toEqual([7, 6, 4]);
+  });
+
+  it('combines with a single type, and an empty list matches nothing', async () => {
+    const audit = auditOf(mixed);
+    const both = await audit.query({ type: 'host.started', types: ['run.started'] });
+    expect(both.records).toEqual([]);
+    const empty = await audit.query({ types: [], includeTotal: true });
+    expect(empty.records).toEqual([]);
+    expect(empty.total).toBe(0);
+  });
+
+  it('refuses a list it cannot read', async () => {
+    const refusal = await throwingRejectionOf(
+      auditOf(mixed).query({ types: [''] as readonly string[] }),
+    );
+    expect(refusal).toThrow('types must be a list of at most 64 strings of 1 to 128 characters');
+  });
+});

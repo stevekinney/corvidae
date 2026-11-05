@@ -1727,6 +1727,12 @@ export type AuditQuery = {
   readonly runId?: string | undefined;
   /** Only records of this type. */
   readonly type?: string | undefined;
+  /**
+   * Only records of one of these types, for a reader that wants several kinds and none of the
+   * rest (COR-2018: the audit log shows what was done, not each step a run took). It combines with
+   * `type`: a record must match both. An empty list matches nothing.
+   */
+  readonly types?: readonly string[] | undefined;
   /** Only records at or after this time, in epoch milliseconds. */
   readonly since?: number | undefined;
   /** Only records at or before this time, in epoch milliseconds. */

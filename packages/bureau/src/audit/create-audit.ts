@@ -35,6 +35,9 @@ export const DEFAULT_AUDIT_PAGE_LIMIT = 50;
 /** The most records one page may hold. */
 export const MAXIMUM_AUDIT_PAGE_LIMIT = 100;
 
+/** The most types one query may list in {@link AuditQuery.types}. */
+export const MAXIMUM_AUDIT_TYPES = 64;
+
 /** How many records one read of the trail asks for. */
 const SCAN_CHUNK = 200;
 
@@ -238,6 +241,7 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
     const {
       runId,
       type,
+      types,
       since,
       until,
       principal,
@@ -275,6 +279,17 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
     if (type !== undefined && (typeof type !== 'string' || type.length < 1 || type.length > 128)) {
       throw refuse('type must be a string of 1 to 128 characters');
     }
+    if (
+      types !== undefined &&
+      (!Array.isArray(types) ||
+        types.length > MAXIMUM_AUDIT_TYPES ||
+        types.some((entry) => typeof entry !== 'string' || entry.length < 1 || entry.length > 128))
+    ) {
+      throw refuse(
+        `types must be a list of at most ${MAXIMUM_AUDIT_TYPES} strings of 1 to 128 characters`,
+      );
+    }
+    const wantedTypes = types === undefined ? undefined : new Set<string>(types);
     const decoded = cursor === undefined ? undefined : decodeAuditCursor(cursor);
     if (cursor !== undefined && decoded === undefined) throw refuse('Invalid cursor');
 
@@ -323,6 +338,11 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
             // Oldest first, the first record past `until` ends the walk: no later one is in range.
             // Newest first, every record past `until` is skipped until the walk comes back in range.
             if (direction === 'oldest') return;
+            position = here;
+            continue;
+          }
+          // The type list drops a record the way the actor filter does: the walk moves past it.
+          if (wantedTypes !== undefined && !wantedTypes.has(record.type)) {
             position = here;
             continue;
           }
