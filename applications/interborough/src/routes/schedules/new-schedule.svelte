@@ -21,6 +21,13 @@
    * stops the request and keeps the form. A refusal keeps everything where it was: the services'
    * field problems go on the fields they name, and any other failure is an alert above the
    * actions. Leaving the page after typing asks first.
+   *
+   * The same form edits a schedule (`/schedules/:id/edit`; rows 74r, 74t, 75p, 75q) when it is
+   * given one: it opens filled in, with focus on Repeats, and its footer says what Save does. The
+   * workflow, and for a chat the agent, the message and whether it continues one chat, are fixed
+   * when a schedule is made, so they are shown and not sent; the one exception is a schedule whose
+   * workflow was deleted, whose Workflow field keeps the old name, marked, and says so. Save stays
+   * enabled there and moves focus to that field.
    */
   import {
     Alert,
@@ -41,13 +48,14 @@
     type ScheduleValue,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
+  import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
-  import { createAgentSchedule } from '../../lib/bureau-schedules.ts';
+  import { createAgentSchedule, updateAgentSchedule } from '../../lib/bureau-schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
@@ -84,12 +92,40 @@
     type NewScheduleDraft,
     type NewScheduleOverlap,
   } from './new-schedule-model.ts';
+  import { cadenceOf, describeCadence, isSubMinuteInterval } from './cadence.ts';
   import { loadModelAgents } from './schedule-row-context.ts';
-  import { createSchedule, fetchScheduleList } from './schedule-queries.ts';
+  import {
+    agentUpdateOf,
+    editDraftOf,
+    editNameOf,
+    cadenceChanged,
+    endsSkippedRun,
+    engineUpdateOf,
+    type EditTarget,
+  } from './schedule-edit-model.ts';
+  import {
+    createSchedule,
+    fetchScheduleDetail,
+    fetchScheduleList,
+    updateScheduleSpec,
+  } from './schedule-queries.ts';
   import ScheduleWhen from './schedule-when.svelte';
 
+  interface Props {
+    /** The schedule to edit. Without one the page makes a new schedule. */
+    editing?: EditTarget | undefined;
+    /** Drops the draft and reads the schedule again, when a save found the schedule changed since it was read. */
+    onStartOver?: (() => void) | undefined;
+  }
+
+  const { editing: editingProp, onStartOver }: Props = $props();
+  /** The schedule being edited, as the page opened on it: one draft is made for one schedule. */
+  const target = untrack(() => editingProp);
+
   const copy = SCHEDULE_COPY.create;
-  const LIST_PATH = '/schedules';
+  const editCopy = SCHEDULE_COPY.edit;
+  /** Where Cancel and a finished edit go: the schedule's page, or the list for a new one. */
+  const LIST_PATH = target === undefined ? '/schedules' : scheduleDetailPath(target.schedule.id);
   const PROVIDERS_PATH = '/settings/models';
   /** How long a read may take before its placeholder says so, in milliseconds. */
   const STILL_LOADING_MS = 10_000;
@@ -98,11 +134,12 @@
   const queryClient = useQueryClient();
   const writeGate = $derived(scopeGate(principal, ['schedules:write']));
 
-  const draft = $state<NewScheduleDraft>(emptyDraft());
+  const draft = $state<NewScheduleDraft>(target === undefined ? emptyDraft() : editDraftOf(target));
   /** The page as it opened, to tell whether anything was typed. */
   const opened = $state.snapshot(draft);
   const errors = $derived(draftErrors(draft));
-  const chat = $derived(isChatDraft(draft));
+  /** Whether the schedule is a chat. An edit keeps the kind it was made as, whatever the Workflow field is moved to. */
+  const chat = $derived(target === undefined ? isChatDraft(draft) : target.kind === 'agent-run');
   /** Zone the next runs are shown in: the viewer's, as the Schedules list names it. */
   const zone = formatTimeZoneLabel(new Date(), { style: 'long' });
 
@@ -128,8 +165,6 @@
   );
   /** Whether the person stopped waiting for the list, which then reads as one that failed. */
   let listCancelled = $state(false);
-  const listLoading = $derived(catalog.isPending && !listCancelled);
-  const listFailed = $derived(catalog.isError || listCancelled);
   const options = $derived(
     workflowOptions(
       catalog.data ?? [],
@@ -141,7 +176,48 @@
       ),
     ),
   );
-  const chosen = $derived(options.find((option) => option.value === draft.workflowType));
+  /** The schedule's name as the page opened on it, which the heading and the footer say. */
+  const editedName = target === undefined ? undefined : editNameOf(target.schedule);
+  /** The workflow the edited schedule starts, read on its own, so that moving the field does not change the answer. */
+  const originalOptions = () => ({
+    queryKey: queryKeys.workflowCatalog.detail(target?.schedule.workflowType ?? ''),
+    queryFn: async ({ signal }: { signal: AbortSignal }) =>
+      (await resolveWorkflow(client, target?.schedule.workflowType ?? '', { signal })) ?? null,
+    retry: false,
+  });
+  const original = createQuery(
+    () => ({ ...originalOptions(), enabled: target?.kind === 'code' }),
+    undefined,
+  );
+  /** Whether the edited schedule's workflow was read and is gone: it is deleted, or never existed. */
+  const deleted = $derived(target?.kind === 'code' && original.data === null);
+  /**
+   * Whether the page is waiting for the list, or says it failed. An edit needs the list only to
+   * pick another workflow for a schedule whose own is gone, so it never waits for it otherwise.
+   */
+  const listNeeded = $derived(target === undefined || deleted);
+  const listLoading = $derived(listNeeded && catalog.isPending && !listCancelled);
+  const listFailed = $derived(listNeeded && (catalog.isError || listCancelled));
+  /** Whether the Workflow field still holds the workflow that is gone. */
+  const goneChosen = $derived(deleted && draft.workflowType === target?.schedule.workflowType);
+  /** The picker's rows, with the edited schedule's own workflow in them even when the list leaves it out. */
+  const fieldOptions = $derived.by(() => {
+    if (target === undefined || target.kind === 'agent-run') return options;
+    const type = target.schedule.workflowType;
+    if (deleted) {
+      return [
+        {
+          value: type,
+          label: editCopy.workflowGone.option(workflowLabel(type)),
+          disabled: true,
+        },
+        ...options,
+      ];
+    }
+    if (options.some((option) => option.value === type)) return options;
+    return [{ value: type, label: workflowLabel(type) }, ...options];
+  });
+  const chosen = $derived(fieldOptions.find((option) => option.value === draft.workflowType));
   const workflowName = $derived(chosen?.label ?? workflowLabel(draft.workflowType));
 
   function cancelList(): void {
@@ -166,11 +242,16 @@
   const agentNames = $derived(
     agents.isSuccess ? agents.data.map((agent) => agent.name) : undefined,
   );
-  const defaultAgent = createQuery(() => ({ ...defaultAgentQuery(), enabled: chat }));
+  const defaultAgent = createQuery(() => ({
+    ...defaultAgentQuery(),
+    enabled: chat && target === undefined,
+  }));
 
   // A chat starts with the agent the Home page starts with, until a person picks another.
   $effect(() => {
-    if (chat && draft.agentName === '' && defaultAgent.data) draft.agentName = defaultAgent.data;
+    if (target === undefined && chat && draft.agentName === '' && defaultAgent.data) {
+      draft.agentName = defaultAgent.data;
+    }
   });
 
   // Whether the chosen agent needs a model while no provider is connected, so it will not run.
@@ -198,12 +279,12 @@
       queryKey: queryKeys.workflowCatalog.detail(draft.workflowType),
       queryFn: async ({ signal }) =>
         (await resolveWorkflow(client, draft.workflowType, { signal })) ?? null,
-      enabled: draft.workflowType !== '' && !chat,
+      enabled: target === undefined && draft.workflowType !== '' && !chat,
     }),
     undefined,
   );
   /** What the chosen workflow's page says it can be scheduled with; `undefined` until it is read, or when it is gone. */
-  const target = $derived(
+  const inputTarget = $derived(
     chat || draft.workflowType === '' || resolution.data === undefined || resolution.data === null
       ? undefined
       : scheduleTargetOf(draft.workflowType, resolution.data),
@@ -212,16 +293,18 @@
   const unavailable = $derived(
     !chat &&
       resolution.data !== undefined &&
-      (resolution.data === null || target?.status !== 'ready'),
+      (resolution.data === null || inputTarget?.status !== 'ready'),
   );
   /** Whether the chosen workflow's input was read, so the page knows what to ask for. */
-  const inputRead = $derived(target?.status === 'ready');
+  const inputRead = $derived(inputTarget?.status === 'ready');
   /** The schema of the chosen workflow's input, or `undefined` when it declares none (the input is then optional JSON). */
-  const inputSchema = $derived(target?.status === 'ready' ? target.schema : undefined);
+  const inputSchema = $derived(inputTarget?.status === 'ready' ? inputTarget.schema : undefined);
   /** Whether the chosen workflow's schema says it takes no input, which is not the same as declaring none. */
   const noInput = $derived(inputRead && takesNoInput(inputSchema));
   /** Whether the chosen workflow's input fields are still being read. */
-  const inputLoading = $derived(!chat && draft.workflowType !== '' && resolution.isPending);
+  const inputLoading = $derived(
+    target === undefined && !chat && draft.workflowType !== '' && resolution.isPending,
+  );
 
   type Choice = NewScheduleDraft;
 
@@ -232,7 +315,7 @@
   let whenProblem = $state<string | undefined>(undefined);
 
   // The name follows the workflow (the agent for a chat) until a person edits it.
-  let nameEdited = $state(false);
+  let nameEdited = $state(target !== undefined);
   const agentWords = $derived(agentLabel(draft.agentName, agents.data));
   const startingName = $derived(
     defaultNameOf({ workflowType: draft.workflowType, agentName: agentWords }, workflowName),
@@ -278,6 +361,19 @@
     });
   }
 
+  /** Signals a save to a schedule the engine writes that the page was opened on an older one, which the engine cannot compare itself. */
+  class StaleDraft extends Error {}
+
+  /** A save was refused because the schedule changed after the page was opened on it. */
+  let stale = $state(false);
+  /** The person moved the Workflow field off a workflow that is gone, which a schedule cannot follow. */
+  let moved = $state(false);
+
+  function invalidateSchedules(): void {
+    void queryClient.invalidateQueries({ queryKey: ['schedules'] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.schedules.overlay() });
+  }
+
   const creation = createMutation(() => ({
     mutationFn: async (variables: {
       readonly choice: Choice;
@@ -285,6 +381,32 @@
       readonly signal: AbortSignal;
     }) => {
       const { choice, input, signal } = variables;
+      if (target !== undefined) {
+        const { schedule } = target;
+        if (target.kind === 'agent-run') {
+          await abortable(
+            updateAgentSchedule(
+              schedule.id,
+              agentUpdateOf(target, choice, opened),
+              schedule.revision,
+              { signal },
+            ),
+            signal,
+          );
+          return schedule.id;
+        }
+        const update = engineUpdateOf(target, choice, opened);
+        // The engine has no revision to compare inside its write, so the schedule is read just
+        // before it, which narrows the window to one round trip and does not close it. A fire
+        // moves `updatedAt` and not the revision, which only a change to the schedule does.
+        const now = await abortable(fetchScheduleDetail(client, schedule.id), signal);
+        if (now === null || now.revision !== schedule.revision) throw new StaleDraft();
+        await abortable(
+          updateScheduleSpec(client, schedule.id, update.spec, update.options),
+          signal,
+        );
+        return schedule.id;
+      }
       if (isChatDraft(choice)) {
         const chatId = choice.continueChat ? newChatId() : undefined;
         const made = await abortable(
@@ -301,16 +423,24 @@
     },
     onMutate: () => {
       onFields = false;
+      stale = false;
       inputField?.clear();
     },
     onSuccess: (id) => {
       leaving = true;
-      void queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      invalidateSchedules();
       void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
       router.navigate(scheduleDetailPath(id), { force: true });
     },
     onError: (error, variables) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
+      if (target !== undefined) {
+        if (error instanceof StaleDraft || agentFaultOf(error).kind === 'stale') {
+          stale = true;
+          invalidateSchedules();
+        }
+        return;
+      }
       // The input's fields exist only for a workflow that draws them: Svelte sets the binding back
       // to null when they unmount, so what was submitted decides, not what the binding last held.
       const refused =
@@ -326,13 +456,14 @@
     },
   }));
 
-  const failure = $derived(onFields ? undefined : creation.error);
+  const failedCopy = target === undefined ? copy.failed : editCopy.failed;
+  const failure = $derived(onFields || stale ? undefined : creation.error);
   const failureMessage = $derived.by(() => {
     if (failure === null || failure === undefined) return undefined;
     if (failure instanceof DOMException && failure.name === 'AbortError') return undefined;
     return isNetworkFailure(failure)
-      ? copy.failed.message
-      : `${faultTreatment(failure).message} ${copy.failed.message.replace(/^Interborough didn’t answer\. /, '')}`;
+      ? failedCopy.message
+      : `${faultTreatment(failure).message} ${failedCopy.message.replace(/^Interborough didn’t answer\. /, '')}`;
   });
 
   /** The errors a person has been told about: none before Create is pressed, except a message that is too long. */
@@ -349,6 +480,16 @@
     formRegion?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }
 
+  // An edit opens with focus on Repeats, the first field of When, once it is known the schedule's
+  // workflow is there: a workflow that is gone is the first thing to fix, and focus waits for Save.
+  let focusedOnOpen = false;
+  $effect(() => {
+    if (target === undefined || focusedOnOpen || whenBlock === undefined) return;
+    if (target.kind === 'code' && (original.isPending || deleted)) return;
+    focusedOnOpen = true;
+    void tick().then(() => whenBlock?.focusRepeats());
+  });
+
   /**
    * The label of the field the footer says Create will move focus to. Only a problem that is on
    * screen before Create is pressed says so (a cron field out of range): a problem Create itself
@@ -360,6 +501,7 @@
     footerLineOf({
       draft: { ...draft, agentName: agentWords },
       workflow: workflowName,
+      editing: editedName,
       creating,
       slow,
       waitingForWorkflows: listLoading,
@@ -368,19 +510,22 @@
       problemField,
     }),
   );
-  const canCreate = $derived(!writeGate.disabled && !listLoading && !inputLoading && !creating);
+  const canCreate = $derived(
+    !writeGate.disabled && !listLoading && !inputLoading && !creating && !stale,
+  );
 
   /** Looks for a schedule that already has the name, in a read made now so a create that was lost is seen. */
   async function takenNow(name: string): Promise<typeof nameTaken> {
+    const except = target?.schedule.id;
     try {
       const fresh = await queryClient.fetchQuery({
         queryKey: existingKey,
         queryFn: () => fetchScheduleList(client, {}),
         staleTime: 0,
       });
-      return takenNameOf(name, fresh.items);
+      return takenNameOf(name, fresh.items, except);
     } catch {
-      return takenNameOf(name, existing.data?.items ?? []);
+      return takenNameOf(name, existing.data?.items ?? [], except);
     }
   }
 
@@ -413,11 +558,44 @@
     creation.mutate({ choice, input, signal: attempt.signal });
   }
 
+  /** Whether the workflow the edited schedule starts is gone, waiting for the read if Save was asked before it came back. */
+  async function workflowIsGone(editing: EditTarget): Promise<boolean> {
+    if (editing.kind !== 'code') return false;
+    if (original.data !== undefined) return original.data === null;
+    try {
+      return (await queryClient.fetchQuery(originalOptions())) === null;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Save's ask. The workflow is fixed, so nothing the page asks about it can be wrong except a
+   * workflow that is gone, which Save refuses with focus on the Workflow field and its message.
+   */
+  async function saveEdit(editing: EditTarget): Promise<void> {
+    const choice = $state.snapshot(draft);
+    if (choice.workflowType === editing.schedule.workflowType && (await workflowIsGone(editing))) {
+      await focusFirstProblem();
+      return;
+    }
+    if (editing.kind === 'code' && choice.workflowType !== editing.schedule.workflowType) {
+      moved = true;
+      return;
+    }
+    await proceed(undefined, choice);
+  }
+
   /** Create's ask. The input checks itself, and only the submit this ask made makes a schedule. */
   async function create(): Promise<void> {
     if (!canCreate) return;
     attempted = true;
     nameTaken = undefined;
+    moved = false;
+    if (target !== undefined) {
+      await saveEdit(target);
+      return;
+    }
     // The mutation reads the draft after its first `await`, so it gets a copy nothing can change.
     const choice = $state.snapshot(draft);
     const early = draftErrors(choice);
@@ -472,6 +650,11 @@
   const started = $derived(isDraftStarted(draft, opened));
   let discarding = $state(false);
   let destination = LIST_PATH;
+  // A different workflow is a new attempt at the message that said one cannot be moved to.
+  $effect(() => {
+    void draft.workflowType;
+    moved = false;
+  });
   $effect(() =>
     router.guardLeaving((next) => {
       if (leaving || !started) return true;
@@ -490,13 +673,40 @@
     if (started && !leaving) event.preventDefault();
   }
 
-  /** The two choices of what happens when a fire is due while a run is going: skipping is the only one a chat that continues can take. */
-  const overlapOptions = $derived(
-    draft.continueChat && chat ? [{ value: 'skip', label: 'Skip this one' }] : undefined,
-  );
+  /** The cadence of a schedule that runs more often than the builder counts, as it is read, until the cadence is changed. */
+  const exactCadence =
+    target !== undefined && isSubMinuteInterval(cadenceOf(target.schedule))
+      ? describeCadence(cadenceOf(target.schedule))
+      : undefined;
+  /** Whether the cadence was changed, which replaces the exact one the builder cannot show. */
+  const cadenceEdited = $derived(target !== undefined && cadenceChanged(draft, opened));
+
+  /** The words for the two policies the builder does not offer, which a schedule that holds one keeps until it is changed. */
+  const HELD_OVERLAP_LABELS: Readonly<Record<string, string>> = {
+    queue: 'Queue this one',
+    'cancel-running': 'Cancel the run that is going',
+  };
+
+  /**
+   * The choices of what happens when a fire is due while a run is going: skipping is the only one
+   * a chat that continues can take, and a schedule that holds a policy the builder leaves out
+   * shows it beside the two it offers.
+   */
+  const overlapOptions = $derived.by(() => {
+    if (draft.continueChat && chat) return [{ value: 'skip', label: 'Skip this one' }];
+    const held = target === undefined ? undefined : HELD_OVERLAP_LABELS[target.schedule.overlap];
+    if (held === undefined || target === undefined) return undefined;
+    return [
+      { value: 'skip', label: 'Skip this one' },
+      { value: 'allow', label: 'Start another run' },
+      { value: target.schedule.overlap, label: held },
+    ];
+  });
 
   function chooseOverlap(next: string): void {
-    draft.overlap = (next === 'allow' ? 'allow' : 'skip') satisfies NewScheduleOverlap;
+    draft.overlap = (
+      next === 'allow' || next === 'queue' || next === 'cancel-running' ? next : 'skip'
+    ) satisfies NewScheduleOverlap;
   }
 
   function continueChanged(next: boolean): void {
@@ -511,8 +721,22 @@
 
 <svelte:window onbeforeunload={warnBeforeUnload} />
 
-<section class="ib-schedule-new" aria-label={copy.title} data-page="schedule-new">
-  <PageHeader title={copy.title} headingLevel={1} description={copy.description(zone)} />
+<section
+  class="ib-schedule-new"
+  aria-label={target === undefined ? copy.title : editCopy.title}
+  data-page={target === undefined ? 'schedule-new' : 'schedule-edit'}
+>
+  {#if target === undefined}
+    <PageHeader title={copy.title} headingLevel={1} description={copy.description(zone)} />
+  {:else if deleted}
+    <PageHeader title={editCopy.heading(editedName ?? '')} headingLevel={1} />
+  {:else}
+    <PageHeader
+      title={editCopy.heading(editedName ?? '')}
+      headingLevel={1}
+      description={editCopy.description}
+    />
+  {/if}
 
   <fieldset class="ib-schedule-new__fields" disabled={creating} bind:this={formRegion}>
     <div class="ib-schedule-new__section">
@@ -524,16 +748,17 @@
         label={copy.workflowLabel}
         placeholder={copy.workflowPlaceholder}
         searchPlaceholder={copy.workflowSearchPlaceholder}
-        {options}
+        options={fieldOptions}
         filter={optionMatches}
         bind:value={draft.workflowType}
+        disabled={target !== undefined && !deleted}
         loading={listLoading}
         loadingLabel={copy.workflowLoading}
         stillLoadingAfter={STILL_LOADING_MS}
         onCancel={cancelList}
         {...listFailed ? { loadError: copy.catalogFailed, onRetry: retryList } : {}}
         noMatchLabel={copy.noMatch}
-        error={shown.workflowType ?? ''}
+        error={goneChosen ? editCopy.workflowGone.message : (shown.workflowType ?? '')}
         required
       >
         {#snippet footer()}
@@ -577,7 +802,7 @@
               id="ib-schedule-new-agent"
               label={SCHEDULE_COPY.form.agentLabel}
               required
-              error={shown.agentName ?? ''}
+              error={target === undefined ? (shown.agentName ?? '') : ''}
               {...blocked ? { warning: copy.needsProvider } : {}}
               warningAction={blocked ? connectProvider : undefined}
             >
@@ -585,8 +810,12 @@
                 id="ib-schedule-new-agent"
                 bind:value={draft.agentName}
                 required
+                disabled={target !== undefined}
                 options={[
                   { value: '', label: SCHEDULE_COPY.form.agentPlaceholder, disabled: true },
+                  ...(draft.agentName !== '' && !agentNames.includes(draft.agentName)
+                    ? [{ value: draft.agentName, label: draft.agentName }]
+                    : []),
                   ...agentNames.map((name) => ({
                     value: name,
                     label: agentLabel(name, agents.data),
@@ -603,6 +832,7 @@
               description={SCHEDULE_COPY.form.agentFreeTextDescription}
               bind:value={draft.agentName}
               error={shown.agentName ?? ''}
+              disabled={target !== undefined}
               required
             />
           {/if}
@@ -612,8 +842,9 @@
             description={copy.messageDescription}
             rows={3}
             required
+            disabled={target !== undefined}
             bind:value={draft.message}
-            error={shown.message ?? ''}
+            error={target === undefined ? (shown.message ?? '') : ''}
           />
           <Toggle
             id="ib-schedule-new-continue"
@@ -621,10 +852,17 @@
             description={copy.continueDescription}
             descriptionPlacement="below"
             checked={draft.continueChat}
+            disabled={target !== undefined}
             onValueChange={continueChanged}
           />
         {/if}
       </div>
+    {:else if target !== undefined}
+      {#if !deleted}
+        <div class="ib-schedule-new__section" data-testid="edit-schedule-fixed-input">
+          <SectionHeading level={2} title={copy.inputHeading} description={editCopy.fixedInput} />
+        </div>
+      {/if}
     {:else if draft.workflowType !== ''}
       <div class="ib-schedule-new__section" data-testid="new-schedule-workflow-input">
         {#if resolution.isError && resolution.data === undefined}
@@ -723,9 +961,30 @@
     </FormField>
   </fieldset>
 
-  {#if failureMessage !== undefined}
+  {#if exactCadence !== undefined && !cadenceEdited}
+    <Alert variant="info" data-testid="edit-schedule-exact-cadence"
+      >{editCopy.exactCadence(exactCadence)}</Alert
+    >
+  {/if}
+  {#if target !== undefined && endsSkippedRun(target, draft, opened)}
+    <!-- The engine keeps a pending skip across an update that leaves the next run where it was, and drops it when the cadence or zone changes. -->
+    <Alert variant="info" data-testid="schedule-edit-skip-pending">{editCopy.skipPending}</Alert>
+  {/if}
+  {#if stale}
+    <Alert variant="warning" data-testid="schedule-notice" data-notice="stale">
+      <p class="ib-schedule__alert">{SCHEDULE_COPY.stale.title(target?.schedule.id ?? '')}</p>
+      <p>{SCHEDULE_COPY.stale.description}</p>
+      <Button variant="secondary" size="sm" onclick={() => onStartOver?.()}
+        >{editCopy.startOver}</Button
+      >
+    </Alert>
+  {:else if moved}
+    <Alert variant="danger" data-testid="edit-schedule-cannot-move">
+      {editCopy.workflowGone.cannotChange}
+    </Alert>
+  {:else if failureMessage !== undefined}
     <Alert variant="danger" data-testid="new-schedule-failed">
-      <strong>{copy.failed.title}</strong>
+      <strong>{failedCopy.title}</strong>
       {failureMessage}
     </Alert>
   {/if}
@@ -742,7 +1001,14 @@
         disabled={!canCreate && !creating}
         title={writeGate.title}
         loading={creating}
-        onclick={() => void create()}>{creating ? copy.creating : copy.submit}</Button
+        onclick={() => void create()}
+        >{creating
+          ? target === undefined
+            ? copy.creating
+            : editCopy.saving
+          : target === undefined
+            ? copy.submit
+            : editCopy.save}</Button
       >
     </div>
   </div>
@@ -765,8 +1031,8 @@
 
 <ConfirmDialog
   bind:open={discarding}
-  title={copy.discard.title}
-  description={copy.discard.description}
+  title={target === undefined ? copy.discard.title : editCopy.discard.title}
+  description={target === undefined ? copy.discard.description : editCopy.discard.description}
   confirmLabel={copy.discard.confirm}
   cancelLabel={copy.discard.keep}
   destructive

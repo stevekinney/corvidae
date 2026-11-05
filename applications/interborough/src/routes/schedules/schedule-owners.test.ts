@@ -157,7 +157,7 @@ describe('one schedule’s page, by kind', () => {
 
     await fireEvent.click(await findByRole('button', { name: 'Edit' }));
 
-    await findByRole('heading', { level: 1, name: 'Edit schedule' });
+    await findByRole('heading', { level: 1, name: /^Edit / });
     expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}/edit`);
   });
 

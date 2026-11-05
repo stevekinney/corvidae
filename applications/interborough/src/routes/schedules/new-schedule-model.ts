@@ -31,8 +31,12 @@ const RECENT_LIMIT = 3;
 /** How long a create may take before the footer says so, in milliseconds. */
 export const SLOW_CREATE_MS = 10_000;
 
-/** The two choices of the "If a run is still going" select. */
-export type NewScheduleOverlap = Extract<ScheduleOverlapPolicy, 'skip' | 'allow'>;
+/**
+ * What happens when a fire is due while a run is going. A new schedule chooses skip or allow, and
+ * a schedule that is edited may already hold one of the engine's other two policies, which stays
+ * until it is changed.
+ */
+export type NewScheduleOverlap = ScheduleOverlapPolicy;
 
 /** Everything the page asks for, for either kind of schedule. */
 export type NewScheduleDraft = {
@@ -252,7 +256,7 @@ export function agentScheduleInput(
     spec: bureauSpecOf(scheduleValueToWireSpec(draft.cadence)),
     input: draft.message,
     // A chat that is continued cannot also start another run beside itself, which the Bureau refuses.
-    overlap: draft.continueChat ? 'skip' : draft.overlap,
+    overlap: draft.continueChat || draft.overlap !== 'allow' ? 'skip' : 'allow',
     description: draft.name.trim(),
     ...(draft.continueChat && chatId !== undefined ? { sessionId: chatId } : {}),
     ...(timeZone !== undefined ? { timeZone } : {}),
@@ -273,14 +277,16 @@ export function engineScheduleArgs(draft: NewScheduleDraft, input: unknown): Cre
   };
 }
 
-/** Whether a schedule already carries this name, ignoring case and the space around it. */
+/** Whether a schedule already carries this name, ignoring case and the space around it; `except` is the schedule being edited, which may keep its own. */
 export function takenNameOf(
   name: string,
   schedules: readonly { readonly id: string; readonly description?: string | null | undefined }[],
+  except?: string,
 ): { readonly id: string; readonly name: string } | undefined {
   const wanted = name.trim().toLowerCase();
   if (wanted === '') return undefined;
   for (const schedule of schedules) {
+    if (schedule.id === except) continue;
     const existing = schedule.description?.trim() ?? '';
     if (existing.toLowerCase() === wanted) return { id: schedule.id, name: existing };
   }
@@ -302,6 +308,8 @@ export type FooterState = {
   readonly blocked: boolean;
   /** The label of the first field showing a problem that Create would stop at, when one does. */
   readonly problemField: string | undefined;
+  /** The name of the schedule being edited, when the page edits one: the footer then says what Save does. */
+  readonly editing?: string | undefined;
 };
 
 /**
@@ -311,6 +319,7 @@ export type FooterState = {
  * Create does about it.
  */
 export function footerLineOf(state: FooterState): string {
+  if (state.editing !== undefined) return editFooterLineOf(state, state.editing);
   const line = copy.footer;
   if (state.creating) {
     return state.slow ? `${line.creating} ${line.slow} ${line.cancelStops}` : line.creating;
@@ -322,6 +331,18 @@ export function footerLineOf(state: FooterState): string {
   else if (state.blocked) base = line.blocked;
   else if (isChatDraft(state.draft)) base = line.chat(state.draft.agentName);
   else base = line.workflow(state.workflow);
+  return state.problemField === undefined
+    ? base
+    : `${base} ${line.stillEnabled(state.problemField)}`;
+}
+
+/** The footer of the page that edits a schedule: it says what Save does, or what it is doing. */
+function editFooterLineOf(state: FooterState, name: string): string {
+  const line = SCHEDULE_COPY.edit.footer;
+  if (state.creating) {
+    return state.slow ? `${line.saving} ${line.slow} ${line.cancelStops}` : line.saving;
+  }
+  const base = state.blocked ? `${line.saves(name)} ${copy.footer.blocked}` : line.saves(name);
   return state.problemField === undefined
     ? base
     : `${base} ${line.stillEnabled(state.problemField)}`;

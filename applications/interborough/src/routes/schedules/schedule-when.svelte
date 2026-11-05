@@ -11,7 +11,7 @@
    * refuses while it says so, which is the one place that rule lives. `onProblem` is told, as a
    * person edits, the label of the first field that shows a problem (or `undefined` when none
    * does), so the page can say what Create will do about it; `focusProblem` moves focus to that
-   * field.
+   * field, and `focusRepeats` to the first one, as the page that edits a schedule opens.
    */
   import {
     ScheduleBuilder,
@@ -75,6 +75,13 @@
     const field = problemElement();
     field?.focus();
     return field !== undefined;
+  }
+
+  /** Moves focus to Repeats, the first field of the block, with the focus ring drawn and the page scrolled to it. */
+  export function focusRepeats(): void {
+    region
+      ?.querySelector<HTMLElement>('select, [role="combobox"], input, button')
+      ?.focus({ focusVisible: true });
   }
 
   /** The label of a control, as the person reads it. */

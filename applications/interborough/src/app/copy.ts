@@ -1259,17 +1259,56 @@ export const SCHEDULE_COPY = {
       viewRun: 'View the run',
     },
   },
-  /** The cadence editor's page (`/schedules/:id/edit`). */
+  /**
+   * The page that edits a schedule (`/schedules/:id/edit`; COR-2018, rows 74r, 74t, 75p, 75q): the
+   * form that makes one, opened on the schedule as it is.
+   */
   edit: {
+    /** The label of the region while the page loads or fails, before the schedule has a name. */
     title: 'Edit schedule',
+    heading: (name: string): string => `Edit ${name}`,
+    /** The note under the heading: where the page is opened from and where focus lands. */
+    description:
+      'Opened from When › Edit on the schedule page. Focus lands on Repeats, the first field in that group, and the page scrolls to it.',
     save: 'Save changes',
+    saving: 'Saving…',
     cancel: 'Cancel',
     loading: 'Loading schedule',
     startOver: 'Start over from the current schedule',
-    invalidCadence: 'The cadence is not valid. Fix the highlighted field, then save.',
     skipPending:
       'The next run is skipped. Saving this change to the cadence or time zone restores that run, and it starts as usual.',
-    saveFailed: 'The schedule was not saved',
+    /** The footer line: what the page does, then what it is doing. */
+    footer: {
+      saves: (name: string): string => `Saves changes to ${name}.`,
+      saving: 'Saving the changes…',
+      slow: 'Taking longer than usual.',
+      cancelStops: 'Cancel stops the request and keeps the form.',
+      /** Said while a field shows a problem, so the person knows what pressing Save does. */
+      stillEnabled: (field: string): string =>
+        `Save changes stays enabled; on submit, focus moves to ${field}.`,
+    },
+    /** Said under the builder of a schedule that runs more often than a minute, which the builder shows rounded. */
+    exactCadence: (cadence: string): string =>
+      `This schedule runs ${cadence.toLowerCase()}, which the builder counts in whole minutes. Saving without changing Repeats keeps it exactly.`,
+    /** A schedule starts the workflow it was made for: the Bureau and the engine keep that fixed. */
+    fixedInput: 'Set when the schedule was made, and kept as it was.',
+    /** The Workflow field of a schedule whose workflow was deleted. */
+    workflowGone: {
+      option: (name: string): string => `${name} · can’t find this workflow`,
+      message:
+        'That workflow was deleted. Pick another to keep this schedule; it stays paused until then.',
+      /** Said when another workflow is picked, because a schedule cannot be moved to one. */
+      cannotChange:
+        'A schedule keeps the workflow it was made for, so this one cannot be moved to another. Make a new schedule for it.',
+    },
+    failed: {
+      title: 'Couldn’t save the changes.',
+      message: 'Interborough didn’t answer. What you changed is still here.',
+    },
+    discard: {
+      title: 'Discard these changes?',
+      description: 'You have changed this schedule. If you leave now, what you changed is lost.',
+    },
   },
   /** One line that says what happens when a fire is due while a run is still going. */
   overlapLine: {

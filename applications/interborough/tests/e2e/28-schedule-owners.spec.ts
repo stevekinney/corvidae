@@ -21,7 +21,6 @@ const WIDTHS = [375, 1280] as const;
 const SEEDED_DESCRIPTION = 'Daily summary';
 const SEEDED_CRON = '0 9 * * *';
 const SEEDED_INPUT = 'Summarize what happened yesterday.';
-const SKIP = SCHEDULE_COPY.form.skipOverlapLabel;
 
 /** The seeded schedule's id: the Bureau mints it, and the row says only its description. */
 async function seededScheduleId(request: APIRequestContext): Promise<string> {
@@ -196,16 +195,16 @@ test.describe('the seeded agent run', () => {
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`/schedules/${id}/edit$`));
       const editor = page.locator('[data-page="schedule-edit"]');
-      await expect(editor.getByRole('heading', { level: 1, name: 'Edit schedule' })).toBeVisible();
+      await expect(
+        editor.getByRole('heading', { level: 1, name: `Edit ${SEEDED_DESCRIPTION}` }),
+      ).toBeVisible();
 
-      // What an agent run is edited with, and nothing the engine's own schedule adds.
-      await expect(editor.getByLabel('Description')).toHaveValue(SEEDED_DESCRIPTION);
-      await expect(editor.getByLabel(SKIP)).toBeChecked();
-      await expect(editor.getByRole('radio')).toHaveCount(0);
-      await expect(editor.getByLabel('Jitter')).toHaveCount(0);
-      await expect(editor.getByRole('switch', { name: 'Backfill missed occurrences' })).toHaveCount(
-        0,
-      );
+      // The form that makes a schedule, opened on this one: the workflow and what the chat sends
+      // are shown and fixed, and the name, the cadence and the policies are edited.
+      await expect(editor.getByLabel(/^Name/)).toHaveValue(SEEDED_DESCRIPTION);
+      await expect(editor.getByLabel('If a run is still going')).toHaveValue('skip');
+      await expect(editor.getByRole('combobox', { name: /^Workflow/ })).toBeDisabled();
+      await expect(editor.getByLabel(/^Message/)).toBeDisabled();
       await checkA11y('schedules — editing an agent run');
 
       // From a cron cadence to an interval of two hours, whose first fire is two hours away.
