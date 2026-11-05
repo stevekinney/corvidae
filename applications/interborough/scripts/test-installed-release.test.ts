@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   parseInstalledReleaseArguments,
   parseRunStartedRunId,
   referencedAssets,
+  runInstalledRelease,
 } from './test-installed-release.ts';
 
 describe('installed-release harness arguments', () => {
@@ -41,6 +45,37 @@ describe('installed-release harness arguments', () => {
       '/app.js',
       '/app.css',
     ]);
+  });
+
+  test('orchestrates archive and relocation through injectable process seams', async () => {
+    const calls: string[] = [];
+    const evidenceDirectory = await mkdtemp(join(tmpdir(), 'installed-release-seam-'));
+    try {
+      const evidence = await runInstalledRelease(
+        ['--archive', './fixture.tar.gz', '--evidence', evidenceDirectory],
+        {
+          unpack: async (_archive, prefix) => {
+            const executable = `${prefix}/interborough/bin/interborough`;
+            await mkdir(`${prefix}/interborough/bin`, { recursive: true });
+            await mkdir(`${prefix}/interborough/share/interborough/plugin-runtime/node_modules`, {
+              recursive: true,
+            });
+            await writeFile(executable, 'fixture');
+            return executable;
+          },
+          runInstalled: async (executable, prefix, relocated) => {
+            await mkdir(`${prefix}/home/plugins`, { recursive: true });
+            calls.push(`${relocated ? 'relocated' : 'initial'}:${executable}:${prefix}`);
+          },
+        },
+      );
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toContain('initial:');
+      expect(calls[1]).toContain('relocated:');
+      expect(evidence).toMatch(/installed-release-.*\.json$/);
+    } finally {
+      await rm(evidenceDirectory, { recursive: true, force: true });
+    }
   });
 
   test('rejects a missing or mixed mode', () => {

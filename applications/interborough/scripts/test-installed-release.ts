@@ -438,16 +438,24 @@ async function unpack(archive: string, prefix: string): Promise<string> {
   return join(prefix, 'interborough', 'bin', 'interborough');
 }
 
+export type InstalledReleaseOperations = {
+  readonly unpack?: typeof unpack;
+  readonly runInstalled?: typeof runInstalled;
+};
+
 export async function runInstalledRelease(
   argv: readonly string[] = process.argv.slice(2),
+  operations: InstalledReleaseOperations = {},
 ): Promise<string> {
   const options = parseInstalledReleaseArguments(argv);
+  const unpackOperation = operations.unpack ?? unpack;
+  const runOperation = operations.runInstalled ?? runInstalled;
   const root = await mkdtemp(join(tmpdir(), 'interborough-installed-release-'));
   try {
     let executable: string;
-    if (options.mode === 'archive') executable = await unpack(options.archive, root);
+    if (options.mode === 'archive') executable = await unpackOperation(options.archive, root);
     else executable = options.command;
-    await runInstalled(executable, root, false, await freePort());
+    await runOperation(executable, root, false, await freePort());
     if (options.mode === 'archive') {
       const relocated = join(root, 'relocated');
       await mkdir(relocated, { recursive: true });
@@ -463,7 +471,7 @@ export async function runInstalledRelease(
         'node_modules',
       );
       await linkPluginRuntime(join(root, 'home'), movedRuntime);
-      await runInstalled(moved, relocated, true, 0, join(root, 'home'));
+      await runOperation(moved, relocated, true, 0, join(root, 'home'));
     }
     const evidenceDirectory = options.evidence ?? DEFAULT_EVIDENCE;
     const evidence = join(evidenceDirectory, `installed-release-${Date.now()}.json`);
