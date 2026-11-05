@@ -17,6 +17,7 @@ export {
 export {
   type ChatExportOptions,
   type ChatMessagePart,
+  type ChatNotSent,
   type ChildRunStatus,
   type DeliveryStatus,
   type ImageMessagePart,

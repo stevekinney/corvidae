@@ -26,7 +26,7 @@ import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
-import type { ReasoningInfo, StepInfo } from './utilities/types.ts';
+import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
 /**
  * A participant who is currently typing. Out-of-band UI state — NOT stored on
@@ -156,8 +156,19 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * - `'bubble'` (default): colored backgrounds differentiate user from assistant.
    * - `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.
    *   Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.
+   * - `'transcript'`: a reply is plain text with no card or role label, a person's message keeps its
+   *   tinted bubble, and one muted line under each message carries its time, `messageActions`, Copy
+   *   and Quote as visible words. A message that was not sent keeps its bubble under a red icon
+   *   (`notSent`), a follow-up the run has not taken yet is a dashed bubble marked Queued
+   *   (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).
    */
-  variant?: 'bubble' | 'flat';
+  variant?: 'bubble' | 'flat' | 'transcript';
+  /** With `variant="transcript"`, the words of the "Not sent" popover on a message that was not delivered, and whether its Retry works now. */
+  notSent?: ChatNotSent | undefined;
+  /** With `variant="transcript"`, called when the person removes a queued follow-up. Remove shows only when this is set, because only the host knows whether a message it has sent can still be taken back. */
+  onRemoveQueued?: ((messageId: string) => void) | undefined;
+  /** With `variant="transcript"`, drawn at the end of a run's note line, such as a Retry beside a failed run's stop note. Receives the note. */
+  noteAction?: Snippet<[note: MessageNoteInfo]> | undefined;
   /** Distance in pixels from the bottom of the scroll viewport within which the chat is considered "at bottom" and will auto-scroll on new messages. Default `150`. */
   bottomThreshold?: number;
   /** Distance in pixels scrolled up from the bottom required before the jump-to-latest button appears. Must be greater than `bottomThreshold` to prevent button flickering. Default `200`. */

@@ -64,9 +64,9 @@ const schema = {
         "Controls spacing density of the message timeline.\n- `'comfortable'` (default): standard padding and gap.\n- `'compact'`: tighter spacing for data-dense contexts (e.g., embedded panels).\n  Action buttons keep `min-height: var(--cinder-touch-target-min)` regardless.",
     },
     variant: {
-      enum: ['bubble', 'flat'],
+      enum: ['bubble', 'flat', 'transcript'],
       description:
-        "Visual treatment for message bubbles.\n- `'bubble'` (default): colored backgrounds differentiate user from assistant.\n- `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.\n  Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.",
+        "Visual treatment for message bubbles.\n- `'bubble'` (default): colored backgrounds differentiate user from assistant.\n- `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.\n  Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.\n- `'transcript'`: a reply is plain text with no card or role label, a person's message keeps its\n  tinted bubble, and one muted line under each message carries its time, `messageActions`, Copy\n  and Quote as visible words. A message that was not sent keeps its bubble under a red icon\n  (`notSent`), a follow-up the run has not taken yet is a dashed bubble marked Queued\n  (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).",
     },
     bottomThreshold: {
       type: 'number',

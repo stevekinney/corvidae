@@ -13,6 +13,7 @@ import type { Snippet } from 'svelte';
 import type {
   ChatMessagePart,
   ImageMessagePart,
+  MessageNoteInfo,
   StepMessagePart,
   SuggestionMessagePart,
 } from '../utilities/types.ts';
@@ -92,6 +93,8 @@ export type ChatMessagePartsRendererProps = {
   expanded?: boolean;
   /** Called when a tool-call part's disclosure toggle is activated. */
   onToggle?: (() => void) | undefined;
+  /** Drawn at the end of a run's note line, such as a Retry beside a failed run's stop note. Receives the note. */
+  noteAction?: Snippet<[note: MessageNoteInfo]> | undefined;
   /** Called when the user resolves an action-required approval. */
   onApprovalResolve?:
     ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;

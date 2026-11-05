@@ -241,6 +241,12 @@ export type MessageNoteInfo =
       id: string;
       /** Why the last run stopped, in words. */
       reason: string;
+      /**
+       * Whether the run failed rather than being stopped on purpose. A failed run's note is a
+       * status line in danger text with an error glyph, and the host can put a Retry beside it
+       * (`noteAction`); a stop the person asked for is a neutral line.
+       */
+      failed?: boolean;
     };
 
 /** A {@link MessageNoteInfo} as a render part. */
@@ -417,3 +423,17 @@ export type { Message, MultiModalContent, ToolAction, ToolCall, ToolCallPair, To
  * stored in message.metadata['cinder:steps'].
  */
 export type StepInfo = { title: string; content: string; status: StepStatus };
+
+/**
+ * What a message that was not sent says in the transcript presentation: the words in the popover
+ * the red icon opens, and whether its Retry works. The host knows why delivery failed and whether
+ * it can be tried again now.
+ */
+export type ChatNotSent = {
+  /** The popover's text, such as "Not sent. Your message is kept." */
+  summary?: string | undefined;
+  /** Said beside the Retry button, such as "Retries when you're back online." */
+  retryNote?: string | undefined;
+  /** Whether Retry is inert, for example while the server cannot be reached. */
+  retryDisabled?: boolean | undefined;
+};

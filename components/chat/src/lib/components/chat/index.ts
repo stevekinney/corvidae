@@ -163,6 +163,7 @@ export {
   type UnresolvedToolApproval,
 } from './utilities/index.ts';
 export type {
+  ChatNotSent,
   ChildRunStatus,
   MessageNoteInfo,
   ReasoningInfo,

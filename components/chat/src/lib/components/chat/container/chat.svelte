@@ -104,6 +104,9 @@
     scrollFadeVisible = false,
     density = 'comfortable',
     variant = 'bubble',
+    notSent,
+    onRemoveQueued,
+    noteAction,
     bottomThreshold = DEFAULT_SCROLL_CONFIGURATION.bottomThreshold,
     jumpThreshold = DEFAULT_SCROLL_CONFIGURATION.jumpThreshold,
     streaming = false,
@@ -1809,6 +1812,10 @@
           {messagePart}
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
+          presentation={variant === 'transcript' ? 'transcript' : 'default'}
+          {notSent}
+          {onRemoveQueued}
+          {noteAction}
           onEdit={allowEditing && canEdit ? handleEdit : undefined}
           onQuote={allowQuote ? handleQuote : undefined}
           quoteDisabled={quotes.isFull}

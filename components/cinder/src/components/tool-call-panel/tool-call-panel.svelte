@@ -125,6 +125,7 @@
     waiting: labels?.status?.waiting ?? 'Waiting on you',
     denied: labels?.status?.denied ?? 'Denied',
     failed: labels?.status?.failed ?? 'Failed',
+    interrupted: labels?.status?.interrupted ?? 'Interrupted',
   });
 
   const dockedBelow = useViewportBelow(() =>

@@ -78,6 +78,7 @@
     running: labels?.running ?? 'Running…',
     waitingResult: labels?.waitingResult ?? 'Waiting on you',
     denied: labels?.denied ?? 'Denied',
+    interrupted: labels?.interrupted ?? 'Interrupted',
     details: labels?.details ?? 'Details',
     retry: labels?.retry ?? 'Ask the agent to retry',
     copyInput: labels?.copyInput ?? 'Copy input',
@@ -93,6 +94,7 @@
     call.status === 'failed' ||
     call.status === 'waiting' ||
     call.status === 'denied' ||
+    call.status === 'interrupted' ||
     call.status === 'running';
 
   const plan = $derived.by(() => {
@@ -156,6 +158,8 @@
     if (call.status === 'running') return call.result ?? words.running;
     if (call.status === 'waiting') return call.result ?? words.waitingResult;
     if (call.status === 'denied') return call.decision ?? call.result ?? words.denied;
+    // An interrupted call has no answer to arrow to: its result is the words for how it ended.
+    if (call.status === 'interrupted') return call.result ?? words.interrupted;
     // A decision is the person's words ("Approved by you 10:33 AM · $18.50 refunded"), not what
     // the call returned, so it carries no arrow.
     if (call.status === 'approved' && call.decision !== undefined && call.decision !== '') {
@@ -164,7 +168,13 @@
     return call.result === undefined || call.result === '' ? '' : `→ ${call.result}`;
   };
   const statusWord = (call: ToolCallRailCall): string =>
-    call.status === 'failed' ? 'Failed' : call.status === 'approved' ? 'Approved' : '';
+    call.status === 'failed'
+      ? 'Failed'
+      : call.status === 'approved'
+        ? 'Approved'
+        : call.status === 'interrupted'
+          ? 'Interrupted'
+          : '';
 
   function toggleGroup(id: string): void {
     const next = new Set(openedGroups);
@@ -196,6 +206,8 @@
       <Ban class="cinder-tool-call-rail__glyph" />
     {:else if call.status === 'failed'}
       <X class="cinder-tool-call-rail__glyph" />
+    {:else if call.status === 'interrupted'}
+      <CircleX class="cinder-tool-call-rail__glyph" />
     {:else}
       <span class="cinder-tool-call-rail__dot"></span>
     {/if}
