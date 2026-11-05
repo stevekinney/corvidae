@@ -359,10 +359,12 @@ describe('bulk purge on storage without conditional batches', () => {
     const storage = new NonConditionalMemoryStorage();
     const internals = createInternals(storage);
     const state = createWorkflowState('purge-unconditional', 3_000);
+    await storage.put(KEYS.signalSequence(state.id), new Uint8Array([1]));
     await storage.put(KEYS.workflow(state.id), encode(state));
 
     expect(await purgeWorkflow(internals, state, () => {})).toBe(true);
 
     expect(await storage.get(KEYS.workflow(state.id))).toBeNull();
+    expect(await storage.get(KEYS.signalSequence(state.id))).toBeNull();
   });
 });

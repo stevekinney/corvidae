@@ -116,6 +116,7 @@ function workflowState(
 function createFakeEngine() {
   const states = new Map<string, WorkflowState>();
   const handles = new Map<string, Deferred>();
+  const signals: { readonly workflowId: string; readonly name: string }[] = [];
   const handleFor = (id: string): Deferred => {
     let handle = handles.get(id);
     if (!handle) {
@@ -126,6 +127,10 @@ function createFakeEngine() {
   };
   return {
     states,
+    signals,
+    signal: async (workflowId: string, name: string) => {
+      signals.push({ workflowId, name });
+    },
     handleFor,
     get: async (id: string) => states.get(id) ?? null,
     getHandle: (id: string) => ({ result: () => handleFor(id).promise }),
@@ -1685,6 +1690,12 @@ describe('recovery', () => {
     });
     await store.register(runningRecord({ childRunId: 'settles' }));
     await store.register(runningRecord({ childRunId: 'explodes' }));
+    engine.states.set(
+      'parent-1',
+      workflowState('parent-1', 'running', {
+        waitingForSignals: ['durable-child:parent-1:explodes'],
+      }),
+    );
     await fixture.topology.prepareRecovery();
     const settles = await store.get('settles');
     await store.update(settles!, { ...settles!, status: 'completed' });
@@ -1698,6 +1709,9 @@ describe('recovery', () => {
     expect(
       await fixture.topology.children.wait({ parentRunId: 'parent-1', childRunId: 'explodes' }),
     ).toMatchObject({ outcome: 'unobservable' });
+    expect(engine.signals).toEqual([
+      { workflowId: 'parent-1', name: 'durable-child:parent-1:explodes' },
+    ]);
   });
 
   it('leaves a child another process reattached first to that process', async () => {

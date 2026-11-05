@@ -134,6 +134,7 @@ export function createRecoveredRunEventSurface(
       }),
       addListener('settled', (event) => {
         if (!isOwnEvent(event)) return;
+        if (services.deferredChildCallIds?.has(event.call.id) === true) return;
         const hasError = event.error !== undefined;
         emitter.dispatchEvent(
           new ToolSettledBubbleEvent(

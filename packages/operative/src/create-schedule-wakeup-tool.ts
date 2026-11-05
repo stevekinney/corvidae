@@ -79,6 +79,8 @@ export interface ScheduleWakeupContext {
    * step refuses a wakeup, because a step parks on at most one request (COR-1578).
    */
   readonly pendingHumanWait: PendingHumanWait | undefined;
+  /** A child-wait request already won this step, so a wakeup must refuse. */
+  readonly pendingChildWait?: import('./durable/types').PendingChildWait | undefined;
   /**
    * Whether this run has a compatible durable execution context attached
    * (a bureau with a durable engine, regardless of whether its checkpoint
@@ -238,6 +240,7 @@ export function createScheduleWakeupTool(options: CreateScheduleWakeupToolOption
       const refusal = refuseIfStepIsParked({
         pendingHumanWait: context.pendingHumanWait,
         pendingWakeup: context.pendingWakeup,
+        pendingChildWait: context.pendingChildWait,
       });
       if (refusal !== undefined) return { scheduled: false, ...refusal };
 

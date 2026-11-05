@@ -714,6 +714,19 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
     // Every `purged` family was populated before the delete: a family the chat never exercised
     // proves nothing about the purge, however clean it looks afterwards.
     expect(purgedFamilyFindings(before)).toEqual([]);
+    for (const prefix of ['sig:', 'sigseq:'] as const) {
+      const keys = [...before.keys()].filter((key) => key.startsWith(prefix));
+      expect(
+        keys.some((key) =>
+          doomed.some((chat) => chat.ids.runIds.some((runId) => key.includes(runId))),
+        ),
+      ).toBe(true);
+      expect(
+        keys.some((key) =>
+          kept.some((chat) => chat.ids.runIds.some((runId) => key.includes(runId))),
+        ),
+      ).toBe(true);
+    }
 
     // Every chat's final answer was remembered, under its agent.
     expect(
@@ -766,6 +779,20 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
         doomed.map((chat) => chat.ids),
       ),
     ).toEqual([]);
+    for (const prefix of ['sig:', 'sigseq:'] as const) {
+      const doomedKeys = [...after.keys()].filter(
+        (key) =>
+          key.startsWith(prefix) &&
+          doomed.some((chat) => chat.ids.runIds.some((runId) => key.includes(runId))),
+      );
+      expect(doomedKeys).toEqual([]);
+      const keptKeysBefore = [...before.keys()].filter(
+        (key) =>
+          key.startsWith(prefix) &&
+          kept.some((chat) => chat.ids.runIds.some((runId) => key.includes(runId))),
+      );
+      expect(keptKeysBefore.filter((key) => !after.has(key))).toEqual([]);
+    }
     expect(secretKeys(after)).toHaveLength(1);
     // The kept chats’ answers are still remembered, and the file two chats held is still there.
     expect(

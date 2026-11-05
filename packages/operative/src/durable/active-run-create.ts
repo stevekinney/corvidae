@@ -103,6 +103,7 @@ export function createDurableActiveRun(
   // `toolboxForwarder` uses for the low-level `toolbox.*` forward (AB-239) —
   // see `attachToolboxCuratedListeners` below, passed to
   // `createToolboxEventForwarder` as its `attachCurated` argument.
+  const deferredChildCallIds = new Set<string>();
   const toolboxForwarder = createDurableToolboxForwarder({
     toolbox: options.toolbox,
     emitter,
@@ -118,6 +119,7 @@ export function createDurableActiveRun(
     onToolSettled: () => {
       inFlightTools = Math.max(0, inFlightTools - 1);
     },
+    deferredChildCallIds,
   });
   cleanups.push(() => toolboxForwarder.stop());
 
@@ -232,6 +234,7 @@ export function createDurableActiveRun(
       (toolbox) => toolboxForwarder.onStepToolbox(toolbox),
       runtime,
       hookTracker,
+      deferredChildCallIds,
       admissionTracker.track,
       resolveDurablyStarted,
       rejectDurablyStarted,

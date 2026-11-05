@@ -258,6 +258,32 @@ export async function executeTools(
                   ...(deps.parentSignals !== undefined
                     ? { parentSignals: deps.parentSignals }
                     : {}),
+                  ...(deps.requestChildWait !== undefined && deps.runId !== undefined
+                    ? {
+                        durableChildWait: (request: { childRunId: string; toolCallId: string }) => {
+                          const toolCall = callsToExecute.find(
+                            (call) => call.id === request.toolCallId,
+                          );
+                          const tool =
+                            toolCall === undefined
+                              ? undefined
+                              : stepToolbox.resolveTool(toolCall.name);
+                          if (
+                            tool === undefined ||
+                            !tool.ok ||
+                            tool.tool.metadata?.['durableChildWait'] !== true ||
+                            deps.childWaitPrincipal === undefined
+                          )
+                            return { parked: false as const, reason: 'unauthorized' as const };
+                          return deps.requestChildWait?.({
+                            parentRunId: deps.runId!,
+                            childRunId: request.childRunId,
+                            toolCallId: request.toolCallId,
+                            principal: deps.childWaitPrincipal,
+                          });
+                        },
+                      }
+                    : {}),
                 },
               }
             : {}),
@@ -300,9 +326,12 @@ export async function executeTools(
           eventTarget?.removeEventListener(ToolSettledBubbleEvent.type, onForwardedSettled);
         }
 
+        const pendingChildCallId = deps.getPendingChildWait?.()?.toolCallId;
         executedResults = await admitToolResultMedia(
           admitter,
-          Array.isArray(executeResult) ? executeResult : [executeResult],
+          (Array.isArray(executeResult) ? executeResult : [executeResult]).filter(
+            (result) => result.toolCallId !== pendingChildCallId,
+          ),
           mediaContext,
         );
         // COR-1628 — a call the toolbox answers without executing it (a refusal by the active
