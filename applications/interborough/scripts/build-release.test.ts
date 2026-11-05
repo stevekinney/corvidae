@@ -187,6 +187,7 @@ async function expectRuntimeFailure(
 describe('release arguments', () => {
   test('covers the relocated verifier failure paths with finite startup fixtures', async () => {
     await expectRuntimeFailure('missing-link', 'did not create plugin runtime link');
+    await expectRuntimeFailure('wrong-link', 'targets the wrong runtime');
     await expectRuntimeFailure('missing-inspector', 'Prebuilt inspector is missing');
     await expectRuntimeFailure('poll-error', 'did not run');
     await expectRuntimeFailure('not-running', 'did not run');
