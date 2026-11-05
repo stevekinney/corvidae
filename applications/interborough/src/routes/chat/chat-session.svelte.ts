@@ -342,6 +342,7 @@ export class ChatSessionState {
         return turn;
       },
       stopGenerating: async (...input: Parameters<NonNullable<typeof adapter.stopGenerating>>) => {
+        if (!this.streaming && this.reconnectAttempt > 0) return this.#stopWhileReconnecting();
         if (this.streaming) this.stopping = true;
         await adapter.stopGenerating?.(...input);
       },
@@ -727,6 +728,41 @@ export class ChatSessionState {
       this.#retryTimer = undefined;
       void this.#retryAfter(generation);
     }, delay);
+  }
+
+  /**
+   * A Stop while the page reconnects to a run whose stream dropped. Nothing is streaming, so the
+   * controller has no turn to stop: the reconnect is retired (the scheduled one, and a read already
+   * opening), so the page does not join the run again, and the run is cancelled through the route a
+   * Stop on the live stream takes. The thread is then read as it is, which says why the run
+   * stopped. When the Bureau did not take the cancellation, or the page knows no run to cancel
+   * because it never read one, the failure says so, and Reconnect shows what is going.
+   */
+  async #stopWhileReconnecting(): Promise<void> {
+    this.#retryGeneration += 1;
+    this.#readerAbort?.abort();
+    if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
+    this.#retryTimer = undefined;
+    this.#setRetryFailures(0);
+    this.stopping = true;
+    try {
+      const cancelled = await this.#wiring.cancelDroppedRun();
+      if (this.#abort.signal.aborted) return;
+      // No run known to cancel (the page never read one before the reads failed) is no stop either.
+      if (cancelled !== true) {
+        this.failure = CHAT_COPY.stopLine.stopFailed;
+        this.disconnected = true;
+        return;
+      }
+      this.#attachedRun = false;
+      this.failure = undefined;
+      const history = await this.#wiring
+        .history(this.sessionId, this.#abort.signal)
+        .catch(() => undefined);
+      if (history !== undefined && !this.#abort.signal.aborted) this.restore(history);
+    } finally {
+      this.stopping = false;
+    }
   }
 
   async #retryAfter(generation: number): Promise<void> {

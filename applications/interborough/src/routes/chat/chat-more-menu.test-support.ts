@@ -30,7 +30,10 @@ export const TURNS = [
 
 export type Answers = Record<string, (params: Record<string, unknown>) => unknown>;
 
-/** A Bureau holding the session `session-1`, whose transcript is `messages`. */
+/**
+ * A Bureau holding the session `session-1`, whose transcript is `messages`. A run started on it
+ * answers with `runResponse`, or, without one, starts and finishes at once.
+ */
 export function serve(
   messages: readonly unknown[] = TURNS,
   answers: Answers = {},
@@ -49,7 +52,22 @@ export function serve(
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages });
       if (url.includes('/ag-ui/agents/')) {
         runs.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
-        return runResponse?.();
+        if (runResponse !== undefined) return runResponse();
+        // Without one, the run starts and finishes at once.
+        return new Response(
+          [
+            { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-9' },
+            {
+              type: 'RUN_FINISHED',
+              threadId: 'session-1',
+              runId: 'run-9',
+              outcome: { type: 'success' },
+            },
+          ]
+            .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+            .join(''),
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
       }
       if (url.includes('/threads/')) {
         return new Response(

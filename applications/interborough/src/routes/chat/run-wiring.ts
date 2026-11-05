@@ -278,6 +278,13 @@ export type ChatRunWiring = {
   /** Drops an attach that was opened and never read. */
   discardAttach(): Promise<void>;
   /**
+   * Cancels the run whose stream dropped before it showed the run's end, which goes on on the
+   * server while the page reconnects: a Stop while reconnecting, through the same route a Stop on
+   * the live stream takes. Resolves once the run has ended, with whether the Bureau accepted the
+   * cancellation, or `undefined` when no stream left a run going.
+   */
+  cancelDroppedRun(): Promise<boolean | undefined>;
+  /**
    * Leaves the run it is reading going when the page's own signal ends, as it does when the person
    * leaves the chat. Without it the end of the signal is a Stop, which cancels the Bureau's run.
    */
@@ -1007,6 +1014,12 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let refusedResume = false;
   /** The rows of answers that are settled and not yet dropped from the conversation. */
   let settledAnswerRows: string[] = [];
+  /**
+   * The Bureau's identifier for the run the last stream read was reading, until that stream showed
+   * the run's end or a Stop cancelled it: a stream that dropped leaves the run going on the server,
+   * and this is the run {@link ChatRunWiring.cancelDroppedRun} cancels.
+   */
+  let unendedRunId: string | undefined;
 
   /** The questions the run waits on that no answer is held for, in the order the run asked them. */
   function unansweredRequests(): HumanRequest[] {
@@ -1090,9 +1103,13 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
    * unless it is told to stop. Resolves once the run has ended, so a turn sent next finds the
    * thread free.
    */
-  async function cancelRun(nativeRunId: string): Promise<void> {
+  async function cancelRun(nativeRunId: string): Promise<boolean> {
     const encoded = encodeURIComponent(nativeRunId);
-    await send(`${AG_UI_PATH}/runs/${encoded}/cancel`, { method: 'POST' }).catch(() => undefined);
+    const accepted = await send(`${AG_UI_PATH}/runs/${encoded}/cancel`, { method: 'POST' }).then(
+      (response) => response.ok,
+      () => false,
+    );
+    if (unendedRunId === nativeRunId) unendedRunId = undefined;
     // The run's own stream ends when the run does.
     const ended = readEvents(() =>
       send(`${AG_UI_PATH}/runs/${encoded}`, { headers: { accept: 'text/event-stream' } }),
@@ -1103,6 +1120,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     } catch {
       // A run that is already over answers with an error event or none.
     }
+    return accepted;
   }
 
   /** The gate a start's fetch runs behind, for the turn `stop` can end. */
@@ -1142,6 +1160,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         gate?.arrived();
         options.clock?.observe(event);
         nativeRunId ??= nativeRunIdOf(event);
+        if (nativeRunId !== undefined) unendedRunId = nativeRunId;
         // A Stop before this event is acted on here, now that the run it began has a name: the
         // run is cancelled below, and nothing of the turn is shown.
         if (signal.aborted) return;
@@ -1176,6 +1195,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR')
         ) {
           options.onTerminal?.();
+          if (unendedRunId === nativeRunId) unendedRunId = undefined;
           // A refusal before any run began ends no run.
           const at = event['timestamp'];
           if (nativeRunId !== undefined && typeof at === 'number' && Number.isFinite(at)) {
@@ -1641,6 +1661,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     },
     detach() {
       detached = true;
+    },
+    async cancelDroppedRun() {
+      const runId = unendedRunId;
+      return runId === undefined ? undefined : cancelRun(runId);
     },
     holdAnswer,
     holdValue,

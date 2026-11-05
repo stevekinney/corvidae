@@ -42,7 +42,7 @@ const contextsForgetGrantsInput = z.object({
     .min(1)
     .max(32)
     .describe(
-      'The names of the tools whose "Allow for the rest of this chat" grant the context forgets, as a tool call carries them; each matches every version of the tool.',
+      'The names of the tools whose "Allow for the rest of this chat" grant the context forgets, as a tool call carries them (`namespace__name`, `namespace:name`, or a bare name in the default namespace); each matches every version of its tool, and no other namespace’s tool of that name.',
     ),
 });
 
@@ -61,7 +61,7 @@ export const contextsForgetGrantsOperation = defineOperation<
   mcpExposable: false,
   summary: 'Forget a context’s remembered tool grants',
   description:
-    'Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name matches the grants of every version of the tool, and a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`.',
+    'Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name is read as the name a provider calls the tool by, as a stored call carries it (`shop__issue-refund`) or as a result reports it (`shop:issue-refund`), and matches the grants of every version of that tool; a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsForgetGrantsInput,

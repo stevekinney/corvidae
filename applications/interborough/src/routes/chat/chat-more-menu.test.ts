@@ -56,6 +56,26 @@ describe('the More menu', () => {
   });
 });
 
+describe('the stubbed Bureau', () => {
+  test('starts and finishes a run sent without a response of its own', async () => {
+    const served = serve();
+    const view = mount();
+    await view.findByText('Second answer');
+
+    const box = view.getByRole('textbox', { name: /message/i }) as HTMLTextAreaElement;
+    await fireEvent.input(box, { target: { value: 'Third question' } });
+    await fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(served.runs).toHaveLength(1));
+    // The turn has ended once Stop gives way to Send again.
+    await waitFor(() =>
+      expect(view.queryByRole('button', { name: /^stop/i })?.outerHTML ?? null).toBeNull(),
+    );
+
+    expect(view.queryByText('Not sent')).toBeNull();
+    expect(view.queryByText(/HTTP 500/)).toBeNull();
+  });
+});
+
 describe('Rename', () => {
   test('starts at the title the header shows and sends the new one', async () => {
     const served = serve(TURNS, {

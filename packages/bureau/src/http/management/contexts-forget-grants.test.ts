@@ -53,7 +53,7 @@ describe('bureau.contexts.forgetgrants', () => {
   it('forgets the grant of each tool named, whatever its version, keeps the others, and removes no row', async () => {
     await withBureau(async (opened) => {
       const run = await chatWithGrants(opened, [
-        'shop:issue_refund@3',
+        'default:issue_refund@3',
         'issue_refund',
         'shop:lookup_order@1',
       ]);
@@ -62,7 +62,7 @@ describe('bureau.contexts.forgetgrants', () => {
       const body = await forget(opened, run.contextId, 'alice-key', ['issue_refund']);
 
       expect(body.error).toBeUndefined();
-      expect(body.result).toEqual({ forgotten: ['shop:issue_refund@3', 'issue_refund'] });
+      expect(body.result).toEqual({ forgotten: ['default:issue_refund@3', 'issue_refund'] });
       const after = await opened.bureau.contexts.get(run.contextId);
       expect(after?.metadata['approvalGrants']).toEqual(['shop:lookup_order@1']);
       expect(after?.conversationHistory.ids).toEqual(before?.conversationHistory.ids ?? []);
@@ -70,6 +70,18 @@ describe('bureau.contexts.forgetgrants', () => {
         before?.conversationHistory.messages ?? {},
       );
       expect(after?.updatedAt).toBe(before?.updatedAt);
+    });
+  });
+
+  it('forgets a namespaced tool’s grant by the provider’s name a stored call carries', async () => {
+    await withBureau(async (opened) => {
+      const run = await chatWithGrants(opened, ['shop:issue-refund@1.0.0', 'issue-refund']);
+
+      const body = await forget(opened, run.contextId, 'alice-key', ['shop__issue-refund']);
+
+      expect(body.result).toEqual({ forgotten: ['shop:issue-refund@1.0.0'] });
+      const after = await opened.bureau.contexts.get(run.contextId);
+      expect(after?.metadata['approvalGrants']).toEqual(['issue-refund']);
     });
   });
 

@@ -450,11 +450,12 @@ export function useChatCommandActions(options: CommandActionsOptions) {
   }
 
   function handleStopGenerating(): void {
-    const streamingMessage = options
-      .getMessages()
-      .slice()
-      .reverse()
-      .find((message) => message.role === 'assistant');
+    // The reply being generated, or, before a reply row exists (a run whose stream dropped
+    // before it wrote one, which the host shows as reconnecting), the message the run answers:
+    // Stop is offered then too, and must still reach the host.
+    const messages = options.getMessages();
+    const streamingMessage =
+      messages.findLast((message) => message.role === 'assistant') ?? messages.at(-1);
     if (!streamingMessage) return;
     void dispatchCommand(
       'stopGenerating',

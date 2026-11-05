@@ -135,6 +135,27 @@ describe('Chat composer status and approval row', () => {
     expect(statusLine(container)).toBe('Reconnecting… attempt 3');
   });
 
+  test('Stop while reconnecting reaches the host before any reply has a row', async () => {
+    const stopped: string[] = [];
+    const conversation = appendUserMessage(createConversationHistory({ id: 'rs-stop' }), 'hi');
+    const { container } = render(Chat, {
+      id: 'chat-status-reconnecting-stop-sends',
+      conversation,
+      adapter: {
+        sendMessage: async () => undefined,
+        sendRunInput: async () => undefined,
+        stopGenerating: async (messageId) => {
+          stopped.push(messageId);
+        },
+      },
+      composerStatus: { kind: 'reconnecting', attempt: 1 },
+    });
+
+    await fireEvent.click(container.querySelector('button[aria-label="Stop generating"]')!);
+
+    expect(stopped).toEqual([conversation.ids.at(-1)!]);
+  });
+
   test.each([
     [{ kind: 'steering' }, 'A message now steers the run.'],
     [

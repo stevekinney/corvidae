@@ -9,23 +9,30 @@
  */
 
 import type { AgentSession } from '@lostgradient/operative';
+import { parseToolId, toNamespacedToolName } from 'armorer';
 
-/** The name of a tool as a grant or a call carries it: `namespace:name@version` reads `name`. */
-function toolNameOf(identifier: string): string {
-  const unversioned = identifier.split('@')[0] ?? identifier;
-  return unversioned.slice(unversioned.lastIndexOf(':') + 1);
-}
-
-/** Whether a grant stored under `grant` allows the tool a call names as `name`. */
-function grantAllows(grant: string, name: string): boolean {
-  return grant === name || toolNameOf(grant) === toolNameOf(name);
+/**
+ * The name a provider calls the tool `identifier` names by (`toNamespacedToolName`), whatever form
+ * it comes in: a grant's id (`shop:issue-refund@1.0.0`, `default:issue-refund@1.0.0`), the name an
+ * unsigned grant or a result reports (`shop:issue-refund`, `issue-refund`), or the provider's own
+ * name a stored call carries (`shop__issue-refund`). The version is not part of it, so every
+ * version of a tool has the one name, and two namespaces' tools of one name have two.
+ */
+function providerNameOf(identifier: string): string {
+  try {
+    return toNamespacedToolName(parseToolId(identifier));
+  } catch {
+    return identifier;
+  }
 }
 
 /**
  * `metadata` without the grants of `tools`, with the grants forgotten as they were stored. A grant
- * is stored under the tool's identifier (`namespace:name@version`), so a name matches the grants
- * of every version of the tool, and a name no grant matches changes nothing: the same `metadata`
- * comes back. The `approvalGrants` entry is dropped once it holds no grant.
+ * is stored under the tool's identifier (`namespace:name@version`), and a tool is named as a call
+ * carries it, often the provider's `namespace__name`: both are read as the name a provider calls
+ * the tool by, so a name matches the grants of every version of its tool and of no other tool. A
+ * name no grant matches changes nothing: the same `metadata` comes back. The `approvalGrants`
+ * entry is dropped once it holds no grant.
  */
 export function withoutGrantsFor(
   metadata: AgentSession['metadata'],
@@ -35,7 +42,8 @@ export function withoutGrantsFor(
   const grants = Array.isArray(held)
     ? held.filter((entry): entry is string => typeof entry === 'string')
     : [];
-  const forgotten = grants.filter((grant) => tools.some((name) => grantAllows(grant, name)));
+  const named = new Set(tools.map(providerNameOf));
+  const forgotten = grants.filter((grant) => named.has(providerNameOf(grant)));
   if (forgotten.length === 0) return { metadata, forgotten };
   const { approvalGrants: _replaced, ...rest } = metadata;
   const kept = grants.filter((grant) => !forgotten.includes(grant));

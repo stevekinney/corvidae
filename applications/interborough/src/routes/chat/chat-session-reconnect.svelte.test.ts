@@ -1,6 +1,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, expect, jest, spyOn, test } from 'bun:test';
+import { CHAT_COPY } from '../../app/copy.ts';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { settle } from '../../lib/fake-timers.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
@@ -438,4 +439,105 @@ test('a manual reconnect starts the count over', async () => {
   await session.reconnect();
 
   expect(session.reconnectAttempt).toBe(1);
+});
+
+/**
+ * A Bureau whose run's stream drops after it starts, so the page reconnects; `cancelStatus` is how
+ * the cancel route answers. Records each request by method and path.
+ */
+function droppingRun(cancelStatus = 202) {
+  const requests: string[] = [];
+  let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const fetch: Fetcher = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const path = new URL(url, 'http://host').pathname;
+    requests.push(`${init?.method ?? 'GET'} ${path}`);
+    if (path.endsWith('/threads/thread/run')) {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            stream = controller;
+            controller.enqueue(
+              encoded({ ...started, metadata: { '@lostgradient/bureau': { runId: 'native-1' } } }),
+            );
+            controller.enqueue(encoded(state));
+            controller.enqueue(encoded({ type: 'STEP_STARTED', stepName: 'step-0' }, 'cursor-1'));
+          },
+        }),
+      );
+    }
+    if (path.endsWith('/runs/native-1/cancel')) return new Response('{}', { status: cancelStatus });
+    // The run's own stream, which ends with the run.
+    if (path.endsWith('/runs/native-1')) return new Response('');
+    if (path.endsWith('/threads/thread/messages')) {
+      return Response.json({ threadId: 'thread', messages: [] });
+    }
+    return new Response('', { status: 404 });
+  };
+  return { fetch, requests, drop: () => stream!.error(new TypeError('drop')) };
+}
+
+test('Stop while reconnecting cancels the run the dropped stream was reading, and nothing reconnects', async () => {
+  jest.useFakeTimers();
+  const bureau = droppingRun();
+  const session = open(bureau.fetch);
+  await session.attach();
+  await waitUntil(() => session.streaming, { message: 'attached stream' });
+  bureau.drop();
+  await settle();
+  expect(session.reconnectAttempt).toBe(1);
+
+  await session.adapter.stopGenerating!('row');
+
+  expect(bureau.requests).toContain('POST /bureau/ag-ui/runs/native-1/cancel');
+  expect(session.reconnectAttempt).toBe(0);
+  expect(session.stopping).toBe(false);
+  expect(session.failure).toBeUndefined();
+  jest.advanceTimersByTime(60_000);
+  await settle();
+  expect(bureau.requests.filter((request) => request.endsWith('/threads/thread/run'))).toHaveLength(
+    1,
+  );
+});
+
+test('Stop while reconnecting says so when the run could not be cancelled, and does not rejoin it', async () => {
+  jest.useFakeTimers();
+  const bureau = droppingRun(503);
+  const session = open(bureau.fetch);
+  await session.attach();
+  await waitUntil(() => session.streaming, { message: 'attached stream' });
+  bureau.drop();
+  await settle();
+
+  await session.adapter.stopGenerating!('row');
+
+  expect(bureau.requests).toContain('POST /bureau/ag-ui/runs/native-1/cancel');
+  expect(session.failure).toBe(CHAT_COPY.stopLine.stopFailed);
+  expect(session.disconnected).toBe(true);
+  jest.advanceTimersByTime(60_000);
+  await settle();
+  expect(bureau.requests.filter((request) => request.endsWith('/threads/thread/run'))).toHaveLength(
+    1,
+  );
+});
+
+test('Stop while reconnecting before any run was read cancels nothing, says so, and does not rejoin', async () => {
+  jest.useFakeTimers();
+  const requests: string[] = [];
+  const session = open(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    requests.push(`${init?.method ?? 'GET'} ${new URL(url, 'http://host').pathname}`);
+    throw new TypeError('offline');
+  });
+  await session.attach();
+  expect(session.reconnectAttempt).toBe(1);
+
+  await session.adapter.stopGenerating!('row');
+
+  expect(requests.filter((request) => request.includes('/cancel'))).toEqual([]);
+  expect(session.failure).toBe(CHAT_COPY.stopLine.stopFailed);
+  expect(session.disconnected).toBe(true);
+  jest.advanceTimersByTime(60_000);
+  await settle();
+  expect(requests.filter((request) => request.endsWith('/threads/thread/run'))).toHaveLength(1);
 });

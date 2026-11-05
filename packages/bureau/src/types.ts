@@ -2514,8 +2514,10 @@ export interface BureauContexts {
 
   /**
    * B06 (row 20c) — forget the chat's "Allow for the rest of this chat" grant of each tool in
-   * `tools`, by the name a tool call carries (a grant is stored under `namespace:name@version`, so a
-   * name matches every version of the tool). Retry on a reply that failed sends a new turn over a
+   * `tools`, by the name a tool call carries. A grant is stored under `namespace:name@version` and a
+   * stored call names a namespaced tool as the provider does (`namespace__name`), so both are read
+   * as that provider name: a name matches every version of its tool, and no other namespace's tool
+   * of the same name. Retry on a reply that failed sends a new turn over a
    * thread that still holds the failed attempt, and this puts the interrupted tool back behind its
    * approval. Nothing else of the context changes, no row of its conversation is removed, and
    * `updatedAt` does not move. Resolves the grants forgotten, as they were stored (empty when none

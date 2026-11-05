@@ -2732,6 +2732,11 @@ export const CHAT_COPY = {
      */
     retryFailed:
       'Retry could not ask for the tool’s approval again, so nothing was sent. Try again.',
+    /**
+     * Said when Stop, pressed while the page was reconnecting, could not reach the run to cancel
+     * it: the run may still be going, and Reconnect shows what it is doing.
+     */
+    stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
   },
   /** The chat's header and its strip of runs. */
   strip: {

@@ -162,7 +162,10 @@ export type ChatAdapter = {
   retryMessage?: (messageId: string) => Promise<void>;
   /** Commit an edit to a user message. */
   editMessage?: (event: { messageId: string; content: string }) => Promise<void>;
-  /** Stop an in-progress generation for a message. */
+  /**
+   * Stop an in-progress generation for a message: the latest reply, or the latest message when
+   * no reply has a row yet (a run the host shows as reconnecting may have written none).
+   */
   stopGenerating?: (messageId: string) => Promise<void>;
   /**
    * Load a page of older messages for the given conversation. Returns whether
