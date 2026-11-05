@@ -66,6 +66,12 @@ describe('SchemaForm input variant', () => {
     const input = await mount(triage, 'input');
     const toggle = screen.getByRole('switch', { name: 'Flag urgent messages' });
     expect(toggle.getAttribute('aria-describedby')).not.toBeNull();
+    // The explanation sits under the label, with the switch beside both.
+    expect(
+      input.container
+        .querySelector('.cinder-toggle-field')
+        ?.getAttribute('data-cinder-description'),
+    ).toBe('below');
     expect(input.container.textContent).toContain('Mark anything that looks urgent for a review.');
     expect(input.container.querySelector('input[type="checkbox"][role="checkbox"]')).toBeNull();
     cleanup();

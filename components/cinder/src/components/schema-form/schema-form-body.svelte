@@ -685,6 +685,7 @@
             {id}
             label={field.label}
             {...field.description !== undefined ? { description: field.description } : {}}
+            descriptionPlacement="below"
             disabled={submitting}
             bind:checked={
               () => booleanValue(field), (next) => formState.updateValue(field.path, next)
