@@ -1,6 +1,7 @@
 /** Built-in tools for publishing and reading small managed assets. */
 
 import { createTool, type Tool, type ToolContext } from 'armorer';
+import type { UserAdmissibleContent } from '@lostgradient/operative';
 import { z } from 'zod';
 
 import { decodeBase64 } from './assets/base64';
@@ -102,6 +103,7 @@ export function createAssetTools(host: AssetToolHost): readonly Tool[] {
             bytes: contentBytes({ text: input.text, base64: input.base64 }),
           },
           declaredMediaType: input.mediaType,
+          fileName: input.fileName,
         },
         access.principal,
       );
@@ -146,21 +148,20 @@ export function createAssetTools(host: AssetToolHost): readonly Tool[] {
 
 /** Builds a content part naming a managed asset for a child run. */
 export function managedAssetPart(descriptor: AssetDescriptor, fileName?: string) {
-  const type: 'image' | 'audio' | 'video' | 'document' =
-    descriptor.modality === 'image'
-      ? 'image'
-      : descriptor.modality === 'audio'
-        ? 'audio'
-        : descriptor.modality === 'video'
-          ? 'video'
-          : 'document';
-  return {
-    // `file` is a storage modality, not an input modality supported by the model catalog. Text and
-    // otherwise generic application bytes travel as documents so providers can admit them as
-    // inline content while the transcript retains the managed-asset source.
-    type,
+  const fields = {
     mimeType: descriptor.mediaType ?? 'application/octet-stream',
-    ...(fileName === undefined ? {} : { name: fileName }),
+    ...(fileName === undefined && descriptor.fileName === undefined
+      ? {}
+      : { name: fileName ?? descriptor.fileName }),
     source: managedAssetSource(descriptor),
   };
+  if (descriptor.modality === 'image')
+    return { type: 'image' as const, ...fields } as UserAdmissibleContent;
+  if (descriptor.modality === 'audio')
+    return { type: 'audio' as const, ...fields } as UserAdmissibleContent;
+  if (descriptor.modality === 'video')
+    return { type: 'video' as const, ...fields } as UserAdmissibleContent;
+  if (descriptor.modality === 'file')
+    return { type: 'file' as const, ...fields } as UserAdmissibleContent;
+  return { type: 'document' as const, ...fields } as UserAdmissibleContent;
 }

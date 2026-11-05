@@ -2,10 +2,11 @@
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createAssetTools } from './asset-tools';
+import { createAssetTools, managedAssetPart } from './asset-tools';
 import { createMemoryAssetStorage } from './assets/storage';
 import { createAssetHarness, textBytes } from './testing/asset-fixtures.test-support';
 import type { AssetHarness } from './testing/asset-fixtures.test-support';
+import type { AssetDescriptor } from './assets/types';
 
 const runContext = {
   requestContext: {
@@ -46,6 +47,21 @@ async function toolsFor(owner = 'alice') {
 }
 
 describe('registered managed-asset tools', () => {
+  it('keeps generic binary assets as canonical file parts', () => {
+    const part = managedAssetPart({
+      assetId: 'asset-generic',
+      revision: 1,
+      modality: 'file',
+      mediaType: 'application/octet-stream',
+      fileName: 'blob.bin',
+    } as unknown as AssetDescriptor);
+    expect(part).toMatchObject({
+      type: 'file',
+      mimeType: 'application/octet-stream',
+      name: 'blob.bin',
+    });
+  });
+
   it('publishes and reads text through the persisted run owner, not tool authority', async () => {
     const { toolbox } = await toolsFor();
     const published = await toolbox.execute(

@@ -18,7 +18,7 @@ import { createMemoryAssetStorage } from './assets/storage';
 import { createBureau } from './create-bureau';
 import { createBureauHandler } from './http/create-bureau-handler';
 import { as, authentication } from './http/management/management-fixtures.test-support';
-import { base64Of } from './testing/asset-fixtures.test-support';
+import { base64Of, pdfBytes } from './testing/asset-fixtures.test-support';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import {
   agentFileText,
@@ -590,9 +590,9 @@ describe('registered child-run tools on file agents', () => {
               {
                 name: 'bureau__assets-publish',
                 arguments: {
-                  text: 'child payload',
-                  mediaType: 'text/plain',
-                  fileName: 'payload.txt',
+                  base64: base64Of(pdfBytes(1)),
+                  mediaType: 'application/pdf',
+                  fileName: 'payload.pdf',
                 },
               },
             ],
@@ -637,8 +637,9 @@ describe('registered child-run tools on file agents', () => {
     );
     expect(response.status).toBe(200);
     const metadata = (await response.json()) as { result?: Record<string, unknown> };
-    expect(metadata).toMatchObject({ result: { assetId: published, mediaType: 'text/plain' } });
-    expect(metadata.result).not.toHaveProperty('fileName');
+    expect(metadata).toMatchObject({
+      result: { assetId: published, mediaType: 'application/pdf', fileName: 'payload.pdf' },
+    });
 
     const childRunId = result.steps[1]?.results[0]?.content as {
       child?: { childRunId?: string };
@@ -653,18 +654,18 @@ describe('registered child-run tools on file agents', () => {
       { type: 'text', text: 'inspect' },
       {
         type: 'document',
-        mimeType: 'text/plain',
+        mimeType: 'application/pdf',
+        name: 'payload.pdf',
         source: { kind: 'managed-asset', assetId: published, revision: 2 },
       },
     ]);
-    expect((childUser as Array<Record<string, unknown>>)[1]).not.toHaveProperty('name');
     expect(childSources).toBeInstanceOf(Map);
     expect([...((childSources ?? new Map()) as Map<string, unknown>).values()]).toEqual([
       expect.objectContaining({
         outcome: 'resolved',
         source: {
           kind: 'inline',
-          data: base64Of(new TextEncoder().encode('child payload')),
+          data: base64Of(pdfBytes(1)),
           encoding: 'base64',
         },
       }),

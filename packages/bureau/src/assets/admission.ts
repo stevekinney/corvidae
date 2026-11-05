@@ -81,6 +81,7 @@ export interface AdmissionPlan {
   readonly principal: AssetPrincipal;
   readonly source: InternalAdmissionSource;
   readonly declaredMediaType: string | undefined;
+  readonly fileName: string | undefined;
   readonly budget: AggregateBudget | undefined;
   readonly slot: number;
 }
@@ -351,6 +352,7 @@ export async function beginAdmission(
       request.declaredMediaType === undefined
         ? undefined
         : normalizeMediaType(request.declaredMediaType),
+    fileName: request.fileName,
     media: {},
     provenance: provenanceOf(request.source),
     createdAt: now,
@@ -390,6 +392,7 @@ export async function beginAdmission(
     principal,
     source: request.source,
     declaredMediaType: record.declaredMediaType,
+    fileName: record.fileName,
     budget,
     slot,
   };

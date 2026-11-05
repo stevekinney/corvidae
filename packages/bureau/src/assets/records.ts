@@ -78,6 +78,7 @@ export interface AssetRecord {
   readonly ownerId: string;
   readonly readers: readonly string[];
   readonly declaredMediaType?: string | undefined;
+  readonly fileName?: string | undefined;
   readonly mediaType?: string | undefined;
   readonly byteLength?: number | undefined;
   readonly digest?: string | undefined;
@@ -128,6 +129,7 @@ const REQUIRED_MEMBERS: ReadonlyArray<
 /** Optional members the read path treats as strings: each must be a string when it is present. */
 const OPTIONAL_STRING_MEMBERS: ReadonlyArray<keyof AssetRecord> = [
   'declaredMediaType',
+  'fileName',
   'mediaType',
   'digest',
   'providerFetchUrl',
@@ -352,6 +354,7 @@ function sharedFields(record: AssetRecord) {
     custody: record.custody,
     digest: record.digest,
     mediaType: record.mediaType ?? record.declaredMediaType,
+    fileName: record.fileName,
     modality: record.mediaType ? modalityOf(record.mediaType) : undefined,
     mimeFamily: record.mediaType ? mimeFamilyOf(record.mediaType) : undefined,
     byteLength: record.byteLength,
