@@ -21,6 +21,7 @@ export async function request(
 ): Promise<CliCommandResult> {
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  // poll-reason: timer
   const timer = setTimeout(() => controller.abort(), parsed.timeout);
   try {
     const headers = new Headers(target.headers);

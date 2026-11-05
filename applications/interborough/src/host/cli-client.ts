@@ -377,6 +377,7 @@ async function execute(
         if (isRecord(error) && (error['status'] === 401 || error['status'] === 403))
           throw makeCliFailure('Restart observation was unauthorized.', { exitCode: 7 });
       }
+      // poll-reason: timer
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     if (observed === undefined)
