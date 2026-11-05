@@ -37,7 +37,7 @@ import { z } from 'zod';
 const seed = createModelCatalog().descriptors[0];
 if (seed === undefined) throw new Error('catalog unavailable');
 const CALL_ID = 'installed-call-1';
-export default definePlugin({ name: 'installed-fixture', version: '1.0.0', description: 'Installed release fixture', setup: () => ({
+export default definePlugin({ name: 'installed-fixture', version: '1.0.0', description: 'Installed release fixture', secrets: [{ key: 'installed-fixture-key', generated: true }], content: new URL('./content/', import.meta.url), setup: () => ({
   tools: [createTool({ name: 'greet', description: 'Fixture greeting', input: z.object({ name: z.string() }), metadata: { readOnly: true }, execute: async ({ name }) => { await writeFile(${JSON.stringify(marker)}, dependencyMarker); return 'fixture greeted ' + name; } })],
   providers: [{ name: 'installed-fixture', generate: () => async ({ conversation }) => { const result = conversation.getMessages().findLast((message) => message.toolResult?.callId === CALL_ID)?.toolResult; return result === undefined ? { content: '', toolCalls: [{ id: CALL_ID, name: 'installed-fixture__greet', arguments: { name: 'Ada' } }] } : { content: 'Fixture result: ' + String(result.content), toolCalls: [] }; }, stream: () => { throw new Error('fixture provider does not stream'); }, rows: [{ ...seed, provider: 'installed-fixture', model: 'scripted', aliases: [] }] }],
   mcpApps: [{ name: 'fixture-panel', title: 'Fixture panel', description: 'Installed panel', uri: 'ui://installed-fixture/panel/v1', entry: new URL('./app.ts', import.meta.url), styles: '#root { color: green; }', allowedTools: ['bureau.workflows-list'], opensFromTool: 'bureau.workflows-list' }]

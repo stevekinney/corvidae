@@ -1,8 +1,19 @@
 export type InstalledFetch = (...arguments_: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
 
 export function parseRunStartedRunId(stream: string): string {
-  const runId = stream.match(/"type":"RUN_STARTED"[^\n]*"runId":"([^"]+)"/)?.[1];
-  if (runId === undefined) throw new Error('The AG-UI stream did not contain RUN_STARTED');
+  const events = stream
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => JSON.parse(line.slice(5)) as Record<string, unknown>);
+  const failure = events.find((event) => event['type'] === 'RUN_ERROR');
+  if (failure !== undefined) throw new Error(`Fixture run failed: ${JSON.stringify(failure)}`);
+  const started = events.find((event) => event['type'] === 'RUN_STARTED');
+  const metadata = started?.['metadata'] as Record<string, Record<string, unknown>> | undefined;
+  const runId = metadata?.['@lostgradient/bureau']?.['runId'];
+  if (typeof runId !== 'string' || runId.length === 0)
+    throw new Error(
+      'The AG-UI stream did not contain RUN_STARTED with a native Bureau run identifier',
+    );
   return runId;
 }
 

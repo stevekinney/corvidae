@@ -51,7 +51,7 @@ async function exerciseJourney(fault: string, port = 43123, relocated = false) {
       const wrongOutput =
         fault === 'tool-output' || (fault === 'restart-tool-output' && agentRuns === 2);
       return response(
-        `data: {"type":"RUN_STARTED","runId":"run-${agentRuns}"}\n\ndata: ${wrongOutput ? 'wrong output' : 'fixture greeted Ada'}\n`,
+        `data: {"type":"RUN_STARTED","runId":"public-run-${agentRuns}","metadata":{"@lostgradient/bureau":{"runId":"run-${agentRuns}"}}}\n\ndata: ${JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', delta: wrongOutput ? 'wrong output' : 'fixture greeted Ada' })}\n`,
       );
     }
     if (path === '/host/mcp-apps')
@@ -70,7 +70,9 @@ async function exerciseJourney(fault: string, port = 43123, relocated = false) {
           ? { error: {} }
           : fault === 'inspection-empty'
             ? {}
-            : { result: { taskId: 'run-1' } },
+            : fault === 'inspection-tool-error'
+              ? { result: { isError: true } }
+              : { result: { taskId: 'run-1' } },
       );
     if (path.endsWith('/run-inspector'))
       return response(
@@ -185,6 +187,7 @@ for (const [fault, message] of [
   ['missing-panel', 'panel was not mounted'],
   ['panel-text', 'text or UI metadata missing'],
   ['panel-metadata', 'text or UI metadata missing'],
+  ['inspection-tool-error', 'did not answer'],
   ['inspection-empty', 'did not answer'],
   ['inspection-error', 'did not answer'],
   ['inspector-http', 'inspector page missing'],

@@ -40,10 +40,25 @@ describe('installed-release harness arguments', () => {
   });
 
   test('extracts only the run identifier from a RUN_STARTED event', () => {
-    expect(parseRunStartedRunId('data: {"type":"RUN_STARTED","runId":"run-42"}\n\n')).toBe(
-      'run-42',
-    );
+    expect(
+      parseRunStartedRunId(
+        'data: {"type":"RUN_STARTED","runId":"public-run-42","metadata":{"@lostgradient/bureau":{"runId":"run-42"}}}\n\n',
+      ),
+    ).toBe('run-42');
+    expect(
+      parseRunStartedRunId(
+        'event: message\r\ndata: {"runId": "public-run-43", "type": "RUN_STARTED", "metadata": {"@lostgradient/bureau": {"runId": "run-43"}}}\r\n\r\n',
+      ),
+    ).toBe('run-43');
     expect(() => parseRunStartedRunId('data: {"type":"RUN_FINISHED"}\n\n')).toThrow('RUN_STARTED');
+    expect(() => parseRunStartedRunId('data: {"type":"RUN_STARTED","runId":""}\n\n')).toThrow(
+      'RUN_STARTED',
+    );
+    expect(() =>
+      parseRunStartedRunId(
+        'data: {"type":"RUN_STARTED","runId":"public-run-1","metadata":{"@lostgradient/bureau":{"runId":"run-1"}}}\n\ndata: {"type":"RUN_ERROR","message":"agent unavailable"}\n\n',
+      ),
+    ).toThrow('agent unavailable');
   });
 
   test('extracts shell JavaScript and CSS references for HTTP assertions', () => {
@@ -82,7 +97,10 @@ describe('installed-release harness arguments', () => {
 
   test('covers fixture agent success, HTTP failure, and malformed RUN_STARTED', async () => {
     const request = async () =>
-      new Response('data: {"type":"RUN_STARTED","runId":"run-1"}\n\n', { status: 200 });
+      new Response(
+        'data: {"type":"RUN_STARTED","runId":"public-run-1","metadata":{"@lostgradient/bureau":{"runId":"run-1"}}}\n\n',
+        { status: 200 },
+      );
     expect(await runFixtureAgent('http://host', request)).toMatchObject({
       runId: 'run-1',
     });
@@ -294,7 +312,7 @@ describe('installed-release harness arguments', () => {
       if (url.includes('/ag-ui/')) {
         await writeFile(marker, 'fixture-owned-dependency');
         return response(
-          'data: {"type":"RUN_STARTED","runId":"run-1"}\n\ndata: fixture greeted Ada\n',
+          'data: {"type":"RUN_STARTED","runId":"public-run-1","metadata":{"@lostgradient/bureau":{"runId":"run-1"}}}\n\ndata: {"type":"TEXT_MESSAGE_CONTENT","delta":"fixture greeted Ada"}\n',
         );
       }
       if (url.endsWith('/host/plugins'))

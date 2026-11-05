@@ -244,7 +244,8 @@ export async function runInstalled(
       },
       processOperations.fetch,
     );
-    if (run['result'] === undefined || run['error'] !== undefined)
+    const inspection = run['result'] as { isError?: boolean } | undefined;
+    if (inspection === undefined || inspection.isError === true || run['error'] !== undefined)
       throw new Error('Built-in inspector did not answer for the fixture run');
     const inspector = await processOperations.fetch(
       `${url}/host/plugins/inspectors/apps/run-inspector`,
