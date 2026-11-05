@@ -656,6 +656,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.workflows.signal',
         'bureau.workflows.start',
         'bureau.workflows.update',
+        'bureau.workflows.validate',
         'operative.runs.events',
         'rpc.discover',
         'weft.system.principal',

@@ -147,6 +147,12 @@ export interface WorkflowFileCatalog {
     definition: WorkflowFileDefinition,
     options: { readonly expectedHash: string } & WorkflowWriteObserver,
   ) => Promise<WorkflowFileWriteResult>;
+  /** Validate a definition with the same parser and conflict checks as a write, without writing. */
+  readonly validate: (
+    id: string,
+    definition: WorkflowFileDefinition,
+    expectedHash?: string,
+  ) => Promise<{ readonly id: string; readonly hash: string }>;
   /** Set `paused` in the file. A file that already has that value is left untouched. */
   readonly setPaused: (
     id: string,
@@ -469,6 +475,21 @@ export function createWorkflowFileCatalog(
         // An update that changes nothing writes nothing.
         if (hashWorkflowFileBytes(bytes) === current.hash) return { id, hash: current.hash };
         return write(id, bytes, expectedHash, { onWritten });
+      });
+    },
+
+    validate(id, definition, expectedHash) {
+      return exclusive(async () => {
+        checkIdentifier(id);
+        const bytes = bytesFor(id, definition);
+        if (expectedHash === undefined) {
+          const current = await readFresh(id);
+          if (current !== undefined)
+            throw conflictOf(new SourceConflictError(id, null, current.hash));
+          return { id, hash: hashWorkflowFileBytes(bytes) };
+        }
+        await readExisting(id, expectedHash);
+        return { id, hash: hashWorkflowFileBytes(bytes) };
       });
     },
 

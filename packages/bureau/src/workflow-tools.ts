@@ -40,6 +40,8 @@ import { type BureauWorkflows, WorkflowApplyError } from './workflow-runtime';
 export const WORKFLOW_TOOL_NAMES = [
   'workflows-create',
   'workflows-update',
+  'workflows-validate',
+  'workflows-catalog',
   'workflows-pause',
   'workflows-resume',
   'workflows-list',
@@ -85,6 +87,24 @@ export type WorkflowToolResult =
       readonly issues: readonly WorkflowToolIssue[];
     }
   | { readonly status: 'not-found'; readonly id: string }
+  | { readonly status: 'forbidden'; readonly message: string }
+  | {
+      readonly status: 'ok';
+      readonly stepKinds: readonly {
+        readonly kind: string;
+        readonly fields: Readonly<Record<string, unknown>>;
+      }[];
+      readonly activities: readonly {
+        readonly id: string;
+        readonly description: string | null;
+        readonly inputSchema: Readonly<Record<string, unknown>> | null;
+      }[];
+      readonly triggerKinds: readonly {
+        readonly id: string;
+        readonly description: string;
+        readonly configuration: Readonly<Record<string, unknown>> | null;
+      }[];
+    }
   | { readonly status: 'unavailable'; readonly reason: 'workflow-apply-failed' };
 
 /** A parsed workflow document returned by `workflows-get` or `workflows-revisions-get`. */
@@ -341,29 +361,17 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     return { workflows, agent, actor: `agent-run:${runId}`, hookOrigin: identity.hookOrigin };
   }
 
-  const definition = (
-    agent: string,
-    input: {
-      trigger: Record<string, unknown>;
-      steps: Record<string, unknown>[];
-      title?: string | undefined;
-      description?: string | undefined;
-      paused?: boolean | undefined;
-      inputSchema?: Record<string, unknown> | undefined;
-      outputSchema?: Record<string, unknown> | undefined;
-    },
-  ): WorkflowFileDefinition => ({
-    ...(input.title === undefined ? {} : { title: input.title }),
-    ...(input.description === undefined ? {} : { description: input.description }),
-    agent,
-    ...(input.paused === undefined ? {} : { paused: input.paused }),
-    ...(input.inputSchema === undefined ? {} : { inputSchema: input.inputSchema }),
-    ...(input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema }),
-    trigger: input.trigger as WorkflowFileDefinition['trigger'],
-    steps: input.steps,
-  });
+  const definition = (agent: string, input: Record<string, unknown>): WorkflowFileDefinition => {
+    const { name: _name, id: _id, expectedHash: _expectedHash, ...candidate } = input;
+    return {
+      ...candidate,
+      agent,
+      trigger: candidate['trigger'] as WorkflowFileDefinition['trigger'],
+      steps: candidate['steps'] as WorkflowFileDefinition['steps'],
+    };
+  };
 
-  const createInput = z.object({
+  const createInput = z.looseObject({
     name: z.string().min(1).describe('What the workflow is called.'),
     id: z
       .string()
@@ -380,7 +388,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     steps: stepsSchema,
     paused: pausedSchema,
   });
-  const updateInput = guardedInput.extend({
+  const updateInput = z.looseObject({
+    ...guardedInput.shape,
     title: titleSchema,
     description: descriptionSchema,
     inputSchema: inputSchemaSchema,
@@ -388,6 +397,81 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
+  });
+  const validateInput = z.looseObject({
+    id: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('The workflow identifier, or omit it for a new draft.'),
+    expectedHash: expectedHashSchema.optional(),
+    title: titleSchema,
+    description: descriptionSchema,
+    inputSchema: inputSchemaSchema,
+    outputSchema: outputSchemaSchema,
+    trigger: triggerSchema,
+    steps: stepsSchema,
+    paused: pausedSchema,
+  });
+
+  const validate = createTool({
+    name: 'workflows-validate',
+    version: '1.0.0',
+    description: 'Validate a workflow draft without writing it or registering it with the engine.',
+    input: validateInput,
+    metadata: {
+      readOnly: true,
+      title: 'Validate workflow',
+      shortDescription: 'Validate a workflow draft without saving it.',
+    },
+    execute: async (input, context): Promise<WorkflowToolResult> => {
+      const id = input.id ?? 'draft';
+      const calling = await caller(context, id, 'bureau.workflows:read');
+      if ('refusal' in calling) {
+        return calling.refusal.status === 'not-found'
+          ? {
+              status: 'forbidden',
+              message: 'Workflow validation is unavailable to the current caller.',
+            }
+          : calling.refusal;
+      }
+      try {
+        return {
+          status: 'ok',
+          ...(await calling.workflows.validate(
+            input.id ?? 'draft',
+            definition(calling.agent, input),
+            input.expectedHash,
+          )),
+        };
+      } catch (error) {
+        return resultOfFailure(error, id);
+      }
+    },
+  });
+
+  const catalog = createTool({
+    name: 'workflows-catalog',
+    version: '1.0.0',
+    description: 'List the workflow step, activity, and trigger kinds this deployment supports.',
+    input: z.object({}),
+    metadata: {
+      readOnly: true,
+      title: 'Catalog workflow kinds',
+      shortDescription: 'List supported workflow kinds.',
+    },
+    execute: async (_input, context): Promise<WorkflowToolResult> => {
+      const calling = await caller(context, '', 'bureau.workflows:read');
+      if ('refusal' in calling) {
+        return calling.refusal.status === 'not-found'
+          ? {
+              status: 'forbidden',
+              message: 'The workflow catalog is unavailable to the current caller.',
+            }
+          : calling.refusal;
+      }
+      return { status: 'ok', ...calling.workflows.catalog() };
+    },
   });
 
   const create = createTool({
@@ -635,6 +719,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   return {
     [create.name]: create,
     [update.name]: update,
+    [validate.name]: validate,
+    [catalog.name]: catalog,
     'workflows-pause': guarded('workflows-pause', true),
     'workflows-resume': guarded('workflows-resume', false),
     [list.name]: list,

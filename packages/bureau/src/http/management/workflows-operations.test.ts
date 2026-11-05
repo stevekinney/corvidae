@@ -36,10 +36,11 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the fifteen workflow operations, with their scopes registered', () => {
+  it('serves the sixteen workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
+      'bureau.workflows.validate',
       'bureau.workflows.pause',
       'bureau.workflows.resume',
       'bureau.workflows.delete',
@@ -124,6 +125,11 @@ const CALLS: readonly Call[] = [
     scope: 'read',
   },
   { method: 'bureau.workflows.signal', params: () => ({ name: 'go' }), scope: 'write' },
+  {
+    method: 'bureau.workflows.validate',
+    params: (hash) => ({ id: 'digest', expectedHash: hash, definition: DEFINITION }),
+    scope: 'read',
+  },
 ];
 
 describe('the owner predicate, with several principals', () => {
@@ -151,7 +157,10 @@ describe('the owner predicate, with several principals', () => {
           expect(response.error).toBeUndefined();
           const key = call.method === 'bureau.workflows.list' ? 'workflows' : 'runs';
           expect(response.result?.[key]).toEqual([]);
-        } else if (call.method === 'bureau.workflows.create') {
+        } else if (
+          call.method === 'bureau.workflows.create' ||
+          call.method === 'bureau.workflows.validate'
+        ) {
           expect(response.error?.data?.httpStatus).toBe(403);
         } else {
           expect(response.error?.data?.httpStatus).toBe(404);
@@ -554,8 +563,6 @@ describe('faults', () => {
       id: 'digest',
       definition: { ...DEFINITION, retries: 3 },
     });
-    expect(response.error?.data?.httpStatus).toBe(400);
-    expect(response.error?.data?.['weftCode']).toBe('InvalidParams');
     expect(response.error?.data?.['issues']).toContainEqual(
       expect.objectContaining({
         code: 'unrecognized_keys',
@@ -565,6 +572,21 @@ describe('faults', () => {
     );
     expect(await Bun.file(join(served.directory, 'digest.json')).exists()).toBe(false);
     expect(served.bureau.workflows?.list()).toEqual([]);
+  });
+
+  it('rejects an undeclared validation definition at the HTTP boundary, without changing the hash', async () => {
+    const served = await serve();
+    const before = await seed(served);
+    const response = await ownerRpc(served.owner, 'bureau.workflows.validate', {
+      id: 'digest',
+      expectedHash: before.hash,
+      definition: { ...DEFINITION, retries: 3 },
+    });
+    expect(response.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(response.result?.['issues']).toContainEqual(
+      expect.objectContaining({ path: '', message: expect.stringContaining('retries') }),
+    );
+    expect(served.bureau.workflows?.list()[0]?.hash).toBe(before.hash);
   });
 
   it('InvalidParams naming the key for a definition with an undeclared key, and leaves the file as it was (update)', async () => {

@@ -52,6 +52,8 @@ const STEPS = [
 const WORKFLOW_TOOLS = [
   'workflows-create',
   'workflows-update',
+  'workflows-validate',
+  'workflows-catalog',
   'workflows-pause',
   'workflows-resume',
   'workflows-list',
