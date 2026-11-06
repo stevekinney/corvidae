@@ -53,7 +53,8 @@
   import { LayoutPreferences, provideLayoutPreferences } from '../layout-preferences.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
-  import { provideTheme, ThemeStore } from '../theme.svelte.ts';
+  import { provideTheme } from '../theme-context.ts';
+  import { ThemeStore } from '../theme.svelte.ts';
   import AuthModeBanner from './auth-mode-banner.svelte';
   import { holdChangingActions } from './changing-actions.ts';
   import CommandPaletteLauncher from './command-palette.svelte';

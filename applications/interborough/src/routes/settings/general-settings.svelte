@@ -29,7 +29,8 @@
   import { getKeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
   import { getLayoutPreferences } from '../../app/layout-preferences.svelte.ts';
   import { HostRestartFlow } from '../../app/restart/host-restart-flow.svelte.ts';
-  import { getTheme, type ThemeMode } from '../../app/theme.svelte.ts';
+  import { getTheme } from '../../app/theme-context.ts';
+  import type { ThemeMode } from '../../app/theme.svelte.ts';
   import { dismissToast, showToast } from '../../app/toast-host.svelte';
   import {
     getSettings,

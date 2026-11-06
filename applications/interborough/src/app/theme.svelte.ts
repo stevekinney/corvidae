@@ -8,8 +8,6 @@
  * `index.css`) takes over — there is no explicit "system" value on the
  * element itself, only the absence of an override.
  */
-import { getContext, setContext } from 'svelte';
-
 const STORAGE_KEY = 'weft-ui-theme';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -76,17 +74,4 @@ export class ThemeStore {
   cycle(): void {
     this.set(nextThemeMode(this.mode));
   }
-}
-
-const THEME_KEY = Symbol('theme-store');
-
-/** Makes the shell's theme available to the components under it, such as the Settings page. */
-export function provideTheme(store: ThemeStore): ThemeStore {
-  setContext(THEME_KEY, store);
-  return store;
-}
-
-/** The shell's theme, or `undefined` outside the shell. */
-export function getTheme(): ThemeStore | undefined {
-  return getContext<ThemeStore | undefined>(THEME_KEY);
 }
