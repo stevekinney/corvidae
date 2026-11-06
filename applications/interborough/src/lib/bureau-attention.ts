@@ -64,3 +64,72 @@ export async function listAttentionAlerts(options?: {
       : [];
   });
 }
+
+const attentionTime = z.number().int();
+
+const attentionItemSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('alert'),
+    at: attentionTime,
+    metric: z.string(),
+    currentValue: z.number(),
+  }),
+  z.object({
+    kind: z.literal('missed-runs'),
+    at: attentionTime,
+    scheduleId: z.string(),
+    scheduleName: z.string().nullable(),
+    count: z.number().int().nonnegative(),
+    since: attentionTime,
+  }),
+  z.object({
+    kind: z.literal('hook-failed'),
+    at: attentionTime,
+    hookId: z.string(),
+    hookName: z.string().nullable(),
+    gaveUp: z.boolean(),
+    status: z.number().int().nullable(),
+    host: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal('plugin-not-loaded'),
+    at: attentionTime.nullable(),
+    plugin: z.string(),
+    problems: z.array(z.string()),
+  }),
+  z.object({
+    kind: z.literal('no-provider'),
+    at: attentionTime.nullable(),
+    provider: z.string().nullable(),
+  }),
+]);
+
+/**
+ * One system problem that needs a person, as `bureau.health.attention` lists it: a rule that is
+ * firing (`alert`), a schedule that missed runs in the last seven days (`missed-runs`), an enabled
+ * hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load
+ * (`plugin-not-loaded`), or no model provider connected (`no-provider`). Only the fields a sentence
+ * about the problem needs are kept; the Bureau's own record has more.
+ */
+export type AttentionItem = z.infer<typeof attentionItemSchema>;
+
+/**
+ * Every problem that needs attention now, most recent first as the Bureau lists them. A kind this
+ * page has no words for is left out, since a row has to say what to look at; the Health dot still
+ * counts it. A caller without `bureau.diagnostics:read` is refused with a fault, which the caller
+ * lets through so a card can say it could not read them instead of claiming that nothing needs
+ * attention.
+ */
+export async function listAttentionItems(options?: {
+  readonly signal?: AbortSignal;
+  readonly fetch?: Fetcher;
+}): Promise<readonly AttentionItem[]> {
+  const { items } = attentionItemsSchema.parse(
+    await callBureau('bureau.health.attention', {}, options),
+  );
+  return items.flatMap((item) => {
+    const parsed = attentionItemSchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  });
+}

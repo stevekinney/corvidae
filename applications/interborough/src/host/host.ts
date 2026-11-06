@@ -96,6 +96,7 @@ import {
  * @module host
  */
 
+import type { Tool } from 'armorer';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
 import {
@@ -366,6 +367,13 @@ export type HostOptions = {
   >;
   /** Agents to define beside the ones the plugins contribute, for tests that need an agent of their own. */
   readonly extraAgents?: ExtraAgents;
+  /**
+   * Tools to offer beside the ones tool sources bring: an agent file may name them and the catalog
+   * lists them with their tier. The sample world's built-in tools (Lookup order, Issue refund and
+   * Triage refunds) are offered this way, so a screen that says whether a tool is dangerous can
+   * read it from the catalog.
+   */
+  readonly extraTools?: Readonly<Record<string, Tool>>;
   /** Egress policy for configured A2A peers; tests may allow an explicit loopback destination. */
   readonly a2aPeerEgressPolicy?: EgressPolicy;
   /** Fetch implementation for configured peers; used by end-to-end fixtures to observe requests. */
@@ -1091,6 +1099,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
       agentSource: createAgentSource(bungalow, agentContent, {
+        ...options.extraTools,
         ...sourceTools,
         ...peerTools,
       }),

@@ -82,6 +82,26 @@ Use `size="compact"` inside a tab or a panel, where the default page-region padd
 <EmptyState size="compact" title="No comments yet" description="Replies appear here." />
 ```
 
+Use `layout="row"` for a state that sits inside a card or a list in place of its rows. The disc and the words read from the start and the action sits at the end of the one line; on a phone the action drops under the words:
+
+```svelte
+<script lang="ts">
+  import { EmptyState, Link } from '@lostgradient/cinder';
+</script>
+
+<EmptyState
+  kind="done"
+  layout="row"
+  headingLevel={3}
+  title="Nothing is waiting on you"
+  description="Approvals and questions from your agents show up here."
+>
+  {#snippet action()}
+    <Link href="/reviews">Open Reviews</Link>
+  {/snippet}
+</EmptyState>
+```
+
 The `icon` snippet replaces the glyph in the disc. The description keeps a measure of 380px however wide the region is, and the action row wraps with even spacing.
 
 ## Props
@@ -97,6 +117,7 @@ The `icon` snippet replaces the glyph in the disc. The description keeps a measu
 | `description` | `string` | no | — | Secondary descriptive text rendered as a paragraph below the title. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the title element. |
 | `kind` | `"first-use"` \| `"filtered"` \| `"done"` \| `"blocked"` \| `"not-found"` \| `"disabled"` | no | `"first-use"` | Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked, not found or disabled). Every kind renders the `action` snippet; `'filtered'` also adds a secondary "Clear filters" button before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'` a quiet `Link`, and `'filtered'` the Clear filters button alone. |
+| `layout` | `"stacked"` \| `"row"` | no | `"stacked"` | Whether the state stacks its parts and centres them (`'stacked'`), or lays them on one row, with the disc and the words at the start and the action at the end (`'row'`). A row reads as the line of a list, such as "Nothing is waiting on you" with its link to the page that holds the rest, so it is the layout for a state inside a card. On a phone the action drops under the words. |
 | `size` | `"default"` \| `"compact"` | no | `"default"` | Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a tab or a panel rather than a whole page region. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
 | `action` | `(opaque)` | no | — | Call-to-action content rendered below the description, after the "Clear filters" button when both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for done, and a secondary button for a not-found or blocked state. Not expressible in JSON Schema; see the component types for the signature. |

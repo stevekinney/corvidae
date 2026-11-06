@@ -262,6 +262,53 @@ describe('a new chat', () => {
     expect(runs).toEqual([]);
   });
 
+  test('sends the message of Home’s Start a chat as the first message, once, and takes it out of the address', async () => {
+    const bodies: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
+    restore = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, id: 'thread-1', title: 'From Home' }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      },
+      (url, init) => {
+        if (!url.includes('/ag-ui/agents/')) return undefined;
+        const input = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+          threadId: string;
+          runId: string;
+          messages: Array<{ role: string; content: unknown }>;
+        };
+        bodies.push(input);
+        return sse([
+          { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Hello from the agent.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: input.threadId,
+            runId: input.runId,
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    ).restore;
+    landAt('/chats/new?agent=assistant&message=What+did+I+approve+yesterday%3F');
+    const { findByText } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    await findByText('Hello from the agent.');
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]?.messages.findLast((message) => message.role === 'user')?.content).toBe(
+      'What did I approve yesterday?',
+    );
+    // The message left the address as it was sent, so a reload does not start a second chat.
+    expect(router.current.search.has('message')).toBe(false);
+  });
+
   test('opens with an empty composer when no topic is named', async () => {
     restore = bureau({}).restore;
     landAt('/chats/new');

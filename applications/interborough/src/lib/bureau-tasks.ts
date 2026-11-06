@@ -158,6 +158,31 @@ export async function listTasks(
   return taskPageSchema.parse(await callBureau('bureau.tasks.list', input, options));
 }
 
+/** The states of a task that is going: it has started, or it is about to. A waiting task is neither. */
+const RUNNING_STATES = ['working', 'submitted'] as const satisfies readonly TaskState[];
+
+/**
+ * How many runs are running now (`bureau.tasks.list`): the tasks that are working or have not yet
+ * started, which a person reads as running. A run parked on a review or a question is waiting on a
+ * person, which is a different count, so it is not here. Every page is read, because the listing
+ * has no total.
+ */
+export async function countRunningTasks(options?: Options): Promise<number> {
+  let total = 0;
+  for (const status of RUNNING_STATES) {
+    let pageToken: string | undefined;
+    do {
+      const page = await listTasks(
+        { status, limit: 100, ...(pageToken === undefined ? {} : { pageToken }) },
+        options,
+      );
+      total += page.tasks.length;
+      pageToken = page.nextPageToken ?? undefined;
+    } while (pageToken !== undefined);
+  }
+  return total;
+}
+
 /**
  * Every child run started from any run in `contextId` (`bureau.tasks.list` with `parentContextId`,
  * COR-1987), read page by page. A reloaded chat shows the children of every run in its thread, not

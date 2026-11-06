@@ -115,6 +115,8 @@ export type CardProps = SharedHtmlAttributes &
     bodyTone?: CardTone;
     /** Footer surface treatment. `muted` renders a grey/inset footer region. */
     footerTone?: CardTone;
+    /** Header surface treatment. `muted` renders a grey/inset header region, for a card whose title row reads as a band over its rows. */
+    headerTone?: CardTone;
     /** Remove side borders/radius and bleed to the viewport edge on narrow screens. */
     edgeToEdgeOnMobile?: boolean;
     /** Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. */

@@ -25,11 +25,12 @@ describe('the views', () => {
 });
 
 describe('page width by kind of page', () => {
-  test('a list with its detail, a table and an editor are wide, and a form and prose read', () => {
+  test('a list with its detail, a table, an editor and an overview are wide, and a form and prose read', () => {
     expect(PAGE_KINDS.map((kind) => [kind, pageWidth(kind)])).toEqual([
       ['list-detail', 'full'],
       ['table', 'full'],
       ['editor', 'full'],
+      ['overview', 'full'],
       ['form', 'reading'],
       ['reading', 'reading'],
     ]);

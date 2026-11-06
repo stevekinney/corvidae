@@ -473,6 +473,19 @@ export function showcaseEchoGenerate(): GenerateFunction {
   };
 }
 
+/**
+ * The three tools Tool runner holds, as the catalog lists them (`HostOptions.extraTools`): Lookup
+ * order reads, Issue refund is dangerous, and Triage refunds changes things. They are the sample
+ * world's built-in tools, so a screen that says what a tool may do (Capabilities, and the line
+ * under a review that can't be undone) reads it from the catalog, as it would for a host's own.
+ */
+export function showcaseCatalogTools() {
+  const lookup = createShowcaseLookupOrderTool();
+  const refund = createShowcaseIssueRefundTool();
+  const triage = createShowcaseTriageRefundsTool();
+  return { [lookup.name]: lookup, [refund.name]: refund, [triage.name]: triage };
+}
+
 /** Tool runner's toolbox: its three tools, asked for as {@link SHOWCASE_TOOL_APPROVAL} says. */
 export function createShowcaseToolRunnerToolbox() {
   const tools = [

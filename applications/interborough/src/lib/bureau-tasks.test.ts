@@ -6,6 +6,7 @@ import type { Fetcher } from './bureau-client.ts';
 import {
   answerRefusalIssues,
   cancelTask,
+  countRunningTasks,
   followTaskEvents,
   getTask,
   inspectTaskStep,
@@ -386,6 +387,62 @@ describe('following a task', () => {
     );
     expect(opened).toEqual(['open']);
     expect(elements.map((element) => element.cursor)).toEqual(['16']);
+  });
+});
+
+describe('countRunningTasks', () => {
+  /** A Bureau holding `tasks`, which pages them two at a time and filters by `status` as it does. */
+  function holding(tasks: readonly Record<string, unknown>[]) {
+    const calls: Array<Record<string, unknown>> = [];
+    const stub: Fetcher = async (_input, init) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+        params: Record<string, unknown>;
+      };
+      calls.push(body.params);
+      const matching = tasks.filter((task) => task['status'] === body.params['status']);
+      const offset =
+        typeof body.params['pageToken'] === 'string' ? Number(body.params['pageToken']) : 0;
+      const page = matching.slice(offset, offset + 2);
+      return Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          tasks: page,
+          nextPageToken:
+            offset + page.length < matching.length ? String(offset + page.length) : null,
+        },
+      });
+    };
+    return { calls, fetch: stub };
+  }
+
+  test('counts the runs that are working or about to start, and never one waiting on a person', async () => {
+    const world = holding([
+      { ...TASK, id: 'a', status: 'working' },
+      { ...TASK, id: 'b', status: 'submitted' },
+      { ...TASK, id: 'c', status: 'input-required' },
+      { ...TASK, id: 'd', status: 'completed' },
+      { ...TASK, id: 'e', status: 'failed' },
+    ]);
+    expect(await countRunningTasks({ fetch: world.fetch })).toBe(2);
+    expect(world.calls.map((call) => call['status'])).toEqual(['working', 'submitted']);
+  });
+
+  test('reads every page, because the listing has no total', async () => {
+    const world = holding(
+      Array.from({ length: 5 }, (_, index) => ({
+        ...TASK,
+        id: `w${String(index)}`,
+        status: 'working',
+      })),
+    );
+    expect(await countRunningTasks({ fetch: world.fetch })).toBe(5);
+    // Three pages of working runs, then the one empty page of submitted ones.
+    expect(world.calls).toHaveLength(4);
+  });
+
+  test('is zero when nothing is going', async () => {
+    expect(await countRunningTasks({ fetch: holding([]).fetch })).toBe(0);
   });
 });
 

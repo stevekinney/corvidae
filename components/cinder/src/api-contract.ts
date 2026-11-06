@@ -208,6 +208,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       tone: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       bodyTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       footerTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      headerTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       edgeToEdgeOnMobile: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       padding: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
     },
@@ -263,6 +264,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       align: { optional: true, type_kind: 'TSTypeReference', default: L('center') },
       kind: { optional: true, type_kind: 'TSTypeReference', default: L('first-use') },
       size: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      layout: { optional: true, type_kind: 'TSTypeReference', default: L('stacked') },
       bordered: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onClearFilters: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       clearFiltersLabel: {

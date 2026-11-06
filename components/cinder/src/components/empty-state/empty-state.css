@@ -127,6 +127,77 @@
     margin-block-start: var(--cinder-space-2);
   }
 
+  /* A row lays the parts on one line: the disc, then the title over the description, then the
+   * action at the end. It is the line of a list, so it reads from the start and keeps the compact
+   * type whatever the size. A phone drops the action under the words. */
+  .cinder-empty-state[data-cinder-layout='row'] {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'icon title action'
+      'icon description action';
+    align-items: center;
+    justify-content: stretch;
+    column-gap: var(--cinder-space-3);
+    row-gap: 0;
+    min-block-size: 0;
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-4);
+    text-align: start;
+  }
+
+  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-icon {
+    grid-area: icon;
+    align-self: center;
+    margin-block-end: 0;
+    inline-size: var(--cinder-space-8);
+    block-size: var(--cinder-space-8);
+  }
+
+  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-icon > svg {
+    inline-size: var(--cinder-space-4);
+    block-size: var(--cinder-space-4);
+  }
+
+  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-title {
+    grid-area: title;
+    font-size: var(--cinder-text-base);
+  }
+
+  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-description {
+    grid-area: description;
+    max-inline-size: none;
+  }
+
+  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
+    grid-area: action;
+    justify-content: flex-end;
+    margin-block-start: 0;
+  }
+
+  /* Without a disc the words start in the first column. */
+  .cinder-empty-state[data-cinder-layout='row']:not(:has(.cinder-empty-state-icon)) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'title action'
+      'description action';
+  }
+
+  @media (max-width: 40rem) {
+    .cinder-empty-state[data-cinder-layout='row'] {
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas:
+        'icon title'
+        'icon description'
+        '. action';
+    }
+
+    .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
+      justify-content: flex-start;
+      margin-block-start: var(--cinder-space-2);
+    }
+  }
+
   @media (forced-colors: active) {
     .cinder-empty-state-icon {
       border: 1px solid CanvasText;

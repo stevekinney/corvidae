@@ -20,6 +20,13 @@ export type EmptyStateAlign = 'center' | 'start';
 export type EmptyStateKind =
   'first-use' | 'filtered' | 'done' | 'blocked' | 'not-found' | 'disabled';
 
+/**
+ * How an empty state is laid out: `'stacked'` centres the disc, title, description and action one
+ * under the other in the region; `'row'` puts them on one line, the disc and the words at the
+ * start and the action at the end, for a state that sits inside a card or list in place of its rows.
+ */
+export type EmptyStateLayout = 'stacked' | 'row';
+
 /** Scale of an empty state: `'default'` fills a page region, `'compact'` fits a tab or panel. */
 export type EmptyStateSize = 'default' | 'compact';
 
@@ -56,6 +63,14 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * @default 'default'
    */
   size?: EmptyStateSize;
+  /**
+   * Whether the state stacks its parts and centres them (`'stacked'`), or lays them on one row,
+   * with the disc and the words at the start and the action at the end (`'row'`). A row reads as
+   * the line of a list, such as "Nothing is waiting on you" with its link to the page that holds
+   * the rest, so it is the layout for a state inside a card. On a phone the action drops under the words.
+   * @default 'stacked'
+   */
+  layout?: EmptyStateLayout;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state.

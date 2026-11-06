@@ -7,7 +7,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { getAttentionCount, listAttentionAlerts } from './bureau-attention.ts';
+import { getAttentionCount, listAttentionAlerts, listAttentionItems } from './bureau-attention.ts';
 
 function answering(
   result: unknown,
@@ -129,5 +129,108 @@ describe('listAttentionAlerts', () => {
       () => 'refused',
     );
     expect(outcome).toBe('refused');
+  });
+});
+
+describe('listAttentionItems', () => {
+  const missed = {
+    kind: 'missed-runs',
+    area: 'schedules',
+    at: 900,
+    scheduleId: 's-1',
+    scheduleName: 'Daily summary',
+    count: 4,
+    since: 100,
+    occurrences: [{ occurrence: 100, count: 4 }],
+  };
+
+  test('lists every kind of problem with what a sentence about it needs, and nothing else', async () => {
+    const items = await listAttentionItems({
+      fetch: answering({
+        items: [
+          { kind: 'no-provider', area: 'providers', at: null, provider: null },
+          {
+            kind: 'alert',
+            area: 'storage',
+            at: 1_000,
+            metric: 'storage.size',
+            currentValue: 5,
+            threshold: 4,
+          },
+          missed,
+          {
+            kind: 'hook-failed',
+            area: 'hooks',
+            at: 800,
+            hookId: 'h-1',
+            hookName: 'Notify',
+            gaveUp: true,
+            status: 410,
+            host: 'hooks.example.test',
+            attempts: 8,
+            error: null,
+          },
+          {
+            kind: 'plugin-not-loaded',
+            area: 'plugins',
+            at: null,
+            plugin: 'voyage',
+            problems: ['x'],
+          },
+        ],
+        count: 5,
+        checks: [],
+      }),
+    });
+
+    expect(items.map((item) => item.kind)).toEqual([
+      'no-provider',
+      'alert',
+      'missed-runs',
+      'hook-failed',
+      'plugin-not-loaded',
+    ]);
+    // The threshold and the attempts are the Bureau's; Home states neither, so neither is kept.
+    expect(items[1]).toEqual({ kind: 'alert', at: 1_000, metric: 'storage.size', currentValue: 5 });
+    expect(items[2]).toEqual({
+      kind: 'missed-runs',
+      at: 900,
+      scheduleId: 's-1',
+      scheduleName: 'Daily summary',
+      count: 4,
+      since: 100,
+    });
+  });
+
+  test('leaves out a kind it has no words for, which the Health dot still counts', async () => {
+    const items = await listAttentionItems({
+      fetch: answering({
+        items: [{ kind: 'something-new', area: 'x', at: 1 }, missed],
+        count: 2,
+        checks: [],
+      }),
+    });
+    expect(items.map((item) => item.kind)).toEqual(['missed-runs']);
+  });
+
+  test('lists nothing when nothing needs attention, and lets a refusal through', async () => {
+    expect(
+      await listAttentionItems({ fetch: answering({ items: [], count: 0, checks: [] }) }),
+    ).toEqual([]);
+    const failure = await listAttentionItems({
+      fetch: async () =>
+        Response.json(
+          {
+            jsonrpc: '2.0',
+            id: 'bureau.health.attention',
+            error: { code: -32001, message: 'Forbidden', data: { httpStatus: 403 } },
+          },
+          { status: 403 },
+        ),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(HttpClientError);
   });
 });

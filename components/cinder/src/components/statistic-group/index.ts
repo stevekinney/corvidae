@@ -14,6 +14,7 @@ const StatisticGroup = Object.assign(StatisticGroupRoot, {
 export default StatisticGroup;
 export type {
   StatisticGroupColumns,
+  StatisticGroupEdge,
   StatisticGroupProps,
   StatisticGroupVariant,
 } from './statistic-group.types.ts';

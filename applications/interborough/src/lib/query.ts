@@ -58,6 +58,8 @@ export const queryKeys = {
     waiting: (contextIds: readonly string[]) => ['contexts', 'waiting', contextIds] as const,
     /** The newest chat, read by the first-run checklist to learn whether the person has had one. */
     firstRun: () => ['contexts', 'first-run'] as const,
+    /** The newest chats, for Home's Recent chats card (`bureau.contexts.list`). */
+    recent: (limit: number) => ['contexts', 'recent', limit] as const,
     /** Every session the caller owns, read to count and date each agent's chats. */
     usage: () => ['contexts', 'usage'] as const,
     /** The chats' titles, read by the notification feed to name what finished. */
@@ -173,6 +175,8 @@ export const queryKeys = {
     overlay: () => ['schedules', 'overlay'] as const,
     /** The newest fire each schedule that missed one recorded, for the bell. Under `list`, so a fleet event that changes the schedules reads it again. */
     missedFires: () => ['schedules', 'list', 'missed-fires'] as const,
+    /** The Bureau's own view of every schedule (`bureau.schedules.list`), for Home's missed-runs row. Under `list`, so a fleet event reads it again. */
+    bureau: () => ['schedules', 'list', 'bureau'] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,
@@ -218,12 +222,16 @@ export const queryKeys = {
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
     /** One step's reply details (`bureau.tasks.inspect` with `step`). */
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
+    /** How many runs are running now: working or not yet started, never waiting on a person. */
+    running: () => ['bureau-tasks', 'running'] as const,
   },
   /** What needs attention now (`bureau.health.attention`), for the sidebar's Health dot. */
   bureauAttention: {
     count: () => ['bureau-attention', 'count'] as const,
     /** The rules that are firing, for the notification bell. */
     alerts: () => ['bureau-attention', 'alerts'] as const,
+    /** Every problem, for Home's Needs attention card and the count that sums the missed runs. */
+    items: () => ['bureau-attention', 'items'] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {

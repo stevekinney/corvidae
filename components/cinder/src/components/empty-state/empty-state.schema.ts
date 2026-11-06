@@ -40,6 +40,12 @@ const schema = {
         "Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a\ntab or a panel rather than a whole page region.",
       default: 'default',
     },
+    layout: {
+      enum: ['stacked', 'row'],
+      description:
+        "Whether the state stacks its parts and centres them (`'stacked'`), or lays them on one row,\nwith the disc and the words at the start and the action at the end (`'row'`). A row reads as\nthe line of a list, such as \"Nothing is waiting on you\" with its link to the page that holds\nthe rest, so it is the layout for a state inside a card. On a phone the action drops under the words.",
+      default: 'stacked',
+    },
     bordered: {
       type: 'boolean',
       description:

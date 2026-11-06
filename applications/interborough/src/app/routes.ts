@@ -45,7 +45,7 @@ export const routes: readonly RouteDefinition[] = [
   // the view's name.
   {
     pattern: '/',
-    kind: 'reading',
+    kind: 'overview',
     view: 'home',
     load: () => import('../routes/home/index.svelte'),
   },

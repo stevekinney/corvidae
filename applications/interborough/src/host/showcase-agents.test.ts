@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { workflowFileDirectory } from '@lostgradient/bureau/sources';
 import { MemoryStorage } from '@lostgradient/storage';
+import { resolveCapabilityTier } from 'armorer';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
@@ -27,6 +28,7 @@ import {
   SHOWCASE_WORKFLOW_AUTHOR_REPLY,
   SHOWCASE_WORKFLOW_AUTHOR_TOOLS,
   showcaseBuiltInAgents,
+  showcaseCatalogTools,
   showcaseHumanInputGenerate,
   showcaseToolRunnerGenerate,
   toolRunnerLookupReply,
@@ -111,6 +113,21 @@ describe('the showcase built-in agents', () => {
       mutates: true,
       title: 'Triage refunds',
     });
+  });
+
+  test('are offered to the catalog by name, so a screen reads Issue refund as dangerous from it', () => {
+    const tools = showcaseCatalogTools();
+    expect(Object.keys(tools)).toEqual(['lookup-order', 'issue-refund', 'triage-refunds']);
+    expect(
+      Object.values(tools).map((tool) => [
+        tool.name,
+        resolveCapabilityTier(tool.metadata, tool.tags),
+      ]),
+    ).toEqual([
+      ['lookup-order', 'read-only'],
+      ['issue-refund', 'dangerous'],
+      ['triage-refunds', 'mutating'],
+    ]);
   });
 
   test('Assistant, Echo and Workflow author answer from their scripts', async () => {

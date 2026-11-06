@@ -45,6 +45,7 @@
     tone = 'default',
     bodyTone = 'default',
     footerTone = 'default',
+    headerTone = 'default',
     edgeToEdgeOnMobile = false,
     padding = 'default',
     edge = 'border',
@@ -113,11 +114,19 @@
     onclick={handleClick}
   >
     {#if header}
-      <div class="cinder-card__header" data-cinder-divider={headerDivider ? '' : undefined}>
+      <div
+        class="cinder-card__header"
+        data-cinder-divider={headerDivider ? '' : undefined}
+        data-cinder-tone={headerTone}
+      >
         {@render header()}
       </div>
     {:else if title}
-      <div class="cinder-card__header" data-cinder-divider={headerDivider ? '' : undefined}>
+      <div
+        class="cinder-card__header"
+        data-cinder-divider={headerDivider ? '' : undefined}
+        data-cinder-tone={headerTone}
+      >
         <div class="cinder-card__title-row">
           {#if tone === 'danger'}
             <span class="cinder-card__risk-icon" aria-hidden="true">
@@ -159,11 +168,13 @@
         id={customHeaderId}
         class="cinder-card__header"
         data-cinder-divider={headerDivider ? '' : undefined}
+        data-cinder-tone={headerTone}
       >
         {@render header()}
       </div>{:else if title}<div
         class="cinder-card__header"
         data-cinder-divider={headerDivider ? '' : undefined}
+        data-cinder-tone={headerTone}
       >
         <div class="cinder-card__title-row">
           {#if tone === 'danger'}<span class="cinder-card__risk-icon" aria-hidden="true"
@@ -209,11 +220,13 @@
     {#if header}<div
         class="cinder-card__header"
         data-cinder-divider={headerDivider ? '' : undefined}
+        data-cinder-tone={headerTone}
       >
         {@render header()}
       </div>{:else if title}<div
         class="cinder-card__header"
         data-cinder-divider={headerDivider ? '' : undefined}
+        data-cinder-tone={headerTone}
       >
         <div class="cinder-card__title-row">
           {#if tone === 'danger'}<span class="cinder-card__risk-icon" aria-hidden="true"

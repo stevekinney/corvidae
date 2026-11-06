@@ -40,6 +40,7 @@ import { workspacePlugins } from './plugins.ts';
 import {
   showcaseAgentScripts,
   showcaseBuiltInAgents,
+  showcaseCatalogTools,
   type ShowcaseAgentIdentifier,
   type ShowcasePacing,
 } from './showcase-agents.ts';
@@ -176,6 +177,7 @@ export function showcaseHostOptions(
 ): Pick<
   HostOptions,
   | 'extraAgents'
+  | 'extraTools'
   | 'resolveProviderGenerateFor'
   | 'nightlyCleanUp'
   | 'plugins'
@@ -186,6 +188,7 @@ export function showcaseHostOptions(
   const scripts = showcaseAgentScripts(pacing);
   return {
     extraAgents: showcaseBuiltInAgents(pacing, scripts),
+    extraTools: showcaseCatalogTools(),
     resolveProviderGenerateFor: (agentOfRun) => showcaseProviderResolver(agentOfRun, scripts),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
     plugins: showcasePlugins(),

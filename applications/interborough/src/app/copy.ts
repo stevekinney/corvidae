@@ -2031,6 +2031,110 @@ export const HEALTH_DIAGNOSTICS_COPY = {
   sections: 'Diagnostic sections',
 } as const;
 
+/**
+ * The words of Home (`/`): the date line, the four counts, what needs you, what needs attention,
+ * the box that starts a chat, and the chats you were last in. The four counts use the labels and
+ * windows the agreed design gives Health and Home both; Health says them in its own batch.
+ */
+export const HOME_COPY = {
+  /** The screen-reader heading; the breadcrumb already says Home, so none is drawn. */
+  heading: 'Home',
+  /** The accessible name of the four counts. */
+  countsLabel: 'Home counts',
+  counts: {
+    running: 'Running now',
+    needsYou: 'Needs you',
+    failed: 'Failed in 24 hours',
+    missed: 'Missed schedule runs (7 days)',
+  },
+  /** The value of a count that could not be read. */
+  unavailable: '—',
+  /** The words of a row's link to where the rest lives, such as "Open Reviews". */
+  needsYou: {
+    title: 'Needs you',
+    link: 'Open Reviews',
+    /** The accessible name of the list of reviews waiting on the person. */
+    listLabel: 'Reviews waiting on you',
+    empty: {
+      title: 'Nothing is waiting on you',
+      description: 'Approvals and questions from your agents show up here.',
+    },
+    answer: 'Answer',
+    review: 'Review',
+    kind: { approval: 'Approval', question: 'Question', workflow: 'Workflow review' },
+    cantBeUndone: 'Can’t be undone',
+    /** The line under the rows when more wait than Home lists. */
+    more: (count: number): string => `${String(count)} more in Reviews`,
+  },
+  attention: {
+    title: 'Needs attention',
+    link: 'Open Health',
+    listLabel: 'System problems',
+    /** The one line that stands for the card when nothing needs attention. */
+    clear: {
+      title: 'Nothing needs attention',
+      description: 'Storage, schedules, providers and hooks are fine.',
+    },
+    storage: {
+      title: 'Storage is over its warning level',
+      detail: (size: string): string => `${size} used`,
+      action: 'Review storage',
+    },
+    failureRate: {
+      title: 'Workflow failure rate is over its warning level',
+      detail: (rate: string): string => `${rate} of recent runs failed`,
+      action: 'Review health',
+    },
+    slowSteps: {
+      title: 'Slowest steps are over their warning level',
+      detail: (duration: string): string => `Slowest steps take ${duration}`,
+      action: 'Review health',
+    },
+    otherAlert: {
+      title: (metric: string): string => `${metric} is over its warning level`,
+      action: 'Review health',
+    },
+    missedRuns: {
+      title: (name: string, count: number, since: string): string =>
+        `${name} missed ${String(count)} ${count === 1 ? 'run' : 'runs'} since ${since}`,
+      /** What a schedule with no description of its own is called. */
+      unnamed: 'A schedule',
+      kind: 'Schedule',
+      action: 'View schedule',
+    },
+    hookFailed: {
+      title: (name: string, gaveUp: boolean): string =>
+        `${name}’s ${gaveUp ? 'delivery gave up' : 'last delivery failed'}`,
+      /** What a hook with no name of its own is called. */
+      unnamed: 'A hook',
+      action: 'View hook',
+    },
+    pluginNotLoaded: {
+      title: (plugin: string): string => `${plugin} did not load`,
+      action: 'View plugins',
+    },
+    noProvider: {
+      title: 'No model provider connected',
+      detail: 'Model agents can’t answer until one is connected. Assistant works now.',
+      action: 'Connect a provider',
+    },
+  },
+  startChat: {
+    title: 'Start a chat',
+    messageLabel: 'Message',
+    placeholder: 'Ask an agent to do something',
+    agentLabel: 'Agent',
+    send: 'Send',
+    /** The note beside the agent while the server is off, and Send is disabled with it. */
+    offNote: 'Off until it’s back',
+  },
+  recent: {
+    title: 'Recent chats',
+    link: 'All chats',
+    listLabel: 'Recent chats',
+  },
+} as const;
+
 /** The words of the Health overview: its health line, its four counts, and the recent-activity window. */
 export const HEALTH_OVERVIEW_COPY = {
   /** The accessible name of the four counts. */

@@ -39,10 +39,18 @@ export type ViewStateName = (typeof VIEW_STATES)[number];
 /**
  * What kind of page a route is (design row 17f). A page's width follows its kind, not its area:
  * `list-detail` is a list with the open item beside it, `table` is a page of rows read across,
- * `editor` is an editor with a side panel, `form` is a form filled in from top to bottom, and
- * `reading` is prose and cards read down the page.
+ * `editor` is an editor with a side panel, `overview` is cards read across the page in columns
+ * (Home), `form` is a form filled in from top to bottom, and `reading` is prose and cards read
+ * down the page.
  */
-export const PAGE_KINDS = ['list-detail', 'table', 'editor', 'form', 'reading'] as const;
+export const PAGE_KINDS = [
+  'list-detail',
+  'table',
+  'editor',
+  'overview',
+  'form',
+  'reading',
+] as const;
 
 export type PageKind = (typeof PAGE_KINDS)[number];
 

@@ -18,6 +18,7 @@
   export type {
     EmptyStateAlign,
     EmptyStateKind,
+    EmptyStateLayout,
     EmptyStateProps,
     EmptyStateSize,
   } from './empty-state.types.ts';
@@ -38,6 +39,7 @@
     align = 'center',
     kind = 'first-use',
     size = 'default',
+    layout = 'stacked',
     bordered = false,
     onClearFilters,
     clearFiltersLabel = 'Clear filters',
@@ -71,6 +73,7 @@
       : 'first-use',
   );
   const safeSize = $derived(size === 'compact' ? 'compact' : 'default');
+  const safeLayout = $derived(layout === 'row' ? 'row' : 'stacked');
   const showClearFilters = $derived(safeKind === 'filtered' && onClearFilters !== undefined);
   const showAction = $derived(action !== undefined);
   // First use shows the view's own icon, so it has no default glyph; every other kind is a state
@@ -85,6 +88,7 @@
   data-cinder-align={align === 'start' ? 'start' : undefined}
   data-cinder-kind={safeKind}
   data-cinder-size={safeSize}
+  data-cinder-layout={safeLayout === 'row' ? 'row' : undefined}
   data-cinder-bordered={bordered ? '' : undefined}
   aria-labelledby={titleId}
 >
