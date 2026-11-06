@@ -8,6 +8,8 @@ import type { StatusDotStatus } from '@lostgradient/cinder';
 
 import { nameList, PLUGINS_COPY, RESTART_COPY } from '../../../app/copy.ts';
 import type { RestartIntent } from '../../../app/restart/host-restart-flow.svelte.ts';
+import type { AgentListing } from '../../../lib/agent-definitions.ts';
+import { agentLabel } from '../../../lib/agent-label.ts';
 import type {
   PluginContribution,
   PluginProblem,
@@ -173,6 +175,28 @@ export function contributionGroups(
       : kind,
     items: groups.get(kind) ?? [],
   }));
+}
+
+/**
+ * The agents a disabled plugin holds back, named as a person reads them: its own agents (the
+ * identifiers that start with `<name>:`) that the catalog lists unavailable, where no available
+ * agent has the same name.
+ */
+export function heldBackAgents(
+  pluginName: string,
+  agents: readonly Pick<AgentListing, 'id' | 'name' | 'state'>[],
+): string[] {
+  const available = new Set(
+    agents.filter((agent) => agent.state === 'ready').map((agent) => agent.name),
+  );
+  return agents
+    .filter(
+      (agent) =>
+        agent.state === 'unavailable' &&
+        agent.id.startsWith(`${pluginName}:`) &&
+        !available.has(agent.name),
+    )
+    .map((agent) => agentLabel(agent.name, undefined));
 }
 
 /** The sum of what names each thing a plugin adds. */

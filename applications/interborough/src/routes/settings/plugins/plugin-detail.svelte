@@ -6,8 +6,9 @@
    * as a form with an explicit Save, its secrets, and what uses it. A plugin that is switched off
    * says what it holds back; one that needs a key says where the key goes and offers the one action.
    *
-   * The switch edits the page's drafts (`plugin-drafts.svelte.ts`) and writes nothing; turning a
-   * running plugin off asks first. A secret is saved at once, because it needs no restart. A plugin
+   * The switch writes nothing itself: turning a plugin on or off asks first, in a confirmation that
+   * says what the restart does, and putting a switch back to what the host stores only drops the
+   * page's draft (`plugin-drafts.svelte.ts`). A secret is saved at once, because it needs no restart. A plugin
    * the host requires has no switch.
    */
   import { Button, SectionHeading, StatusDot, Toggle } from '@lostgradient/cinder';
@@ -15,15 +16,16 @@
 
   import { PLUGINS_COPY } from '../../../app/copy.ts';
   import { listAgentDefinitions } from '../../../lib/agent-definitions.ts';
-  import { agentLabel } from '../../../lib/agent-label.ts';
   import { listSkills } from '../../../lib/bureau-skills.ts';
   import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import PluginConfiguration from './plugin-configuration.svelte';
   import type { PluginDrafts } from './plugin-drafts.svelte.ts';
   import PluginProblemCard from './plugin-problem-card.svelte';
+  import { focusConfiguration } from './focus-configuration.ts';
   import {
     contributionGroups,
+    heldBackAgents,
     inUseSentence,
     providerOf,
     secretsDirectory,
@@ -38,6 +40,13 @@
     locked: boolean;
     /** Asked when a person turns the plugin off, which needs their say-so first. */
     onDisable: (plugin: PluginStanding) => void;
+    /** Asked when a person turns the plugin on, which restarts Interborough and so needs their say-so first. */
+    onEnable: (plugin: PluginStanding) => void;
+    /**
+     * Whether the page lists every plugin's problems above the list, so this plugin does not draw
+     * them again.
+     */
+    problemsListed?: boolean;
     /** Asked when a person adds or replaces one of the plugin's secrets. */
     onSecret: (plugin: PluginStanding, key: string) => void;
     /** Asked when a person adds the key of a model provider's plugin, which is tested before it is saved. */
@@ -49,7 +58,17 @@
     showBoth: (plugin: PluginStanding, problem: PluginProblem) => (() => void) | undefined;
   }
 
-  let { plugin, drafts, locked, onDisable, onSecret, onConnect, showBoth }: Props = $props();
+  let {
+    plugin,
+    drafts,
+    locked,
+    onDisable,
+    onEnable,
+    problemsListed = false,
+    onSecret,
+    onConnect,
+    showBoth,
+  }: Props = $props();
 
   const copy = PLUGINS_COPY;
   const name = $derived(plugin.descriptor.name);
@@ -89,24 +108,13 @@
   );
 
   /** The agents the plugin holds back while it is off: its own, with no available agent of the same name. */
-  const heldBack = $derived.by((): string[] => {
-    const all = agents.data ?? [];
-    const available = new Set(
-      all.filter((agent) => agent.state === 'ready').map((agent) => agent.name),
-    );
-    return all
-      .filter(
-        (agent) =>
-          agent.state === 'unavailable' &&
-          agent.id.startsWith(`${name}:`) &&
-          !available.has(agent.name),
-      )
-      .map((agent) => agentLabel(agent.name, undefined));
-  });
+  const heldBack = $derived(heldBackAgents(name, agents.data ?? []));
 
   const inUse = $derived(inUseSentence(plugin));
   /** The problems the page draws as cards here; a missing secret is the Secrets section's to say. */
-  const problems = $derived(plugin.problems.filter((problem) => problem.code !== 'secret-missing'));
+  const problems = $derived(
+    problemsListed ? [] : plugin.problems.filter((problem) => problem.code !== 'secret-missing'),
+  );
   /**
    * The secrets a person is shown: all but one the host creates itself (`generated`) that it has not
    * created yet, which it does when the plugin is first enabled and nobody types.
@@ -119,24 +127,18 @@
     status.label !== copy.status.running && status.label !== copy.status.disabled,
   );
 
-  /** Moves to the configuration, which is where a setting the host refused is fixed. */
-  function focusConfiguration(): void {
-    const form = document.querySelector(
-      `[data-plugin-detail="${CSS.escape(name)}"] input, [data-plugin-detail="${CSS.escape(name)}"] select`,
-    );
-    if (form instanceof HTMLElement) form.focus();
-  }
-
   /**
-   * Turning a plugin on, or back to what is stored, only changes the draft. Turning off a plugin
-   * the host has on is a real disable: it asks first, so the switch is held where it is.
+   * Turning a plugin on or off is a restart, so it asks first and the switch is held where it is
+   * until the question is answered. Putting a switch back to what the host stores, which only a
+   * draft left by a restart that did not finish can ask for, just drops the draft.
    */
   function request(next: boolean): boolean {
-    if (next || !plugin.enabled) {
+    if (next === plugin.enabled) {
       drafts.setEnabled(plugin, next);
       return next;
     }
-    onDisable(plugin);
+    if (next) onEnable(plugin);
+    else onDisable(plugin);
     return enabled;
   }
 
@@ -186,9 +188,10 @@
   {#each problems as problem, index (index)}
     <PluginProblemCard
       {problem}
+      {plugin}
       {locked}
       onSecret={(key) => onSecret(plugin, key)}
-      onFixSetting={focusConfiguration}
+      onFixSetting={() => focusConfiguration(name)}
       onShowBoth={showBoth(plugin, problem)}
     />
   {/each}

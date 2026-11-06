@@ -6,6 +6,7 @@ import type { PluginStanding } from '../../../lib/host-plugins.ts';
 import {
   contributionGroups,
   disableImpacts,
+  heldBackAgents,
   humanizeName,
   identifierOf,
   inUseSentence,
@@ -246,14 +247,79 @@ describe('unavailableAfterDisable', () => {
   });
 });
 
+describe('heldBackAgents', () => {
+  const listing = (id: string, name: string, state: 'ready' | 'unavailable') => ({
+    id,
+    name,
+    state,
+  });
+
+  test('names the plugin’s own unavailable agents as a person reads them', () => {
+    expect(
+      heldBackAgents('demo', [
+        listing('demo:release-helper', 'release-helper', 'unavailable'),
+        listing('demo:changelog-writer', 'changelog-writer', 'unavailable'),
+        listing('other:thing', 'thing', 'unavailable'),
+        listing('demo:echo', 'echo', 'ready'),
+      ]),
+    ).toEqual(['Release helper', 'Changelog writer']);
+  });
+
+  test('leaves out an agent that an available agent of the same name stands in for', () => {
+    expect(
+      heldBackAgents('demo', [
+        listing('demo:echo', 'echo', 'unavailable'),
+        listing('echo', 'echo', 'ready'),
+      ]),
+    ).toEqual([]);
+  });
+});
+
 describe('problemView', () => {
+  test('names what waits for a missing secret as a person reads it, given the plugin', () => {
+    const gemini = standing({
+      name: 'gemini',
+      title: 'Gemini',
+      status: 'needs-setup',
+      contributions: [
+        contribution('provider', 'gemini:gemini'),
+        contribution('embedder', 'gemini:embedder'),
+      ],
+    });
+    const view = problemView(
+      {
+        code: 'secret-missing',
+        key: 'gemini-api-key',
+        contributions: ['gemini:gemini', 'gemini:embedder'],
+      },
+      gemini,
+    );
+    expect(view.body).toBe(
+      'gemini-api-key isn’t saved, so Gemini models and embeddings are unavailable. Save it and they work at once, with no restart.',
+    );
+    expect(view.status).toEqual({ label: 'Needs setup', dot: 'neutral' });
+    const typesafe = standing({
+      name: 'typesafe',
+      title: 'TypeSafe',
+      contributions: [contribution('decision-router', 'typesafe:jev', {}, 'Jev')],
+    });
+    expect(
+      problemView(
+        { code: 'secret-missing', key: 'typesafe-api-key', contributions: ['typesafe:jev'] },
+        typesafe,
+      ).body,
+    ).toBe(
+      'typesafe-api-key isn’t saved, so Jev is unavailable. Save it and it works at once, with no restart.',
+    );
+  });
+
   test('gives each code its status, title, body and action', () => {
     expect(
       problemView({ code: 'secret-missing', key: 'k-api-key', contributions: ['k:a'] }),
     ).toEqual({
-      status: { label: 'Needs setup', dot: 'warning' },
+      status: { label: 'Needs setup', dot: 'neutral' },
       title: 'A secret isn’t saved yet',
-      body: 'k-api-key isn’t saved, so k:a is unavailable. Save it and it works at once; no restart.',
+      body: 'k-api-key isn’t saved, so k:a is unavailable. Save it and it works at once, with no restart.',
       action: { kind: 'secret', label: 'Add the key', key: 'k-api-key' },
     });
     expect(problemView({ code: 'reference-unresolved', file: 'x:t', id: 'x:y' })).toMatchObject({
@@ -306,7 +372,7 @@ describe('problemView', () => {
       'The built-in x plugin and the built-in x plugin are both named x. The built-in x plugin loaded; rename the other.',
     );
     expect(problemView({ code: 'secret-missing', key: 'k' }).body).toBe(
-      'k isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.',
+      'k isn’t saved, so what this plugin adds is unavailable. Save it and it works at once, with no restart.',
     );
   });
 });

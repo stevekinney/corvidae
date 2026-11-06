@@ -59,11 +59,12 @@
 {#if count > 0 && !dismissed}
   <Banner
     variant="warning"
+    title={copy.message(count)}
     aria-label={copy.label}
     data-testid="plugins-startup-banner"
     onDismiss={() => (dismissed = true)}
   >
-    {copy.message(count)}
+    {copy.consequence(count)}
     {#snippet actions()}
       <Button variant="secondary" size="sm" href={router.href(path)} onclick={open}
         >{copy.action}</Button

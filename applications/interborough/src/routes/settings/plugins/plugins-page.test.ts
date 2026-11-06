@@ -190,6 +190,18 @@ async function restartNow(container: HTMLElement): Promise<void> {
   );
 }
 
+/** The enable question, once the switch of a disabled plugin has been pressed. */
+const enableQuestion = (container: HTMLElement, plugin: string) =>
+  bodyOf(container).findByRole('dialog', { name: PLUGINS_COPY.enable.title(plugin) });
+
+/** Confirms the enable question: it writes the choice and restarts, with no second question. */
+async function confirmEnable(container: HTMLElement, plugin = 'Demo'): Promise<void> {
+  const question = await enableQuestion(container, plugin);
+  await fireEvent.click(
+    within(question).getByRole('button', { name: PLUGINS_COPY.enable.confirm }),
+  );
+}
+
 /** The restart dialog's card, which carries the phase it shows. */
 async function restartCard(container: HTMLElement): Promise<HTMLElement> {
   return waitFor(() => {
@@ -574,38 +586,7 @@ describe('the restart notice', () => {
 
     await waitFor(() => expect(banner(container)?.textContent).toContain(BANNER.title(1)));
     await fireEvent.click(rowOf(container, 'demo')!);
-    await fireEvent.click(
-      within(container.querySelector('[data-plugin-detail="demo"]')!).getByRole('switch', {
-        name: PLUGINS_COPY.disabled,
-      }),
-    );
     expect(banner(container)?.textContent).toContain('Workflow claim renew interval');
-  });
-
-  test('turning a plugin on is a change that waits, counted with its name, and Revert drops it without writing', async () => {
-    const { container, getByRole } = open('demo');
-    await loaded(container, 'demo');
-    expect(bannerText(container)).toBeNull();
-
-    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
-
-    await waitFor(() => expect(bannerText(container)).not.toBeNull());
-    expect(banner(container)?.textContent).toContain(BANNER.title(1));
-    expect(banner(container)?.textContent).toContain('Demo');
-    expect(rowOf(container, 'demo')?.textContent).toContain(
-      PLUGINS_COPY.status.enabledAfterRestart,
-    );
-    expect(writes()).toEqual([]);
-
-    await fireEvent.click(
-      within(banner(container)!).getByRole('button', { name: BANNER.revert(1) }),
-    );
-
-    await waitFor(() => expect(bannerText(container)).toBeNull());
-    expect(getByRole('switch', { name: PLUGINS_COPY.disabled }).getAttribute('aria-checked')).toBe(
-      'false',
-    );
-    expect(writes()).toEqual([]);
   });
 
   test('counts a change the host already holds that the running host has not loaded', async () => {
@@ -664,7 +645,11 @@ describe('disabling a plugin', () => {
     await loaded(container, 'anthropic');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
     const dialog = await bodyOf(container).findByRole('dialog');
-    expect(dialog.textContent).toContain(PLUGINS_COPY.disable.nothing);
+    expect(dialog.textContent).toContain(PLUGINS_COPY.disable.intro);
+    expect(dialog.textContent).toContain(
+      `${PLUGINS_COPY.disable.nothingLead}${PLUGINS_COPY.disable.nothing('Anthropic')}`,
+    );
+    expect(dialog.textContent).toContain(PLUGINS_COPY.disable.reassurance);
     expect(dialog.querySelectorAll('li')).toHaveLength(0);
 
     await fireEvent.click(
@@ -700,11 +685,92 @@ describe('disabling a plugin', () => {
   });
 });
 
-describe('restarting', () => {
-  test('Restart now asks first, and nothing is written or restarted until it is confirmed', async () => {
+describe('enabling a plugin', () => {
+  const demoAgents: AgentListing[] = [
+    { id: 'demo:release-helper', name: 'release-helper', state: 'unavailable' },
+    { id: 'demo:changelog-writer', name: 'changelog-writer', state: 'unavailable' },
+  ];
+
+  test('asks first, in a confirm dialog that says what comes back and that Interborough restarts, and writes nothing yet', async () => {
+    const { container, getByRole } = open('demo', fixtures(), { agents: demoAgents });
+    await loaded(container, 'demo');
+
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
+
+    const question = await enableQuestion(container, 'Demo');
+    await waitFor(() => expect(question.textContent).toContain('Release helper'));
+    expect(question.textContent).toContain(
+      'Interborough restarts to load it. Release helper and Changelog writer become available again. Running work picks up where it stopped; reviews stay waiting.',
+    );
+    expect(question.className).toContain('cinder-confirm-dialog');
+    expect(
+      within(question).getByRole('button', { name: PLUGINS_COPY.enable.cancel }),
+    ).not.toBeNull();
+    expect(
+      within(question).getByRole('button', { name: PLUGINS_COPY.enable.confirm }),
+    ).not.toBeNull();
+    expect(writes()).toEqual([]);
+    expect(bannerText(container)).toBeNull();
+  });
+
+  test('says only that it restarts when the plugin holds nothing back', async () => {
     const { container, getByRole } = open('demo');
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
+
+    const question = await enableQuestion(container, 'Demo');
+    expect(question.textContent).toContain(
+      'Interborough restarts to load it. Running work picks up where it stopped; reviews stay waiting.',
+    );
+    expect(question.textContent).not.toContain('available again');
+  });
+
+  test('Cancel leaves the plugin off and writes nothing', async () => {
+    const { container, getByRole } = open('demo');
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
+    const question = await enableQuestion(container, 'Demo');
+
+    await fireEvent.click(
+      within(question).getByRole('button', { name: PLUGINS_COPY.enable.cancel }),
+    );
+
+    await waitFor(() =>
+      expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(getByRole('switch', { name: PLUGINS_COPY.disabled }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(writes()).toEqual([]);
+    expect(bannerText(container)).toBeNull();
+  });
+
+  test('turning a plugin on again after a restart that did not finish only drops the held choice', async () => {
+    const { container, getByRole } = open('demo');
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
+    host!.refuseNext = Response.json({ error: 'failed', message: '' }, { status: 500 });
+    await confirmEnable(container);
+    await waitFor(() => expect(bannerText(container)).not.toBeNull());
+
+    // The choice is still held and counted; putting the switch back asks nothing and writes nothing.
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+
+    await waitFor(() => expect(bannerText(container)).toBeNull());
+    expect(bodyOf(container).queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('restarting', () => {
+  test('Restart now asks first, and nothing is written or restarted until it is confirmed', async () => {
+    const { container } = open('linear');
+    await loaded(container, 'linear');
+    await fireEvent.input(fieldOf(container, 'teamKey').querySelector('input')!, {
+      target: { value: 'ENG' },
+    });
+    await fireEvent.click(saveButton(container));
+    await waitFor(() => expect(bannerText(container)).not.toBeNull());
+    const before = writes().length;
     await fireEvent.click(
       within(banner(container)!).getByRole('button', { name: RESTART_COPY.confirm.confirm }),
     );
@@ -721,16 +787,16 @@ describe('restarting', () => {
     await waitFor(() =>
       expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull(),
     );
-    expect(writes()).toEqual([]);
+    expect(writes()).toHaveLength(before);
+    expect(writes().filter((request) => request.path === '/host/restart')).toHaveLength(0);
   });
 
-  test('Restart now writes the switches, posts to the restart route, and says what applied once the host answers again', async () => {
+  test('Enable and restart writes the switch, posts to the restart route, and says what applied once the host answers again', async () => {
     const { container, getByRole } = open('demo');
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
-    await waitFor(() => expect(bannerText(container)).not.toBeNull());
 
-    await restartNow(container);
+    await confirmEnable(container);
 
     const back = await backBanner(container);
     expect(writes()).toEqual([
@@ -774,7 +840,7 @@ describe('restarting', () => {
     const { container, getByRole } = open('demo', fixtures(), { downFor: 1 });
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
-    await restartNow(container);
+    await confirmEnable(container);
 
     const card = await restartCard(container);
     await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('reconnecting'));
@@ -789,7 +855,7 @@ describe('restarting', () => {
     const { container, getByRole } = open('demo', fixtures(), { downFor: 1_000 });
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
-    await restartNow(container);
+    await confirmEnable(container);
 
     const card = await restartCard(container);
     await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('failed'));
@@ -810,7 +876,7 @@ describe('restarting', () => {
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
     host!.refuseNext = Response.json({ error: 'failed', message: '' }, { status: 500 });
 
-    await restartNow(container);
+    await confirmEnable(container);
 
     await waitFor(() =>
       expect(container.querySelector('[data-testid="plugins-restart-refused"]')).not.toBeNull(),
@@ -827,7 +893,7 @@ describe('restarting', () => {
     await loaded(container, 'demo');
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
 
-    await restartNow(container);
+    await confirmEnable(container);
 
     const notice = await waitFor(() => {
       const found = container.querySelector<HTMLElement>(
@@ -846,7 +912,7 @@ describe('restarting', () => {
     await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.disabled }));
     host!.refuseRestart = Response.json({ error: 'failed', message: '' }, { status: 404 });
 
-    await restartNow(container);
+    await confirmEnable(container);
 
     await waitFor(() =>
       expect(container.querySelector('[data-testid="settings-restart-refused"]')).not.toBeNull(),
@@ -1094,18 +1160,122 @@ describe('problems', () => {
     await loaded(container, 'linear');
     await fireEvent.click(container.querySelectorAll('[data-plugin-row="linear"]')[1]!);
     await waitFor(() =>
-      expect(container.querySelector('[data-plugin-detail] [data-plugin-problem]')).not.toBeNull(),
+      expect(
+        container.querySelector('[data-testid="plugins-attention"] [data-plugin-problem]'),
+      ).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-plugin-detail]')?.textContent).toContain(
+      '/home/plugins/linear',
     );
 
     await fireEvent.click(getByRole('button', { name: 'Show both' }));
 
     await waitFor(() =>
-      expect(container.querySelectorAll('[data-plugin-detail] [data-plugin-problem]')).toHaveLength(
-        0,
+      expect(container.querySelector('[data-plugin-detail]')?.textContent).toContain(
+        '@lostgradient/plugin-linear',
       ),
     );
-    expect(container.querySelector('[data-plugin-detail]')?.textContent).toContain(
-      '@lostgradient/plugin-linear',
+  });
+});
+
+describe('after a startup with problems', () => {
+  const startup = (): PluginFixture[] => [
+    {
+      name: 'gemini',
+      title: 'Gemini',
+      status: 'needs-setup',
+      contributions: [
+        contribution('provider', 'gemini:gemini'),
+        contribution('embedder', 'gemini:embedder'),
+      ],
+      secrets: [{ key: 'gemini-api-key', set: false }],
+      problems: [
+        {
+          code: 'secret-missing',
+          key: 'gemini-api-key',
+          contributions: ['gemini:gemini', 'gemini:embedder'],
+        },
+      ],
+    },
+    {
+      name: 'web-search',
+      title: 'Web search',
+      status: 'skipped',
+      configurationSchema: LINEAR_SCHEMA,
+      configuration: { teamKey: 'x' },
+      secrets: [{ key: 'web-search-key', set: false }],
+      problems: [
+        {
+          code: 'configuration-invalid',
+          field: '',
+          message: 'Search address must start with https://. You entered “search.example.com”.',
+        },
+        { code: 'secret-missing', key: 'web-search-key', contributions: [] },
+      ],
+    },
+  ];
+  const attention = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="plugins-attention"]');
+
+  test('lists each plugin’s problems under its name, with the neutral and the red status and one button each', async () => {
+    const { container } = open('web-search', startup());
+    await loaded(container, 'web-search');
+
+    const cards = [...attention(container)!.querySelectorAll<HTMLElement>('[data-plugin-problem]')];
+    expect(cards).toHaveLength(3);
+    const gemini = cards[0]!;
+    expect(gemini.textContent).toContain('Gemini');
+    expect(gemini.textContent).toContain('Needs setup');
+    expect(gemini.textContent).toContain('A secret isn’t saved yet');
+    expect(gemini.textContent).toContain(
+      'gemini-api-key isn’t saved, so Gemini models and embeddings are unavailable. Save it and they work at once, with no restart.',
     );
+    expect(gemini.querySelector('[data-cinder-status]')?.getAttribute('data-cinder-status')).toBe(
+      'neutral',
+    );
+    expect(within(gemini).getByRole('button', { name: 'Add the key' })).not.toBeNull();
+    const search = cards[1]!;
+    expect(search.textContent).toContain('Web search');
+    expect(search.textContent).toContain('Not loaded');
+    expect(search.textContent).toContain('A setting is invalid');
+    expect(search.textContent).toContain(
+      'Search address must start with https://. You entered “search.example.com”.',
+    );
+    expect(search.querySelector('[data-cinder-status]')?.getAttribute('data-cinder-status')).toBe(
+      'danger',
+    );
+    expect(within(search).getByRole('button', { name: 'Fix the setting' })).not.toBeNull();
+    // The plugin's own page does not draw them a second time.
+    expect(detailOf(container).querySelector('[data-plugin-problem]')).toBeNull();
+  });
+
+  test('Add the key opens the dialog that saves the secret, and Fix the setting opens the plugin’s form', async () => {
+    const { container } = open('gemini', startup());
+    await loaded(container, 'gemini');
+    const cards = [...attention(container)!.querySelectorAll<HTMLElement>('[data-plugin-problem]')];
+
+    await fireEvent.click(within(cards[2]!).getByRole('button', { name: 'Add the key' }));
+    const dialog = await bodyOf(container).findByRole('dialog');
+    expect(dialog.textContent).toContain(PLUGINS_COPY.secrets.dialog.title('web-search-key'));
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: PLUGINS_COPY.secrets.dialog.cancel }),
+    );
+
+    await fireEvent.click(within(cards[1]!).getByRole('button', { name: 'Fix the setting' }));
+    await waitFor(() =>
+      expect(container.querySelector('[data-plugin-detail="web-search"]')).not.toBeNull(),
+    );
+    await waitFor(() =>
+      expect(container.ownerDocument.activeElement).toBe(
+        fieldOf(container, 'teamKey').querySelector('input'),
+      ),
+    );
+  });
+
+  test('draws no list while every plugin loaded, whatever else is wrong with them', async () => {
+    const { container } = open('gemini', [startup()[0]!]);
+    await loaded(container, 'gemini');
+
+    expect(attention(container)).toBeNull();
   });
 });

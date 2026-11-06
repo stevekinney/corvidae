@@ -51,7 +51,10 @@ describe('the plugins that did not load banner', () => {
 
     await waitFor(() => expect(region()).not.toBeNull());
     expect(region()?.textContent).toContain(
-      '3 plugins didn’t load at startup. Agents and workflows that use them show as unavailable.',
+      '3 plugins need attention after a startup with problems',
+    );
+    expect(region()?.textContent).toContain(
+      'Agents and workflows that use them show as unavailable.',
     );
   });
 
@@ -60,7 +63,10 @@ describe('the plugins that did not load banner', () => {
 
     await waitFor(() => expect(region()).not.toBeNull());
     expect(region()?.textContent).toContain(
-      '1 plugin didn’t load at startup. Agents and workflows that use it show as unavailable.',
+      '1 plugin needs attention after a startup with problems',
+    );
+    expect(region()?.textContent).toContain(
+      'Agents and workflows that use it show as unavailable.',
     );
   });
 

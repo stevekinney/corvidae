@@ -2008,10 +2008,13 @@ export const PLUGINS_COPY = {
     refused: 'This host cannot restart itself. Restart it where it runs.',
     unreachable: 'Interborough did not answer, so it was not asked to restart. Try again.',
   },
+  /** The question before a plugin is turned off (row 49x): a Cinder confirm dialog that lists what depends on it. */
   disable: {
     title: (name: string): string => `Disable ${name}?`,
-    intro: 'Interborough restarts to unload it. These depend on it now:',
-    nothing: 'Nothing depends on it now.',
+    intro: 'Interborough restarts to unload it. What depends on it:',
+    /** The bold word that leads the sentence when nothing depends on the plugin. */
+    nothingLead: 'Nothing',
+    nothing: (title: string): string => ` uses ${title} yet, so nothing becomes unavailable.`,
     agents: (count: number, ids: string): string =>
       count === 1 ? `uses ${ids} and shows as unavailable.` : `use ${ids} and show as unavailable.`,
     schedules: (count: number, ids: string): string =>
@@ -2027,12 +2030,28 @@ export const PLUGINS_COPY = {
     cancel: 'Cancel',
     confirm: 'Disable and restart',
   },
+  /** The question before a disabled plugin is turned on (row 51b): what becomes available again, and that it restarts. */
+  enable: {
+    title: (name: string): string => `Enable ${name}?`,
+    /** The sentence before what comes back; with nothing to name, it stands alone. */
+    intro: 'Interborough restarts to load it.',
+    /** What the plugin's agents do once it is on: "Release helper and Changelog writer become available again." */
+    available: (names: readonly string[]): string =>
+      `${nameList(names)} ${names.length === 1 ? 'becomes' : 'become'} available again.`,
+    /** What a restart does to running work, which every restart says. */
+    work: 'Running work picks up where it stopped; reviews stay waiting.',
+    alsoWrites: 'Restarting also saves these changes, which are waiting:',
+    cancel: 'Cancel',
+    confirm: 'Enable and restart',
+  },
   /**
    * One card per problem code (COR-1895). The table of the first six is the owner's wording
    * (Interborough plugins, boards 26–28); the cards after `developmentSource` are for codes the
    * host added later, in the same voice. A body is a function of the fields its code carries.
    */
   problems: {
+    /** The accessible name of the list the Plugins page opens with after a startup with problems. */
+    listLabel: 'Plugins that need attention',
     title: 'Needs attention',
     unknown: (code: string): string => `Reported as ${code}.`,
     /** The status of a problem whose code this page has no words for. */
@@ -2040,11 +2059,14 @@ export const PLUGINS_COPY = {
     secretMissing: {
       status: 'Needs setup',
       title: 'A secret isn’t saved yet',
-      body: (key: string, what: string): string =>
-        `${key} isn’t saved, so ${what} is unavailable. Save it and it works at once; no restart.`,
+      /** `plural` is whether what waits reads as more than one thing ("Gemini models and embeddings"). */
+      body: (key: string, what: string, plural: boolean): string =>
+        plural
+          ? `${key} isn’t saved, so ${what} are unavailable. Save it and they work at once, with no restart.`
+          : `${key} isn’t saved, so ${what} is unavailable. Save it and it works at once, with no restart.`,
       /** The body when the host lists nothing that waits for the secret. */
       bodyWithoutContributions: (key: string): string =>
-        `${key} isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.`,
+        `${key} isn’t saved, so what this plugin adds is unavailable. Save it and it works at once, with no restart.`,
       action: 'Add the key',
     },
     configurationInvalid: {
@@ -2131,8 +2153,13 @@ export const PLUGINS_COPY = {
     label: 'Plugins that did not load',
     message: (count: number): string =>
       count === 1
-        ? '1 plugin didn’t load at startup. Agents and workflows that use it show as unavailable.'
-        : `${String(count)} plugins didn’t load at startup. Agents and workflows that use them show as unavailable.`,
+        ? '1 plugin needs attention after a startup with problems'
+        : `${String(count)} plugins need attention after a startup with problems`,
+    /** The second line, which says what the problems mean for the work that uses the plugins. */
+    consequence: (count: number): string =>
+      count === 1
+        ? 'Agents and workflows that use it show as unavailable.'
+        : 'Agents and workflows that use them show as unavailable.',
     action: 'Open Plugins',
   },
   unloaded: {

@@ -23,7 +23,7 @@
     StatusDot,
   } from '@lostgradient/cinder';
   import { useQueryClient, type CreateQueryResult } from '@tanstack/svelte-query';
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
 
   import { PLUGINS_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
   import type { RestartIntent } from '../../../app/restart/host-restart-flow.svelte.ts';
@@ -36,6 +36,7 @@
     type SettingsSnapshot,
   } from '../../../lib/bureau-settings.ts';
   import {
+    didNotLoadCount,
     PluginsReadError,
     type PluginProblem,
     type PluginsSnapshot,
@@ -50,12 +51,16 @@
   import SettingsRestartNotice from '../settings-restart-notice.svelte';
   import { SettingsRevert } from '../settings-revert.svelte.ts';
   import DisableDialog from './disable-dialog.svelte';
+  import EnableDialog from './enable-dialog.svelte';
+  import { focusConfiguration } from './focus-configuration.ts';
   import PluginDetail from './plugin-detail.svelte';
   import { PluginDrafts } from './plugin-drafts.svelte.ts';
+  import PluginProblemCard from './plugin-problem-card.svelte';
   import {
     clashCounterpart,
     isShadowed,
     listKey,
+    providerOf,
     restartBackWords,
     sourceWord,
     statusOf,
@@ -122,6 +127,7 @@
   onDestroy(() => flow.dispose());
 
   let disabling = $state<PluginStanding | null>(null);
+  let enabling = $state<PluginStanding | null>(null);
   let secret = $state<SecretTarget | null>(null);
   let connecting = $state<string | null>(null);
   // The open plugin's key. The list fills it from the address, and a problem's `Show both` sets it.
@@ -229,20 +235,53 @@
     }
   }
 
-  // The dialog's Disable and restart writes everything the page holds, so it lists the other
-  // switches it will write.
-  const otherChanges = $derived(
-    snapshot === undefined || disabling === null
+  // A confirmation's restart writes everything the page holds, so it lists the other switches it
+  // will write.
+  const otherChanges = $derived.by(() => {
+    const target = disabling ?? enabling;
+    return snapshot === undefined || target === null
       ? []
-      : drafts
-          .pendingWrites(snapshot)
-          .filter((change) => change.name !== disabling?.descriptor.name),
-  );
+      : drafts.pendingWrites(snapshot).filter((change) => change.name !== target.descriptor.name);
+  });
 
-  function confirmDisable(plugin: PluginStanding): void {
-    drafts.setEnabled(plugin, false);
+  /** Turns the plugin off or on, as the person confirmed, and restarts so the host loads what is left. */
+  function confirmSwitch(plugin: PluginStanding, enabled: boolean): void {
+    drafts.setEnabled(plugin, enabled);
     disabling = null;
-    restart(plugin);
+    enabling = null;
+    // Only a plugin turned off is named in the dialog and the banner after it.
+    restart(enabled ? undefined : plugin);
+  }
+
+  /**
+   * After a startup where something did not load, the problems of every plugin are listed above the
+   * list, each under the plugin's name (board PageSettingsSections, "Plugin problems"), so what to
+   * fix is in one place and each plugin's page need not draw them again.
+   */
+  const attention = $derived.by(() => {
+    if (snapshot === undefined || didNotLoadCount(snapshot) === 0) return [];
+    return snapshot.plugins.flatMap((plugin) =>
+      plugin.problems.map((problem, index) => ({
+        key: `${listKey(snapshot, plugin)}#${String(index)}`,
+        plugin,
+        problem,
+      })),
+    );
+  });
+
+  /** Adds the missing secret `key` of a plugin: a provider through the connect flow, any other in the secret dialog. */
+  function addSecret(plugin: PluginStanding, key: string): void {
+    const provider = providerOf(plugin);
+    if (provider !== undefined) connecting = provider;
+    else secret = { plugin: plugin.descriptor.name, key };
+  }
+
+  /** Opens the plugin and moves to its configuration, which is where a setting the host refused is fixed. */
+  async function fixSetting(plugin: PluginStanding): Promise<void> {
+    if (snapshot === undefined) return;
+    openKey = listKey(snapshot, plugin);
+    await tick();
+    focusConfiguration(plugin.descriptor.name);
   }
 
   // What `Show both` does for a name clash: open the other plugin that holds the name, or nothing
@@ -314,6 +353,25 @@
   {/if}
 
   {#if snapshot !== undefined}
+    {#if attention.length > 0}
+      <section
+        class="ib-plugins__attention"
+        aria-label={copy.problems.listLabel}
+        data-testid="plugins-attention"
+      >
+        {#each attention as entry (entry.key)}
+          <PluginProblemCard
+            problem={entry.problem}
+            plugin={entry.plugin}
+            owner={entry.plugin.descriptor.title}
+            locked={locked || isShadowed(snapshot, entry.plugin)}
+            onSecret={(key) => addSecret(entry.plugin, key)}
+            onFixSetting={() => void fixSetting(entry.plugin)}
+            onShowBoth={showBoth(entry.plugin, entry.problem)}
+          />
+        {/each}
+      </section>
+    {/if}
     {#if snapshot.plugins.length === 0 && snapshot.unloaded.length === 0}
       <EmptyState
         kind="first-use"
@@ -375,6 +433,8 @@
               {drafts}
               locked={locked || isShadowed(snapshot, plugin)}
               onDisable={(target) => (disabling = target)}
+              onEnable={(target) => (enabling = target)}
+              problemsListed={attention.length > 0}
               onSecret={(target, key) => (secret = { plugin: target.descriptor.name, key })}
               onConnect={(provider) => (connecting = provider)}
               {showBoth}
@@ -423,8 +483,14 @@
 <DisableDialog
   plugin={disabling}
   {otherChanges}
-  onConfirm={confirmDisable}
+  onConfirm={(plugin) => confirmSwitch(plugin, false)}
   onCancel={() => (disabling = null)}
+/>
+<EnableDialog
+  plugin={enabling}
+  {otherChanges}
+  onConfirm={(plugin) => confirmSwitch(plugin, true)}
+  onCancel={() => (enabling = null)}
 />
 <SecretDialog bind:target={secret} />
 <ConnectDialog bind:provider={connecting} />
@@ -450,6 +516,13 @@
 
   .ib-plugins__alert {
     margin: 0;
+  }
+
+  .ib-plugins__attention {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
   }
 
   .ib-plugins__list-top {

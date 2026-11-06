@@ -198,4 +198,99 @@ test.describe('Settings › Plugins', () => {
     );
     await captureAtEveryWidth(page, 'load-failed');
   });
+
+  test('enabling a disabled plugin asks first, in a confirm dialog that says it restarts, and Cancel changes nothing', async ({
+    page,
+    checkA11y,
+  }) => {
+    await open(page, 'demo');
+    const restarts: string[] = [];
+    page.on('request', (request) => {
+      // Reads of the Bureau are POSTs too; only a write or a restart of the host is a change.
+      if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/host/')) {
+        restarts.push(request.url());
+      }
+    });
+
+    await detail(page, 'demo').getByRole('switch', { name: 'Disabled' }).click();
+
+    const question = page.getByRole('dialog', { name: PLUGINS_COPY.enable.title('Demo') });
+    await expect(question).toBeVisible();
+    await expect(question).toContainText('Interborough restarts to load it.');
+    await expect(question).toContainText(
+      'Running work picks up where it stopped; reviews stay waiting.',
+    );
+    await expect(question.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await expect(question.getByRole('button', { name: 'Enable and restart' })).toBeVisible();
+    await checkA11y('settings plugins enable question');
+    await captureAtEveryWidth(page, 'enable-confirm');
+
+    await question.getByRole('button', { name: 'Cancel' }).click();
+    await expect(question).toBeHidden();
+    await expect(detail(page, 'demo').getByRole('switch', { name: 'Disabled' })).not.toBeChecked();
+    expect(restarts).toEqual([]);
+  });
+
+  test('disabling a plugin asks first, in a confirm dialog that lists what depends on it before restarting', async ({
+    page,
+    checkA11y,
+  }) => {
+    await open(page, 'guardrails');
+
+    await detail(page, 'guardrails').getByRole('switch', { name: 'Enabled' }).click();
+
+    const question = page.getByRole('dialog', { name: PLUGINS_COPY.disable.title('Guardrails') });
+    await expect(question).toBeVisible();
+    await expect(question).toContainText('Interborough restarts to unload it. What depends on it:');
+    await expect(question).toContainText(PLUGINS_COPY.disable.reassurance);
+    await expect(question.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await expect(question.getByRole('button', { name: 'Disable and restart' })).toBeVisible();
+    await checkA11y('settings plugins disable question');
+    await captureAtEveryWidth(page, 'disable-confirm');
+
+    await question.getByRole('button', { name: 'Cancel' }).click();
+    await expect(question).toBeHidden();
+    await expect(detail(page, 'guardrails').getByRole('switch', { name: 'Enabled' })).toBeChecked();
+  });
+
+  test('plugin problems: after a startup with problems the page lists each plugin’s problems under its name, and the banner counts them', async ({
+    page,
+    checkA11y,
+  }) => {
+    // The sample world starts clean, so the host's answer is changed to the one a startup with
+    // problems gives: Guardrails is skipped for an invalid setting.
+    await page.route('**/host/plugins', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      const target = snapshot.plugins.find(
+        (plugin: { descriptor: { name: string } }) => plugin.descriptor.name === 'guardrails',
+      );
+      target.status = 'skipped';
+      target.problems = [
+        {
+          code: 'configuration-invalid',
+          field: 'groundingThreshold',
+          message: 'Grounding threshold must be a number from 0 to 1. You entered “high”.',
+        },
+      ];
+      return route.fulfill({ response, json: snapshot });
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
+
+    const banner = page.getByTestId('plugins-startup-banner');
+    await expect(banner).toContainText('1 plugin needs attention after a startup with problems');
+    await expect(banner).toContainText('Agents and workflows that use it show as unavailable.');
+    await expect(banner.getByRole('link', { name: 'Open Plugins' })).toBeVisible();
+    const list = page.getByTestId('plugins-attention');
+    const card = list.locator('[data-plugin-problem="configuration-invalid"]');
+    await expect(card).toContainText('Guardrails');
+    await expect(card).toContainText('Not loaded');
+    await expect(card).toContainText('A setting is invalid');
+    await expect(card).toContainText('Grounding threshold must be a number from 0 to 1.');
+    await expect(card.getByRole('button', { name: 'Fix the setting' })).toBeVisible();
+    await checkA11y('settings plugins problems');
+    await captureAtEveryWidth(page, 'problems');
+  });
 });

@@ -34,7 +34,7 @@ describe('the six cards of the table', () => {
     expect(root.textContent).toContain('Needs setup');
     expect(root.textContent).toContain('A secret isn’t saved yet');
     expect(root.textContent).toContain(
-      'gemini-api-key isn’t saved, so gemini:chat, gemini:embed is unavailable. Save it and it works at once; no restart.',
+      'gemini-api-key isn’t saved, so gemini:chat, gemini:embed are unavailable. Save it and they work at once, with no restart.',
     );
     await fireEvent.click(getByRole('button', { name: 'Add the key' }));
     expect(onSecret).toHaveBeenCalledWith('gemini-api-key');
