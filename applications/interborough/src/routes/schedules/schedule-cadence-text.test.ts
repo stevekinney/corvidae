@@ -30,6 +30,11 @@ describe('cadenceText', () => {
     const weekly = cadenceText({ cronExpression: '0 11 * * 1', timeZone: zone }, NOW);
     expect(weekly.full).toMatch(/^Every Monday at \d{1,2}:00 (AM|PM)$/);
     expect(weekly.phone).toMatch(/^Mondays at \d{1,2}:00 (AM|PM)$/);
+    // A schedule defined in a workflow file says it as the file does (row 10x).
+    expect(weekly.file).toMatch(/^every Monday at \d{1,2}:00 (AM|PM)$/);
+    expect(cadenceText({ cronExpression: '0 9 * * *', timeZone: zone }, NOW).file).toMatch(
+      /^every day at \d{1,2}:00 (AM|PM)$/,
+    );
   });
 
   test('weekdays and a day of the month have their own sentences', () => {
@@ -44,6 +49,7 @@ describe('cadenceText', () => {
 
   test('a cadence with no single time of day is said in words, with no clock to read', () => {
     expect(cadenceText({ intervalMs: 5 * 60_000 }, NOW)).toEqual({
+      file: 'every 5 minutes',
       full: 'Every 5 minutes',
       phone: 'every 5 minutes',
     });

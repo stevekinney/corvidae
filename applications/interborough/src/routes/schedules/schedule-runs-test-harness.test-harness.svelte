@@ -2,12 +2,16 @@
   /** Test-only composition of `<SchedulesTestHarness>` + `<ScheduleRuns>`, over a client the test fakes. */
   import type { HttpClient, ScheduleSummary } from '@lostgradient/weft';
 
+  import type { ConnectionMonitor } from '../../app/connection.svelte.ts';
+
   import ScheduleRuns from './schedule-runs.svelte';
   import type { ScheduleRow } from './schedule-row-model.ts';
   import SchedulesTestHarness from './schedules-test-harness.test-harness.svelte';
 
   interface Props {
     client: HttpClient;
+    /** The shell's connection monitor, for a test of how the list reads a server that does not answer. */
+    connection?: ConnectionMonitor;
     schedule: ScheduleSummary;
     row: Pick<ScheduleRow, 'status' | 'allBlockers' | 'workflowLabel'>;
     now: number;
@@ -24,6 +28,7 @@
 
   let {
     client,
+    connection,
     schedule,
     row,
     now,
@@ -35,7 +40,7 @@
   }: Props = $props();
 </script>
 
-<SchedulesTestHarness {client}>
+<SchedulesTestHarness {client} {connection}>
   {#snippet children()}
     <ScheduleRuns {schedule} {row} {now} {canSkip} {busy} {onSkip} {onUnskip} {runOnce} />
   {/snippet}

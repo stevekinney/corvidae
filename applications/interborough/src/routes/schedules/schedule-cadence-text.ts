@@ -5,7 +5,8 @@
  * where it differs (Cinder's `formatScheduleTime`), so a schedule in UTC and a viewer in Central
  * time read "3:00 AM (9:00 AM UTC)" and a schedule in the viewer's own zone reads "11:00 AM". A
  * phone's third line has less room: it says the same thing in lower case and without the second
- * reading ("every day at 3:00 AM", "Mondays at 11:00 AM").
+ * reading ("every day at 3:00 AM", "Mondays at 11:00 AM"). A schedule whose line says it is defined in
+ * a workflow file words its cadence the way the file does ("every Friday at 11:00 AM").
  *
  * The shapes with a clock time are the ones the schedule builder makes (every day, one weekday,
  * weekdays, one day of the month); every other cadence is `describeCadence`'s words, which have no
@@ -23,6 +24,8 @@ export type CadenceText = {
   readonly full: string;
   /** The form of a phone's third line: "every day at 3:00 AM". */
   readonly phone: string;
+  /** The form of a phone's third line for a schedule defined in a workflow file: "every Friday at 11:00 AM". */
+  readonly file: string;
 };
 
 const WEEKDAY_NAMES = [
@@ -89,7 +92,7 @@ function lowerFirst(text: string): string {
  */
 export function cadenceText(cadence: ScheduleCadence, now: number = Date.now()): CadenceText {
   const words = describeCadence(cadence);
-  const plain: CadenceText = { full: words, phone: lowerFirst(words) };
+  const plain: CadenceText = { full: words, phone: lowerFirst(words), file: lowerFirst(words) };
   const expression = cadence.cronExpression;
   if (expression === undefined) return plain;
   const shape = clockShape(expression);
@@ -101,17 +104,30 @@ export function cadenceText(cadence: ScheduleCadence, now: number = Date.now()):
   const phoneTime = formatTimeOfDay(at);
   switch (shape.kind) {
     case 'daily':
-      return { full: `Every day at ${time}`, phone: `every day at ${phoneTime}` };
+      return {
+        full: `Every day at ${time}`,
+        phone: `every day at ${phoneTime}`,
+        file: `every day at ${phoneTime}`,
+      };
     case 'weekdays':
-      return { full: `Weekdays at ${time}`, phone: `weekdays at ${phoneTime}` };
+      return {
+        full: `Weekdays at ${time}`,
+        phone: `weekdays at ${phoneTime}`,
+        file: `weekdays at ${phoneTime}`,
+      };
     case 'weekly': {
       const weekday = WEEKDAY_NAMES[viewerWeekday(at)] ?? WEEKDAY_NAMES[shape.weekday] ?? 'Sunday';
-      return { full: `Every ${weekday} at ${time}`, phone: `${weekday}s at ${phoneTime}` };
+      return {
+        full: `Every ${weekday} at ${time}`,
+        phone: `${weekday}s at ${phoneTime}`,
+        file: `every ${weekday} at ${phoneTime}`,
+      };
     }
     case 'monthly':
       return {
         full: `Monthly on day ${String(shape.day)} at ${time}`,
         phone: `monthly on day ${String(shape.day)} at ${phoneTime}`,
+        file: `monthly on day ${String(shape.day)} at ${phoneTime}`,
       };
   }
 }

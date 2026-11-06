@@ -48,7 +48,7 @@
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
-  import { scheduleOverlayOptions } from './overlay-query.ts';
+  import { useScheduleOverlay } from './overlay-query.svelte.ts';
   import ScheduleListLoading from './schedule-list-loading.svelte';
   import ScheduleListRow from './schedule-list-row.svelte';
   import {
@@ -78,6 +78,7 @@
   const connection = getConnection();
 
   const filters = $derived(filtersFromSearch(router.current.search));
+  const phone = $derived(phoneViewport.current);
 
   /** Writes one filter into the address, and takes it out when it has no value. */
   function setFilter(key: string, value: string | undefined): void {
@@ -117,7 +118,7 @@
 
   // What the Bureau knows of these schedules: which start an agent, which agent, and the workflow
   // files. Until it answers a schedule is of no known kind.
-  const overlay = createQuery(() => scheduleOverlayOptions(client));
+  const overlay = useScheduleOverlay(client, connection);
   const sources = createQuery(() => ({
     queryKey: queryKeys.schedules.rowContext(),
     queryFn: ({ signal }) => loadScheduleRowSources(client, { signal }),
@@ -178,7 +179,10 @@
   }));
   // A cancelled schedule has no segment, so it is not listed.
   const allRows = $derived(
-    sortScheduleRows(rowsOf(modelAgents.data).filter((row) => row.status !== 'cancelled')),
+    sortScheduleRows(
+      rowsOf(modelAgents.data).filter((row) => row.status !== 'cancelled'),
+      { phone },
+    ),
   );
 
   const facetRows = $derived(narrowByFacets(allRows, filters));
@@ -274,7 +278,6 @@
   );
 
   const zone = $derived(formatTimeZoneLabel(now, { style: 'long' }));
-  const phone = $derived(phoneViewport.current);
 </script>
 
 <section class="ib-records" aria-label={SCHEDULE_COPY.title} data-page="schedules">
@@ -353,8 +356,8 @@
         onFilterRemove={(key) => setFilter(key, undefined)}
       />
 
-      {#if overlay.data?.failed}
-        <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
+      {#if overlay.failed}
+        <FaultBanner treatment={OVERLAY_FAILURE} onRetry={overlay.refetch} />
       {/if}
 
       {#if visibleRows.length === 0}

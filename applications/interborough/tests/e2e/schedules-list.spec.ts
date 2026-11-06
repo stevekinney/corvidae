@@ -58,18 +58,20 @@ for (const width of WIDTHS) {
     }
 
     const titles = main.locator('li[data-schedule] .cinder-stacked-list-item__title');
-    await expect(titles).toHaveText([
-      'Daily summary',
-      'Weekly refund audit',
-      'Release notes digest',
-      'Inbox triage',
-    ]);
+    // A phone lists the set by name, as the list pattern's phone frame draws it (row 10v); wider
+    // rows put the schedule that missed runs first, then the soonest, then the paused.
+    const phone = width < 640;
+    await expect(titles).toHaveText(
+      phone
+        ? ['Daily summary', 'Inbox triage', 'Release notes digest', 'Weekly refund audit']
+        : ['Daily summary', 'Weekly refund audit', 'Release notes digest', 'Inbox triage'],
+    );
     const words = main.locator('li[data-schedule]');
     await expect(words.nth(0)).toHaveAttribute('data-status-word', 'Missed runs · 4');
-    await expect(words.nth(1)).toHaveAttribute('data-status-word', 'Active');
-    await expect(words.nth(3)).toHaveAttribute('data-status-word', 'Paused');
+    await expect(words.nth(phone ? 3 : 1)).toHaveAttribute('data-status-word', 'Active');
+    await expect(words.nth(phone ? 1 : 3)).toHaveAttribute('data-status-word', 'Paused');
 
-    const refund = words.nth(1);
+    const refund = words.nth(phone ? 3 : 1);
     await expect(refund).toContainText('can’t load');
     if (width >= 640) {
       await expect(refund).toContainText(/Due .+ · won’t start/);

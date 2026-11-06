@@ -406,7 +406,7 @@ const connectHost = await startConnectHost({
   port: E2E_CONNECT_PORT,
 });
 
-// The seventh host, which only the showcase specification opens (`showcase.spec.ts`): the shape of
+// The seventh host, which only the showcase specification opens (`00-showcase.spec.ts`): the shape of
 // `bun run dev -- --showcase`, the sample world's seed playing its story into a home of its own and
 // leaving the host running at Monday, Nov 2, a little after 10:45 AM on its offset clock.
 const showcaseHome = join(scratch, 'showcase-home');

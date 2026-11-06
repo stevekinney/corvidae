@@ -433,6 +433,33 @@ describe('a server that stopped answering (row 70u, in the shell)', () => {
     }
   });
 
+  test('keeps what each schedule is and draws no second error when the Bureau fails because the server is gone', async () => {
+    // The Bureau's two lists answer once, then the server goes: the overlay read again fails, and
+    // the shell's banner is the one place that says so (row 70u).
+    const monitor = new ConnectionMonitor({
+      probe: () => new Promise(() => {}),
+      probeDelayMs: () => 3_600_000,
+    });
+    const world = twoSchedules();
+    const { container, queryClient } = open('/schedules', world, { connection: monitor });
+    try {
+      await waitFor(() => expect(rows(container)).toHaveLength(2));
+      await waitFor(() => expect(container.textContent).toContain('Assistant'));
+      world.failBureauSchedules = true;
+      world.failBureauFiles = true;
+      monitor.reportUnreachable();
+      await queryClient().invalidateQueries({ queryKey: queryKeys.schedules.overlay() });
+      await waitFor(() => expect(queryClient().isFetching()).toBe(0));
+
+      expect(container.textContent).not.toContain(SCHEDULE_COPY.overlayFailed.title);
+      // The agents and the segments are the ones the Bureau last said, not "failed".
+      expect(container.textContent).toContain('Assistant');
+      expect(within(container).getByRole('radio', { name: /^Paused\s*,\s*1$/ })).not.toBeNull();
+    } finally {
+      monitor.dispose();
+    }
+  });
+
   test('holds the empty state’s New schedule too', async () => {
     const monitor = unreachableMonitor();
     const { container, findByRole } = open('/schedules', emptyWorld(), { connection: monitor });

@@ -183,11 +183,8 @@ describe('a rewritten value that is not text', () => {
     server?.store.set('app:notes', new Uint8Array([0xff, 0xfe, 0x00, 0x80]));
     const alert = await pane.findByTestId('storage-rewritten');
 
-    await fireEvent.click(
-      within(alert.closest('.cinder-alert') as HTMLElement).getByRole('button', {
-        name: 'Show new value',
-      }),
-    );
+    expect(alert.closest('.cinder-alert')?.querySelector('button')).toBeNull();
+    await fireEvent.click(pane.getByRole('button', { name: 'Show new value' }));
 
     await waitFor(() =>
       expect(

@@ -15,7 +15,7 @@
  * call with a fixed reply and whose key is a fixture, so no real provider key is ever used or read;
  * a built-in agent's step that a model override sends to that provider answers from the agent's
  * script instead ({@link showcaseProviderResolver}).
- * The end-to-end showcase specification (`tests/e2e/showcase.spec.ts`) opens a host seeded the same
+ * The end-to-end showcase specification (`tests/e2e/00-showcase.spec.ts`) opens a host seeded the same
  * way.
  *
  * @module showcase

@@ -291,6 +291,9 @@ test.describe('Health › Storage on the sample world', () => {
       expect(updated).toMatch(WHEN);
     }
     await expect(main.getByTestId('storage-count')).toHaveText('Showing 3 keys.');
+    // The frame the board draws has one row of the range chosen and highlighted (row 80q).
+    await main.locator('tbody tr[data-cinder-row-id]').nth(1).click();
+    await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);
     await captureForDesignReview(page, {
       route: '/health/storage',
       state: 'range',
@@ -575,6 +578,8 @@ test.describe('Health › Storage writes and states', () => {
       if (route.request().method() === 'GET') await route.fallback();
       else await route.abort();
     });
+    // The shell probes the host once a request gets no answer, and holds changes until it answers.
+    const probed = page.waitForResponse((response) => response.url().endsWith('/v1/health'));
     await pane.getByRole('button', { name: 'Save value' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
 
@@ -595,6 +600,16 @@ test.describe('Health › Storage writes and states', () => {
     );
     // Cancel, then Save value, and Save value keeps its own label as the retry.
     await expect(pane.getByRole('button')).toHaveText(['Cancel', 'Save value']);
+    // A write the host never answered makes the shell hold what changes things until the host
+    // answers its probe, which it does at once here (only writes are cut). The frame is the page
+    // once that has passed: no connection banner, and Save value live as the retry the row names.
+    await probed;
+    await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
+    await expect(pane.getByRole('button', { name: 'Save value' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await expect(pane.getByRole('button', { name: 'Save value' })).toBeEnabled();
     await captureForDesignReview(page, {
       route: '/health/storage',
       state: 'save-failed',
@@ -632,8 +647,17 @@ test.describe('Health › Storage writes and states', () => {
     await expect(alert.locator('strong')).toHaveText('This key changed while you were editing.');
     const banner = page.locator('main .cinder-alert[data-cinder-variant="warning"]');
     await expect(banner).toHaveCount(1);
-    // Discard my edit and Save over it are secondary, Show new value is the primary, left to right.
-    const buttons = banner.getByRole('button');
+    // The alert only says it. The three ways on are one row under the editor: Discard my edit and
+    // Save over it are secondary, Show new value is the primary, left to right.
+    await expect(banner.getByRole('button')).toHaveCount(0);
+    const buttons = pane.locator('.ib-storage-key__actions').getByRole('button');
+    const editorBox = await editor.boundingBox();
+    const rowBox = await pane.locator('.ib-storage-key__actions').boundingBox();
+    expect(rowBox?.y ?? 0).toBeGreaterThan((editorBox?.y ?? 0) + (editorBox?.height ?? 0) - 1);
+    const boxes = await buttons.evaluateAll((all) =>
+      all.map((button) => button.getBoundingClientRect().top),
+    );
+    expect(new Set(boxes.map(Math.round)).size).toBe(1);
     await expect(buttons).toHaveText(['Discard my edit', 'Save over it…', 'Show new value']);
     await expect(buttons.nth(0)).toHaveAttribute('data-cinder-variant', 'secondary');
     await expect(buttons.nth(1)).toHaveAttribute('data-cinder-variant', 'secondary');

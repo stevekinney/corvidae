@@ -442,16 +442,6 @@
             <strong>{copy.rewritten.lead}</strong>
             <span>{copy.rewritten.detail(newerTime)}</span>
           </p>
-          {#snippet actions()}
-            <Button variant="secondary" onclick={discardEdit}>{copy.rewritten.discard}</Button>
-            <Button
-              data-changes
-              variant="secondary"
-              loading={saveMutation.isPending}
-              onclick={() => (confirmSaveOver = true)}>{copy.rewritten.saveOver}</Button
-            >
-            <Button variant="primary" onclick={showNewValue}>{copy.rewritten.showNew}</Button>
-          {/snippet}
         </Alert>
       {:else if saveMutation.isError}
         <Alert variant="danger">
@@ -471,7 +461,24 @@
         {...saveFailed ? { 'aria-label': copy.editLabel } : { label: copy.editLabel }}
         {...draftInvalid ? { error: copy.notJson } : {}}
       />
-      {#if newer === undefined}
+      {#if newer !== undefined}
+        <!-- The three ways on sit in one row under the editor, as the rewritten frame draws them, not inside the alert. Small buttons keep the row on one line in the detail pane at 1280 pixels. -->
+        <div class="ib-storage-key__actions ib-storage-key__actions--end">
+          <Button size="sm" variant="secondary" onclick={discardEdit}
+            >{copy.rewritten.discard}</Button
+          >
+          <Button
+            size="sm"
+            data-changes
+            variant="secondary"
+            loading={saveMutation.isPending}
+            onclick={() => (confirmSaveOver = true)}>{copy.rewritten.saveOver}</Button
+          >
+          <Button size="sm" variant="primary" onclick={showNewValue}
+            >{copy.rewritten.showNew}</Button
+          >
+        </div>
+      {:else}
         <div class="ib-storage-key__actions ib-storage-key__actions--end">
           <Button variant="secondary" onclick={stopEditing}>{copy.cancel}</Button>
           <Button

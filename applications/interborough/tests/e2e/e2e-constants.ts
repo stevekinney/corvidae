@@ -74,7 +74,7 @@ export const E2E_CONNECT_URL = `http://127.0.0.1:${E2E_CONNECT_PORT}`;
 
 /**
  * The seventh host, on the port after the connect host's, which only the showcase specification
- * (`showcase.spec.ts`) opens. It is the shape of a development host started with `--showcase`
+ * (`00-showcase.spec.ts`) opens. It is the shape of a development host started with `--showcase`
  * (`src/host/showcase.ts`): its console is the Bureau's own engine, so the runs, schedules and
  * goals the Bureau holds are the ones its pages list (the main host's console runs fixtures on an
  * engine of its own, which holds none of them), and it holds the sample world, which the server

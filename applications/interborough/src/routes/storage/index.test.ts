@@ -543,7 +543,14 @@ describe('Rewritten while editing', () => {
     expect(
       alert.closest('[role="alert"], [data-cinder-variant="warning"], .cinder-alert'),
     ).not.toBeNull();
-    const buttons = [...(alert.closest('.cinder-alert')?.querySelectorAll('button') ?? [])];
+    // The alert says what happened and nothing else; the three ways on are one row under the editor.
+    expect(alert.closest('.cinder-alert')?.querySelectorAll('button')).toHaveLength(0);
+    const editor = pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel });
+    const buttons = pane
+      .getAllByRole('button')
+      .filter((button) =>
+        Boolean(editor.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING),
+      );
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Discard my edit',
       'Save over it…',

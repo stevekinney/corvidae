@@ -7,7 +7,10 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import type { HttpClient, ScheduleSummary, WorkflowSummary } from '@lostgradient/weft';
+
+import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 
 import type { MissedFire } from '../../lib/bureau-schedules.ts';
 import type { RowBlocker } from './schedule-row-model.ts';
@@ -376,5 +379,43 @@ describe('a list that could not be read', () => {
 
     await findByText('Past runs could not be loaded', { exact: false });
     expect(container.querySelectorAll('li[data-cinder-tone="pending"]')).toHaveLength(3);
+  });
+
+  test('says nothing of its own while the server does not answer: the shell says it once (row 73p)', async () => {
+    let asked = false;
+    const failing = {
+      ...(client({}) as unknown as Record<string, unknown>),
+      list: async () => {
+        asked = true;
+        throw new Error('down');
+      },
+    } as unknown as HttpClient;
+    const monitor = new ConnectionMonitor({
+      probe: () => new Promise(() => {}),
+      probeDelayMs: () => 3_600_000,
+    });
+    monitor.reportUnreachable();
+    try {
+      const { container } = render(ScheduleRunsHarness, {
+        props: {
+          client: failing,
+          connection: monitor,
+          schedule: schedule(),
+          row: ACTIVE,
+          now: NOW,
+        },
+      });
+
+      await waitUntil(() => asked);
+      await waitFor(() =>
+        expect(container.querySelectorAll('li[data-cinder-tone="pending"]')).toHaveLength(3),
+      );
+      // The read has failed; the banner it would draw does not appear, however long it is given.
+      await quietFor(50);
+      expect(container.textContent).not.toContain('Past runs could not be loaded');
+      expect(container.querySelector('.weft-schedules-fault-banner')).toBeNull();
+    } finally {
+      monitor.dispose();
+    }
   });
 });

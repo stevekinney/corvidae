@@ -27,7 +27,7 @@ describe('parseArguments', () => {
     if (typeof options === 'string') throw new Error(options);
     expect(options.schemes).toEqual(['light', 'dark']);
     expect(options.specifications).toEqual([
-      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/00-showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
@@ -70,7 +70,7 @@ describe('parseArguments', () => {
       return options.specifications;
     };
     expect(specificationsOf(['--data', 'showcase'])).toEqual([
-      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/00-showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
@@ -97,7 +97,7 @@ describe('parseArguments', () => {
       'tests/e2e/15-view-states.spec.ts',
     ]);
     expect(specificationsOf(['--specs', 'responsive', '--data', 'both'])).toEqual([
-      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/00-showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',

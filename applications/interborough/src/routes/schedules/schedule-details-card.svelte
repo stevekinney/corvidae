@@ -96,7 +96,7 @@
           <h3 class="ib-schedule-card__title">{copy.when}</h3>
           {#if editPath !== undefined}
             {@const path = editPath}
-            <Link href={router.href(path)}>{copy.whenEdit}</Link>
+            <Link href={router.href(path)} data-changes>{copy.whenEdit}</Link>
           {/if}
         </div>
         <dl class="ib-schedule-card__rows">

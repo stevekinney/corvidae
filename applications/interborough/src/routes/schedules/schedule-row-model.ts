@@ -212,15 +212,21 @@ function nextText(
   status: 'active' | 'paused' | 'cancelled',
   blocked: boolean,
   now: number,
+  phone = false,
 ): { text: string; tone?: 'warning' } {
   if (status !== 'active' || schedule.nextFireAt === null) {
     return { text: 'No next run' };
   }
   const at = schedule.nextFireAt;
   const today = formatDateTime(at, { dayWords: 'today', now }).startsWith('Today, ');
+  // A phone names tomorrow's run by its weekday alone ("Tue 3:00 AM"), which no later week can be
+  // mistaken for; a run further out keeps its date.
+  const tomorrow = phone && formatDateTime(at, { now }).startsWith('Tomorrow, ');
   const when = today
     ? `today ${formatTimeOfDay(at)}`
-    : formatDateTime(at, { dayWords: false, now });
+    : tomorrow
+      ? `${formatDate(at, 'en-US', { weekday: 'short' })} ${formatTimeOfDay(at)}`
+      : formatDateTime(at, { dayWords: false, now });
   if (blocked) {
     const due = today ? `today, ${formatTimeOfDay(at)}` : when;
     return { text: `Due ${due} · won’t start`, tone: 'warning' };
@@ -358,20 +364,30 @@ export function scheduleRowOf(schedule: ScheduleSummary, context: ScheduleRowCon
     workflowLabel,
     next,
     nextPhone:
-      next.text === 'No next run' ? { text: '—' } : nextText(schedule, status, false, context.now),
+      next.text === 'No next run'
+        ? { text: '—' }
+        : nextText(schedule, status, false, context.now, true),
     lineTwo,
     phoneLineTwo,
     phoneLineThree,
-    phoneCadence: cadence.phone,
+    // A schedule that says "From a workflow file" says its cadence the way the file does.
+    phoneCadence: fixedInput ? cadence.file : cadence.phone,
     lastFireAt: schedule.lastFireAt,
   };
 }
 
 /**
  * The rows in the order the list shows them: a schedule that missed runs first, then the active
- * ones soonest first, then the paused ones and those that cannot run, each group by its name.
+ * ones soonest first, then the paused ones and those that cannot run, each group by its name. On a
+ * phone the list is a plain set by name instead (the list pattern's phone frame: Daily summary,
+ * Inbox triage, Release notes digest, Weekly refund audit), because with the next run drawn at the
+ * edge of line one and the status on line two there is no column to read the groups down.
  */
-export function sortScheduleRows(rows: readonly ScheduleRow[]): ScheduleRow[] {
+export function sortScheduleRows(
+  rows: readonly ScheduleRow[],
+  options: { readonly phone?: boolean } = {},
+): ScheduleRow[] {
+  if (options.phone === true) return rows.toSorted((a, b) => a.title.localeCompare(b.title));
   const group = (row: ScheduleRow): number =>
     row.statusKey === 'missed' ? 0 : row.statusKey === 'active' ? 1 : 2;
   return rows.toSorted((a, b) => {

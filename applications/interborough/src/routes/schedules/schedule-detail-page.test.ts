@@ -172,6 +172,18 @@ describe('the heading of a schedule', () => {
     await waitFor(() => expect(summary.textContent).toMatch(/Last ran\s+[A-Z][a-z]{2} \d+/));
   });
 
+  test('marks Edit, the menu and When › Edit as controls that change the schedule, so the shell holds them with Run now while the server does not answer (row 73p)', async () => {
+    const { findByRole, findAllByRole } = open(`/schedules/${DAILY}`);
+
+    const edit = await findByRole('button', { name: 'Edit' });
+    const menu = await findByRole('button', { name: 'More actions' });
+    expect(edit.hasAttribute('data-changes')).toBe(true);
+    expect(menu.hasAttribute('data-changes')).toBe(true);
+    const links = await findAllByRole('link', { name: 'Edit' });
+    expect(links.every((link) => link.hasAttribute('data-changes'))).toBe(true);
+    expect(links.length).toBeGreaterThan(0);
+  });
+
   test('a paused schedule has the switch off, says Paused, and has no next run', async () => {
     const { findByRole, findByTestId } = open(`/schedules/${TRIAGE}`);
 

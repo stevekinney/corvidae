@@ -442,13 +442,26 @@ describe('on a phone', () => {
       const listed = rows(container);
       expect(listed).toHaveLength(4);
       expect(
-        listed[1]?.querySelector('[data-testid="schedule-line-three"]')?.textContent,
+        listed[3]?.querySelector('[data-testid="schedule-line-three"]')?.textContent,
       ).toContain('provider');
     });
-    const [daily, refund, release, inbox] = rows(container);
+    // The list pattern's phone frame is a set by name: Daily summary, Inbox triage, Release notes
+    // digest, Weekly refund audit (row 10v), not the desktop's missed, soonest, paused.
+    expect(rows(container).map(titleOf)).toEqual([
+      'Daily summary',
+      'Inbox triage',
+      'Release notes digest',
+      'Weekly refund audit',
+    ]);
+    const [daily, inbox, release, refund] = rows(container);
 
     expect(lineTwoOf(daily as HTMLElement)).toBe('Workflow · Chat with an agent · Assistant');
     expect(nextOf(inbox as HTMLElement)).toBe('—');
+    // Tomorrow's run is named by its weekday alone, and a later one keeps its date (row 10w).
+    expect(nextOf(daily as HTMLElement)).toMatch(/^Next [A-Z][a-z]{2} \d{1,2}:\d{2} (AM|PM)$/);
+    expect(nextOf(release as HTMLElement)).toMatch(
+      /^Next [A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM)$/,
+    );
     const third = (row: HTMLElement | undefined) =>
       (row?.querySelector('[data-testid="schedule-line-three"]')?.textContent ?? '')
         .replaceAll(/\s+/g, ' ')
@@ -461,7 +474,8 @@ describe('on a phone', () => {
       refund?.querySelector('[data-testid="schedule-line-three"] [data-tone="danger"]')
         ?.textContent,
     ).toBe('Order refund can’t load');
-    expect(third(release)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2} · Fridays at /);
+    // A workflow file words its own cadence, so its schedule says "every Friday" (row 10x).
+    expect(third(release)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2} · every Friday at /);
     expect(third(inbox)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2} · every day at /);
   });
 });

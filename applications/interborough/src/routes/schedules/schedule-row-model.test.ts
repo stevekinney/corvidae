@@ -240,6 +240,25 @@ describe('a schedule that is a workflow file’s trigger', () => {
       /^Workflow · Release notes · Every Friday at .* · From a workflow file$/,
     );
     expect(row.statusWord).toBe('Active');
+    // On a phone the file's own words carry the cadence (row 10x): "every Friday", not "Fridays".
+    expect(row.phoneCadence).toMatch(/^every Friday at \d{1,2}:00 (AM|PM)$/);
+  });
+
+  test('says its cadence as a phone says every other schedule’s when no fixed input is fed', () => {
+    const { summary, bureau } = release();
+    const noInput = file('release-notes', {
+      title: 'Release notes',
+      trigger: { kind: 'schedule', spec: '0 11 * * 5' },
+      steps: [{ handler: 'agent', input: { agent: 'assistant' } }],
+    });
+    const row = scheduleRowOf(
+      summary,
+      context({
+        overlay: { ...bureau, files: new Map([['release-notes', noInput]]) },
+        definitionNames: new Set(['release-notes']),
+      }),
+    );
+    expect(row.phoneCadence).toMatch(/^Fridays at \d{1,2}:00 (AM|PM)$/);
   });
 
   test('names the agents its steps run when the file feeds it no input', () => {
@@ -423,6 +442,28 @@ describe('the order of the rows', () => {
     ]);
   });
 
+  test('on a phone the list is a set by name, as the list pattern’s phone frame draws it (row 10v)', () => {
+    const rows = [
+      rowFor('Weekly refund audit', { nextFireAt: NOW + HOUR }),
+      rowFor('Inbox triage', { status: 'paused' }),
+      rowFor('Release notes digest', { nextFireAt: NOW + 4 * DAY }),
+      rowFor('Daily summary', { nextFireAt: NOW + DAY }, true),
+    ];
+    expect(sortScheduleRows(rows, { phone: true }).map((row) => row.id)).toEqual([
+      'Daily summary',
+      'Inbox triage',
+      'Release notes digest',
+      'Weekly refund audit',
+    ]);
+    // Wider rows keep the groups: missed, then soonest, then paused.
+    expect(sortScheduleRows(rows).map((row) => row.id)).toEqual([
+      'Daily summary',
+      'Weekly refund audit',
+      'Release notes digest',
+      'Inbox triage',
+    ]);
+  });
+
   test('schedules in the same group sort by name when nothing says which is next', () => {
     const rows = [
       rowFor('beta', { status: 'paused', nextFireAt: null }),
@@ -447,5 +488,13 @@ describe('the next run', () => {
 
   test('a schedule with nothing coming says there is no next run', () => {
     expect(row(null).next).toEqual({ text: 'No next run' });
+  });
+
+  test('on a phone tomorrow is named by its weekday alone and a later day keeps its date (row 10w)', () => {
+    expect(row(NOW + DAY).nextPhone.text).toMatch(/^Next Tue \d{1,2}:\d{2} (AM|PM)$/);
+    // The same run on a wider row says its calendar day, as the board draws it.
+    expect(row(NOW + DAY).next.text).toMatch(/^Next Tue Nov 3, \d{1,2}:\d{2} (AM|PM)$/);
+    expect(row(NOW + 4 * DAY).nextPhone.text).toMatch(/^Next Fri Nov 6, \d{1,2}:\d{2} (AM|PM)$/);
+    expect(row(NOW + 2 * 60_000).nextPhone.text).toMatch(/^Next today \d{1,2}:\d{2} (AM|PM)$/);
   });
 });

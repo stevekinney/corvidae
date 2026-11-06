@@ -115,11 +115,11 @@ describe('editing a chat', () => {
     open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const form = await page();
 
-    // The page has a heading and no subtitle: where it was opened from is the design's note, not the product's.
+    // Row 74r: the heading, and the note that the page is opened from When › Edit on the schedule page.
     expect(form.getByRole('heading', { level: 1 }).textContent).toBe('Edit Daily summary');
-    expect(
-      document.querySelector('[data-page="schedule-edit"] .cinder-page-header__description'),
-    ).toBeNull();
+    expect(document.querySelector('[data-page="schedule-edit"]')?.textContent).toContain(
+      SCHEDULE_COPY.edit.description,
+    );
     expect(
       form.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
     ).toEqual(['What runs', 'Input', 'When']);
@@ -400,6 +400,10 @@ describe('editing a schedule whose workflow was deleted', () => {
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field).not.toBeDisabled();
     await form.findByText(SCHEDULE_COPY.edit.workflowGone.message);
+    // The note says focus lands on Repeats, which it does not here, so it is not drawn.
+    expect(document.querySelector('[data-page="schedule-edit"]')?.textContent).not.toContain(
+      SCHEDULE_COPY.edit.description,
+    );
     // There is no input to ask for under a workflow that is gone.
     expect(form.queryByTestId('edit-schedule-fixed-input')).toBeNull();
   });

@@ -26,6 +26,7 @@
   import type { ScheduleSummary } from '@lostgradient/weft';
   import { createQueries, createQuery } from '@tanstack/svelte-query';
 
+  import { getConnection } from '../../app/connection.svelte.ts';
   import { SCHEDULE_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
@@ -78,6 +79,7 @@
 
   const copy = SCHEDULE_COPY.detail.runs;
   const client = getClient();
+  const connection = getConnection();
   const zone = browserTimeZone();
 
   const runs = createQuery(() => ({
@@ -258,13 +260,14 @@
   }
 </script>
 
-{#if runs.isError}
+<!-- While the server does not answer the shell says so once, and the runs already read stay on the page. -->
+{#if runs.isError && !connection.unreachable}
   <FaultBanner
     treatment={{ ...faultTreatment(runs.error), message: SCHEDULE_COPY.detail.runsFailed }}
     onRetry={() => void runs.refetch()}
   />
 {/if}
-{#if missed.isError}
+{#if missed.isError && !connection.unreachable}
   <FaultBanner
     treatment={{ ...faultTreatment(missed.error), message: SCHEDULE_COPY.detail.missedFailed }}
     onRetry={() => void missed.refetch()}

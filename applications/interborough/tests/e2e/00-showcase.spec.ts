@@ -8,6 +8,12 @@
  * The specification reads the sample world's identifiers once, opens each address, waits until the
  * page's frame is `ready` and the outlet has stopped changing, asserts no frame is `empty`, and
  * captures the page (`design-review-capture.ts`) when a capture directory is set.
+ *
+ * The file is named `00-` because Playwright runs files in name order and this one must run first:
+ * the specifications that follow write to the same showcase host (they delete storage keys, start
+ * runs, change schedules), and every one of those writes is a record the pages read back. Run last,
+ * this sweep drew the audit log under eleven "Deleted a storage key" rows the storage specification
+ * had left, in the capture a reviewer reads as the page's `ready` state.
  */
 import type { Page } from '@playwright/test';
 
@@ -75,7 +81,7 @@ for (const name of NAMES) {
       await captureForDesignReview(page, {
         route: name,
         state: 'ready',
-        source: 'showcase.spec.ts',
+        source: '00-showcase.spec.ts',
       });
     }
   });
@@ -108,7 +114,7 @@ for (const name of OFFLINE_ROUTES) {
       await captureForDesignReview(page, {
         route: name,
         state: 'offline',
-        source: 'showcase.spec.ts',
+        source: '00-showcase.spec.ts',
       });
 
       await context.setOffline(false);
@@ -158,7 +164,7 @@ for (const width of [375, 1280] as const) {
     await captureForDesignReview(page, {
       route: '/chats/new',
       state: 'offline',
-      source: 'showcase.spec.ts',
+      source: '00-showcase.spec.ts',
     });
 
     await context.setOffline(false);
@@ -181,7 +187,7 @@ for (const width of [375, 1280] as const) {
     await captureForDesignReview(page, {
       route: '/',
       state: 'offline',
-      source: 'showcase.spec.ts',
+      source: '00-showcase.spec.ts',
     });
 
     await context.setOffline(false);

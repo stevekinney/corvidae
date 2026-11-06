@@ -1,6 +1,6 @@
 /**
  * Captures every page of Interborough for the design review (`.agents/skills/design-review`): every
- * route holding believable content (`tests/e2e/showcase.spec.ts`, at 375, 768 and 1280 pixels, the
+ * route holding believable content (`tests/e2e/00-showcase.spec.ts`, at 375, 768 and 1280 pixels, the
  * data for layout, hierarchy and density) and the shell's chrome in each form it takes
  * (`tests/e2e/shell-chrome.spec.ts`: the sidebar, the rail, the drawer, 320 pixels, 200% text; `tests/e2e/shell-search.spec.ts`: the search palette), Home on a
  * fresh installation (`tests/e2e/first-run.spec.ts`), every route on every tab holding the stress seed's
@@ -57,7 +57,7 @@ const SPECIFICATIONS = {
  * confirmations), and Home on a fresh installation (`first-run.spec.ts`, whose own host holds no provider, agent or chat).
  */
 const SHOWCASE_SPECIFICATIONS = [
-  'tests/e2e/showcase.spec.ts',
+  'tests/e2e/00-showcase.spec.ts',
   'tests/e2e/shell-chrome.spec.ts',
   'tests/e2e/shell-search.spec.ts',
   'tests/e2e/shell-states.spec.ts',

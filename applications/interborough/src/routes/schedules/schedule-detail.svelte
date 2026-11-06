@@ -68,7 +68,7 @@
   } from '../../lib/workflow-type-paths.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
-  import { scheduleOverlayOptions } from './overlay-query.ts';
+  import { useScheduleOverlay } from './overlay-query.svelte.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
   import ScheduleDetailsCard from './schedule-details-card.svelte';
   import ScheduleFileChip from './schedule-file-chip.svelte';
@@ -143,7 +143,7 @@
   // What the Bureau knows of this schedule: whether it starts an agent, or is a workflow's trigger,
   // and the start of the text it sends. Until it answers, the schedule is of no known kind, and
   // nothing is written to it.
-  const overlay = createQuery(() => scheduleOverlayOptions(client));
+  const overlay = useScheduleOverlay(client, connection);
 
   const schedule = $derived(detailQuery.data ?? null);
   // The runs the schedule launched, which the Runs list and the last-run words read from the same
@@ -306,8 +306,8 @@
     {#if actions.notice !== null}
       <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
     {/if}
-    {#if overlay.data?.failed}
-      <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
+    {#if overlay.failed}
+      <FaultBanner treatment={OVERLAY_FAILURE} onRetry={overlay.refetch} />
     {/if}
 
     {#snippet heading()}
@@ -355,7 +355,9 @@
               {copy.openFile}
             </Button>
           {:else if allowed.edit}
+            <!-- Edit opens the form that writes, so while the server does not answer the shell holds it with the other controls that change the schedule. -->
             <Button
+              data-changes
               variant="secondary"
               size="sm"
               disabled={writeGate.disabled}
@@ -399,7 +401,7 @@
           {/if}
           {#if !fileDefined && kind.kind !== 'unknown'}
             <Dropdown id="ib-schedule-actions" placement="bottom-end">
-              <Dropdown.Trigger caretVisible={false}>
+              <Dropdown.Trigger caretVisible={false} data-changes>
                 <Ellipsis aria-hidden="true" size={16} />
                 <VisuallyHidden>{SCHEDULE_COPY.moreActions}</VisuallyHidden>
               </Dropdown.Trigger>
