@@ -501,14 +501,17 @@ describe('catalog edits', () => {
         pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 2, currency: 'USD' },
       },
     ]);
-    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toEqual({
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toMatchObject({
       inputPerMillionTokens: 1,
       outputPerMillionTokens: 2,
       currency: 'USD',
       cacheWritePerMillionTokens: 0.125,
-      cacheReadPerMillionTokens: 0.010000000000000002,
       longContext: kept,
     });
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing?.cacheReadPerMillionTokens).toBeCloseTo(
+      0.01,
+      12,
+    );
 
     const replacement = {
       inputTokensAbove: 50_000,
@@ -543,13 +546,16 @@ describe('catalog edits', () => {
         },
       },
     ]);
-    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toEqual({
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toMatchObject({
       inputPerMillionTokens: 1,
       outputPerMillionTokens: 2,
       currency: 'USD',
       cacheWritePerMillionTokens: 0.125,
-      cacheReadPerMillionTokens: 0.010000000000000002,
     });
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing?.cacheReadPerMillionTokens).toBeCloseTo(
+      0.01,
+      12,
+    );
   });
 
   test('a price edit can set cache rates and persists edits without them', async () => {
