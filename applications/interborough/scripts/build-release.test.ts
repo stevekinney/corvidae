@@ -93,17 +93,18 @@ const root = dirname(dirname(process.argv[1]));
 const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
 const marker = ${JSON.stringify(options.markerPath ?? '')};
 const behavior = ${JSON.stringify(options.runtimeFailure ?? '')};
-if (behavior !== 'missing-link') {
-  await mkdir(join(home, 'plugins'), { recursive: true });
-  await symlink(${options.runtimeFailure === 'wrong-link' ? 'home' : 'runtime'}, join(home, 'plugins', 'node_modules'));
-}
-if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
 if (marker) {
-  await writeFile(marker, 'started');
   process.on('SIGTERM', async () => {
     await writeFile(marker, 'terminated');
     process.exit(0);
   });
+  await writeFile(marker, 'started');
+}
+if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
+// The verifier can stop this process as soon as it sees the link.
+if (behavior !== 'missing-link') {
+  await mkdir(join(home, 'plugins'), { recursive: true });
+  await symlink(${options.runtimeFailure === 'wrong-link' ? 'home' : 'runtime'}, join(home, 'plugins', 'node_modules'));
 }
 if (behavior === 'poll-error') await Bun.sleep(100);
 const server = Bun.serve({ port, fetch(request) {
