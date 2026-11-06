@@ -58,6 +58,7 @@ const REQUIRED_SCOPE_BY_OPERATION: Readonly<Record<string, AuthorizationScope>> 
   'weft.schedules.pause': 'schedules:write',
   'weft.schedules.resume': 'schedules:write',
   'weft.schedules.skipnext': 'schedules:write',
+  'weft.schedules.unskip': 'schedules:write',
   'weft.schedules.runnow': 'schedules:write',
   'weft.schedules.missed': 'schedules:read',
   'weft.schedules.cancel': 'schedules:write',

@@ -32,6 +32,7 @@ import {
 import {
   REFUND_4471_ASK_DELAY_MILLISECONDS,
   SAMPLE_WORLD_CHATS,
+  SAMPLE_WORLD_SCRATCH_CHAT,
   SAMPLE_WORLD_TIMES,
   seedSampleWorld,
   TOOL_RUNNER_CORRECTION,
@@ -150,6 +151,32 @@ describe('the sample world, part A', () => {
     ]);
     expectAt(sent[0]?.createdAt, SAMPLE_WORLD_TIMES.refund4472Asked);
     expectAt(sent[1]?.createdAt, SAMPLE_WORLD_TIMES.refund4471Started);
+    // COR-2014: the 4471 reply names the model it ran on (Sonnet 5.5 since Oct 27), and its
+    // lookup's answer says when the call ran.
+    const rows = (history?.ids ?? []).map((id) => history?.messages[id]);
+    const replies = rows.filter(
+      (message) => message?.role === 'assistant' && message.createdAt >= sent[1]!.createdAt,
+    );
+    expect(replies.length).toBeGreaterThan(0);
+    for (const reply of replies) {
+      expect(reply?.metadata['bureau:replyModel']).toEqual({
+        provider: 'anthropic',
+        model: 'claude-sonnet-5-5',
+      });
+    }
+    const lookups = rows.filter(
+      (message) =>
+        message?.role === 'tool-result' &&
+        message.toolResult?.outcome === 'success' &&
+        message.createdAt >= sent[1]!.createdAt,
+    );
+    expect(lookups.length).toBeGreaterThan(0);
+    for (const lookup of lookups) {
+      expect(lookup?.metadata['toolTiming']).toMatchObject({
+        startedAt: expect.any(String),
+        endedAt: expect.any(String),
+      });
+    }
 
     const hello = byId.get(SAMPLE_WORLD_CHATS.sayHello.threadId);
     expect(hello).toMatchObject({
@@ -287,6 +314,28 @@ describe('the sample world, part A', () => {
       expect.objectContaining({ content: TOOL_RUNNER_CORRECTION.original, writer: 'agent' }),
     ]);
     expectAt(detail.history[0]?.correctedAt, SAMPLE_WORLD_TIMES.memoryCorrected);
+  });
+
+  test('leaves the deletion of Scratch test as the Bureau records a real delete: its title and twelve messages, at 4:12 PM on Nov 1', async () => {
+    const records = await auditSince(SAMPLE_WORLD_TIMES.sayHello);
+    const [deleted] = records.filter((record) => record.type === 'session.deleted');
+    expect(deleted).toMatchObject({
+      resource: `session:${SAMPLE_WORLD_SCRATCH_CHAT.threadId}`,
+      principal: 'anonymous:local',
+      detail: {
+        sessionId: SAMPLE_WORLD_SCRATCH_CHAT.threadId,
+        title: SAMPLE_WORLD_SCRATCH_CHAT.title,
+        messageCount: SAMPLE_WORLD_SCRATCH_CHAT.messageCount,
+      },
+    });
+    expectAt(deleted?.timestamp, SAMPLE_WORLD_TIMES.sayHello);
+    // It lands before Say hello finishes (8 s later), so Recent activity lists that run first.
+    expect(Date.parse(deleted!.timestamp)).toBeLessThan(SAMPLE_WORLD_TIMES.sayHello + 8000);
+    // The chat is gone: the list holds the five chats and not this one.
+    const { contexts } = await call<{ contexts: ContextRow[] }>('bureau.contexts.list', {
+      origin: 'chat',
+    });
+    expect(contexts.map((context) => context.id)).not.toContain(SAMPLE_WORLD_SCRATCH_CHAT.threadId);
   });
 
   test('leaves the audit entries of the Nov 2 story, each at its moment', async () => {

@@ -758,7 +758,7 @@ describe('a type with little to show', () => {
           cronExpression: undefined as never,
           intervalMs: 3_600_000,
           lastFireAt: Date.now() - 60_000,
-        } as never),
+        }),
       ],
     });
     const root = await ready(container);

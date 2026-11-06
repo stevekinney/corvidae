@@ -1,4 +1,4 @@
-import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
+import { initializeWorkspaceHome, storedWorkspaceSecret } from './workspace-home.test-support.ts';
 /**
  * COR-1930: the host reads the `toolSources` in `configuration.json`, loads them before the Bureau
  * is built, lists their tools by `<id>__<tool>` with the capability tiers Armorer maps, keeps every
@@ -66,12 +66,28 @@ async function track<Server extends TestServer>(server: Promise<Server>): Promis
   return started;
 }
 
-function send(host: Host, method: string, path: string, body?: unknown): Promise<Response> {
+async function send(host: Host, method: string, path: string, body?: unknown): Promise<Response> {
+  const mutationSnapshot =
+    (method === 'PUT' || method === 'POST' || method === 'DELETE') &&
+    typeof body === 'object' &&
+    body !== null
+      ? await host.toolSources.snapshot()
+      : undefined;
+  const payload =
+    (method === 'PUT' || method === 'POST' || method === 'DELETE') &&
+    typeof body === 'object' &&
+    body !== null
+      ? {
+          ...body,
+          operationId: crypto.randomUUID(),
+          expectedRevision: mutationSnapshot?.configurationRevision,
+        }
+      : body;
   return fetch(new URL(path, host.url), {
     method,
-    ...(body === undefined
+    ...(payload === undefined
       ? {}
-      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
   });
 }
 
@@ -209,7 +225,9 @@ describe('saved tool sources', () => {
     expect(await filesHolding(path, API_KEY)).toEqual([]);
     const present = await filesUnder(path);
     const files = [...present.keys()];
-    expect(files.some((file) => file.endsWith(join('secrets', 'tool-source-files')))).toBe(true);
+    const active = await storedWorkspaceSecret(path, 'tool-source-files');
+    expect(files).toContain(active.path);
+    expect(active.value?.length).toBeGreaterThan(0);
     expect(await readFile(join(path, 'configuration.json'), 'utf8')).toContain('"files"');
   });
 
@@ -339,7 +357,11 @@ describe('saved tool sources', () => {
     // Nothing is contacted until a person signs in.
     expect(await firstSourceOf(first)).toMatchObject({ authorized: false });
 
-    const started = await send(first, 'POST', '/host/tool-sources/calendar/authorize');
+    const authorizationSnapshot = await first.toolSources.snapshot();
+    const started = await send(first, 'POST', '/host/tool-sources/calendar/authorize', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: authorizationSnapshot.configurationRevision,
+    });
     const { authorized, authorizationUrl } = (await started.json()) as {
       authorized: boolean;
       authorizationUrl: string;
@@ -353,7 +375,9 @@ describe('saved tool sources', () => {
     expect(new URL(location).pathname).toBe('/host/oauth/callback/calendar');
     // The verifier and state are stored while the sign-in waits, and are not in plaintext.
     const during = await filesUnder(path);
-    expect([...during.keys()].some((file) => file.endsWith('tool-source-calendar'))).toBe(true);
+    const waiting = await storedWorkspaceSecret(path, 'tool-source-calendar');
+    expect(during.has(waiting.path)).toBe(true);
+    expect(JSON.parse(waiting.value ?? '')).toHaveProperty('oauth');
 
     const callback = await fetch(location);
     expect(callback.status).toBe(200);
@@ -393,10 +417,15 @@ describe('saved tool sources', () => {
 
     const unsolicited = await fetch(
       new URL('/host/oauth/callback/calendar?code=forged&state=forged', host.url),
+      { headers: { origin: host.url.origin } },
     );
-    expect(unsolicited.status).toBe(400);
+    expect(unsolicited.status).toBe(403);
 
-    await send(host, 'POST', '/host/tool-sources/calendar/authorize');
+    const authorizationSnapshot = await host.toolSources.snapshot();
+    await send(host, 'POST', '/host/tool-sources/calendar/authorize', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: authorizationSnapshot.configurationRevision,
+    });
     const forged = await fetch(
       new URL('/host/oauth/callback/calendar?code=forged&state=forged&iss=x', host.url),
     );
@@ -498,15 +527,32 @@ describe('saved tool sources', () => {
       credentials: { key: API_KEY },
     });
 
-    const removed = await send(host, 'DELETE', '/host/tool-sources/pets');
+    const removalSnapshot = await host.toolSources.snapshot();
+    const removed = await send(host, 'DELETE', '/host/tool-sources/pets', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: removalSnapshot.configurationRevision,
+    });
 
     expect(removed.status).toBe(200);
     expect(JSON.parse(await readFile(join(path, 'configuration.json'), 'utf8'))).not.toHaveProperty(
       'toolSources',
     );
     expect(await sourcesOf(host)).toEqual([]);
-    expect(await readFile(join(path, 'secrets', 'tool-source-pets'), 'utf8')).toBe('');
-    expect(await statusOf(send(host, 'DELETE', '/host/tool-sources/pets'))).toBe(404);
+    const cleared = await storedWorkspaceSecret(path, 'tool-source-pets');
+    expect(JSON.parse(cleared.value ?? '')).toEqual({
+      version: 1,
+      sourceId: 'pets',
+      credentials: {},
+    });
+    const secondRemovalSnapshot = await host.toolSources.snapshot();
+    expect(
+      await statusOf(
+        send(host, 'DELETE', '/host/tool-sources/pets', {
+          operationId: crypto.randomUUID(),
+          expectedRevision: secondRemovalSnapshot.configurationRevision,
+        }),
+      ),
+    ).toBe(404);
   });
 
   test('stops the host, naming the field, for a toolSources entry it cannot use', async () => {

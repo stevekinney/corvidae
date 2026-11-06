@@ -5,9 +5,9 @@ const schema = {
   type: 'object',
   properties: {
     variant: {
-      enum: ['default', 'striped', 'two-column', 'narrow'],
+      enum: ['default', 'striped', 'two-column', 'narrow', 'facts', 'fields'],
       description:
-        'Controls the visual layout:\n- `default`: stacked rows with visible terms.\n- `striped`: alternating row backgrounds.\n- `two-column`: a muted term on the left and the value on the right, with no row dividers;\n  collapses to stacked at narrow widths.\n- `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when\n  surrounding context already labels the value. NOT a general compact mode.',
+        'Controls the visual layout:\n- `default`: stacked rows with visible terms.\n- `striped`: alternating row backgrounds.\n- `two-column`: a muted term on the left and the value on the right, with no row dividers;\n  collapses to stacked at narrow widths.\n- `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when\n  surrounding context already labels the value. NOT a general compact mode.\n- `fields`: a record read as a list: a regular-weight muted term at the start, its value\n  beside it, and a quiet rule under each row; stacks below 28rem.\n- `facts`: one row of equal columns, each a muted term above its value, between two quiet\n  rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the\n  container narrows.',
     },
     stack: {
       type: 'boolean',

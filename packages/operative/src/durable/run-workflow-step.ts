@@ -8,6 +8,10 @@ import { effectiveContextTail } from '../effective-context-record';
 import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';
 import { runStep } from '../run-step';
+import {
+  SESSION_INPUT_COMMAND_ID_METADATA_KEY,
+  SESSION_INPUT_ID_METADATA_KEY,
+} from '../session-input-turns';
 import type { FinishReason, StepResult } from '../types';
 import { CHECKPOINT_RECORD_SCHEMA_VERSION } from './checkpoint-version';
 import { runDepsFrom } from './run-workflow-input';
@@ -23,6 +27,7 @@ import {
 } from './snapshot-delta';
 import type {
   DurableRunDeps,
+  PendingChildWait,
   PendingHumanWait,
   PendingWakeup,
   RecordedToolCall,
@@ -103,6 +108,7 @@ export interface DurableStepMemoResult {
   >;
   pendingWakeup?: PendingWakeup | undefined;
   pendingHumanWait?: PendingHumanWait | undefined;
+  pendingChildWait?: PendingChildWait | undefined;
   /**
    * COR-1476 — the session inputs this step's boundary received before it
    * generated, in admission order, each already appended to the conversation
@@ -181,6 +187,7 @@ export function runStepMemo(
     const deps = runDepsFrom(ctx.services);
     deps.pendingHumanWait = undefined;
     deps.pendingWakeup = undefined;
+    deps.pendingChildWait = undefined;
     const conversation = conversationForStep(deps, snapshot);
     let stepToolbox: AnyToolbox = deps.toolbox;
     const stepDeps = {
@@ -193,6 +200,9 @@ export function runStepMemo(
         deps.onStepToolbox?.(toolbox);
       },
       admissionTracker: deps.admissionTracker,
+      requestChildWait: deps.requestChildWait,
+      childWaitPrincipal: deps.childWaitPrincipal,
+      getPendingChildWait: () => deps.pendingChildWait,
       runId,
       durableOperationKeys: true,
     };
@@ -295,6 +305,7 @@ export function runStepMemo(
       },
       pendingWakeup: deps.pendingWakeup,
       pendingHumanWait: deps.pendingHumanWait,
+      pendingChildWait: deps.pendingChildWait,
       ...(sessionInputDeliveries.length > 0 ? { sessionInputDeliveries } : {}),
       ...(lateSessionInputDeliveries.length > 0 ? { lateSessionInputDeliveries } : {}),
     };
@@ -352,11 +363,14 @@ async function deliverSessionInputs(
     // Hidden messages count: a hidden turn still holds its command and its id.
     const messages = conversation.getMessages({ includeHidden: true });
     const existing = messages.find(
-      (message) => message.metadata?.['sessionInputCommandId'] === input.commandId,
+      (message) => message.metadata?.[SESSION_INPUT_COMMAND_ID_METADATA_KEY] === input.commandId,
     );
     let messageId = existing?.id;
     if (messageId === undefined) {
-      const metadata = { sessionInputId: input.id, sessionInputCommandId: input.commandId };
+      const metadata = {
+        [SESSION_INPUT_ID_METADATA_KEY]: input.id,
+        [SESSION_INPUT_COMMAND_ID_METADATA_KEY]: input.commandId,
+      };
       const idIsFree = !messages.some((message) => message.id === input.id);
       const turn: MessageInput & { readonly id?: string } = {
         role: 'user',

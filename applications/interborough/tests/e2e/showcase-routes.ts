@@ -1,5 +1,5 @@
 /**
- * What the showcase specification (`showcase.spec.ts`) needs to know about the route table without
+ * What the showcase specification (`00-showcase.spec.ts`) needs to know about the route table without
  * a browser: an address for each route and for a few of its states, with the identifiers of the
  * sample world's records (`fixtures/sample-world-records.ts`) filled in. `tests/showcase-routes.test.ts`
  * keeps the table honest in the unit lane, so a new route cannot be added without an address.

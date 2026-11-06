@@ -111,4 +111,28 @@ describe('StackedListItem on a phone', () => {
     cleanup();
     setPhone(false);
   });
+
+  test('a third line wraps under line two, starts at the left edge on a phone and is never cut', () => {
+    setPhone(true);
+    const { container, getByTestId } = render(ExtrasFixture, { props: { mode: 'detail' } });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    const line = getByTestId('detail').closest('.cinder-stacked-list-item__detail');
+    expect(line).not.toBeNull();
+    // It is a sibling of line two inside the row, so it follows line two in reading order.
+    expect(
+      row?.querySelector('.cinder-stacked-list-item__line-two + .cinder-stacked-list-item__detail'),
+    ).toBe(line);
+    expect(stylesheet).toMatch(
+      /__detail\s*\{[^}]*grid-row:\s*details;[^}]*overflow-wrap:\s*anywhere/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-cinder-phone\]\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
+    );
+    // Wrapping, not truncating: the third line carries no ellipsis or nowrap rule.
+    const rule = /\.cinder-stacked-list-item__detail\s*\{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(rule).not.toContain('nowrap');
+    expect(rule).not.toContain('text-overflow');
+    cleanup();
+    setPhone(false);
+  });
 });

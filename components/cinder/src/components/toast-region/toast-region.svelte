@@ -559,6 +559,9 @@
     return (element) => {
       function handlePointerDown(event: PointerEvent): void {
         if (!item.dismissible || item.leaving) return;
+        // A press on the action or the dismiss button is a click, not a swipe: capturing the pointer
+        // would send the click to the toast instead of the button, and the action would never run.
+        if (event.target instanceof Element && event.target.closest('button, a')) return;
         pointerId = event.pointerId;
         startX = event.clientX;
         element.setPointerCapture?.(event.pointerId);

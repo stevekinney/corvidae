@@ -14,5 +14,6 @@ export type {
   SchemaFormProps,
   SchemaFormSchema,
   SchemaFormSubmitHandler,
+  SchemaFormVariant,
 } from './schema-form.types.ts';
 export { SchemaForm };

@@ -262,6 +262,58 @@
     padding-block: var(--cinder-space-2);
   }
 
+  /* A run is a status-first row of its own, with its own hairline under it, in a list of its own. */
+  .cinder-timeline-item[data-cinder-kind='run'] {
+    padding-block: 0;
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-timeline-item[data-cinder-kind='run']:last-child {
+    border-block-end: 0;
+  }
+
+  .cinder-timeline-item__run {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-timeline-item__duration {
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* An empty body adds no gap under the header. */
+  .cinder-timeline-item__body:empty {
+    display: none;
+  }
+
+  /* A plain event has no marker: its row starts at the inline start, with the actions after it. */
+  .cinder-timeline-item[data-cinder-plain] .cinder-timeline-item__marker {
+    display: none;
+  }
+
+  .cinder-timeline-item[data-cinder-plain] .cinder-timeline-item__event {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cinder-timeline-item[data-cinder-plain] .cinder-timeline-item__event[data-cinder-has-actions] {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .cinder-timeline[data-cinder-variant='list']
+    .cinder-timeline-item[data-cinder-tone='warning'][data-cinder-plain]
+    .cinder-timeline-item__title {
+    color: var(--cinder-status-warning-text);
+  }
+
+  /* An occurrence that will not start a run: its time is crossed out and nothing else changes. */
+  .cinder-timeline-item__time[data-cinder-struck] {
+    text-decoration: line-through;
+  }
+
   /* A band is a stacked-list-item group row in a list of its own, full width and without a rail. */
   .cinder-timeline-item__band {
     margin: 0;

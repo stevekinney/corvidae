@@ -55,6 +55,17 @@ export const chatContextSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   activity: z.enum(['running', 'awaiting-input', 'idle']),
+  /**
+   * Why the chat's last run ended when the host stopped it: `host-stopped`, a run that a restart
+   * aborted, which can no longer continue (COR-2009). `null` for a chat whose run ended on its own
+   * or ran again since, and absent from a Bureau that does not say; a reason this client does not know
+   * reads `other`.
+   */
+  endReason: z
+    .enum(['host-stopped'])
+    .nullable()
+    .or(z.unknown().transform((): 'other' => 'other'))
+    .optional(),
 });
 
 /**
@@ -350,6 +361,44 @@ export async function sendContextInput(
   return contextInputReceiptSchema.parse(
     await callBureau('bureau.contexts.input', { contextId, input }, options),
   );
+}
+
+/**
+ * Takes back a follow-up the run has not taken yet (`bureau.contexts.retract`), by the id it was
+ * sent under: the Remove on a queued message. `retracted` means it will never be delivered, and
+ * `delivered` that the run already took it, so it stands as a sent message. An input the Bureau no
+ * longer holds (a `NotFound`) will never be delivered either, so it answers `retracted`; any other
+ * failure throws, and the follow-up stays queued.
+ */
+export async function retractContextInput(
+  contextId: string,
+  inputId: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<'retracted' | 'delivered'> {
+  try {
+    return z
+      .object({ outcome: z.enum(['retracted', 'delivered']) })
+      .parse(await callBureau('bureau.contexts.retract', { contextId, inputId }, options)).outcome;
+  } catch (error) {
+    if (wireCodeOf(error) === 'NotFound') return 'retracted';
+    throw error;
+  }
+}
+
+/**
+ * Forgets a session's "Allow for the rest of this chat" grant of each tool in `tools` (tool names,
+ * `bureau.contexts.forgetgrants`), so the next call of that tool asks for approval again. It removes
+ * no row: Retry keeps the failed attempt on record and sends a new turn after it. Resolves the
+ * grants forgotten, as the Bureau stored them; a missing session is a `NotFound` fault, and any
+ * failure throws.
+ */
+export async function forgetContextGrants(
+  input: { readonly contextId: string; readonly tools: readonly string[] },
+  options?: { readonly signal?: AbortSignal },
+): Promise<readonly string[]> {
+  return z
+    .object({ forgotten: z.array(z.string()) })
+    .parse(await callBureau('bureau.contexts.forgetgrants', input, options)).forgotten;
 }
 
 /**

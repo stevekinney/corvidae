@@ -6,6 +6,9 @@ export type SchemaFormSchema = JsonSchemaObject;
 
 export type SchemaFormOutput = unknown;
 
+/** How a SchemaForm draws its fields; see {@link SchemaFormProps.variant}. */
+export type SchemaFormVariant = 'default' | 'input';
+
 export type SchemaFormDraftChangeHandler = (value: SchemaFormOutput) => void;
 
 export type SchemaFormSubmitHandler = (
@@ -44,6 +47,21 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
   name?: string;
   /** Label for the built-in submit button. Defaults to `Submit`. */
   submitLabel?: string;
+  /**
+   * How the fields are drawn. `default` is the plain form. `input` is the Input block of a page
+   * that runs or schedules something: short fields share a row two at a time (a switch, an
+   * array, a group or a JSON field takes the whole row), a boolean is a switch with its
+   * description beside it, and an array of objects is one JSON editor whose status line counts
+   * the items.
+   * @default "default"
+   */
+  variant?: SchemaFormVariant;
+  /**
+   * Whether the form draws its own submit button. Set `false` when the host submits the form from
+   * a button elsewhere on the page, such as a footer, whose `form` attribute names this form's
+   * `id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`.
+   */
+  submitVisible?: boolean;
   /** Custom class merged with `.cinder-schema-form`. */
   class?: string;
   /** Called after validation passes with the schema-conformant output value. */

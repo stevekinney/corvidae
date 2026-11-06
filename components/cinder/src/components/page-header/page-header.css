@@ -131,4 +131,21 @@
       margin-inline-start: 0;
     }
   }
+
+  /* A header whose only action is the icon-only create "+" keeps it at the right of the title on a
+     phone: it is one small square, so it needs no row of its own. */
+  @container cinder-page-header (max-width: 32rem) {
+    .cinder-page-header--create-only .cinder-page-header__row {
+      flex-wrap: nowrap;
+    }
+
+    .cinder-page-header--create-only .cinder-page-header__heading-group {
+      flex-basis: auto;
+    }
+
+    .cinder-page-header--create-only .cinder-page-header__actions {
+      flex-basis: auto;
+      margin-inline-start: auto;
+    }
+  }
 }

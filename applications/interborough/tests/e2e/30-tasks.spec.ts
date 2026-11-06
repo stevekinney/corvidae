@@ -188,8 +188,12 @@ test.describe('the runs of a caller who may not read the engine', () => {
     const task = await taskOfSession(request, threadId);
     // The principal holds a scope, but not `workflows:read`.
     const scopes = ['system:read'];
+    const actual = await request.get('/api/v1/principal');
+    const { workspace } = await actual.json();
     await page.route('**/api/v1/principal', async (route) => {
-      await route.fulfill({ json: { method: 'api-key', subject: 'anonymous:local', scopes } });
+      await route.fulfill({
+        json: { method: 'api-key', subject: 'anonymous:local', scopes, workspace },
+      });
     });
     await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postData() ?? '';
@@ -198,7 +202,7 @@ test.describe('the runs of a caller who may not read the engine', () => {
           json: {
             jsonrpc: '2.0',
             id: JSON.parse(body).id,
-            result: { method: 'api-key', subject: 'anonymous:local', scopes },
+            result: { method: 'api-key', subject: 'anonymous:local', scopes, workspace },
           },
         });
         return;

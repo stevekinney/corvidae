@@ -206,6 +206,20 @@ export interface PendingHumanWait {
   inputSchema?: HumanInputSchema | undefined;
 }
 
+export interface PendingChildWait {
+  readonly schemaVersion: 1;
+  readonly parentRunId: string;
+  readonly childRunId: string;
+  readonly toolCallId: string;
+  readonly principal: string;
+}
+
+export type DurableChildWaitResolution =
+  | { readonly status: 'pending' }
+  | { readonly status: 'settled'; readonly child: JSONValue }
+  | { readonly status: 'unobservable'; readonly child: JSONValue }
+  | { readonly status: 'not-found' };
+
 /**
  * The non-serializable, per-run behavior a durable workflow needs but cannot
  * checkpoint: the `generate` function, the `toolbox`, the hook registry, the
@@ -269,6 +283,21 @@ export interface DurableRunDeps {
    * `requestHumanInput` tool inside `ctx.memo`.
    */
   pendingHumanWait?: PendingHumanWait | undefined;
+  /** Mutable slot for the single child-wait request accepted by this step. */
+  pendingChildWait?: PendingChildWait | undefined;
+  /** Registers the first authorized child-wait request for the current step. */
+  requestChildWait?:
+    | ((
+        request: Omit<PendingChildWait, 'schemaVersion'>,
+      ) => { parked: true } | { parked: false; reason: 'already-parked' | 'unauthorized' })
+    | undefined;
+  /** Principal bound to the durable child-wait capability for this run. */
+  childWaitPrincipal?: string | undefined;
+  /** Original tool-call identifiers whose provisional settlement is deferred. */
+  deferredChildCallIds?: Set<string> | undefined;
+  /** Resolves a recovered child-wait request against the host child topology. */
+  resolveChildWait?:
+    ((request: PendingChildWait) => Promise<DurableChildWaitResolution>) | undefined;
   /**
    * Optional plain metadata to persist with the committed step record after
    * `runStep` finishes. This runs immediately before `recordStep`, so the
@@ -416,6 +445,41 @@ export type SessionInputAdmissionOutcome =
       readonly scope: 'session' | 'principal';
       readonly limit: number;
     };
+
+/**
+ * A caller's request to take back one input it admitted and the run has not taken yet: a
+ * follow-up the person removes before the run reaches it. `principal` is the authenticated
+ * caller, attached by the calling layer as for {@link SessionInputAdmissionRequest}; only the
+ * principal that admitted the input may retract it.
+ */
+export interface SessionInputRetractionRequest {
+  /** The caller-facing id the input was admitted under. */
+  readonly id: string;
+  /** The authenticated caller. An input another principal admitted is answered `not-found`. */
+  readonly principal: string;
+  /**
+   * The incarnation of the session the caller checked the input against. An input naming an
+   * earlier incarnation is answered `not-found`. Omitted, the session as it is now.
+   */
+  readonly incarnation?: string | undefined;
+}
+
+/**
+ * What retracting an input settled:
+ *
+ * - `retracted`: the input will never be delivered. It was cancelled before any run took it, or
+ *   it had already ended undelivered (cancelled, expired, failed); `receipt` says which.
+ * - `delivered`: too late. The run already took the input into the conversation, or holds it at
+ *   the step boundary that is appending it; the turn stands, and `receipt` reads `promoted`, or
+ *   `accepted` until the step that holds it commits.
+ * - `not-found`: no such input in the session for this caller, or no such session.
+ * - `unsupported-capability`: the host keeps no durable mailbox to retract from.
+ */
+export type SessionInputRetractionOutcome =
+  | { readonly outcome: 'retracted'; readonly receipt: SessionInputReceipt }
+  | { readonly outcome: 'delivered'; readonly receipt: SessionInputReceipt }
+  | { readonly outcome: 'not-found' }
+  | { readonly outcome: 'unsupported-capability'; readonly reason: string };
 
 export type SessionInputState =
   | 'accepted' // admitted, `steer` mode, waiting for the next safe boundary

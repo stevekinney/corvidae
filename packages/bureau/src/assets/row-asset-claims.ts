@@ -20,7 +20,7 @@ import {
   AssetUnavailableError,
 } from './errors';
 import { bureauClaim, heldClaimsOf } from './internal-access';
-import type { AssetHeldClaim, AssetService } from './types';
+import type { AssetPrincipal, AssetHeldClaim, AssetService } from './types';
 
 /**
  * A claim does not lapse by itself: it ends only when its row's session does, through
@@ -137,6 +137,7 @@ export function isPermanentClaimFailure(error: unknown): boolean {
 
 /** What {@link claimRowAssets} reports; both are told which row the asset was found in. */
 export interface RowClaimReports {
+  readonly workspaceAuthority?: AssetPrincipal['workspaceAuthority'];
   /** A claim that failed. Check {@link isPermanentClaimFailure} to tell a repair from a retry. */
   readonly onFailure: (assetId: string, error: unknown, rowId: string) => void;
   /** A claim skipped as not this principal's to make; skipped quietly when this is absent. */
@@ -168,7 +169,7 @@ export async function claimRowAssets(
       try {
         await assets.retain(
           assetId,
-          { id: principalId },
+          { id: principalId, workspaceAuthority: reports.workspaceAuthority },
           { holderId, until: ROW_CLAIM_UNTIL, [bureauClaim]: true },
         );
         alreadyClaimed?.add(key);

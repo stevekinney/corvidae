@@ -309,10 +309,11 @@ export interface AuditRecord {
    * queue approve/deny). Bureau-action-stream records (`tool.*`, `run.*`,
    * `step.completed`, `budget.exceeded`,
    * `toolbox.loop-warning`/`loop-blocked`/`budget-exceeded`) have no principal; they are
-   * attributed to the run. The AB-228 `schedule.*` and `session.deleted`
-   * listeners below also write through the out-of-band path but likewise
-   * carry no principal — a schedule pause/resume/cancel, or a session
-   * deletion, has no authenticated caller to attribute today.
+   * attributed to the run. The AB-228 `schedule.*` listeners below also write
+   * through the out-of-band path but likewise carry no principal — a schedule
+   * pause/resume/cancel has no authenticated caller to attribute today. A
+   * `session.deleted` entry carries the principal that asked for the deletion
+   * (COR-2018) and none for a session the store expired.
    *
    * The `principal` is the actor (COR-718), never the owner. The owner of the
    * resource an entry concerns is derived from the entry: its `runId` names a
@@ -353,6 +354,13 @@ export interface AuditQueryOptions {
    * many records an outside filter dropped between them.
    */
   after?: { readonly timestampMs: number; readonly sequence: number };
+  /**
+   * Only records before this position: earlier by `timestampMs`, or at the same millisecond with a
+   * lesser `sequence` (a record with no `sequence` counts as `-1`). It pages a `select: 'newest'`
+   * query the way `after` pages an oldest-first one: pass the position of the oldest record the
+   * previous page returned.
+   */
+  before?: { readonly timestampMs: number; readonly sequence: number };
 }
 
 /**
@@ -559,6 +567,22 @@ export interface AuditTrailOptions {
    * the live session. An entry written without one has no owner.
    */
   sessionDeletionOwner?: (sessionId: string, incarnation: string) => string | undefined;
+  /**
+   * COR-2018: who asked for a session's deletion, by session id and incarnation, or `undefined`
+   * when nobody did (the store expired it) or Bureau recorded none. The `session.deleted` entry
+   * carries it as its `principal`, the actor, so the log can say who deleted the chat.
+   */
+  sessionDeletionActor?: (sessionId: string, incarnation: string) => string | undefined;
+  /**
+   * COR-2018: what a deleted session was, by session id and incarnation: its title and how many
+   * messages it held, or `undefined` when Bureau recorded none. The `session.deleted` entry carries
+   * them as `detail.title` and `detail.messageCount`, because the body is gone by the time the
+   * entry is written and the log could otherwise name only a session id.
+   */
+  sessionDeletionSummary?: (
+    sessionId: string,
+    incarnation: string,
+  ) => { readonly title: string | null; readonly messageCount: number } | undefined;
 }
 
 /**
@@ -975,6 +999,16 @@ function isAfterPosition(
   return (record.sequence ?? -1) > position.sequence;
 }
 
+/** Whether `record` sits exactly at `position` in the order `query` returns records in. */
+function sameSortPosition(
+  record: Pick<AuditRecord, 'timestampMs' | 'sequence'>,
+  position: { readonly timestampMs: number; readonly sequence: number },
+): boolean {
+  return (
+    record.timestampMs === position.timestampMs && (record.sequence ?? -1) === position.sequence
+  );
+}
+
 /** The `runId` prefix of a schedule's synthetic audit owner, `schedule:<id>`. */
 export const AUDIT_SCHEDULE_OWNER_PREFIX = 'schedule:';
 
@@ -1077,6 +1111,20 @@ export function auditTrailToolSourceOwnerId(sourceId: string): string {
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */
 function ownerDetail(owner: string | undefined): { owner?: string } {
   return owner === undefined ? {} : { owner };
+}
+
+function principalOf(actor: string | undefined): { principal?: string } {
+  return actor === undefined ? {} : { principal: actor };
+}
+
+function summaryDetail(
+  summary: { readonly title: string | null; readonly messageCount: number } | undefined,
+): { title?: string; messageCount?: number } {
+  if (summary === undefined) return {};
+  return {
+    ...(summary.title === null ? {} : { title: summary.title }),
+    messageCount: summary.messageCount,
+  };
 }
 
 /**
@@ -1847,6 +1895,9 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       {
         runId: sessionOwnerId(event.sessionId),
         type: 'session.deleted',
+        ...principalOf(
+          auditTrailOptions?.sessionDeletionActor?.(event.sessionId, event.incarnation),
+        ),
         // AB-384 (Codex P2 review finding, PR #592, "Preserve the incarnation
         // in deletion audit records"): `SessionDeletedEvent` now carries the
         // deleted record's own `incarnation` — omitting it here would leave a
@@ -1858,6 +1909,9 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
           incarnation: event.incarnation,
           ...ownerDetail(
             auditTrailOptions?.sessionDeletionOwner?.(event.sessionId, event.incarnation),
+          ),
+          ...summaryDetail(
+            auditTrailOptions?.sessionDeletionSummary?.(event.sessionId, event.incarnation),
           ),
         },
       },
@@ -2771,7 +2825,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     async query(options: AuditQueryOptions = {}): Promise<AuditRecord[]> {
       if (!kv) return [];
 
-      const { since, runId, type, filter, limit = 500, after, select = 'oldest' } = options;
+      const { since, runId, type, filter, limit = 500, after, before, select = 'oldest' } = options;
 
       // AB-228 (Codex P2 review findings, PR #566: "Wait for schedule audit
       // writes before returning success", then "Avoid blocking every audit
@@ -2847,6 +2901,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         // The key leads with its record's zero-padded timestamp, so a record that is earlier than
         // `after` is skipped without being read.
         if (after !== undefined && keyTimestampMilliseconds(key) < after.timestampMs) continue;
+        if (before !== undefined && keyTimestampMilliseconds(key) > before.timestampMs) continue;
         const raw = await kv.get(key);
         if (!raw) continue;
 
@@ -2874,6 +2929,8 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
 
         if (since !== undefined && record.timestampMs < since) continue;
         if (after !== undefined && !isAfterPosition(record, after)) continue;
+        if (before !== undefined && isAfterPosition(record, before)) continue;
+        if (before !== undefined && sameSortPosition(record, before)) continue;
         if (runId !== undefined && record.runId !== runId) continue;
         if (type !== undefined && record.type !== type) continue;
         if (filter !== undefined && !filter(record)) continue;

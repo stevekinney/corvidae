@@ -9,7 +9,14 @@ import {
 const cancelWorkflowInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow to cancel.'),
 });
-const cancelWorkflowOutput = z.undefined();
+const cancelWorkflowOutput = z.discriminatedUnion('status', [
+  z.object({ workflowId: z.string(), status: z.literal('cancel-requested') }),
+  z.object({
+    workflowId: z.string(),
+    status: z.literal('already-terminal'),
+    terminalStatus: z.enum(['completed', 'failed', 'cancelled', 'timed-out']),
+  }),
+]);
 
 export type CancelWorkflowInput = z.infer<typeof cancelWorkflowInput>;
 export type CancelWorkflowOutput = z.infer<typeof cancelWorkflowOutput>;
@@ -27,11 +34,18 @@ export const cancelWorkflowOperation = createSingleWorkflowControlOperation({
   tags: ['Workflows'],
   inputSchema: cancelWorkflowInput,
   outputSchema: cancelWorkflowOutput,
-  producibleFaults: ['NotFound'],
+  producibleFaults: ['Conflict', 'NotFound'],
+  mapErrorToFault: ({ message }) =>
+    message.includes('replaced before it was cancelled.')
+      ? {
+          code: 'Conflict',
+          message,
+          data: { reason: 'workflow-replaced', publicReason: 'workflow-replaced' },
+        }
+      : undefined,
   requiredEngineMethods: ['cancel'],
   invoke: async ({ input, engine }): Promise<CancelWorkflowOutput> => {
-    await engine.cancel(input.workflowId);
-    return undefined;
+    return await engine.cancel(input.workflowId);
   },
 });
 
@@ -44,5 +58,5 @@ export const cancelWorkflowRestBinding: UnknownRestBinding = {
     workflowId: { kind: 'path', pathParam: 'id' },
   },
   extractInput: async (_request, pathParams) => extractWorkflowIdFromPath(pathParams),
-  success: { kind: 'empty', status: 204 },
+  success: { kind: 'json', status: 200 },
 };

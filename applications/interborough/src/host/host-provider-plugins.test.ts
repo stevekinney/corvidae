@@ -45,7 +45,7 @@ async function prepareHome(setup: {
   });
   try {
     for (const [key, value] of Object.entries(setup.secrets ?? {}))
-      bungalow.writeSecret(key, value);
+      await bungalow.deploymentSecrets.write(key, value);
   } finally {
     bungalow.close();
   }
@@ -250,6 +250,7 @@ describe('connecting a provider', () => {
       unknown
     >;
     expect(written).toEqual({
+      secretBindings: { 'openai-api-key': expect.any(String) },
       plugins: { openai: { configuration: { models: ['gpt-4.1'] } } },
     });
     expect(pairsOf(host)).toEqual(['openai/gpt-4.1']);

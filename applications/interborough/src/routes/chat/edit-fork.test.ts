@@ -6,7 +6,7 @@ import {
 import { describe, expect, test } from 'bun:test';
 
 import { branchPointIds } from './branch-points.ts';
-import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
+import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
 
 function conversationOf(
   rows: ReadonlyArray<{ id: string; role: 'user' | 'assistant'; hidden?: boolean }>,
@@ -35,6 +35,18 @@ describe('editForkPoint', () => {
 
   test('branches before the first message for the first message', () => {
     expect(editForkPoint(TURNS, 'u1', points)).toBeNull();
+  });
+
+  test('does not count the agent’s instructions as what precedes the first message', () => {
+    const withInstructions = appendMessages(
+      createConversationHistory({ id: 'session-1' }),
+      { id: 's1', role: 'system', content: 'You are Tool runner.' },
+      { id: 'u1', role: 'user', content: 'u1' },
+      { id: 'a1', role: 'assistant', content: 'a1' },
+    );
+    expect(
+      editForkPoint(withInstructions, 'u1', branchPointIds(withInstructions, false)),
+    ).toBeNull();
   });
 
   test('branches through the reply before a later message', () => {
@@ -76,15 +88,5 @@ describe('lastBranchPoint', () => {
 
   test('is nothing while a run is going', () => {
     expect(lastBranchPoint(TURNS, branchPointIds(TURNS, true))).toBeUndefined();
-  });
-});
-
-describe('the edited text held for a branch', () => {
-  test('is taken once, by the branch it was held for', () => {
-    holdEdit('branch-1', 'edited');
-
-    expect(takeEdit('branch-2')).toBeUndefined();
-    expect(takeEdit('branch-1')).toBe('edited');
-    expect(takeEdit('branch-1')).toBeUndefined();
   });
 });

@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.agents.references` (COR-2009): what names an agent by its identifier, so a page can say
  * what stops finding the agent before its identifier changes, it is disabled, or it is deleted:
@@ -55,6 +57,7 @@ export const agentsReferencesOperation = defineOperation<
   BureauAgentReferencesOperationHost
 >({
   name: 'bureau.agents.references',
+  authorize: authorizeWorkspaceOperation('bureau.agents.references'),
   mcpExposable: false,
   summary: 'List what names an agent',
   description:

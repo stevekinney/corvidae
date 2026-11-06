@@ -43,6 +43,16 @@ const schema = {
       description:
         'Whether the composer answers an open free-text question. A free-text question then reads "Answer below", the composer\'s placeholder reads "Answer", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. Without it (a reviews inbox, which has no composer) a text field is drawn in the question. Every other kind of question is answered in place either way. Default `false`.',
     },
+    composerPlaceholder: {
+      type: 'string',
+      description:
+        "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`.",
+    },
+    composerAnswering: {
+      type: 'boolean',
+      description:
+        "Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`.",
+    },
     disabled: {
       type: 'boolean',
       description:
@@ -59,9 +69,9 @@ const schema = {
         "Controls spacing density of the message timeline.\n- `'comfortable'` (default): standard padding and gap.\n- `'compact'`: tighter spacing for data-dense contexts (e.g., embedded panels).\n  Action buttons keep `min-height: var(--cinder-touch-target-min)` regardless.",
     },
     variant: {
-      enum: ['bubble', 'flat'],
+      enum: ['bubble', 'flat', 'transcript'],
       description:
-        "Visual treatment for message bubbles.\n- `'bubble'` (default): colored backgrounds differentiate user from assistant.\n- `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.\n  Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.",
+        "Visual treatment for message bubbles.\n- `'bubble'` (default): colored backgrounds differentiate user from assistant.\n- `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.\n  Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.\n- `'transcript'`: a reply is plain text with no card or role label, a person's message keeps its\n  tinted bubble, and one muted line under each message carries its time, `messageActions`, Copy\n  and Quote as visible words. A message that was not sent keeps its bubble under a red icon\n  (`notSent`), a follow-up the run has not taken yet is a dashed bubble marked Queued\n  (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).",
     },
     bottomThreshold: {
       type: 'number',
@@ -185,6 +195,24 @@ const schema = {
           'Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before.',
       },
       {
+        name: 'composerControls',
+        reason: 'function-or-snippet',
+        description:
+          "Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether the composer is narrower than `COMPOSER_FOLD_WIDTH` (`folded`), so a host can draw one Settings control in place of several selects; the footer never wraps.",
+      },
+      {
+        name: 'composerHeader',
+        reason: 'function-or-snippet',
+        description:
+          "The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it.",
+      },
+      {
+        name: 'composerHint',
+        reason: 'unknown-shape',
+        description:
+          'The line of help under the composer while no status shows. Default `Enter to send · Shift and Enter for a new line`; `false` hides it.',
+      },
+      {
         name: 'conversation',
         reason: 'unknown-shape',
         required: true,
@@ -198,6 +226,12 @@ const schema = {
       {
         name: 'header',
         reason: 'function-or-snippet',
+      },
+      {
+        name: 'trailing',
+        reason: 'function-or-snippet',
+        description:
+          'Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation.',
       },
       {
         name: 'markdownNode',

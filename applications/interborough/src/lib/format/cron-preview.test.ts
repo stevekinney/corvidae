@@ -53,7 +53,8 @@ describe('computeNextFires', () => {
       '2026-07-20T16:00:00.000Z',
       '2026-07-21T16:00:00.000Z',
     ]);
-    expect(fires[0]?.label).toContain('09:00');
+    // The weekday, month and day read without a comma between them, and the hour has no leading zero.
+    expect(fires[0]?.label).toMatch(/^Mon Jul 20, 9:00\sAM$/);
   });
 
   test('cron mode: daily at a fixed time', () => {

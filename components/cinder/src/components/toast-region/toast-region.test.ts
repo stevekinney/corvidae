@@ -870,6 +870,38 @@ describe('useToast api', () => {
     ).toBeUndefined();
   });
 
+  test('a press on the action button does not capture the pointer, so its click reaches the button', async () => {
+    let api: ToastApi | null = null;
+    const { container } = render(Wrapper, {
+      onReady: (a: ToastApi) => {
+        api = a;
+      },
+    });
+    await waitFor(() => expect(api).not.toBeNull());
+    const onAction = jest.fn();
+    api!.show('Started the run.', { duration: 0, action: { label: 'Open run', onAction } });
+    const toast = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.cinder-toast');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    const captured: number[] = [];
+    toast.setPointerCapture = (id: number) => void captured.push(id);
+    const action = toast.querySelector<HTMLElement>('.cinder-toast__action');
+    expect(action).not.toBeNull();
+
+    await fireEvent.pointerDown(action!, { pointerId: 1, clientX: 0 });
+    // The toast body, away from its buttons, is still where a swipe starts.
+    await fireEvent.pointerDown(toast.querySelector('.cinder-toast__message')!, {
+      pointerId: 2,
+      clientX: 0,
+    });
+
+    expect(captured).toEqual([2]);
+    await fireEvent.click(action!);
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
   test('pointer cancel resets swipe state without dismissing', async () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {

@@ -42,6 +42,26 @@ A patch longer than `maxLines` renders its first rows and ends in a footer: a mu
 <SourceDiffViewer {patch} maxLines={6} lineNumbers={false} ariaLabel="What changed" />
 ```
 
+## Without headers
+
+`headers={false}` leaves out each file's header (its path) and each hunk's header (`@@ -1,3 +1,4 @@`), so the rows alone are the diff. Use it for a change to one thing that has no file, such as an agent's instructions; the region and each hunk keep their accessible names.
+
+```svelte
+<script lang="ts">
+  import { SourceDiffViewer } from '@lostgradient/cinder';
+
+  let { patch }: { patch: string } = $props();
+</script>
+
+<SourceDiffViewer
+  {patch}
+  maxLines={6}
+  lineNumbers={false}
+  headers={false}
+  ariaLabel="Instructions"
+/>
+```
+
 ### Inline variant
 
 `variant="inline"` is for a diff that is one value among others, such as a `patch` in a payload. It has no frame, headers or gutter: it shows the first `maxLines` _changed_ lines as bare added and removed rows, with a chevron link under them, "Show all 9 lines" (the number of lines in the patch), that renders the whole patch. `countPatchChanges(patch)` returns `{ added, removed }` for a "+3 −1" summary beside a label. `PayloadInspector` uses this variant for a string value that is a unified patch.
@@ -117,6 +137,7 @@ Contract note: this repository's `check-prop-conventions` gate bans a non-native
 | `ariaLabel` | `string` | no | — | Accessible label for the diff region. |
 | `class` | `string` | no | — | Additional CSS classes merged with `.cinder-source-diff-viewer`. |
 | `expanded` | `boolean` | no | `false` | Whether every row renders, past `maxLines`. Bindable: Show all sets it, and a host can set it to open or close the diff from outside. |
+| `headers` | `boolean` | no | `true` | Whether each file's header (its path) and each hunk's header (its line ranges) are drawn. Turn them off for a change to one thing that has no file, such as an agent's instructions, where the rows alone are the diff. |
 | `lineNumbers` | `boolean` | no | `true` | Whether old and new line-number gutters are rendered. |
 | `maxLines` | `integer` | no | `1000` | Maximum number of diff rows to render before truncating. When the patch is longer, a Show all action under the rows renders the rest in place. In the `inline` variant the limit counts changed lines only, and the first ones are all that shows until Show all. |
 | `patch` | `string` | yes | — | Unified patch text to parse and render. |

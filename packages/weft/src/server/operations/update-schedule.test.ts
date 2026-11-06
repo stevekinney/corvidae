@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { decode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
 import { DynamicWorkflowSourceUnavailableError } from '../../core/engine/dynamic-source-errors.ts';
 import { WorkflowRevisionUnavailableError } from '../../core/engine/revision-errors.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
@@ -75,6 +77,47 @@ describe('weft.schedules.update', () => {
         backfill: true,
         jitterMs: 10_000,
       }),
+    );
+  });
+
+  it('moves a schedule to another workflow type and input, and refuses a type that is not a name', async () => {
+    engine = createEngine();
+    engine.register(
+      workflow({ name: 'other' }).execute(async function* () {
+        return 'other';
+      }),
+    );
+    await engine.schedule('echo', { text: 'old' }, '0 * * * *', { id: 'schedule-moved' });
+
+    const moved = await handleRequest(
+      jsonRequest('PATCH', '/v1/schedules/schedule-moved', {
+        cronExpression: '0 * * * *',
+        workflowType: 'other',
+        input: { text: 'new' },
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    expect(moved.status).toBe(204);
+    expect(await engine.getSchedule('schedule-moved')).toEqual(
+      expect.objectContaining({ workflowType: 'other' }),
+    );
+    const stored = decode(
+      (await engine.storage.get(KEYS.schedule('schedule-moved'))) as Uint8Array,
+    ) as { input: unknown };
+    expect(stored.input).toEqual({ text: 'new' });
+
+    const refused = await handleRequest(
+      jsonRequest('PATCH', '/v1/schedules/schedule-moved', {
+        cronExpression: '0 * * * *',
+        workflowType: 7,
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    expect(refused.status).toBe(400);
+    expect(await engine.getSchedule('schedule-moved')).toEqual(
+      expect.objectContaining({ workflowType: 'other', revision: 2 }),
     );
   });
 

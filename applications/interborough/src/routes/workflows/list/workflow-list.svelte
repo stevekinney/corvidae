@@ -31,6 +31,7 @@
   } from '../../../lib/live-source/cache-integration.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
+  import { getWorkflowFileRun, type WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import {
     ENGINE_RUNS_PATH,
@@ -104,6 +105,46 @@
 
   const rows = $derived(listQuery.data?.items ?? []);
   const total = $derived(listQuery.data?.total ?? 0);
+
+  // The engine list is paginated and may be filtered, so correlate Bureau provenance only for the
+  // visible rows that carry its agent-run marker. This keeps the lookup bounded to the page and
+  // avoids pairing rows with an independently ordered "newest runs" list.
+  const agentRunIds = $derived(
+    rows.filter((row) => row.tags?.includes('origin:agent-run')).map((row) => row.id),
+  );
+  const fileRuns = createQuery(
+    () => ({
+      queryKey: ['workflows', 'visible-file-origins', agentRunIds],
+      queryFn: async ({ signal }) => {
+        const results = await Promise.all(
+          agentRunIds.map(async (id) => {
+            try {
+              return await getWorkflowFileRun(id, { signal });
+            } catch {
+              return undefined;
+            }
+          }),
+        );
+        return results.filter((run): run is WorkflowFileRunDetail => run !== undefined);
+      },
+      enabled: agentRunIds.length > 0,
+      retry: false,
+    }),
+    undefined,
+  );
+  const workflowOrigins = $derived(
+    new Map(
+      (fileRuns.data ?? [])
+        .filter(
+          (
+            run,
+          ): run is WorkflowFileRunDetail & {
+            origin: { kind: 'agent-run'; runId: string; agentId: string };
+          } => run.origin?.kind === 'agent-run',
+        )
+        .map((run) => [run.id, run.origin]),
+    ),
+  );
 
   // One `weft.workflows.active.get` per DISTINCT workflow type on the page
   // (COR-15), never per row; gated on `workflows:read`, the operation's own
@@ -339,6 +380,7 @@
     {:else}
       <WorkflowTable
         {rows}
+        {workflowOrigins}
         {selectedIds}
         onSelectionChange={(next) => (selectedIds = next)}
         revisionComparison={revisionComparisons.compare}

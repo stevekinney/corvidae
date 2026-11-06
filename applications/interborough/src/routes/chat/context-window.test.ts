@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { ContextWindow } from '../../lib/bureau-client.ts';
-import { formatTokens, windowUse } from './context-window.ts';
+import { formatCompactTokens, formatTokens, windowUse } from './context-window.ts';
 
 function report(used: number, max: number | null): ContextWindow {
   return {
@@ -58,5 +58,14 @@ describe('formatTokens', () => {
   test('separates thousands', () => {
     expect(formatTokens(1_234_567)).toBe('1,234,567');
     expect(formatTokens(0)).toBe('0');
+  });
+});
+
+describe('formatCompactTokens', () => {
+  test('reads thousands as K, and a count under a thousand as it is', () => {
+    expect(formatCompactTokens(75_800)).toBe('76K');
+    expect(formatCompactTokens(200_000)).toBe('200K');
+    expect(formatCompactTokens(950)).toBe('950');
+    expect(formatCompactTokens(1_234_567)).toBe('1,235K');
   });
 });

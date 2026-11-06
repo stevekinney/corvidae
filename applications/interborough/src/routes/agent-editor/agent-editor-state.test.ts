@@ -146,6 +146,14 @@ describe('a new agent', () => {
     form.identifier = 'renamed';
     expect(form.identifier).toBe('researcher');
   });
+
+  test('preserves child-agent grants through an edit definition', () => {
+    const form = AgentEditorState.edit(
+      readyAgent({ definition: { ...readyAgent().definition!, childAgents: ['researcher'] } }),
+      catalogFixture(),
+    );
+    expect(form.toDefinition().childAgents).toEqual(['researcher']);
+  });
 });
 
 describe('the model the form chooses', () => {

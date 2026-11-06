@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  browserTimeZone,
   cadenceOf,
   cadenceTimeZone,
   cadenceToScheduleValue,
+  cadenceToWireSpec,
   describeCadence,
   describeCronExpression,
   describeIntervalMs,
@@ -209,5 +211,27 @@ describe('shownCadenceIsInvalid', () => {
   test('is false when every field is valid, and when there is no region yet', () => {
     expect(shownCadenceIsInvalid(region('<input aria-invalid="false" /><input />'))).toBe(false);
     expect(shownCadenceIsInvalid(undefined)).toBe(false);
+  });
+});
+
+describe('cadenceToWireSpec', () => {
+  test('a cron expression and an interval are kept as stored, and a cadence with neither has none', () => {
+    expect(cadenceToWireSpec({ cronExpression: '0 9 * * *' })).toEqual({ cron: '0 9 * * *' });
+    expect(cadenceToWireSpec({ intervalMs: 90_000 })).toEqual({ every: 90_000 });
+    expect(cadenceToWireSpec({})).toBeUndefined();
+  });
+});
+
+describe('browserTimeZone', () => {
+  test('is UTC when the browser cannot say its zone', () => {
+    const original = Intl.DateTimeFormat;
+    Intl.DateTimeFormat = (() => {
+      throw new Error('no zone');
+    }) as unknown as typeof Intl.DateTimeFormat;
+    try {
+      expect(browserTimeZone()).toBe('UTC');
+    } finally {
+      Intl.DateTimeFormat = original;
+    }
   });
 });

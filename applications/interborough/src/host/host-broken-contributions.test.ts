@@ -70,7 +70,7 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
-    bungalow.writeSecret('openai-api-key', 'fixture-broken-contributions-key-1');
+    await bungalow.deploymentSecrets.write('openai-api-key', 'fixture-broken-contributions-key-1');
   } finally {
     bungalow.close();
   }

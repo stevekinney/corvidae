@@ -74,6 +74,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'tools',
   'skillDescriptors',
   'allowedSkills',
+  'childAgents',
   'a2a',
   'stepLimit',
   'retry',
@@ -162,6 +163,11 @@ export const agentContributionIdsSchema = z.array(z.string().min(1));
 export const agentAllowedSkillsSchema = z
   .array(z.string().min(1))
   .refine((names) => unique(names), { message: 'skill names must be unique' });
+
+/** The file agents this agent may dispatch as durable children. */
+export const agentChildAgentsSchema = z
+  .array(z.string().min(1))
+  .refine((names) => unique(names), { message: 'child agent names must be unique' });
 
 /**
  * A file's `defaultEffort` (COR-1961): the reasoning effort a chat of the agent starts at, one of
@@ -380,6 +386,8 @@ export const agentFileFrontmatterSchema = z
      * may still carry and Bureau ignores.
      */
     allowedSkills: agentAllowedSkillsSchema.nullish(),
+    /** Agent identifiers this file may dispatch as durable child runs. */
+    childAgents: agentChildAgentsSchema.nullish(),
     /**
      * Whether the agent opts into A2A, the agent-to-agent protocol. A strict boolean; defaults to
      * `false`. Chat and every other surface serve a ready agent whatever this says.
@@ -498,6 +506,8 @@ export const agentFileDefinitionSchema = z.object({
   skillDescriptors: z.array(agentSkillDescriptorSchema).default([]),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   allowedSkills: agentAllowedSkillsSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  childAgents: agentChildAgentsSchema.optional(),
   /** Absent from a snapshot written before the A2A opt-in existed; read as `false`. */
   a2a: z.boolean().default(false),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
@@ -602,6 +612,8 @@ export interface AgentFileDefinition {
    * the file says. A name the catalog no longer trusts stays here and is refused at activation.
    */
   readonly allowedSkills?: readonly string[];
+  /** Agent identifiers this file may dispatch as durable child runs. */
+  readonly childAgents?: readonly string[];
   /** Whether the agent opts into A2A. This part only records it; the A2A mount reads it. */
   readonly a2a: boolean;
   /** The most steps one run may take. Absent when the file sets none: Operative's default applies. */
@@ -661,6 +673,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   tools: true,
   skillDescriptors: true,
   allowedSkills: true,
+  childAgents: true,
   a2a: true,
   stepLimit: true,
   retry: true,
@@ -715,6 +728,8 @@ export interface AgentFileDefinitionInput {
    * `null` removes it, and an empty list grants none.
    */
   readonly allowedSkills?: readonly string[] | null | undefined;
+  /** See {@link AgentFileDefinition.childAgents}. */
+  readonly childAgents?: readonly string[] | null | undefined;
   /** See {@link AgentFileDefinition.a2a}. An update that omits it keeps the file's value. */
   readonly a2a?: boolean | undefined;
   /**
@@ -920,6 +935,7 @@ function toDefinition(
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
     skillDescriptors: (frontmatter.skillDescriptors ?? []) as readonly AgentSkillDescriptor[],
     ...(frontmatter.allowedSkills == null ? {} : { allowedSkills: frontmatter.allowedSkills }),
+    ...(frontmatter.childAgents == null ? {} : { childAgents: frontmatter.childAgents }),
     a2a: frontmatter.a2a ?? false,
     ...(frontmatter.stepLimit == null ? {} : { stepLimit: frontmatter.stepLimit }),
     ...(frontmatter.retry == null ? {} : { retry: retryOf(frontmatter.retry) }),
@@ -1034,6 +1050,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
     }));
   }
   if (definition.allowedSkills != null) known['allowedSkills'] = [...definition.allowedSkills];
+  if (definition.childAgents != null) known['childAgents'] = [...definition.childAgents];
   if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
   if (definition.stepLimit != null) known['stepLimit'] = definition.stepLimit;
   if (definition.retry != null) known['retry'] = retryOf(definition.retry);
@@ -1078,6 +1095,7 @@ export function resolveAgentFileDefinition(
     tools: input.tools ?? [],
     skillDescriptors: input.skillDescriptors ?? [],
     ...(input.allowedSkills == null ? {} : { allowedSkills: [...input.allowedSkills] }),
+    ...(input.childAgents == null ? {} : { childAgents: [...input.childAgents] }),
     a2a: input.a2a ?? false,
     ...(input.stepLimit == null ? {} : { stepLimit: input.stepLimit }),
     ...(input.retry == null ? {} : { retry: retryOf(input.retry) }),
@@ -1107,6 +1125,7 @@ export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefi
     ...input,
     defaultEffort: definition.defaultEffort ?? null,
     allowedSkills: definition.allowedSkills ?? null,
+    childAgents: definition.childAgents ?? null,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry ?? null,
     compaction: definition.compaction ?? null,
@@ -1134,7 +1153,7 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`defaultEffort`, `allowedSkills`, `a2a`, `stepLimit`, `retry`, `compaction`,
+  // A key the caller leaves out (`defaultEffort`, `allowedSkills`, `childAgents`, `a2a`, `stepLimit`, `retry`, `compaction`,
   // `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget`, `toolApproval`) is not a change
   // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
@@ -1143,6 +1162,7 @@ export function serializeUpdatedAgentFile(
     ...(keptA2a ? { a2a: before.a2a } : {}),
     ...(input.defaultEffort === undefined ? { defaultEffort: before.defaultEffort } : {}),
     ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
+    ...(input.childAgents === undefined ? { childAgents: before.childAgents } : {}),
     ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
     ...(input.retry === undefined ? { retry: before.retry } : {}),
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
@@ -1171,6 +1191,7 @@ export function serializeUpdatedAgentFile(
         ...(keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { a2a: before.a2a } : {}),
         ...(input.defaultEffort === undefined ? { defaultEffort: before.defaultEffort } : {}),
         ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
+        ...(input.childAgents === undefined ? { childAgents: before.childAgents } : {}),
         ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
         ...(input.retry === undefined ? { retry: before.retry } : {}),
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),

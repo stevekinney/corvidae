@@ -26,6 +26,8 @@ export type FormFieldProps = {
   descriptionAction?: Snippet | undefined;
   /** Advisory for a legal but potentially risky value; does not mark the control invalid. */
   warning?: string | undefined;
+  /** Rendered after the warning inside the same paragraph, such as a link to fix what it says ("Connect a provider"). */
+  warningAction?: Snippet | undefined;
   /** Validation error; sets `aria-invalid="true"` on opted-in controls via context. */
   error?: string | undefined;
   /**

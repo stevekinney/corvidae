@@ -47,6 +47,10 @@ export type HostWeftDiagnostics = {
  * taken learns the holder from `BungalowLockedError`.
  */
 export type HostDiagnostics = {
+  /** Redacted publication recovery state; no values or provider error details. */
+  readonly pendingSecretOperationCount?: number;
+  /** Redacted credential publications awaiting recovery. */
+  readonly pendingSecretOperations?: readonly { readonly id: string; readonly state: string }[];
   /** The Bureau's reading (`bureau.internals.diagnostics()`): recovery, watchers, and counts. */
   readonly bureau: BureauDiagnostics;
   /** The engine server's lease, workers, and connections. */

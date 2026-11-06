@@ -54,6 +54,7 @@
     children,
     marker: customMarker,
     actions: entryActions,
+    onExpandedChange,
     role: _role,
     'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledby,
@@ -105,6 +106,13 @@
         kind={entry.kind ?? 'event'}
         bare={variant === 'rows'}
         detail={entry.detail}
+        status={entry.status}
+        href={entry.href}
+        duration={entry.duration}
+        struck={entry.struck}
+        plain={entry.plain}
+        expanded={entry.expanded ?? false}
+        onExpandedChange={(open) => onExpandedChange?.(entry, open)}
         expandLabel={entry.expandLabel}
         collapseLabel={entry.collapseLabel}
         connectorAfter={renderEntry.connectorAfter}

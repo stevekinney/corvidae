@@ -107,6 +107,10 @@ export type OAuthMcpServer = TestServer & {
   readonly issuedAccessTokens: readonly string[];
   /** The PKCE verifiers it received at the token endpoint. */
   readonly receivedVerifiers: readonly string[];
+  /** Refresh grants received, including rejected grants. */
+  readonly refreshRequests: readonly string[];
+  /** Expire access tokens while leaving their refresh grants valid. */
+  expireAccessTokens(): void;
   /** Makes the server stop honouring every access and refresh token it issued, as a revoked grant does. */
   revokeTokens(): void;
 };
@@ -136,6 +140,7 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
   const refreshTokens = new Set<string>();
   const issuedAccessTokens: string[] = [];
   const receivedVerifiers: string[] = [];
+  const refreshRequests: string[] = [];
   const authorizations: (string | null)[] = [];
 
   const server: ReturnType<typeof Bun.serve> = Bun.serve({
@@ -209,9 +214,22 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
             refresh_token: refreshToken,
           });
         }
-        // A refresh token the server no longer holds is a revoked grant, which RFC 6749 answers with `invalid_grant`.
         if (params.get('grant_type') === 'refresh_token') {
-          return Response.json({ error: 'invalid_grant' }, { status: 400 });
+          const previous = params.get('refresh_token') ?? '';
+          refreshRequests.push(previous);
+          if (!refreshTokens.delete(previous))
+            return Response.json({ error: 'invalid_grant' }, { status: 400 });
+          const accessToken = `access-${crypto.randomUUID()}`;
+          const refreshToken = `refresh-${crypto.randomUUID()}`;
+          accessTokens.add(accessToken);
+          refreshTokens.add(refreshToken);
+          issuedAccessTokens.push(accessToken);
+          return Response.json({
+            access_token: accessToken,
+            token_type: 'Bearer',
+            expires_in: 3600,
+            refresh_token: refreshToken,
+          });
         }
         return Response.json({ error: 'unsupported_grant_type' }, { status: 400 });
       }
@@ -237,6 +255,10 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
     authorizations,
     issuedAccessTokens,
     receivedVerifiers,
+    refreshRequests,
+    expireAccessTokens() {
+      accessTokens.clear();
+    },
     revokeTokens() {
       accessTokens.clear();
       refreshTokens.clear();

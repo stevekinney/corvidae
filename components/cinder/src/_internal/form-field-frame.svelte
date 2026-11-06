@@ -21,6 +21,7 @@
     description,
     descriptionAction,
     warning,
+    warningAction,
     error,
     errorGlyph = 'warning',
     errorAction,
@@ -57,6 +58,8 @@
     /** Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. */
     descriptionAction?: Snippet | undefined;
     warning?: string | undefined;
+    /** Rendered after the warning inside the same paragraph, such as a link to fix what it says ("Connect a provider"). */
+    warningAction?: Snippet | undefined;
     error?: string | undefined;
     /** The glyph drawn before the error message: a triangle for a value that needs fixing, a circle for a conflict. */
     errorGlyph?: 'warning' | 'error' | undefined;
@@ -213,7 +216,7 @@
   {/if}
   {#if warning}
     <p id={warningId} class={classNames('cinder-form-field__warning', warningClass)}>
-      {warning}
+      {warning}{#if warningAction}{' '}{@render warningAction()}{/if}
     </p>
   {/if}
   {#if managed}

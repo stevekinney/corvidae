@@ -224,7 +224,9 @@ describe('status fills as foreground colors', () => {
     const send = await Bun.file(
       join(root, 'components/chat/src/lib/components/chat/input/chat-input.svelte'),
     ).text();
-    expect(send).toMatch(/@media \(any-pointer: coarse\) \{\s*\.chat-input-send::after/);
+    expect(send).toMatch(
+      /@media \(any-pointer: coarse\) \{\s*\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size: var\(--cinder-touch-target-min\)/,
+    );
     const toggle = await Bun.file(
       join(root, 'components/cinder/src/components/toggle/toggle.css'),
     ).text();

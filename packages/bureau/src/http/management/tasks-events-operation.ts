@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.tasks.events`: one task's lifecycle, as a catalog subscription over the
  * Bureau's durable event history.
@@ -690,6 +692,7 @@ export const tasksEventsOperation = defineOperation<
   BureauTaskEventsOperationHost
 >({
   name: 'bureau.tasks.events',
+  authorize: authorizeWorkspaceOperation('bureau.tasks.events'),
   mcpExposable: true,
   kind: 'subscription',
   summary: 'Follow one task’s lifecycle',

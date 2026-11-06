@@ -4,13 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import {
-  formatInZone,
-  scheduleZone,
-  sentenceZone,
-  upcomingFires,
-  zoneLabel,
-} from './schedule-time.ts';
+import { scheduleZone, sentenceZone, upcomingFires, zoneLabel } from './schedule-time.ts';
 
 /** 2026-11-02 12:00 UTC, a Monday. */
 const NOW = Date.UTC(2026, 10, 2, 12, 0, 0);
@@ -33,19 +27,6 @@ describe('the zone a schedule is shown in', () => {
     );
     expect(sentenceZone({})).toBeNull();
     expect(zoneLabel('Europe/Berlin')).toBe('Europe/Berlin');
-  });
-});
-
-describe('formatting a moment in a zone', () => {
-  test('shows the wall clock of that zone with its short name', () => {
-    // 17:00 UTC is 09:00 in Los Angeles in November.
-    const label = formatInZone(Date.UTC(2026, 10, 2, 17, 0), 'America/Los_Angeles');
-    expect(label).toContain('9:00');
-    expect(label).toMatch(/PST/);
-  });
-
-  test('falls back to UTC for a zone the browser does not know', () => {
-    expect(formatInZone(Date.UTC(2026, 10, 2, 17, 0), 'Not/AZone')).toContain('UTC');
   });
 });
 
@@ -78,7 +59,7 @@ describe('the next runs of a schedule', () => {
         status: 'active',
         cronExpression: '0 9 * * *',
         timeZone: 'UTC',
-        skipUntil: Date.UTC(2026, 10, 3, 9, 0),
+        skippedOccurrences: [Date.UTC(2026, 10, 3, 9, 0)],
       },
       3,
       NOW,
@@ -132,20 +113,20 @@ describe('the next runs of a schedule that has fired since the page read it', ()
     expect(after.map((fire) => fire.at)).toEqual([NINE + 86_400_000, NINE + 2 * 86_400_000]);
   });
 
-  test('mark only the run at skipUntil, never one that is before it', () => {
+  test('mark only the runs a person skipped, never one between them', () => {
     const fires = upcomingFires(
       {
         status: 'active',
         cronExpression: '0 9 * * *',
         timeZone: 'UTC',
         nextFireAt: NINE,
-        // A skip recorded for a later run: the earlier one still starts.
-        skipUntil: NINE + 86_400_000,
+        // Skips recorded for later runs: the ones before and between them still start.
+        skippedOccurrences: [NINE + 86_400_000, NINE + 3 * 86_400_000],
       },
-      3,
+      4,
       NOW,
     );
-    expect(fires.map((fire) => fire.skipped)).toEqual([false, true, false]);
+    expect(fires.map((fire) => fire.skipped)).toEqual([false, true, false, true]);
   });
 
   test('list a due run whose fire time has passed, so a jittered run is offered, not tomorrow’s', () => {

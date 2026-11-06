@@ -630,8 +630,80 @@ describe('ListDetail', () => {
       await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
     );
     expect(css).toMatch(
-      /\.cinder-list-detail\[data-cinder-layout='stacked'\] \{\s*block-size: auto;/,
+      /\.cinder-list-detail:is\(\[data-cinder-layout='stacked'\], \[data-cinder-layout='below'\]\) \{\s*block-size: auto;/,
     );
+  });
+
+  test('between pushBelow and stackBelow both panes show, the detail under the list', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation('alpha'), stackBelow: 900 },
+    });
+    await measure(container, 768);
+
+    const root = container.querySelector('.cinder-list-detail');
+    expect(root?.getAttribute('data-cinder-layout')).toBe('below');
+    const list = container.querySelector('.cinder-list-detail__list');
+    const detail = container.querySelector('.cinder-list-detail__detail');
+    expect(list).not.toBeNull();
+    expect(detail).not.toBeNull();
+    // The list comes first, and neither pane is a resizable panel or has a Back button.
+    expect(list!.compareDocumentPosition(detail!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelector('.cinder-resizable-panels')).toBeNull();
+    expect(container.querySelector('.cinder-list-detail__back')).toBeNull();
+    expect(detailText(container)).toBe('Alpha chat detail');
+  });
+
+  test('stackBelow leaves a wide component split and a phone one pane at a time', async () => {
+    const wide = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), stackBelow: 900 },
+    });
+    await measure(wide.container, 1000);
+    expect(
+      wide.container.querySelector('.cinder-list-detail')?.getAttribute('data-cinder-layout'),
+    ).toBe('split');
+    cleanup();
+    ResizeObserverStub.instances = [];
+
+    const phone = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), stackBelow: 900 },
+    });
+    await measure(phone.container, 375);
+    expect(
+      phone.container.querySelector('.cinder-list-detail')?.getAttribute('data-cinder-layout'),
+    ).toBe('stacked');
+  });
+
+  test('a flush detail shown alone fills the height it is given, and the list does not', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), flushDetail: true },
+    });
+    await measure(container, 599);
+    const root = () => container.querySelector('.cinder-list-detail')!;
+    expect(root().getAttribute('data-cinder-showing')).toBe('list');
+
+    await fireEvent.click(primaryOf(container, 'beta'));
+    await tick();
+    await tick();
+    expect(root().getAttribute('data-cinder-showing')).toBe('detail');
+
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+    );
+    const fill = css.slice(css.indexOf("[data-cinder-showing='detail']"));
+    expect(fill).toMatch(/\{\s*block-size: 100%;/);
+    expect(css).not.toMatch(
+      /\.cinder-list-detail\[data-cinder-layout='stacked'\]\[data-cinder-flush-detail\]\s*\{/,
+    );
+  });
+
+  test('is not marked as showing a pane in the split layout', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation() },
+    });
+    await measure(container, 1000);
+    expect(
+      container.querySelector('.cinder-list-detail')?.hasAttribute('data-cinder-showing'),
+    ).toBe(false);
   });
 
   test('groups the rows under header bands', async () => {

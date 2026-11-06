@@ -2,7 +2,8 @@
  * What a reply's details say (COR-1983), from the two sources that carry anything: the step
  * `bureau.tasks.inspect` records (why it ran on its model, what the model saw) and the run's terminal
  * event (the tokens the run used). A value neither source carries is left out, never worked out:
- * the model's name, the effort, the cost and the time are not here, because no source gives them.
+ * the effort, the cost and the time are not here, because no source gives them. The model's name
+ * is on the reply's own line, from the model the Bureau recorded on its row (`reply-model.ts`).
  */
 import { CHAT_COPY } from '../../app/copy.ts';
 import type { TaskStep } from '../../lib/bureau-tasks.ts';

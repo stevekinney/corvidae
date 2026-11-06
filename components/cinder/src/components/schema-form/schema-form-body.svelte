@@ -13,11 +13,13 @@
   import Checkbox from '../checkbox/checkbox.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
   import Input from '../input/input.svelte';
+  import JsonEditor from '../json-editor/json-editor.svelte';
   import NumberInput from '../number-input/number-input.svelte';
   import Segment from '../segment/segment.svelte';
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import Select from '../select/select.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import Toggle from '../toggle/toggle.svelte';
 
   import {
     choiceBranchForValue,
@@ -93,6 +95,8 @@
     jsonEditable = true,
     issues: hostIssues,
     submitLabel = 'Submit',
+    variant = 'default',
+    submitVisible = true,
     class: customClassName,
     onSubmit,
     onDraftChange,
@@ -105,8 +109,13 @@
   // All mutable state is declared here so it resets when the component is
   // remounted via {#key schema}. The initial values are seeded once from
   // the schema+value at mount time.
+  /** How the schema is read: the `input` variant draws an array of objects as one JSON field. */
+  function modelOptions() {
+    return { objectArraysAsJson: variant === 'input' };
+  }
+
   function createInitialState() {
-    const initialModel = createSchemaFormModel(schema);
+    const initialModel = createSchemaFormModel(schema, modelOptions());
     return {
       initialModel,
       initialFormValue: initialValueForField(initialModel.field, value),
@@ -114,7 +123,7 @@
   }
 
   const { initialModel, initialFormValue } = createInitialState();
-  const model = $derived(createSchemaFormModel(schema));
+  const model = $derived(createSchemaFormModel(schema, modelOptions()));
   let formElement = $state<HTMLFormElement>();
   let serializedInputElement = $state<HTMLInputElement>();
   let submitting = $state(false);
@@ -242,8 +251,22 @@
     return arrayOptionValues(field).filter((entry): entry is string => typeof entry === 'string');
   }
 
+  /** Whether short fields share a row: a large form always does, and the `input` variant does at any size. */
+  const paired = $derived(largeForm || variant === 'input');
+
   function spanOf(field: SchemaFormField): 'full' | undefined {
-    return largeForm && WIDE_KINDS.has(field.kind) ? 'full' : undefined;
+    if (!paired) return undefined;
+    // A switch carries a line of explanation, so the `input` variant gives it the whole row.
+    if (variant === 'input' && field.kind === 'boolean') return 'full';
+    return WIDE_KINDS.has(field.kind) ? 'full' : undefined;
+  }
+
+  /** What the JSON field's status line says when it parses: an array is counted ("Valid JSON · array of 1 item"). */
+  function jsonStatusLabel(field: SchemaFormField): string {
+    const parsed = parseJsonDraft(field.path, rawJsonValue(field));
+    if (!parsed.ok || !Array.isArray(parsed.value)) return 'Valid JSON';
+    const count = parsed.value.length;
+    return `Valid JSON · array of ${count} ${count === 1 ? 'item' : 'items'}`;
   }
 
   function matchesFilter(field: SchemaFormField): boolean {
@@ -442,7 +465,7 @@
 {/snippet}
 
 {#snippet renderFields(fields: SchemaFormField[])}
-  <div class="cinder-schema-form__fields" data-cinder-columns={largeForm ? 'two' : undefined}>
+  <div class="cinder-schema-form__fields" data-cinder-columns={paired ? 'two' : undefined}>
     {#each fields as child (pathKey(child.path))}
       {@render renderField(child)}
     {/each}
@@ -658,13 +681,37 @@
              not "the box must be checked". Native checkbox `required` would block
              a valid `false` submission, so it is intentionally NOT forwarded here;
              presence is enforced by the schema validator on submit. -->
-        <Checkbox
+        {#if variant === 'input'}
+          <Toggle
+            {id}
+            label={field.label}
+            {...field.description !== undefined ? { description: field.description } : {}}
+            descriptionPlacement="below"
+            disabled={submitting}
+            bind:checked={
+              () => booleanValue(field), (next) => formState.updateValue(field.path, next)
+            }
+          />
+        {:else}
+          <Checkbox
+            {id}
+            {...labelledProps}
+            disabled={submitting}
+            bind:checked={
+              () => booleanValue(field), (next) => formState.updateValue(field.path, next)
+            }
+          />
+        {/if}
+      {:else if variant === 'input'}
+        <JsonEditor
           {id}
           {...labelledProps}
+          required={field.required}
           disabled={submitting}
-          bind:checked={
-            () => booleanValue(field), (next) => formState.updateValue(field.path, next)
-          }
+          statusLabel={jsonStatusLabel(field)}
+          onblur={() => formState.validateTouchedField(field)}
+          value={rawJsonValue(field)}
+          onValueChange={(next) => formState.updateRawJsonValue(field, next)}
         />
       {:else}
         <Textarea
@@ -754,7 +801,9 @@
     value={formState.serializedValue}
   />
 
-  <button type="submit" class="cinder-schema-form__submit" disabled={submitting}>
-    {submitting ? 'Validating...' : submitLabel}
-  </button>
+  {#if submitVisible}
+    <button type="submit" class="cinder-schema-form__submit" disabled={submitting}>
+      {submitting ? 'Validating...' : submitLabel}
+    </button>
+  {/if}
 </form>

@@ -1,6 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { StatusDotWord } from '../status-dot/status-dot.words.ts';
+
 export type TimelineOrientation = 'vertical' | 'horizontal';
 export type TimelineGroupBy = 'none' | 'day' | 'week';
 export type TimelineWeekStartsOn = 'sunday' | 'monday';
@@ -11,9 +13,12 @@ export type TimelineTone = 'info' | 'success' | 'warning' | 'error' | 'pending';
  * `separator` is a quiet labelled rule between two rows, for a break the reader should not
  * mistake for a gap, such as the day daylight saving time ended. `band` is one collapsed group
  * row with a tinted band, a chevron, the title, muted `detail` and a disclosure label: the missed
- * runs of a schedule, shown once below Now. Its `children` are the details the band opens.
+ * runs of a schedule, shown once below Now. Its `children` are the details the band opens. `run` is
+ * a past run as the status-first two-line row: its `status` word and dot lead, `timestamp` is the
+ * bold time, `detail` is the muted second line, `duration` and a chevron sit at the right, and
+ * `href` makes the whole row the link.
  */
-export type TimelineEntryKind = 'event' | 'now' | 'separator' | 'band';
+export type TimelineEntryKind = 'event' | 'now' | 'separator' | 'band' | 'run';
 /**
  * `rail` is the default: a vertical rail with a connector from marker to marker. `list` is the
  * same entries as compact rows, with no connector, a hairline between rows and the time first.
@@ -54,6 +59,22 @@ export type TimelineEntry = {
   expandLabel?: string | undefined;
   /** For a `band`: the text of the button that closes it. @default "Hide" */
   collapseLabel?: string | undefined;
+  /** For a `band`: whether it starts open. The `onExpandedChange` of the timeline hears each change. @default false */
+  expanded?: boolean | undefined;
+  /** For a `run`: the status word that leads the row ("Done", "Running", "Failed"), which sets its dot and its tone. */
+  status?: StatusDotWord | undefined;
+  /** For a `run`: where the row links to. The whole row is the link. */
+  href?: string | undefined;
+  /** For a `run`: the text at the right of the row, before its chevron ("14 s", "38 s so far"). */
+  duration?: string | undefined;
+  /** For an `event`: draws the timestamp struck through, for something that will not happen. @default false */
+  struck?: boolean | undefined;
+  /**
+   * For an `event`: draws no marker, so the row starts at the inline start. In the `list` variant
+   * a `warning` tone colours the title instead of the marker ("Missed · Interborough was off").
+   * @default false
+   */
+  plain?: boolean | undefined;
 };
 
 /**
@@ -96,6 +117,8 @@ export type TimelineProps = Omit<
   actions?: Snippet<[TimelineEntry]> | undefined;
   /** Decorative per-entry marker content. Must not contain interactive descendants. */
   marker?: Snippet<[TimelineEntry]> | undefined;
+  /** Called when a `band` entry is opened or closed, with the entry and whether it is now open. */
+  onExpandedChange?: ((entry: TimelineEntry, expanded: boolean) => void) | undefined;
 };
 
 /** Schema generator surface for Timeline — excludes snippet props. */

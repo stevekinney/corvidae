@@ -40,6 +40,18 @@ describe('the run’s tags', () => {
     expect(getByText('tier-1')).not.toBeNull();
   });
 
+  test('does not expose the system provenance tag in the editable list', () => {
+    const { getByText, queryByText } = render(RunTagsHarness, {
+      props: {
+        client: baseClient(),
+        workflow: workflow({ tags: ['origin:agent-run', 'prod'] }),
+      },
+    });
+
+    expect(getByText('prod')).not.toBeNull();
+    expect(queryByText('origin:agent-run')).toBeNull();
+  });
+
   test('adding a tag calls client.addTags with the trimmed value', async () => {
     const added: { tag: string | null } = { tag: null };
     const client = {

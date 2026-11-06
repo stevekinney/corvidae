@@ -61,6 +61,9 @@ export type SelectGroup = {
   message?: Snippet;
 };
 
+/** Colour of the select's value: `accent` is for the one select that names what its surface is about to do. */
+export type SelectTone = 'default' | 'accent';
+
 /** Visual style of the select: bordered for forms and filter bars, ghost inside a bordered container. */
 export type SelectVariant = 'default' | 'ghost';
 
@@ -111,6 +114,13 @@ export type SelectProps<T extends string = string> = Omit<
    * @default "default"
    */
   variant?: SelectVariant;
+  /**
+   * Colour of the value. `accent` draws it in the accent colour and weight, for the one select that
+   * names what the container it sits in is about to do (the agent a new chat is with), beside
+   * `default` controls that only set options.
+   * @default "default"
+   */
+  tone?: SelectTone;
   /**
    * Native `<select>` or a drawn listbox; see `SelectPresentation`. The listbox-only props below
    * (`placeholder`, `valuePrefix`, `leading`, `footer`, `groups`, and the rich option fields) do

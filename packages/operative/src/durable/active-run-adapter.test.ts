@@ -2157,7 +2157,7 @@ describe('createDurableActiveRun.closed()', () => {
     const { engine } = createManualDurableEngine();
     const cancelledIds: string[] = [];
     const realCancel = engine.cancel.bind(engine);
-    engine.cancel = async (id: string) => {
+    engine.cancel = async (id: string): ReturnType<RegistryAgnosticEngine['cancel']> => {
       cancelledIds.push(id);
       return realCancel(id);
     };
@@ -2365,8 +2365,9 @@ describe('createDurableActiveRun.closed()', () => {
       prepareCalls.push(args);
       return realPrepare(...args);
     };
-    engine.cancel = async (id: string) => {
+    engine.cancel = async (id: string): ReturnType<RegistryAgnosticEngine['cancel']> => {
       cancelledIds.push(id);
+      return { workflowId: id, status: 'cancel-requested' };
     };
 
     const runId = 'ab-339-abort-before-drive-started';
@@ -2541,7 +2542,7 @@ describe('createDurableActiveRun.closed()', () => {
         // The real `cancel` rejects the workflow result as a side effect
         // (the B6 race) — replicate that so the run still settles.
         rejectResult(new Error('Workflow cancelled'));
-        return;
+        return { workflowId: id, status: 'cancel-requested' };
       }
       throw new Error('a second engine.cancel call should never have been made');
     };
@@ -4606,6 +4607,44 @@ describe('AB-317: durable toolbox listeners survive abort() until the settle-awa
     } finally {
       context.engine[Symbol.dispose]();
     }
+  });
+
+  it('does not forward a provisional settlement for a deferred child call', () => {
+    const tool = createTool({
+      name: 'deferred_child',
+      description: 'A deferred child wait fixture',
+      input: z.object({}),
+      execute: async () => 'ok',
+    });
+    const toolbox = createToolbox([tool]);
+    const runId = 'deferred-child-forwarder';
+    const deferredChildCallIds = new Set(['deferred-call']);
+    const services = {
+      options: runOptions(async () => ({ content: 'unused', toolCalls: [] })),
+      toolbox,
+      deferredChildCallIds,
+    };
+    const surface = createRecoveredRunEventSurface(services, runId, 'reattach-agent');
+    const settled: ToolSettledBubbleEvent[] = [];
+    surface.emitter.addEventListener('tool.settled', (event) => settled.push(event));
+    toolbox.dispatchEvent(
+      new ToolboxSettledEvent({
+        tool,
+        call: { id: 'deferred-call', name: tool.name, arguments: {} },
+        result: { status: 'parked' },
+        ownerId: runId,
+      }),
+    );
+    toolbox.dispatchEvent(
+      new ToolboxSettledEvent({
+        tool,
+        call: { id: 'ordinary-call', name: tool.name, arguments: {} },
+        result: 'ok',
+        ownerId: runId,
+      }),
+    );
+    expect(settled.map((event) => event.toolCallId)).toEqual(['ordinary-call']);
+    surface.stopToolboxForward();
   });
 });
 

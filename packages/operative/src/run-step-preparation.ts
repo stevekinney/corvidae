@@ -23,6 +23,7 @@ import {
 } from './run-step-media';
 import { createElicit } from './run-step-support';
 import { awaitResumeOrAbort, explicitAbortReason } from './run-step-utilities';
+import { stepSessionInputIds } from './session-input-turns';
 import type { ToolChoice } from './structured-output/types';
 
 export interface StepPreparationDependencies {
@@ -353,7 +354,7 @@ export async function prepareStep(
     }
   }
 
-  emitter?.dispatch(new StepStartedEvent(conversation, step));
+  emitter?.dispatch(new StepStartedEvent(conversation, step, stepSessionInputIds(conversation)));
 
   // Resolve per-step toolbox
   let stepToolbox: AnyToolbox = deps.toolbox;

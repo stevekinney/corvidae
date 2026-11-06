@@ -46,6 +46,7 @@ import { installWorkflowRevisionOperation } from './install-workflow-revision.ts
 import { listAlertsOperation } from './list-alerts.ts';
 import { listCatalogSourcesOperation } from './list-catalog-sources.ts';
 import { listCheckpointsOperation } from './list-checkpoints.ts';
+import { listQueueTasksOperation } from './list-queue-tasks.ts';
 import { listReviewsOperation } from './list-reviews.ts';
 import { listScheduleMissedFiresOperation } from './list-schedule-missed-fires.ts';
 import { listSchedulesOperation } from './list-schedules.ts';
@@ -85,6 +86,7 @@ import { submitReviewDecisionOperation } from './submit-review-decision.ts';
 import { suspendWorkflowOperation } from './suspend-workflow.ts';
 import { timeoutWorkflowOperation } from './timeout-workflow.ts';
 import { triggerScheduleOperation } from './trigger-schedule.ts';
+import { unskipScheduleOperation } from './unskip-schedule.ts';
 import { updateScheduleOperation } from './update-schedule.ts';
 import { updateWorkflowOperation } from './update-workflow.ts';
 import { workerStartOverridePreviewOperation } from './worker-start-override-preview.ts';
@@ -160,6 +162,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   pauseScheduleOperation,
   resumeScheduleOperation,
   skipNextScheduleOperation,
+  unskipScheduleOperation,
   triggerScheduleOperation,
   listScheduleMissedFiresOperation,
   getStreamChunksOperation,
@@ -169,6 +172,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   workflowEventsSubscriptionOperation,
   fleetEventsSubscriptionOperation,
   clearTaskDeadLetterOperation,
+  listQueueTasksOperation,
   retryTaskDeadLetterOperation,
   getTaskDetailOperation,
   getTaskResultDeliveriesOperation,

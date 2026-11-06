@@ -33,17 +33,17 @@ bungalow.content('agents'); // { kind: 'directory', path: '<root>/agents' }, cre
 bungalow.configurationLocation; // '<root>/configuration.json'
 const snapshot = await bungalow.readConfiguration(); // text and revision from the same read
 await bungalow.writeConfiguration('{}\n', { expectedRevision: snapshot.revision });
-bungalow.secretLocation('api-key'); // '<root>/secrets/api-key'
+bungalow.deploymentSecrets.location('api-key'); // '<root>/secrets/api-key'
 
-bungalow.writeSecret('api-key', 'sk-example'); // <root>/secrets/api-key, mode 0600
-bungalow.readSecret('api-key'); // the value, or undefined when never written
+await bungalow.deploymentSecrets.write('api-key', 'sk-example'); // <root>/secrets/api-key, mode 0600
+await bungalow.deploymentSecrets.read('api-key'); // the value, or undefined when never written
 
 bungalow.close();
 ```
 
-`openBungalow` and `openTemporaryBungalow` return a promise, so a mode that reads from a network can open without blocking. A Bungalow hands out locations, not bare paths, so a caller never assumes the home is a directory: `mode` is `'local'` or `'remote'`; `database` is `{ kind: 'sqlite', path }` or `{ kind: 'postgres', url }`; `content(name)` is `{ kind: 'directory', path }` or `{ kind: 's3', bucket, prefix }`; `configurationLocation` and `secretLocation(key)` are strings for messages and for a person editing by hand (the file's path in local mode), and `readConfiguration()` returns `{ text, revision }` from one read. Local mode returns the `sqlite` and `directory` variants, remote mode the `postgres` and `s3` ones. `content(name)` rejects the names Bungalow keeps in the root (`secrets`, `logs`, `lock`, `deployment-id`).
+`openBungalow` and `openTemporaryBungalow` return a promise, so a mode that reads from a network can open without blocking. A Bungalow hands out locations, not bare paths, so a caller never assumes the home is a directory: `mode` is `'local'` or `'remote'`; `database` is `{ kind: 'sqlite', path }` or `{ kind: 'postgres', url }`; `content(name)` is `{ kind: 'directory', path }` or `{ kind: 's3', bucket, prefix }`; `configurationLocation` and `deploymentSecrets.location(key)` are strings for messages and for a person editing by hand (the file's path in local mode), and `readConfiguration()` returns `{ text, revision }` from one read. Local mode returns the `sqlite` and `directory` variants, remote mode the `postgres` and `s3` ones. `content(name)` rejects the names Bungalow keeps in the root (`secrets`, `logs`, `lock`, `deployment-id`).
 
-Opening creates the root (mode `0700`), `secrets/` (mode `0700`), `logs/`, the `lock` file, and the `deployment-id` file. It does not create the database or configuration file, and a missing configuration file is valid. `writeConfiguration(text, { expectedRevision })` creates it only when the revision is explicitly `null`, or replaces it only when the observed revision still matches: the text goes to `configuration.json.<pid>-<uuid>.tmp` (mode `0600`, synced), which is renamed over the file and then the root is synced, so a crash or failure leaves either the previous file or the replacement whole. Bungalow stores the text as given and never parses it. The awaited result distinguishes `committed`, `conflict`, `read-only`, `unsupported`, `unavailable`, and `unknown`. A failed response or directory sync never proves that no bytes committed. On an unknown result, reread current standing and surface uncertainty; never restore the old document or blindly replay the write. A local revision hashes the bytes, so hand edits remain visible without changing the file schema. Every open sets the root and `secrets/` to `0700`, tightening a directory that was looser, and once it holds the lock it removes the temporary files a crash left in the root and in `secrets/`, matching only the names Bungalow itself gives them (`deployment-id.<pid>-<uuid>.tmp` and `configuration.json.<pid>-<uuid>.tmp` in the root, `<key>.<pid>-<uuid>.tmp` in `secrets/`). `readSecret` sets a secret file that group or others could reach back to `0600` before it reads it.
+Opening creates the root (mode `0700`), `secrets/` (mode `0700`), logs, the lock file, and the deployment identity. It does not create the database or configuration file, and a missing configuration file is valid. `writeConfiguration(text, { expectedRevision })` creates it only when the revision is explicitly `null`, or replaces it only when the observed revision still matches. The awaited result distinguishes `committed`, `conflict`, `read-only`, `unsupported`, `unavailable`, and `unknown`. Local deployment-secret reads tighten a loose secret file back to `0600` before reading it.
 
 A secret is written to a temporary file that is `0600` from its first byte, synced, renamed into place, and the directory entry is synced, so a crash leaves the old value or the new one.
 
@@ -52,6 +52,16 @@ A secret is written to a temporary file that is `0600` from its first byte, sync
 ## Remote mode
 
 Remote mode keeps the home in Postgres, an S3-compatible bucket, and environment variables, so that two instances can share it. Every variable is read from the `environment` passed to `openBungalow` (the process environment by default), and an empty value counts as unset. `<NAME>` is the application name uppercased with `-` turned into `_`, as for `<NAME>_HOME`: `INTERBOROUGH` for Interborough.
+
+| Capability | Local | Remote |
+| --- | --- | --- |
+| Database and content locations | SQLite and directories | PostgreSQL and S3-compatible storage |
+| Coordination | Exclusive local home lock | Shared-storage coordination supplied by the application |
+| Configuration publication | Revision-checked local writes | Read-only unless trusted composition enables revision-checked writes |
+| Managed secret provider | Writable local files | Read-only environment values unless a writable provider is injected |
+| Home and logs | Persistent local home and log directory | No local home or log directory; use an external log sink or process output |
+
+Remote application processes may use temporary scratch files and packaged assets, but recovery must not depend on scratch surviving a replacement. Bootstrap credentials and encryption keys are deployment inputs. Bungalow supplies the provider interface and local and environment providers; it does not include a production cloud-secret vendor adapter.
 
 | Variable | Meaning |
 | --- | --- |
@@ -99,8 +109,8 @@ async function openRemoteHome(databaseWorkspaceClaim: DatabaseWorkspaceClaim) {
   bungalow.content('agents'); // { kind: 's3', bucket: 'interborough-state', prefix: 'production/agents/' }
   bungalow.configurationLocation; // 's3://interborough-state/production/configuration.json'
   await bungalow.readConfiguration(); // the object's text and ETag from one GET
-  bungalow.secretLocation('api-key'); // 'INTERBOROUGH_SECRET_API_KEY'
-  bungalow.readSecret('api-key'); // 'sk-example', or undefined when the variable is unset or empty
+  bungalow.deploymentSecrets.location('api-key'); // 'INTERBOROUGH_SECRET_API_KEY'
+  await bungalow.deploymentSecrets.read('api-key'); // 'sk-example', or undefined when the variable is unset or empty
   bungalow.s3Client(); // the Bun.S3Client configured above; undefined in local mode
   bungalow.logs; // undefined: remote mode has no local directory
 
@@ -108,7 +118,7 @@ async function openRemoteHome(databaseWorkspaceClaim: DatabaseWorkspaceClaim) {
 }
 ```
 
-`writeSecret` throws `BungalowStateError` in remote mode, since secrets come from the environment, `writeConfiguration` instead returns `read-only` unless the trusted composition explicitly enabled `writableConfiguration`. The `configurationWriteCapability` property reports storage capability independently of local/remote mode and caller authorization. Conditional remote writes follow the [S3 conditional-write contract](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html), using presigned HTTP with `If-Match` or `If-None-Match`; no unconditional overwrite API remains. After an uncertain response, Bungalow reads the current text/revision once and returns `unknown` with that standing when available. Equal text alone cannot identify which writer committed, especially after a competing writer; this API makes no exactly-once claim and never resends the request. Interborough remote composition remains read-only until its separate host-adoption change. `s3Client()` returns a `Bun.S3Client` built from the variables above, passed explicitly, so Bun's default endpoint and region are never used; it uses path-style addressing. The credentials appear in no location Bungalow hands out. Credentials come only from the environment Bungalow is given, never from the process's own, with one exception that Bungalow refuses instead of allowing: when no session token is set, `Bun.S3Client` signs every request with the `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process had when Bun started, and no option turns that off. Before any request, Bungalow presigns a probe key, and if the URL carries `X-Amz-Security-Token` while the given environment has no `S3_SESSION_TOKEN` (an empty one counts as unset), `openBungalow` throws `BungalowInputError`, whose message names `AWS_SESSION_TOKEN` and `S3_SESSION_TOKEN` and never a value. Set `S3_SESSION_TOKEN` in the given environment, which is then the token every request carries, or unset the two in the process (an aws-vault or SSO shell, a Lambda, or a `.env` file sets them).
+`deploymentSecrets.write` throws `BungalowStateError` in remote mode, since secrets come from the environment. `writeConfiguration` instead returns `read-only` unless the trusted composition explicitly enabled `writableConfiguration`. The remaining remote configuration and S3 behavior is unchanged.
 
 Remote mode requires the trusted application to supply `databaseWorkspaceClaim`. Before bootstrapping an empty prefix, Bungalow calls it with an undefined identity; the application must reject an existing nonempty database. Once the deployment identity is persisted, Bungalow calls it with that identity and the `s3://` resource location. The application must atomically claim one fixed key in the raw database, accept only an identical existing binding, and reject conflicts regardless of connection URL spelling. Only then does Bungalow publish `workspace-id`. Interborough implements this through its PostgreSQL storage adapter and reuses that adapter for the host. An empty prefix may retain only its newly generated `deployment-id` if the database claim fails; reopening retries that same identity. Existing content without a deployment identity requires restoring the original identity from backup.
 
@@ -137,3 +147,11 @@ The root must be on a local filesystem that supports `flock`. Network filesystem
 `process.env.NODE_ENV === 'test'` is the guard against a test touching a developer's real home directory. Under it, a local `openBungalow` rejects unless `<NAME>_HOME` is set; a remote one is not refused, because it never touches the home directory. A test calls `openTemporaryBungalow({ name })`, which creates an isolated root under the operating system's temporary directory and removes it on `close()`, or points `<NAME>_HOME` at a directory it owns. A test of remote mode runs against `createS3TestServer` from `@lostgradient/testing/s3-server`.
 
 The one place the package reads `process.env` is `src/environment-configuration.ts`. Every function that depends on the environment also accepts it as a value.
+
+## Workspace secret providers
+
+`Bungalow.secretProvider` is bound to `workspaceId` during trusted composition. `OpenBungalowOptions.secretProvider` can supply a provider factory after the backing identity is verified. The default local provider stores immutable versions in guarded 0600 files under `.managed-secrets/`, outside the existing flat `secrets/` key namespace; the default remote provider captures read-only environment values. Capability fields describe the actual backend, independently of the home's local or remote mode. `deploymentSecrets` remains the separate asynchronous source for bootstrap credentials and root encryption keys.
+
+A writable provider prepares a value with an operation ID, logical key, and expected configuration revision. Its private version payload atomically binds these inputs; the separate operation journal contains no value. Reusing an operation ID with different durable input conflicts, including recovery after a crash. References encode validated workspace/key/version identity; foreign workspace references are rejected before value access. `readVersion` resolves exactly that version and never falls back to a logical key or latest value.
+
+The application owns configuration bindings and the publication state machine: claim `prepared` to `publishing`, attempt one conditional configuration write, then record `published`, `abandoned`, or `unknown`. A committed reference activates even if the provider acknowledgement fails. An uncertain attempt is reconciled, never resent; a superseded uncertain version remains retained. Reclamation accepts only abandoned versions, and the application must first prove that no active binding references the version. Published versions and unknown operations have no automatic expiry. The local adapter relies on Bungalow's held root lock; a hosted adapter must implement its conditional transitions atomically across clients and pass conformance tests before use.

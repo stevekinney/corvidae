@@ -73,6 +73,21 @@ export function isFollowUpMessage(message: Message | undefined): boolean {
   return message?.metadata?.[FOLLOW_UP_METADATA_KEY] === true;
 }
 
+/**
+ * How many follow-ups in a conversation the run has not taken yet: rows the
+ * session controller appended during a run that still read as queued (pending
+ * delivery). A host can say "Follow-up queued" from it.
+ */
+export function countQueuedFollowUps(history: ConversationHistory): number {
+  let count = 0;
+  for (const id of history.ids) {
+    const message = getOwn(history.messages, id);
+    if (isFollowUpMessage(message) && message?.metadata[DELIVERY_STATUS_METADATA_KEY] === 'sending')
+      count += 1;
+  }
+  return count;
+}
+
 function markMessageDeliveryStatus(
   history: ConversationHistory,
   messageId: string,

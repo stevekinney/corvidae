@@ -1,3 +1,8 @@
+import {
+  authorizeWorkspaceClass,
+  authorizeWorkspaceOperation,
+} from '../workspace-authorization.ts';
+
 /**
  * `bureau.agents.definitions.*` and `bureau.agents.catalog`: the agent definitions of a Bureau
  * (COR-1526), written, read, and deleted through the same Markdown files a
@@ -47,6 +52,7 @@ import type { BureauAgents } from '../../types.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   agentAllowedSkillsSchema,
+  agentChildAgentsSchema,
   agentDefaultEffortSchema,
   agentCompactionSchema,
   agentCostBudgetSchema,
@@ -199,6 +205,7 @@ const definitionOutputSchema = z.object({
   skillDescriptors: z.array(agentSkillDescriptorSchema),
   /** The executable skills a run may activate, by name (COR-1975); `null` when the file lists none and the agent has no skills. */
   allowedSkills: agentAllowedSkillsSchema.nullable(),
+  childAgents: agentChildAgentsSchema.nullable(),
   a2a: z.boolean(),
   /** The most steps one run may take; `null` when the file sets none and Operative's default applies. */
   stepLimit: z.number().int().nullable(),
@@ -279,6 +286,7 @@ const definitionInputSchema = z
      * none and an update keeps the file's; `null` removes the file's.
      */
     allowedSkills: agentAllowedSkillsSchema.nullable().optional(),
+    childAgents: agentChildAgentsSchema.nullable().optional(),
     /** Whether the agent opts into A2A. Omitted, a create is `false` and an update keeps the file's value. */
     a2a: z.boolean().optional(),
     /**
@@ -417,6 +425,7 @@ function definitionView(definition: AgentFileDefinition) {
     tools: [...definition.tools],
     skillDescriptors: definition.skillDescriptors.map(skillView),
     allowedSkills: definition.allowedSkills === undefined ? null : [...definition.allowedSkills],
+    childAgents: definition.childAgents === undefined ? null : [...definition.childAgents],
     a2a: definition.a2a,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry === undefined ? null : { ...definition.retry },
@@ -654,6 +663,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.definitions.create',
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.create'),
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
@@ -699,6 +709,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.definitions.update',
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.update'),
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
@@ -739,7 +750,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
 const guardedInput = z.object({ id: agentIdentifier, expectedHash: hash });
 
 function defineGuardedWrite(
-  name: string,
+  name: 'bureau.agents.definitions.delete',
   summary: string,
   description: string,
   run: (
@@ -755,6 +766,7 @@ function defineGuardedWrite(
     BureauAgentDefinitionsOperationHost
   >({
     name,
+    authorize: authorizeWorkspaceOperation(name),
     mcpExposable: false,
     summary,
     description,
@@ -804,6 +816,7 @@ export const agentDefinitionsDuplicateOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.definitions.duplicate',
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.duplicate'),
   mcpExposable: false,
   summary: 'Copy a plugin’s agent into the owner’s agents',
   description:
@@ -851,6 +864,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.definitions.get',
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.get'),
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
@@ -884,6 +898,7 @@ export const agentDefinitionsListOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.definitions.list',
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.list'),
   mcpExposable: false,
   summary: 'List agent definitions',
   description:
@@ -928,6 +943,7 @@ export const agentDefinitionsRevisionsOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.definitions.revisions',
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.revisions'),
   mcpExposable: false,
   summary: 'List the revisions of an agent that have run (not the saved versions)',
   description:
@@ -943,7 +959,15 @@ export const agentDefinitionsRevisionsOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const definitions = requireAccess(host, principal, 'bureau.agents:read', input.id);
-    const revisions = await definitions.agents.revisions(input.id);
+    const revisions = await definitions.agents.revisions(
+      input.id,
+      authorizeWorkspaceClass('deployment-operator', principal).allowed
+        ? undefined
+        : async (runId) => {
+            const owner = ownerOfPrincipal(principal);
+            return owner !== undefined && (await host.ownership.runOwner(runId)) === owner;
+          },
+    );
     if (revisions.length === 0) {
       const known = definitions.agents.list().some((listing) => listing.id === input.id);
       if (!known) throw resourceNotFound('agent', input.id);
@@ -987,6 +1011,7 @@ export const agentVersionsListOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.versions.list',
+  authorize: authorizeWorkspaceOperation('bureau.agents.versions.list'),
   mcpExposable: false,
   summary: 'List the saved versions of an agent',
   description:
@@ -1041,6 +1066,7 @@ export const agentVersionsRestoreOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.versions.restore',
+  authorize: authorizeWorkspaceOperation('bureau.agents.versions.restore'),
   mcpExposable: false,
   summary: 'Restore a saved version of an agent',
   description:
@@ -1185,6 +1211,7 @@ export const agentsCatalogOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.catalog',
+  authorize: authorizeWorkspaceOperation('bureau.agents.catalog'),
   mcpExposable: false,
   summary: 'List the models and tools an agent may name',
   description:
@@ -1268,6 +1295,7 @@ export const agentsTryOperation = defineOperation<
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.try',
+  authorize: authorizeWorkspaceOperation('bureau.agents.try'),
   mcpExposable: false,
   summary: 'Try an unsaved agent definition',
   description:

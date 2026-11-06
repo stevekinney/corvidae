@@ -56,6 +56,11 @@ interface CatalogEdit {
   readonly basedOn?: string;
 }
 
+interface ProviderSnapshot {
+  readonly configurationRevision: string | null;
+  readonly catalog: CatalogEdit[];
+}
+
 /** A scrolling region may hold this many viewports of content before it counts as overflow. */
 const SCROLL_REGION_VIEWPORTS = 2;
 
@@ -146,13 +151,14 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/chats/:chat (approval waiting)': /Refund order order-1001 for/,
   '/reviews (review open)': /wwwwwwwwww/,
   '/reviews (done tab, review open)': /wwwwwwwwww/,
-  '/schedules': /inventory-sync/,
+  // The list prints the long-named schedule's title, which clamps at two lines.
+  '/schedules': /ssssssssss/,
   // Before a workflow is chosen, which `reveal` does for the variants, the page prints its lead.
-  '/schedules/new': /A schedule runs a workflow on a timer/,
-  '/schedules/new (chat)': /A schedule runs a workflow on a timer/,
-  '/schedules/new (workflow)': /A schedule runs a workflow on a timer/,
-  // The long-named schedule's page prints its next runs and the zone they are shown in.
-  '/schedules/:schedule': /Next runs/,
+  '/schedules/new': /Pick what runs, then when, then name it/,
+  '/schedules/new (chat)': /Pick what runs, then when, then name it/,
+  '/schedules/new (workflow)': /Pick what runs, then when, then name it/,
+  // The long-named schedule's page prints its runs and the zone they are shown in.
+  '/schedules/:schedule': /Upcoming above, past below/,
   '/schedules/:schedule/edit': /Description/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,
@@ -169,7 +175,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
   '/health/workers (queue open)': /Strategy/,
   // The audit log lists the seeded schedule's creation.
-  '/health/audit': /schedule\.created/,
+  '/health/audit': /Created a schedule/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
   // The agent that opts in prints its name, and its card address holds it too.
@@ -291,13 +297,8 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
 }
 
 /** Types into a picker and chooses the option with that text, as a person does. */
-async function choosePicker(
-  page: Page,
-  label: RegExp,
-  query: string,
-  option: string,
-): Promise<void> {
-  await page.getByRole('combobox', { name: label }).fill(query);
+async function choosePicker(page: Page, label: RegExp, option: string): Promise<void> {
+  await page.getByRole('combobox', { name: label }).click();
   await page
     .getByRole('option', { name: new RegExp(option) })
     .first()
@@ -321,25 +322,19 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     await page.getByRole('radio', { name: new RegExp(WORKFLOW_COPY.runSetup.schedule) }).click();
     await expect(page.getByRole('combobox', { name: 'Time zone' })).toBeVisible();
   },
-  // The built-in chat asks for an agent and a message, and a chat to continue: the seeded chat whose title is one 300-character word.
+  // The built-in chat asks for an agent, a message and whether to continue one chat.
   '/schedules/new (chat)': async (page) => {
-    await choosePicker(page, /^Workflow/, 'chat', SCHEDULE_COPY.create.chat.label);
+    await choosePicker(page, /^Workflow/, SCHEDULE_COPY.create.chat.label);
     await expect(page.getByTestId('new-schedule-chat-input')).toBeVisible();
-    await choosePicker(
-      page,
-      new RegExp(`^${SCHEDULE_COPY.create.chatLabel}`),
-      'responsive-memory',
-      'responsive-memory',
-    );
-    await expect(page.getByLabel(new RegExp(`^${SCHEDULE_COPY.create.chatLabel}`))).toHaveValue(
-      /responsive-memory/,
-    );
+    await expect(
+      page.getByRole('switch', { name: SCHEDULE_COPY.create.continueLabel }),
+    ).toBeVisible();
   },
-  // A code-defined workflow follows with its input (this host's declares none, so it is an optional JSON field) and the engine's options.
+  // A code-defined workflow follows with its input (this host's declares none, so it is an optional JSON field), then When and the Name.
   '/schedules/new (workflow)': async (page) => {
-    await choosePicker(page, /^Workflow/, 'order', 'Order Processing');
+    await choosePicker(page, /^Workflow/, 'Order processing');
     await expect(page.getByTestId('new-schedule-input')).toBeVisible();
-    await expect(page.getByLabel('Jitter')).toBeVisible();
+    await expect(page.getByLabel(/^Name/)).toHaveValue('Order processing');
   },
   // The file's header carries its four actions; measure the page only once all four are there.
   '/workflows/:workflow (file)': async (page) => {
@@ -355,20 +350,11 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
       ).toBeVisible();
     }
   },
-  // The table lists keys in order, a page at a time, and a search reads a bounded number of keys
-  // before it offers Load more, so search for the long key's start, load on until it is listed, and
-  // open it: the table cuts it short with an ellipsis, and the pane beside it holds the whole key.
+  // "Starts with" is a prefix read, so the long key is listed as soon as its start is typed. The
+  // table cuts it short with an ellipsis, and the pane beside it holds the whole key.
   '/health/storage': async (page) => {
-    const search = page.getByLabel(STORAGE_COPY.searchLabel);
-    await search.fill('responsive-');
-    await search.press('Enter');
-    const key = page.locator('.ib-storage__key', { hasText: LONG_STORAGE_KEY });
-    const more = page.getByRole('button', { name: STORAGE_COPY.loadMore });
-    for (let pages = 0; pages < 20; pages += 1) {
-      await expect(key.or(more).first()).toBeVisible();
-      if ((await key.count()) > 0) break;
-      await more.click();
-    }
+    await page.getByLabel(STORAGE_COPY.searchLabel).fill('responsive-');
+    const key = page.locator(`tr[data-cinder-row-id="${LONG_STORAGE_KEY}"]`);
     await expect(key).toBeVisible();
     await key.click();
     await expect(page.getByTestId('storage-key-name')).toContainText(LONG_STORAGE_KEY);
@@ -419,10 +405,10 @@ async function problemsAt(page: Page, pattern: string, width: number): Promise<s
   return findings;
 }
 
-/** The catalog edits the host holds now. */
-async function catalogEdits(request: APIRequestContext): Promise<CatalogEdit[]> {
+async function providerSnapshot(request: APIRequestContext): Promise<ProviderSnapshot> {
   const response = await request.get('/host/providers');
-  return ((await response.json()) as { catalog: CatalogEdit[] }).catalog;
+  expect(response.ok(), 'reading provider snapshot').toBe(true);
+  return (await response.json()) as ProviderSnapshot;
 }
 
 /**
@@ -430,23 +416,39 @@ async function catalogEdits(request: APIRequestContext): Promise<CatalogEdit[]> 
  * serves it (the end-to-end home restricts Anthropic to two models). Connecting is safe to repeat.
  */
 async function addCatalogRow(request: APIRequestContext, model: string): Promise<void> {
+  const providerSnapshotBeforeConnect = await providerSnapshot(request);
   const connected = await request.put('/host/providers/gemini', {
-    data: { apiKey: 'e2e-responsive-gemini-key' },
+    data: {
+      apiKey: 'e2e-responsive-gemini-key',
+      operationId: crypto.randomUUID(),
+      expectedRevision: providerSnapshotBeforeConnect.configurationRevision,
+    },
   });
   expect(connected.ok(), 'connecting gemini').toBe(true);
-  const current = await catalogEdits(request);
-  const edits = current.filter((edit) => edit.model !== model);
+  const snapshot = await providerSnapshot(request);
+  const edits = snapshot.catalog.filter((edit) => edit.model !== model);
   const put = await request.put('/host/catalog', {
-    data: { edits: [...edits, { provider: 'gemini', model, basedOn: 'gemini-2.5-pro' }] },
+    data: {
+      edits: [...edits, { provider: 'gemini', model, basedOn: 'gemini-2.5-pro' }],
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    },
   });
   expect(put.status(), 'adding the long model').toBe(200);
 }
 
 /** Takes the row named `model` out of the host's catalog edits. */
 async function removeCatalogRow(request: APIRequestContext, model: string): Promise<void> {
-  const current = await catalogEdits(request);
-  const edits = current.filter((edit) => edit.model !== model);
-  await request.put('/host/catalog', { data: { edits } });
+  const snapshot = await providerSnapshot(request);
+  const edits = snapshot.catalog.filter((edit) => edit.model !== model);
+  const response = await request.put('/host/catalog', {
+    data: {
+      edits,
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    },
+  });
+  expect(response.ok(), 'removing the long model').toBe(true);
 }
 
 /**

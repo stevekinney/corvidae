@@ -334,10 +334,15 @@ describe('the demo schedule and goal', () => {
       restartRequired: false,
     });
 
+    const snapshot = await first.plugins.snapshot();
     const enabled = await fetch(new URL('/host/plugins/demo', first.url), {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: true }),
+      body: JSON.stringify({
+        enabled: true,
+        operationId: crypto.randomUUID(),
+        expectedRevision: snapshot.configurationRevision,
+      }),
     });
     expect(await enabled.json()).toEqual({
       plugin: 'demo',
@@ -393,7 +398,10 @@ describe('the demo schedule and goal', () => {
       environment: { INTERBOROUGH_HOME: home },
     });
     try {
-      bungalow.writeSecret('anthropic-api-key', 'fixture-anthropic-key-duplicate-31cc');
+      await bungalow.deploymentSecrets.write(
+        'anthropic-api-key',
+        'fixture-anthropic-key-duplicate-31cc',
+      );
     } finally {
       bungalow.close();
     }

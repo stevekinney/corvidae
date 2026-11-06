@@ -1,4 +1,5 @@
 import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../../events.ts';
+import type { CancelWorkflowResult } from '../../types.ts';
 import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { currentExecutionAttempt, type ExecutionAttempt } from '../execution-attempts.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
@@ -6,6 +7,7 @@ import type { EngineInternals } from '../internals.ts';
 import { recordResultCommitter } from '../result-committer.ts';
 import { pendingTerminalSettlementFor } from '../result-waiter-run.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from '../storage-io.ts';
+import type { WorkflowStateUpdateRefusal } from '../workflow-state-update.ts';
 import {
   cleanupTerminalWorkflowImmediately,
   TERMINAL_WORKFLOW_STATUSES,
@@ -36,6 +38,16 @@ export type TerminatedRun = {
   /** The ownership claim this engine held for the run when it was captured, to release with it. */
   readonly claimEpoch: number | null;
 };
+
+export function cancellationOutcomeFromRefusal(
+  workflowId: string,
+  refusal: WorkflowStateUpdateRefusal,
+): CancelWorkflowResult {
+  if (refusal.reason === 'replaced') {
+    throw new Error(`Workflow "${workflowId}" was replaced before it was cancelled.`);
+  }
+  return { workflowId, status: 'already-terminal', terminalStatus: refusal.state.status };
+}
 
 /**
  * Whether this engine still holds `run`'s own execution attempt: it held one when the run was

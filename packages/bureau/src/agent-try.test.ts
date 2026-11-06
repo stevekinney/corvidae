@@ -232,6 +232,9 @@ describe('what a tried run cannot do (COR-1911)', () => {
     ['scheduleWakeup', 'schedules work'],
     ['bureau:workflows-create', 'workflows'],
     ['bureau:workflows-pause', 'workflows'],
+    ['bureau:workflows-start', 'durable runs'],
+    ['bureau:workflows-signal', 'durable runs'],
+    ['bureau:workflows-runs-cancel', 'durable workflow runs'],
     ['settings-update', 'settings'],
     ['transfer_to_billing', 'hands the conversation'],
   ])('refuses the tool %s, naming its place in the definition', async (tool, reason) => {

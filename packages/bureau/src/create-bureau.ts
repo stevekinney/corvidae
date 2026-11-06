@@ -1,4 +1,9 @@
 import {
+  resolveWorkspaceOwner,
+  type WorkspaceRuntimeAuthority,
+  runtimeWorkspaceOwnerAuthority,
+} from './http/workspace-principal.ts';
+import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   mergeHookRegistries,
@@ -76,6 +81,8 @@ import {
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
   type SessionInputAdmissionRequest,
+  type SessionInputRetractionOutcome,
+  type SessionInputRetractionRequest,
   type SessionInputGate,
   type SessionListOptions,
   SessionOutboxAppendedEvent,
@@ -108,6 +115,9 @@ import {
   humanInputSchemaOf,
   sessionOwnerOf,
   type ScheduleTick,
+  summarizeSession,
+  TOOL_TIMING_METADATA_KEY,
+  type ToolTiming,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -164,6 +174,8 @@ import {
 import { bureauOwnTools, withAgentsBuiltFromBureauTools } from './agents-with-bureau-tools';
 import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
+import { createChildRunTools } from './child-run-tools';
+import { createAssetTools } from './asset-tools';
 import { createPluginRegistry } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
@@ -253,6 +265,7 @@ import {
 } from './bureau-session-persistence';
 import {
   type BureauChildren,
+  type ChildTopology,
   type ChildTopologyParent,
   createChildTopology,
 } from './child-topology';
@@ -421,6 +434,7 @@ import {
   type TaskToolGrant,
 } from './task-registry';
 import {
+  isTaskOrigin,
   parseStartTaskOrigin,
   type StartTaskOrigin,
   type TaskOrigin,
@@ -451,7 +465,11 @@ import {
   agentStepResultFromState,
   workflowStepRunId,
 } from './workflow-agent-step';
-import { parseWorkflowScheduleId } from './workflow-schedule';
+import {
+  parseWorkflowScheduleId,
+  storedScheduleInput,
+  workflowScheduleBinding,
+} from './workflow-schedule';
 import {
   createWorkflowRuntime,
   payloadMaximumBytesOf,
@@ -570,6 +588,8 @@ import {
   type PersistedSessionInput,
   readSessionInputReceipt,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
+  SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
+  SESSION_INPUT_RETRACTED_REASON,
 } from './session-input-durability';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
 import {
@@ -581,6 +601,7 @@ import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-ow
 import {
   normalizeRunRequestContext,
   recoveredRequestContextFromMetadata,
+  persistedRequestAuthority,
 } from './session-request-context';
 import { allowsModelOverride, describeAgentModels } from './agent-models';
 import {
@@ -594,6 +615,7 @@ import {
   type ForkSessionResult,
   SessionForkRefusedError,
 } from './session-fork';
+import { withoutGrantsFor } from './session-grants';
 import {
   answerSteeringRetry,
   type BureauSteeringGate,
@@ -704,6 +726,17 @@ import {
   type WebhookNotifier,
   type WebhookNotifierOptions,
 } from './webhook-notifier';
+import { workspaceHookEvents } from './hooks/workspace-hook-events.ts';
+import {
+  bindRunWorkspaceAuthority,
+  captureRunWorkspaceAuthority,
+  validateRunWorkspaceAuthority,
+  mayUseAutomationInput,
+  createRunAuthorityValidator,
+  mayRunUseSharedConfiguration,
+  recoverRunWorkspaceAuthority,
+} from './run-authority.ts';
+import type { HooksDependencies } from './hooks/create-hooks.ts';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
 import type { HookSubjectSources } from './hooks/hook-scope';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
@@ -717,6 +750,7 @@ function createBureauMemoryTools(
   memoryAuthority: Parameters<typeof createToolMemoryAuthority>[2],
   tenantId: string,
   ownerForRun: (runId: string | undefined) => Promise<string | undefined>,
+  workspace: WorkspaceRuntimeAuthority | undefined,
 ): Record<string, Tool> {
   if (memory === undefined) return {};
   return createGovernedMemoryTools(memory, {
@@ -726,6 +760,11 @@ function createBureauMemoryTools(
         requestContext.runId === undefined
           ? requestContext.authority.ownerId
           : ((await ownerForRun(requestContext.runId)) ?? requestContext.authority.ownerId);
+      if (
+        workspace !== undefined &&
+        (await resolveWorkspaceOwner(workspace, ownerId)) === undefined
+      )
+        return undefined;
       return {
         collection: requestContext.agentId ?? BUREAU_AGENT_NAME,
         authority: createToolMemoryAuthority(requestContext, toolName, memoryAuthority, {
@@ -1092,7 +1131,7 @@ export function isDurableRunUnsettled(status: string): boolean {
  */
 export interface CancelDurableRunDependencies {
   getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  cancel: (runId: string) => Promise<void>;
+  cancel: (runId: string) => Promise<unknown>;
 }
 
 /** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
@@ -1639,6 +1678,16 @@ function rejectReservedIdentifier(kind: string, id: string): void {
 function rejectUnopenableNewSessionIdentifier(kind: string, id: string, exists: boolean): void {
   const reason = exists ? undefined : unopenableNewSessionIdentifierReason(kind, id);
   if (reason !== undefined) toBadRequest(reason);
+}
+
+/**
+ * A schedule's stored input with its text replaced by `text` (COR-2018). A text input is replaced
+ * whole; an input of parts keeps its media, after the new text, so an edit of the message never
+ * drops an attachment the schedule sends.
+ */
+function replaceInputText(stored: SessionInputPayload, text: string): SessionInputPayload {
+  if (typeof stored === 'string') return text;
+  return [{ type: 'text', text }, ...stored.filter((part) => part.type !== 'text')];
 }
 
 /** The text of the last user row in `rows`, or `''` when there is none. */
@@ -2561,6 +2610,9 @@ function webhookNotifierOptionsOf(
  * Bureau's workflows are loaded.
  */
 function composeHooks(input: {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
+  readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
+  readonly mayStartWorkflows?: HooksDependencies['mayStartWorkflows'];
   readonly options: BureauOptions<AgentDefinitions>['hooks'];
   readonly engine: WebhookDeliveryEngine | undefined;
   readonly kv: ConditionalTextValueStore | undefined;
@@ -2580,6 +2632,9 @@ function composeHooks(input: {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
   const created = createHooks({
+    workspace: input.workspace,
+    eventForHookOwner: input.eventForHookOwner,
+    mayStartWorkflows: input.mayStartWorkflows,
     kv,
     engine,
     secrets: options.secrets,
@@ -2630,22 +2685,43 @@ function resumeHooks(input: {
   );
 }
 
+function notifyPeerCallsReady<D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+  journal: PeerCallJournal,
+): void {
+  options.peerCallsReady?.(journal);
+}
+
+/** Preserve one immutable membership directory binding throughout runtime construction. */
+function snapshotWorkspaceOptions<const D extends AgentDefinitions>(
+  options: LayeredBureauOptions<D>,
+): LayeredBureauOptions<D> {
+  return options.workspace === undefined
+    ? options
+    : { ...options, workspace: Object.freeze({ ...options.workspace }) };
+}
+
+/** Snapshot caller-owned answer keys before asynchronous construction begins. */
+function snapshotAnswerEncryption(
+  keys: AnswerEncryptionKeys | undefined,
+): AnswerEncryptionKeys | undefined {
+  return keys === undefined
+    ? undefined
+    : {
+        current: keys.current,
+        ...(keys.retired === undefined ? {} : { retired: keys.retired }),
+      };
+}
+
 async function constructBureau<const D extends AgentDefinitions>(
   given: BureauOptions<D>,
   construction: BureauConstruction<D>,
 ): Promise<void> {
   // COR-1873: several definition sources are read as one layered source from here on.
-  let options = withLayeredSources(given);
+  let options = snapshotWorkspaceOptions(withLayeredSources(given));
+  const workspace = options.workspace;
   // COR-1920: the answer keys are the caller's, so they are read once, before the first await.
-  const answerEncryption: AnswerEncryptionKeys | undefined =
-    options.answerEncryption === undefined
-      ? undefined
-      : {
-          current: options.answerEncryption.current,
-          ...(options.answerEncryption.retired === undefined
-            ? {}
-            : { retired: options.answerEncryption.retired }),
-        };
+  const answerEncryption = snapshotAnswerEncryption(options.answerEncryption);
   // AB-194: validated here (BAD_REQUEST at construction time). Admission
   // enforces these same validated values (defaulting to
   // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`)
@@ -2700,19 +2776,40 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
   // COR-1890: the `bureau` namespace and the `built-in` source are the built-in plugin's.
   validateBuiltInPluginOptions(options, toBadRequest);
+  const assetServiceHolder: { current: AssetService | undefined } = { current: undefined };
   // COR-1890: the built-in `bureau` plugin contributes Bureau's own tools through the plugin API.
   // The tools read the Bureau when they are called, which is after construction has finished.
   const bureauTools = [
-    createAgentDiscoveryTool({
-      entries: () => agentCatalog.entries(),
-      list: () => agentCatalog.list(),
-      find: (name) => agentCatalog.find(name),
+    createAgentDiscoveryTool(
+      {
+        entries: () => agentCatalog.entries(),
+        list: () => agentCatalog.list(),
+        find: (name) => agentCatalog.find(name),
+      },
+      {
+        runAgent: async (runId) => runAttribution.get(runId)?.agentName,
+        agentDetail: (id) => agentCatalog.detail(id),
+      },
+    ),
+    ...createChildRunTools({
+      children: () => childTopologyForWait?.children,
+      assets: () => assetServiceHolder.current,
+      ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
+      workspaceAuthority: (owner) => runtimeWorkspaceOwnerAuthority(workspace, owner),
+      agentDetail: (id) => agentCatalog.detail(id),
+      runAgent: async (runId) => runAttribution.get(runId)?.agentName,
+    }),
+    ...createAssetTools({
+      assets: () => assetServiceHolder.current,
+      ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
+      workspaceAuthority: (owner) => runtimeWorkspaceOwnerAuthority(workspace, owner),
     }),
     ...(options.workflowSource === undefined
       ? []
       : Object.values(
           // COR-1529: the workflow tools read the workflow runtime and the run's identity when called.
           createWorkflowTools({
+            workspace: workspace,
             workflows: () => workflowRuntime?.workflows,
             runIdentity: async (runId) => ({
               agent: runAttribution.get(runId)?.agentName,
@@ -2945,6 +3042,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const assetServiceInstance: AssetService | undefined = options.assets
     ? await createAssetService({ ...options.assets, runtime: runtimeServices })
     : undefined;
+  assetServiceHolder.current = assetServiceInstance;
   if (assetServiceInstance !== undefined) {
     stopForwarding.push(
       forwardAssetEvents(assetServiceInstance, (event) => emitter.dispatch(event)),
@@ -2955,9 +3053,41 @@ async function constructBureau<const D extends AgentDefinitions>(
   const workflowFileTypes: { current: ((type: string) => boolean) | undefined } = {
     current: undefined,
   };
-  const assetServiceHolder: { current: AssetService | undefined } = {
-    current: assetServiceInstance,
-  };
+  let childTopologyForWait: ChildTopology | undefined;
+  function configureChildWaitServices(services: DurableRunDeps, principal: string): void {
+    services.deferredChildCallIds ??= new Set<string>();
+    services.childWaitPrincipal = principal;
+    services.requestChildWait = (request) => {
+      if (services.childWaitPrincipal !== request.principal)
+        return { parked: false, reason: 'unauthorized' };
+      if (
+        services.pendingChildWait !== undefined ||
+        services.pendingHumanWait !== undefined ||
+        services.pendingWakeup !== undefined
+      )
+        return { parked: false, reason: 'already-parked' };
+      services.pendingChildWait = { schemaVersion: 1, ...request };
+      services.deferredChildCallIds?.add(request.toolCallId);
+      return { parked: true };
+    };
+    services.resolveChildWait = async (request) => {
+      const topology = childTopologyForWait;
+      if (topology === undefined) return { status: 'not-found' };
+      const outcome = await topology.children.wait(
+        {
+          parentRunId: request.parentRunId,
+          childRunId: request.childRunId,
+        },
+        { signal: AbortSignal.abort() },
+      );
+      if (outcome.outcome === 'settled')
+        return { status: 'settled', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'unobservable')
+        return { status: 'unobservable', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'wait-aborted') return { status: 'pending' };
+      return { status: 'not-found' };
+    };
+  }
   // COR-1585 — these two are read by the composition's `claimHolderFor` callback below, so they
   // are declared before the composition is awaited, not with the rest of the run bookkeeping.
   const runSessionIdentifiers = new WeakMap<ActiveRun, string>();
@@ -2994,6 +3124,21 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      onScheduleAuthorityDenied: (scheduleId) => {
+        runtimeServices.deferred.track(
+          pauseInvalidSchedule(scheduleId).catch(() => {
+            diagnose({
+              level: 'error',
+              scope: 'durable-maintenance',
+              message: 'Workspace schedule pause could not be persisted; maintenance will retry.',
+            });
+          }),
+          'workspace-schedule-pause',
+        );
+      },
+      configureDurableRun: (_runId, services, principal) => {
+        configureChildWaitServices(services, principal);
+      },
       // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
       // on every line, so a change to `logs.maximumLinesPerRun` applies to the next one.
       ...(options.logs === undefined
@@ -3030,6 +3175,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (assetServiceHolder.current !== undefined) {
           return createAssetContentSourceResolver(assetServiceHolder.current, owner, {
             mcpResources: options.mcpResources,
+            workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, owner),
           });
         }
         // No asset service: a host that reads MCP resources still resolves a linked one.
@@ -3049,6 +3195,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                 // `assets/row-asset-claims.ts`). A catalog dispatch (`bureau.run()`, a child, a
                 // goal attempt, a workflow step) never has a session, whether or not it is
                 // registered with the store, so it holds its own rows.
+                workspaceAuthority: runtimeWorkspaceOwnerAuthority(
+                  workspace,
+                  ownerOrLocal(principalId),
+                ),
                 claimSeededInput: rowHolder === 'run',
                 claimHolderFor:
                   rowHolder === 'run'
@@ -3388,6 +3538,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // workflow runtime and the run's identity when called, which is after construction has finished.
     // COR-1710: the settings tools are always in the catalog; an agent file that lists them gets them.
     const settingsTools = createSettingsTools({
+      workspace: workspace,
       settings: () => settingsOf().settings,
       authorityForRun: async (runId) => (await ownerOf({ kind: 'run', id: runId })) ?? undefined,
     });
@@ -3396,6 +3547,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       options.memoryAuthority,
       bureauId,
       async (runId) => (runId === undefined ? undefined : ownerOf({ kind: 'run', id: runId })),
+      workspace,
     );
     const memoryToolsByName = Object.fromEntries(
       Object.values(memoryTools).map((tool) => [tool.name, tool]),
@@ -3572,11 +3724,65 @@ async function constructBureau<const D extends AgentDefinitions>(
       options.workflowSource === undefined || runtime.durable === undefined
         ? undefined
         : createWorkflowRuntime({
+            workspace,
+            resumeAdministrator: async (actor) => {
+              if (workspace === undefined) return true;
+              const owner = actor?.startsWith('agent-run:')
+                ? await runOwner(actor.slice('agent-run:'.length))
+                : (actor ?? ANONYMOUS_LOCAL_OWNER);
+              if (owner === undefined) return false;
+              const member = await resolveWorkspaceOwner(workspace, owner);
+              return member?.capabilities.includes('workspace:manage') ?? false;
+            },
             source: options.workflowSource,
             // The composition's engine type hides `register`; it is the one Weft `Engine`, and
             // registering documents (`registerSource`) is exactly what it is lent out for here.
             engine: runtime.durable.engine as Engine,
             host: createWorkflowDocumentHost({
+              admitActivity: async (argument) => {
+                if (workspace === undefined) return;
+                const trigger = argument.trigger;
+                const sourceSchedule: unknown =
+                  typeof trigger === 'object' && trigger !== null
+                    ? Reflect.get(trigger, 'scheduleId')
+                    : undefined;
+                try {
+                  const binding = workflowScheduleBinding(trigger);
+                  const currentBinding =
+                    typeof sourceSchedule === 'string'
+                      ? workflowScheduleBinding(
+                          await storedScheduleInput(runtime.durable!.engine, sourceSchedule),
+                        )
+                      : binding;
+                  if (
+                    currentBinding.authorityHold === undefined &&
+                    currentBinding.workspaceAuthority?.actorId ===
+                      binding.workspaceAuthority?.actorId &&
+                    binding.authorityHold === undefined &&
+                    (await validateRunWorkspaceAuthority(workspace, binding.workspaceAuthority)) !==
+                      undefined
+                  )
+                    return;
+                } catch {
+                  /* Malformed persisted authority is denied and its schedule paused below. */
+                }
+                const scheduleId: unknown =
+                  typeof trigger === 'object' && trigger !== null
+                    ? Reflect.get(trigger, 'scheduleId')
+                    : undefined;
+                if (typeof scheduleId === 'string')
+                  runtimeServices.deferred.track(
+                    pauseInvalidSchedule(scheduleId).catch(() => {
+                      diagnose({
+                        level: 'error',
+                        scope: 'durable-maintenance',
+                        message: 'Workspace schedule pause remains pending.',
+                      });
+                    }),
+                    'workspace-workflow-pause',
+                  );
+                throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+              },
               runAgentStep: (request) => runWorkflowAgentStep(request),
               contributions: workflowContributions,
             }),
@@ -5185,10 +5391,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   };
   let requestAuthorityValidator:
     ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined =
-    options.requestAuthorityValidator;
+    createRunAuthorityValidator(workspace, options.requestAuthorityValidator);
   const isTransportIssuedAuthority = (context: ToolRequestContext): boolean =>
-    context.authority.authorizationRevision !== 'bureau:1' &&
-    context.authority.authorizationRevision !== 'bureau:scheduler:1';
+    workspace !== undefined ||
+    (context.authority.authorizationRevision !== 'bureau:1' &&
+      context.authority.authorizationRevision !== 'bureau:scheduler:1');
   let durableRecoveryDeferred = false;
   let durableRecoveryStarted = false;
   let durableRecoveryBarrier: Promise<BureauRecoveryReport> = Promise.resolve({
@@ -8200,7 +8407,8 @@ async function constructBureau<const D extends AgentDefinitions>(
             freshSession.agentName,
             runtimeServices.clock.now,
           );
-          if (context === undefined || !isTransportIssuedAuthority(context)) return true;
+          if (context === undefined) return workspace === undefined;
+          if (!isTransportIssuedAuthority(context)) return true;
           return (
             requestAuthorityValidator !== undefined && (await requestAuthorityValidator(context))
           );
@@ -9268,12 +9476,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     // is stopped by it only before its first step. Two runs that start together both read the
     // total as it is: the owner's decision is that the NEXT run stops, not one that has begun.
     const chatCostBudget = await chatCostBudgetOf(sessionAgent, sessionId, session);
-    const requestContext = normalizeRunRequestContext(
-      request.requestContext,
-      runId,
-      sessionId,
-      agentName,
-      request.principal,
+    const requestContext = await bindRunWorkspaceAuthority(
+      workspace,
+      normalizeRunRequestContext(
+        request.requestContext,
+        runId,
+        sessionId,
+        agentName,
+        request.principal,
+      ),
+      owner,
     );
     if (isTransportIssuedAuthority(requestContext)) {
       if (!requestAuthorityValidator) {
@@ -9455,32 +9667,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           // Durable recovery needs the authority that was safe to persist at
           // dispatch time. Credentials, tracing, and other request-local data
           // intentionally never cross the session boundary.
-          lastRequestAuthority: {
-            agentId: agentName,
-            principalId: requestContext.authority.principalId,
-            tenantId: requestContext.authority.tenantId,
-            ownerId: requestContext.authority.ownerId,
-            capabilities: [...requestContext.authority.capabilities],
-            authorizationRevision: requestContext.authority.authorizationRevision,
-            ...(requestContext.audience !== undefined ? { audience: requestContext.audience } : {}),
-            ...(requestContext.deadline !== undefined ? { deadline: requestContext.deadline } : {}),
-          },
-          lastRequestAuthorities: {
-            [runId]: {
-              agentId: agentName,
-              principalId: requestContext.authority.principalId,
-              tenantId: requestContext.authority.tenantId,
-              ownerId: requestContext.authority.ownerId,
-              capabilities: [...requestContext.authority.capabilities],
-              authorizationRevision: requestContext.authority.authorizationRevision,
-              ...(requestContext.audience !== undefined
-                ? { audience: requestContext.audience }
-                : {}),
-              ...(requestContext.deadline !== undefined
-                ? { deadline: requestContext.deadline }
-                : {}),
-            },
-          },
+          lastRequestAuthority: persistedRequestAuthority(requestContext, agentName),
+          lastRequestAuthorities: { [runId]: persistedRequestAuthority(requestContext, agentName) },
           // AB-359, COR-718 — persist the run's OWNER (`request.principal`, or
           // `anonymous:local` when it states none), never
           // `requestContext.authority.principalId`: that is tool-execution
@@ -9557,12 +9745,12 @@ async function constructBureau<const D extends AgentDefinitions>(
         decide: decideWiring,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
       });
-      const durableServicesOnServices =
-        wantsHumanInput || wantsWakeup
-          ? (services: DurableRunDeps) => {
-              servicesRef.current = services;
-            }
-          : undefined;
+      const durableServicesOnServices = runtime.durable
+        ? (services: DurableRunDeps) => {
+            servicesRef.current = services;
+            configureChildWaitServices(services, owner);
+          }
+        : undefined;
 
       // AB-67/AB-199 — steering is scoped to in-memory (process-local)
       // sessions only: a durably-configured bureau's `submitSteeringCommand`
@@ -11684,7 +11872,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               verdict: 'cancel',
               rejection: 'prepared-not-launched',
             });
-            cancelNeverLaunched(handle.id, durable.engine.cancel(handle.id));
+            cancelNeverLaunched(
+              handle.id,
+              durable.engine.cancel(handle.id).then(() => undefined),
+            );
           }
           continue;
         }
@@ -12162,6 +12353,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       workflowRuntime !== undefined &&
       (await workflowRuntime.isWorkflowType(fire.type))
     ) {
+      const input = fire.input;
+      const origin =
+        typeof input === 'object' && input !== null && 'origin' in input ? input.origin : undefined;
+      if (isTaskOrigin(origin) && origin.kind === 'person') return origin.principal;
       return workflowRuntime.workflows.owner;
     }
     if (fire !== null && isScheduledAgentRunInput(fire.input)) {
@@ -12275,6 +12470,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     const stored = await readScheduledAgentInput(scheduleId);
     if (stored === undefined) return undefined;
     return scheduleInputPreview(stored.input);
+  }
+
+  /** Whether every fire of an agent schedule continues one session; only the boolean leaves here. */
+  async function getScheduleContinuesChat(scheduleId: string): Promise<boolean | undefined> {
+    const stored = await readScheduledAgentInput(scheduleId);
+    if (stored === undefined) return undefined;
+    return stored.sessionId !== undefined;
   }
 
   async function sessionOwner(sessionId: string): Promise<string | undefined> {
@@ -12668,7 +12870,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function cancelDurableRun(runId: string): Promise<CancelDurableRunOutcome> {
     const outcome = await resolveCancelDurableRun(runId, {
       getDurableRun,
-      cancel: (id) => runtime.durable!.engine.cancel(id),
+      cancel: (id) => runtime.durable!.engine.cancel(id).then(() => undefined),
     });
     // AB-46: only an ACTUALLY-committed cancellation ('requested') terminates
     // the run — 'already-terminal'/'not-found'/'failed'/'unsupported-capability'
@@ -14782,6 +14984,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       await reconcileAssetClaims();
       // COR-194 — a schedule transition whose record failed after its commit is retried here.
       try {
+        await pauseInvalidSchedules();
         await recordPendingScheduleTransitions();
       } catch (error: unknown) {
         diagnose({
@@ -15161,6 +15364,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         await reconcileAssetClaims();
         // COR-194 — a schedule transition whose record failed after its commit is retried here.
         try {
+          await pauseInvalidSchedules();
           await recordPendingScheduleTransitions();
         } catch (error: unknown) {
           diagnose({
@@ -15585,17 +15789,25 @@ async function constructBureau<const D extends AgentDefinitions>(
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
   async function deleteSession(
     id: string,
-    deleteOptions?: { readonly incarnation?: string | undefined },
+    deleteOptions?: {
+      readonly incarnation?: string | undefined;
+      readonly actor?: string | undefined;
+    },
   ): Promise<ContextDeletionReport> {
     const existing = inFlightSessionDeletions.get(id);
     if (existing) return existing;
     let releaseCoalescing: (() => void) | undefined = () => {
       inFlightSessionDeletions.delete(id);
     };
-    const deletion = performDeleteSession(id, deleteOptions?.incarnation, () => {
-      releaseCoalescing?.();
-      releaseCoalescing = undefined;
-    }).finally(() => {
+    const deletion = performDeleteSession(
+      id,
+      deleteOptions?.incarnation,
+      () => {
+        releaseCoalescing?.();
+        releaseCoalescing = undefined;
+      },
+      deleteOptions?.actor,
+    ).finally(() => {
       releaseCoalescing?.();
       releaseCoalescing = undefined;
     });
@@ -15633,22 +15845,67 @@ async function constructBureau<const D extends AgentDefinitions>(
       (error as { code?: unknown }).code === 'ERR_ENCODING_INVALID_ENCODED_DATA'
     );
   }
-  const sessionDeletionOwners = new Map<string, string>();
+  /**
+   * What the record kept before a deletion holds (COR-2018): the owner, which the audit entry
+   * carries as `detail.owner`, and the chat's title and message count, which it carries so the log
+   * can say which chat was deleted. The value is stored as JSON; a record written before the
+   * summary was kept is the owner alone, as plain text, and reads as no summary.
+   */
+  type SessionDeletionRecord = {
+    readonly owner: string | undefined;
+    /** Who asked for the deletion, when somebody did: an expiry has no actor. */
+    readonly actor: string | undefined;
+    readonly summary: { readonly title: string | null; readonly messageCount: number } | undefined;
+  };
+  const sessionDeletionOwners = new Map<string, SessionDeletionRecord>();
+
+  function serializeSessionDeletionRecord(record: SessionDeletionRecord): string {
+    return JSON.stringify({
+      owner: record.owner ?? null,
+      actor: record.actor ?? null,
+      title: record.summary?.title ?? null,
+      messageCount: record.summary?.messageCount ?? null,
+    });
+  }
+
+  function parseSessionDeletionRecord(stored: string): SessionDeletionRecord {
+    if (!stored.startsWith('{')) return { owner: stored, actor: undefined, summary: undefined };
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      if (typeof parsed !== 'object' || parsed === null) {
+        return { owner: undefined, actor: undefined, summary: undefined };
+      }
+      const { owner, actor, title, messageCount } = parsed as Record<string, unknown>;
+      return {
+        owner: typeof owner === 'string' ? owner : undefined,
+        actor: typeof actor === 'string' ? actor : undefined,
+        summary:
+          typeof messageCount === 'number'
+            ? { title: typeof title === 'string' ? title : null, messageCount }
+            : undefined,
+      };
+    } catch {
+      return { owner: undefined, actor: undefined, summary: undefined };
+    }
+  }
 
   function sessionDeletionOwnerKey(sessionId: string, incarnation: string): string {
     return `${SESSION_DELETION_OWNER_PREFIX}${encodeURIComponent(sessionId)}:${incarnation}`;
   }
 
-  async function recordSessionDeletionOwner(session: AgentSession): Promise<void> {
+  async function recordSessionDeletionOwner(session: AgentSession, actor?: string): Promise<void> {
     const kvStore = runtime.kv;
     if (!auditTrailInstance || !kvStore) return;
-    const owner = resolveSessionOwner(session.metadata);
     // A malformed owner names no one, so the entry is left without one.
-    if (owner === undefined) return;
+    const owner = resolveSessionOwner(session.metadata);
+    // The title and the count are what the chat was while it existed (COR-2018): the body is gone
+    // by the time the entry is written, so they travel with the record the owner does.
+    const { title, messageCount } = summarizeSession(session);
+    const record: SessionDeletionRecord = { owner, actor, summary: { title, messageCount } };
     const key = sessionDeletionOwnerKey(session.id, session.incarnation);
-    sessionDeletionOwners.set(key, owner);
+    sessionDeletionOwners.set(key, record);
     try {
-      await kvStore.set(key, owner);
+      await kvStore.set(key, serializeSessionDeletionRecord(record));
     } catch (error: unknown) {
       // The deletion does not go ahead without its owner: once the session is gone,
       // nothing can supply the owner its audit entry needs, in this process or any
@@ -15671,8 +15928,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    *   task of the incarnation keeps its status and cleanup and loses its history. This runs
    *   before the removal commits, so a failure leaves the context in place and a retry finds it.
    */
-  async function prepareSessionsForRemoval(sessions: readonly AgentSession[]): Promise<void> {
-    for (const session of sessions) await recordSessionDeletionOwner(session);
+  async function prepareSessionsForRemoval(
+    sessions: readonly AgentSession[],
+    actor?: string,
+  ): Promise<void> {
+    for (const session of sessions) await recordSessionDeletionOwner(session, actor);
     for (const session of sessions) await tasks.clearHistory(session.id, session.incarnation);
   }
 
@@ -15692,8 +15952,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     const key = sessionDeletionOwnerKey(sessionId, incarnation);
     if (sessionDeletionOwners.has(key)) return true;
     try {
-      const owner = await kvStore.get(key);
-      if (owner !== null) sessionDeletionOwners.set(key, owner);
+      const stored = await kvStore.get(key);
+      if (stored !== null) sessionDeletionOwners.set(key, parseSessionDeletionRecord(stored));
       return true;
     } catch (error: unknown) {
       // A record that is present but not valid text is a definite miss, like one that
@@ -15870,6 +16130,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       context.holderOf,
       context.rows,
       {
+        workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, context.principalId),
         onFailure: (assetId, error, rowId) => {
           context.onFailure(assetId, error, rowId);
           if (!isPermanentClaimFailure(error)) transientFailure ??= { error };
@@ -16059,6 +16320,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     id: string,
     expectedIncarnation: string | undefined,
     onStoreDeletionCommitted: () => void,
+    actor?: string,
   ): Promise<ContextDeletionReport> {
     const sessionStore = requireSessionStore();
     const session = await loadSessionAndTombstone(id, expectedIncarnation);
@@ -16078,7 +16340,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         memoryPlacements: chatMemoryPlacementsOf(session, runIds),
       };
       await chatContentPurge.record(deletedChat);
-      await prepareSessionsForRemoval([session]);
+      await prepareSessionsForRemoval([session], actor);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
           status: 'revoked',
@@ -16660,6 +16922,108 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * B06 (row 18k) — takes back one input its own principal admitted and no run has taken yet: a
+   * follow-up the person removes before the run reaches it. The command is cancelled in the
+   * session's mailbox, so no step boundary can claim it, and the answer says whether that landed
+   * in time. A command a run already claimed is the run's: the gate keeps its lease, the step
+   * appends the turn, and the cancellation only closes the command once the turn commits, so that
+   * case is answered `delivered`, as is an input already promoted. Another principal's input, an
+   * unknown id, and an unknown session or incarnation all answer `not-found`.
+   */
+  async function retractSessionInput(
+    sessionId: string,
+    request: SessionInputRetractionRequest,
+  ): Promise<SessionInputRetractionOutcome> {
+    assertSessionInputAdmissionOpen();
+    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
+    if (session === undefined) return { outcome: 'not-found' };
+    if (request.incarnation !== undefined && request.incarnation !== session.incarnation) {
+      return { outcome: 'not-found' };
+    }
+    const sessionMailbox = tryGetSessionInputMailbox(sessionId, session.incarnation);
+    const kv = runtime.kv;
+    if (sessionMailbox === undefined || kv === undefined) {
+      return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+    }
+    const admitted = await sessionMailbox.receiptByIdempotencyKey(request.id);
+    // An id is unique within its session whatever its principal, so another caller's input is
+    // answered as one that is not there.
+    if (admitted === null || admitted.caller !== request.principal) {
+      return { outcome: 'not-found' };
+    }
+    const { commandId } = admitted;
+    const before = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
+    if (before.state === 'promoted') return { outcome: 'delivered', receipt: before };
+    const cancellation = await sessionMailbox.requestCancellation({
+      commandId,
+      reason: SESSION_INPUT_RETRACTED_REASON,
+    });
+    // `requested` is a command a step boundary holds. The boundary honors a cancellation that
+    // landed before its last check by rejecting the command, so it is never appended; one that
+    // landed after is closed once the turn commits, and the run has the input. The wait lets the
+    // boundary settle the first kind, and the receipt, never the wait, says which it was: a turn
+    // that appended the input is `promoted`, one the boundary rejected has ended undelivered, and a
+    // command still open when the wait runs out is held by a step that is appending it.
+    if (cancellation.status === 'requested') {
+      await sessionMailbox
+        .awaitCleanup({
+          commandId,
+          timeoutMs: SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
+          pollIntervalMs: 10,
+        })
+        .catch(() => undefined);
+    }
+    const receipt = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
+    const endedUndelivered =
+      receipt.state === 'canceled' || receipt.state === 'failed' || receipt.state === 'expired';
+    const heldByStep = cancellation.status === 'requested' && !endedUndelivered;
+    return receipt.state === 'promoted' || heldByStep
+      ? { outcome: 'delivered', receipt }
+      : { outcome: 'retracted', receipt };
+  }
+
+  /**
+   * B06 (row 20c) — forget the chat's "Allow for the rest of this chat" grants of `tools`, so Retry
+   * on a reply that failed sends the turn again with the interrupted tool back behind its approval.
+   * Only the session's metadata changes: every row of the conversation stays, and the failed
+   * attempt is kept on record. Like a rename it is not activity, so `updatedAt` does not move.
+   */
+  async function forgetSessionGrants(
+    id: string,
+    tools: readonly string[],
+    forgetOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<readonly string[] | undefined> {
+    const sessions = requireSessionStore();
+    if (runAdmissionClosed) {
+      throw new BureauShuttingDownError(
+        'Cannot forget grants: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
+    }
+    let forgotten: readonly string[] | undefined;
+    await sessions.update(
+      id,
+      (session) => {
+        if (session === undefined) return undefined;
+        if (
+          forgetOptions?.incarnation !== undefined &&
+          session.incarnation !== forgetOptions.incarnation
+        ) {
+          return undefined;
+        }
+        const without = withoutGrantsFor(session.metadata, tools);
+        forgotten = without.forgotten;
+        // Nothing to forget is no write: undefined leaves the session as it is.
+        return without.metadata === session.metadata
+          ? undefined
+          : { ...session, metadata: without.metadata };
+      },
+      { refreshActivity: false },
+    );
+    return forgotten;
+  }
+
+  /**
    * AB-67/AB-199 — admit a `pause`/`resume` steering command. Pre-admission
    * checks reuse `submitSessionInput`'s fixed order (authorization, then
    * session lifecycle, then capability): an unauthorized caller or unknown
@@ -17131,7 +17495,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       assetService === undefined
         ? undefined
         : await sizeManagedAssets(session.conversationHistory, async (assetId) => {
-            const descriptor = await assetService.inspect(assetId, { id: owner });
+            const descriptor = await assetService.inspect(assetId, {
+              id: owner,
+              workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, owner),
+            });
             return {
               state: descriptor.state,
               custody: descriptor.custody,
@@ -18489,6 +18856,25 @@ async function constructBureau<const D extends AgentDefinitions>(
    * `stopWhen: pendingApproval()`) can write its own copy of the conversation
    * over this one at its terminal save, so a host serving approvals configures it.
    */
+  /**
+   * When each approved call ran, by review id (COR-2014): the Bureau runs an approved call itself
+   * (`resumeApproval`), so it times the run, and the outcome it writes over the call's waiting row
+   * says when the call ran rather than when it was asked for.
+   */
+  const approvalRunTimes = new Map<string, ToolTiming>();
+
+  /**
+   * The metadata the outcome's row is written with: the waiting row's own, with no time the asking
+   * left on it, and the time the approved call ran when it ran.
+   */
+  function approvalOutcomeMetadata(
+    waiting: Readonly<Record<string, JSONValue>> | undefined,
+    ran: ToolTiming | undefined,
+  ): Record<string, JSONValue> {
+    const { [TOOL_TIMING_METADATA_KEY]: _asked, ...kept } = waiting ?? {};
+    return ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } };
+  }
+
   async function writeApprovalOutcomeToSession(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     input: ResolveReviewInput,
@@ -18541,9 +18927,15 @@ async function constructBureau<const D extends AgentDefinitions>(
               missing = true;
               return undefined;
             }
+            const waiting = history.ids
+              .map((id) => getOwn(history.messages, id))
+              .find((row) => row?.toolResult?.callId === callId);
+            const ran = input.decision === 'approve' ? approvalRunTimes.get(review.id) : undefined;
             return {
               ...session,
-              conversationHistory: resolveToolResult(history, callId, toolResult),
+              conversationHistory: resolveToolResult(history, callId, toolResult, {
+                metadata: approvalOutcomeMetadata(waiting?.metadata, ran),
+              }),
             };
           });
           if (continuingFire) {
@@ -18552,13 +18944,19 @@ async function constructBureau<const D extends AgentDefinitions>(
             );
             break;
           }
-          if (!missing) return undefined;
+          if (!missing) {
+            approvalRunTimes.delete(review.id);
+            return undefined;
+          }
           // A conversation that never held a row for the call (a review restored
           // from persisted metadata alone) shows no approval as pending, so there is
           // nothing stale to replace. A run that is still going is different: its
           // row is not stored yet, and the terminal save would put the stale one
           // there, so the outcome is lost unless the caller is told.
-          if (!stillGoing) return undefined;
+          if (!stillGoing) {
+            approvalRunTimes.delete(review.id);
+            return undefined;
+          }
           lastError = new Error(
             'the run is still going and has not stored the conversation the row is in',
           );
@@ -19265,6 +19663,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             peerRecovery,
           );
           actionStarted = true;
+          const approvedCallStartedAt = runtimeServices.clock.nowISO();
           result = await approvalToolbox.resumeApproval(
             { ...approval, approvalToken: approval.approvalToken },
             {
@@ -19280,6 +19679,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                 : { durableOperationKey: peerRecovery.durableOperationKey }),
             },
           );
+          approvalRunTimes.set(review.id, {
+            startedAt: approvedCallStartedAt,
+            endedAt: runtimeServices.clock.nowISO(),
+          });
 
           // `resumeApproval` re-runs the tool's `beforeExecute` policy from
           // scratch — a policy that re-evaluates on edited arguments (or has
@@ -20481,12 +20884,50 @@ async function constructBureau<const D extends AgentDefinitions>(
     return sweptCount;
   }
 
+  /**
+   * Under a workspace Bureau a schedule may continue only a chat its own owner holds, so a session
+   * that is another owner's, or that does not exist, is answered as not found. Creating and
+   * updating a schedule share this check, because every fire of one that fails it is `unavailable`.
+   */
+  async function refuseScheduleSessionOfAnotherOwner(
+    sessionId: string,
+    owner: string,
+  ): Promise<void> {
+    if (workspace !== undefined && (await sessionOwner(sessionId)) !== owner) {
+      throw new BureauError('Session not found', 'NOT_FOUND');
+    }
+  }
+
+  /**
+   * Whether the owner may keep a schedule's recurring chat. A chat that is not made yet is theirs
+   * to make, as the first fire of a schedule that Bureau named a chat for does; one that exists
+   * must be theirs.
+   */
+  async function mayContinueScheduleSession(
+    sessionId: string | undefined,
+    owner: string,
+  ): Promise<boolean> {
+    if (sessionId === undefined) return true;
+    const held = await sessionOwner(sessionId);
+    return held === undefined || held === owner;
+  }
+
   async function createSchedule(
     definition: DurableScheduleDefinition,
     scheduleOptions?: CreateScheduleOptions,
     // COR-1879 — the plugin whose host API creates the schedule; its `schedule.created` names it.
     source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
+    definition = structuredClone(definition);
+    // A chat Bureau names itself is unguessable and not yet made, so it is not another owner's to
+    // refuse: the schedule's first fire makes it, owned by the schedule's owner.
+    const allocatedChat = definition.continueChat === true;
+    if (allocatedChat) {
+      if (definition.sessionId !== undefined) {
+        throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
+      }
+      definition.sessionId = runtimeServices.identifiers.next('session');
+    }
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
       // A schedule's session is made by its first fire when none exists yet. Only `.` and `..` are
@@ -20501,6 +20942,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
+    if (definition.sessionId !== undefined && !allocatedChat) {
+      await refuseScheduleSessionOfAnotherOwner(definition.sessionId.trim(), owner);
+    }
+    const workspaceAuthority =
+      workspace === undefined ? undefined : await captureRunWorkspaceAuthority(workspace, owner);
+    if (workspace !== undefined && workspaceAuthority === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
     if (!runtime.durable) return undefined;
     // COR-1667 — resolve the name the way a fire does (`agentCatalog.find`, which includes file
     // agents), so a typo is refused now instead of as `missing-agent` at the first fire. An agent
@@ -20553,6 +21001,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
         ...(definition.timeZone !== undefined ? { timeZone: definition.timeZone } : {}),
         principal: owner,
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       });
     } catch (error) {
       // Nothing was registered under the id, so its origin names no schedule.
@@ -20626,6 +21075,150 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   }
 
+  async function reassignSchedule(
+    scheduleId: string,
+    request: {
+      readonly administrator: string;
+      readonly targetOwner: string;
+      readonly expectedRevision: number;
+    },
+  ): Promise<true | undefined> {
+    const { administrator, targetOwner, expectedRevision } = request;
+    if (workspace === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const durable = runtime.durable;
+    if (durable === undefined) return undefined;
+    const snapshot = await durable.engine.getSchedule(scheduleId);
+    if (snapshot?.revision !== expectedRevision)
+      throw new BureauError('Schedule revision changed.', 'CONFLICT');
+    const input = await storedScheduleInput(durable.engine, scheduleId);
+    if (
+      typeof input !== 'object' ||
+      input === null ||
+      Array.isArray(input) ||
+      (!isScheduledAgentRunInput(input) &&
+        (parseWorkflowScheduleId(scheduleId) === undefined ||
+          Reflect.get(input, 'kind') !== 'schedule'))
+    )
+      throw new BureauError('Schedule not found.', 'NOT_FOUND');
+    const previous = workflowScheduleBinding(input).workspaceAuthority;
+    if (previous === undefined || previous.workspaceId !== workspace.workspaceId)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const target = await resolveWorkspaceOwner(workspace, targetOwner);
+    const admin = await resolveWorkspaceOwner(workspace, administrator);
+    if (
+      admin === undefined ||
+      !admin.capabilities.includes('workspace:manage') ||
+      target === undefined ||
+      target.actorKind === 'service'
+    )
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const next = {
+      version: 1 as const,
+      workspaceId: target.workspaceId,
+      actorId: target.actorId,
+      authorizingOwner: target.owner,
+      membershipRevision: target.membershipRevision,
+    };
+    const transition: PendingScheduleTransition = {
+      kind: 'schedule.paused',
+      scheduleId,
+      committedAtMs: runtimeServices.clock.now(),
+      reassignment: {
+        workspaceId: workspace.workspaceId,
+        previousActor: previous.actorId,
+        nextActor: target.actorId,
+        administrator: admin.actorId,
+        previousRevision: expectedRevision,
+        nextRevision: expectedRevision + 1,
+      },
+    };
+    const key = scheduleTransitionKey(
+      transition,
+      runtimeServices.identifiers.next('schedule-transition'),
+    );
+    await durable.engine.replaceScheduleInput(
+      scheduleId,
+      { ...input, workspaceAuthority: next, authorityHold: 'reassigned' },
+      {
+        expectedRevision,
+        additionalOperations: [scheduleTransitionOperation(key, transition)],
+      },
+    );
+    try {
+      await recordPendingScheduleTransitions(scheduleTransitionKeyPrefix(scheduleId));
+    } catch {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: 'Schedule reassignment audit remains pending for maintenance.',
+      });
+    }
+    return true;
+  }
+
+  async function pauseInvalidSchedule(scheduleId: string): Promise<void> {
+    if (workspace === undefined || runtime.durable === undefined) return;
+    const snapshot = await runtime.durable.engine.getSchedule(scheduleId);
+    if (snapshot?.status !== 'active') return;
+    const input = await storedScheduleInput(runtime.durable.engine, scheduleId);
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
+    if (!isScheduledAgentRunInput(input) && parseWorkflowScheduleId(scheduleId) === undefined) {
+      if (snapshot.workflowType === 'agentRun')
+        await runtime.durable.engine.pauseSchedule(scheduleId, {
+          expectedRevision: snapshot.revision,
+        });
+      return;
+    }
+    let binding;
+    try {
+      binding = workflowScheduleBinding(input);
+    } catch {
+      await runtime.durable.engine.pauseSchedule(scheduleId, {
+        expectedRevision: snapshot.revision,
+      });
+      return;
+    }
+    const authority = await recoverRunWorkspaceAuthority(
+      workspace,
+      binding.workspaceAuthority,
+      isScheduledAgentRunInput(input) ? input.principal : 'anonymous:local',
+    );
+    const usableInput =
+      !isScheduledAgentRunInput(input) ||
+      (authority !== undefined &&
+        (await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) &&
+        (await mayUseAutomationInput(
+          input.input,
+          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
+        )));
+    if (authority !== undefined && binding.authorityHold === undefined && usableInput) {
+      if (binding.workspaceAuthority === undefined)
+        await runtime.durable.engine.replaceScheduleInput(
+          scheduleId,
+          { ...input, workspaceAuthority: authority },
+          { expectedRevision: snapshot.revision, status: 'active' },
+        );
+      return;
+    }
+    await runtime.durable.engine.replaceScheduleInput(
+      scheduleId,
+      { ...input, authorityHold: binding.authorityHold ?? 'revoked' },
+      { expectedRevision: snapshot.revision },
+    );
+  }
+
+  async function pauseInvalidSchedules(): Promise<void> {
+    if (workspace === undefined || runtime.durable === undefined) return;
+    let offset = 0;
+    for (;;) {
+      const page = await runtime.durable.engine.listSchedules({ offset, limit: 100 });
+      for (const schedule of page.items) await pauseInvalidSchedule(schedule.id);
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) break;
+    }
+  }
+
   async function pauseSchedule(
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
@@ -20646,9 +21239,35 @@ async function constructBureau<const D extends AgentDefinitions>(
     const durable = runtime.durable;
     if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
-      durable.engine.resumeSchedule(scheduleId, transition),
-    );
+    if (workspace === undefined) {
+      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
+        durable.engine.resumeSchedule(scheduleId, transition),
+      );
+    } else {
+      const snapshot = await durable.engine.getSchedule(scheduleId);
+      const input = await readScheduledAgentInput(scheduleId);
+      const authority = await validateRunWorkspaceAuthority(workspace, input?.workspaceAuthority);
+      if (
+        snapshot === null ||
+        input === undefined ||
+        authority === undefined ||
+        !(await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) ||
+        !(await mayUseAutomationInput(
+          input.input,
+          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
+        ))
+      ) {
+        throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+      }
+      const { authorityHold: _hold, ...resumed } = input;
+      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
+        durable.engine.replaceScheduleInput(scheduleId, resumed, {
+          ...transition,
+          expectedRevision: transition.expectedRevision ?? snapshot.revision,
+          status: 'active',
+        }),
+      );
+    }
     return true;
   }
 
@@ -20720,16 +21339,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     // key since.
     if ((await runtime.durable!.engine.storage.get(key)) === null) return;
     const { kind, scheduleId, committedAtMs } = transition;
-    await eventHistoryInstance?.record(
-      { kind: 'schedule', id: scheduleId },
-      kind,
-      { scheduleId },
-      { dedupeKey: key, emittedAtMs: committedAtMs },
-    );
+    const recordKind = transition.reassignment === undefined ? kind : 'schedule.reassigned';
+    const detail = { scheduleId, ...transition.reassignment };
+    await eventHistoryInstance?.record({ kind: 'schedule', id: scheduleId }, recordKind, detail, {
+      dedupeKey: key,
+      emittedAtMs: committedAtMs,
+    });
     await auditTrailInstance?.record({
       runId: `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`,
-      type: kind,
-      detail: { scheduleId },
+      type: recordKind,
+      detail,
       timestampMs: committedAtMs,
       dedupeKey: key,
     });
@@ -20835,6 +21454,20 @@ async function constructBureau<const D extends AgentDefinitions>(
     return true;
   }
 
+  async function unskipSchedule(
+    scheduleId: string,
+    occurrence: number,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    await runtime.durable.engine.unskipScheduleOccurrence(scheduleId, {
+      ...scheduleTransitionOptions(guard),
+      occurrence,
+    });
+    return true;
+  }
+
   async function runScheduleNow(
     scheduleId: string,
   ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
@@ -20867,29 +21500,105 @@ async function constructBureau<const D extends AgentDefinitions>(
         'BAD_REQUEST',
       );
     }
-    if (update.overlap === 'allow') {
-      // A recurring session is sequential: overlapping fires would interleave its turns, which is
-      // why creating such a schedule refuses `allow` too.
-      const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
-      const stored: unknown = bytes ? decode(bytes) : undefined;
-      const input =
-        typeof stored === 'object' && stored !== null
-          ? (stored as { input?: unknown }).input
-          : undefined;
-      if (isScheduledAgentRunInput(input) && input.sessionId !== undefined) {
+    const engine = runtime.durable.engine;
+    if (update.continueChat === true && update.sessionId !== undefined) {
+      throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
+    }
+    const changesRun =
+      update.agentName !== undefined ||
+      update.input !== undefined ||
+      update.sessionId !== undefined ||
+      update.continueChat === true;
+    // The stored state is read for what an edit of the run needs (its input, the overlap and the
+    // revision it was written at), and for the check that a recurring session is never combined
+    // with overlapping fires.
+    const bytes =
+      changesRun || update.overlap === 'allow'
+        ? await engine.storage.get(KEYS.schedule(scheduleId))
+        : null;
+    const stored: unknown = bytes ? decode(bytes) : undefined;
+    const storedRecord =
+      typeof stored === 'object' && stored !== null
+        ? (stored as { input?: unknown; overlap?: unknown; revision?: unknown })
+        : undefined;
+    const storedInput = isScheduledAgentRunInput(storedRecord?.input)
+      ? storedRecord.input
+      : undefined;
+    if (changesRun && storedInput === undefined) {
+      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+    }
+    const nextOverlap = update.overlap ?? storedRecord?.overlap;
+    // A chat Bureau names itself is unguessable and not yet made (see `createSchedule`).
+    const allocatedChat =
+      update.continueChat === true ? runtimeServices.identifiers.next('session') : undefined;
+    const nextSession =
+      allocatedChat ??
+      (update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined));
+    if (update.sessionId !== undefined && update.sessionId !== null) {
+      const sessionId = update.sessionId.trim();
+      rejectReservedIdentifier('"sessionId"', sessionId);
+      if (unopenableNewSessionIdentifierReason('"sessionId"', sessionId)) {
+        const held = await runtime.sessionStore?.load(sessionId);
+        rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, held !== undefined);
+      }
+      // `changesRun` is true here, so the stored input was read and its principal is the owner.
+      await refuseScheduleSessionOfAnotherOwner(sessionId, ownerOrLocal(storedInput?.principal));
+    }
+    // COR-323: a fire runs as its named agent and refuses a chat another agent began, so an
+    // update that would leave the schedule's agent and its chat apart is refused now, not as an
+    // `unavailable` at every fire after it.
+    const nextAgent = update.agentName ?? storedInput?.agentName;
+    if (allocatedChat === undefined && nextSession !== undefined && nextAgent !== undefined) {
+      const held = await runtime.sessionStore?.load(nextSession);
+      if (held !== undefined && held.agentName !== nextAgent) {
         throw new BureauError(
-          "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
+          `Schedule "${scheduleId}" would run agent "${nextAgent}" in a chat that belongs to agent "${held.agentName}". Start a new chat with the change, or keep the agent.`,
           'BAD_REQUEST',
         );
       }
     }
-    await runtime.durable.engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
+    if (nextOverlap === 'allow' && nextSession !== undefined) {
+      // A recurring session is sequential: overlapping fires would interleave its turns, which is
+      // why creating such a schedule refuses `allow` too.
+      throw new BureauError(
+        "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
+        'BAD_REQUEST',
+      );
+    }
+    if (update.agentName !== undefined && agentCatalog.find(update.agentName) === undefined) {
+      throw new UnknownScheduleAgentError(update.agentName);
+    }
+    if (update.input !== undefined && update.input.trim() === '') {
+      throw new BureauError('"input" must be a non-empty string', 'BAD_REQUEST');
+    }
+    let nextInput: ScheduledAgentRunInput | undefined;
+    if (changesRun && storedInput !== undefined) {
+      const { sessionId: _kept, ...rest } = storedInput;
+      nextInput = {
+        ...rest,
+        ...(update.agentName === undefined ? {} : { agentName: update.agentName }),
+        ...(update.input === undefined
+          ? {}
+          : { input: replaceInputText(storedInput.input, update.input) }),
+        ...(nextSession === undefined ? {} : { sessionId: nextSession }),
+      };
+    }
+    // Whatever was read decided what this update may do (the input it rebuilds, and whether
+    // `overlap` and a recurring chat may be combined), so the write is fenced to the revision that
+    // was read when the caller named none: a change made since is refused, not overwritten. An
+    // update of the overlap alone is fenced as well, or it could land on a chat another update gave
+    // the schedule since, which leaves the combination that is refused above.
+    const expectedRevision =
+      guard?.expectedRevision ??
+      (bytes !== null && typeof storedRecord?.revision === 'number'
+        ? storedRecord.revision
+        : undefined);
+    await engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
       ...(update.description === undefined ? {} : { description: update.description }),
       ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
       ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
-      ...(guard?.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: guard.expectedRevision }),
+      ...(nextInput === undefined ? {} : { input: nextInput }),
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
     return true;
   }
@@ -22375,6 +23084,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   const { planChildRun, startChildRun, startGoalAttemptRun, startWorkflowStepRun } =
     createCatalogDispatcher({
+      workspace,
       agentCatalog,
       runtime,
       runtimeServices,
@@ -22412,6 +23122,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (shutdownPromise) return;
         void childTopology.parentCancelled(runId, reason);
       },
+      configureDurableRun: (_runId, services, principal) => {
+        configureChildWaitServices(services, principal);
+      },
     });
 
   /**
@@ -22439,6 +23152,13 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   async function runWorkflowAgentStep(request: AgentStepRequest): Promise<AgentStepResult> {
+    const authority =
+      workspace === undefined
+        ? undefined
+        : await validateRunWorkspaceAuthority(workspace, request.workspaceAuthority);
+    if (workspace !== undefined && authority === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const owner = authority?.authorizingOwner ?? ANONYMOUS_LOCAL_OWNER;
     const engine = runtime.durable?.engine;
     if (engine === undefined) {
       throw new WorkflowAgentStepError(
@@ -22457,7 +23177,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         claim.record.workflowStep?.workflowId !== request.workflowId ||
         claim.record.workflowStep.step !== request.step ||
         claim.record.agentName !== request.agent ||
-        claim.record.principal !== ANONYMOUS_LOCAL_OWNER
+        claim.record.principal !== owner
       ) {
         throw new WorkflowAgentStepError(
           'agent-run-failed',
@@ -22481,7 +23201,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         input: request.message,
         runId,
         workflowStep: { workflowId: request.workflowId, step: request.step },
-        principal: ANONYMOUS_LOCAL_OWNER,
+        principal: owner,
+        ...(authority === undefined ? {} : { workspaceAuthority: authority }),
       });
     } catch (error) {
       throw new WorkflowAgentStepError(
@@ -22543,8 +23264,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     // run that does not exist, as any parent that cannot own children is.
     if (isTryAgentName(attribution?.agentName ?? '')) return undefined;
     const childParent = await childTopologyStore.get(parentRunId);
+    let inheritedAuthority =
+      runRequestContexts.get(parentRunId)?.authority.workspace ?? childParent?.workspaceAuthority;
+    if (workspace !== undefined && inheritedAuthority === undefined) {
+      const recovered = await runtime.loadCatalogRunRecoveryRecord(parentRunId);
+      if (recovered.status === 'found') inheritedAuthority = recovered.record.workspaceAuthority;
+    }
+    const workspaceAuthority =
+      workspace === undefined
+        ? undefined
+        : await validateRunWorkspaceAuthority(workspace, inheritedAuthority);
+    if (workspace !== undefined && workspaceAuthority === undefined) return undefined;
+
     if (childParent) {
       return {
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
         agentName: childParent.childAgentName,
         principal: ownerOrLocal(childParent.principal),
         live: childParent.status === 'running',
@@ -22556,6 +23290,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const runState = catalogRunIds.has(parentRunId) ? undefined : store.getRun(parentRunId);
     if (runState) {
       return {
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
         agentName: attribution?.agentName ?? findRunAgentName(runState) ?? BUREAU_AGENT_NAME,
         principal: ownerOrLocal(attribution?.principal),
         live: runState.status === 'running',
@@ -22566,6 +23301,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const state = runtime.durable ? await runtime.durable.engine.get(parentRunId) : null;
     if (!state || !isAgentRunWorkflowInput(state.input)) return undefined;
     return {
+      ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       agentName: state.input.agentName,
       principal: ownerOrLocal(attribution?.principal),
       live: DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status),
@@ -22611,10 +23347,19 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
     // parent this process does not hold has no action log here, and the record is dropped.
-    announce: (announcement) => {
+    announce: async (announcement) => {
       const action = childActionOf(announcement);
       if (action !== undefined) {
         store.recordAction(announcement.record.parentRunId, action.type, action.detail);
+      }
+      if (announcement.kind === 'settled') {
+        void runtime.durable?.engine
+          .signal(
+            announcement.record.parentRunId,
+            `durable-child:${announcement.record.parentRunId}:${announcement.record.childRunId}`,
+            null,
+          )
+          .catch(() => undefined);
       }
     },
     resolveParent: resolveChildParent,
@@ -22631,6 +23376,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     defaultTimeToLiveMilliseconds: () =>
       currentSettings()['children.delegation.defaultTimeToLiveMilliseconds'],
   });
+  childTopologyForWait = childTopology;
 
   // COR-1670 — the journal behind `createPeerCallTool({ durable })`.
   const peerCalls: PeerCallJournal = {
@@ -22679,10 +23425,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     },
   };
+  notifyPeerCallsReady(options, peerCalls);
 
   // COR-851 — durable goals: the control plane over the goal store, its
   // controller workflow's ports, and the attempt forwarder.
   const goalsComposition = composeBureauGoals({
+    workspace,
     catalog: goalValidatorCatalog,
     kv: runtime.kv,
     sessionStore: runtime.sessionStore,
@@ -22791,13 +23539,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     list: listSchedules,
     pause: pauseSchedule,
     resume: resumeSchedule,
+    reassign: reassignSchedule,
     cancel: cancelSchedule,
     update: updateSchedule,
     skipNext: skipNextSchedule,
+    unskip: unskipSchedule,
     runNow: runScheduleNow,
     missed: listScheduleMissed,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
+    continuesChat: getScheduleContinuesChat,
     blocker: getScheduleBlocker,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
@@ -22813,6 +23564,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     rename: renameSession,
     signal: signalSession,
     input: submitSessionInput,
+    retract: retractSessionInput,
+    forgetGrants: forgetSessionGrants,
     inputsDeliveredBy: sessionInputsDeliveredBy,
     steer: submitSteeringCommand,
     steering: getSessionSteering,
@@ -22863,6 +23616,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
 
   const bureau: Bureau<D> = {
+    workspaceBinding: workspace,
     id: bureauId,
     plugins: pluginRegistry.plugins,
     // COR-2009: what needs attention, read now from the parts this Bureau has.
@@ -22979,7 +23733,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     maintain,
     removeExpiredRecords,
     setRequestAuthorityValidator(validator) {
-      requestAuthorityValidator = validator;
+      requestAuthorityValidator = createRunAuthorityValidator(workspace, validator);
       runtime.setRequestAuthorityValidator(validator);
       if (validator && durableRecoveryDeferred && !durableRecoveryStarted) {
         durableRecoveryDeferred = false;
@@ -23114,7 +23868,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         initialSequence: auditTrailInitialSequence,
         eventTimestamp,
         sessionDeletionOwner: (sessionId, incarnation) =>
-          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation)),
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.owner,
+        sessionDeletionActor: (sessionId, incarnation) =>
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.actor,
+        sessionDeletionSummary: (sessionId, incarnation) =>
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.summary,
       },
       runtimeServices,
     );
@@ -23187,6 +23945,13 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   // COR-1939: user-defined hooks, on the notifier's delivery engine.
   hooksInstance = composeHooks({
+    workspace,
+    eventForHookOwner:
+      workspace === undefined ? undefined : workspaceHookEvents(workspace, ownerOf),
+    mayStartWorkflows:
+      workspace === undefined
+        ? undefined
+        : (owner) => mayRunUseSharedConfiguration(workspace, owner, 'bureau.workflows:write', true),
     options: options.hooks,
     engine: webhookNotifierInstance?.engine,
     kv: runtime.kv,

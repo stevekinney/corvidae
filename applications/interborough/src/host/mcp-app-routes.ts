@@ -12,8 +12,8 @@
  *   backs the panel's `onToolCall`. It runs only a tool the app declared in `allowedTools`, spelled
  *   exactly, and only a Bureau MCP tool (`bureau.*`); anything else answers 403 and reaches
  *   nothing. A declared tool becomes a JSON-RPC `tools/call` that goes in process to the Bureau's
- *   handler, as the local owner (a panel acts as the person who opened the page). The browser's
- *   headers are not forwarded, so no credential of the request reaches the Bureau. A panel never
+ *   handler as its authenticated caller. Only authentication headers reach the in-process
+ *   verifier; caller-selected identity and workspace headers are discarded. A panel never
  *   calls a toolbox tool, so approval policy and idempotency, which belong to a run, do not apply.
  *
  * Every route runs the request guard first, so a page on another origin gets no HTML and runs no
@@ -69,6 +69,23 @@ function toolResultOf(message: unknown): Record<string, unknown> | undefined {
   return Object.fromEntries(Object.entries(result));
 }
 
+/** Turn a direct JSON-RPC fault into the same MCP result shape the panel already consumes. */
+function toolErrorOf(message: unknown): Record<string, unknown> | undefined {
+  if (typeof message !== 'object' || message === null || Array.isArray(message)) return undefined;
+  const error: unknown = Reflect.get(message, 'error');
+  if (typeof error !== 'object' || error === null || Array.isArray(error)) return undefined;
+  const code = Reflect.get(error, 'code');
+  const messageText = Reflect.get(error, 'message');
+  if (typeof code !== 'number' || typeof messageText !== 'string') return undefined;
+  const data = Reflect.get(error, 'data');
+  return {
+    content: [{ type: 'text', text: messageText }],
+    isError: true,
+    ...(data === undefined ? {} : { structuredContent: data }),
+    _rpc: { code },
+  };
+}
+
 /**
  * The routes to merge into the host's `routes`. `apps` is what the host built at startup and
  * `callBureau` reaches the Bureau's handler.
@@ -106,9 +123,10 @@ export function mcpAppRoutes(
     if (!name.startsWith(BUREAU_TOOL_PREFIX) || !app.allowedTools.includes(name)) {
       return refusal(403, 'forbidden-tool', 'This panel may not call that tool.');
     }
-    // A request of the host's own making: none of the browser's headers, so none of its
-    // credentials, and the Bureau serves it as the local owner.
-    const mcpUrl = new URL('/mcp', request.url);
+    // Preserve only authentication credentials for the in-process Bureau verifier. Never forward
+    // caller-selected identity, workspace, cookies, origin or arbitrary headers.
+    const hostOnly = app.hostOnlyTools.includes(name);
+    const mcpUrl = new URL(hostOnly ? '/jsonrpc' : '/mcp', request.url);
     const answer = await callBureau(
       new Request(mcpUrl, {
         method: 'POST',
@@ -116,19 +134,38 @@ export function mcpAppRoutes(
           accept: 'application/json, text/event-stream',
           'content-type': 'application/json',
           'mcp-protocol-version': MCP_LEGACY_PROTOCOL_VERSION,
+          ...Object.fromEntries(
+            ['authorization', 'x-api-key'].flatMap((header) => {
+              const value = request.headers.get(header);
+              return value === null ? [] : [[header, value]];
+            }),
+          ),
         },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
-          method: 'tools/call',
-          params: { name, arguments: Object.fromEntries(Object.entries(args)) },
+          method: hostOnly ? name : 'tools/call',
+          params: hostOnly
+            ? Object.fromEntries(Object.entries(args))
+            : { name, arguments: Object.fromEntries(Object.entries(args)) },
         }),
         signal: request.signal,
       }),
     );
     let result: Record<string, unknown> | undefined;
     try {
-      result = answer.ok ? toolResultOf(messageOf(await answer.text())) : undefined;
+      const responseText = await answer.text();
+      const message = answer.ok ? messageOf(responseText) : undefined;
+      const directResult = hostOnly ? toolResultOf(message) : undefined;
+      result =
+        directResult !== undefined && !Array.isArray(directResult['content'])
+          ? {
+              content: [{ type: 'text', text: JSON.stringify(directResult) }],
+              structuredContent: directResult,
+            }
+          : (directResult ??
+            toolResultOf(message) ??
+            (hostOnly ? toolErrorOf(message) : undefined));
     } catch {
       result = undefined;
     }
@@ -143,12 +180,13 @@ export function mcpAppRoutes(
         refuse(request) ??
         Response.json(
           {
-            apps: served.map(({ plugin, name, title, uri, opensFromTool }) => ({
+            apps: served.map(({ plugin, name, title, uri, opensFromTool, opensFromAgentTool }) => ({
               plugin,
               app: name,
               title,
               uri,
               opensFromTool,
+              ...(opensFromAgentTool === undefined ? {} : { opensFromAgentTool }),
             })),
           },
           { headers: JSON_HEADERS },

@@ -51,32 +51,66 @@ const sendReceipt = createTool({
   },
 });
 
-const TOOLS = { 'issue-refund': issueRefund, 'send-receipt': sendReceipt };
+/** A plugin's refund tool, which a provider calls `shop__issue-refund` and a grant names by its id. */
+const shopRefund = createTool({
+  name: 'issue-refund',
+  version: '1.0.0',
+  description: 'Refund an order from the shop',
+  input: z.object({ orderId: z.string() }),
+  metadata: { mutates: true },
+  execute: async ({ orderId }) => {
+    executed.push(`shop:issue-refund:${orderId}`);
+    return { refunded: orderId };
+  },
+});
+
+const TOOLS = {
+  'issue-refund': issueRefund,
+  'send-receipt': sendReceipt,
+  'shop:issue-refund': shopRefund,
+};
 const ALICE = 'api-key:alice';
 const BOB = 'api-key:bob';
 
 const roots: string[] = [];
 const harnesses: FileBureauHarness[] = [];
 
+/** The calls the model has asked for, by `tool:orderId`: it asks for each once. */
+const asked = new Set<string>();
+/**
+ * A call after whose answer the model's next step fails, by `tool:orderId`, once: a reply that
+ * stops after the tool may have run.
+ */
+const failing = { after: undefined as string | undefined };
+
 afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.dispose();
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
   executed.length = 0;
+  asked.clear();
+  failing.after = undefined;
 });
 
 /** What the model asks for on its first step of a run; read when the step runs. */
 const plan: { tool: string; orderId: string } = { tool: 'issue-refund', orderId: 'A1' };
 
-async function start(toolApproval?: string, storage?: MemoryStorage): Promise<FileBureauHarness> {
+async function start(
+  toolApproval?: string,
+  storage?: MemoryStorage,
+  tools = '[issue-refund, send-receipt]',
+): Promise<FileBureauHarness> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-approval-grants-'));
   roots.push(directory);
-  const asked = new Set<string>();
   const harness = await startFileBureau({
     directory,
     scripts: {
       [KNOWN_MODEL.split('/')[1] as string]: () => {
         // A run asks once for an order. Its second step, after the result or the refusal, answers.
         const key = `${plan.tool}:${plan.orderId}`;
+        if (asked.has(key) && failing.after === key) {
+          failing.after = undefined;
+          throw new Error('The model provider dropped the connection.');
+        }
         if (asked.has(key)) return 'Done.';
         asked.add(key);
         return {
@@ -97,7 +131,7 @@ async function start(toolApproval?: string, storage?: MemoryStorage): Promise<Fi
     'helper.md',
     agentFileText({
       model: KNOWN_MODEL,
-      tools: '[issue-refund, send-receipt]',
+      tools,
       ...(toolApproval === undefined ? {} : { toolApproval }),
     }),
   );
@@ -278,6 +312,89 @@ describe('approving with remember (COR-1828)', () => {
     // A chat made afterwards holds no grant.
     const fresh = await ask(bureau, 'issue-refund', 'A2');
     expect(pendingOf(bureau, fresh.id)).toHaveLength(1);
+  });
+});
+
+describe('Retry after a failed reply (B06, row 20c)', () => {
+  it('keeps the failed attempt in the stored chat, and the retried tool asks for approval again once its grant is forgotten', async () => {
+    const { bureau } = await start();
+    const first = await ask(bureau, 'issue-refund', 'A1');
+    await approveRemembering(bureau, first.id);
+    expect(executed).toEqual(['issue-refund:A1']);
+
+    // The grant lets the refund run unasked, and the reply stops after it: it may have run.
+    plan.tool = 'issue-refund';
+    plan.orderId = 'A2';
+    failing.after = 'issue-refund:A2';
+    const failed = await bureau.tasks.start('helper', 'Go.', {
+      principal: ALICE,
+      contextId: first.contextId,
+    });
+    await waitForTaskState(bureau, failed.id);
+    expect(bureau.tasks.detail(failed.id)?.status).toBe('error');
+    expect(executed).toEqual(['issue-refund:A1', 'issue-refund:A2']);
+    const stored = async () => {
+      const session = await bureau.internals.sessionStore?.load(first.contextId);
+      return session?.conversationHistory;
+    };
+    const before = await stored();
+    const failedRows = before?.ids ?? [];
+    // The failed attempt holds the call that ran.
+    const calls = failedRows.flatMap((id) => before?.messages[id]?.toolCall ?? []);
+    expect(calls.map((call) => call.arguments)).toContainEqual({ orderId: 'A2' });
+
+    // Retry: the interrupted tool's grant is forgotten, and a new turn is sent over the same thread.
+    expect(await bureau.contexts.forgetGrants(first.contextId, ['issue-refund'])).toEqual([
+      'default:issue-refund@1.0.0',
+    ]);
+    asked.delete('issue-refund:A2');
+    const retried = await ask(bureau, 'issue-refund', 'A2', first.contextId);
+
+    // The call goes back through its approval instead of running a second time unasked.
+    expect(pendingOf(bureau, retried.id)).toHaveLength(1);
+    expect(executed).toEqual(['issue-refund:A1', 'issue-refund:A2']);
+    // Every row of the failed attempt is still in the stored chat, in its place.
+    const after = await stored();
+    expect(after?.ids.slice(0, failedRows.length)).toEqual([...failedRows]);
+    expect(after?.ids.length).toBeGreaterThan(failedRows.length);
+    for (const id of failedRows) expect(after?.messages[id]).toEqual(before?.messages[id]);
+  });
+});
+
+describe('Retry after a failed reply with a namespaced tool (B06, row 20c)', () => {
+  it('forgets the grant by the name the stored call carries, so the retried refund asks again', async () => {
+    const { bureau } = await start(undefined, undefined, '["shop:issue-refund"]');
+    const first = await ask(bureau, 'shop__issue-refund', 'A1');
+    await approveRemembering(bureau, first.id);
+    const sessions = bureau.internals.sessionStore;
+    const granted = await sessions?.load(first.contextId);
+    expect(granted?.metadata['approvalGrants']).toEqual(['shop:issue-refund@1.0.0']);
+
+    // The grant lets the refund run unasked, and the reply stops after it: it may have run.
+    plan.tool = 'shop__issue-refund';
+    plan.orderId = 'A2';
+    failing.after = 'shop__issue-refund:A2';
+    const failed = await bureau.tasks.start('helper', 'Go.', {
+      principal: ALICE,
+      contextId: first.contextId,
+    });
+    await waitForTaskState(bureau, failed.id);
+    expect(bureau.tasks.detail(failed.id)?.status).toBe('error');
+    expect(executed).toEqual(['shop:issue-refund:A1', 'shop:issue-refund:A2']);
+
+    // Retry names the tool as the stored call does, which is what the page reads.
+    const failedSession = await sessions?.load(first.contextId);
+    const stored = failedSession?.conversationHistory;
+    const names = (stored?.ids ?? []).flatMap((id) => stored?.messages[id]?.toolCall?.name ?? []);
+    expect(names).toContain('shop__issue-refund');
+    expect(await bureau.contexts.forgetGrants(first.contextId, ['shop__issue-refund'])).toEqual([
+      'shop:issue-refund@1.0.0',
+    ]);
+    asked.delete('shop__issue-refund:A2');
+    const retried = await ask(bureau, 'shop__issue-refund', 'A2', first.contextId);
+
+    expect(pendingOf(bureau, retried.id)).toHaveLength(1);
+    expect(executed).toEqual(['shop:issue-refund:A1', 'shop:issue-refund:A2']);
   });
 });
 

@@ -49,11 +49,16 @@ async function geminiPlugin(host: Host) {
   return body.plugins.find((plugin) => plugin.descriptor.name === 'gemini');
 }
 
-function put(host: Host, path: string, body: unknown): Promise<Response> {
+async function put(host: Host, path: string, body: unknown): Promise<Response> {
+  const snapshot = await host.providers.snapshot();
   return fetch(new URL(path, host.url), {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...(typeof body === 'object' && body !== null ? body : {}),
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    }),
   });
 }
 

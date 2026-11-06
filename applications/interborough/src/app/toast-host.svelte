@@ -76,9 +76,9 @@
     return toastApi.show(message, options);
   }
 
-  /** Removes a toast {@link showToast} showed, by the id it returned. Nothing happens for an id no longer shown. */
+  /** Dismisses the toast `showToast` returned `id` for, wherever it was shown from. A toast already gone is left alone. */
   export function dismissToast(id: string): void {
-    toastApis.at(-1)?.dismiss(id);
+    for (const toastApi of toastApis) toastApi.dismiss(id);
   }
 
   /** Toast variant per treatment kind — `invalid`/`unauthorized`/`internal` are failures the operator must act on; `not-found`/`conflict`/`not-supported` are lower-stakes state mismatches. Exported so tests can assert the fault→toast policy directly rather than only through Cinder's rendered DOM. */

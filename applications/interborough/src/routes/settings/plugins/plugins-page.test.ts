@@ -677,7 +677,11 @@ describe('disabling a plugin', () => {
 
     const back = await backBanner(container);
     expect(writes()).toEqual([
-      { method: 'PUT', path: '/host/plugins/linear', body: { enabled: false } },
+      {
+        method: 'PUT',
+        path: '/host/plugins/linear',
+        body: { enabled: false, operationId: expect.any(String), expectedRevision: '{}' },
+      },
       { method: 'POST', path: '/host/restart', body: undefined },
     ]);
     expect(back.textContent).toContain(RESTART_COPY.back.disabled('Linear'));
@@ -1011,7 +1015,7 @@ describe('secrets', () => {
       {
         method: 'PUT',
         path: '/host/plugins/typesafe/secrets/typesafe-api-key',
-        body: { value: SECRET },
+        body: { value: SECRET, operationId: expect.any(String), expectedRevision: '{}' },
       },
     ]);
     expect(bannerText(container)).toBeNull();

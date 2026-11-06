@@ -174,6 +174,8 @@ describe('KEYS insertion order', () => {
       'catalogTombstonePrefix',
       'catalogRemovalGeneration',
       'workflowGeneration',
+      'fileWorkflowEventReceiptPrefix',
+      'fileWorkflowEventReceipt',
       'workflowLogPrefix',
       'workflowLog',
       'workflowLogCounterPrefix',

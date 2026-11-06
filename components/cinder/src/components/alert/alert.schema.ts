@@ -19,10 +19,21 @@ const schema = {
       type: 'string',
       description: 'Custom class merged with `.cinder-alert`.',
     },
+    heading: {
+      type: 'string',
+      description:
+        "A bold first line in the status colour. With a heading, the alert draws its variant's glyph\nwhen no `icon` is given, and its body reads in the default text colour.",
+    },
   },
   additionalProperties: false,
   metadata: {
     unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description:
+          'Buttons or links that act on the message, such as "Export again" after a failed export. They\nsit at the alert\'s trailing edge beside the message, and drop under it where the alert is too\nnarrow for both. Give them the secondary or ghost variant: an alert states a problem, and the\npage\'s one primary action stays elsewhere.',
+      },
       {
         name: 'children',
         reason: 'function-or-snippet',

@@ -38,6 +38,9 @@ describe('a file agent that states no toolApproval', () => {
       'bureau__workflows-create',
       { name: 'Digest', trigger: TRIGGER, steps: STEPS },
     ],
+    ['bureau:workflows-start', 'bureau__workflows-start', { id: 'digest' }],
+    ['bureau:workflows-signal', 'bureau__workflows-signal', { name: 'go' }],
+    ['bureau:workflows-runs-cancel', 'bureau__workflows-runs-cancel', { runId: 'missing-run' }],
     [
       'settings-update',
       'settings-update',

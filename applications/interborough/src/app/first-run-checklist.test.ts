@@ -14,11 +14,16 @@ import QueryPage from '../routes/chat/query-page.test-harness.svelte';
 import { FIRST_RUN_COPY } from './copy.ts';
 import Checklist from './first-run-checklist.svelte';
 import { FIRST_RUN_DISMISSED_KEY } from './first-run.ts';
+import { workspaceStorage } from './workspace-lifetime.ts';
+
+const identity = { workspaceId: 'workspace-a', actorId: 'actor-a' };
+const privateStorage = () => workspaceStorage(identity, window.localStorage);
+const scopedKey = `interborough:identity:${JSON.stringify([identity.workspaceId, identity.actorId])}:${FIRST_RUN_DISMISSED_KEY}`;
 
 let restore: (() => void) | undefined;
 
 beforeEach(() => {
-  window.localStorage.removeItem(FIRST_RUN_DISMISSED_KEY);
+  window.localStorage.removeItem(scopedKey);
   landAt('/chats');
 });
 
@@ -26,10 +31,11 @@ afterEach(() => {
   cleanup();
   restore?.();
   restore = undefined;
-  window.localStorage.removeItem(FIRST_RUN_DISMISSED_KEY);
+  window.localStorage.removeItem(scopedKey);
 });
 
 const PROVIDERS = (hasKey: boolean) => ({
+  configurationRevision: null,
   providers: [{ name: 'anthropic', configured: hasKey, hasKey }],
   catalog: [],
   models: [],
@@ -58,7 +64,13 @@ function host(signals: { key: boolean; agents: readonly object[]; chats: number 
   return { asked };
 }
 
-const mount = () => render(QueryPage, { props: { page: Checklist } } as never);
+const mount = () =>
+  render(QueryPage, {
+    props: {
+      page: Checklist,
+      principal: { scopes: [], unauthenticatedAccess: null, workspace: identity },
+    },
+  } as never);
 
 describe('a fresh installation', () => {
   test('shows the three steps, none done, each with the page that does it', async () => {
@@ -165,11 +177,11 @@ describe('dismissing', () => {
     await fireEvent.click(await findByRole('button', { name: FIRST_RUN_COPY.dismissLabel }));
 
     expect(queryByTestId('first-run')).toBeNull();
-    expect(window.localStorage.getItem(FIRST_RUN_DISMISSED_KEY)).toBe('true');
+    expect(privateStorage().getItem(FIRST_RUN_DISMISSED_KEY)).toBe('true');
   });
 
   test('a dismissed checklist stays away on the next visit and asks the host nothing', async () => {
-    window.localStorage.setItem(FIRST_RUN_DISMISSED_KEY, 'true');
+    privateStorage().setItem(FIRST_RUN_DISMISSED_KEY, 'true');
     const served = bureau({}, (url) =>
       url === '/host/providers' ? Response.json(PROVIDERS(false)) : undefined,
     );

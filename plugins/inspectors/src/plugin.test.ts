@@ -4,23 +4,25 @@ import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import inspectors, { pendingReview, runInspector } from './plugin.ts';
+import inspectors, { pendingReview, runInspector, workflowRevisionReview } from './plugin.ts';
 
 pluginContract(inspectors, { createHost: createPluginTestHost });
 
 describe('the inspectors plugin', () => {
-  it('contributes the two panels at the URIs a client already opens', async () => {
+  it('contributes the panels at the URIs a client already opens', async () => {
     const host = await createPluginTestHost(inspectors);
     try {
       expect(host.plugins.mcpApps()).toEqual([
         { plugin: 'inspectors', version: '1.0.0', app: runInspector },
         { plugin: 'inspectors', version: '1.0.0', app: pendingReview },
+        { plugin: 'inspectors', version: '1.0.0', app: workflowRevisionReview },
       ]);
     } finally {
       await host.dispose();
     }
     expect(runInspector.uri).toBe('ui://bureau/run-inspector/v1');
     expect(pendingReview.uri).toBe('ui://bureau/pending-review/v1');
+    expect(workflowRevisionReview.uri).toBe('ui://bureau/workflow-revision-review/v1');
   });
 
   it('links each panel to the tool a client runs to open it, one it may call', () => {
@@ -28,6 +30,8 @@ describe('the inspectors plugin', () => {
     expect(pendingReview.opensFromTool).toBe('bureau.reviews.list');
     expect(runInspector.allowedTools).toContain(runInspector.opensFromTool);
     expect(pendingReview.allowedTools).toContain(pendingReview.opensFromTool);
+    expect(workflowRevisionReview.opensFromAgentTool).toBe('bureau:workflows-propose-update');
+    expect(workflowRevisionReview.allowedTools).toContain(workflowRevisionReview.opensFromTool);
   });
 
   it('lists every Bureau tool a page names in its source, so the list cannot drift', async () => {
@@ -35,6 +39,7 @@ describe('the inspectors plugin', () => {
     for (const [app, folder] of [
       [runInspector, 'run-inspector'],
       [pendingReview, 'pending-review'],
+      [workflowRevisionReview, 'workflow-revision'],
     ] as const) {
       const named = new Set<string>();
       for await (const file of new Bun.Glob(`${folder}/*.ts`).scan(directory)) {
@@ -48,7 +53,7 @@ describe('the inspectors plugin', () => {
   });
 
   it('points every panel at an entry module that exists', async () => {
-    for (const app of [runInspector, pendingReview]) {
+    for (const app of [runInspector, pendingReview, workflowRevisionReview]) {
       expect(await Bun.file(app.entry).exists()).toBe(true);
     }
   });

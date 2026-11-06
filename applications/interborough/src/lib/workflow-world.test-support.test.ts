@@ -77,4 +77,63 @@ describe('the workflow world', () => {
       ['active-one', 'active'],
     ]);
   });
+
+  test('refuses a chat a caller names, writes nothing, and takes a new one only when asked', async () => {
+    stub = installWorkflowWorld();
+    const input = { agentName: 'writer', input: 'tick', spec: '1h' };
+
+    const named = await call('bureau.schedules.create', { ...input, sessionId: 'made-up' });
+    expect(await named.json()).toMatchObject({ error: { data: { httpStatus: 404 } } });
+    expect(stub.world.schedules).toEqual([]);
+
+    const made = await call('bureau.schedules.create', { ...input, continueChat: true });
+    expect(made.status).toBe(200);
+    expect(stub.world.scheduleContinuing).toEqual(stub.world.schedules.map(({ id }) => id));
+    const scheduleId = stub.world.schedules[0]?.id ?? '';
+    expect(scheduleId).not.toBe('');
+
+    const moved = await call('bureau.schedules.update', {
+      scheduleId,
+      spec: '1h',
+      sessionId: 'made-up',
+    });
+    expect(await moved.json()).toMatchObject({ error: { data: { httpStatus: 404 } } });
+  });
+
+  test('refuses an agent apart from the chat its schedule continues, as the Bureau does', async () => {
+    stub = installWorkflowWorld();
+    await call('bureau.schedules.create', {
+      agentName: 'writer',
+      input: 'tick',
+      spec: '1h',
+      continueChat: true,
+    });
+    const scheduleId = stub.world.schedules[0]?.id ?? '';
+    expect(scheduleId).not.toBe('');
+
+    const apart = await call('bureau.schedules.update', {
+      scheduleId,
+      spec: '1h',
+      agentName: 'editor',
+    });
+    expect(await apart.json()).toMatchObject({
+      error: {
+        message: expect.stringContaining('another agent in a chat'),
+        data: { httpStatus: 400 },
+      },
+    });
+    expect(stub.world.scheduleAgents[scheduleId]).toBe('writer');
+
+    for (const way of [{ continueChat: true }, { sessionId: null }]) {
+      const changed = await call('bureau.schedules.update', {
+        scheduleId,
+        spec: '1h',
+        agentName: 'editor',
+        ...way,
+      });
+      expect(changed.status).toBe(200);
+      expect(stub.world.scheduleAgents[scheduleId]).toBe('editor');
+      stub.world.scheduleAgents[scheduleId] = 'writer';
+    }
+  });
 });

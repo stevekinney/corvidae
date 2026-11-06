@@ -92,6 +92,34 @@ describe('bureau.contexts.delete access', () => {
     });
   });
 
+  it('records who asked for the deletion on its audit entry, which is the caller and not the owner (COR-2018)', async () => {
+    await withBureau({ generate: answering() }, async (opened) => {
+      const mine = await opened.bureau.tasks.start('default', 'mine', { principal: OWNER.alice });
+      const theirs = await opened.bureau.tasks.start('default', 'theirs', { principal: OWNER.bob });
+      await waitForCondition(
+        () =>
+          opened.bureau.tasks.detail(mine.id)?.status === 'completed' &&
+          opened.bureau.tasks.detail(theirs.id)?.status === 'completed',
+        'both runs finish',
+      );
+      await deleteContext(opened, mine.contextId, 'alice-key');
+      await deleteContext(opened, theirs.contextId, 'contexts-writer-key');
+      const principalOf = async (contextId: string): Promise<string | null | undefined> => {
+        let page = await opened.bureau.audit.query({ type: 'session.deleted', limit: 100 });
+        await waitForCondition(async () => {
+          await opened.bureau.maintain();
+          page = await opened.bureau.audit.query({ type: 'session.deleted', limit: 100 });
+          return page.records.some((record) => record.resource === `session:${contextId}`);
+        }, `the deletion of ${contextId} was never recorded`);
+        return page.records.find((record) => record.resource === `session:${contextId}`)?.principal;
+      };
+      expect(await principalOf(mine.contextId)).toBe(OWNER.alice);
+      const operator = await principalOf(theirs.contextId);
+      expect(operator).not.toBeNull();
+      expect(operator).not.toBe(OWNER.bob);
+    });
+  });
+
   it('tells a caller that can only write the receipt, and no task, and tells the owner which tasks it cancelled', async () => {
     await withBureau({}, async (opened) => {
       const mine = await startRun(opened);

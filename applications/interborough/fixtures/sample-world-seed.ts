@@ -31,6 +31,8 @@
 
 import { ANONYMOUS_LOCAL_OWNER } from '@lostgradient/bureau';
 import { createMemoryAuthority, type MemoryAuthority } from '@lostgradient/memory';
+import { createAgentSession, SESSION_OWNER_METADATA_KEY } from '@lostgradient/operative';
+import { Conversation } from 'conversationalist';
 import { mkdir, rm } from 'node:fs/promises';
 
 import { setPluginsEnabled } from '../src/host/demo-plugin-home.ts';
@@ -390,6 +392,46 @@ async function sayHelloChat({ host, runtime, director }: SessionContext): Promis
 }
 
 /**
+ * The chat the person tries things in and deletes on Nov 1 at 4:12 PM: its title, which is its
+ * first message, and the twelve messages it held (six of yours, six of the agent's).
+ */
+export const SAMPLE_WORLD_SCRATCH_CHAT = {
+  threadId: 'sample-chat-scratch-test',
+  agent: 'assistant',
+  title: 'Scratch test',
+  messageCount: 12,
+} as const;
+
+/**
+ * Nov 1, 4:12 PM, as Say hello starts: you delete "Scratch test", a chat of twelve messages,
+ * the way the chat's menu does (`bureau.contexts.delete`, as the local caller), so the Bureau
+ * writes the deletion's audit record itself, with the title and the message count the chat had.
+ * The chat is saved to the store directly, as Tool runner's memory is, because twelve messages
+ * through runs would add runs to the story that the Runs page and the metrics would count.
+ */
+async function scratchChatDeleted({ host }: SessionContext): Promise<void> {
+  const chat = SAMPLE_WORLD_SCRATCH_CHAT;
+  const store = host.bureau.internals.sessionStore;
+  if (store === undefined) throw new Error('The host has no session store.');
+  const conversation = new Conversation();
+  for (let exchange = 1; exchange <= chat.messageCount / 2; exchange += 1) {
+    conversation.appendUserMessage(exchange === 1 ? chat.title : `Try number ${String(exchange)}`);
+    conversation.appendAssistantMessage(`Trying number ${String(exchange)}.`);
+  }
+  await store.save(
+    createAgentSession({
+      id: chat.threadId,
+      agentName: chat.agent,
+      conversationHistory: conversation.current,
+      metadata: { [SESSION_OWNER_METADATA_KEY]: ANONYMOUS_LOCAL_OWNER },
+      runs: [],
+    }),
+  );
+  await bureauCall(host, 'bureau.contexts.delete', { contextId: chat.threadId });
+  await host.bureau.maintain();
+}
+
+/**
  * The Nov 2 story on the host that started at 9:00 AM: the missed Daily summary runs it logs as it
  * starts, the storage alert at 9:05 AM, then
  * everything from 9:46 AM to 10:45 AM.
@@ -449,7 +491,15 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
   });
 
   runtime.setTime(SAMPLE_WORLD_TIMES.anthropicKeyRemoved);
-  const removed = await fetch(new URL('/host/providers/anthropic', host.url), { method: 'DELETE' });
+  const providerSnapshot = await host.providers.snapshot();
+  const removed = await fetch(new URL('/host/providers/anthropic', host.url), {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      operationId: crypto.randomUUID(),
+      expectedRevision: providerSnapshot.configurationRevision,
+    }),
+  });
   if (!removed.ok)
     throw new Error(`Removing the Anthropic key answered ${String(removed.status)}.`);
   await clearHookNotifications(host);
@@ -546,6 +596,7 @@ export async function seedSampleWorld(
     runtime.setTime(times.cleanedUp);
     await context.host.cleanUp.cleanUpNow();
     runtime.setTime(times.sayHello);
+    await scratchChatDeleted(context);
     await sayHelloChat(context);
     await november1Afternoon(context);
   });

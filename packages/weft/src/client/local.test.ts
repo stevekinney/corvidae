@@ -300,7 +300,11 @@ describe('LocalClient', () => {
 
       // Cancelling an already-completed workflow is fine on some engines,
       // but let's at least verify the method is callable
-      expect(await client.cancel('cancel-me')).toBeUndefined();
+      expect(await client.cancel('cancel-me')).toEqual({
+        workflowId: 'cancel-me',
+        status: 'already-terminal',
+        terminalStatus: 'completed',
+      });
     });
   });
 
@@ -309,7 +313,11 @@ describe('LocalClient', () => {
       const handle = await client.start('echo', 'data');
       await handle.result();
       // Should not throw on a completed workflow
-      expect(await handle.cancel()).toBeUndefined();
+      expect(await handle.cancel()).toEqual({
+        workflowId: handle.id,
+        status: 'already-terminal',
+        terminalStatus: 'completed',
+      });
     });
   });
 
@@ -559,7 +567,10 @@ describe('LocalClient', () => {
 describe('LocalClient delegation surface', () => {
   it('centralizes workflow and schedule handle delegation through shared client-backed helpers', async () => {
     const workflowClient = {
-      cancel: mock(async () => undefined),
+      cancel: mock(async () => ({
+        workflowId: 'shared-workflow',
+        status: 'cancel-requested' as const,
+      })),
       suspend: mock(async () => undefined),
       resume: mock(async () => ({ id: 'shared-workflow' }) as unknown as ClientHandle),
       signal: mock(async () => undefined),

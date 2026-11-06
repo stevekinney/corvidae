@@ -133,7 +133,11 @@ function isMessageNoteInfo(value: unknown): value is MessageNoteInfo {
         isOptionalString(href)
       );
     case 'stopped':
-      return 'reason' in value && isNonEmptyString(value.reason);
+      return (
+        'reason' in value &&
+        isNonEmptyString(value.reason) &&
+        ('failed' in value ? typeof value.failed === 'boolean' || value.failed === undefined : true)
+      );
     default:
       return false;
   }

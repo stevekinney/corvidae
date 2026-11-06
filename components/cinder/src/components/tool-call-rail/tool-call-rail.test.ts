@@ -196,6 +196,18 @@ describe('ToolCallRail folding', () => {
     const { container } = render(ToolCallRail, { props: { calls } });
     expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])).toContain('no');
   });
+
+  test('a finished call marked pinned stays on the rail when the middle folds', () => {
+    const calls = turn(12);
+    calls[6] = { ...done('panel', 'Propose update'), pinned: true };
+    const { container } = render(ToolCallRail, { props: { calls } });
+    expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])).toContain('panel');
+    cleanup();
+    const unpinned = render(ToolCallRail, { props: { calls: turn(12) } });
+    expect(rows(unpinned.container).map((row) => row.dataset['cinderToolCallRow'])).not.toContain(
+      'call-6',
+    );
+  });
 });
 
 describe('ToolCallRail rows', () => {
@@ -498,5 +510,41 @@ describe('ToolCallRail styles', () => {
   test('the selected row keeps the shared quiet focus ring', () => {
     expect(cssText).toContain('[data-cinder-selected] > .cinder-tool-call-rail__row');
     expect(cssText).toContain('var(--_cinder-focus-ring-shadow)');
+  });
+  test('an interrupted call shows its own words in danger text with a glyph, never a dot, and never folds', () => {
+    const calls = turn(12);
+    calls[6] = {
+      id: 'cut',
+      name: 'Issue refund',
+      input: '4471',
+      status: 'interrupted',
+      result: 'Interrupted · may have run',
+      duration: '1.2s',
+    };
+    const { container } = render(ToolCallRail, { props: { calls } });
+    expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])).toContain('cut');
+    const item = container.querySelector(
+      '.cinder-tool-call-rail__item[data-cinder-status="interrupted"]',
+    );
+    expect(item).not.toBeNull();
+    // The marker is the timeline's, beside the row: a glyph, never the dot.
+    const marker = container.querySelector(
+      '.cinder-tool-call-rail__marker[data-cinder-status="interrupted"]',
+    );
+    expect(marker?.querySelector('.cinder-tool-call-rail__dot')).toBeNull();
+    expect(marker?.querySelector('.cinder-tool-call-rail__glyph')).not.toBeNull();
+    const result = item?.querySelector('.cinder-tool-call-rail__result');
+    // No arrow: an interrupted call has no answer to point at.
+    expect(result?.textContent?.trim()).toBe('Interrupted · may have run');
+    expect(item?.querySelector('.cinder-sr-only')?.textContent).toContain('Interrupted');
+  });
+
+  test('an interrupted call without words reads Interrupted', () => {
+    const { container } = render(ToolCallRail, {
+      props: { calls: [{ id: 'cut', name: 'Lookup order', status: 'interrupted' }] },
+    });
+    expect(container.querySelector('.cinder-tool-call-rail__result')?.textContent?.trim()).toBe(
+      'Interrupted',
+    );
   });
 });

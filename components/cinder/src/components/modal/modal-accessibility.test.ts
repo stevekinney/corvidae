@@ -18,7 +18,7 @@ import {
 
 setupHappyDom();
 installModalDialogStubs();
-const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { default: Modal } = await import('./modal.svelte');
 
 afterEach(() => {
@@ -173,6 +173,27 @@ describe('Modal', () => {
     } finally {
       HTMLElement.prototype.focus = originalFocus;
     }
+  });
+  test('an autofocused child takes focus from the dialog element itself, which is where a browser puts it when it sees no autofocus attribute', async () => {
+    const { focusDialogBodyUnlessAutofocused } =
+      await import('../_internal/create-sliding-dialog-state.svelte.ts');
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    dialog.tabIndex = -1;
+    const button = document.createElement('button');
+    button.autofocus = true;
+    dialog.append(button);
+    document.body.append(dialog);
+    dialog.focus();
+    expect(document.activeElement === dialog).toBe(true);
+
+    focusDialogBodyUnlessAutofocused({
+      getOpen: () => true,
+      getDialogElement: () => dialog,
+      getBodyElement: () => undefined,
+    });
+    await waitFor(() => expect(document.activeElement === button).toBe(true));
+    dialog.remove();
   });
   test('close button is the last focusable element inside the panel', () => {
     // The close button was deliberately moved to the end of the DOM so the

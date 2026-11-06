@@ -6,6 +6,7 @@ import type {
   BulkRetryFailedResult,
   BulkSignalResult,
   BulkTagResult,
+  CancelWorkflowResult,
   CoordinatedUpdateResult,
   ForkOptions,
   ListFilter,
@@ -319,7 +320,7 @@ export class HttpClient implements WeftClient {
     return request<PaginatedResult<ScheduleSummary>>(this.baseUrl, path, this.headers);
   }
 
-  async cancel(id: string): Promise<void> {
+  async cancel(id: string): Promise<CancelWorkflowResult> {
     return cancelWorkflowRequest(this, id);
   }
 

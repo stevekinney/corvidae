@@ -22,6 +22,7 @@ const WIDTHS = [375, 1280] as const;
 const KEY = 'e2e-gemini-key-that-must-never-be-printed';
 
 type Snapshot = {
+  configurationRevision: string | null;
   providers: { name: string; hasKey: boolean }[];
   models: { provider: string; model: string; off: boolean; contextWindowTokens: number }[];
 };
@@ -34,10 +35,16 @@ async function snapshotOf(request: APIRequestContext): Promise<Snapshot> {
 
 /** Removes a provider's key through the host, which is a no-op for one that has none. */
 async function disconnectThroughHost(request: APIRequestContext, name: string): Promise<void> {
-  const response = await request.delete(`${E2E_BASE_URL}/host/providers/${name}`);
-  expect(response.status()).toBe(200);
   const snapshot = await snapshotOf(request);
-  expect(snapshot.providers.find((entry) => entry.name === name)?.hasKey).toBe(false);
+  const response = await request.delete(`${E2E_BASE_URL}/host/providers/${name}`, {
+    data: {
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    },
+  });
+  expect(response.status()).toBe(200);
+  const after = await snapshotOf(request);
+  expect(after.providers.find((entry) => entry.name === name)?.hasKey).toBe(false);
 }
 
 const provider = (page: Page, name: string) => page.locator(`[data-provider="${name}"]`);

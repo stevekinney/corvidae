@@ -99,6 +99,25 @@ describe('WorkflowTable', () => {
     expect(getByText('nightly')).not.toBeNull();
   });
 
+  test('renders agent-run provenance as a human link and hides its technical tag', () => {
+    const row = summary({ id: 'agent-run-workflow', tags: ['origin:agent-run', 'prod'] });
+    const { container, getByRole } = render(WorkflowTable, {
+      props: {
+        rows: [row],
+        workflowOrigins: new Map([
+          [row.id, { kind: 'agent-run' as const, agentId: 'journey-author', runId: 'calling-run' }],
+        ]),
+      },
+    });
+
+    expect(container.textContent).toContain("An agent's tool call · journey-author");
+    expect(container.textContent).toContain('prod');
+    expect(container.textContent).not.toContain('origin:agent-run');
+    expect(getByRole('link', { name: 'Calling run' }).getAttribute('href')).toBe(
+      '/runs/calling-run',
+    );
+  });
+
   test('an id containing URL delimiters navigates to the exact run route under its workflow', async () => {
     happyDomAPI().setURL('http://localhost/');
     router.navigate('/runs', { replace: true });

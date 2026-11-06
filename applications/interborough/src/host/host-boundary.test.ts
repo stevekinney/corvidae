@@ -83,6 +83,7 @@ describe('a rebound Host', () => {
       '/bureau/v1/health',
       '/host/paths',
       '/host/storage',
+      '/host/storage/summary',
       '/',
       '/assets/main.js',
     ]) {
@@ -127,6 +128,32 @@ describe('/host/storage', () => {
   });
 });
 
+describe('/host/storage/summary', () => {
+  /** What the host answers for the keys under `prefix`. */
+  async function summaryOf(
+    host: { readonly url: URL },
+    prefix?: string,
+  ): Promise<{ keyCount: number; sizeBytes: number | null }> {
+    const address = prefix === undefined ? '' : `?prefix=${encodeURIComponent(prefix)}`;
+    const response = await fetch(new URL(`/host/storage/summary${address}`, host.url));
+    expect(response.status).toBe(200);
+    return (await response.json()) as { keyCount: number; sizeBytes: number | null };
+  }
+
+  test('counts the keys under a prefix and reports the storage size, so the page can say "of N keys"', async () => {
+    const host = await start();
+    const everything = await summaryOf(host);
+    expect(everything.keyCount).toBeGreaterThan(0);
+    // A SQLite file has a size; a backend that cannot say would answer null, never zero.
+    expect(everything.sizeBytes).toBeGreaterThan(0);
+
+    const none = await summaryOf(host, 'no-such-group:');
+    expect(none.keyCount).toBe(0);
+    const some = await summaryOf(host, 'wf:');
+    expect(some.keyCount).toBeLessThanOrEqual(everything.keyCount);
+  });
+});
+
 describe('/host/paths', () => {
   test('names both directories a person edits by hand to the local caller', async () => {
     const host = await start();
@@ -159,9 +186,9 @@ describe('/host/paths', () => {
       configurationFile: join(home, 'configuration.json'),
       locked: {},
       providers: [
-        { name: 'anthropic', secretFile: join(home, 'secrets', 'anthropic-api-key') },
-        { name: 'openai', secretFile: join(home, 'secrets', 'openai-api-key') },
-        { name: 'gemini', secretFile: join(home, 'secrets', 'gemini-api-key') },
+        { name: 'anthropic', secretFile: `workspace:${host.workspaceId}/anthropic-api-key` },
+        { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
+        { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
       ],
       a2aDirectoryUrl: `http://127.0.0.1:${host.url.port}/bureau/a2a/.well-known/agent-card.json`,
     });
@@ -199,7 +226,13 @@ describe('a cross-site request', () => {
 
   test('is refused on Bureau and on the application too', async () => {
     const host = await start();
-    for (const path of ['/bureau/v1/health', '/host/paths', '/host/storage', '/']) {
+    for (const path of [
+      '/bureau/v1/health',
+      '/host/paths',
+      '/host/storage',
+      '/host/storage/summary',
+      '/',
+    ]) {
       const response = await fetch(new URL(path, host.url), {
         headers: { origin: 'https://attacker.example' },
       });

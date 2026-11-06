@@ -1,3 +1,4 @@
+import type { RunWorkspaceAuthority } from 'armorer';
 /**
  * The records and errors of Bureau hooks (COR-1939): a stored hook, a delivery of one event to it,
  * and the port the signing secrets are kept through.
@@ -141,6 +142,8 @@ export interface Hook {
  * rewritten.
  */
 export interface HookRecord extends Hook {
+  /** Durable authorization distinct from audit and resource ownership. */
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   /**
    * The stored shape's version: 2 when the record has a `scope`, so a release that predates scopes
    * refuses it instead of firing it for the whole Bureau, and 1 otherwise. The store sets it on
@@ -323,6 +326,8 @@ export interface ListedHook extends Hook {
 
 /** The record under which a delivery is stored. */
 export interface HookDeliveryRecord extends HookDelivery {
+  /** Durable authorization distinct from audit and resource ownership. */
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   /** The stored shape's version. */
   readonly version: 1;
   /** Epoch milliseconds before which another process must not resume the delivery; `0` once released. */

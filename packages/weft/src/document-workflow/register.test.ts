@@ -3,14 +3,17 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { decode } from '../core/codec.ts';
 import { Engine } from '../core/engine/index.ts';
 import { listWorkflowSources } from '../core/engine/source-listing.ts';
+import { EventLog } from '../core/event-log.ts';
 import {
   WorkflowRevisionActivatedEvent,
   WorkflowRevisionDrainingEvent,
   WorkflowRevisionInstalledEvent,
 } from '../core/events/catalog-events.ts';
 import { workflow } from '../core/types.ts';
+import { KEYS } from '../storage/keys.ts';
 import { WorkflowDocumentValidationError, type DocumentWorkflowHost } from './document.ts';
 import { registerWorkflowDocuments } from './register.ts';
 
@@ -61,7 +64,73 @@ async function waitForParkedOnSignal(engine: Engine, workflowId: string): Promis
   );
 }
 
+async function fileWorkflowEvents(engine: Engine, workflowId: string) {
+  const events = await engine.getEvents(workflowId);
+  return events
+    .filter((event) => event.type.startsWith('file-workflow:'))
+    .map(({ type, data }) => ({ type, data }));
+}
+
 describe('registerWorkflowDocuments()', () => {
+  it('records durable lifecycle history for document steps', async () => {
+    const document = createDocument('document-history', [
+      { kind: 'activity', handler: 'greet', input: 'hello' },
+      { kind: 'await-signal', signal: 'approve' },
+    ]);
+
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+
+    const run = await engine.start('document-history', null, { id: 'document-history-run' });
+    await waitForParkedOnSignal(engine, run.id);
+    const fileEvents = () => fileWorkflowEvents(engine, run.id);
+    expect(await fileEvents()).toEqual([
+      { type: 'file-workflow:step-started', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:activity-started', data: { step: 0, handler: 'greet' } },
+      { type: 'file-workflow:activity-completed', data: { step: 0, handler: 'greet' } },
+      { type: 'file-workflow:step-completed', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:step-started', data: { step: 1, kind: 'await-signal' } },
+      { type: 'file-workflow:signal-waiting', data: { step: 1, signal: 'approve' } },
+    ]);
+
+    await run.signal('approve', null);
+    await run.result();
+    expect(await fileEvents()).toEqual([
+      { type: 'file-workflow:step-started', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:activity-started', data: { step: 0, handler: 'greet' } },
+      { type: 'file-workflow:activity-completed', data: { step: 0, handler: 'greet' } },
+      { type: 'file-workflow:step-completed', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:step-started', data: { step: 1, kind: 'await-signal' } },
+      { type: 'file-workflow:signal-waiting', data: { step: 1, signal: 'approve' } },
+      { type: 'file-workflow:signal-received', data: { step: 1, signal: 'approve' } },
+      { type: 'file-workflow:step-completed', data: { step: 1, kind: 'await-signal' } },
+      { type: 'file-workflow:run-terminal', data: { status: 'completed' } },
+    ]);
+  });
+
+  it('records a received event for a signal delivered before the wait parks', async () => {
+    const document = createDocument('buffered-document', [
+      { kind: 'activity', handler: 'greet', input: 'hello' },
+      { kind: 'await-signal', signal: 'approve' },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('buffered-document', null, { id: 'buffered-run' });
+    await run.signal('approve', { secret: 'not recorded' });
+    await run.result();
+    expect(await fileWorkflowEvents(engine, run.id)).toEqual([
+      { type: 'file-workflow:step-started', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:activity-started', data: { step: 0, handler: 'greet' } },
+      { type: 'file-workflow:activity-completed', data: { step: 0, handler: 'greet' } },
+      { type: 'file-workflow:step-completed', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:step-started', data: { step: 1, kind: 'await-signal' } },
+      { type: 'file-workflow:signal-waiting', data: { step: 1, signal: 'approve' } },
+      { type: 'file-workflow:signal-received', data: { step: 1, signal: 'approve' } },
+      { type: 'file-workflow:step-completed', data: { step: 1, kind: 'await-signal' } },
+      { type: 'file-workflow:run-terminal', data: { status: 'completed' } },
+    ]);
+  });
+
   it('registers two documents as two workflow types and runs each', async () => {
     const documentA = createDocument('document-a', [
       { kind: 'activity', handler: 'greet', input: 'hello' },
@@ -128,6 +197,117 @@ describe('registerWorkflowDocuments()', () => {
     expect(handlerCalls).toEqual(['explode']);
     const failed = await engine.get('failing-run');
     expect(failed?.status).toBe('failed');
+    expect(await fileWorkflowEvents(engine, 'failing-run')).toEqual([
+      { type: 'file-workflow:step-started', data: { step: 0, kind: 'activity' } },
+      { type: 'file-workflow:activity-started', data: { step: 0, handler: 'explode' } },
+      {
+        type: 'file-workflow:run-terminal',
+        data: { status: 'failed', message: 'Workflow run failed.' },
+      },
+    ]);
+  });
+
+  it('records one cancelled terminal event without completing the interrupted step', async () => {
+    const document = createDocument('cancelled-document', [
+      { kind: 'await-signal', signal: 'approve' },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('cancelled-document', null, { id: 'cancelled-run' });
+    await waitForParkedOnSignal(engine, run.id);
+    await run.cancel();
+    expect(await fileWorkflowEvents(engine, run.id)).toEqual([
+      { type: 'file-workflow:step-started', data: { step: 0, kind: 'await-signal' } },
+      { type: 'file-workflow:signal-waiting', data: { step: 0, signal: 'approve' } },
+      { type: 'file-workflow:run-terminal', data: { status: 'cancelled' } },
+    ]);
+  });
+
+  it('preserves the event chain when a second engine cancels after a checkpoint race', async () => {
+    const document = createDocument('cancel-race-document', [
+      { kind: 'await-signal', signal: 'approve' },
+      { kind: 'activity', handler: 'identify' },
+    ]);
+    const storage = new MemoryStorage();
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let armed = true;
+    const gatedStorage = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch') {
+          return async (
+            conditions: Parameters<NonNullable<typeof storage.conditionalBatch>>[0],
+            operations: Parameters<NonNullable<typeof storage.conditionalBatch>>[1],
+          ) => {
+            const cancelling = operations.some(
+              (operation) =>
+                operation.type === 'put' &&
+                operation.key === KEYS.workflow('cancel-race-run') &&
+                (decode(operation.value) as { status?: string }).status === 'cancelled',
+            );
+            if (armed && cancelling) {
+              armed = false;
+              reached.resolve();
+              await release.promise;
+            }
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await using engineA = new Engine({ storage, backgroundTasks: 'manual' });
+    await using engineB = new Engine({ storage: gatedStorage, backgroundTasks: 'manual' });
+    try {
+      await registerWorkflowDocuments(engineA, host, { active: [document] });
+      await registerWorkflowDocuments(engineB, host, { active: [document] });
+      const run = await engineA.start('cancel-race-document', null, { id: 'cancel-race-run' });
+      await waitForParkedOnSignal(engineA, run.id);
+      hangIdentify = true;
+      const cancellation = engineB.cancel(run.id);
+      await reached.promise;
+      await engineA.signal(run.id, 'approve');
+      release.resolve();
+      await cancellation;
+      hangIdentify = false;
+      const events = await engineA.getEvents(run.id);
+      const fileEvents = events.filter((event) => event.type.startsWith('file-workflow:'));
+      expect(fileEvents.at(-1)?.type).toBe('file-workflow:run-terminal');
+      expect(
+        fileEvents.filter((event) => event.type === 'file-workflow:run-terminal'),
+      ).toHaveLength(1);
+      const verification = await new EventLog(storage, run.id).verify();
+      expect(verification.valid).toBe(true);
+    } finally {
+      hangIdentify = false;
+      release.resolve();
+    }
+  });
+
+  it('records a safe timed-out terminal event', async () => {
+    const document = createDocument('timed-out-document', [
+      { kind: 'await-signal', signal: 'approve' },
+    ]);
+    let now = 1_000;
+    await using engine = new Engine({ storage: new MemoryStorage(), getNow: () => now });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('timed-out-document', null, {
+      id: 'timed-out-run',
+      executionTimeout: 5_000,
+    });
+    await waitForParkedOnSignal(engine, run.id);
+    now = 6_001;
+    await engine.scheduler.tick(now);
+    expect(await throwingRejectionOf(run.result())).toThrow('exceeded execution timeout');
+    expect(await fileWorkflowEvents(engine, run.id)).toEqual([
+      { type: 'file-workflow:step-started', data: { step: 0, kind: 'await-signal' } },
+      { type: 'file-workflow:signal-waiting', data: { step: 0, signal: 'approve' } },
+      {
+        type: 'file-workflow:run-terminal',
+        data: { status: 'timed-out', message: 'Workflow run timed out.' },
+      },
+    ]);
   });
 
   it("carries the document version in the contract's workflowVersion and lists its activity steps", async () => {
@@ -419,6 +599,29 @@ describe('restarting after a crash', () => {
     expect(await fresh.result()).toBe('two');
     const pointer = await restarted.workflows.getActive('pinned');
     expect(pointer?.revision).toBe(active!.revision);
+  });
+
+  it('records cancellation for a suspended retained revision while a newer revision is active', async () => {
+    const storage = new MemoryStorage();
+    const version1 = createDocument('retained-cancel', [{ kind: 'await-signal', signal: 'go' }]);
+    const version2 = createDocument('retained-cancel', [{ kind: 'activity', handler: 'version' }]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [version1] });
+      await original.start('retained-cancel', null, { id: 'retained-cancel-run' });
+      await waitForParkedOnSignal(original, 'retained-cancel-run');
+    }
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [version2], retained: [version1] });
+    await restarted.cancel('retained-cancel-run');
+
+    const events = await restarted.getEvents('retained-cancel-run');
+    const fileEvents = events.filter((event) => event.type.startsWith('file-workflow:'));
+    expect(fileEvents.at(-1)).toMatchObject({
+      type: 'file-workflow:run-terminal',
+      data: { status: 'cancelled' },
+    });
   });
 
   it('resumes an instance parked on sleep from that step', async () => {

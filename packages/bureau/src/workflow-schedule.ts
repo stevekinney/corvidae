@@ -1,3 +1,6 @@
+import { readRunWorkspaceAuthority, type RunWorkspaceAuthority } from 'armorer';
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
+import { captureRunWorkspaceAuthority, validateRunWorkspaceAuthority } from './run-authority.ts';
 /**
  * The native schedule a workflow file with a `schedule` trigger owns (COR-1527). The file is the
  * only source of truth: every scan and every startup puts the schedule back to match it. A file
@@ -86,6 +89,8 @@ export const DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE = 'UTC';
 
 /** The trigger a fire starts its instance with: Weft fixes a schedule's input when it is created. */
 export interface WorkflowScheduleTrigger {
+  readonly workspaceAuthority?: RunWorkspaceAuthority;
+  readonly authorityHold?: 'revoked' | 'reassigned' | 'resuming';
   readonly kind: 'schedule';
   /** The schedule that fired. */
   readonly scheduleId: string;
@@ -97,10 +102,31 @@ export interface WorkflowScheduleTrigger {
  * The trigger a fire of `scheduleId` starts the instance with, carrying `input` when the file's
  * trigger gives one. Static: a schedule's input is fixed at creation.
  */
-export function scheduleTrigger(scheduleId: string, input?: unknown): WorkflowScheduleTrigger {
-  return input === undefined
-    ? { kind: 'schedule', scheduleId }
-    : { kind: 'schedule', scheduleId, input };
+export function scheduleTrigger(
+  scheduleId: string,
+  input?: unknown,
+  binding: Pick<WorkflowScheduleTrigger, 'workspaceAuthority' | 'authorityHold'> = {},
+): WorkflowScheduleTrigger {
+  return { kind: 'schedule', scheduleId, ...(input === undefined ? {} : { input }), ...binding };
+}
+
+/** Read only the host-owned authority portion; malformed persisted records fail closed. */
+export function workflowScheduleBinding(
+  input: unknown,
+): Pick<WorkflowScheduleTrigger, 'workspaceAuthority' | 'authorityHold'> {
+  if (typeof input !== 'object' || input === null) return {};
+  const value: unknown = Reflect.get(input, 'workspaceAuthority');
+  const hold: unknown = Reflect.get(input, 'authorityHold');
+  const workspaceAuthority = readRunWorkspaceAuthority(value);
+  if (
+    (value !== undefined && workspaceAuthority === undefined) ||
+    (hold !== undefined && hold !== 'revoked' && hold !== 'reassigned' && hold !== 'resuming')
+  )
+    throw new Error('Invalid workflow schedule authority');
+  return {
+    ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
+    ...(hold === undefined ? {} : { authorityHold: hold }),
+  };
 }
 
 /** The `description` the schedule of workflow `identifier` carries when `want` is its file's. */
@@ -158,7 +184,10 @@ async function allWorkflowSchedules(engine: Engine): Promise<Map<string, Schedul
  * The input schedule `scheduleId` starts each fire with, read from its stored state: Weft's
  * `getSchedule` answers a summary, which leaves the input out. `undefined` when nothing is stored.
  */
-async function storedScheduleInput(engine: Engine, scheduleId: string): Promise<unknown> {
+export async function storedScheduleInput(
+  engine: Pick<Engine, 'storage'>,
+  scheduleId: string,
+): Promise<unknown> {
   const bytes = await engine.storage.get(KEYS.schedule(scheduleId));
   if (bytes === null || bytes === undefined) return undefined;
   const state: unknown = decode(bytes);
@@ -187,6 +216,7 @@ export interface ScheduleReconciliation {
  * Their schedules are kept from the last good version and held: see `workflow-schedule-holds.ts`.
  */
 export interface BrokenWorkflowFiles {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   /** The identifiers whose file has a problem other than a key this host does not know. */
   readonly broken: ReadonlySet<string>;
   /** The hold records. */
@@ -227,6 +257,33 @@ export async function reconcileWorkflowSchedules(
   const resumed: string[] = [];
   const cancelled: string[] = [];
   const existing = await allWorkflowSchedules(engine);
+  const bindings = new Map<
+    string,
+    Pick<WorkflowScheduleTrigger, 'workspaceAuthority' | 'authorityHold'>
+  >();
+  {
+    for (const identifier of desired.keys()) {
+      const latest = existing
+        .get(identifier)
+        ?.toSorted((left, right) => generationOf(right) - generationOf(left))[0];
+      const binding = workflowScheduleBinding(
+        latest === undefined ? undefined : await storedScheduleInput(engine, latest.id),
+      );
+      if (files?.workspace === undefined) {
+        bindings.set(identifier, binding);
+        continue;
+      }
+      const authority =
+        binding.workspaceAuthority ??
+        (await captureRunWorkspaceAuthority(files.workspace, 'anonymous:local'));
+      const current = await validateRunWorkspaceAuthority(files.workspace, authority);
+      bindings.set(identifier, {
+        ...binding,
+        ...(authority === undefined ? {} : { workspaceAuthority: authority }),
+        ...(current === undefined ? { authorityHold: 'revoked' as const } : {}),
+      });
+    }
+  }
   /** Workflows whose live schedule was cancelled for a changed `input`, to be created again below. */
   const replaced = new Set<string>();
 
@@ -253,16 +310,38 @@ export async function reconcileWorkflowSchedules(
       await files.holds.release(identifier);
     }
     // The newest live schedule is the one that stays, and only when the file still wants one.
-    const keep = want === undefined ? undefined : live[0];
+    let keep = want === undefined ? undefined : live[0];
     const extras = want === undefined ? live : live.slice(1);
     for (const extra of extras) {
-      await engine.cancelSchedule(extra.id);
+      await engine.cancelSchedule(extra.id, { expectedRevision: extra.revision });
       cancelled.push(extra.id);
     }
     if (want === undefined || keep === undefined) continue;
-    const storedInput = await storedScheduleInput(engine, keep.id);
-    if (!isDeepStrictEqual(storedInput, scheduleTrigger(keep.id, want.input))) {
-      await engine.cancelSchedule(keep.id);
+    let storedInput = await storedScheduleInput(engine, keep.id);
+    const binding = bindings.get(identifier) ?? workflowScheduleBinding(storedInput);
+    if (
+      !isDeepStrictEqual(workflowScheduleBinding(storedInput), binding) ||
+      (binding.authorityHold !== undefined && keep.status === 'active')
+    ) {
+      const heldInput = {
+        ...(typeof storedInput === 'object' && storedInput !== null ? storedInput : {}),
+        ...binding,
+      };
+      await engine.replaceScheduleInput(keep.id, heldInput, {
+        expectedRevision: keep.revision,
+        status:
+          binding.authorityHold === undefined && keep.status === 'active' ? 'active' : 'paused',
+      });
+      storedInput = heldInput;
+      keep = (await engine.getSchedule(keep.id))!;
+      paused.push(keep.id);
+    }
+    const compared =
+      typeof storedInput === 'object' && storedInput !== null
+        ? { ...storedInput, ...binding }
+        : storedInput;
+    if (!isDeepStrictEqual(compared, scheduleTrigger(keep.id, want.input, binding))) {
+      await engine.cancelSchedule(keep.id, { expectedRevision: keep.revision });
       cancelled.push(keep.id);
       replaced.add(identifier);
       continue;
@@ -275,18 +354,18 @@ export async function reconcileWorkflowSchedules(
       keep.description !== descriptionOf(identifier, want) ||
       (wanted.kind === 'cron' && keep.timeZone !== want.timeZone)
     ) {
-      await engine.updateSchedule(
-        keep.id,
-        toScheduleSpec(want.spec),
-        scheduleOptionsOf(identifier, want),
-      );
+      await engine.updateSchedule(keep.id, toScheduleSpec(want.spec), {
+        ...scheduleOptionsOf(identifier, want),
+        expectedRevision: keep.revision,
+      });
       updated.push(keep.id);
+      keep = (await engine.getSchedule(keep.id))!;
     }
-    if (want.paused && keep.status === 'active') {
-      await engine.pauseSchedule(keep.id);
+    if ((want.paused || binding.authorityHold !== undefined) && keep.status === 'active') {
+      await engine.pauseSchedule(keep.id, { expectedRevision: keep.revision });
       paused.push(keep.id);
-    } else if (!want.paused && keep.status === 'paused') {
-      await engine.resumeSchedule(keep.id);
+    } else if (!want.paused && binding.authorityHold === undefined && keep.status === 'paused') {
+      await engine.resumeSchedule(keep.id, { expectedRevision: keep.revision });
       resumed.push(keep.id);
     }
   }
@@ -302,13 +381,19 @@ export async function reconcileWorkflowSchedules(
     const id = workflowScheduleId(identifier, generation);
     await engine.schedule(
       weftNameOf(identifier),
-      scheduleTrigger(id, want.input),
+      scheduleTrigger(id, want.input, bindings.get(identifier)),
       toScheduleSpec(want.spec),
-      { id, ...scheduleOptionsOf(identifier, want) },
+      {
+        id,
+        ...scheduleOptionsOf(identifier, want),
+        initialStatus:
+          want.paused || bindings.get(identifier)?.authorityHold !== undefined
+            ? 'paused'
+            : 'active',
+      },
     );
     created.push(id);
-    if (want.paused) {
-      await engine.pauseSchedule(id);
+    if (want.paused || bindings.get(identifier)?.authorityHold !== undefined) {
       paused.push(id);
     }
   }

@@ -22,6 +22,19 @@ const hostStorageSchema = z.object({
 /** The key prefixes the host reports as the Bureau's, and the size of its storage. */
 export type HostStorage = z.infer<typeof hostStorageSchema>;
 
+/** The route the host answers with {@link HostStorageSummary}, for the keys under `?prefix=`. */
+export const HOST_STORAGE_SUMMARY_ROUTE = '/host/storage/summary';
+
+const hostStorageSummarySchema = z.object({
+  /** How many keys start with the prefix asked for; every key when none was. */
+  keyCount: z.number().int().nonnegative(),
+  /** The storage's physical size in bytes, or `null` when the backend cannot say. */
+  sizeBytes: z.number().nonnegative().nullable(),
+});
+
+/** How many keys storage holds under a prefix, and how large it is, as the host reports them. */
+export type HostStorageSummary = z.infer<typeof hostStorageSummarySchema>;
+
 /** Asks the host which key prefixes the Bureau writes and how large its storage is. */
 export async function getHostStorage(options?: {
   readonly signal?: AbortSignal;
@@ -34,4 +47,22 @@ export async function getHostStorage(options?: {
   );
   if (!response.ok) throw new Error(`The host answered ${response.status}.`);
   return hostStorageSchema.parse(await response.json());
+}
+
+/** Asks the host how many keys start with `prefix` (every key when it is empty) and how large storage is. */
+export async function getHostStorageSummary(
+  prefix: string,
+  options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher },
+): Promise<HostStorageSummary> {
+  const send = options?.fetch ?? fetch;
+  const address =
+    prefix === ''
+      ? HOST_STORAGE_SUMMARY_ROUTE
+      : `${HOST_STORAGE_SUMMARY_ROUTE}?prefix=${encodeURIComponent(prefix)}`;
+  const response = await send(
+    address,
+    options?.signal === undefined ? undefined : { signal: options.signal },
+  );
+  if (!response.ok) throw new Error(`The host answered ${response.status}.`);
+  return hostStorageSummarySchema.parse(await response.json());
 }

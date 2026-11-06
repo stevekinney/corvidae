@@ -47,7 +47,7 @@ function fileReader(path: string): {
   readonly location: string;
   readonly configurationLocation: string;
   readonly read: () => Promise<string | undefined>;
-  readonly readConfiguration: () => Promise<string | undefined>;
+  readonly readConfiguration: () => Promise<{ text: string | undefined; revision: string | null }>;
 } {
   const read = async (): Promise<string | undefined> => {
     try {
@@ -59,7 +59,15 @@ function fileReader(path: string): {
       throw error;
     }
   };
-  return { location: path, configurationLocation: path, read, readConfiguration: read };
+  return {
+    location: path,
+    configurationLocation: path,
+    read,
+    readConfiguration: async () => {
+      const text = await read();
+      return { text, revision: text === undefined ? null : Bun.hash(text).toString() };
+    },
+  };
 }
 
 function failureOf(run: () => unknown): ProviderConfigurationError {
@@ -363,7 +371,8 @@ describe('loading the providers', () => {
     return path;
   }
 
-  const keyedBy = (key: string) => (name: string) => (name === key ? FIXTURE_VALUE : undefined);
+  const keyedBy = (key: string) => async (name: string) =>
+    name === key ? FIXTURE_VALUE : undefined;
 
   test('keeps a provider whose key is present, and hands back the key', async () => {
     const path = await configurationAt({
@@ -415,7 +424,7 @@ describe('loading the providers', () => {
     const path = await configurationAt({});
     const loaded = await loadProviders({
       ...fileReader(path),
-      readSecret: () => '  \n',
+      readSecret: async () => '  \n',
       warn: () => undefined,
       providers: contributed(['gemini']),
     });
@@ -429,7 +438,7 @@ describe('loading the providers', () => {
     });
     const stale = await loadProviders({
       ...fileReader(path),
-      readSecret: () => undefined,
+      readSecret: async () => undefined,
       warn: () => undefined,
       providers: contributed(),
     }).then(
@@ -446,7 +455,7 @@ describe('loading the providers', () => {
     await writeFile(broken, `{"plugins":{"anthropic":{"configuration":{"models":["${pasted}"`);
     const malformed = await loadProviders({
       ...fileReader(broken),
-      readSecret: () => undefined,
+      readSecret: async () => undefined,
       warn: () => undefined,
       providers: contributed(),
     }).then(
@@ -478,7 +487,7 @@ describe('loading the providers', () => {
     const warnings: string[] = [];
     const failure = await loadProviders({
       ...fileReader(path),
-      readSecret: () => undefined,
+      readSecret: async () => undefined,
       warn: (message) => warnings.push(message),
       providers: contributed(),
     }).then(
@@ -493,7 +502,7 @@ describe('loading the providers', () => {
     const path = await configurationAt({});
     const loaded = await loadProviders({
       ...fileReader(path),
-      readSecret: () => `  \n${FIXTURE_VALUE}\n`,
+      readSecret: async () => `  \n${FIXTURE_VALUE}\n`,
       warn: () => undefined,
       providers: contributed(['anthropic']),
     });
@@ -505,7 +514,7 @@ describe('loading the providers', () => {
     const read: string[] = [];
     const loaded = await loadProviders({
       ...fileReader(join(directory, 'configuration.json')),
-      readSecret: (key) => {
+      readSecret: async (key) => {
         read.push(key);
         return undefined;
       },
@@ -520,7 +529,7 @@ describe('loading the providers', () => {
     const directory = await scratch();
     const failure = await loadProviders({
       ...fileReader(directory),
-      readSecret: () => undefined,
+      readSecret: async () => undefined,
       warn: () => undefined,
       providers: contributed(),
     }).then(

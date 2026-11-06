@@ -20,9 +20,11 @@
 import {
   appendMessages,
   assertRunInputAccepted,
+  countQueuedFollowUps,
   createChatSessionController,
   createConversationHistory,
   getUnresolvedToolApprovals,
+  pairToolCallsWithResults,
   removeMessage,
   type ChatSessionController,
   type ConversationHistory,
@@ -30,11 +32,23 @@ import {
 } from '@lostgradient/chat';
 
 import { CHAT_COPY } from '../../app/copy.ts';
-import { sendContextInput, wireCodeOf, type Fetcher } from '../../lib/bureau-client.ts';
+import {
+  forgetContextGrants,
+  retractContextInput,
+  sendContextInput,
+  wireCodeOf,
+  type Fetcher,
+} from '../../lib/bureau-client.ts';
+import { BureauClock } from '../../lib/bureau-clock.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { AgUiHttpError } from './ag-ui-events.ts';
 import { questionKeyOf } from './answer-rows.ts';
-import { carryLiveNotes } from './event-notes.ts';
+import {
+  carryLiveNotes,
+  holdStopLines,
+  withHeldStopLines,
+  type HeldStopLine,
+} from './event-notes.ts';
 import {
   createChatRunWiring,
   withAnnouncements,
@@ -44,6 +58,7 @@ import {
   type Refusal,
   type RunUsage,
 } from './run-wiring.ts';
+import { lastTurnStart, mayChange, type ToolInfo } from './tool-activity.ts';
 
 export type ChatSessionOptions = {
   /** The session's identifier, which is the conversation's and the AG-UI thread's. */
@@ -54,12 +69,6 @@ export type ChatSessionOptions = {
   readonly fetch?: Fetcher;
   /** Told when a run this page started has begun. */
   readonly onRunStarted?: () => void;
-  /**
-   * Takes over editing a message the person sent. Without it the controller edits in place, by
-   * rewinding the transcript to before the message and running it again on the same thread, which
-   * the Bureau's thread cannot follow; with it the page decides what an edit does.
-   */
-  readonly onEdit?: (event: { readonly messageId: string; readonly content: string }) => void;
   /**
    * Whether the chat is closed: it was deleted, so a send would start a new chat under the same
    * identifier. A closed session sends nothing, and says why to whoever tried.
@@ -72,6 +81,8 @@ export type ChatSessionOptions = {
   readonly onNotFound?: () => void;
   /** Told when a grant the person asked for did not loosen the tool (see the run wiring). */
   readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
+  /** The Bureau's clock as the page reads it; a fresh one when omitted, for tests to replace. */
+  readonly clock?: BureauClock;
 };
 
 /** Whether `error` is the Bureau, or the AG-UI door, saying it has no such thread. */
@@ -111,6 +122,14 @@ export class ChatSessionState {
    * again is told again.
    */
   failure = $state<string | undefined>(undefined);
+
+  /**
+   * Whether the last send failed because the request never got an answer (the network, or a server
+   * that could not be reached), as opposed to an answer that refused it. A message that did not go
+   * through for that reason says "Not sent" on its row and nothing more; a refusal has a reason of
+   * its own, which the page keeps saying.
+   */
+  failureWasTransport = $state(false);
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -123,10 +142,36 @@ export class ChatSessionState {
    */
   disconnected = $state(false);
   /**
+   * Which reconnect attempt is under way: the number of failed reads in a row while the page is
+   * still retrying, `0` when the stream is up or the page has given up (`disconnected`). The
+   * composer says "Reconnecting… attempt N" while it is above zero.
+   */
+  reconnectAttempt = $state(0);
+  /**
+   * How many follow-ups the run has not taken yet: the transcript's queued rows. The Bureau holds
+   * each until the run's next step takes it, when it becomes a sent message, and Remove takes one
+   * back before then. The composer says one is queued.
+   */
+  readonly queuedFollowUps = $derived(countQueuedFollowUps(this.conversation));
+  /**
    * What each run this page watched end reported it used, by the run's Bureau identifier. A run the
    * page did not watch end has no entry, and its reply details say nothing of usage.
    */
   usage = $state.raw<ReadonlyMap<string, RunUsage>>(new Map());
+  /**
+   * The Bureau's clock as this page reads it (`bureau-clock.ts`): the times a message the page
+   * wrote carries, and how long a running call has been going, are read off it.
+   */
+  readonly clock: BureauClock;
+  /**
+   * When each call this page watched begin started, on the Bureau's clock, by call identifier: a
+   * running call's duration counts from it.
+   */
+  callStarts = $state.raw<ReadonlyMap<string, number>>(new Map());
+  /** When each call this page watched answered, on the Bureau's clock, by call identifier. */
+  callEnds = $state.raw<ReadonlyMap<string, number>>(new Map());
+  /** When the last run ended, on the Bureau's clock: a call it left without an answer stopped then. */
+  stoppedAt = $state<number | undefined>(undefined);
 
   readonly controller: ChatSessionController;
   /**
@@ -168,14 +213,26 @@ export class ChatSessionState {
     this.#closed = options.closed;
     this.#onNotFound = options.onNotFound;
     this.conversation = createConversationHistory({ id: options.sessionId });
+    const clock = (this.clock = options.clock ?? new BureauClock());
     this.#wiring = createChatRunWiring({
       conversation: () => this.conversation,
+      clock,
+      onCallStarted: (callId, at) => {
+        if (!this.callStarts.has(callId))
+          this.callStarts = new Map(this.callStarts).set(callId, at);
+      },
+      onCallSettled: (callId, at) => {
+        if (!this.callEnds.has(callId)) this.callEnds = new Map(this.callEnds).set(callId, at);
+      },
+      onRunStopped: (at) => {
+        this.stoppedAt = at;
+      },
       onRunStarted: () => {
         this.#attachedRun = true;
         options.onRunStarted?.();
       },
       onFrame: () => {
-        this.#retryFailures = 0;
+        this.#setRetryFailures(0);
         this.disconnected = false;
       },
       onTerminal: () => {
@@ -184,6 +241,8 @@ export class ChatSessionState {
       ...(options.onGrantNotLoosened === undefined
         ? {}
         : { onGrantNotLoosened: options.onGrantNotLoosened }),
+      // The run's step took these follow-ups: they read as sent from now on.
+      onInputsDelivered: (inputIds) => this.controller.markFollowUpsDelivered(inputIds),
       onUsage: (runId, usage) => {
         this.usage = new Map(this.usage).set(runId, usage);
       },
@@ -204,9 +263,12 @@ export class ChatSessionState {
     });
     this.controller = createChatSessionController({
       executionOwner: 'server',
+      // A message the person writes is stamped with the Bureau's time, as the Bureau stamps it.
+      now: () => clock.nowISO(),
       getConversation: () => this.conversation,
+      // The line of a failed attempt Retry kept is not in the run's snapshot, so it is held.
       setConversation: (next) => {
-        this.conversation = next;
+        this.#setKeepingStopLines(next);
       },
       transport: this.#wiring.transport,
       // A follow-up goes to the run in flight. Its row id is the input's id, so a retry of the
@@ -220,6 +282,10 @@ export class ChatSessionState {
         );
         return assertRunInputAccepted(result.receipt);
       },
+      // Remove on a queued follow-up: the Bureau holds it until the run takes it, and takes it back
+      // until then.
+      retractRunInput: async (conversationId, { messageId }) =>
+        retractContextInput(conversationId, messageId, { signal: this.#abort.signal }),
       hooks: {
         resolveToolApproval: (toolCallId, resolution) =>
           this.#wiring.resolveToolApproval(toolCallId, resolution),
@@ -250,19 +316,17 @@ export class ChatSessionState {
           // A busy thread is not told when it refused a resume: the next send repeats it. A start
           // refused as busy, and every other refusal, is.
           if (refusal?.resume !== true || !refusal.busy) this.failure = failure;
+          this.failureWasTransport = error instanceof TypeError;
           if (this.#attachedRun && !this.#readerAbort?.signal.aborted)
             this.#scheduleReconnect(error);
         },
       },
     });
     // The controller's own edit rewinds this thread in place, which the Bureau's thread cannot
-    // follow, so it is replaced by the page's (`onEdit`) or removed.
+    // follow, so it is removed: a sent message is changed by branching before it.
     const { editMessage: _editInPlace, ...adapter } = this.controller.adapter;
     this.adapter = {
       ...adapter,
-      ...(options.onEdit === undefined
-        ? {}
-        : { editMessage: async (event) => options.onEdit?.(event) }),
       sendMessage: async (message, attachments) => {
         // A deleted chat is not written to: the run would start it again under the same identifier.
         if (options.closed?.() === true) throw new Error(CHAT_COPY.gone.title);
@@ -278,6 +342,7 @@ export class ChatSessionState {
         return turn;
       },
       stopGenerating: async (...input: Parameters<NonNullable<typeof adapter.stopGenerating>>) => {
+        if (!this.streaming && this.reconnectAttempt > 0) return this.#stopWhileReconnecting();
         if (this.streaming) this.stopping = true;
         await adapter.stopGenerating?.(...input);
       },
@@ -464,6 +529,71 @@ export class ChatSessionState {
     this.failure = undefined;
   }
 
+  /**
+   * Runs the last turn again: the person's message is sent as a new turn after the failed attempt,
+   * which stays on record, here and in the Bureau's thread, with its status line (B06, row 20b).
+   * It never resumes a call the run was in the middle of: the agent decides again over a thread
+   * that shows what happened, and a tool that may change things and was interrupted goes back
+   * through its approval (row 20c), because the chat's "Allow for the rest of this chat" grant for
+   * every tool `tools` classifies that way among the turn's unanswered calls is forgotten first
+   * (`forgetContextGrants`), so a refund cannot be issued twice unasked. When the grant cannot be
+   * forgotten, nothing is sent and the failure says so. A last message with files, or one that is
+   * not plain text, is not offered again here (`canRetryTurn`).
+   */
+  async retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
+    const id = this.#lastUserRowId();
+    const row = id === undefined ? undefined : this.conversation.messages[id];
+    const text = row === undefined ? undefined : retryText(row);
+    if (id === undefined || text === undefined) return;
+    const tools = this.interruptedCallsThatMayChange(options.tools);
+    if (tools.length > 0) {
+      try {
+        await forgetContextGrants(
+          { contextId: this.sessionId, tools },
+          { signal: this.#abort.signal },
+        );
+      } catch (error) {
+        if (this.#abort.signal.aborted) return;
+        if (isNotFound(error)) this.#onNotFound?.();
+        this.failure = CHAT_COPY.stopLine.retryFailed;
+        return;
+      }
+    }
+    this.failure = undefined;
+    return this.send(text);
+  }
+
+  /**
+   * The names of the tools the last turn called that may change things (the catalog says so, or
+   * says nothing) and that have no answer: the calls the run was interrupted on, which may have run
+   * and which a retry must put back through their approval. A call that finished has its result on
+   * record, which the agent reads when it decides again, so its grant stands.
+   */
+  interruptedCallsThatMayChange(tools: ReadonlyMap<string, ToolInfo> | undefined): string[] {
+    const rows = this.conversation.ids
+      .slice(lastTurnStart(this.conversation))
+      .flatMap((rowId) => this.conversation.messages[rowId] ?? []);
+    const names = pairToolCallsWithResults(rows)
+      .filter((pair) => pair.result === undefined && mayChange(tools?.get(pair.call.name)?.tier))
+      .map((pair) => pair.call.name);
+    return [...new Set(names)];
+  }
+
+  /** Whether the last turn can be run again here: its message is plain text and nothing is going. */
+  get canRetryTurn(): boolean {
+    if (this.streaming || this.attaching) return false;
+    const id = this.#lastUserRowId();
+    const row = id === undefined ? undefined : this.conversation.messages[id];
+    return row !== undefined && retryText(row) !== undefined;
+  }
+
+  #lastUserRowId(): string | undefined {
+    return this.conversation.ids.findLast((rowId) => {
+      const row = this.conversation.messages[rowId];
+      return row !== undefined && row.role === 'user' && !row.hidden;
+    });
+  }
+
   /** Reopens an interrupted attach, preserving the last SSE cursor in the wiring. */
   async reconnect(): Promise<boolean> {
     if (this.#abort.signal.aborted) return false;
@@ -471,7 +601,7 @@ export class ChatSessionState {
     this.#readerAbort?.abort();
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;
-    this.#retryFailures = 0;
+    this.#setRetryFailures(0);
     this.failure = undefined;
     await this.#activeTurn;
     if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return false;
@@ -551,9 +681,27 @@ export class ChatSessionState {
 
   /** Replaces the transcript with the authoritative snapshot from the Bureau. */
   private restore(restored: ConversationHistory): void {
-    // What the stream told this page about the run (a wakeup, a child run) is not in the Bureau's
-    // thread, so the rows that are still there keep it.
-    this.conversation = carryLiveNotes(this.conversation, restored);
+    // What the stream told this page about the run (a wakeup, a child run), and why an earlier
+    // attempt stopped, are not in the Bureau's thread, so the rows that are still there keep them.
+    this.#setKeepingStopLines(carryLiveNotes(this.conversation, restored));
+  }
+
+  /** Every line this page was shown of why a run stopped, by its identity, at its row. */
+  #stopLines: ReadonlyMap<string, HeldStopLine> = new Map();
+
+  /**
+   * Shows `next`, with the lines of why an earlier run stopped that it does not give, so the
+   * status line of a failed attempt Retry kept stays on its row (B06, row 20b).
+   */
+  #setKeepingStopLines(next: ConversationHistory): void {
+    this.#stopLines = holdStopLines(this.#stopLines, this.conversation);
+    this.conversation = withHeldStopLines(this.#stopLines, next);
+  }
+
+  /** Counts the failed reads in a row, and says so to the composer's reconnect line. */
+  #setRetryFailures(failures: number): void {
+    this.#retryFailures = failures;
+    this.reconnectAttempt = failures;
   }
 
   #scheduleReconnect(error: unknown): void {
@@ -563,11 +711,13 @@ export class ChatSessionState {
     if (this.disconnected) return;
     if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) {
       this.disconnected = true;
+      this.reconnectAttempt = 0;
       return;
     }
-    this.#retryFailures += 1;
+    this.#setRetryFailures(this.#retryFailures + 1);
     if (this.#retryFailures >= MAX_RECONNECT_ATTEMPTS) {
       this.disconnected = true;
+      this.reconnectAttempt = 0;
       return;
     }
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
@@ -578,6 +728,41 @@ export class ChatSessionState {
       this.#retryTimer = undefined;
       void this.#retryAfter(generation);
     }, delay);
+  }
+
+  /**
+   * A Stop while the page reconnects to a run whose stream dropped. Nothing is streaming, so the
+   * controller has no turn to stop: the reconnect is retired (the scheduled one, and a read already
+   * opening), so the page does not join the run again, and the run is cancelled through the route a
+   * Stop on the live stream takes. The thread is then read as it is, which says why the run
+   * stopped. When the Bureau did not take the cancellation, or the page knows no run to cancel
+   * because it never read one, the failure says so, and Reconnect shows what is going.
+   */
+  async #stopWhileReconnecting(): Promise<void> {
+    this.#retryGeneration += 1;
+    this.#readerAbort?.abort();
+    if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
+    this.#retryTimer = undefined;
+    this.#setRetryFailures(0);
+    this.stopping = true;
+    try {
+      const cancelled = await this.#wiring.cancelDroppedRun();
+      if (this.#abort.signal.aborted) return;
+      // No run known to cancel (the page never read one before the reads failed) is no stop either.
+      if (cancelled !== true) {
+        this.failure = CHAT_COPY.stopLine.stopFailed;
+        this.disconnected = true;
+        return;
+      }
+      this.#attachedRun = false;
+      this.failure = undefined;
+      const history = await this.#wiring
+        .history(this.sessionId, this.#abort.signal)
+        .catch(() => undefined);
+      if (history !== undefined && !this.#abort.signal.aborted) this.restore(history);
+    } finally {
+      this.stopping = false;
+    }
   }
 
   async #retryAfter(generation: number): Promise<void> {
@@ -598,4 +783,9 @@ export class ChatSessionState {
     this.controller.dispose();
     void this.#wiring.discardAttach();
   }
+}
+
+/** What a turn's message says when it is plain text, which is what a retry sends again; files are not repeated. */
+function retryText(row: ConversationHistory['messages'][string]): string | undefined {
+  return typeof row.content === 'string' && row.content.trim() !== '' ? row.content : undefined;
 }

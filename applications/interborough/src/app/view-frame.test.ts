@@ -251,9 +251,13 @@ const VIEWS_THAT_CAN_FAIL = VIEW_NAMES.filter(
     view !== 'reviews' &&
     view !== 'health' &&
     view !== 'home' &&
+    VIEWS[view].ownsStates !== true &&
     // A page that words its own failure shows itself, with its navigation and heading, instead.
     VIEWS[view].pageOwnsFailure !== true,
 );
+
+/** The views that draw their own loading, empty and failed states under their own header. */
+const VIEWS_THAT_OWN_THEIR_STATES = VIEW_NAMES.filter((view) => VIEWS[view].ownsStates === true);
 
 // Health is left out of the probe cases below: it asks the server nothing before it shows. Its
 // bands each read with their own scope, so a probe needing one scope would turn away a principal
@@ -281,7 +285,7 @@ describe('every view, in every state', () => {
 
     test(`${view} is empty when its probe finds nothing, with its own words`, async () => {
       const emptyCopy = copy.empty;
-      if (!VIEWS[view].canBeEmpty || emptyCopy === undefined) return;
+      if (!VIEWS[view].canBeEmpty || emptyCopy === undefined || VIEWS[view].ownsStates) return;
       stub(view, 'empty');
       const { container, findByRole } = mount(view);
       const heading = await findByRole('heading', { level: 1, name: emptyCopy.title });
@@ -300,7 +304,7 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is loading while its probe is pending`, async () => {
-      if (view === 'health' || view === 'home') return;
+      if (view === 'health' || view === 'home' || VIEWS[view].ownsStates) return;
       restore = installFetchImplementation(() => new Promise<Response>(() => {}));
       if (VIEWS[view].pageOwnsLoading === true) {
         // The page draws its own loading, so its content is on screen and the frame's words are not.
@@ -372,7 +376,7 @@ describe('a view that finds something to show', () => {
       stub(view, 'content');
       const { container, findByTestId } = mount(view);
       expect(await findByTestId('content')).not.toBeNull();
-      // A page that draws its own loading is on screen before the probe answers.
+      // A page that draws its own loading, or a view that owns its states, is on screen before the probe answers.
       await waitFor(() => expect(frame(container).dataset['state']).toBe('ready'));
     });
   }
@@ -386,6 +390,44 @@ describe('a view that finds something to show', () => {
   });
 });
 
+describe('a view that owns its states', () => {
+  test('is a page that keeps its header: the schedules list and the Health Workers and Audit log tabs', () => {
+    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual(['schedules', 'workers', 'audit']);
+  });
+
+  for (const view of VIEWS_THAT_OWN_THEIR_STATES) {
+    const copy = VIEW_COPY[view];
+
+    test(`${view} renders its page, and says empty in data-state, when its probe finds nothing`, async () => {
+      // A view that cannot be empty has no empty state to say (the Workers tab draws its own).
+      if (!VIEWS[view].canBeEmpty) return;
+      stub(view, 'empty');
+      const { container, findByTestId, queryByRole } = mount(view);
+      expect(await findByTestId('content')).not.toBeNull();
+      await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
+      // The frame says nothing of its own: the page draws the empty state under its header.
+      expect(queryByRole('heading', { level: 1, name: copy.empty?.title ?? '' })).toBeNull();
+    });
+
+    test(`${view} renders its page, and says error in data-state, when its probe fails`, async () => {
+      stub(view, 'error');
+      const { container, findByTestId, queryByRole } = mount(view);
+      expect(await findByTestId('content')).not.toBeNull();
+      await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+      expect(queryByRole('heading', { name: copy.error.title })).toBeNull();
+      expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+    });
+
+    test(`${view} renders its page, and says loading in data-state, while its probe is pending`, async () => {
+      restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+      const { container, findByTestId, queryByRole } = mount(view);
+      expect(await findByTestId('content')).not.toBeNull();
+      expect(frame(container).dataset['state']).toBe('loading');
+      expect(queryByRole('heading', { name: copy.loading.title })).toBeNull();
+    });
+  }
+});
+
 describe('a refused probe', () => {
   test('tells the principal store the scope is gone', async () => {
     stub('schedules', 'forbidden');
@@ -395,9 +437,9 @@ describe('a refused probe', () => {
   });
 
   test('is not retried automatically, and retrying asks again', async () => {
-    const { requests } = stub('schedules', 'error');
-    const { findByRole, getByRole } = mount('schedules');
-    await findByRole('heading', { level: 1, name: VIEW_COPY.schedules.error.title });
+    const { requests } = stub('goals', 'error');
+    const { findByRole, getByRole } = mount('goals');
+    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.error.title });
     expect(requests.length).toBe(1);
     getByRole('button', { name: RETRY_LABEL }).click();
     await waitFor(() => expect(requests.length).toBe(2));
@@ -536,6 +578,7 @@ describe('the chat list, a new chat, and the agents', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url === '/host/providers') {
         return Response.json({
+          configurationRevision: null,
           providers: [{ name: 'anthropic', configured: false, hasKey: false }],
           catalog: [],
           models: [],
@@ -618,7 +661,7 @@ describe('the chat list, a new chat, and the agents', () => {
       if (url.endsWith('/host/plugins')) {
         return plugins === null
           ? new Response('down', { status: 500 })
-          : Response.json({ plugins, unloaded: [] });
+          : Response.json({ configurationRevision: null, plugins, unloaded: [] });
       }
       return agents(...names.map((name) => ({ name })));
     });

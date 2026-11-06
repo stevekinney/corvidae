@@ -68,6 +68,7 @@
     expanded = $bindable(false),
     showAllLabel,
     lineNumbers = true,
+    headers = true,
     empty,
     class: className,
     onFilesChange,
@@ -434,14 +435,16 @@
       </div>
     {:else if showTruncatedActiveFile && activeDescriptor}
       <section class="cinder-source-diff-viewer__file" aria-label={activeDescriptor.label}>
-        <header
-          class="cinder-source-diff-viewer__file-header"
-          data-cinder-file-header
-          data-cinder-file-occurrence={activeDescriptor.fileOccurrence}
-          tabindex="-1"
-        >
-          <span class="cinder-source-diff-viewer__file-path">{activeDescriptor.label}</span>
-        </header>
+        {#if headers}
+          <header
+            class="cinder-source-diff-viewer__file-header"
+            data-cinder-file-header
+            data-cinder-file-occurrence={activeDescriptor.fileOccurrence}
+            tabindex="-1"
+          >
+            <span class="cinder-source-diff-viewer__file-path">{activeDescriptor.label}</span>
+          </header>
+        {/if}
         {#if fileAnnotation}
           {@render fileAnnotation({ descriptor: activeDescriptor })}
         {/if}
@@ -456,14 +459,16 @@
           (d) => d.fileOccurrence === file.fileOccurrence,
         )}
         <section class="cinder-source-diff-viewer__file" aria-label={fileLabel}>
-          <header
-            class="cinder-source-diff-viewer__file-header"
-            data-cinder-file-header
-            data-cinder-file-occurrence={file.fileOccurrence}
-            tabindex="-1"
-          >
-            <span class="cinder-source-diff-viewer__file-path">{fileLabel}</span>
-          </header>
+          {#if headers}
+            <header
+              class="cinder-source-diff-viewer__file-header"
+              data-cinder-file-header
+              data-cinder-file-occurrence={file.fileOccurrence}
+              tabindex="-1"
+            >
+              <span class="cinder-source-diff-viewer__file-path">{fileLabel}</span>
+            </header>
+          {/if}
 
           {#if fileAnnotation && descriptor}
             {@render fileAnnotation({ descriptor })}
@@ -484,7 +489,9 @@
           {#each file.hunks as hunk (hunk.hunkOccurrence)}
             {#if hunk.lines.length > 0}
               <div class="cinder-source-diff-viewer__hunk">
-                <div class="cinder-source-diff-viewer__hunk-header">{hunk.header}</div>
+                {#if headers}
+                  <div class="cinder-source-diff-viewer__hunk-header">{hunk.header}</div>
+                {/if}
                 <section
                   class="cinder-source-diff-viewer__lines"
                   aria-label={`${fileLabel} ${hunk.header} lines`}

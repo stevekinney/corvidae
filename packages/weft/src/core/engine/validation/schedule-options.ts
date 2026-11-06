@@ -21,6 +21,7 @@ export const SCHEDULE_REVISION_POLICIES = new Set<ScheduleRevisionPolicy>([
 ]);
 
 type NormalizedScheduleOptions = Required<Pick<ScheduleOptions, 'overlap' | 'backfill'>> & {
+  initialStatus?: 'active' | 'paused';
   id?: string;
   description?: string;
   jitterMs?: number;
@@ -29,6 +30,8 @@ type NormalizedScheduleOptions = Required<Pick<ScheduleOptions, 'overlap' | 'bac
 };
 
 type NormalizedScheduleUpdateOptions = {
+  workflowType?: string;
+  input?: unknown;
   description?: string;
   overlap?: ScheduleOverlapPolicy;
   backfill?: boolean;
@@ -46,6 +49,7 @@ export function normalizeScheduleOptions(
   }
 
   return {
+    ...normalizeInitialStatus(options.initialStatus),
     overlap: normalizeScheduleOverlap(options.overlap),
     backfill: normalizeScheduleBackfill(options.backfill),
     ...(options.id !== undefined && { id: coerceStartWorkflowId(options.id, 'options.id') }),
@@ -76,6 +80,7 @@ export function normalizeScheduleUpdateOptions(
   }
 
   return {
+    ...normalizeScheduleRunFields(options),
     ...(options.description !== undefined && {
       description: normalizeScheduleDescription(options.description),
     }),
@@ -121,6 +126,25 @@ function normalizeScheduleTimeZone(timeZone: unknown): string {
   return canonicalTimeZone(timeZone);
 }
 
+/** The workflow type and input an update moves a schedule to, when it names them. */
+function normalizeScheduleRunFields(
+  options: ScheduleUpdateOptions,
+): Pick<NormalizedScheduleUpdateOptions, 'workflowType' | 'input'> {
+  return {
+    ...(options.workflowType !== undefined && {
+      workflowType: normalizeScheduleWorkflowType(options.workflowType),
+    }),
+    ...(options.input !== undefined && { input: options.input }),
+  };
+}
+
+function normalizeScheduleWorkflowType(workflowType: unknown): string {
+  if (typeof workflowType !== 'string' || workflowType.trim() === '') {
+    throw new Error('options.workflowType must be a non-empty string when provided');
+  }
+  return workflowType;
+}
+
 function normalizeScheduleDescription(description: unknown): string {
   if (typeof description !== 'string') {
     throw new Error('options.description must be a string when provided');
@@ -162,4 +186,11 @@ function normalizeScheduleJitter(value: unknown, fieldName: string): number {
     throw new Error(`${fieldName} must resolve to a positive number of milliseconds`);
   }
   return jitterMs;
+}
+
+function normalizeInitialStatus(value: unknown): { initialStatus?: 'active' | 'paused' } {
+  if (value === undefined) return {};
+  if (value !== 'active' && value !== 'paused')
+    throw new Error('options.initialStatus must be active or paused');
+  return { initialStatus: value };
 }

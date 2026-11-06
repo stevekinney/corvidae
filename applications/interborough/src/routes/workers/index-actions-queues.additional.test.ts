@@ -80,6 +80,7 @@ async function renderWorkersRoute(
 
 describe('Workers route — Task queues tab, queue selection and dead-letter clear', () => {
   test('no queue selected renders QueueListView', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { queues: [queue({ queue: 'payments' })] });
 
@@ -497,6 +498,7 @@ describe('Workers route — a dead letter on a queue that is not listed', () => 
 
 describe('Workers route — Diagnostics tab', () => {
   test('renders DiagnosticsView with the fetched items and summary', async () => {
+    resetLocation('/health/workers?tab=diagnostics');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       diagnosticsItems: [diagnosticItem({ kind: 'retry-storm', queue: 'payments' })],
@@ -517,6 +519,7 @@ describe('Workers route — Diagnostics tab', () => {
 
   test('a heartbeat 60–120s old reads stale in task detail, as it does in the diagnostics row', async () => {
     const now = Date.now();
+    resetLocation('/health/workers?tab=diagnostics');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       diagnosticsItems: [diagnosticItem({ kind: 'stale-inflight', queue: 'payments' })],
@@ -548,6 +551,7 @@ describe('Workers route — Diagnostics tab', () => {
   });
 
   test('a zeroed summary renders the "No diagnostics" empty state', async () => {
+    resetLocation('/health/workers?tab=diagnostics');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
 
@@ -563,7 +567,7 @@ describe('Workers route — loading skeletons', () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
 
-    const { getByLabelText } = render(WorkersRouteTestHarness, {
+    const { getByTestId } = render(WorkersRouteTestHarness, {
       props: {
         client: realClient(),
         queryClient: createQueryClient(),
@@ -575,14 +579,14 @@ describe('Workers route — loading skeletons', () => {
     // Synchronous assertion, before any awaited microtask lets the
     // scripted fetch's response settle — this is the one moment
     // `fleetLoading` is true.
-    expect(getByLabelText('Loading fleet')).not.toBeNull();
+    expect(getByTestId('workers-state').dataset['state']).toBe('loading');
   });
 
   test('the Diagnostics tab shows a loading skeleton before the diagnostics query resolves', async () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
     // Only the filtered read is deferred: the page waits for the unfiltered diagnostics before it
-    // shows its tabs (`index-in-process.test.ts`), and a provenance filter is a second read of its own.
+    // shows its tabs (`index-states.test.ts`), and a provenance filter is a second read of its own.
     // Deferred, not routed, so the response stays pending through the awaits below instead of being
     // processed by TanStack Query during `findByRole`/`fireEvent.click`'s microtasks.
     const diagnosticsGate = scripted.deferJsonRpcMethod(

@@ -81,8 +81,36 @@ export interface AdmissionPlan {
   readonly principal: AssetPrincipal;
   readonly source: InternalAdmissionSource;
   readonly declaredMediaType: string | undefined;
+  readonly fileName: string | undefined;
   readonly budget: AggregateBudget | undefined;
   readonly slot: number;
+}
+
+const MAX_FILE_NAME_BYTES = 255;
+
+function containsControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0)!;
+    return codePoint <= 0x1f || codePoint === 0x7f;
+  });
+}
+
+function validateFileName(fileName: string | undefined): void {
+  if (fileName === undefined) return;
+  if (
+    fileName.length === 0 ||
+    fileName === '.' ||
+    fileName === '..' ||
+    fileName.includes('/') ||
+    fileName.includes('\\') ||
+    containsControlCharacter(fileName) ||
+    new TextEncoder().encode(fileName).byteLength > MAX_FILE_NAME_BYTES
+  ) {
+    throw new AssetAdmissionError(
+      'invalid-file-name',
+      'The file name must be a bounded leaf name without separators or control characters.',
+    );
+  }
 }
 
 // ── Aggregate limits ──────────────────────────────────────────────────
@@ -292,7 +320,7 @@ export async function preflightAdmission(
   if (source.kind === 'managed-asset' || source.kind === 'derived') {
     const sourceId = source.kind === 'derived' ? source.sourceAssetId : source.assetId;
     const loaded = await loadRecord(internals.storage, sourceId);
-    const record = authorize(loaded?.record, sourceId, principal);
+    const record = await authorize(loaded?.record, sourceId, principal);
     if (
       source.kind === 'managed-asset' &&
       source.revision !== undefined &&
@@ -317,7 +345,23 @@ export async function beginAdmission(
   slot: number,
   options: { readonly preflighted?: boolean } = {},
 ): Promise<AssetAdmission> {
+  validateFileName(request.fileName);
   if (!options.preflighted) await preflightAdmission(internals, principal, request.source);
+  if (principal.workspaceAuthority !== undefined) {
+    for (const reader of request.readers ?? []) {
+      let allowed = false;
+      try {
+        allowed = await principal.workspaceAuthority(reader);
+      } catch {
+        allowed = false;
+      }
+      if (!allowed)
+        throw new AssetAdmissionError(
+          'source-not-available',
+          'The requested reader is unavailable.',
+        );
+    }
+  }
   const assetId = internals.runtime.identifiers.next('asset');
   const now = internals.nowIso();
   const retainFor = request.retainForMilliseconds ?? internals.policy.defaultRetentionMilliseconds;
@@ -336,6 +380,7 @@ export async function beginAdmission(
       request.declaredMediaType === undefined
         ? undefined
         : normalizeMediaType(request.declaredMediaType),
+    fileName: request.fileName,
     media: {},
     provenance: provenanceOf(request.source),
     createdAt: now,
@@ -375,6 +420,7 @@ export async function beginAdmission(
     principal,
     source: request.source,
     declaredMediaType: record.declaredMediaType,
+    fileName: record.fileName,
     budget,
     slot,
   };

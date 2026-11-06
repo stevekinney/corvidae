@@ -83,19 +83,41 @@
 
   /* One pane at a time: the pane follows the page, not a box of its own. The list and the open item
    * grow with their content and the page scrolls, so a phone never holds a second, inner scroll. */
-  .cinder-list-detail[data-cinder-layout='stacked'] {
+  .cinder-list-detail:is([data-cinder-layout='stacked'], [data-cinder-layout='below']) {
     block-size: auto;
     min-block-size: 0;
   }
 
-  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__list,
-  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__detail {
+  .cinder-list-detail:is([data-cinder-layout='stacked'], [data-cinder-layout='below'])
+    :is(.cinder-list-detail__list, .cinder-list-detail__detail) {
     block-size: auto;
   }
 
-  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__rows,
-  .cinder-list-detail[data-cinder-layout='stacked'] .cinder-list-detail__detail-body {
+  .cinder-list-detail:is([data-cinder-layout='stacked'], [data-cinder-layout='below'])
+    :is(.cinder-list-detail__rows, .cinder-list-detail__detail-body) {
     overflow-y: visible;
+  }
+
+  /* Both panes at full width, the detail under the list and set off from it by a rule. */
+  .cinder-list-detail__below {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .cinder-list-detail__below > .cinder-list-detail__detail {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* A flush detail (an open conversation) keeps the height it is given when it is the one pane
+   * showing, so what it docks at its bottom edge sits at the bottom of the screen. The list and a
+   * detail with its own padding keep growing with their content. */
+  .cinder-list-detail[data-cinder-layout='stacked'][data-cinder-flush-detail][data-cinder-showing='detail'],
+  .cinder-list-detail[data-cinder-layout='stacked'][data-cinder-flush-detail][data-cinder-showing='detail']
+    .cinder-list-detail__detail,
+  .cinder-list-detail[data-cinder-layout='stacked'][data-cinder-flush-detail][data-cinder-showing='detail']
+    .cinder-list-detail__detail-body {
+    block-size: 100%;
   }
 
   /* The divider between the panes is a full-height 1px rule. The grip is drawn on it only while the

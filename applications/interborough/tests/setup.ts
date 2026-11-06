@@ -30,6 +30,8 @@ import { Window } from 'happy-dom';
 
 import { configureAsyncUtilityDeadline, sveltePlugin } from '@lostgradient/testing';
 
+import { setAnswerUndoMilliseconds } from '../src/lib/answer-undo.ts';
+
 declare module 'bun:test' {
   interface Matchers<T = unknown> extends TestingLibraryMatchers<
     ReturnType<typeof expect.stringContaining>,
@@ -152,6 +154,11 @@ await registerGlobalCleanup();
 
 // Testing Library's asynchronous utilities wait up to the hang guard, not one second.
 await configureAsyncUtilityDeadline();
+
+// A one-click answer to an agent's question is held for five seconds before the run continues. A
+// test about something else that picks an answer should not wait them out, so the window is off
+// here; a test about the count itself sets the real one (`setAnswerUndoMilliseconds`).
+setAnswerUndoMilliseconds(0);
 
 // The router is a module-scope singleton over `window.location`, so a test that navigates (the
 // route tests' `landAt('/runs/run-1')`) would leave that address for every later test file in the

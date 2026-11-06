@@ -16,13 +16,22 @@
  * @module audit-operations
  */
 
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { auditRecordsToJsonLines, decodeAuditCursor } from '../../audit/create-audit.ts';
-import type { BureauAudit } from '../../types.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import {
+  auditRecordsToJsonLines,
+  decodeAuditCursor,
+  MAXIMUM_AUDIT_TYPES,
+} from '../../audit/create-audit.ts';
+import type { AuditQueryPage, BureauAudit } from '../../types.ts';
+import {
+  mayUseCrossOwnerScope,
+  type BureauOwnershipHost,
+  ownerOfPrincipal,
+} from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /** What the audit operation reads from the handler's `host`. */
 export type BureauAuditOperationHost = BureauOwnershipHost & {
@@ -56,6 +65,13 @@ const queryInput = z.object({
       'Only records about this resource: a run id, or `schedule:<id>`, `session:<id>`, and so on.',
     ),
   type: z.string().min(1).max(128).optional().describe('Only records of this type.'),
+  types: z
+    .array(z.string().min(1).max(128))
+    .max(MAXIMUM_AUDIT_TYPES)
+    .optional()
+    .describe(
+      'Only records of one of these types, up to 64. It combines with `type`; an empty list matches nothing.',
+    ),
   since: z
     .number()
     .int()
@@ -92,6 +108,18 @@ const queryInput = z.object({
     .max(100)
     .optional()
     .describe('The most records to return in one page, from 1 to 100. Defaults to 50.'),
+  order: z
+    .enum(['oldest', 'newest'])
+    .optional()
+    .describe(
+      'Which end of the trail the page starts from. `oldest` (the default) reads forward in time; `newest` returns the most recent records, newest first, and `nextCursor` continues into older ones.',
+    ),
+  includeTotal: z
+    .boolean()
+    .optional()
+    .describe(
+      'Also return `total`, how many records match the filter and the caller may see. It reads the whole matching trail, so ask for it once and not on every page.',
+    ),
 });
 
 const queryOutput = z.union([
@@ -99,6 +127,8 @@ const queryOutput = z.union([
     records: z.array(recordSchema),
     /** Pass it as `cursor` for the next page; `null` on the last. */
     nextCursor: z.string().nullable(),
+    /** How many records match the filter and the caller may see; present only when `includeTotal` was `true`. */
+    total: z.number().int().nonnegative().optional(),
   }),
   z.object({
     format: z.literal('jsonl'),
@@ -106,6 +136,8 @@ const queryOutput = z.union([
     body: z.string(),
     /** Pass it as `cursor` for the next page; `null` on the last. */
     nextCursor: z.string().nullable(),
+    /** How many records match the filter and the caller may see; present only when `includeTotal` was `true`. */
+    total: z.number().int().nonnegative().optional(),
   }),
 ]);
 
@@ -117,20 +149,17 @@ function unsupported(): OperationFault {
   };
 }
 
-function holdsAuditRead(principal: Principal): boolean {
-  return principal.method !== 'unauthenticated' && principal.hasScope('bureau.audit:read');
-}
-
 export const auditQueryOperation = defineOperation<
   typeof queryInput,
   typeof queryOutput,
   BureauAuditOperationHost
 >({
   name: 'bureau.audit.query',
+  authorize: authorizeWorkspaceOperation('bureau.audit.query'),
   mcpExposable: false,
   summary: 'Query the audit trail',
   description:
-    "Returns audit records, oldest first, as metadata only: `timestamp`, `type`, `resource` (what the record is about), `principal` (the actor), and a few scalar fields in `detail`. No record carries a secret, transcript, tool argument, tool result, or memory content. A caller sees the records about the resources it owns; a caller holding `bureau.audit:read` sees every record, and a record about a resource with no owner is read only through that scope. `runId` narrows to one resource, `type` to one kind, `principal` to one actor, and `since` and `until` to a time range (both ends inclusive). `format: 'jsonl'` returns the page as JSON Lines in `body` (one record per line, with the same redaction) instead of `records`, for export. Pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page, and a page is filled from the records the caller may see, so a cursor advances across any number of records it may not.",
+    "Returns audit records, oldest first (or newest first with `order: 'newest'`), as metadata only: `timestamp`, `type`, `resource` (what the record is about), `principal` (the actor), and a few scalar fields in `detail`. No record carries a secret, transcript, tool argument, tool result, or memory content. A caller sees the records about the resources it owns; a caller holding `bureau.audit:read` sees every record, and a record about a resource with no owner is read only through that scope. `runId` narrows to one resource, `type` to one kind, `types` to any of several kinds, `principal` to one actor, and `since` and `until` to a time range (both ends inclusive). `format: 'jsonl'` returns the page as JSON Lines in `body` (one record per line, with the same redaction) instead of `records`, for export. `includeTotal: true` also returns `total`, how many records match and the caller may see. Pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page, and a page is filled from the records the caller may see, so a cursor advances across any number of records it may not.",
   destructive: false,
   tags: ['Audit'],
   inputSchema: queryInput,
@@ -143,21 +172,36 @@ export const auditQueryOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     if (!host.audit.keepsTrail()) throw unsupported();
     const { format, ...filter } = input;
-    const everyOwner = holdsAuditRead(principal);
+    const everyOwner = mayUseCrossOwnerScope(principal, 'bureau.audit:read');
     const caller = ownerOfPrincipal(principal);
     // A caller without the scope is read as its owner; with it, as every owner.
-    const page =
+    const page: AuditQueryPage =
       !everyOwner && caller === undefined
-        ? { records: [], nextCursor: null }
-        : await host.audit.query(filter, everyOwner ? {} : { owner: caller });
+        ? { records: [], nextCursor: null, ...(filter.includeTotal === true ? { total: 0 } : {}) }
+        : await host.audit.query(
+            filter,
+            everyOwner
+              ? {}
+              : {
+                  owner: caller,
+                  includeSharedConfiguration:
+                    principal.method !== 'unauthenticated' &&
+                    principal.workspace?.capabilities.includes('workspace:manage') === true,
+                },
+          );
     // Both formats render the one redacted page, so an export can never carry more than the read.
     if (format === 'jsonl') {
       return {
         format: 'jsonl' as const,
         body: auditRecordsToJsonLines(page.records),
         nextCursor: page.nextCursor,
+        ...(page.total === undefined ? {} : { total: page.total }),
       };
     }
-    return { records: [...page.records], nextCursor: page.nextCursor };
+    return {
+      records: [...page.records],
+      nextCursor: page.nextCursor,
+      ...(page.total === undefined ? {} : { total: page.total }),
+    };
   },
 });

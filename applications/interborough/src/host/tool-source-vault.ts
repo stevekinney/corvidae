@@ -1,3 +1,14 @@
+import { createHash } from 'node:crypto';
+import { parseDocument } from './providers.ts';
+import { secretPublicationDigest } from './secret-publication-digest.ts';
+import {
+  parseToolSourceOAuthBinding,
+  parseToolSourceOAuthClaim,
+  parseToolSourceSignIn,
+  type ToolSourceOAuthBinding,
+  type ToolSourceOAuthClaim,
+  type ToolSourceSignIn,
+} from './tool-source-oauth-session.ts';
 /**
  * Where a saved tool source keeps what must not sit in `configuration.json` (COR-1930): the
  * values of the credentials its description names (a bearer token, an API key, an environment
@@ -25,7 +36,7 @@
  * @module tool-source-vault
  */
 
-import type { Bungalow } from '@lostgradient/bungalow';
+import { type ConfigurationSnapshot } from '@lostgradient/bungalow';
 import type { AnswerEncryptionKeys } from '@lostgradient/bureau';
 import {
   CryptographyError,
@@ -35,6 +46,13 @@ import {
   type EncryptionKey,
 } from '@lostgradient/cryptography';
 import type { McpOAuthStorageState, McpOAuthTokenStorage } from 'armorer';
+import {
+  createWorkspaceSecrets,
+  SecretPublicationError,
+  type SecretHome,
+  type SecretPublicationResult,
+  type WorkspaceSecrets,
+} from './workspace-secrets.ts';
 
 /** The prefix of the Bungalow secret that holds a source's credentials: `tool-source-<id>`. */
 export const TOOL_SOURCE_SECRET_PREFIX = 'tool-source-';
@@ -44,16 +62,16 @@ export function toolSourceSecretKey(sourceId: string): string {
   return `${TOOL_SOURCE_SECRET_PREFIX}${sourceId}`;
 }
 
-/** A sign-in the host started and is waiting on. */
-export type ToolSourceSignIn = {
-  /** When the host handed out the authorization URL, in milliseconds since the epoch. */
-  readonly startedAt: number;
-  /** A digest of the description the sign-in was started for. A callback for another one is refused. */
-  readonly revision: string;
-};
-
 /** What a source keeps, decrypted. */
 export type ToolSourceSecrets = {
+  /** Encrypted initiating authority and sign-in generation, retained after callback cleanup. */
+  readonly oauthBinding?: ToolSourceOAuthBinding | undefined;
+  /** Encrypted token-exchange receipt; uncertain claims never authorize replay. */
+  readonly oauthClaim?: ToolSourceOAuthClaim | undefined;
+  /** Encrypted version marker for read-back of this session's last conditional write. */
+  readonly oauthWriteId?: string | undefined;
+  /** Configuration fence observed with these credentials, carried through read-modify-write. */
+  readonly snapshot?: ConfigurationSnapshot | undefined;
   /** Credential name to value. */
   readonly credentials: ReadonlyMap<string, string>;
   /** The OAuth state of an MCP source, when a sign-in has recorded any. */
@@ -82,12 +100,10 @@ export class ToolSourceSecretsUnreadableError extends Error {
   }
 }
 
-/** A write the home does not allow: a remote home keeps its secrets in the deployment's environment. */
+/** A write the secret provider or configuration backend does not support. */
 export class ToolSourceSecretsLockedError extends Error {
   constructor() {
-    super(
-      'This host runs on remote storage, where tool-source credentials belong to the deployment.',
-    );
+    super('The configured backends do not support tool-source credential publication.');
     this.name = 'ToolSourceSecretsLockedError';
   }
 }
@@ -102,8 +118,10 @@ type StoredSecrets = {
 
 /** What {@link createToolSourceVault} reads. */
 export type ToolSourceVaultOptions = {
+  /** Shared host recovery service. */
+  readonly workspaceSecrets?: WorkspaceSecrets;
   /** The open home. */
-  readonly bungalow: Pick<Bungalow, 'mode' | 'readSecret' | 'writeSecret'>;
+  readonly bungalow: SecretHome;
   /** The installation's answer keys: the current one encrypts, a retired one only decrypts. */
   readonly keys: AnswerEncryptionKeys;
 };
@@ -115,22 +133,29 @@ export type ToolSourceVaultOptions = {
 export type TokenStorageTurn = 'take' | 'held';
 
 /** Answers, under the source's turn, whether the caller's sign-in still belongs to the source. */
-export type TokenStorageFence = () => Promise<boolean>;
+export type TokenStorageFence = (snapshot?: ConfigurationSnapshot) => Promise<boolean>;
 
 /** The encrypted store of tool-source credentials and OAuth state. See the module comment. */
 export type ToolSourceVault = {
   /** The names of the credentials a source holds, without decrypting anything. */
-  credentialNames(sourceId: string): readonly string[];
-  /** The raw stored text of a source's secret, or `undefined` when it has none, to put back after a failed change. */
-  stored(sourceId: string): string | undefined;
-  /** Put stored text back as it was read; `undefined` writes the empty value, which reads as no secret. */
-  restore(sourceId: string, text: string | undefined): void;
+  credentialNames(sourceId: string): Promise<readonly string[]>;
   /** Decrypt everything a source holds. Throws {@link ToolSourceSecretsUnreadableError} when it cannot. */
-  read(sourceId: string): Promise<ToolSourceSecrets>;
-  /** Replace everything a source holds. A remote home throws {@link ToolSourceSecretsLockedError}. */
-  write(sourceId: string, secrets: ToolSourceSecrets): Promise<void>;
+  read(sourceId: string, snapshot?: ConfigurationSnapshot): Promise<ToolSourceSecrets>;
+  /** Publish a complete encrypted version. Read-only backends throw {@link ToolSourceSecretsLockedError}. */
+  write(
+    sourceId: string,
+    secrets: ToolSourceSecrets,
+    publication?: ConfigurationSnapshot,
+    authorize?: () => Promise<void>,
+    receipt?: { readonly operationId: string; readonly requestDigest: string },
+  ): Promise<SecretPublicationResult>;
   /** Remove everything a source holds. */
-  clear(sourceId: string): void;
+  clear(
+    sourceId: string,
+    publication?: ConfigurationSnapshot,
+    authorize?: () => Promise<void>,
+    receipt?: { readonly operationId: string; readonly requestDigest: string },
+  ): Promise<SecretPublicationResult>;
   /**
    * Record that a sign-in has started, once the loader has recorded its `state`. Resolves `false`,
    * recording nothing, when the source holds no `state` to attach it to.
@@ -172,19 +197,6 @@ function isEncryptedValue(value: unknown): value is EncryptedValue {
   );
 }
 
-/** The sign-in an envelope holds, or none when it holds nothing usable. */
-function signInOf(value: unknown): ToolSourceSignIn | undefined {
-  if (
-    !isPlainObject(value) ||
-    typeof value['startedAt'] !== 'number' ||
-    !Number.isFinite(value['startedAt']) ||
-    typeof value['revision'] !== 'string'
-  ) {
-    return undefined;
-  }
-  return { startedAt: value['startedAt'], revision: value['revision'] };
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -192,6 +204,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /** Create the vault over `options.bungalow`'s secrets. */
 export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSourceVault {
   const { bungalow, keys } = options;
+  const workspaceSecrets = options.workspaceSecrets ?? createWorkspaceSecrets(bungalow);
   const tails = new Map<string, Promise<unknown>>();
 
   const exclusive = async <Result>(
@@ -252,15 +265,22 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
     return { credentials: parsed['credentials'], oauth: parsed['oauth'] };
   }
 
-  const stored = (sourceId: string): string | undefined => {
-    const text = bungalow.readSecret(toolSourceSecretKey(sourceId));
+  const stored = async (
+    sourceId: string,
+    snapshot?: ConfigurationSnapshot,
+  ): Promise<string | undefined> => {
+    const text = await workspaceSecrets.read(toolSourceSecretKey(sourceId), snapshot);
     // An empty value is how a secret is removed: Bungalow has no delete.
     return text === undefined || text === '' ? undefined : text;
   };
 
-  async function read(sourceId: string): Promise<ToolSourceSecrets> {
-    const text = stored(sourceId);
-    if (text === undefined) return NO_SECRETS;
+  async function read(
+    sourceId: string,
+    observed?: ConfigurationSnapshot,
+  ): Promise<ToolSourceSecrets> {
+    const snapshot = observed ?? (await bungalow.readConfiguration());
+    const text = await stored(sourceId, snapshot);
+    if (text === undefined) return { ...NO_SECRETS, snapshot };
     const record = parseStored(sourceId, text);
     try {
       const credentials = new Map<string, string>();
@@ -278,6 +298,9 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
       }
       let oauth: McpOAuthStorageState | undefined;
       let signIn: ToolSourceSignIn | undefined;
+      let oauthBinding: ToolSourceOAuthBinding | undefined;
+      let oauthClaim: ToolSourceOAuthClaim | undefined;
+      let oauthWriteId: string | undefined;
       if (record.oauth !== undefined) {
         const envelope = await open(record.oauth);
         if (
@@ -288,9 +311,18 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
           throw new ToolSourceSecretsUnreadableError(sourceId);
         }
         oauth = envelope['oauth'];
-        signIn = signInOf(envelope['signIn']);
+        signIn = parseToolSourceSignIn(envelope['signIn']);
+        try {
+          oauthBinding = parseToolSourceOAuthBinding(envelope['binding']);
+          oauthClaim = parseToolSourceOAuthClaim(envelope['claim']);
+          if (envelope['writeId'] !== undefined && typeof envelope['writeId'] !== 'string')
+            throw new Error('Invalid write marker');
+          oauthWriteId = envelope['writeId'];
+        } catch {
+          throw new ToolSourceSecretsUnreadableError(sourceId);
+        }
       }
-      return { credentials, oauth, signIn };
+      return { credentials, oauth, signIn, snapshot, oauthBinding, oauthClaim, oauthWriteId };
     } catch (error) {
       if (error instanceof ToolSourceSecretsUnreadableError) throw error;
       // A `CryptographyError` or a ciphertext that is not JSON. Neither message holds a value.
@@ -301,8 +333,33 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
     }
   }
 
-  async function write(sourceId: string, secrets: ToolSourceSecrets): Promise<void> {
-    if (bungalow.mode === 'remote') throw new ToolSourceSecretsLockedError();
+  async function write(
+    sourceId: string,
+    input: ToolSourceSecrets,
+    publication?: ConfigurationSnapshot,
+    authorize?: () => Promise<void>,
+    receipt?: { readonly operationId: string; readonly requestDigest: string },
+  ): Promise<SecretPublicationResult> {
+    const secrets = structuredClone(input);
+    const publicationReceipt = receipt === undefined ? undefined : { ...receipt };
+    const publicationSnapshot = publication === undefined ? undefined : { ...publication };
+    if (!workspaceSecrets.writable) throw new ToolSourceSecretsLockedError();
+    const snapshot =
+      publicationSnapshot ?? secrets.snapshot ?? (await bungalow.readConfiguration());
+    const document = parseDocument(snapshot.text, bungalow.configurationLocation);
+    const requestDigest = secretPublicationDigest({
+      operation: 'tool-source-vault',
+      target: sourceId,
+      expectedRevision: snapshot.revision,
+      payload: {
+        document,
+        credentials: Object.fromEntries(secrets.credentials),
+        oauth: secrets.oauth,
+        signIn: secrets.signIn,
+        oauthBinding: secrets.oauthBinding,
+        oauthClaim: secrets.oauthClaim,
+      },
+    });
     const credentials: Record<string, EncryptedValue> = {};
     for (const [name, value] of secrets.credentials) {
       credentials[name] = await encrypt(
@@ -311,12 +368,17 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
       );
     }
     const oauth =
-      secrets.oauth === undefined || Object.keys(secrets.oauth).length === 0
+      secrets.oauth === undefined &&
+      secrets.oauthBinding === undefined &&
+      secrets.oauthClaim === undefined
         ? undefined
         : await encrypt(
             JSON.stringify({
               sourceId,
-              oauth: secrets.oauth,
+              oauth: secrets.oauth ?? {},
+              binding: secrets.oauthBinding,
+              claim: secrets.oauthClaim,
+              writeId: secrets.oauthWriteId,
               ...(secrets.signIn === undefined ? {} : { signIn: secrets.signIn }),
             }),
             keys.current,
@@ -327,30 +389,48 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
       credentials,
       ...(oauth === undefined ? {} : { oauth }),
     };
-    bungalow.writeSecret(toolSourceSecretKey(sourceId), JSON.stringify(record));
+    const result = await workspaceSecrets.publish({
+      operationId:
+        publicationReceipt?.operationId ??
+        createHash('sha256')
+          .update(
+            JSON.stringify([
+              'tool-source-vault',
+              bungalow.workspaceId,
+              sourceId,
+              snapshot.revision,
+            ]),
+          )
+          .digest('hex'),
+      requestDigest: publicationReceipt?.requestDigest ?? requestDigest,
+      ...(authorize === undefined ? {} : { authorize }),
+      key: toolSourceSecretKey(sourceId),
+      value: JSON.stringify(record),
+      document: parseDocument(snapshot.text, bungalow.configurationLocation),
+      expectedRevision: snapshot.revision,
+    });
+    if (result.outcome !== 'committed') {
+      throw new SecretPublicationError(result.outcome);
+    }
+    return result;
   }
 
   return {
-    credentialNames(sourceId) {
-      const text = stored(sourceId);
+    async credentialNames(sourceId) {
+      const text = await stored(sourceId);
       if (text === undefined) return [];
       return Object.keys(parseStored(sourceId, text).credentials);
     },
-    stored,
-    restore(sourceId, text) {
-      bungalow.writeSecret(toolSourceSecretKey(sourceId), text ?? '');
-    },
     read,
     write,
-    clear(sourceId) {
-      if (bungalow.mode === 'remote') throw new ToolSourceSecretsLockedError();
-      bungalow.writeSecret(toolSourceSecretKey(sourceId), '');
-    },
+    clear: (sourceId, publication, authorize, receipt) =>
+      write(sourceId, NO_SECRETS, publication, authorize, receipt),
     exclusive,
     beginSignIn: (sourceId, signIn, fence) =>
       exclusive(sourceId, async () => {
-        if (fence !== undefined && !(await fence())) return false;
-        const current = await read(sourceId);
+        const snapshot = await bungalow.readConfiguration();
+        if (fence !== undefined && !(await fence(snapshot))) return false;
+        const current = await read(sourceId, snapshot);
         if (current.oauth?.state === undefined) return false;
         await write(sourceId, { ...current, signIn });
         return true;
@@ -358,26 +438,30 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
     tokenStorage(sourceId, turn = 'take', fence) {
       const run = <Result>(work: () => Promise<Result>): Promise<Result> =>
         turn === 'held' ? work() : exclusive(sourceId, work);
-      const fenced = async (work: () => Promise<void>): Promise<void> => {
-        if (fence === undefined || (await fence())) await work();
+      const fenced = async (
+        work: (snapshot: ConfigurationSnapshot) => Promise<void>,
+      ): Promise<void> => {
+        const snapshot = await bungalow.readConfiguration();
+        if (fence === undefined || (await fence(snapshot))) await work(snapshot);
       };
       return {
         load: () =>
           fence === undefined
             ? read(sourceId).then((secrets) => ({ ...secrets.oauth }))
             : run(async () => {
-                if (!(await fence())) return {};
-                const secrets = await read(sourceId);
+                const snapshot = await bungalow.readConfiguration();
+                if (!(await fence(snapshot))) return {};
+                const secrets = await read(sourceId, snapshot);
                 return { ...secrets.oauth };
               }),
         save: (patch) =>
           run(() =>
-            fenced(async () => {
-              const current = await read(sourceId);
+            fenced(async (snapshot) => {
+              const current = await read(sourceId, snapshot);
               // A new `state` is a new sign-in: the one recorded for the old state is not this one's.
               const startsNew = patch.state !== undefined && patch.state !== current.oauth?.state;
               await write(sourceId, {
-                credentials: current.credentials,
+                ...current,
                 oauth: { ...current.oauth, ...patch },
                 signIn: startsNew ? undefined : current.signIn,
               });
@@ -385,12 +469,12 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
           ),
         clear: (names) =>
           run(() =>
-            fenced(async () => {
-              const current = await read(sourceId);
+            fenced(async (snapshot) => {
+              const current = await read(sourceId, snapshot);
               const next = { ...current.oauth };
               for (const name of names) delete next[name];
               await write(sourceId, {
-                credentials: current.credentials,
+                ...current,
                 oauth: next,
                 signIn: names.includes('state') ? undefined : current.signIn,
               });

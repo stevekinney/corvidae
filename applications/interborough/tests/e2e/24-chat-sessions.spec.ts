@@ -326,14 +326,14 @@ test.describe('the list of sessions', () => {
 });
 
 test.describe('a new chat', () => {
-  test('talks to the default agent, which a searchable list changes before the first message', async ({
+  test('talks to the default agent, which a list in the composer changes before the first message', async ({
     page,
   }) => {
     await page.goto('/chats/new');
     const agent = page.getByRole('combobox', { name: 'Agent' });
-    await expect(agent).toHaveValue(E2E_DEFAULT_AGENT);
+    await expect(agent).toContainText(E2E_DEFAULT_AGENT);
 
-    await agent.fill('tool');
+    await agent.click();
     await page.getByRole('option', { name: /tool-runner/i }).click();
 
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)tool-runner$/);
@@ -344,7 +344,7 @@ test.describe('a new chat', () => {
     page,
   }) => {
     await page.goto('/chats/new?agent=demo:tool-runner');
-    await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue('tool-runner');
+    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText('tool-runner');
     // A reload would discard this.
     await page.evaluate(() => {
       Reflect.set(window, '__stillHere', true);

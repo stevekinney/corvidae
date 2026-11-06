@@ -77,6 +77,8 @@ export type Harness = {
 
 export type HarnessOptions = {
   readonly script: readonly ScriptedGenerateStep[];
+  /** Trusted directory shared by HTTP authentication and durable dispatch. */
+  readonly workspace?: Parameters<typeof createBureauHandler>[1]['workspace'];
   readonly toolbox?: Toolbox;
   readonly stopWhen?: StopCondition;
   /** The agents' step cap, where a test needs a run to reach it (COR-1627). */
@@ -172,6 +174,7 @@ async function build(
   if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);
   const bureau = await createBureau<AgentDefinitions>({
     id: 'ag-ui-fixture',
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     agents: {
       ...Object.fromEntries(
         [AGENT, ...(options.otherAgents ?? [])].map((name) => [
@@ -218,6 +221,7 @@ async function build(
   });
   const mount = (agUi: AgUiOptions | undefined): Handler =>
     createBureauHandler(bureau, {
+      ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
       ...(options.authentication === undefined
         ? { unauthenticatedAccess: 'allow' as const }
         : { authentication: options.authentication }),

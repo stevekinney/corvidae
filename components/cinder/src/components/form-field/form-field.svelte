@@ -26,6 +26,7 @@
     description,
     descriptionAction,
     warning,
+    warningAction,
     error,
     errorGlyph,
     errorAction,
@@ -46,6 +47,7 @@
   {description}
   {descriptionAction}
   {warning}
+  {warningAction}
   {error}
   {errorGlyph}
   {errorAction}

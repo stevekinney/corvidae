@@ -22,6 +22,7 @@ import { z } from 'zod';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { noToolCalls } from '../conditions/predicates';
+import { StepStartedEvent } from '../events';
 import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { GenerateContext, GenerateFunction } from '../types';
 import { type CheckpointStore, createCheckpointStore } from './checkpoint-store';
@@ -286,6 +287,54 @@ describe('session input at the durable step boundary (COR-1476)', () => {
       expect(result.steps).toBe(2);
       expect(prompts[0]).toEqual(['Start']);
       expect(prompts[1]).toEqual(['Start', 'also check the tests']);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it("names the inputs a step took on that step's step.started event, and none on the others", async () => {
+    const storage = new MemoryStorage();
+    const mailbox = newMailbox(storage);
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const started: { step: number; sessionInputIds: readonly string[] }[] = [];
+
+    const { engine } = await buildEngine(storage);
+    try {
+      const services = makeServices(
+        async (context: GenerateContext) => {
+          if (context.step === 0) {
+            stepZeroStarted.resolve();
+            await releaseStepZero.promise;
+            return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+          }
+          if (context.step === 1) {
+            return { content: 'still going', toolCalls: [{ name: 'next', arguments: {} }] };
+          }
+          return { content: 'done', toolCalls: [] };
+        },
+        gateOver(mailbox, deliveryStoreOver(storage)),
+      );
+      services.emitter = {
+        dispatch: (event) => {
+          if (event instanceof StepStartedEvent) {
+            started.push({ step: event.step, sessionInputIds: event.sessionInputIds });
+          }
+          return true;
+        },
+      };
+      const handle = await startRun(engine, services);
+      await stepZeroStarted.promise;
+      await admit(mailbox, 'input-a', 'first');
+      await admit(mailbox, 'input-b', 'second');
+      releaseStepZero.resolve();
+      await handle.result();
+
+      expect(started).toEqual([
+        { step: 0, sessionInputIds: [] },
+        { step: 1, sessionInputIds: ['input-a', 'input-b'] },
+        { step: 2, sessionInputIds: [] },
+      ]);
     } finally {
       engine[Symbol.dispose]();
     }

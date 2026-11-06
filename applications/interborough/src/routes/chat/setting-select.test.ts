@@ -2,7 +2,7 @@
  * The effort and permission selects in a session's composer, over a stubbed Bureau: what each sends
  * and with which revision, how each answer ends, and what they do while another setting is changed.
  */
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { CHAT_COPY } from '../../app/copy.ts';
@@ -12,6 +12,15 @@ import {
   StubFault,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
+import {
+  chooseOption,
+  listboxTrigger,
+  optionDescriptions,
+  optionDisabled,
+  optionLabels,
+  shownLabel,
+  shownPrefix,
+} from './listbox.test-support.ts';
 import SettingSelect from './setting-select.svelte';
 
 let stub: BureauStub | undefined;
@@ -25,6 +34,11 @@ const SETTINGS = CHAT_COPY.settings;
 const NOTICES = SETTINGS.effortNotices;
 
 type Props = {
+  options?: readonly {
+    readonly value: string;
+    readonly label: string;
+    readonly description?: string;
+  }[];
   current?: string | null | undefined;
   revision?: number | undefined;
   locked?: boolean;
@@ -45,7 +59,7 @@ function mount(props: Props = {}) {
       sessionId: 'session-1',
       id: 'weft-chat-effort',
       label: SETTINGS.effort,
-      options: SETTINGS.effortOptions,
+      options: props.options ?? SETTINGS.effortOptions,
       current: 'current' in props ? props.current : null,
       ...(props.unsetLabel === undefined ? {} : { unsetLabel: props.unsetLabel }),
       revision: 'revision' in props ? props.revision : 3,
@@ -71,20 +85,20 @@ function mount(props: Props = {}) {
   return { ...view, events, reloads };
 }
 
-function select(container: HTMLElement): HTMLSelectElement {
-  const found = container.querySelector('select');
-  if (found === null) throw new Error('The select did not render.');
-  return found;
+const select = (container: HTMLElement): HTMLButtonElement => listboxTrigger(container);
+
+/** Chooses the option whose value is `value`, by the words it is listed with. */
+async function choose(container: HTMLElement, value: string): Promise<void> {
+  const option = SETTINGS.effortOptions.find((entry) => entry.value === value);
+  if (option === undefined) throw new Error(`The select lists no ${value}.`);
+  await chooseOption(container, option.label);
 }
 
-const choose = (container: HTMLElement, value: string) =>
-  fireEvent.change(select(container), { target: { value } });
-
 describe('the select’s options', () => {
-  test('lists the choices, and says the setting is the agent’s while the chat has none of its own', () => {
+  test('lists the choices, and says the setting is the agent’s while the chat has none of its own', async () => {
     const { container } = mount({ current: null, unsetLabel: SETTINGS.agentDefault });
 
-    expect([...select(container).options].map((option) => option.textContent)).toEqual([
+    expect(await optionLabels(container)).toEqual([
       SETTINGS.agentDefault,
       'Low',
       'Medium',
@@ -92,14 +106,36 @@ describe('the select’s options', () => {
       'Extra high',
       'Max',
     ]);
-    expect(select(container).selectedOptions[0]?.disabled).toBe(true);
+    const disabled = await optionDisabled(container);
+    expect(disabled[0]).toBe(true);
+    expect(shownLabel(container)).toBe(SETTINGS.agentDefault);
   });
 
-  test('shows the setting the chat has, with no placeholder when the setting always has a value', () => {
+  test('shows the setting the chat has, with no placeholder when the setting always has a value', async () => {
     const { container } = mount({ current: 'high' });
 
-    expect(select(container).value).toBe('high');
-    expect([...select(container).options]).toHaveLength(5);
+    expect(shownLabel(container)).toBe('High');
+    expect(await optionLabels(container)).toHaveLength(5);
+  });
+
+  test('is a ghost listbox that names the setting before its value', () => {
+    const { container } = mount({ current: 'high' });
+
+    expect(shownPrefix(container)).toBe(SETTINGS.effort);
+    expect(container.querySelector('.cinder-select')?.getAttribute('data-cinder-variant')).toBe(
+      'ghost',
+    );
+  });
+
+  test('gives each option its help line when the setting has them', async () => {
+    const { container } = mount({
+      current: 'on-changes',
+      options: SETTINGS.permissionOptions,
+    });
+
+    expect(await optionDescriptions(container)).toEqual(
+      SETTINGS.permissionOptions.map((option) => option.description),
+    );
   });
 
   test('is changing a setting, so it is marked as one', () => {
@@ -130,15 +166,14 @@ describe('choosing', () => {
     expect(typeof params?.['commandId']).toBe('string');
     expect(reloads).toHaveLength(1);
     // The session read again is what shows from then on, and this one is read as it was.
-    expect(select(container).value).toBe('low');
+    expect(shownLabel(container)).toBe('Low');
   });
 
-  test('sends nothing for the choice already shown, or for one it does not list', async () => {
+  test('sends nothing for the choice already shown', async () => {
     const served = serve(() => ({ outcome: 'accepted', command: {} }));
     const { container } = mount({ current: 'low' });
 
     await choose(container, 'low');
-    await choose(container, 'bogus');
 
     expect(served.callsTo('bureau.contexts.steer')).toHaveLength(0);
   });
@@ -150,7 +185,7 @@ describe('choosing', () => {
     await choose(container, 'high');
 
     await waitFor(() => expect(events).toEqual(['busy', 'applied', 'idle']));
-    expect(select(container).value).toBe('high');
+    expect(shownLabel(container)).toBe('High');
   });
 
   test('restores the previous choice and says why when the Bureau refuses it', async () => {
@@ -163,7 +198,7 @@ describe('choosing', () => {
     await choose(container, 'max');
 
     expect(await findByText(NOTICES.denied)).not.toBeNull();
-    expect(select(container).value).toBe('low');
+    expect(shownLabel(container)).toBe('Low');
     expect(events).not.toContain('applied');
   });
 
@@ -178,7 +213,7 @@ describe('choosing', () => {
 
     expect(await findByText(NOTICES.staleRevision)).not.toBeNull();
     expect(reloads).toHaveLength(1);
-    expect(select(container).value).toBe('low');
+    expect(shownLabel(container)).toBe('Low');
   });
 
   test('says what the Bureau’s own reason is for a request it refused outright', async () => {
@@ -192,7 +227,7 @@ describe('choosing', () => {
     await choose(container, 'max');
 
     expect(await findByText('No such effort in the catalog.')).not.toBeNull();
-    expect(select(container).value).toBe('low');
+    expect(shownLabel(container)).toBe('Low');
   });
 
   test('reads the session again after a fault, since nobody knows whether the Bureau took the change', async () => {
@@ -205,7 +240,7 @@ describe('choosing', () => {
 
     expect(await findByText(NOTICES.fault)).not.toBeNull();
     expect(reloads).toHaveLength(1);
-    expect(select(container).value).toBe('low');
+    expect(shownLabel(container)).toBe('Low');
   });
 
   test('says it was not changed for an answer with no setting of its own, such as a conflicting command or a closing Bureau', async () => {

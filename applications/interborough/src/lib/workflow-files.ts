@@ -36,6 +36,8 @@ const fileSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   owner: z.string(),
   hash: z.string().nullable(),
+  /** The name a person reads, when the file gives one; an invalid file has none. */
+  title: z.string().nullable().optional(),
   /** What the workflow is for, in a sentence, when the file says. */
   description: z.string().nullable(),
   agent: z.string().nullable(),
@@ -47,6 +49,8 @@ const fileSchema = z.object({
   version: z.string().nullable(),
   /** The trigger as written (`kind`, and `spec` or `name`), for a file that loaded. */
   trigger: z.record(z.string(), z.unknown()).nullable(),
+  /** The steps as written, for a file that loaded; each agent step names the agent it runs in `input.agent`. */
+  steps: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
   problem: problemSchema.nullable(),
 });
 
@@ -208,6 +212,31 @@ export async function listWorkflowRevisions(
     .revisions;
 }
 
+const historySchema = z.object({
+  revisions: z.array(
+    z.object({
+      current: z.boolean(),
+      steps: z.array(z.record(z.string(), z.unknown())),
+    }),
+  ),
+});
+
+/**
+ * The steps of the newest version the Bureau saved of a workflow's file, as `bureau.workflows.history`
+ * lists them. Unlike {@link listWorkflowRevisions} it holds a version that never ran, and it still
+ * answers for a workflow whose file cannot load or was deleted, so a schedule row can say which
+ * agent such a workflow ran. `undefined` when the workflow has no saved version.
+ */
+export async function getLatestSavedSteps(
+  id: string,
+  options?: Options,
+): Promise<readonly Readonly<Record<string, unknown>>[] | undefined> {
+  const { revisions } = historySchema.parse(
+    await callBureau('bureau.workflows.history', { id }, options),
+  );
+  return revisions[0]?.steps;
+}
+
 /** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */
 export async function getCodeWorkflow(id: string, options?: Options): Promise<CodeWorkflow> {
   return codeWorkflowSchema.parse(
@@ -266,10 +295,49 @@ const runSummarySchema = z.object({
   ]),
   createdAt: z.string(),
   updatedAt: z.string(),
+  origin: z
+    .discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('chat'),
+        contextId: z.string(),
+        agentName: z.string(),
+        principal: z.string(),
+      }),
+      z.object({
+        kind: z.literal('person'),
+        principal: z.string(),
+        surface: z.enum(['web', 'palette', 'api']),
+      }),
+      z.object({
+        kind: z.literal('schedule'),
+        scheduleId: z.string(),
+        fireId: z.string(),
+        manual: z.literal(true).optional(),
+      }),
+      z.object({ kind: z.literal('api') }),
+      z.object({
+        kind: z.literal('agent'),
+        parentRunId: z.string(),
+        parentContextId: z.string().optional(),
+        agentName: z.string(),
+        toolCallId: z.string().optional(),
+      }),
+      z.object({ kind: z.literal('agent-run'), runId: z.string(), agentId: z.string() }),
+      z.object({ kind: z.literal('goal'), goalRunId: z.string(), attemptId: z.string() }),
+      z.object({ kind: z.literal('parent'), parentRunId: z.string() }),
+      z.object({ kind: z.literal('system') }),
+    ])
+    .nullable()
+    .default(null),
 });
 
 /** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */
-export type WorkflowFileRun = z.infer<typeof runSummarySchema>;
+type ParsedWorkflowFileRun = z.infer<typeof runSummarySchema>;
+/** One workflow-file run summary returned by the Bureau list operation. */
+export type WorkflowFileRun = Omit<ParsedWorkflowFileRun, 'origin'> & {
+  /** Older fixtures and Bureau versions omit this field; the decoder defaults it to `null`. */
+  readonly origin?: ParsedWorkflowFileRun['origin'];
+};
 
 const runDetailSchema = runSummarySchema.extend({
   trigger: z.unknown(),
@@ -280,7 +348,11 @@ const runDetailSchema = runSummarySchema.extend({
 });
 
 /** One instance of a workflow file with what started it and how it ended (`bureau.workflows.runs.get`). */
-export type WorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
+type ParsedWorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
+/** One workflow-file run detail returned by the Bureau get operation. */
+export type WorkflowFileRunDetail = Omit<ParsedWorkflowFileRunDetail, 'origin'> & {
+  readonly origin?: ParsedWorkflowFileRunDetail['origin'];
+};
 
 /**
  * One instance of a workflow file, by the identifier `bureau.workflows.start` or a trigger gave it.

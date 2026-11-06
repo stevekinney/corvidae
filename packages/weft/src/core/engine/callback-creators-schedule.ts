@@ -58,7 +58,9 @@ export function createScheduleCallbacks<TWorkflows extends object, TActivities e
       );
     },
     loadWorkflowState: (workflowId) => loadWorkflowState(getInternals(engine), workflowId),
-    cancelWorkflow: (workflowId) => engine.cancel(workflowId),
+    cancelWorkflow: async (workflowId) => {
+      await engine.cancel(workflowId);
+    },
     getWorkflowResult: (workflowId) => engine.getHandle(workflowId).result(),
     refreshScheduledWorkflowState: (state) => refreshScheduledWorkflowStateForEngine(engine, state),
     startScheduledRun: (state, options) => startScheduledRunForEngine(engine, state, options),

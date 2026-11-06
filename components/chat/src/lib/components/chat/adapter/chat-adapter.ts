@@ -148,11 +148,24 @@ export type ChatAdapter = {
    * the transcript until the first is acknowledged.
    */
   ordersRunInput?: boolean;
+  /**
+   * Take back a follow-up the run has not taken yet: the Remove on a queued
+   * message in the transcript presentation. The returned promise resolves once
+   * the follow-up is settled: its row has left the transcript, or, when the run
+   * had already taken it, reads as a sent message. A rejection leaves the row
+   * queued. Chat offers Remove on a queued message only when this is provided
+   * (or the host passes `onRemoveQueued`). The session controller exposes it when
+   * its host can retract input (`retractRunInput`).
+   */
+  removeRunInput?: (messageId: string) => Promise<void>;
   /** Retry a previously-failed message by id. */
   retryMessage?: (messageId: string) => Promise<void>;
   /** Commit an edit to a user message. */
   editMessage?: (event: { messageId: string; content: string }) => Promise<void>;
-  /** Stop an in-progress generation for a message. */
+  /**
+   * Stop an in-progress generation for a message: the latest reply, or the latest message when
+   * no reply has a row yet (a run the host shows as reconnecting may have written none).
+   */
   stopGenerating?: (messageId: string) => Promise<void>;
   /**
    * Load a page of older messages for the given conversation. Returns whether
@@ -220,6 +233,7 @@ export type ChatAdapter = {
 export type ChatCommand =
   | 'sendMessage'
   | 'sendRunInput'
+  | 'removeRunInput'
   | 'retryMessage'
   | 'editMessage'
   | 'stopGenerating'

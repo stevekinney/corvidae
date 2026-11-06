@@ -94,6 +94,16 @@
     transform: rotate(180deg);
   }
 
+  /* A chevron before the label points right and turns down as the disclosure opens. */
+  .cinder-collapsible[data-cinder-chevron='start'] .cinder-collapsible__chevron {
+    transform: rotate(-90deg);
+  }
+
+  .cinder-collapsible[data-cinder-chevron='start'][data-cinder-expanded]
+    .cinder-collapsible__chevron {
+    transform: rotate(0deg);
+  }
+
   .cinder-collapsible[data-cinder-disabled] .cinder-collapsible__chevron {
     opacity: 0.4;
   }

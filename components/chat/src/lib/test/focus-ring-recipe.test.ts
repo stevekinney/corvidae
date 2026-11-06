@@ -120,7 +120,6 @@ describe('Chat focus-ring recipes', () => {
     ],
     ['chat search navigation', styles.searchBar, '.chat-search-nav-button:focus-visible'],
     ['chat jump button', styles.jumpControls, '.chat-jump-button:focus-visible'],
-    ['chat send button', styles.input, '.chat-input-send:focus-visible'],
     ['chat message row', styles.message, '.chat-message:focus-visible'],
     ['chat message expand', styles.message, '.chat-message-expand:focus-visible'],
     ['chat message retry', styles.message, '.chat-message-retry:focus-visible'],
@@ -159,14 +158,15 @@ describe('Chat focus-ring recipes', () => {
     expect(declarationValue(fallback!, 'outline')).not.toContain('transparent');
   });
 
-  test('the filled send button paints the filled ring; the tinted stop state does not', () => {
-    const filled = findRules(styles.input, '.chat-input-send:not([data-stop]):focus-visible').find(
-      (rule) => !isUnderForcedColors(rule),
+  test('Send, Answer and Stop are Cinder secondary buttons, so the ring is Cinder own', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../components/chat/input/chat-input.svelte', import.meta.url)),
+      'utf8',
     );
-    expect(declarationValue(filled!, 'box-shadow')).toBe(FILLED_BOX_SHADOW);
-  });
-
-  test('stop state does not override the shared send-button focus ring', () => {
+    expect(source).toMatch(
+      /data-chat-send=""[\s\S]*?variant="secondary"|variant="secondary"[\s\S]*?data-chat-send=""/,
+    );
+    expect(findRules(styles.input, '.chat-input-send:focus-visible')).toEqual([]);
     expect(findRules(styles.input, '.chat-input-send[data-stop]:focus-visible')).toEqual([]);
   });
 
@@ -211,19 +211,6 @@ describe('Chat focus-ring recipes', () => {
   });
 });
 
-function isUnderMedia(node: Node, query: RegExp): boolean {
-  let current = node.parent;
-  while (current) {
-    if (current.type === 'atrule' && (current as AtRule).name.toLowerCase() === 'media') {
-      if (query.test((current as AtRule).params)) return true;
-    }
-    current = current.parent;
-  }
-  return false;
-}
-
-const COARSE_POINTER = /\(\s*any-pointer\s*:\s*coarse\s*\)/i;
-
 describe('Chat composer controls (COR-1552)', () => {
   test('the input area has no top rule', () => {
     const rules = findRules(styles.chatImplementation, '.chat-input-area');
@@ -240,37 +227,15 @@ describe('Chat composer controls (COR-1552)', () => {
     expect(declarationValue(frame!, 'border')).toBe('1px solid var(--cinder-control-border)');
   });
 
-  test('the send button is 32px square with the medium radius', () => {
-    const base = findRules(styles.input, '.chat-input-send').find(
-      (rule) => !isUnderForcedColors(rule) && !isUnderMedia(rule, COARSE_POINTER),
+  test('Stop keeps a danger border on the secondary button; Cinder draws the quiet disabled Send', () => {
+    const stop = findRules(
+      styles.input,
+      '.chat-input-footer-right :global(.chat-input-send[data-stop])',
     );
-    expect(declarationValue(base!, 'width')).toBe('2rem');
-    expect(declarationValue(base!, 'height')).toBe('2rem');
-    expect(declarationValue(base!, 'border-radius')).toBe('var(--cinder-radius-md)');
-  });
-
-  test('the disabled send button is transparent with no inset ring', () => {
-    const disabled = findRules(styles.input, '.chat-input-send:disabled')[0];
-    expect(declarationValue(disabled!, 'background')).toBe('transparent');
-    const shadow = declarationValue(disabled!, 'box-shadow');
-    expect(shadow === undefined || shadow === 'none').toBe(true);
-  });
-
-  test('a coarse pointer gets a hit area of at least the 44px touch target', () => {
-    const hitArea = findRules(styles.input, '.chat-input-send::after').find((rule) =>
-      isUnderMedia(rule, COARSE_POINTER),
-    );
-    expect(hitArea).toBeDefined();
-    expect(declarationValue(hitArea!, 'content')).toBe("''");
-    expect(declarationValue(hitArea!, 'position')).toBe('absolute');
-    expect(declarationValue(hitArea!, 'inset')).toContain(
-      '(var(--cinder-touch-target-min) - 2rem) / -2',
-    );
-    // The stop state draws a 1px border, which the extension is measured inside of.
-    expect(declarationValue(hitArea!, 'inset')).toContain('var(--_cinder-chat-send-edge)');
-    const base = findRules(styles.input, '.chat-input-send').find(
-      (rule) => !isUnderForcedColors(rule) && !isUnderMedia(rule, COARSE_POINTER),
-    );
-    expect(declarationValue(base!, 'position')).toBe('relative');
+    expect(stop.length).toBeGreaterThan(0);
+    expect(declarationValue(stop[0]!, 'border-color')).toBe('var(--cinder-status-danger-border)');
+    // The shape, the disabled look and the touch target belong to Cinder's Button.
+    expect(findRules(styles.input, '.chat-input-send:disabled')).toEqual([]);
+    expect(findRules(styles.input, '.chat-input-send::after')).toEqual([]);
   });
 });

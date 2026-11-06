@@ -190,6 +190,10 @@ describe('showcaseHostOptions', () => {
     expect(options.storageSizeReportIntervalMilliseconds).toBe(0);
   });
 
+  test('starts at the version the audit log names, 2.4.1 (row 82h)', () => {
+    expect(showcaseHostOptions().version).toBe('2.4.1');
+  });
+
   test('delivers hooks through a fetch that answers 200 itself and posts nowhere', async () => {
     expect(showcaseHostOptions().hookFetch).toBe(showcaseHookFetch);
     const response = await showcaseHookFetch('https://events.pagerduty.com/v2/enqueue', {

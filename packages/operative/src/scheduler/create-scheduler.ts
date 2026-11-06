@@ -1048,7 +1048,9 @@ export function createScheduler(options: CreateSchedulerOptions): Scheduler {
     // shutdown-hang on a suspended run in one pass.
     for (const task of queue) {
       if (durable && task['__resume']) {
-        durableCancellations.push(durable.engine.cancel(task['__resume'].runId));
+        durableCancellations.push(
+          durable.engine.cancel(task['__resume'].runId).then(() => undefined),
+        );
       }
       const resolver = taskResolvers.get(task.id);
       if (resolver) {
@@ -1075,7 +1077,9 @@ export function createScheduler(options: CreateSchedulerOptions): Scheduler {
         // in-memory abort-on-stop path (Bugbot: stop must not reject durable
         // submit promises).
         cancelledRunningTasks.add(runningTask.task.id);
-        durableCancellations.push(durable.engine.cancel(runningTask.durableRunId));
+        durableCancellations.push(
+          durable.engine.cancel(runningTask.durableRunId).then(() => undefined),
+        );
       } else {
         runningTask.abortController.abort('scheduler-stopped');
       }

@@ -64,10 +64,25 @@ export const SHOWCASE_ASSISTANT_REPLY = 'Hello! How can I help?';
 /** What Echo says when the conversation holds no user message with text to repeat. */
 export const SHOWCASE_ECHO_NOTHING_TO_REPEAT = 'There was no message to repeat.';
 
-/** The question Request human input asks, and the signal it parks on while it waits. */
+/**
+ * The question Request human input asks, the signal it parks on while it waits, and the answer it
+ * takes: Staging or Production, each with the sentence that says what choosing it does, or
+ * the person's own words. The schema is the payload every surface draws the question from.
+ */
 export const SHOWCASE_HUMAN_INPUT = {
   signal: 'environment',
   prompt: 'Which environment should the release go to?',
+  /** What the agent says before it asks, in the same reply as the question. */
+  preface: 'Before I ship it I need one answer.',
+  answerSchema: {
+    anyOf: [{ enum: ['staging', 'production'] }, { type: 'string', maxLength: 500 }],
+    'x-allowOther': true,
+    'x-labels': { staging: 'Staging', production: 'Production' },
+    'x-descriptions': {
+      staging: 'Deploys to the staging site',
+      production: 'Deploys to the live site',
+    },
+  },
 } as const;
 
 /** What Workflow author says: it drafts, and asks before it creates the file. */
@@ -241,13 +256,14 @@ function replyResponse(content: string): GenerateResponse {
   return { content, toolCalls: [] };
 }
 
-/** A response that calls the tool `name` with `argumentsObject`, as the call `id`. */
+/** A response that calls the tool `name` with `argumentsObject`, as the call `id`, after saying `content`. */
 function callResponse(
   name: string,
   argumentsObject: Record<string, unknown>,
   id: string,
+  content = '',
 ): GenerateResponse {
-  return { content: '', toolCalls: [{ id, name, arguments: argumentsObject }] };
+  return { content, toolCalls: [{ id, name, arguments: argumentsObject }] };
 }
 
 /** `count` copies of one scripted reply, so a scripted agent can serve run after run. */
@@ -362,8 +378,13 @@ export function showcaseHumanInputGenerate(): GenerateFunction {
     const asked = messages.filter((message) => message.toolCall !== undefined).length;
     return callResponse(
       'requestHumanInput',
-      { signalName: SHOWCASE_HUMAN_INPUT.signal, prompt: SHOWCASE_HUMAN_INPUT.prompt },
+      {
+        signalName: SHOWCASE_HUMAN_INPUT.signal,
+        prompt: SHOWCASE_HUMAN_INPUT.prompt,
+        answerSchema: SHOWCASE_HUMAN_INPUT.answerSchema,
+      },
       `showcase-requestHumanInput-${String(asked + 1)}`,
+      SHOWCASE_HUMAN_INPUT.preface,
     );
   };
 }

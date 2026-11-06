@@ -19,6 +19,21 @@ export function conversation(page: Page): Locator {
   return page.getByRole('region', { name: 'Conversation' });
 }
 
+/**
+ * Opens the composer's Settings control when it has folded Model, Effort and Permissions into one
+ * (a composer narrower than 40rem, as at a phone's width), so the three selects are on the page.
+ * A composer wide enough to show them beside Send has no such control, and this does nothing.
+ */
+export async function revealSettings(page: Page): Promise<void> {
+  const composer = page.locator('.chat-input').first();
+  await expect(composer).toBeVisible();
+  // The composer folds below 40rem (`COMPOSER_FOLD_WIDTH` in `@lostgradient/chat`), of its own width.
+  const box = await composer.boundingBox();
+  if (box === null || box.width >= 40 * 16) return;
+  const settings = page.getByRole('button', { name: 'Settings: Model, Effort and Permissions' });
+  if ((await settings.getAttribute('aria-expanded')) !== 'true') await settings.click();
+}
+
 /** A thread identifier no other case uses. */
 export function newThreadId(label: string): string {
   return `e2e-${label}-${crypto.randomUUID()}`;

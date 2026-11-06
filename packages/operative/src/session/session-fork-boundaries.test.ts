@@ -183,7 +183,7 @@ describe('terminal conversation boundaries on durable and failure paths', () => 
         store,
         agentName: 'durable-agent',
         engine: createSessionEngine({
-          cancel: async () => {},
+          cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
           get: async (id: string) => ({
             id,
             status: 'completed',

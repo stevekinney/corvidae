@@ -40,6 +40,12 @@ const schema = {
       description: 'Whether old and new line-number gutters are rendered.',
       default: true,
     },
+    headers: {
+      type: 'boolean',
+      description:
+        "Whether each file's header (its path) and each hunk's header (its line ranges) are drawn. Turn\nthem off for a change to one thing that has no file, such as an agent's instructions, where the\nrows alone are the diff.",
+      default: true,
+    },
     class: {
       type: 'string',
       description: 'Additional CSS classes merged with `.cinder-source-diff-viewer`.',

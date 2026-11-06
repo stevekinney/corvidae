@@ -21,7 +21,12 @@ import {
   type ToolSourceManager,
   type ToolSourceState,
 } from './tool-source-manager.ts';
-import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import {
+  activeFixtureSecret,
+  fixtureToolSourceMutation,
+  keysOf,
+  memoryHome,
+} from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import {
   petsDocument,
@@ -107,6 +112,7 @@ async function homeWithPets(mode: 'local' | 'remote' = 'local') {
   const home = mode === 'local' ? local : memoryHome(mode);
   home.state.configuration = local.state.configuration;
   for (const [name, value] of local.state.secrets) home.state.secrets.set(name, value);
+  for (const [version, value] of local.state.versions) home.state.versions.set(version, value);
   return { home, keys };
 }
 
@@ -171,11 +177,19 @@ describe('a remote home', () => {
   test('still previews the affected agents, and refuses the removal with the reason deployment', async () => {
     const { home, keys } = await homeWithPets('remote');
     const { manager, audited } = await started(home, { keys });
-    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => owner });
+    const routes = toolSourceRoutes(manager, () => undefined, {
+      mutation: fixtureToolSourceMutation(manager, owner),
+    });
     const request = (method: string, path: string) =>
-      Object.assign(new Request(`http://127.0.0.1${path}`, { method }), {
-        params: { id: 'pets' },
-      });
+      Object.assign(
+        new Request(`http://127.0.0.1${path}`, {
+          method,
+          ...(method === 'DELETE' ? { body: '{}' } : {}),
+        }),
+        {
+          params: { id: 'pets' },
+        },
+      );
 
     const preview = await routes['/host/tool-sources/:id/affected-agents'].GET(
       request(
@@ -230,7 +244,7 @@ function gatedFetch() {
 
 /** What the source's secret holds, parsed; an empty secret is an empty record. */
 function storedSecret(home: ReturnType<typeof memoryHome>, id: string) {
-  const text = home.state.secrets.get(toolSourceSecretKey(id)) ?? '';
+  const text = activeFixtureSecret(home, toolSourceSecretKey(id)).value;
   return text === '' ? {} : (JSON.parse(text) as { credentials?: object; oauth?: unknown });
 }
 
@@ -255,7 +269,8 @@ describe('a sign-in that is starting when its source is removed', () => {
 
     expect(failure).toBeInstanceOf(ToolSourceInputError);
     expect((failure as ToolSourceInputError).kind).toBe('unknown-source');
-    expect(home.state.secrets.get(toolSourceSecretKey('calendar')) ?? '').toBe('');
+    expect(storedSecret(home, 'calendar')).toMatchObject({ credentials: {} });
+    expect(storedSecret(home, 'calendar')).not.toHaveProperty('oauth');
   });
 
   test('leaves the OAuth state of the old sign-in out of a source added again under the same id', async () => {
@@ -473,7 +488,8 @@ describe('the tools of a removed source', () => {
 
         expect(failure).toBeInstanceOf(Error);
         expect(service.requests).toHaveLength(1);
-        expect(home.state.secrets.get(toolSourceSecretKey('pets')) ?? '').toBe('');
+        expect(storedSecret(home, 'pets')).toMatchObject({ credentials: {} });
+        expect(storedSecret(home, 'pets')).not.toHaveProperty('oauth');
       });
     }
   }

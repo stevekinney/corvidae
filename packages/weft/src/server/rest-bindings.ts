@@ -35,6 +35,11 @@ import {
   runConformanceReportRestBinding,
 } from './operations/conformance.ts';
 import {
+  createForgetWorkerOperation,
+  createForgetWorkerRestBinding,
+  forgetWorkerOperation,
+} from './operations/forget-worker.ts';
+import {
   createGetSystemMetricsOperation,
   createGetSystemMetricsRestBinding,
 } from './operations/get-system-metrics.ts';
@@ -137,6 +142,7 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
     createListWorkersRestBinding(),
     createDrainWorkerRestBinding(),
     createClearWorkerDrainRestBinding(),
+    createForgetWorkerRestBinding(),
     createDrainDeploymentRestBinding(),
     createClearDeploymentDrainRestBinding(),
     createListTaskQueuesRestBinding(),
@@ -229,6 +235,11 @@ function buildDrainWorkerOperationForRegistry(options: LiveOperationRegistryOpti
 function buildClearWorkerDrainOperationForRegistry(options: LiveOperationRegistryOptions) {
   if (options.workerRegistry === undefined) return clearWorkerDrainOperation;
   return createClearWorkerDrainOperation({ workerRegistry: options.workerRegistry });
+}
+
+function buildForgetWorkerOperationForRegistry(options: LiveOperationRegistryOptions) {
+  if (options.workerRegistry === undefined) return forgetWorkerOperation;
+  return createForgetWorkerOperation({ workerRegistry: options.workerRegistry });
 }
 
 function buildDrainDeploymentOperationForRegistry(options: LiveOperationRegistryOptions) {
@@ -403,6 +414,7 @@ export function createLiveOperationRegistry(
     buildListWorkersOperationForRegistry(resolved),
     buildDrainWorkerOperationForRegistry(resolved),
     buildClearWorkerDrainOperationForRegistry(resolved),
+    buildForgetWorkerOperationForRegistry(resolved),
     buildDrainDeploymentOperationForRegistry(resolved),
     buildClearDeploymentDrainOperationForRegistry(resolved),
     buildListTaskQueuesOperationForRegistry(resolved),

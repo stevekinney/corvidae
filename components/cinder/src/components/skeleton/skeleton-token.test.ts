@@ -37,3 +37,12 @@ describe('skeleton fill token', () => {
     expect(card?.[0]).toContain('background: var(--cinder-surface);');
   });
 });
+
+describe('skeleton list rows with no status word', () => {
+  test('keep the marker beside the text in a narrow container (row 76x)', () => {
+    const narrow = skeletonCss.slice(skeletonCss.indexOf('@container cinder-skeleton'));
+    const rule = narrow.slice(narrow.indexOf("[data-cinder-status-column='none']"));
+    expect(rule.replace(/\s+/g, ' ')).toContain("grid-template-areas: 'status text time'");
+    expect(rule.replace(/\s+/g, ' ')).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
+  });
+});

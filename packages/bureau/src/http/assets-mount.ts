@@ -1,3 +1,4 @@
+import { workspaceOwnerAuthority, type WorkspaceMembershipOptions } from './workspace-principal.ts';
 /**
  * The asset content route of `createBureauHandler` (COR-1547): `GET /assets/{assetId}/content`
  * streams an asset's bytes to the caller that owns it, or may read it.
@@ -85,7 +86,10 @@ function streamOf(bytes: Uint8Array): ReadableStream<Uint8Array> {
   });
 }
 
-export function createAssetsMount(assets: AssetService): OperationHandlerMount {
+export function createAssetsMount(
+  assets: AssetService,
+  workspace?: WorkspaceMembershipOptions,
+): OperationHandlerMount {
   return {
     pathPrefix: ASSETS_PATH_PREFIX,
     fetch: async (request, { principal }) => {
@@ -108,7 +112,10 @@ export function createAssetsMount(assets: AssetService): OperationHandlerMount {
       const owner = ownerOfPrincipal(principal);
       if (owner === undefined) return notFound(assetId);
       try {
-        const { descriptor, content } = await assets.resolve({ assetId }, { id: owner });
+        const { descriptor, content } = await assets.resolve(
+          { assetId },
+          { id: owner, workspaceAuthority: workspaceOwnerAuthority(workspace, principal) },
+        );
         if (content.kind !== 'bytes') return notFound(assetId);
         const mediaType = descriptor.mediaType ?? FALLBACK_MEDIA_TYPE;
         return new Response(streamOf(content.bytes), {

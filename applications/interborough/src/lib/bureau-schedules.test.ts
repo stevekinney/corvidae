@@ -35,7 +35,7 @@ const VIEW = {
   revision: 1,
   timeZone: 'UTC',
   nextFireAt: null,
-  skipUntil: null,
+  skippedOccurrences: [],
   lastFireAt: null,
   missedFireCount: 0,
   skippedCount: 0,
@@ -193,11 +193,15 @@ describe('the controls of a Bureau schedule', () => {
     expect(stub.callsTo('bureau.schedules.missed')[0]?.params).toEqual({ scheduleId: 's-1' });
   });
 
-  test('read the zone and the skipped fire of a schedule', async () => {
+  test('read the zone and the skipped fires of a schedule', async () => {
     stub = installBureauStub({
       'bureau.schedules.list': () => ({
         schedules: [
-          { ...VIEW, timeZone: 'America/Los_Angeles', skipUntil: '2026-10-20T16:00:00.000Z' },
+          {
+            ...VIEW,
+            timeZone: 'America/Los_Angeles',
+            skippedOccurrences: ['2026-10-20T16:00:00.000Z'],
+          },
         ],
         nextOffset: null,
       }),
@@ -205,6 +209,6 @@ describe('the controls of a Bureau schedule', () => {
 
     const [schedule] = await listBureauSchedules();
     expect(schedule?.timeZone).toBe('America/Los_Angeles');
-    expect(schedule?.skipUntil).toBe('2026-10-20T16:00:00.000Z');
+    expect(schedule?.skippedOccurrences).toEqual(['2026-10-20T16:00:00.000Z']);
   });
 });

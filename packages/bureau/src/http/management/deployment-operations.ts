@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.deployment.get` and `bureau.agents.list`: what this Bureau is, and which
  * agents it has. Neither reads a resource with an owner.
@@ -75,6 +77,11 @@ export function agentsVisibleTo(
 }
 
 function holdsWideView(principal: Principal): boolean {
+  if (principal.method !== 'unauthenticated' && principal.workspace !== undefined)
+    return (
+      principal.workspace.actorKind !== 'service' &&
+      principal.workspace.capabilities.includes('workspace:use')
+    );
   return principal.method !== 'unauthenticated' && principal.hasScope(AGENTS_WIDE_VIEW_SCOPE);
 }
 
@@ -173,6 +180,7 @@ export const deploymentGetOperation = defineOperation<
   BureauDeploymentOperationHost
 >({
   name: 'bureau.deployment.get',
+  authorize: authorizeWorkspaceOperation('bureau.deployment.get'),
   mcpExposable: false,
   summary: 'Describe this deployment',
   description:
@@ -226,6 +234,7 @@ export const agentsListOperation = defineOperation<
   BureauDeploymentOperationHost
 >({
   name: 'bureau.agents.list',
+  authorize: authorizeWorkspaceOperation('bureau.agents.list'),
   mcpExposable: true,
   summary: 'List the agents the caller may see',
   description:

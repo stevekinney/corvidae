@@ -473,7 +473,15 @@ describe('connecting a provider', () => {
     // The test came first and stored nothing; the save followed it.
     expect((host?.requests ?? []).filter((request) => request.method !== 'GET')).toEqual([
       { method: 'POST', path: '/host/providers/openai/test', body: { apiKey: KEY } },
-      { method: 'PUT', path: '/host/providers/openai', body: { apiKey: KEY } },
+      {
+        method: 'PUT',
+        path: '/host/providers/openai',
+        body: {
+          apiKey: KEY,
+          operationId: expect.any(String),
+          expectedRevision: JSON.stringify([{ anthropic: true, openai: false, gemini: false }, []]),
+        },
+      },
     ]);
     expect(dialog.textContent).toContain(copy.subtitle.connected);
     const banner = within(dialog).getByTestId('provider-connect-success');
@@ -925,7 +933,10 @@ describe('removing a provider’s key', () => {
     expect(writes()[0]).toEqual({
       method: 'DELETE',
       path: '/host/providers/anthropic',
-      body: undefined,
+      body: {
+        operationId: expect.any(String),
+        expectedRevision: JSON.stringify([{ anthropic: true, openai: false, gemini: false }, []]),
+      },
     });
     await waitFor(() =>
       expect(rowOf(container, 'anthropic/claude-sonnet-5')?.outerHTML ?? null).toBeNull(),

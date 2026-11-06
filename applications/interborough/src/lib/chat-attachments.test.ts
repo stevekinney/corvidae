@@ -155,19 +155,41 @@ describe('a text file, which is sent as a document part (A1)', () => {
 describe('the words for an attachment that cannot be attached', () => {
   const big = file('image/png');
 
-  test('tooLarge names the limit', () => {
-    expect(CHAT_COPY.attachments.tooLarge(10 * MIB)).toBe(
-      'This file is larger than the 10 MB this agent accepts.',
+  test('tooLarge names the file’s size and the limit', () => {
+    expect(CHAT_COPY.attachments.tooLarge(28 * MIB, 10 * MIB)).toBe(
+      'Can’t attach: 28 MB is over the 10 MB limit.',
     );
     expect(
-      chatAttachmentErrorMessage({ kind: 'too-large', file: big, maxFileSize: 10 * MIB }),
-    ).toBe(CHAT_COPY.attachments.tooLarge(10 * MIB));
+      chatAttachmentErrorMessage({
+        kind: 'too-large',
+        file: file('image/png', 28 * MIB),
+        maxFileSize: 10 * MIB,
+      }),
+    ).toBe('Can’t attach: 28 MB is over the 10 MB limit.');
   });
 
-  test('typeNotAccepted', () => {
+  test('typeNotAccepted names the file’s type and the types the agent takes', () => {
     expect(
-      chatAttachmentErrorMessage({ kind: 'type-not-accepted', file: big, acceptedTypes: [] }),
-    ).toBe(CHAT_COPY.attachments.typeNotAccepted);
+      chatAttachmentErrorMessage({
+        kind: 'type-not-accepted',
+        file: new File(['x'], 'scan.tiff', { type: 'image/tiff' }),
+        acceptedTypes: ['image/*', 'application/pdf', 'text/*'],
+      }),
+    ).toBe('Can’t attach: TIFF files aren’t supported. Use PNG, JPG, PDF or text.');
+    expect(
+      chatAttachmentErrorMessage({
+        kind: 'type-not-accepted',
+        file: new File(['x'], 'archive', { type: 'application/zip' }),
+        acceptedTypes: ['application/pdf'],
+      }),
+    ).toBe('Can’t attach: ZIP files aren’t supported. Use PDF.');
+    expect(
+      chatAttachmentErrorMessage({
+        kind: 'type-not-accepted',
+        file: new File(['x'], 'archive.zip', { type: 'application/zip' }),
+        acceptedTypes: [],
+      }),
+    ).toBe('Can’t attach: this agent does not take files.');
   });
 
   test('uploadFailed, for a fault that is not one the page named', () => {
@@ -210,7 +232,7 @@ describe('the words for an attachment that cannot be attached', () => {
         file: big,
         error: new AttachmentUploadError('too-large', { limit: 3 * MIB }),
       }),
-    ).toBe(CHAT_COPY.attachments.tooLarge(3 * MIB));
+    ).toBe(CHAT_COPY.attachments.tooLarge(big.size, 3 * MIB));
   });
 });
 

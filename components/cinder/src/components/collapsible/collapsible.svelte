@@ -39,6 +39,7 @@
     labelClass,
     variant = 'default',
     animated = true,
+    chevron = 'end',
     idBase,
     class: className,
     ...rest
@@ -74,9 +75,27 @@
   }
 </script>
 
+{#snippet chevronIcon()}
+  <svg
+    class="cinder-collapsible__chevron"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path
+      fill-rule="evenodd"
+      d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06z"
+      clip-rule="evenodd"
+    />
+  </svg>
+{/snippet}
+
 <div
   {...rest}
   class={classNames('cinder-collapsible', className)}
+  data-cinder-chevron={chevron === 'start' ? 'start' : undefined}
   data-cinder-variant={variant === 'flat' ? 'flat' : undefined}
   data-cinder-expanded={open ? '' : undefined}
   data-cinder-disabled={disabled ? '' : undefined}
@@ -91,6 +110,7 @@
     {disabled}
     onclick={handleClick}
   >
+    {#if chevron === 'start'}{@render chevronIcon()}{/if}
     {#if leadingIcon}<span class="cinder-collapsible__leading-icon" aria-hidden="true"
         >{@render leadingIcon()}</span
       >{/if}
@@ -103,20 +123,7 @@
         </span>
       {/if}
     </span>
-    <svg
-      class="cinder-collapsible__chevron"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        fill-rule="evenodd"
-        d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06z"
-        clip-rule="evenodd"
-      />
-    </svg>
+    {#if chevron === 'end'}{@render chevronIcon()}{/if}
   </button>
 
   {#if open && animated}

@@ -35,6 +35,7 @@ import {
   serve,
 } from './agent-definitions-fixtures.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
+import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { runTask } from '../../test';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -258,6 +259,35 @@ describe('the owner predicate, with several principals', () => {
 });
 
 describe('results', () => {
+  it('lets workspace members read shared definitions and administrators edit them', async () => {
+    const workspace: WorkspaceMembershipOptions = {
+      workspaceId: 'workspace-a',
+      resolveMembership: async ({ subject }) => ({
+        version: 1,
+        workspaceId: 'workspace-a',
+        actorId: subject ?? 'unknown',
+        actorKind: 'user' as const,
+        owner: `api-key:${subject ?? 'unknown'}`,
+        membershipRevision: 'revision-1',
+        capabilities: ['workspace:use', 'workspace:manage'] as const,
+      }),
+    };
+    const served = await serve({ overrides: { workspace } });
+    const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'shared-writer',
+      definition: DEFINITION,
+    });
+    const listed = await rpc(served.keyed, 'bureau.agents.definitions.list', {}, 'alice-key');
+    expect(listOf(listed, 'agents').map((agent) => agent['id'])).toContain('shared-writer');
+    const updated = await rpc(
+      served.keyed,
+      'bureau.agents.definitions.update',
+      { id: 'shared-writer', expectedHash: created.result?.['hash'], definition: DEFINITION },
+      'operator-key',
+    );
+    expect(updated.error).toBeUndefined();
+  });
+
   it('creates a file a person could write by hand, and reads it back with its hash and state', async () => {
     const served = await serve();
     const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
@@ -980,8 +1010,16 @@ describe('bureau.agents.catalog', () => {
     const served = await serve();
     const response = await callAs(served.owner, 'bureau.agents.catalog', {});
     // COR-1710: Bureau's own settings tools are in every catalog, for an agent file to name, and so
-    // is the built-in `bureau` plugin's `bureau:discover-agents` (COR-1890).
+    // are the built-in `bureau` plugin's discovery, asset, and child-run tools
+    // (COR-1890/COR-2028/COR-2032).
     expect(response.result?.['tools']).toEqual([
+      expect.objectContaining({ name: 'bureau:assets-publish', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:assets-read', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-cancel', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-dispatch', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-get', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-list', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:child-runs-wait', source: 'bureau' }),
       expect.objectContaining({ name: 'bureau:discover-agents', source: 'bureau' }),
       expect.objectContaining({
         name: 'lookup-order',

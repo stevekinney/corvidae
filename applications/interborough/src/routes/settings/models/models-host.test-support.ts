@@ -121,6 +121,7 @@ export function installFakeHost(initial: {
         return Response.json({ error: 'failed', message: '' }, { status: host.readStatus });
       }
       return Response.json({
+        configurationRevision: JSON.stringify([host.keys, host.catalog]),
         providers: Object.entries(host.keys).map(([name, hasKey]) => ({
           name,
           configured: hasKey,

@@ -22,6 +22,10 @@ export type WorkerSnapshot = {
   startedAt: number;
   capabilities: RemoteWorkerCapabilities;
   health: WorkerHealth;
+  /** The workflow types the accepted manifest declares, when it declares any. */
+  workflows?: readonly string[] | undefined;
+  /** When the session ended; present only for a worker that went away. */
+  disconnectedAt?: number | undefined;
   deploymentName?: string | undefined;
   buildId?: string | undefined;
   runtimeVersion?: string | undefined;
@@ -32,6 +36,17 @@ export type WorkerSnapshot = {
 };
 
 /**
+ * The name a worker advertised for itself: the string capability `name`, trimmed, or `undefined`
+ * when it advertised none or an empty one.
+ */
+export function workerNameOf(capabilities: RemoteWorkerCapabilities): string | undefined {
+  const name = capabilities['name'];
+  if (typeof name !== 'string') return undefined;
+  const trimmed = name.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+/**
  * Project a single worker snapshot into a {@link WorkerSummary}.
  *
  * `now` should be the same timestamp used for all workers in a single response
@@ -39,6 +54,7 @@ export type WorkerSnapshot = {
  */
 export function projectWorkerSummary(snapshot: WorkerSnapshot, now: number): WorkerSummary {
   const { inFlight, concurrency } = snapshot;
+  const name = workerNameOf(snapshot.capabilities);
   return {
     id: snapshot.id,
     queue: snapshot.queue,
@@ -53,6 +69,11 @@ export function projectWorkerSummary(snapshot: WorkerSnapshot, now: number): Wor
     startedAt: snapshot.startedAt,
     capabilities: { ...snapshot.capabilities },
     health: snapshot.health,
+    ...(name !== undefined ? { name } : {}),
+    ...(snapshot.workflows !== undefined && snapshot.workflows.length > 0
+      ? { workflows: [...snapshot.workflows] }
+      : {}),
+    ...(snapshot.disconnectedAt !== undefined ? { disconnectedAt: snapshot.disconnectedAt } : {}),
     ...(snapshot.deploymentName !== undefined ? { deploymentName: snapshot.deploymentName } : {}),
     ...(snapshot.buildId !== undefined ? { buildId: snapshot.buildId } : {}),
     ...(snapshot.runtimeVersion !== undefined ? { runtimeVersion: snapshot.runtimeVersion } : {}),

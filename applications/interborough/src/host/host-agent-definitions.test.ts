@@ -187,14 +187,14 @@ describe('the host’s /host/paths', () => {
     expect(paths.workflowDirectory).toBe(join(home, 'workflows'));
   });
 
-  test('names the configuration file, and the file that holds each provider’s API key', async () => {
-    const { home, fetcher } = await startConfigured();
+  test('names the configuration file, and the workspace identity of each provider’s API key', async () => {
+    const { host, home, fetcher } = await startConfigured();
     const paths = await getHostPaths({ fetch: fetcher });
     expect(paths.configurationFile).toBe(join(home, 'configuration.json'));
     expect(paths.providers).toEqual([
-      { name: 'anthropic', secretFile: join(home, 'secrets', 'anthropic-api-key') },
-      { name: 'openai', secretFile: join(home, 'secrets', 'openai-api-key') },
-      { name: 'gemini', secretFile: join(home, 'secrets', 'gemini-api-key') },
+      { name: 'anthropic', secretFile: `workspace:${host.workspaceId}/anthropic-api-key` },
+      { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
+      { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
     ]);
   });
 });

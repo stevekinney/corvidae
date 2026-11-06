@@ -1,6 +1,6 @@
 /**
- * The rows of a schedule's "Past runs" table: the runs it started and the fires it missed, in one
- * list, newest first. A run is placed at the moment it was created and a missed fire at the
+ * What a schedule did, below the Now marker of its Runs list: the runs it started and the fires it
+ * missed, in one list, newest first. A run is placed at the moment it was created and a missed fire at the
  * occurrence it was recorded for, which are the two things a person compares ("did 09:00 run?").
  * Both come from what the engine persisted, so the list is the same after a reload.
  */
@@ -11,7 +11,7 @@ import type { MissedFire } from '../../lib/bureau-schedules.ts';
 /** How many missed fires one read returns at most: the engine's own page (`SCHEDULE_MISSED_FIRE_LIMIT`). */
 export const SCHEDULE_MISSED_FIRE_LIMIT = 100;
 
-/** One row of the table. */
+/** One row of the list. */
 export type PastRow =
   | {
       readonly kind: 'run';
@@ -38,8 +38,8 @@ export type PastRowsTruncation = {
  * occurrence, reason and recording time.
  *
  * Each list is a page of the newest, so a list that stopped at its page says nothing about the
- * time before its oldest row. The table shows only the span both lists cover: a row older than the
- * oldest row of a truncated list is left out, so a long history reads as a table of the newest rows
+ * time before its oldest row. The list shows only the span both lists cover: a row older than the
+ * oldest row of a truncated list is left out, so a long history reads as the newest rows
  * of both kinds and never as one kind with the other missing.
  */
 export function pastRows(

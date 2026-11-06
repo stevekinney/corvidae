@@ -82,6 +82,7 @@ const definitionSchema = z.object({
   skillDescriptors: z.array(skillSchema),
   /** The executable skills a run may activate; `null` when the file lists none, and the agent has none. */
   allowedSkills: z.array(z.string()).nullable().default(null),
+  childAgents: z.array(z.string()).nullable().optional(),
   a2a: z.boolean(),
   /** The most steps one run may take; `null` when the file sets none. */
   stepLimit: z.number().int().nullable().default(null),
@@ -308,6 +309,8 @@ export type AgentDefinitionInput = {
    * `null` removes it, and an empty list grants none.
    */
   readonly allowedSkills?: readonly string[] | null;
+  /** File agents this definition may dispatch as durable children. */
+  readonly childAgents?: readonly string[] | null;
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
   readonly a2a?: boolean;
   /** The most steps a run may take. `null` removes the limit; left out, an update keeps the file's. */
@@ -353,6 +356,19 @@ type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 /** One agent by identifier. A code-defined agent answers too, with `source: 'code'` and no hash. */
 export async function getAgentDefinition(id: string, options?: Options): Promise<AgentDetail> {
   return detailSchema.parse(await callBureau('bureau.agents.definitions.get', { id }, options));
+}
+
+/**
+ * The model a person chose for a built-in agent, as `provider/model`, or `null` when the agent keeps
+ * its own. A built-in agent's definition does not name the model while no provider serves it, so
+ * this is how a schedule learns the agent needs one. An identifier that is no built-in agent is a
+ * `NotFound` fault.
+ */
+export async function getAgentOverrideModel(id: string, options?: Options): Promise<string | null> {
+  const answer = z
+    .object({ overrides: z.object({ model: z.string().nullable().default(null) }) })
+    .parse(await callBureau('bureau.agents.overrides.get', { id }, options));
+  return answer.overrides.model;
 }
 
 /** The versions of the agent that have run, most recently run first. */

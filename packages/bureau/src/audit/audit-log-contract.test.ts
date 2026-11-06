@@ -202,3 +202,154 @@ describe('a schedule’s missed occurrences', () => {
     }
   });
 });
+
+describe('a host’s start', () => {
+  it('names the version it started at, and nothing else of what the host recorded', async () => {
+    const { bureau } = createStubBureau();
+    const trail = createAuditTrail(bureau, textValueStore(new MemoryStorage()));
+    try {
+      await trail.record({
+        runId: 'host',
+        type: 'host.started',
+        principal: 'system:host',
+        detail: { version: '2.4.1', environment: 'a secret the log must not carry' },
+      });
+      const audit = createAudit({
+        trail: () => trail,
+        ownerOf: async () => undefined,
+        refusal: (message) => new Error(message),
+      });
+      const page = await audit.query({ type: 'host.started' });
+      expect(page.records.map((record) => record.detail)).toEqual([{ version: '2.4.1' }]);
+    } finally {
+      trail.dispose();
+    }
+  });
+});
+
+describe('a deleted chat (COR-2018)', () => {
+  it('keeps its title and how many messages it held, which no other event’s record keeps', async () => {
+    const { bureau } = createStubBureau();
+    const trail = createAuditTrail(bureau, textValueStore(new MemoryStorage()));
+    try {
+      await trail.record({
+        runId: 'session:chat-1',
+        type: 'session.deleted',
+        principal: 'anonymous:local',
+        detail: {
+          sessionId: 'chat-1',
+          title: 'Scratch test',
+          messageCount: 12,
+          content: 'a message the log must not carry',
+        },
+      });
+      await trail.record({
+        runId: 'run-1',
+        type: 'run.started',
+        principal: 'anonymous:local',
+        detail: { agentName: 'assistant', title: 'Not a deletion', messageCount: 3 },
+      });
+      const audit = createAudit({
+        trail: () => trail,
+        ownerOf: async () => undefined,
+        refusal: (message) => new Error(message),
+      });
+      const page = await audit.query({ types: ['session.deleted', 'run.started'] });
+      const detail = Object.fromEntries(page.records.map((record) => [record.type, record.detail]));
+      expect(detail['session.deleted']).toEqual({
+        sessionId: 'chat-1',
+        title: 'Scratch test',
+        messageCount: 12,
+      });
+      expect(detail['run.started']).toEqual({ agentName: 'assistant' });
+    } finally {
+      trail.dispose();
+    }
+  });
+
+  it('is recorded by a real delete with the chat’s title and message count, and no message text beyond the title', async () => {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        assistant: createAgent({
+          generate: createMockGenerate([{ content: 'Hello back', toolCalls: [] }]),
+        }),
+      },
+      storage: new MemoryStorage(),
+    });
+    try {
+      const run = await bureau.tasks.start('assistant', 'Scratch test', {
+        principal: 'anonymous:local',
+      });
+      await waitForCondition(async () => {
+        const context = await bureau.contexts.get(run.contextId);
+        return (context?.conversationHistory.ids.length ?? 0) >= 2;
+      }, 'the chat never held both messages');
+      await bureau.contexts.delete(run.contextId, { actor: 'api-key:alice' });
+      let deleted = await bureau.audit.query({ type: 'session.deleted', limit: 10 });
+      await waitForCondition(async () => {
+        await bureau.maintain();
+        deleted = await bureau.audit.query({ type: 'session.deleted', limit: 10 });
+        return deleted.records.length > 0;
+      }, 'the deletion was never recorded');
+      expect(deleted.records.map((record) => record.detail)).toEqual([
+        expect.objectContaining({ title: 'Scratch test', messageCount: 2 }),
+      ]);
+      // A delete asked for by a caller names it; the owner is not the actor.
+      expect(deleted.records.map((record) => record.principal)).toEqual(['api-key:alice']);
+      expect(JSON.stringify(deleted)).not.toContain('Hello back');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('workspace configuration audit projection', () => {
+  it('adds shared change metadata without foreign execution or configuration payloads', async () => {
+    const { bureau } = createStubBureau();
+    const trail = createAuditTrail(bureau, textValueStore(new MemoryStorage()));
+    try {
+      await trail.record({
+        runId: 'agent:shared',
+        type: 'agent.updated',
+        principal: 'bob',
+        detail: {
+          revision: 2,
+          hash: 'revision-hash',
+          instructions: 'PRIVATE-INSTRUCTIONS',
+          commandLine: 'PRIVATE-COMMAND',
+          sessionId: 'PRIVATE-SESSION',
+        },
+      });
+      await trail.record({
+        runId: 'foreign-run',
+        type: 'run.completed',
+        principal: 'bob',
+        detail: { status: 'completed' },
+      });
+      await trail.record({
+        runId: 'schedule:shared',
+        type: 'schedule.fired',
+        principal: 'bob',
+        detail: { status: 'running' },
+      });
+      const audit = createAudit({
+        trail: () => trail,
+        ownerOf: async () => 'bob',
+        refusal: (message) => new Error(message),
+      });
+      const privatePage = await audit.query({}, { owner: 'alice' });
+      expect(privatePage.records).toEqual([]);
+      const shared = await audit.query({}, { owner: 'alice', includeSharedConfiguration: true });
+      expect(shared.records).toHaveLength(1);
+      expect(shared.records[0]).toMatchObject({
+        resource: 'agent:shared',
+        principal: 'bob',
+        detail: { revision: 2, hash: 'revision-hash' },
+      });
+      expect(JSON.stringify(shared)).not.toContain('PRIVATE-');
+      expect(shared.nextCursor).toBeNull();
+    } finally {
+      trail.dispose();
+    }
+  });
+});

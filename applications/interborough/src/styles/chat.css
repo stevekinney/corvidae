@@ -16,41 +16,23 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* The chat's settings under its title: what each is now, and when a change takes effect. */
-.weft-chat-settings {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-}
-
-.weft-chat-settings__list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-1) var(--cinder-space-4);
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-chat-settings__item {
-  display: flex;
-  gap: var(--cinder-space-1);
-}
-
-.weft-chat-settings__item dt {
-  color: var(--cinder-text-muted);
-}
-
-.weft-chat-settings__item dd {
-  margin: 0;
-}
-
-/* The composer's three controls: they wrap under each other on a narrow screen. */
-.weft-chat-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+/* The composer's context meter: a short bar and its percentage, on the control row beside Send. */
+.weft-context-meter {
+  display: inline-flex;
+  align-items: center;
   gap: var(--cinder-space-2);
-  min-width: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.weft-context-meter__bar {
+  inline-size: 2.25rem;
+}
+
+.weft-context-meter__unavailable {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
 }
 
 /* The context window's ring: a button with a ring and a reading. */
@@ -141,8 +123,12 @@
 .weft-chat-question {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-2);
+  gap: var(--cinder-space-2-5);
   min-inline-size: 0;
+  padding: var(--cinder-space-3) var(--cinder-space-3-5);
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
+  background: var(--cinder-surface-raised);
 }
 
 .weft-chat-question__prompt,
@@ -151,8 +137,21 @@
   overflow-wrap: anywhere;
 }
 
+/* The glyph hangs in the margin of the card, and the answer lines up under the words. */
 .weft-chat-question__prompt {
+  display: flex;
+  gap: var(--cinder-space-2);
   font-weight: 600;
+}
+
+.weft-chat-question__prompt .weft-chat-question__glyph {
+  flex: none;
+  margin-block-start: 0.125rem;
+  color: var(--cinder-text-muted);
+}
+
+.weft-chat-question > :not(.weft-chat-question__prompt) {
+  margin-inline-start: var(--cinder-space-6);
 }
 
 .weft-chat-question__hint {
@@ -232,7 +231,9 @@
 
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-chats {
-  block-size: max(28rem, calc(100dvh - 8rem));
+  /* The outlet is the flexed, padded viewport region. Filling it keeps the Chat surface—and its
+   * blocked composer dock—inside the visible page even when the connection banner is present. */
+  block-size: max(28rem, 100%);
   min-inline-size: 0;
   border: 1px solid var(--cinder-border-muted);
   border-radius: var(--cinder-radius-md);
@@ -364,10 +365,25 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* The agent pill sits in the composer's footer beside Send, so it is as wide as its name. */
-.ib-agent-pill {
-  min-inline-size: 10rem;
-  max-inline-size: 16rem;
+/* The agent a new chat is with sits at the top of the composer, a ghost select in the accent, so it
+ * reads as the one thing the box is about to do. */
+.ib-agent-select {
+  display: inline-flex;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+/* The settings the composer folds into one control when it is too narrow for them side by side. */
+.ib-composer-settings {
+  font-weight: var(--cinder-font-semibold);
+}
+
+.ib-composer-settings__fields {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--cinder-space-1);
+  min-inline-size: min(16rem, 100%);
 }
 
 /* The popover on an agent's reply: why this model, what it saw, the run's tokens. */
@@ -427,4 +443,10 @@
 .weft-reply-details__usage dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
+}
+
+/* "Reply details" is a link-like disclosure in the line under a reply. */
+.weft-reply-details__trigger {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

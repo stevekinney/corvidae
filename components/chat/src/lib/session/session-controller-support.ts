@@ -192,6 +192,22 @@ export type ChatSessionRunInput = (
   options: ChatSessionRunInputOptions,
 ) => Promise<void | ChatSessionRunInputReceipt>;
 
+/**
+ * What taking back a held follow-up came to: `retracted` when it will never be
+ * delivered, `delivered` when the run had already taken it and it stands.
+ */
+export type ChatSessionRunInputRetraction = 'retracted' | 'delivered';
+
+/**
+ * The host-facing hook the controller calls to take back a follow-up the host
+ * accepted and the run has not taken yet. `options.messageId` is the row's id,
+ * which the host sent the input under.
+ */
+export type ChatSessionRetractRunInput = (
+  conversationId: string,
+  options: ChatSessionRunInputOptions,
+) => Promise<ChatSessionRunInputRetraction>;
+
 export type ChatSessionControllerOptions = {
   transport: ChatSessionTransport;
   getConversation: () => ConversationHistory;
@@ -218,10 +234,39 @@ export type ChatSessionControllerOptions = {
    * as before.
    */
   sendRunInput?: ChatSessionRunInput;
+  /**
+   * Takes back a follow-up the host accepted and its run has not taken (the
+   * Remove on a queued row). Providing it, beside `sendRunInput`, makes the
+   * controller's adapter expose `ChatAdapter.removeRunInput`, and changes what
+   * acceptance means: an accepted follow-up stays queued (pending) until the run
+   * takes it, which the host reports with
+   * `ChatSessionController.markFollowUpsDelivered` or the run's terminal history
+   * shows, because until then it can still be taken back. Resolve `retracted`
+   * when the input will never be delivered, so its row leaves the transcript,
+   * and `delivered` when the run already had it, so the row reads as sent.
+   * Reject when the host could not say, and the row stays queued.
+   */
+  retractRunInput?: ChatSessionRetractRunInput;
+  /**
+   * The time a row the person writes is stamped with, as an ISO 8601 string: a turn's message and
+   * a follow-up. A host whose server keeps its own clock passes that clock, so the transcript reads
+   * one clock throughout. Omitted, the browser's clock.
+   */
+  now?: () => string;
   executionOwner?: ChatExecutionOwner;
   maxContinuationTurns?: number;
   hooks?: ChatSessionHooks;
 };
+/**
+ * The environment a row the person writes is appended under: the host's clock when it gave one
+ * (`ChatSessionControllerOptions.now`), else the default.
+ */
+export function ownRowEnvironment(
+  options: Pick<ChatSessionControllerOptions, 'now'>,
+): { now: () => string } | undefined {
+  return options.now === undefined ? undefined : { now: options.now };
+}
+
 export type ChatSessionController = {
   adapter: ChatAdapter;
   stop: () => Promise<void>;
@@ -237,6 +282,13 @@ export type ChatSessionController = {
    * installed, so a caller can tell "applied" from "silently dropped".
    */
   adoptHistory: (history: ConversationHistory, token: ChatHistoryToken) => boolean;
+  /**
+   * The host's word that its run took these follow-ups (by row id) into the
+   * conversation, as when its server announces the step that took them. Each
+   * row reads as a sent message from then on, Remove no longer applies, and the
+   * run's end does not resend it. Ids the controller is not holding are ignored.
+   */
+  markFollowUpsDelivered: (messageIds: Iterable<string>) => void;
   /**
    * Retires every outstanding token and aborts work in flight.
    *

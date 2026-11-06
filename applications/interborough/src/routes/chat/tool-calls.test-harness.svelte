@@ -8,12 +8,13 @@
 
   interface HarnessProps {
     entries: readonly ToolCallEntry[];
+    endLabel?: string;
   }
 
-  let { entries }: HarnessProps = $props();
+  let { entries, endLabel }: HarnessProps = $props();
 </script>
 
-<ToolCalls id="turn-1" {entries}>
+<ToolCalls id="turn-1" {entries} {endLabel}>
   {#snippet decision(entry)}
     <p>Decide on {entry.name}</p>
   {/snippet}

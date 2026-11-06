@@ -395,11 +395,21 @@ export const AGENT_EDITOR_COPY = {
     /** Said when the agent stopped to ask before a tool, which a trial cannot answer. */
     approvalEnded:
       'The agent stopped to ask before using a tool, and a trial cannot take that answer, so the trial ended. Set the tool to run without asking, or save the agent and chat with it.',
-    messageLabel: 'First message',
-    messagePlaceholder: 'Say something to the agent',
-    send: 'Start chatting',
+    /** The line under the title: what the trial runs on. */
+    usesChanges: 'Uses your unsaved changes',
+    messagePlaceholder: 'Send a test message',
+    /** The line under the composer, said while no other status is. */
+    hint: 'Tools run for real, under this agent’s approval rules. Test chats aren’t saved and leave no memories.',
     chatLabel: 'Trial chat',
-    startOver: 'Start over',
+    /** Ends the chat and starts a fresh one with the form as it is now. */
+    startOver: 'Reset',
+    /** The title of a test answer that failed, and what it adds to the reason: the trial saves nothing. */
+    failureTitle: 'Couldn’t get an answer',
+    nothingSaved: 'Nothing was saved.',
+    tryAgain: 'Try again',
+    /** The name of a tool call that is running, "Using Lookup order…", and one that finished. */
+    usingTool: 'Using',
+    usedTool: 'Used',
     close: 'End trial',
     /** Said when the form has changed since the trial chat started. */
     changed: 'The form changed after this chat started, so the agent here is the earlier version.',
@@ -1100,7 +1110,16 @@ export const SCHEDULE_COPY = {
   /** The name of a Bureau schedule that has no description and whose agent the caller may not read. */
   unnamedAgentRun: 'Scheduled agent run',
   title: 'Schedules',
+  /** The line under the heading; the zone is the viewer's, as "Central time". */
+  subtitle: (zone: string): string => `Runs that start on a timetable. Times are in ${zone}.`,
   newAction: 'New schedule',
+  /** The segments of the filter bar, which partition the list. */
+  segments: { all: 'All', active: 'Active', paused: 'Paused' },
+  /** The chip beside the segments that narrows to schedules that missed runs, which are also Active. */
+  missedRunsFilter: 'Missed runs',
+  workflowLabel: 'Workflow',
+  /** The accessible name of the list of schedules. */
+  rowsLabel: 'Schedules',
   filtersLabel: 'Filter schedules',
   statusLabel: 'Status',
   anyStatus: 'Any status',
@@ -1121,10 +1140,23 @@ export const SCHEDULE_COPY = {
     status: 'Status',
     actions: 'Actions',
   },
-  noMatch: {
-    title: 'No matching schedules',
-    description: 'No schedule matches the current filters. Clear a filter to see more.',
+  /** Nothing has been scheduled yet: the empty state that is the whole page. */
+  empty: {
+    title: 'No schedules yet',
+    description:
+      'A schedule starts a chat or a workflow on a timetable, such as every weekday at 9:00 AM. Create one and its next runs show here.',
   },
+  /** The schedules could not be read, and there are none from before to show. */
+  loadFailed: {
+    title: 'Couldn’t load schedules',
+    description:
+      'Interborough didn’t answer, so nothing changed. Schedules keep their timetable while Interborough is off, and missed runs are listed when it returns. New schedule is off until it answers.',
+  },
+  noMatch: { title: 'No schedules match these filters' },
+  /** Why the header's "+" does nothing while the list could not be read at all. */
+  newActionOffReason: 'New schedule is off until Interborough answers.',
+  /** The status line under the placeholders when the list is slow to load. */
+  stillLoading: 'Still loading schedules. This is taking longer than usual.',
   actionsFor: (name: string): string => `Actions for ${name}`,
   copyId: 'Copy ID',
   idCopied: 'Schedule ID copied',
@@ -1160,7 +1192,8 @@ export const SCHEDULE_COPY = {
   pauseFailed: 'The schedule was not paused',
   resumeFailed: 'The schedule was not resumed',
   cancelFailed: 'The schedule was not cancelled',
-  skipFailed: 'The next run was not skipped',
+  skipFailed: 'The run was not skipped',
+  unskipFailed: 'The skip was not undone',
   runNowFailed: 'The schedule was not run',
   cancelDialog: {
     title: 'Cancel this schedule?',
@@ -1177,59 +1210,161 @@ export const SCHEDULE_COPY = {
       title: 'This schedule doesn’t exist',
       description: NOT_FOUND_COPY.description,
     },
-    onSwitch: 'On',
-    onSwitchLabel: 'Schedule on',
+    /** The switch's visible label; its accessible name adds the schedule after it ("Active, Daily summary schedule"). */
+    onSwitch: 'Active',
+    onSwitchName: (name: string): string => `${name} schedule`,
+    /** Why flipping the switch of a schedule whose workflow is paused would not start anything. */
+    pausedWorkflowSwitch: (workflow: string): string =>
+      `Resuming this schedule would schedule runs that won’t start, because ${workflow} is paused. Resume workflow, beside the status, resumes it.`,
+    /** The line under the heading of a schedule whose workflow is paused, and the link that resumes the workflow. */
+    workflowPaused: {
+      text: (workflow: string): string => `${workflow} is paused, so this schedule won’t run it.`,
+      resume: 'Resume workflow',
+      failed: 'The workflow was not resumed',
+    },
+    /** The sentence under the heading: what the schedule runs, with which agent, and when. */
+    sentence: { runs: 'Runs', with: 'with' },
+    /** The line that says when it runs next and when it last ran. */
+    summary: {
+      next: (day: string, relative: string): string => `Next ${day} (${relative})`,
+      due: (day: string, relative: string): string => `Due ${day} (${relative})`,
+      /** The same lines while the page shows old data: no relative time, which would be a claim it cannot keep. */
+      nextStale: (day: string): string => `Next ${day}`,
+      dueStale: (day: string): string => `Due ${day}`,
+      wontStart: 'won’t start',
+      pausedNext: 'No next run while paused',
+      noNext: 'No next run',
+      neverRun: 'Never run',
+      /** The start of the line while a run is going, in the info tone, then when it started and a link to it. */
+      runningNow: 'Running now',
+      startedAgo: (ago: string): string => `: started ${ago}`,
+      /** The summary line's own words for how the last run ended, with the step a failed run stopped at. */
+      failedAtStep: (step: number): string => `, failed at step ${String(step)}`,
+    },
+    /** The chip under the sentence of a schedule that is the trigger in a workflow's file. */
+    definedIn: 'Defined in',
+    /** Said beside Run now while a run is going, because Run now then starts a second one. */
+    runNowSecond: 'Another run is going; this starts a second one.',
+    runsHeading: 'Runs',
+    runsNote: (zone: string): string => `Upcoming above, past below · times in ${zone}`,
+    /** The Runs list: upcoming runs, the Now marker, the missed runs, and what the schedule started. */
+    runs: {
+      label: 'Runs',
+      skip: 'Skip',
+      skipLabel: (when: string): string => `Skip ${when}`,
+      skipped: 'Skipped',
+      undo: 'Undo',
+      undoLabel: (when: string): string => `Undo skipping ${when}`,
+      now: 'Now',
+      wontStart: 'won’t start',
+      noteCannotLoad: (workflow: string): string => `${workflow} can’t load`,
+      noteDeleted: (workflow: string): string => `${workflow} was deleted`,
+      noteProvider: 'no provider',
+      pausedNote: 'No upcoming runs while the schedule is paused.',
+      soFar: (duration: string): string => `${duration} so far`,
+      missedTitle: (count: number, since: string): string =>
+        count === 1 ? `Missed once on ${since}` : `Missed ${String(count)} times since ${since}`,
+      /** Why a fire was missed, in the short words the band and each row say. */
+      missedReason: {
+        late: 'Interborough was off',
+        'dst-gap': 'The clock skipped this time',
+      },
+      missedRow: (count: number, reason: string): string =>
+        count > 1 ? `Missed ${String(count)} times · ${reason}` : `Missed · ${reason}`,
+      showEach: 'Show each',
+      hide: 'Hide',
+      runOnce: 'Run once now',
+      dstEnded: (day: string): string => `Daylight saving time ended ${day}`,
+      dstStarted: (day: string): string => `Daylight saving time started ${day}`,
+      startedWith: (how: string): string => `Started with ${how}`,
+      failedAtStep: (step: number): string => `Failed at step ${String(step)}`,
+      stepsLabel: (step: number): string => `Step ${String(step)}`,
+      loadFailed: 'The runs could not be loaded',
+      /** The compact empty state below Now when the schedule has not run. */
+      empty: {
+        title: 'No runs yet.',
+        blocked: (reasons: string): string => `It won’t start until ${reasons}.`,
+        loads: (workflow: string): string => `${workflow} loads`,
+        workflowBack: 'its workflow is back',
+        providerConnected: 'a provider is connected',
+        first: (when: string): string => `The first run starts ${when}.`,
+        paused: 'It runs again when the schedule is turned on.',
+      },
+      /** Why the schedule will not start, as the card above the summary line lists it. */
+      blockers: {
+        label: 'Why this schedule will not start',
+        cannotLoad: (workflow: string): string => `${workflow} can’t load`,
+        deleted: (workflow: string): string => `${workflow} was deleted`,
+        openWorkflow: 'Open workflow',
+        provider: 'No model provider is connected.',
+        connectProvider: 'Connect a provider',
+        providersPath: '/settings/models',
+      },
+    },
+    /** Why Run now is off, said as the description of the disabled button. */
+    runNowOff: {
+      cannotLoad: (workflow: string): string => `${workflow} can’t load.`,
+      deleted: (workflow: string): string => `${workflow} was deleted.`,
+      provider: 'No model provider is connected.',
+    },
+    openFile: 'Open file',
+    deleteAction: 'Delete schedule',
+    /** Why Delete schedule is off for a schedule that is the trigger in a workflow's file. */
+    deleteInFile: 'This schedule is the trigger in its workflow’s file. Remove the trigger there.',
+    deleteDialog: {
+      title: (name: string): string => `Delete ${name}?`,
+      description:
+        'It stops running and its upcoming runs are removed. Past runs stay on Runs. This can’t be undone.',
+      confirm: 'Delete schedule',
+    },
+    runNowStarted: (name: string): string => `Started ${name}.`,
+    openRun: 'Open run',
+    /** The details card beside the runs. */
+    card: {
+      label: 'Schedule details',
+      whatRuns: 'What runs',
+      workflow: 'Workflow',
+      builtIn: '(built in)',
+      agent: 'Agent',
+      agents: 'Agents',
+      input: 'Input',
+      inputView: 'Input view',
+      fields: 'Fields',
+      json: 'JSON',
+      copyInput: 'Copy input',
+      messageLabel: 'Message',
+      when: 'When',
+      whenEdit: 'Edit',
+      viewerClock: (time: string, zone: string): string => `That is ${time} in ${zone}.`,
+      behaviour: 'Behaviour',
+      overlap: 'If a run is still going',
+      /** What each policy is called, as the New schedule form words it. */
+      overlapValue: {
+        skip: 'Skip this one',
+        queue: 'Queue this one',
+        'cancel-running': 'Cancel the run that is going',
+        allow: 'Start another run',
+      },
+      catchUp: 'If Interborough was off',
+      catchUpOn: 'Catch up on missed runs',
+      catchUpOff: 'Don’t catch up on missed runs',
+      revision: 'Workflow version',
+      revisionLatest: 'Latest',
+      revisionPinned: (revision: string): string => `Pinned to ${revision}`,
+      revisionInfoLabel: 'About the workflow version',
+      revisionInfo:
+        'Scheduled runs start on the latest version of the workflow. A run that is already going keeps the version it started on.',
+      revisionInfoPinned:
+        'Every scheduled run starts on the version this schedule was pinned to. A run that is already going keeps the version it started on.',
+      runningNow: 'Running now',
+      queued: 'Queued',
+      created: (date: string): string => `Created ${date}`,
+    },
     runNow: 'Run now',
     edit: 'Edit',
     sends: 'Sends',
-    /** The verb and the zone of the sentence under the title. */
-    nextRunsHeading: 'Next runs',
-    nextRunsCaption: (zone: string): string => `Shown in ${zone}`,
-    skipNext: 'Skip the next one',
-    skipped: 'Skipped',
-    skippedNote: 'This run is skipped. The one after it runs as usual.',
-    noNextRuns: {
-      title: 'Nothing is coming up',
-      description: (status: string): string =>
-        `This schedule is ${status}, so it has no next runs. Turn it on to schedule them again.`,
-    },
-    pastRunsHeading: 'Past runs',
-    pastRunsCaption: 'Runs this schedule started, and the fires it missed, newest first',
-    pastColumns: { when: 'When', outcome: 'Outcome', took: 'Took' },
-    noPastRuns: {
-      title: 'No runs yet',
-      description: 'This schedule has not fired. Its runs and any fires it missed are listed here.',
-    },
-    runLink: (when: string): string => `Run ${when}`,
-    manual: 'Run now',
-    missedOutcome: 'Missed',
-    missedReason: {
-      late: 'The host was not running, or was too slow, when it was due.',
-      'dst-gap': 'The clock skipped this time when it moved forward.',
-    },
-    missedCount: (count: number): string => `${String(count)} missed`,
     runsFailed: 'Past runs could not be loaded',
     missedFailed: 'Missed fires could not be loaded',
-    railHeading: 'Details',
-    rail: {
-      workflow: 'Workflow',
-      agent: 'Agent',
-      input: 'Input',
-      noInput: 'None',
-      repeats: 'Repeats',
-      zone: 'Time zone',
-      overlap: 'If a run is still going',
-      catchUp: 'Catch up after downtime',
-      catchUpOn: 'Runs the fires it missed',
-      catchUpOff: 'Skips the fires it missed',
-      jitter: 'Jitter',
-      noJitter: 'None',
-      revision: 'Workflow version',
-      runningNow: 'Running now',
-      queued: 'Queued',
-      nothingRunning: 'Nothing is running',
-      created: 'Created',
-    },
     runNowOutcome: {
       started: 'Started a run.',
       queued: 'A run is going, so this one is queued behind it.',
@@ -1237,24 +1372,56 @@ export const SCHEDULE_COPY = {
       viewRun: 'View the run',
     },
   },
-  /** The cadence editor's page (`/schedules/:id/edit`). */
+  /**
+   * The page that edits a schedule (`/schedules/:id/edit`; COR-2018, rows 74r, 74t, 75p, 75q): the
+   * form that makes one, opened on the schedule as it is.
+   */
   edit: {
+    /** The label of the region while the page loads or fails, before the schedule has a name. */
     title: 'Edit schedule',
+    heading: (name: string): string => `Edit ${name}`,
+    /** The note under the heading: where the page is opened from and where focus lands. */
+    description:
+      'Opened from When › Edit on the schedule page. Focus lands on Repeats, the first field in that group, and the page scrolls to it.',
     save: 'Save changes',
+    saving: 'Saving…',
     cancel: 'Cancel',
     loading: 'Loading schedule',
     startOver: 'Start over from the current schedule',
-    invalidCadence: 'The cadence is not valid. Fix the highlighted field, then save.',
     skipPending:
-      'The next run is skipped. Saving this change to the cadence or time zone restores that run, and it starts as usual.',
-    saveFailed: 'The schedule was not saved',
-  },
-  /** One line that says what happens when a fire is due while a run is still going. */
-  overlapLine: {
-    skip: 'Skips a fire if the previous run is still going',
-    queue: 'Queues a fire if the previous run is still going',
-    'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
-    allow: 'Starts a fire even if the previous run is still going',
+      'An upcoming run is skipped. After this change to the cadence or time zone, a skip stays only on a run the new cadence still has.',
+    /** The footer line: what the page does, then what it is doing. */
+    footer: {
+      saves: (name: string): string => `Saves changes to ${name}.`,
+      saving: 'Saving the changes…',
+      slow: 'Taking longer than usual.',
+      cancelStops: 'Cancel stops the request and keeps the form.',
+      /** Said while a field shows a problem, so the person knows what pressing Save does. */
+      stillEnabled: (field: string): string =>
+        `Save changes stays enabled; on submit, focus moves to ${field}.`,
+    },
+    /** Said under the builder of a schedule that runs more often than a minute, which the builder shows rounded. */
+    exactCadence: (cadence: string): string =>
+      `This schedule runs ${cadence.toLowerCase()}, which the builder counts in whole minutes. Saving without changing Repeats keeps it exactly.`,
+    /** A schedule starts the workflow it was made for: the Bureau and the engine keep that fixed. */
+    fixedInput: 'Set when the schedule was made, and kept as it was.',
+    /** The Workflow field of a schedule whose workflow was deleted. */
+    workflowGone: {
+      option: (name: string): string => `${name} · can’t find this workflow`,
+      message:
+        'That workflow was deleted. Pick another to keep this schedule; it stays paused until then.',
+      /** Said when another workflow is picked, because a schedule cannot be moved to one. */
+      cannotChange:
+        'A schedule keeps the workflow it was made for, so this one cannot be moved to another. Make a new schedule for it.',
+    },
+    failed: {
+      title: 'Couldn’t save the changes.',
+      message: 'Interborough didn’t answer. What you changed is still here.',
+    },
+    discard: {
+      title: 'Discard these changes?',
+      description: 'You have changed this schedule. If you leave now, what you changed is lost.',
+    },
   },
   /** The answer to making a schedule was lost, so it may exist. */
   lost: {
@@ -1263,73 +1430,104 @@ export const SCHEDULE_COPY = {
       'The answer did not come back, so the schedule may exist. Check the list before you create it again.',
     check: 'Check the schedules',
   },
-  /** The page that makes a schedule (`/schedules/new`). */
+  /**
+   * The page that makes a schedule (`/schedules/new`; COR-2018, rows 74a–75o, 06i–06k). It asks in
+   * the order the sentence does: what runs, its input, when, the two policy selects, then a name.
+   */
   create: {
     title: 'New schedule',
-    description:
-      'A schedule runs a workflow on a timer. Choose the workflow, give it its input, then say when.',
-    workflowHeading: 'Workflow',
+    /** The subtitle names the zone the next runs are shown in (the viewer's), as the list's does. */
+    description: (zone: string): string =>
+      `Pick what runs, then when, then name it. Next runs show in ${zone} before you save.`,
+    whatRunsHeading: 'What runs',
     workflowLabel: 'Workflow',
-    workflowPlaceholder: 'Search workflows',
+    workflowPlaceholder: 'Pick a workflow',
+    workflowSearchPlaceholder: 'Search workflows',
+    workflowLoading: 'Loading workflows…',
     groups: { builtIn: 'Built in', recent: 'Recent', all: 'All workflows' },
     chat: {
       label: 'Chat with an agent',
-      description: 'Sends a message to one of your agents on every run.',
+      description: 'Send a message to an agent each time it runs.',
     },
-    /** The reason an agent-authored workflow is listed but cannot be chosen. */
-    inFile: 'Its schedule is the trigger in its file. Change it in the workflow.',
-    noMatch: 'No workflow matches.',
-    createOne: 'Create a workflow',
+    /** The reason a workflow is listed but cannot be chosen: its file does not load, or it is paused. */
+    cannotLoad: 'Can’t load this workflow',
+    paused: 'Paused. Resume it to schedule it.',
+    /** The list's text when a search finds nothing, which keeps the footer's link. */
+    noMatch: (query: string): string => `No workflows match “${query}”.`,
+    noMatchFooter: 'No match?',
+    createOne: 'Create one',
     catalogFailed: {
-      title: 'The workflows could not be listed',
-      description: 'Only the built-in choice is available until they can. Try again.',
+      title: 'Couldn’t load workflows.',
+      description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',
     },
+    required: 'Choose a workflow.',
     checking: 'Reading the workflow',
     workflowFailed: 'The workflow’s input could not be read',
     workflowGone:
       'This workflow no longer exists, or cannot be scheduled from here. Choose another.',
     inputHeading: 'Input',
-    noInput: 'Takes no input.',
-    chatLabel: 'Continue one chat',
-    chatDescription:
-      'Optional. Every run continues this chat. Without one, each run starts a chat.',
-    chatPlaceholder: 'A new chat for each run',
-    chatClear: 'Start a new chat each run',
-    chatUnavailable: 'Chats could not be listed, so each run starts a new chat.',
-    chatUntitled: 'Untitled chat',
-    chatAgent: (agent: string): string => `Agent: ${agent}`,
-    chatFixesAgent: (agent: string): string => `This chat is with ${agent}, so every run is too.`,
-    whenHeading: 'When',
-    whenLabel: 'Schedule',
-    optionsHeading: 'Options',
-    descriptionLabel: 'Description',
-    descriptionDescription: 'Optional. It names the schedule in the list.',
-    overlapLabel: 'If a run is still going when the next one is due',
-    catchUpLabel: 'Run the fires it missed while the host was down',
-    startPausedLabel: 'Start turned off',
-    startPausedDescription: 'Nothing runs until you turn it on.',
-    jitterLabel: 'Jitter',
-    jitterDescription: 'A random delay added to each run.',
-    jitterPlaceholder: '30s',
-    revisionLabel: 'Which version of the workflow each run uses',
-    /** An interval counts elapsed time, so it names no zone. */
-    summaryChat: (agent: string, cadence: string, timeZone: string | undefined): string => {
-      const who = agent === '' ? 'an agent' : agent;
-      return timeZone === undefined
-        ? `Chats with ${who}: ${cadence}.`
-        : `Chats with ${who}: ${cadence}, in ${timeZone}.`;
-    },
-    summaryNothing: 'Choose a workflow to schedule.',
-    submit: 'Create schedule',
-    cancel: 'Cancel',
-    pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
-    invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
+    /** The lead under the Input heading, which names the workflow. */
+    inputLead: (name: string): string => `What ${name} needs each time it runs.`,
+    noInput: (name: string): string => `${name} takes no input.`,
+    messageLabel: 'Message',
+    messageDescription: 'Sent as the first message of each run.',
+    continueLabel: 'Continue one chat',
+    continueDescription:
+      'Each run adds to the same chat, so the agent remembers earlier runs. Off: every run starts a new chat.',
+    /** Shown in place of the description when another agent is chosen for a schedule that keeps continuing its chat. */
+    continueNewChatDescription:
+      'Another agent cannot continue the chat the first one began, so saving starts a new chat. Earlier runs stay in the old one.',
     noAgents: {
       title: 'No agents to chat with',
       description: 'A scheduled chat runs one of your agents. Make an agent first.',
       action: 'New agent',
     },
-    workflowRequired: 'Choose a workflow.',
+    /** The agent needs a model and no provider is connected: the warning, then the link that fixes it. */
+    needsProvider: 'Won’t run until a provider is connected ·',
+    connectProvider: 'Connect a provider',
+    whenHeading: 'When',
+    whenLabel: 'Schedule',
+    catchUpLabel: 'If Interborough was off',
+    nameLabel: 'Name',
+    namePlaceholder: 'For example, Daily summary',
+    nameDescription:
+      'Starts as the workflow’s name (the agent’s name for Chat with an agent); change it if you like. Shown in Schedules and on every run it starts.',
+    nameRequired: 'Give the schedule a name.',
+    nameTooLong: (most: number): string =>
+      `The name is too long: it can be at most ${String(most)} characters.`,
+    nameTaken: 'A schedule with this name already exists.',
+    openSchedule: (name: string): string => `Open ${name}`,
+    /** The footer line, by what the page is waiting for or what it will do. */
+    footer: {
+      nothing: 'Pick a workflow to see what it will start.',
+      chat: (agent: string): string =>
+        `Creates a schedule that starts a chat with ${agent === '' ? 'an agent' : agent}.`,
+      workflow: (workflow: string): string => `Creates a schedule that starts ${workflow}.`,
+      waitingForWorkflows: 'Waiting for the workflow list',
+      waitingForInput: 'Waiting for the workflow’s input fields',
+      blocked: 'Won’t run until a provider is connected.',
+      creating: 'Creating the schedule…',
+      slow: 'Taking longer than usual.',
+      cancelStops: 'Cancel stops the request and keeps the form.',
+      /** Said while a field shows a problem, so the person knows what pressing Create does. */
+      stillEnabled: (field: string): string =>
+        `Create schedule stays enabled; on submit, focus moves to ${field}.`,
+    },
+    submit: 'Create schedule',
+    creating: 'Creating…',
+    cancel: 'Cancel',
+    failed: {
+      title: 'Couldn’t create the schedule.',
+      message: 'Interborough didn’t answer. What you typed is still here.',
+    },
+    pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
+    invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
+    discard: {
+      title: 'Discard this schedule?',
+      description: 'You have started a schedule. If you leave now, what you typed is lost.',
+      keep: 'Keep editing',
+      confirm: 'Discard and leave',
+    },
   },
   form: {
     agentLabel: 'Agent',
@@ -2300,59 +2498,6 @@ export const PLUGINS_COPY = {
   },
 } as const;
 
-/** The words of the diagnostics the Health page carries below the engine overview. */
-export const HEALTH_DIAGNOSTICS_COPY = {
-  title: 'Diagnostics',
-  sections: 'Diagnostic sections',
-} as const;
-
-/** The words of the Health overview: its health line, its four counts, and the recent-activity window. */
-export const HEALTH_OVERVIEW_COPY = {
-  /** The accessible name of the four counts. */
-  countsLabel: 'Health counts',
-  workingNow: 'Working now',
-  needsYou: 'Needs you',
-  failedIn24Hours: 'Failed in 24h',
-  schedules: 'Schedules',
-  /** The value of a count that could not be read. */
-  unavailable: '—',
-  /** The health line when nothing needs attention. */
-  allClear: 'All clear. Nothing needs attention.',
-  /**
-   * The health line when a read it depends on failed and nothing it could read needs attention:
-   * the line cannot say all is clear about what it never saw.
-   */
-  lineUnavailable:
-    'Health could not be fully read. Nothing was reported, but that is not all clear.',
-  /** The note beside the chips when one of the line's reads failed. */
-  lineReadFailed: 'Some checks could not be read',
-  /** The chip for each alert rule that is firing now: what crossed its warning level, and the reading. */
-  firingAlert: {
-    storage: (size: string): string => `Storage is over its warning level · ${size}`,
-    failureRate: (rate: string): string =>
-      `Workflow failure rate is over its warning level · ${rate}`,
-    activityDuration: (duration: string): string =>
-      `Slowest steps are over their warning level · ${duration}`,
-    /** A rule this app has no sentence for yet: the metric's own name, which is still true. */
-    other: (metric: string): string => `${metric} is over its warning level`,
-  },
-  /** The health line when something does: how many things, and each one below it. */
-  needsAttention: (count: number): string =>
-    count === 1 ? '1 thing needs attention' : `${String(count)} things need attention`,
-  activity: {
-    title: 'Recent activity',
-    /** What the empty window says: the engine has not reported anything yet. */
-    emptyTitle: 'Nothing has happened yet',
-    emptyDescription: 'Events from runs, schedules and reviews appear here as they happen.',
-    /** The footer link to the whole trail. */
-    auditLink: 'Open the audit log',
-    /** The accessible name of the live window. */
-    windowLabel: 'Recent activity. Updates pause while you are reading.',
-    /** A line that stands for several in a row, such as `Workflow completed ×3`. */
-    repeated: (title: string, count: number): string => `${title} ×${String(count)}`,
-  },
-} as const;
-
 /**
  * The words of Settings › Allowed models (board PageSettingsSections, "Allowed models ·
  * /settings/allowed-models"): which models agents may use, and the caller's own preferences among
@@ -2713,91 +2858,258 @@ export const GOALS_COPY = {
   },
 } as const;
 
-/** The words the audit trail (`/health/audit`) uses outside its view states. */
+/** The words the audit log (`/health/audit`) uses: its filters, its table, and the pane of one event. */
 export const AUDIT_COPY = {
-  /** The line under the page's title. */
-  description: 'Who changed what, and when.',
-  /** The accessible name of the search form. */
-  searchLabel: 'Search the audit trail',
-  sinceLabel: 'Since',
-  /** Shown in the time field while it is empty, so the field names what it narrows without a label above it. */
-  sincePlaceholder: 'Any time',
-  typeLabel: 'Type',
-  /** The select's first option: no narrowing by type. */
-  anyType: 'Any type',
-  /** The select's last option, which brings a field for a type the trail has not shown yet. */
-  otherType: 'Other…',
-  otherTypeLabel: 'Other type',
-  otherTypePlaceholder: 'Type, such as run.completed',
-  resourceLabel: 'Resource',
-  /** The first option of the resource picker: no narrowing by what a record is about. */
-  anyResource: 'Any resource',
-  resourceIdLabel: 'Resource ID',
-  resourceIdPlaceholder: 'ID',
-  searchAction: 'Search',
-  clearAction: 'Clear',
-  loadMore: 'Load more',
-  /** The name of the list of records, which also says how it is ordered. */
-  caption: 'Audit records, oldest first',
-  /** The name of the open record's pane. */
-  detailLabel: 'Record',
-  whoLabel: 'Who',
-  /** The Who select's first option: no narrowing by actor. */
+  /** The accessible name of the filter row. */
+  searchLabel: 'Filter the audit log',
+  actorLabel: 'Who',
+  /** The Who select's first option: no narrowing by who did it. */
   anyone: 'Anyone',
-  noActor: 'None',
-  /** The small heading above a record's raw JSON. */
-  rawRecord: 'Raw record',
-  emptyDetailTitle: 'Choose a record',
-  emptyDetailDescription: 'Pick one from the list to see what changed, who did it, and when.',
-  /** How many records are loaded, as a sentence. */
-  count: (count: number, more: boolean): string =>
-    `${String(count)} ${count === 1 ? 'record' : 'records'}${more ? ' so far' : ''}`,
-  /** The facts of one record. */
-  fact: {
-    what: 'What',
-    when: 'When',
-    who: 'Who',
-    about: 'About',
-    details: 'Details',
-    before: 'Before',
-    after: 'After',
-    beforeAfter: 'Before and after',
+  actors: { you: 'You', agents: 'Agents', interborough: 'Interborough' },
+  periodLabel: 'Period',
+  periods: {
+    today: 'Today',
+    '7d': 'Last 7 days',
+    '30d': 'Last 30 days',
+    '90d': 'Last 90 days',
+    all: 'All time',
   },
-  /** The link to the thing a record is about. */
-  openResource: (resource: string): string => `Open ${resource}`,
-  exportAction: 'Export JSON Lines',
+  actionLabel: 'Action',
+  /** The action select's first option: no narrowing by what was done. */
+  anyAction: 'Any action',
+  actions: {
+    approved: 'Approved',
+    deleted: 'Deleted',
+    edited: 'Edited',
+    removed: 'Removed',
+    started: 'Started',
+  },
+  textLabel: 'Search the audit log',
+  textPlaceholder: 'Search by actor, action or target',
+  /** The count at the right of the search box. */
+  count: (count: number, more: boolean): string =>
+    `${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'}${more ? ' so far' : ''}`,
+  /** The footer of the table. */
+  footer: (loaded: number, total: number | undefined, more: boolean): string =>
+    total === undefined || !more
+      ? `${loaded.toLocaleString('en-US')} ${loaded === 1 ? 'event' : 'events'}, newest first.`
+      : `Showing ${loaded.toLocaleString('en-US')} of ${Math.max(total, loaded).toLocaleString('en-US')} events, newest first. Scroll to load more.`,
+  /** The name of the table, which also says how it is ordered. */
+  caption: 'Audit events, newest first',
+  /** The name of the open event's pane. */
+  detailLabel: 'Event',
+  columns: { when: 'When', who: 'Who', what: 'What', target: 'Target' },
+  /** A day group's header: the day, then the zone the times are read in. */
+  dayHeading: {
+    today: (date: string): string => `Today, ${date}`,
+    yesterday: (date: string): string => `Yesterday, ${date}`,
+  },
+  /** The pane while no event is open. */
+  emptyDetailTitle: 'Select an event to see what changed',
+  emptyDetailDescription: 'Each event shows who did it, when, and the before and after.',
+  /** The line under an event's title. `when` reads "Today at 10:45:12 AM". */
+  whenLine: (when: string, context: string | null): string =>
+    context === null ? when : `${when} · ${context}`,
+  fromThisBrowser: 'from this browser',
+  inTheChat: (title: string): string => `in the chat “${title}”`,
+  fact: {
+    provider: 'Provider',
+    effect: 'Effect',
+    agent: 'Agent',
+    chat: 'Chat',
+    version: 'Version',
+    changed: 'Changed',
+    tool: 'Tool',
+    risk: 'Risk',
+    amount: 'Amount',
+    status: 'Status',
+    schedule: 'Schedule',
+    workflow: 'Workflow',
+    run: 'Run',
+    about: 'About',
+    detail: 'Details',
+  },
+  /** What removing a provider's key does, which is the same whichever provider it was. */
+  providerRemovedEffect: 'Agents that use a model can’t run until a provider is connected',
+  riskDangerous: 'Dangerous · Can’t be undone',
+  riskChanges: 'Changes things',
+  riskReadOnly: 'Only reads',
+  changedWords: {
+    instructions: 'Instructions',
+    tools: 'Tools',
+    toolApproval: 'Tool approvals',
+    model: 'Model',
+    description: 'Description',
+    skills: 'Skills',
+  },
+  toolsAdded: (names: string): string => `added ${names}`,
+  toolsRemoved: (names: string): string => `removed ${names}`,
+  /** The footer of the diff of an agent's instructions, in Cinder's own words. */
+  instructionsLabel: 'What changed in the instructions',
+  links: {
+    providers: 'Open Providers',
+    review: 'Open review',
+    agent: 'Open agent',
+    run: 'Open run',
+    chat: 'Open chat',
+    schedule: 'Open schedule',
+    workflow: 'Open workflow',
+    storage: 'Open storage',
+  },
+  copyAsJson: 'Copy as JSON',
+  copiedAsJson: 'Copied as JSON',
+  copyKey: 'Copy key',
+  copiedKey: 'Copied the key',
+  copyFailed: 'Couldn’t copy. Select the text and copy it yourself.',
+  /** The heading of a target too long for a table cell, with how many characters it has. */
+  targetHeading: (length: number): string =>
+    `Target · ${length.toLocaleString('en-US')} characters`,
+  /** The footer of every event's pane: how long records are kept, and what Export saves. */
+  retention: {
+    before: 'Audit records are kept 90 days (',
+    link: 'Settings › Data and retention',
+    after: '). Export downloads the filtered list as JSON Lines.',
+  },
+  exportAction: 'Export',
   exporting: 'Exporting…',
+  /** Why Export is off while the log on screen is old: the same word the page's other held controls use. */
+  exportOff: 'Off until the audit log loads again',
+  /** The line under the filter row while Export reads the log: how many events it prepares, and the way out. */
+  exportProgress: (count: number): string =>
+    `Preparing ${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'} as JSON Lines…`,
+  exportCancel: 'Cancel',
   exported: (count: number): string =>
-    `Exported ${String(count)} ${count === 1 ? 'record' : 'records'}`,
+    `Exported ${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'}`,
   nothingToExport: 'There is nothing to export for these filters.',
+  /** A danger alert at the page: the lead, then why, then that the filters and the download are as they were. */
   exportFailed: {
-    title: 'The export failed',
-    description:
-      'The server did not answer. Check that the host is running, then try the export again.',
+    lead: 'Couldn’t export.',
+    answered:
+      'The server stopped while writing the file. Your filters are unchanged; nothing was downloaded.',
+    noAnswer: 'The server didn’t answer. Your filters are unchanged; nothing was downloaded.',
+    again: 'Export again',
   },
   loadingLabel: 'Loading the audit log',
+  /**
+   * Filters that match nothing. A search names itself in the title and says how to search; filters
+   * say what was not recorded ("Nothing by agents was recorded today.") and what to try.
+   */
   noMatches: {
-    title: 'No records match',
-    description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
+    title: 'No events match these filters',
+    titleForSearch: (text: string): string => `No events match “${text}”`,
+    searchHint: 'Check the spelling, or search by actor, action or target.',
     clear: 'Clear filters',
+    /** "Nothing", then the action and who when they are set, then when. */
+    nothing: 'Nothing',
+    byActor: { you: 'by you', agents: 'by agents', interborough: 'by Interborough' },
+    actionWords: {
+      approved: 'approved',
+      deleted: 'deleted',
+      edited: 'edited',
+      removed: 'removed',
+      started: 'started',
+    },
+    wasRecorded: {
+      today: 'was recorded today.',
+      '7d': 'was recorded in the last 7 days.',
+      '30d': 'was recorded in the last 30 days.',
+      '90d': 'was recorded in the last 90 days.',
+      all: 'has been recorded.',
+    },
+    /** What to try, by how far back the period already reaches. */
+    tryLongerPeriod: 'Try a longer period.',
+    tryAllTime: 'Try all time, or change a filter.',
+    tryAnotherFilter: 'Change or clear a filter.',
   },
-  /** An address that names a record the page could not show: the bounded read of the trail did not reach it. */
-  recordNotFound: {
-    more: 'That record was not found in the recent trail. Load more to keep looking.',
-    end: 'That record is not in the trail.',
+  /** What the log says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+  stopped: {
+    title: 'Stopped loading the audit log',
+    description: 'You stopped the read, so the log is not shown. Nothing in it was changed.',
   },
-  /** A list with more pages to read, where none of the records read so far matches the search. */
+  /** A list with more pages to read, where none of the events read so far matches the search. */
   noLoadedMatches: {
-    title: 'No loaded record matches',
+    title: 'No loaded event matches',
     description:
-      'None of the records read so far matches this search, and the trail has more. Load more to keep looking, or change or clear a filter.',
+      'None of the events read so far matches this search, and the log has more. Change or clear a filter.',
     clear: 'Clear filters',
   },
-  failed: {
-    title: 'The search failed',
-    description:
-      'The server did not answer this search. Check that the host is running, then try again.',
+  /** An address that names an event the page could not show. */
+  recordNotFound: {
+    more: 'That event was not found in the recent log. Load more to keep looking.',
+    end: 'That event is not in the log.',
   },
+  loadMore: 'Load more',
+  /** A read that did not give the page its events, with the status the server answered with. */
+  failed: {
+    title: 'Couldn’t load the audit log',
+    answered: (status: number): string =>
+      `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+    /** A refusal (401 or 403) is something to fix, so it carries the server's own words. */
+    refused: (status: number, message: string): string =>
+      `The server answered with an error (${String(status)}): ${message.replace(/[.\s]+$/, '')}.`,
+    noAnswer: 'The server didn’t answer. Nothing you did caused it.',
+    unknown: 'Something went wrong reading the audit log. Nothing you did caused it.',
+    /** The second action: this page is already inside Health, so it says Open Health. */
+    openHealth: 'Open Health',
+    openHealthPath: '/health',
+  },
+} as const;
+
+/** The sentences that say what an audit event was, in the order the table reads them: who, what, target. */
+export const AUDIT_EVENT_COPY = {
+  /** The actor of what the host itself did or noticed. */
+  host: 'Interborough',
+  you: 'You',
+  serverStarted: 'Server started',
+  serverStartedTarget: 'Interborough',
+  /** The target of a start that recorded its version: "Interborough 2.4.1". */
+  serverStartedVersionTarget: (version: string): string => `Interborough ${version}`,
+  removedProviderKey: (provider: string): string => `Removed the ${provider} key`,
+  providerTarget: (provider: string): string => `${provider} provider`,
+  startedRun: 'Started a run',
+  stoppedRun: 'Stopped a run',
+  runFailed: 'A run failed',
+  chatTarget: (title: string): string => `Chat › ${title}`,
+  scheduleRan: 'Started a scheduled run',
+  createdSchedule: 'Created a schedule',
+  pausedSchedule: 'Paused a schedule',
+  resumedSchedule: 'Resumed a schedule',
+  canceledSchedule: 'Canceled a schedule',
+  missedRuns: (count: number): string =>
+    `Noticed ${count.toLocaleString('en-US')} missed ${count === 1 ? 'run' : 'runs'}`,
+  /** A tool asked before running: `request` is the tool's own sentence, lower-cased, such as "refund order 4471". */
+  askedTo: (request: string): string => `Asked to ${request}`,
+  askedToUse: (tool: string): string => `Asked to use ${tool}`,
+  approvedToolCall: 'Approved a tool call',
+  deniedToolCall: 'Denied a tool call',
+  ranTool: (tool: string): string => `Ran ${tool}`,
+  correctedMemory: 'Corrected a memory',
+  forgotMemory: 'Forgot a memory',
+  editedAgent: 'Edited an agent',
+  createdWorkflow: 'Created a workflow',
+  editedWorkflow: 'Edited a workflow',
+  createdHook: 'Created a hook',
+  editedHook: 'Edited a hook',
+  deletedChat: 'Deleted a chat',
+  chatTargetDeleted: 'Chat',
+  /** The target of a deleted chat whose record kept its title: "“Scratch test” · 12 messages". */
+  deletedChatTarget: (title: string, messages: number | undefined): string =>
+    messages === undefined
+      ? `“${title}”`
+      : `“${title}” · ${messages.toLocaleString('en-US')} ${messages === 1 ? 'message' : 'messages'}`,
+  deletedStorageKey: 'Deleted a storage key',
+  storageTarget: (key: string): string => `Storage › ${key}`,
+  connectedToolSource: 'Connected a tool source',
+  removedToolSource: 'Removed a tool source',
+  trustedSkillSource: 'Changed what a skill source may do',
+  changedSettings: 'Changed a setting',
+  webhookGaveUp: 'Gave up delivering a hook',
+  /** An event the page has no sentence for: the record's own type, in words. */
+  other: (type: string): string => type,
+  anAgent: 'An agent',
+  aSchedule: 'A schedule',
+  versionRange: (from: number | undefined, to: number | undefined): string =>
+    from === undefined ? `version ${to ?? ''}` : `version ${from} → ${to ?? ''}`,
 } as const;
 
 /**
@@ -3011,7 +3323,12 @@ export const CHAT_COPY = {
   /** The empty chat page's second action, to the agents a chat can start with. */
   browseAgents: 'Browse agents',
   agentLabel: 'Agent',
-  agentPlaceholder: 'Search agents',
+  agentPlaceholder: 'Choose an agent',
+  /** The agent select at the top of a new chat's composer. */
+  agentSelect: {
+    /** Said under an agent that runs on a model while no provider is connected. */
+    needsProvider: 'Needs a provider',
+  },
   sessionsTitle: 'Chats',
   /** The headings the list of chats is cut under; "Needs you" is the run states' word for waiting on a person. */
   groups: {
@@ -3061,16 +3378,51 @@ export const CHAT_COPY = {
   approvalTitle: 'Needs your approval',
   /** The tool calls of a turn. */
   tools: {
-    /** The chevron on a folded group of calls, which opens its rows. */
-    show: 'Show tool calls',
-    hide: 'Hide tool calls',
-    /** The chevron on one call, which opens the arguments it was given and what it answered. */
-    detailsFor: (name: string): string => `Details for ${name}`,
-    running: 'Running',
-    waitingForApproval: 'Waiting for your approval',
+    /** The accessible name of the rail of one turn's calls. */
+    railLabel: 'Tool calls',
+    /** The words of the arguments and result a chosen call opens. */
     resultPrefix: 'Result:',
     /** A call the person refused reads Denied: it did not fail. */
     denied: 'Denied',
+    /**
+     * A call the run ended on. A tool that only reads can say it did not finish; one that changes
+     * things, or that nothing classifies, may have run, and a line that says nothing changed would
+     * be a guess.
+     */
+    interruptedReads: 'Interrupted · didn’t finish',
+    interruptedChanges: 'Interrupted · may have run',
+    /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
+    runFinishedNoReply: 'Run finished · no reply',
+  },
+  /**
+   * The status line under a reply that stopped, in danger text with a Retry beside it. It is the
+   * product speaking, not the agent. `cause` is why the run stopped, without its full stop.
+   */
+  stopLine: {
+    partway: (cause: string): string => `The reply stopped partway: ${cause}.`,
+    whileRunning: (tool: string, cause: string): string =>
+      `The reply stopped while ${tool} was running: ${cause}.`,
+    /** Added for an interrupted tool that only reads. */
+    didNotFinish: (tool: string): string => `${tool} didn’t finish and nothing was changed.`,
+    /**
+     * Added for an interrupted tool that changes things, or that nothing classifies. `subject` is
+     * what the call acted on ("order", from an `orderId` argument); a call that names none says
+     * "result".
+     */
+    mayHaveRun: (tool: string, subject: string = 'result'): string =>
+      `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
+    retry: 'Retry',
+    /**
+     * Said when Retry could not put the interrupted tool back behind its approval, so it sent
+     * nothing rather than let the call run again unasked.
+     */
+    retryFailed:
+      'Retry could not ask for the tool’s approval again, so nothing was sent. Try again.',
+    /**
+     * Said when Stop, pressed while the page was reconnecting, could not reach the run to cancel
+     * it: the run may still be going, and Reconnect shows what it is doing.
+     */
+    stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
   },
   /** The chat's header and its strip of runs. */
   strip: {
@@ -3135,8 +3487,6 @@ export const CHAT_COPY = {
    * picker, `modelPicker`), the reasoning effort and the permission mode.
    */
   settings: {
-    /** The header's summary of the settings. */
-    summaryLabel: 'Chat settings',
     model: 'Model',
     effort: 'Effort',
     permission: 'Permissions',
@@ -3149,26 +3499,37 @@ export const CHAT_COPY = {
       { value: 'xhigh', label: 'Extra high' },
       { value: 'max', label: 'Max' },
     ],
-    /** The modes, in the order of how much they ask. */
+    /** The modes, in the order of how much they ask, each with the help line under its option. */
     permissionOptions: [
-      { value: 'always', label: 'Always ask' },
-      { value: 'on-changes', label: 'Ask on changes' },
-      { value: 'allow-all', label: 'Allow all' },
-      { value: 'read-only', label: 'Read-only' },
+      { value: 'always', label: 'Always asks', description: 'Every tool call asks first.' },
+      {
+        value: 'on-changes',
+        label: 'On changes asks',
+        description: 'Tools set to On changes ask before they run.',
+      },
+      {
+        value: 'allow-all',
+        label: 'Allow all',
+        description:
+          'Skips the On changes asks for this chat. Tools set to Always still ask; Blocked tools stay blocked.',
+      },
+      {
+        value: 'read-only',
+        label: 'Read-only',
+        description: 'Every tool that is not read-only is denied.',
+      },
     ],
-    /** What each mode does, as `bureau.contexts.steer` defines it. */
-    permissionDescriptions: {
-      'on-changes': 'Tools ask as each tool’s own setting says.',
-      always: 'Every tool call asks first.',
-      'allow-all':
-        'Skips the asks that Ask on changes would raise. A tool set to always ask still asks, a tool that declares no setting of its own still asks, a blocked tool is still refused, and a child agent keeps its own stricter mode.',
-      'read-only': 'Every tool that is not read-only is denied.',
-    },
-    /** When a change takes effect. A mode is read at each tool call; the model and effort at each step. */
+    /**
+     * The line under the composer after a change, saying when it takes effect: a mode is read at each
+     * tool call, the model and the effort at each step, and with no run going, at the next run.
+     */
     applies: {
-      step: 'Applies from the run’s next step.',
-      toolCall: 'Applies from the run’s next tool call.',
-      nextRun: 'Applies to the next run.',
+      step: (setting: string, value: string): string =>
+        `${setting} ${value} applies from the next step.`,
+      toolCall: (setting: string, value: string): string =>
+        `${setting} ${value} applies from the next tool call.`,
+      nextRun: (setting: string, value: string): string =>
+        `${setting} ${value} applies to the next run.`,
     },
     /** Why the controls are disabled for a chat this principal did not start. */
     notYours: 'Only the person who started this chat can change its settings.',
@@ -3271,8 +3632,74 @@ export const CHAT_COPY = {
     category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
     unavailable: 'Context window unavailable',
   },
+  /** What the composer says in place of its text box, and the line under it. */
+  composer: {
+    /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
+    placeholder: (agent: string): string => `Message ${agent}…`,
+    unreachable: 'Sending is off until Interborough is reachable',
+    restarting: 'Sending resumes when Interborough is back.',
+    pluginDisabled: (agent: string, plugin: string): string =>
+      `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,
+    enableAndRestart: 'Enable and restart',
+    /** The confirmation that enables the plugin: what it does to work that is running. */
+    enableDialog: {
+      title: (plugin: string): string => `Enable the ${plugin} plugin and restart?`,
+      description: 'Running work picks up where it stopped; reviews stay waiting.',
+      confirm: 'Enable and restart',
+    },
+    ended: 'This chat has ended. The server stopped it when it restarted.',
+    newChat: 'New chat',
+    /** The composer's placeholder while a question that draws choices waits. */
+    answerPlaceholder: 'Choose an answer above, or type your own…',
+    noProvider: 'Connect a model provider to chat',
+    connectProvider: 'Connect a provider',
+    useAssistant: 'Use Assistant',
+    /** Said in the blocked row of a chat started from Workflows when no agent has the tool. */
+    noWorkflowAgent:
+      'No agent can create workflows. Add the Create workflow tool to an agent’s Access tab.',
+    openAgents: 'Open Agents',
+    /**
+     * The one control that holds Model, Effort and Permissions when the composer is too narrow for
+     * them side by side. Its name lists what it holds.
+     */
+    settings: {
+      word: 'Settings',
+      label: 'Settings: Model, Effort and Permissions',
+    },
+  },
+  /** The context meter in the composer: a bar and a reading of how full the window is. */
+  contextMeter: {
+    /** The meter's accessible name; `percent` is `null` when the model's window is not known. */
+    label: (percent: number | null, used: string) =>
+      percent === null ? `Context ${used} tokens` : `Context ${String(percent)}%`,
+    /** The visible reading beside the bar. */
+    reading: (percent: number | null, used: string) =>
+      percent === null ? used : `${String(percent)}%`,
+    /** The tooltip: tokens in use of the window, as short numbers. */
+    tooltip: (used: string, max: string | null) =>
+      max === null ? `About ${used} tokens` : `${used} of ${max} tokens`,
+    unavailable: 'Context unavailable',
+  },
   /** Branching a chat from one of an agent's replies. */
+  /** What a message that was not sent says in the popover its red icon opens. */
+  notSent: {
+    online: 'Not sent. Interborough couldn’t deliver this message. Your message is kept.',
+    unreachable: 'Not sent. Interborough can’t be reached. Your message is kept.',
+    retryNote: 'Retries when you’re back online.',
+  },
+  /** The chat's status beside its title. */
+  status: {
+    waiting: 'Waiting on you',
+    running: 'Running',
+    failed: 'Failed',
+    ended: 'Ended',
+    done: 'Done',
+  },
   branch: {
+    /** The visible words of the action on a message, which is named `action` for assistive technology. */
+    short: 'Branch',
+    /** The name of Branch on a message the person sent, which branches from just before it. */
+    before: 'Branch before this message',
     /** The action on a reply that ends a completed turn. */
     action: 'Branch from here',
     /** What a branch's header says, before the link to the chat it came from. */
@@ -3351,30 +3778,20 @@ export const CHAT_COPY = {
     description: 'It no longer exists, so nothing more can be sent here.',
     back: 'Back to chats',
   },
-  /** Editing a message you sent: the chat is branched before it and the edited text is sent there. */
-  edit: {
-    /** Said when the message follows no finished reply, so there is nowhere to branch before it. */
-    unavailable:
-      'That message was sent while a run was going, so it cannot be edited. Edit one that follows a finished reply.',
-    /** Said when the message carries files, which an edited copy would leave behind. */
-    withFiles:
-      'That message has files attached, so it cannot be edited. Send a new message instead.',
-    /** Any other fault; the chat the person is in is untouched. */
-    fault: 'The message could not be edited. You are still in this chat.',
-    /** Heads the edited text kept after an edit that did not branch. */
-    kept: 'Your edited text is kept here:',
-    copy: 'Copy text',
-    copied: 'Copied.',
-    copyFailed: 'The text could not be copied. Select it and copy it by hand.',
-    tryAgain: 'Try again',
-  },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {
     listLabel: 'Files',
     image: (position: number) => `Image ${position}`,
     audio: (position: number) => `Audio ${position}`,
     video: (position: number) => `Video ${position}`,
-    download: (mediaType: string) => `Download file (${mediaType})`,
+    /** A file's name and size ("settings-page.png · 182 KB"), or "Download file" when the row carries neither; never its media type. */
+    download: (name?: string, size?: number): string => {
+      const facts = [name, size === undefined ? undefined : formatBytes(size)].filter(
+        (fact): fact is string => fact !== undefined && fact !== '',
+      );
+      if (name !== undefined && name !== '') return facts.join(' · ');
+      return facts.length === 0 ? 'Download file' : `Download file · ${facts.join(' · ')}`;
+    },
   },
   /**
    * What a person is told when a file cannot be attached or sent. An upload fault shows on the
@@ -3382,17 +3799,23 @@ export const CHAT_COPY = {
    * message, which can name an asset or an upload.
    */
   attachments: {
-    /** The file is over the limit the selected agent's model states. */
-    tooLarge: (limit: number) =>
-      `This file is larger than the ${formatBytes(limit)} this agent accepts.`,
-    /** The file is of a type the selected agent's model does not take. */
-    typeNotAccepted: 'This agent does not accept that type of file.',
+    /** The file is over the limit its own type has, which the selected agent's model states. */
+    tooLarge: (size: number, limit: number) =>
+      `Can’t attach: ${formatBytes(size)} is over the ${formatBytes(limit)} limit.`,
+    /**
+     * The file is of a type the selected agent's model does not take. `kind` names the file's type
+     * (`TIFF`), and `accepted` the types the agent does take (`PNG, JPG, PDF or text`).
+     */
+    typeNotAccepted: (kind: string, accepted: string) =>
+      `Can’t attach: ${kind} files aren’t supported. Use ${accepted}.`,
+    /** The selected agent takes no file at all, so whatever was attached is refused. */
+    noFiles: 'Can’t attach: this agent does not take files.',
     /** The upload did not finish, for a reason the person cannot act on beyond trying again. */
-    uploadFailed: 'The file could not be uploaded. Remove it and attach it again.',
+    uploadFailed: 'Upload failed. Try again, or remove it.',
     /** The Bureau looked at the bytes and refused them: a safety gate flagged the file, or it is not the type it says. */
-    rejected: 'The server would not accept this file. Its content was refused.',
+    rejected: 'Can’t attach: the server would not accept this file’s content.',
     /** The upload session was gone before the file finished arriving. */
-    expired: 'The upload expired before it finished. Remove the file and attach it again.',
+    expired: 'The upload expired. Try again, or remove it.',
     /** The run was refused because the model could not take an attachment. */
     modelRefusedMedia:
       'The agent’s model could not take an attached file. Send again without the file.',
@@ -3945,9 +4368,33 @@ export const TASK_COPY = {
   followUnavailable:
     'This server cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
-  waitsHeading: 'Waiting on you',
+  waitsHeading: 'What you can do',
+  /** The line under the heading while the run waits on questions. */
+  waitsSummary: (questions: number): string =>
+    questions === 1
+      ? 'This run is waiting on one question.'
+      : `This run is waiting on ${String(questions)} questions.`,
   /** The heading once everything the run asked has been answered. */
   waitsAnsweredHeading: 'Answered',
+  /** The small line over a question: who asked and how long ago. */
+  questionFrom: (agent: string, age: string): string => `Question from ${agent} · ${age}`,
+  /** Said under a question: what choosing an answer does, with the Undo window in seconds. */
+  answerSendsNote: (seconds: number): string =>
+    seconds <= 0
+      ? 'Choosing an answer sends it at once.'
+      : `Choosing an answer sends it at once. The run waits ${String(seconds)} seconds before it continues, so you can undo it.`,
+  /** Said under a question, and after an answer, while no model provider is connected. */
+  continuesOnProvider: (agent: string): string =>
+    `${agent} continues once a provider is connected.`,
+  /** The inline line while an answer is held: what was sent and that it can still be undone. */
+  answerSentLine: (label: string, seconds: number): string =>
+    `Answer sent: ${label}. Undo for ${String(seconds)} s.`,
+  /** The Undo action on that line. */
+  answerUndo: 'Undo',
+  /** Said under the choice that was picked, while its answer is held. */
+  answerSelected: 'Selected',
+  /** The run's status line while an answer is held. */
+  answerSentStatus: (seconds: number): string => `answer sent, undo for ${String(seconds)} s`,
   readingWait: 'Reading what the run is waiting on.',
   /** The answer is on its way and the wait has already closed. */
   sendingAnswer: 'Sending your answer.',
@@ -3963,6 +4410,11 @@ export const TASK_COPY = {
   respondFailed: 'The answer was not sent',
   cancelHeading: 'Cancellation',
   cancelAction: 'Cancel run',
+  /** The run page's message bar while no model provider is connected, so nothing can be sent. */
+  messageBlocked: {
+    reason: 'Connect a model provider to send messages',
+    connect: 'Connect a provider',
+  },
   cancelFailed: 'The run was not canceled',
   cancelConfirm: {
     title: 'Cancel this run?',
@@ -4047,8 +4499,10 @@ export const REVIEWS_COPY = {
   reasonLabel: 'Reason (required to reject)',
   reasonDescription: 'Sent with the decision. A rejection cannot be sent without one.',
   answerLabel: 'Your answer',
-  /** Said once under an answer field: what the agent does with the answer. */
-  answerHint: 'The agent continues with your answer.',
+  /** Said once in the footer of an open question: what the agent does with the answer. */
+  answerHint: 'The agent continues as soon as you answer.',
+  /** The footer button that commits a structured answer (a form), which picking a value does not send. */
+  sendAnswer: 'Send answer',
   /** The optional note saved with any decision; on a denial the agent reads it. */
   noteLabel: 'Note (optional)',
   /** Said under the note field: where the note goes. */
@@ -4837,15 +5291,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   schedules: {
     label: 'Schedules',
     loading: { title: 'Loading schedules', description: 'Reading the schedules.' },
-    empty: {
-      title: 'No schedules yet',
-      description: 'Create a schedule to start a workflow on a timetable.',
-      action: { label: 'Create a schedule', href: '/schedules/new' },
-    },
-    error: {
-      title: 'Schedules are unavailable',
-      description: 'The server did not answer. Check that the host is running, then try again.',
-    },
+    // The page draws its own empty and failed states under its own header (`ownsStates` in
+    // `views.ts`) in the words `SCHEDULE_COPY` holds, so the frame and the page never say them two
+    // ways.
+    empty: { ...SCHEDULE_COPY.empty, action: { label: 'New schedule', href: '/schedules/new' } },
+    error: SCHEDULE_COPY.loadFailed,
     forbidden: { title: FORBIDDEN_COPY.title('Schedules') },
   },
   reviews: {
@@ -4891,8 +5341,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'Reading the record of what changed.',
     },
     empty: {
-      title: 'No audit entries yet',
-      description: 'The record of who changed what appears here once something has been done.',
+      title: 'Nothing recorded yet',
+      description:
+        'Changes you and your agents make show up here, newest first, with who made them and what changed.',
     },
     error: {
       title: 'The audit trail is unavailable',
@@ -4981,36 +5432,91 @@ const UNCHECKED_WRITE_NOTE =
 export const STORAGE_COPY = {
   title: 'Storage',
   description: 'The keys this installation stores, and the value of each.',
-  /** The accessible name of the group and search controls. */
+  /** The accessible name of the controls that narrow the table. */
   filtersLabel: 'Find a key',
   groupLabel: 'Group',
   allGroups: 'All groups',
-  searchLabel: 'Search keys',
-  searchPlaceholder: 'Search keys',
+  /** The accessible name of the segmented control that picks how keys are narrowed. */
+  modeLabel: 'Search mode',
+  modeStartsWith: 'Starts with',
+  modeRange: 'Range',
+  searchLabel: 'Keys starting with',
+  searchPlaceholder: 'Keys starting with',
+  /** The accessible name of the two fields of a range, and of each. */
+  range: {
+    label: 'Range',
+    startLabel: 'Range start',
+    endLabel: 'Range end',
+    startPlaceholder: 'First key',
+    endPlaceholder: 'Last key',
+    /** The word between the two fields. */
+    to: 'to',
+    /** What a range whose last key sorts before its first says, under the fields. */
+    reversed: 'The end comes before the start. Swap them, or pick a later end.',
+    /** The note under a reversed range: the table still shows the last range that was a range. */
+    lastResult: (count: number, start: string, end: string): string => {
+      const keys = `${String(count)} ${count === 1 ? 'key' : 'keys'}`;
+      if (start !== '' && end !== '')
+        return `Showing the last result: ${keys} from ${start} to ${end}.`;
+      if (start !== '') return `Showing the last result: ${keys} from ${start}.`;
+      if (end !== '') return `Showing the last result: ${keys} up to ${end}.`;
+      return `Showing the last result: ${keys}.`;
+    },
+  },
   /** The accessible name of the table of keys. */
   tableLabel: 'Keys',
-  columns: { key: 'Key', group: 'Group', size: 'Size' },
+  columns: {
+    key: 'Key',
+    group: 'Group',
+    size: 'Size',
+    /** The column of write times, which names the zone they are read in. */
+    updated: (zone: string): string => `Updated (${zone})`,
+  },
   /** A key that is in no group, because its name has no prefix. */
   noGroup: 'None',
-  /** How many keys are loaded, as a sentence. */
-  count: (count: number, more: boolean): string =>
-    `${String(count)} ${count === 1 ? 'key' : 'keys'}${more ? ' so far' : ''}`,
-  loadMore: 'Load more',
+  /** The Updated column of a key whose backend records no write time. */
+  noUpdated: '—',
+  /**
+   * The table's footer: how many keys are loaded, of how many there are when storage can count them
+   * (it cannot for a range), and what loads the rest.
+   */
+  footer: (loaded: number, total: number | undefined, more: boolean): string => {
+    const count = (value: number): string => value.toLocaleString('en-US');
+    const keys =
+      total === undefined
+        ? `Showing ${count(loaded)} ${loaded === 1 ? 'key' : 'keys'}.`
+        : `Showing ${count(loaded)} of ${count(Math.max(total, loaded))} ${total === 1 ? 'key' : 'keys'}.`;
+    return more ? `${keys} Scroll to load more.` : keys;
+  },
   loadingLabel: 'Loading keys',
+  /** What the table says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+  stopped: {
+    title: 'Stopped loading keys',
+    description:
+      'You stopped the read, so the keys are not shown. Nothing stored was changed by it.',
+    tryAgain: 'Try again',
+  },
+  /**
+   * The footer after "Scroll to load more" failed: the keys already loaded stay, and Cinder's load
+   * more says what failed and retries.
+   */
+  loadMore: {
+    itemLabel: 'keys',
+    retry: 'Load more',
+  },
   empty: {
     title: 'No keys stored yet',
     description: 'Keys appear here once the application stores something.',
   },
   noMatches: {
     title: 'No keys match',
-    description: 'Nothing here contains this text. Choose another group or clear the search.',
+    description: 'No key starts with this text. Choose another group or clear the search.',
     clear: 'Clear filters',
   },
-  /** A search that has read keys and found none yet, with more to read. */
-  keepSearching: {
-    title: 'No match among the keys read so far',
-    description: (scanned: number): string =>
-      `${String(scanned)} ${scanned === 1 ? 'key was' : 'keys were'} read and none contains this text. Load more to keep looking.`,
+  /** A range in which no key falls. */
+  noKeysInRange: {
+    title: 'No keys in this range',
+    description: 'Nothing is stored between these two keys. Change either end.',
   },
   failed: {
     title: 'The keys could not be read',
@@ -5020,29 +5526,89 @@ export const STORAGE_COPY = {
   managedBadge: 'Managed',
   detail: {
     label: 'Selected key',
-    emptyTitle: 'Choose a key',
-    emptyDescription: 'Pick a key from the table to see its value.',
-    group: 'Group',
-    size: 'Size',
-    key: 'Key',
+    emptyTitle: 'Select a key to see its value',
+    emptyDescription:
+      'Pick a row to read what is stored. Keys Interborough doesn’t manage can also be edited and deleted.',
+    /** The accessible name of the region that holds the pane. */
+    paneLabel: 'Key',
+    /** The name of the menu at the end of the header row, which holds Delete. */
+    moreActions: 'More actions',
+    /** The pane's line while the key is being read: only what the row already says. */
+    groupOnly: (group: string): string => group,
+    /** The line over the key while its value is being edited after a failed save. */
+    editingSummary: (group: string, size: string, key: string): string =>
+      `${group} · ${size} · ${key}`,
+    /** What the pane says while the value is read: nothing for the first 300 ms, then a skeleton. */
+    valueLoadingLabel: 'Loading the value',
+    /** What the pane says after "Cancel" in the "Still loading" line. */
+    valueStopped: 'You stopped loading this value.',
+    /** What the pane says when the value could not be read. */
+    valueFailed: 'Couldn’t read the value.',
+    valueRetry: 'Try again',
+    /** What the pane says when the key was removed after the row was listed. */
+    valueGone: 'This key is no longer stored. Another writer removed it.',
+    /** The line over the key: its group, size and when it was written. */
+    summary: (group: string, size: string, updated: string | null): string =>
+      updated === null ? `${group} · ${size}` : `${group} · ${size} · updated ${updated}`,
+    /** How long a very long key is, said after it. */
+    characters: (count: number): string => `(${count.toLocaleString('en-US')} characters)`,
     copyKey: 'Copy key',
     copyValue: 'Copy value',
     edit: 'Edit',
     delete: 'Delete',
-    save: 'Save',
+    save: 'Save value',
     cancel: 'Cancel',
     jsonSwitch: 'JSON',
     valueLabel: 'Value',
-    editLabel: 'Edit the value',
-    /** Why a key has no Edit or Delete. */
+    editLabel: 'Value',
+    /** The lock line of a managed key, around its prefix, which the pane sets in monospace. */
+    locked: {
+      before: 'Locked: Interborough manages keys that start with ',
+      after: ' and needs them to recover runs.',
+    },
+    /** Why a key has no Edit or Delete, in one string: what a refused write says. */
     managedNote: (prefix: string): string =>
-      `The application manages keys that start with ${prefix}, so this one cannot be edited or deleted here.`,
+      `Locked: Interborough manages keys that start with ${prefix} and needs them to recover runs.`,
     /** Why no key has Edit or Delete while the managed prefixes are not known. */
     unknownManaged:
-      'The application could not say which keys it manages, so no key can be edited or deleted here.',
+      'Locked: Interborough could not say which keys it manages, so no key can be edited or deleted here.',
     binaryNote: 'This value is not text, so it cannot be edited here.',
     notJson: 'The value was JSON and this is not, so it cannot be saved.',
-    saveFailed: 'The value was not saved.',
+    /**
+     * The danger alert over the editor after a failed save: a bold lead, the cause, and what became
+     * of the edit.
+     */
+    saveFailed: {
+      lead: 'Couldn’t save the value.',
+      noAnswer: 'Interborough didn’t answer.',
+      kept: 'Your edit is still here.',
+    },
+    /**
+     * The heading over a value shown as text, which says what it is and how big: "Value · text, 2.1 MB".
+     */
+    textValueLabel: (size: string): string => `Value · text, ${size}`,
+    /**
+     * The note under a value shown as text. Each part is said only when it is true: that only the
+     * start is shown (and Copy value still copies it all), and why there is no Fields or JSON switch.
+     */
+    textNote: {
+      shownStart: (shown: string, size: string): string =>
+        `Showing the first ${shown}. Copy value copies all ${size}.`,
+      notJson: 'This value isn’t JSON, so there is no Fields or JSON switch.',
+      tooLarge: 'This value is too large for the Fields and JSON switch.',
+    },
+    /**
+     * The warning over the editor when the key was written while it was open: a bold lead, then who
+     * wrote it and when. The time is left out when the storage records none.
+     */
+    rewritten: {
+      lead: 'This key changed while you were editing.',
+      detail: (time: string | null): string =>
+        time === null ? 'The app wrote a new value.' : `The app wrote a new value at ${time}.`,
+      discard: 'Discard my edit',
+      saveOver: 'Save over it…',
+      showNew: 'Show new value',
+    },
     capabilityUnknown:
       'The storage has not said whether it can check that a value is unchanged, so nothing was written. Try again in a moment.',
     changedUnderYou:
@@ -5057,11 +5623,19 @@ export const STORAGE_COPY = {
       `This replaces the value of ${key}.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
     confirm: 'Save',
   },
+  /** The confirmation of Save over it, which replaces the value the application wrote while the editor was open. */
+  confirmSaveOver: {
+    title: 'Overwrite the app’s newer value?',
+    description: (key: string, time: string | null, unchecked = false): string =>
+      `${key} was written${time === null ? '' : ` at ${time}`} while you were editing. Saving replaces that value with yours. This can’t be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Save over it',
+  },
   confirmDelete: {
     title: 'Delete this key?',
-    description: (key: string, unchecked = false): string =>
-      `This removes ${key} from storage. It cannot be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
-    confirm: 'Delete',
+    /** The sentence after the key, which the dialog sets in monospace: its size and that it cannot be undone. */
+    afterKey: (size: string, unchecked = false): string =>
+      ` and its ${size} value are removed from storage. This can’t be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Delete key',
   },
   backend: {
     sqlite: 'SQLite',

@@ -1,3 +1,4 @@
+import type { WorkspaceMembershipOptions } from './http/workspace-principal.ts';
 import type { AgentContributions } from './agent-contributions';
 import type { AgentWithBureauTools } from './agents-with-bureau-tools';
 import type { BureauWorkflows, WorkflowScheduleBlocker } from './workflow-runtime';
@@ -40,6 +41,8 @@ import type {
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
   SessionInputPayload,
+  SessionInputRetractionOutcome,
+  SessionInputRetractionRequest,
   SessionListOptions,
   SessionStore,
   SessionSummary,
@@ -507,6 +510,8 @@ export interface BureauReceiptRetentionOption {
 }
 
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
+  /** Supplies the peer-call journal before durable boot recovery begins. */
+  peerCallsReady?: (journal: PeerCallJournal) => void;
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
    * `bureau.events` subscription names.
@@ -794,6 +799,8 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * memory hooks for. See {@link BureauMemoryAuthorityOptions}.
    */
   memoryAuthority?: BureauMemoryAuthorityOptions;
+  /** Trusted workspace directory used by run and tool authorization. */
+  workspace?: WorkspaceMembershipOptions;
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
@@ -1729,6 +1736,12 @@ export type AuditQuery = {
   readonly runId?: string | undefined;
   /** Only records of this type. */
   readonly type?: string | undefined;
+  /**
+   * Only records of one of these types, for a reader that wants several kinds and none of the
+   * rest (COR-2018: the audit log shows what was done, not each step a run took). It combines with
+   * `type`: a record must match both. An empty list matches nothing.
+   */
+  readonly types?: readonly string[] | undefined;
   /** Only records at or after this time, in epoch milliseconds. */
   readonly since?: number | undefined;
   /** Only records at or before this time, in epoch milliseconds. */
@@ -1739,10 +1752,24 @@ export type AuditQuery = {
   readonly cursor?: string | undefined;
   /** How many records a page holds, 1 to 100. Defaults to 50. */
   readonly limit?: number | undefined;
+  /**
+   * Which end of the trail the page starts from: `oldest` (the default) reads forward in time, and
+   * `newest` reads backward from the latest record, so a page holds the most recent records,
+   * newest first, and `nextCursor` continues into older ones.
+   */
+  readonly order?: 'oldest' | 'newest' | undefined;
+  /**
+   * Also answer how many records match the filter and the reader may see, as
+   * {@link AuditQueryPage.total}. It reads the whole matching trail, so ask for it once, not on
+   * every page.
+   */
+  readonly includeTotal?: boolean | undefined;
 };
 
 /** Who is asking, for {@link BureauAudit.query}. */
 export type BureauAuditQueryOptions = {
+  /** Include only metadata of shared configuration changes, never private execution events. */
+  readonly includeSharedConfiguration?: boolean | undefined;
   /**
    * Only records about resources this owner owns (the `api-key:<subject>` or `anonymous:local`
    * string `ownerOf` returns). A record about a resource with no owner is never returned for an
@@ -1773,10 +1800,12 @@ export type AuditQueryRecord = {
 
 /** One page of {@link BureauAudit.query}. */
 export type AuditQueryPage = {
-  /** The records, oldest first. */
+  /** The records: oldest first, or newest first when the query asked for `order: 'newest'`. */
   readonly records: readonly AuditQueryRecord[];
   /** Pass it as `cursor` for the next page; `null` on the last. */
   readonly nextCursor: string | null;
+  /** How many records match the filter and the reader may see; present only when `includeTotal` was asked for. */
+  readonly total?: number;
 };
 
 /**
@@ -2162,6 +2191,15 @@ export interface CreateScheduleOptions {
  * `createBureauHandler` delegate to these members.
  */
 export interface BureauSchedules {
+  /** Reassign only future authority with a revision check; retain history and leave paused. */
+  reassign(
+    scheduleId: string,
+    request: {
+      readonly administrator: string;
+      readonly targetOwner: string;
+      readonly expectedRevision: number;
+    },
+  ): Promise<true | undefined>;
   /**
    * Register a durable recurring schedule via `engine.schedule(...)`.
    * Throws `ScheduleLocatorUnavailableError` when the schedule was created
@@ -2214,10 +2252,11 @@ export interface BureauSchedules {
   cancel(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
 
   /**
-   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), by wrapping
-   * Weft's `updateSchedule`. Weft replaces the cadence wholesale, so `update.spec` is required, in
-   * the same grammar as {@link DurableScheduleDefinition.spec}. The schedule's input, agent, owner
-   * and session are not changed. Resolves `true`, or `undefined` when no durable engine is
+   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), and the agent,
+   * text, and session each fire runs (COR-2018), by wrapping Weft's `updateSchedule`. Weft replaces
+   * the cadence wholesale, so `update.spec` is required, in the same grammar as
+   * {@link DurableScheduleDefinition.spec}. The schedule's owner is never changed, and the agent,
+   * text, and session are only when `update` names them. Resolves `true`, or `undefined` when no durable engine is
    * composed. A schedule that does not exist, and a workflow file's schedule (which belongs to its
    * file), reject with `NOT_FOUND`; an overlap Bureau does not offer, or `'allow'` on a schedule
    * with a recurring session, rejects with `BAD_REQUEST`. `guard` as for
@@ -2230,27 +2269,43 @@ export interface BureauSchedules {
   ): Promise<true | undefined>;
 
   /**
-   * Skip the next run of an active durable schedule (COR-1829), by wrapping Weft's
-   * `skipNextScheduleOccurrence`: the next occurrence that would start a run starts none, and the one
-   * after it runs as usual. That occurrence is the summary's `skipUntil` until the schedule moves
-   * past it, and it is not always `nextFireAt`: in a time zone `nextFireAt` can be the end of a
-   * daylight-saving gap that fires nothing. The skip leaves the schedule's `revision` as it is,
-   * and skipping again before that run has passed changes nothing.
+   * Skip one upcoming run of a durable schedule (COR-1829, COR-2018), by wrapping Weft's
+   * `skipNextScheduleOccurrence`: `occurrence`, in milliseconds since the epoch, the next run or any
+   * after it, starts none, and the runs around it run as usual; left out, the next run is skipped,
+   * whichever it is. Skipped runs are the summary's `skippedOccurrences` until the schedule moves
+   * past them, and the next is not always `nextFireAt`: in a time zone `nextFireAt` can be the end
+   * of a daylight-saving gap that fires nothing. The skip leaves the schedule's `revision` as it is,
+   * and skipping a run already skipped changes nothing. A paused schedule's runs can be skipped,
+   * counted from the first after now, and the pause keeps them for when it resumes.
    * Resolves `true`, or `undefined` when no durable engine is composed. A schedule that does not
-   * exist, and a workflow file's schedule, reject with `NOT_FOUND`; a schedule that is paused or
-   * cancelled has no next run and rejects. `guard` as for {@link BureauSchedules.pause}.
+   * exist, and a workflow file's schedule, reject with `NOT_FOUND`; a cancelled schedule has no run
+   * to skip and rejects. `guard` as for {@link BureauSchedules.pause}.
    *
    * A fire moves neither the schedule's `revision` nor its `status`, so the run a caller read can
-   * start before the skip is written, and the skip would take the one after it (COR-1985).
-   * `occurrence`, the run the caller means in milliseconds since the epoch (the summary's
-   * `nextFireAt` or `skipUntil`), is compared inside the same write with the schedule's next real
-   * run, and the call rejects with Weft's `ScheduleOccurrenceNotNextError` and writes nothing when
-   * it is neither that run nor the run already skipped. Left out, whichever run is next is skipped.
+   * start before the skip is written (COR-1985). `occurrence` is compared inside the same write, and
+   * the call rejects with Weft's `ScheduleOccurrenceNotNextError` and writes nothing when it is not
+   * an upcoming run: a fire passed it, or the cadence starts no run then.
    */
   skipNext(
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
     occurrence?: number,
+  ): Promise<true | undefined>;
+
+  /**
+   * Take back the skip of one upcoming run of a durable schedule (COR-2018), by wrapping Weft's
+   * `unskipScheduleOccurrence`: `occurrence`, one of the summary's `skippedOccurrences` in
+   * milliseconds since the epoch, starts a run after all. Like a skip it leaves the schedule's
+   * `revision` as it is, and an upcoming run that is not skipped changes nothing. A run that has
+   * already passed cannot be taken back, and rejects with Weft's `ScheduleOccurrenceNotNextError`.
+   * Resolves `true`, or `undefined` when no durable engine is composed. A schedule that does not
+   * exist, and a workflow file's schedule, reject with `NOT_FOUND`; a cancelled schedule rejects.
+   * `guard` as for {@link BureauSchedules.pause}.
+   */
+  unskip(
+    scheduleId: string,
+    occurrence: number,
+    guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined>;
 
   /**
@@ -2294,6 +2349,15 @@ export interface BureauSchedules {
    * {@link Bureau.ownerOf} first.
    */
   inputPreview(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * Whether every fire of an agent schedule continues one session (COR-2018): `true` when the
+   * schedule's stored input names a session, `false` when each fire is a fresh one. Only that
+   * boolean leaves here, never the session's id. `undefined` when there is no such schedule, when
+   * it is a workflow file's, or when no durable engine is composed. It does not check who may see
+   * the schedule, so a caller answers to {@link Bureau.ownerOf} first.
+   */
+  continuesChat(scheduleId: string): Promise<boolean | undefined>;
 
   /**
    * COR-2009 — why a workflow file's schedule won't start: its file is there but stopped parsing,
@@ -2403,7 +2467,15 @@ export interface BureauContexts {
    */
   delete(
     id: string,
-    options?: { readonly incarnation?: string | undefined },
+    options?: {
+      readonly incarnation?: string | undefined;
+      /**
+       * Who asked for the deletion (COR-2018): an owner identifier, which the deletion's audit entry
+       * carries as its `principal`, so the log can say who deleted the chat. Left out, the entry
+       * names no actor, as one for a chat the store expired does not.
+       */
+      readonly actor?: string | undefined;
+    },
   ): Promise<ContextDeletionReport>;
 
   /**
@@ -2480,6 +2552,40 @@ export interface BureauContexts {
     contextId: string,
     request: SessionInputAdmissionRequest,
   ): Promise<SessionInputAdmissionOutcome>;
+
+  /**
+   * B06 — take back one input `request.principal` admitted to the context, before any run takes
+   * it: a follow-up the person removes while it is still queued. The input's mailbox command is
+   * cancelled, so it is never delivered, and the outcome is `retracted` with its `canceled`
+   * receipt (or the receipt of an input that had already ended undelivered). An input a run
+   * already took into the conversation, or holds at the step boundary that is appending it, is
+   * `delivered`: the turn stands. An unknown context or incarnation, an unknown id, and another
+   * principal's input are `not-found`, and a Bureau with no session mailbox is
+   * `unsupported-capability`. Throws a `BureauError` `CONFLICT` when Bureau is shutting down.
+   */
+  retract(
+    contextId: string,
+    request: SessionInputRetractionRequest,
+  ): Promise<SessionInputRetractionOutcome>;
+
+  /**
+   * B06 (row 20c) — forget the chat's "Allow for the rest of this chat" grant of each tool in
+   * `tools`, by the name a tool call carries. A grant is stored under `namespace:name@version` and a
+   * stored call names a namespaced tool as the provider does (`namespace__name`), so both are read
+   * as that provider name: a name matches every version of its tool, and no other namespace's tool
+   * of the same name. Retry on a reply that failed sends a new turn over a
+   * thread that still holds the failed attempt, and this puts the interrupted tool back behind its
+   * approval. Nothing else of the context changes, no row of its conversation is removed, and
+   * `updatedAt` does not move. Resolves the grants forgotten, as they were stored (empty when none
+   * matched), or `undefined` for a context this Bureau does not hold (or none of
+   * `options.incarnation`). It does not authorize the caller, and throws a
+   * `BureauShuttingDownError` once the Bureau is shutting down.
+   */
+  forgetGrants(
+    contextId: string,
+    tools: readonly string[],
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<readonly string[] | undefined>;
 
   /**
    * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
@@ -2830,6 +2936,8 @@ export interface BureauInternals {
 }
 
 export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
+  /** Immutable construction binding shared with the transport handler; directory results stay live. */
+  readonly workspaceBinding: Readonly<WorkspaceMembershipOptions> | undefined;
   /** This bureau's identity — {@link BureauOptions.id}, or a generated one. */
   readonly id: string;
 
@@ -2852,7 +2960,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly schedules: BureauSchedules;
   /**
-   * The contexts (sessions): `list`, `get`, `delete`, `signal`, `input`, `inputsDeliveredBy`,
+   * The contexts (sessions): `list`, `get`, `delete`, `signal`, `input`, `retract`, `forgetGrants`, `inputsDeliveredBy`,
    * `steer`, `steering`, `fork`, and the context's event history (`events`, `subscribeEvents`).
    * See {@link BureauContexts}.
    */
@@ -3651,12 +3759,38 @@ export interface ScheduleRevisionGuard {
   readonly expectedRevision?: number | undefined;
 }
 
-/** What {@link BureauSchedules.update} changes. Omitted `description` and `overlap` keep their values. */
+/**
+ * What {@link BureauSchedules.update} changes. Omitted `description`, `overlap`, `agentName`,
+ * `input`, and `sessionId` keep their values.
+ */
 export interface DurableScheduleUpdate {
   /** The schedule's new cadence: a cron expression or a Weft duration shorthand, as at creation. */
   readonly spec: string;
   readonly description?: string | undefined;
   readonly overlap?: 'skip' | 'allow' | undefined;
+  /**
+   * The catalog agent each fire runs from now on. An agent that is not in the catalog rejects with
+   * {@link UnknownScheduleAgentError} and changes nothing, as at creation.
+   */
+  readonly agentName?: string | undefined;
+  /**
+   * The text each fire sends from now on. It replaces the text of the stored input: an input that
+   * also carries media keeps its media parts, after the new text.
+   */
+  readonly input?: string | undefined;
+  /**
+   * The session each fire continues from now on, or `null` to make every fire a fresh session
+   * again. A session on a schedule whose overlap is `'allow'` rejects with `BAD_REQUEST`, as at
+   * creation.
+   */
+  readonly sessionId?: string | null | undefined;
+  /**
+   * Start a new chat that every fire continues from now on, which Bureau names itself (the
+   * schedule's first fire makes it, owned by the schedule's owner). It replaces the chat the
+   * schedule continued, if any, and is refused together with `sessionId`. Under a workspace a
+   * caller cannot name a chat that does not exist yet, so this is how a schedule is given one.
+   */
+  readonly continueChat?: boolean | undefined;
   /**
    * The schedule's new IANA time zone (see {@link DurableScheduleDefinition.timeZone}). Left as it
    * was when omitted; an interval `spec` is always read as UTC.
@@ -3682,6 +3816,12 @@ export interface DurableScheduleDefinition {
    * each fire is a fresh standalone session.
    */
   sessionId?: string;
+  /**
+   * Start a new chat that every fire continues, which Bureau names itself; the first fire makes it,
+   * owned by the schedule's owner. Refused together with `sessionId`. Under a workspace a caller
+   * cannot name a chat that does not exist yet, so this is how a schedule is given a new one.
+   */
+  continueChat?: boolean;
   /** Overlap policy when a prior fire is still running. Defaults to `'skip'`. */
   overlap?: 'skip' | 'allow';
   /**

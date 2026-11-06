@@ -14,6 +14,7 @@ export {
 } from './adapters/a2a';
 export type * from './adapters/a2a/types';
 export { agUiConversationAdapter } from './adapters/ag-ui';
+export { CREATED_AT_METADATA_KEY, type AGUIExportOptions } from './adapters/ag-ui/created-at';
 export { AGUIMappingError } from './adapters/ag-ui/errors';
 export {
   appendAGUIMessages,

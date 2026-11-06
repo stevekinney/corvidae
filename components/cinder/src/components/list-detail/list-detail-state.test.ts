@@ -45,6 +45,8 @@ describe('the remembered list width', () => {
     expect(clampListWidth(10)).toBe(LIST_PANE_MINIMUM_WIDTH);
     expect(clampListWidth(10_000)).toBe(LIST_PANE_MAXIMUM_WIDTH);
     expect(clampListWidth(300)).toBe(300);
+    expect(clampListWidth(10_000, 900)).toBe(900);
+    expect(clampListWidth(700, 900)).toBe(700);
   });
 
   test('round-trips a width under the caller key', () => {

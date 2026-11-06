@@ -46,6 +46,31 @@ import {
 import { usdPricingOfRow } from './file-agent-cost-budget';
 import type { ModelPolicyDenial } from './model-policy';
 
+/**
+ * Where a reply's row keeps the model that wrote it (COR-2014): the `{ provider, model }` of the
+ * catalog row the step ran on. The step's response metadata carries it, and the run writes that
+ * metadata onto the assistant row it commits, so a transcript names each reply's own model, not
+ * the one the chat runs on now.
+ */
+export const REPLY_MODEL_METADATA_KEY = 'bureau:replyModel';
+
+/** The model a reply was written by: its catalog row's provider and model. */
+export interface ReplyModel {
+  /** The provider of the catalog row, as the catalog names it ("anthropic"). */
+  readonly provider: string;
+  /** The model, as the catalog names it ("claude-sonnet-5-5"). */
+  readonly model: string;
+}
+
+/** `response` with the model of `row` in its metadata, beside what the provider put there. */
+function withReplyModel(response: GenerateResponse, row: BackendDescriptor): GenerateResponse {
+  const replyModel: ReplyModel = { provider: row.provider, model: row.model };
+  return {
+    ...response,
+    metadata: { ...response.metadata, [REPLY_MODEL_METADATA_KEY]: { ...replyModel } },
+  };
+}
+
 /** Why a step's model override could not be used. */
 export type ModelOverrideUnusableReason = 'not-allowed' | 'cannot-be-set-up';
 
@@ -217,7 +242,14 @@ export function createFileAgentGenerate(options: FileAgentGenerateOptions): Gene
   const { defaultEffort, effortFallbackMode } = options;
   // The call for the chosen row, with the agent's default effort seeded into a copy of the context
   // when the person steered none. The copy lives only inside this call.
-  const callWith = (
+  // Its response names the row it ran on (`REPLY_MODEL_METADATA_KEY`).
+  const callWith = async (
+    chosenRow: BackendDescriptor,
+    call: GenerateFunction,
+    context: GenerateContext,
+  ): Promise<GenerateResponse> =>
+    withReplyModel(await callSeeded(chosenRow, call, context), chosenRow);
+  const callSeeded = (
     chosenRow: BackendDescriptor,
     call: GenerateFunction,
     context: GenerateContext,

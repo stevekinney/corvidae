@@ -3,7 +3,7 @@
  * unsaved draft, saves nothing, and ends (the Bureau deletes the chat's context) when the drawer
  * closes, when the person starts over, and when the page is left, however the start is timed.
  */
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -36,18 +36,27 @@ afterEach(() => {
   stub = undefined;
 });
 
-function bureau(handlers: Record<string, BureauHandler> = {}): BureauStub {
-  stub = installBureauStub({
-    'bureau.agents.catalog': () => catalogFixture(),
-    'bureau.agents.definitions.get': () => readyAgent(),
-    'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
-    'bureau.agents.versions.list': () => ({ versions: [] }),
-    'bureau.agents.definitions.create': () => ({ id: 'x', hash: 'created' }),
-    'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
-    'bureau.agents.try': () => TRIED,
-    'bureau.contexts.delete': (params) => ({ contextId: params['contextId'], receipt: 'applied' }),
-    ...handlers,
-  });
+function bureau(
+  handlers: Record<string, BureauHandler> = {},
+  options: Parameters<typeof installBureauStub>[1] = {},
+): BureauStub {
+  stub = installBureauStub(
+    {
+      'bureau.agents.catalog': () => catalogFixture(),
+      'bureau.agents.definitions.get': () => readyAgent(),
+      'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.definitions.create': () => ({ id: 'x', hash: 'created' }),
+      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
+      'bureau.agents.try': () => TRIED,
+      'bureau.contexts.delete': (params) => ({
+        contextId: params['contextId'],
+        receipt: 'applied',
+      }),
+      ...handlers,
+    },
+    options,
+  );
   return stub;
 }
 
@@ -64,8 +73,8 @@ async function type(element: HTMLElement, value: string): Promise<void> {
 /** Opens the drawer and starts a chat with `message`. */
 async function startChat(view: View, message = 'Hello there'): Promise<void> {
   await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
-  await type(await view.findByRole('textbox', { name: copy.try.messageLabel }), message);
-  await fireEvent.click(view.getByRole('button', { name: copy.try.send }));
+  await type(await view.findByRole('textbox', { name: 'Message' }), message);
+  await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
 }
 
 describe('Try it', () => {
@@ -128,7 +137,7 @@ describe('Try it', () => {
     );
     // Opening it again starts from the composer, not the old chat.
     await fireEvent.click(view.getByRole('button', { name: copy.try.action }));
-    await view.findByRole('textbox', { name: copy.try.messageLabel });
+    await view.findByRole('textbox', { name: 'Message' });
     expect(view.queryByRole('region', { name: copy.try.chatLabel })).toBeNull();
   });
 
@@ -188,8 +197,8 @@ describe('Try it', () => {
     await waitFor(() =>
       expect(calls.callsTo('bureau.contexts.delete')[0]?.params).toEqual({ contextId: 'ctx-1' }),
     );
-    await type(await view.findByRole('textbox', { name: copy.try.messageLabel }), 'Again');
-    await fireEvent.click(view.getByRole('button', { name: copy.try.send }));
+    await type(await view.findByRole('textbox', { name: 'Message' }), 'Again');
+    await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
     await view.findByRole('region', { name: copy.try.chatLabel });
     expect(calls.callsTo('bureau.agents.try')[1]?.params).toMatchObject({
       definition: { instructions: 'Different now.' },
@@ -238,7 +247,7 @@ describe('Try it', () => {
     expect(view.queryByRole('region', { name: copy.try.chatLabel })).toBeNull();
     expect(calls.callsTo('bureau.contexts.delete')).toEqual([]);
     // The composer is back, so a corrected form can be tried.
-    expect(view.getByRole('textbox', { name: copy.try.messageLabel })).not.toBeNull();
+    expect(view.getByRole('textbox', { name: 'Message' })).not.toBeNull();
   });
 
   test('does not warn about a chat that is already gone, and warns about one that cannot be removed', async () => {
@@ -282,5 +291,150 @@ describe('Try it', () => {
     expect((button as HTMLButtonElement).disabled).toBe(false);
     await type(await view.findByRole('textbox', { name: /^Steps per run/ }), 'many');
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(true));
+  });
+  test('with no model provider connected the shared blocked row stands in for the composer, over an empty transcript', async () => {
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: false }] });
+    const view = mount();
+    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
+
+    await view.findByText('Connect a model provider to chat');
+    await view.findByText('Connect a provider');
+    expect(view.queryByRole('textbox', { name: 'Message' })).toBeNull();
+    expect(view.getByText(copy.try.usesChanges)).not.toBeNull();
+    // Reset has nothing to reset until a chat has started.
+    expect(
+      (view.getByRole('button', { name: copy.try.startOver }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  test('the composer is one line, “Send a test message”, with the line about real tools under it', async () => {
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    const view = mount();
+    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
+
+    const field = await view.findByRole('textbox', { name: 'Message' });
+    expect(field.getAttribute('placeholder')).toBe(copy.try.messagePlaceholder);
+    expect(view.getByText(copy.try.hint)).not.toBeNull();
+    expect(view.queryByText('Connect a model provider to chat')).toBeNull();
+  });
+
+  describe('while the first answer is being read', () => {
+    const encoder = new TextEncoder();
+    const frame = (event: unknown) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+    const sse = (events: readonly unknown[], open = false) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const event of events) controller.enqueue(frame(event));
+          if (!open) controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    };
+    const started = { type: 'RUN_STARTED', threadId: 'ctx-1', runId: 'task-1' };
+
+    function tryWith(
+      agUi: NonNullable<NonNullable<Parameters<typeof installBureauStub>[1]>['agUi']>,
+    ) {
+      bureau(
+        {
+          'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+          'bureau.contexts.get': () => ({ id: 'ctx-1' }),
+        },
+        { hostProviders: [{ name: 'anthropic', hasKey: true }], agUi },
+      );
+      return mount();
+    }
+
+    test('Send becomes Stop and the “Send a test message” field is disabled, though the chat takes follow-ups', async () => {
+      const view = tryWith(() =>
+        sse(
+          [
+            started,
+            { type: 'TEXT_MESSAGE_START', messageId: 'run-1:step:0', role: 'assistant' },
+            {
+              type: 'TEXT_MESSAGE_CONTENT',
+              messageId: 'run-1:step:0',
+              delta: 'Category: damaged item, urgency',
+            },
+          ],
+          true,
+        ),
+      );
+      await startChat(view, 'My order 4471 arrived broken.');
+
+      await view.findByText(/Category: damaged item, urgency/);
+      const field = await view.findByRole('textbox', { name: 'Message' });
+      await waitFor(() => expect((field as HTMLTextAreaElement).disabled).toBe(true));
+      expect(view.getByRole('button', { name: 'Stop generating' })).not.toBeNull();
+      expect(view.queryByRole('button', { name: /^Send/ })).toBeNull();
+    });
+
+    test('a tool call under way reads “Using Lookup order…” under the message, beside the partial reply', async () => {
+      const view = tryWith(() =>
+        sse(
+          [
+            started,
+            { type: 'TEXT_MESSAGE_START', messageId: 'run-1:step:0', role: 'assistant' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'run-1:step:0', delta: 'Category: damaged' },
+            { type: 'TEXT_MESSAGE_END', messageId: 'run-1:step:0' },
+            {
+              type: 'TOOL_CALL_START',
+              toolCallId: 'call-1',
+              toolCallName: 'lookup-order',
+              parentMessageId: 'run-1:step:0',
+            },
+            { type: 'TOOL_CALL_ARGS', toolCallId: 'call-1', delta: '{"orderId":"4471"}' },
+            { type: 'TOOL_CALL_END', toolCallId: 'call-1' },
+          ],
+          true,
+        ),
+      );
+      await startChat(view, 'My order 4471 arrived broken.');
+
+      // The group's line is the call in the present tense, and its row says the same inside.
+      await view.findAllByText(/Using/);
+      expect(
+        view.container
+          .querySelector('.chat-tool-call-heading')
+          ?.textContent?.replace(/\s+/g, ' ')
+          .trim(),
+      ).toBe('Using Lookup order…');
+      expect(view.container.textContent).toContain('Category: damaged');
+      expect(view.getByText(copy.try.hint)).not.toBeNull();
+    });
+
+    test('a failed answer is a titled danger block under the message, with what failed, that nothing was saved, and Try again', async () => {
+      const view = tryWith(() =>
+        sse([
+          started,
+          {
+            type: 'RUN_ERROR',
+            message: 'The provider answered with an error (429, too many requests).',
+          },
+        ]),
+      );
+      await startChat(view, 'My order 4471 arrived broken.');
+
+      const block = await view.findByTestId('agent-try-answer-failure');
+      expect(block.textContent).toContain(copy.try.failureTitle);
+      expect(block.textContent).toContain('429, too many requests');
+      expect(block.textContent).toContain(copy.try.nothingSaved);
+      expect(
+        block.querySelector('[role="alert"], [data-cinder-variant="danger"], .cinder-alert'),
+      ).not.toBeNull();
+      expect(within(block).getByRole('button', { name: copy.try.tryAgain })).not.toBeNull();
+      // The board's shape: a glyph, a heading in the severity colour, the body in the default text
+      // colour, and Try again at the right, in the alert's own actions slot.
+      expect(block.querySelector('.cinder-alert__icon svg')).not.toBeNull();
+      expect(block.querySelector('.cinder-alert__heading')?.textContent).toBe(
+        copy.try.failureTitle,
+      );
+      expect(block.querySelector('.cinder-alert__body')?.textContent).toContain('429');
+      expect(
+        block
+          .querySelector('.cinder-alert__actions')
+          ?.contains(within(block).getByRole('button', { name: copy.try.tryAgain })),
+      ).toBe(true);
+    });
   });
 });

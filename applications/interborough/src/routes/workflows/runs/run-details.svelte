@@ -12,10 +12,11 @@
 
   import { RUN_PAGE_COPY } from '../../../app/copy.ts';
   import type { ChatContext } from '../../../lib/bureau-client.ts';
+  import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { formatDuration } from '../../../lib/format/index.ts';
-  import { router } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { classifyRevisionAgainstActive } from '../../../lib/workflow-revision.ts';
   import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
@@ -39,6 +40,7 @@
     workflow?: WorkflowState | undefined;
     /** The workflow a run of a workflow file belongs to, from the Bureau's record of it. */
     recordWorkflow?: string | undefined;
+    workflowOrigin?: Extract<WorkflowFileRun['origin'], { readonly kind: 'agent-run' }> | null;
     /** When the run started and last changed, in milliseconds. */
     startedAt?: number | undefined;
     updatedAt?: number | undefined;
@@ -54,6 +56,7 @@
     engine,
     workflow,
     recordWorkflow,
+    workflowOrigin,
     startedAt,
     updatedAt,
     over = false,
@@ -116,7 +119,7 @@
 
   const items = $derived.by((): DescriptionListItem[] => {
     const list: DescriptionListItem[] = [];
-    if (task !== undefined || goal !== undefined) {
+    if (task !== undefined || goal !== undefined || workflowOrigin !== undefined) {
       list.push({
         id: 'started-by',
         term: RUN_PAGE_COPY.facts.startedBy,
@@ -188,9 +191,16 @@
 </script>
 
 {#snippet startedBy()}
-  <ol class="ib-run-lineage" data-testid="run-lineage">
-    <RunLineage {runId} {task} {goal} {chat} />
-  </ol>
+  {#if workflowOrigin?.kind === 'agent-run'}
+    <span data-testid="run-lineage">
+      An agent's tool call · <span>{workflowOrigin.agentId}</span> ·
+      <a href={router.href(workflowDetailPath(workflowOrigin.runId))}>Calling run</a>
+    </span>
+  {:else}
+    <ol class="ib-run-lineage" data-testid="run-lineage">
+      <RunLineage {runId} {task} {goal} {chat} />
+    </ol>
+  {/if}
 {/snippet}
 
 {#snippet workflowLink()}

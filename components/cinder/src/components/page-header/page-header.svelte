@@ -141,7 +141,11 @@
 {/snippet}
 
 <div
-  class={classNames('cinder-page-header', className)}
+  class={classNames(
+    'cinder-page-header',
+    createAction && !actions && 'cinder-page-header--create-only',
+    className,
+  )}
   data-cinder-flush={flush ? 'true' : undefined}
   {...rest}
 >

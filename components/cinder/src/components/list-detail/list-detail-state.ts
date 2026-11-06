@@ -7,9 +7,15 @@ export const LIST_PANE_MAXIMUM_WIDTH = 560;
 /** Narrowest the detail pane may be left by dragging the divider, in pixels. */
 export const DETAIL_PANE_MINIMUM_WIDTH = 320;
 
-/** Keeps a list width inside the range the divider can reach. */
-export function clampListWidth(width: number): number {
-  return Math.min(LIST_PANE_MAXIMUM_WIDTH, Math.max(LIST_PANE_MINIMUM_WIDTH, width));
+/**
+ * Keeps a list width inside the range the divider can reach: from the narrowest list pane to
+ * `maximum`, which is the widest by default and larger for a list that is a table.
+ */
+export function clampListWidth(width: number, maximum: number = LIST_PANE_MAXIMUM_WIDTH): number {
+  return Math.min(
+    Math.max(maximum, LIST_PANE_MINIMUM_WIDTH),
+    Math.max(LIST_PANE_MINIMUM_WIDTH, width),
+  );
 }
 
 /**
@@ -32,13 +38,14 @@ export function resolveStorage(
 export function readStoredListWidth(
   storage: ListDetailStorage | undefined,
   storageKey: string | undefined,
+  maximum: number = LIST_PANE_MAXIMUM_WIDTH,
 ): number | null {
   if (!storage || storageKey === undefined) return null;
   try {
     const stored = storage.getItem(storageKey);
     if (stored === null || stored.trim() === '') return null;
     const width = Number(stored);
-    return Number.isFinite(width) ? clampListWidth(width) : null;
+    return Number.isFinite(width) ? clampListWidth(width, maximum) : null;
   } catch {
     return null;
   }

@@ -1,3 +1,6 @@
+import { captureRunWorkspaceAuthority, validateRunWorkspaceAuthority } from './run-authority.ts';
+import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule.ts';
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 /**
  * What a Bureau does with a directory of workflow files (COR-1527): load them, register them with
  * the engine as workflow types, keep the engine and the schedules matching the files, and answer
@@ -35,6 +38,7 @@ import {
   type WorkflowCompatibilityVerdict,
   type WorkflowDocument,
   type WorkflowState,
+  type WorkflowEvent,
   type WorkflowStatus,
 } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -142,6 +146,8 @@ export interface WorkflowRunSummary {
   readonly status: WorkflowStatus;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** What started the instance, when the runtime recorded an origin. */
+  readonly origin: TaskOrigin | null;
 }
 
 /** One instance with what started it and how it ended. */
@@ -162,6 +168,13 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
    * other versions are (COR-1874). The instance is never resumed on another version.
    */
   readonly unresumable?: WorkflowRunPinProblem;
+}
+
+export interface WorkflowRunHistoryEvent {
+  readonly type: string;
+  readonly timestamp: string;
+  readonly step: string | null;
+  readonly summary: string;
 }
 
 /** What {@link BureauWorkflows.start} started. */
@@ -194,6 +207,8 @@ export interface WorkflowStartOptions {
    * action marks the instance it starts, so the Bureau can tell that a hook started it.
    */
   readonly tags?: readonly string[] | undefined;
+  /** Origin recorded on a run started by an agent tool. */
+  readonly origin?: TaskOrigin | undefined;
 }
 
 /**
@@ -291,6 +306,8 @@ export interface WorkflowRunCounts {
 }
 
 export interface WorkflowRunFilter {
+  /** Filter private ownership before ordering, counts, or pagination. */
+  readonly mayReadRun?: ((runId: string) => Promise<boolean>) | undefined;
   readonly workflow?: string | undefined;
   readonly status?: WorkflowStatus | undefined;
   readonly limit: number;
@@ -341,6 +358,7 @@ export interface WorkflowSignalResult {
 
 /** The audit entry types a write to a workflow file appends. */
 export type WorkflowAuditType =
+  | 'workflow.started'
   | 'workflow.created'
   | 'workflow.updated'
   | 'workflow.paused'
@@ -351,7 +369,12 @@ export type WorkflowAuditType =
 export interface WorkflowAuditEntry {
   readonly runId: string;
   readonly type: WorkflowAuditType;
-  readonly detail: { readonly id: string; readonly hash: string; readonly previousHash?: string };
+  readonly detail: {
+    readonly id: string;
+    readonly hash: string;
+    readonly previousHash?: string;
+    readonly runId?: string;
+  };
   readonly principal?: string;
 }
 
@@ -395,7 +418,10 @@ export interface BureauWorkflows {
    * The revisions of `id` that have run, newest first, each with its compatibility verdict against
    * the workflow's current revision; `undefined` when there is no such workflow.
    */
-  readonly revisions: (id: string) => Promise<readonly WorkflowRevisionReport[] | undefined>;
+  readonly revisions: (
+    id: string,
+    mayReadRun?: (runId: string) => Promise<boolean>,
+  ) => Promise<readonly WorkflowRevisionReport[] | undefined>;
   /**
    * The saved versions of `id`, newest first, each with its number (`1.0.0`, `1.1.0`, …), when and
    * how it was saved, what changed from the version before and whether a run in flight could carry
@@ -415,6 +441,17 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
+  /** Request cancellation of one workflow-file run, returning once the request is recorded. */
+  readonly cancel: (
+    runId: string,
+  ) => Promise<{ readonly runId: string; readonly status: 'cancel-requested' }>;
+  /** Read a bounded, sanitized history projection for one workflow-file run. */
+  readonly historyRuns: (
+    runId: string,
+    limit: number,
+  ) => Promise<
+    { readonly events: readonly WorkflowRunHistoryEvent[]; readonly truncated: boolean } | undefined
+  >;
   /**
    * The counts of `id`'s instances, read from the engine's own totals, or `null` when the engine
    * could not be read (the failure is reported through the Bureau's diagnostics).
@@ -471,7 +508,11 @@ export interface BureauWorkflows {
   readonly signal: (
     name: string,
     payload: unknown,
-    options?: { readonly signalId?: string | undefined },
+    options?: {
+      readonly signalId?: string | undefined;
+      readonly owner?: string | undefined;
+      readonly maySignalRun?: ((runId: string) => Promise<boolean>) | undefined;
+    },
   ) => Promise<WorkflowSignalResult>;
 }
 
@@ -603,6 +644,10 @@ export interface WorkflowRuntime {
 }
 
 export interface WorkflowRuntimeOptions {
+  /** Trusted current membership for every workflow start. */
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
+  /** Resolve a trusted audit actor to its stable directory owner for explicit resume. */
+  readonly resumeAdministrator?: ((actor: string | undefined) => Promise<boolean>) | undefined;
   /** Where the workflow files come from and are written back to. */
   readonly source: WorkflowSource;
   readonly engine: Engine;
@@ -631,7 +676,7 @@ export interface WorkflowRuntimeOptions {
    * revision pins (`plugin:name@version`) is not loaded, so the owning plugin can report it.
    */
   readonly onPinnedUnavailable?: ((activity: string, runId: string) => void) | undefined;
-  readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST') => Error;
+  readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST' | 'CONFLICT') => Error;
   /**
    * The engine's cap on one payload's encoded size, or `null` for none. A signal's payload and the
    * trigger it starts an instance with are checked against it before anything is delivered.
@@ -801,6 +846,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadable, {
       broken: brokenWorkflows(),
       holds: scheduleHolds,
+      workspace: options.workspace,
     });
     await triggers.reconcile(desiredTriggers(), unreadable);
     await forgetVanishedHookOrigins();
@@ -835,6 +881,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
    * rejects with {@link WorkflowApplyError} until an apply succeeds.
    */
+  async function triggerAuthority(authorizingOwner: string | undefined) {
+    if (options.workspace === undefined) return {};
+    const authority = await captureRunWorkspaceAuthority(
+      options.workspace,
+      authorizingOwner ?? 'anonymous:local',
+    );
+    if (authority === undefined)
+      throw options.createError('Workspace authority unavailable.', 'CONFLICT');
+    return { workspaceAuthority: authority };
+  }
+
   async function fireTrigger(id: string, kind: string, payload: unknown): Promise<void> {
     if (closed) return;
     // The caller owns `payload`: snapshot it before the first await. A value that is not JSON is
@@ -853,7 +910,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-      const trigger = { kind, payload: input };
+      const trigger = { kind, payload: input, ...(await triggerAuthority(undefined)) };
       assertSendable('trigger payload', trigger);
       await engine.start(weftNameOf(id), trigger);
     });
@@ -1264,7 +1321,13 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     version: string;
     createdAt: number;
     updatedAt: number;
+    input?: unknown;
   }): WorkflowRunSummary {
+    const input = state.input;
+    const origin =
+      typeof input === 'object' && input !== null && 'origin' in input
+        ? (input.origin as TaskOrigin | null)
+        : null;
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),
@@ -1272,6 +1335,54 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       status: state.status,
       createdAt: new Date(state.createdAt).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
+      origin,
+    };
+  }
+
+  const HISTORY_EVENT_TYPES = new Set([
+    'file-workflow:step-started',
+    'file-workflow:step-completed',
+    'file-workflow:activity-started',
+    'file-workflow:activity-completed',
+    'file-workflow:signal-waiting',
+    'file-workflow:signal-received',
+    'file-workflow:run-terminal',
+  ]);
+
+  function boundedSummary(value: unknown): string {
+    const text =
+      typeof value === 'string'
+        ? value
+        : typeof value === 'number'
+          ? value.toString()
+          : typeof value === 'boolean'
+            ? value
+              ? 'true'
+              : 'false'
+            : '';
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.byteLength <= 256) return text;
+    return new TextDecoder().decode(bytes.slice(0, 256));
+  }
+
+  function historyEventOf(event: WorkflowEvent): WorkflowRunHistoryEvent | undefined {
+    if (!HISTORY_EVENT_TYPES.has(event.type)) return undefined;
+    const data = event.data;
+    const stepValue = data['step'];
+    const step =
+      typeof stepValue === 'number' || typeof stepValue === 'string' ? String(stepValue) : null;
+    const summaryField = event.type.includes('activity')
+      ? data['handler']
+      : event.type.includes('signal')
+        ? data['signal']
+        : event.type === 'file-workflow:run-terminal'
+          ? (data['message'] ?? data['status'])
+          : data['kind'];
+    return {
+      type: event.type,
+      timestamp: new Date(event.timestamp).toISOString(),
+      step,
+      summary: boundedSummary(summaryField),
     };
   }
 
@@ -1607,6 +1718,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     name: string,
     payload: unknown,
     signalId: string | undefined,
+    maySignalRun?: (runId: string) => Promise<boolean>,
   ): Promise<string[]> {
     const delivered: string[] = [];
     const waitsAt = async (id: string): Promise<boolean> => {
@@ -1616,6 +1728,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     try {
       for (const type of [...registeredTypes].toSorted()) {
         for (const id of await runningInstances(type)) {
+          if (maySignalRun !== undefined && !(await maySignalRun(id))) continue;
           if (!(await waitsAt(id))) continue;
           // Read again, right before the delivery: the listing and the first read can be stale.
           if (!(await waitsAt(id))) continue;
@@ -1717,19 +1830,114 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         undefined,
         id,
       ),
-    resume: (id, guard) =>
-      write(
+    resume: async (id, providedGuard) => {
+      const guard = { ...providedGuard };
+      const workspace = options.workspace;
+      if (workspace !== undefined && !(await options.resumeAdministrator?.(guard.actor)))
+        throw options.createError('Workspace administrator required.', 'CONFLICT');
+      return write(
         'workflow.resumed',
         guard,
         guard.expectedHash,
-        (onWritten) => catalog.setPaused(id, false, { ...guard, onWritten }),
-        undefined,
+        (onWritten) =>
+          exclusive(async () => {
+            if (workspace === undefined)
+              return catalog.setPaused(id, false, { ...guard, onWritten });
+            const schedule = await liveSchedule(id);
+            if (schedule == null) return catalog.setPaused(id, false, { ...guard, onWritten });
+            const snapshot = await engine.getSchedule(schedule.id);
+            const input = await storedScheduleInput(engine, schedule.id);
+            let binding: ReturnType<typeof workflowScheduleBinding>;
+            try {
+              binding = workflowScheduleBinding(input);
+            } catch {
+              throw options.createError('Workspace authority unavailable.', 'CONFLICT');
+            }
+            if (
+              snapshot === null ||
+              typeof input !== 'object' ||
+              input === null ||
+              (await validateRunWorkspaceAuthority(workspace, binding.workspaceAuthority)) ===
+                undefined
+            )
+              throw options.createError('Workspace authority unavailable.', 'CONFLICT');
+            let expectedRevision = snapshot.revision;
+            // Persist the hold before publishing the unpaused file. Other hosts and crash
+            // recovery must keep the schedule paused until this invocation activates it.
+            if (binding.authorityHold === undefined) {
+              await engine.replaceScheduleInput(
+                schedule.id,
+                { ...input, authorityHold: 'resuming' },
+                {
+                  expectedRevision,
+                  status: 'paused',
+                },
+              );
+              expectedRevision++;
+            }
+            const result = await catalog.setPaused(id, false, { ...guard, onWritten });
+            const { authorityHold: _hold, ...resumed } = input as Record<string, unknown>;
+            try {
+              await engine.replaceScheduleInput(schedule.id, resumed, {
+                expectedRevision,
+                status: 'active',
+              });
+            } catch (error) {
+              if (result.hash !== guard.expectedHash) {
+                try {
+                  await catalog.setPaused(id, true, {
+                    ...guard,
+                    expectedHash: result.hash,
+                    onWritten,
+                  });
+                } catch (restoreError) {
+                  throw new AggregateError(
+                    [error, restoreError],
+                    'Workflow resume failed and its catalog pause could not be restored.',
+                    { cause: restoreError },
+                  );
+                }
+              }
+              throw error;
+            }
+            return result;
+          }),
         id,
-      ),
+      );
+    },
     delete: (id, guard) =>
       write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
 
-    async revisions(id) {
+    async revisions(id, mayReadRun) {
+      if (mayReadRun !== undefined) {
+        const usage = new Map<string, { first: string; last: string }>();
+        for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
+          const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
+          for (const run of page.items) {
+            if (!(await mayReadRun(run.id))) continue;
+            const at = new Date(run.createdAt).toISOString();
+            const previous = usage.get(run.version);
+            usage.set(run.version, {
+              first: previous === undefined || at < previous.first ? at : previous.first,
+              last: previous === undefined || at > previous.last ? at : previous.last,
+            });
+          }
+          offset += page.items.length;
+          if (page.items.length === 0 || offset >= page.total) break;
+        }
+        const visible: WorkflowRevision[] = [];
+        for (const snapshot of await snapshots.snapshotsOf(id)) {
+          const times = usage.get(snapshot.workflowVersion);
+          if (times !== undefined)
+            visible.push({ ...snapshot, firstRunAt: times.first, lastRunAt: times.last });
+        }
+        if (visible.length > 0)
+          return withCompatibility(
+            id,
+            visible.toSorted((left, right) => right.lastRunAt.localeCompare(left.lastRunAt)),
+          );
+        return catalog.list().some((entry) => entry.id === id) ? [] : undefined;
+      }
       await Promise.allSettled(pendingStamps);
       // The engine's own record of when each revision's instances began is the source of truth: a
       // start event can arrive after the call that made the instance, or never (a crash).
@@ -1806,7 +2014,20 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             limit: 100,
             offset,
           });
-          found.push(...page.items.map(summarize));
+          let readable = page.items;
+          if (filter.mayReadRun !== undefined) {
+            const authorized = await Promise.all(
+              page.items.map(async (run) => ((await filter.mayReadRun!(run.id)) ? run : undefined)),
+            );
+            readable = authorized.filter(
+              (run): run is (typeof page.items)[number] => run !== undefined,
+            );
+          }
+          const states = await Promise.all(
+            readable.map(async (run) => ({ run, state: await engine.get(run.id) })),
+          );
+          for (const { run, state } of states)
+            found.push(summarize({ ...run, input: state?.input }));
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
         }
@@ -1883,6 +2104,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           version: state.versionTuple.workflowVersion,
           createdAt: state.createdAt,
           updatedAt: state.updatedAt,
+          input: state.input,
         }),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
@@ -1890,6 +2112,36 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         finishReason: state.status === 'failed' ? finishReasonOf(state.errorStack) : null,
         ...(cancellation?.pin === undefined ? {} : { unresumable: cancellation.pin }),
       };
+    },
+
+    async cancel(runId) {
+      const state = await engine.get(runId);
+      if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
+        throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
+      }
+      const outcome = await engine.cancel(runId);
+      if (outcome.status === 'already-terminal') {
+        return { runId, status: 'cancel-requested' as const };
+      }
+      return { runId, status: 'cancel-requested' as const };
+    },
+
+    async historyRuns(runId, limit) {
+      const state = await engine.get(runId);
+      if (state === null || state === undefined || !(await isWorkflowType(state.type)))
+        return undefined;
+      const history = await engine.getEvents(runId);
+      const projected = history
+        .map(historyEventOf)
+        .filter((event): event is WorkflowRunHistoryEvent => event !== undefined);
+      const selected = projected.slice(Math.max(0, projected.length - limit));
+      let events = selected;
+      let truncated = selected.length < projected.length;
+      while (JSON.stringify({ events }).length > 64 * 1024 && events.length > 0) {
+        events = events.slice(1);
+        truncated = true;
+      }
+      return { events, truncated };
     },
 
     async refresh() {
@@ -1900,8 +2152,22 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     async signal(name, payload, signalOptions) {
       // Delivery first, and it finishes before any instance starts, so an instance this call
       // starts whose first step awaits `name` is not satisfied by the payload it was started with.
-      validateSignal(name, payload, signalOptions?.signalId);
-      const delivered = await deliverSignal(name, payload, signalOptions?.signalId);
+      const signalId = signalOptions?.signalId;
+      const signalOwner = signalOptions?.owner;
+      const maySignalRun = signalOptions?.maySignalRun;
+      validateSignal(name, payload, signalId);
+      const payloadSnapshot: unknown = structuredClone(payload ?? null);
+      await triggerAuthority(signalOwner);
+      const delivered = await deliverSignal(name, payloadSnapshot, signalId, async (runId) => {
+        if (maySignalRun !== undefined && !(await maySignalRun(runId))) return false;
+        if (options.workspace === undefined) return true;
+        const run = await engine.get(runId);
+        const binding = workflowScheduleBinding(run?.input);
+        return (
+          (await validateRunWorkspaceAuthority(options.workspace, binding.workspaceAuthority)) !==
+          undefined
+        );
+      });
       if (applyPending) queueApply();
       await settled();
       if (applyFailure !== undefined) {
@@ -1912,7 +2178,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           applyFailure,
         );
       }
-      const trigger = { kind: 'signal', name, payload: payload ?? null };
+      const origin: TaskOrigin | undefined =
+        signalOwner === undefined
+          ? undefined
+          : { kind: 'person', principal: signalOwner, surface: 'api' };
+      const trigger = {
+        ...(await triggerAuthority(signalOwner)),
+        kind: 'signal',
+        name,
+        payload: payloadSnapshot,
+        ...(origin === undefined ? {} : { origin }),
+      };
       const startedIds: string[] = [];
       const rejected: WorkflowSignalResult['rejected'] = [];
       for (const listing of catalog.list()) {
@@ -1932,7 +2208,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           rejected.push({ id: file.id, issues });
           continue;
         }
-        const handle = await engine.start(weftNameOf(file.id), trigger);
+        const handle = await engine.start(
+          weftNameOf(file.id),
+          trigger,
+          origin === undefined ? undefined : { tags: [taskOriginTag(origin)] },
+        );
         startedIds.push(handle.id);
       }
       return { started: startedIds, delivered, rejected };
@@ -1958,17 +2238,29 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-      const origin: TaskOrigin = {
+      const origin: TaskOrigin = startOptions.origin ?? {
         kind: 'person',
         principal: starter,
         surface: surface ?? 'api',
       };
-      const trigger = { kind: 'manual', input, origin };
+      const trigger = { kind: 'manual', input, origin, ...(await triggerAuthority(starter)) };
       assertSendable('input', trigger);
       const handle = await engine.start(weftNameOf(id), trigger, {
         tags: [taskOriginTag(origin), ...extraTags],
         ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
       });
+      if (options.audit !== undefined && origin.kind === 'agent-run') {
+        try {
+          await options.audit({
+            runId: auditTrailWorkflowOwnerId(id),
+            type: 'workflow.started',
+            detail: { id, hash: file.hash, runId: handle.id },
+            principal: `agent-run:${origin.runId}`,
+          });
+        } catch (error) {
+          options.diagnose(`Could not record the workflow.started audit entry for "${id}".`, error);
+        }
+      }
       // The revision the run is pinned to is the engine's to say: the catalog can already hold a
       // newer file than the one the engine registered (COR-1927). A run the engine cannot read
       // back is reported on the catalog's revision, the one it was started from.

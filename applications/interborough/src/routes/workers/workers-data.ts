@@ -316,6 +316,18 @@ export function resumeWorkerMutation(
   }));
 }
 
+/** `POST /v1/workers/:id/forget` (`system:admin`): stops listing a worker that went away or stopped. */
+export function forgetWorkerMutation(
+  client: WorkersOperations,
+  onSettled: () => void,
+): CreateMutationResult<unknown, Error, { workerId: string }> {
+  return createMutation(() => ({
+    mutationFn: (variables: { workerId: string }) =>
+      client.operations['weft.workers.forget'](variables),
+    onSettled,
+  }));
+}
+
 export interface DrainDeploymentVariables {
   readonly deploymentName: string;
   readonly reason?: string;

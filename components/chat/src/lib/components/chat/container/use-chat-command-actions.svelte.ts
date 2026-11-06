@@ -26,6 +26,7 @@ type CommandActionsOptions = {
   getOnSubmit: () =>
     CommandCallback<[{ message: MessageInput; attachments: ChatAttachment[] }]> | undefined;
   getOnRetry: () => CommandCallback<[string]> | undefined;
+  getOnRemoveQueued: () => CommandCallback<[string]> | undefined;
   getOnEdit: () => CommandCallback<[{ messageId: string; content: string }]> | undefined;
   getOnApprovalResolve: () => ApprovalResolveCallback | undefined;
   getOnStop: () => CommandCallback<[{ messageId: string }]> | undefined;
@@ -126,6 +127,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
   let approvalOwners = $state(new Map<string, ApprovalOwner>());
   let editingMessageIds = $state(new Set<string>());
   let pendingRetryMessageTokens = $state(new Map<string, symbol>());
+  let removingMessageIds = $state(new Set<string>());
   // The tail of the follow-ups handed to the adapter, so they go one at a time.
   let runInputQueue: Promise<unknown> = Promise.resolve();
 
@@ -322,6 +324,27 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     }
   }
 
+  /**
+   * Takes back a queued follow-up: through the adapter's `removeRunInput` when it
+   * has one, else the host's `onRemoveQueued`. A second Remove of the same row
+   * while the first is settling asks nothing more.
+   */
+  function handleRemoveQueued(messageId: string): void {
+    if (removingMessageIds.has(messageId)) return;
+    removingMessageIds = new Set(removingMessageIds).add(messageId);
+    const settle = (): void => {
+      removingMessageIds = removeFromSet(removingMessageIds, messageId);
+    };
+    const flight = dispatchCommand(
+      'removeRunInput',
+      (adapter) =>
+        adapter.removeRunInput ? Promise.resolve(adapter.removeRunInput(messageId)) : undefined,
+      () => options.getOnRemoveQueued()?.(messageId),
+    );
+    if (flight !== undefined) void flight.finally(settle);
+    else settle();
+  }
+
   function handleEdit(event: { messageId: string; content: string }): void {
     void dispatchCommand(
       'editMessage',
@@ -427,11 +450,12 @@ export function useChatCommandActions(options: CommandActionsOptions) {
   }
 
   function handleStopGenerating(): void {
-    const streamingMessage = options
-      .getMessages()
-      .slice()
-      .reverse()
-      .find((message) => message.role === 'assistant');
+    // The reply being generated, or, before a reply row exists (a run whose stream dropped
+    // before it wrote one, which the host shows as reconnecting), the message the run answers:
+    // Stop is offered then too, and must still reach the host.
+    const messages = options.getMessages();
+    const streamingMessage =
+      messages.findLast((message) => message.role === 'assistant') ?? messages.at(-1);
     if (!streamingMessage) return;
     void dispatchCommand(
       'stopGenerating',
@@ -460,12 +484,24 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     hasPendingApproval,
     handleRetry: dispatchRetryMessage,
     handleEdit,
+    handleRemoveQueued,
     resolveToolApproval,
     handleStopGenerating,
     handleEditingChange,
     retryMessage: dispatchRetryMessage,
     get canResolveToolApproval() {
       return canResolveToolApproval;
+    },
+    /** Whether Remove can be offered on a queued follow-up: the adapter or the host can take one back. */
+    get canRemoveQueued() {
+      return (
+        options.getAdapter()?.removeRunInput !== undefined ||
+        options.getOnRemoveQueued() !== undefined
+      );
+    },
+    /** The queued follow-ups whose removal is settling. */
+    get removingMessageIds() {
+      return removingMessageIds;
     },
     get isEditing() {
       return editingMessageIds.size > 0;

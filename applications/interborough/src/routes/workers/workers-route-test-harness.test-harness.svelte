@@ -14,6 +14,7 @@
   import { onDestroy, untrack, type Component } from 'svelte';
 
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
+  import ToastHost from '../../app/toast-host.svelte';
   import { provideClient } from '../../lib/client.ts';
   import { FleetEventSource } from '../../lib/live-source/fleet-event-source.svelte.ts';
   import {
@@ -62,4 +63,5 @@
 
 <QueryClientProvider client={queryClient}>
   <RouteComponent {...componentProps} />
+  <ToastHost />
 </QueryClientProvider>

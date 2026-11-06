@@ -189,6 +189,84 @@ describe('free text answered through the composer', () => {
   });
 });
 
+describe('a choice that takes your own answer, in the composer', () => {
+  const CHOICE_OTHER = {
+    anyOf: [{ type: 'string', enum: ['staging', 'production'] }, { type: 'string' }],
+    'x-allowOther': true,
+    'x-labels': { staging: 'Staging', production: 'Production' },
+  };
+
+  test('answer mode: the placeholder says to choose or type your own, the button reads Answer, and typing answers', async () => {
+    const answers: [string, unknown][] = [];
+    const messages: unknown[] = [];
+    const { container } = render(Chat, {
+      id: 'q-choice-other',
+      conversation: questionConversation('q-choice-other', CHOICE_OTHER),
+      answerInComposer: true,
+      onInputSubmit: (toolCallId: string, value: unknown) => {
+        answers.push([toolCallId, value]);
+      },
+      onSubmit: (event: unknown) => messages.push(event),
+    });
+    await tick();
+
+    expect(composerOf(container).placeholder).toBe('Choose an answer above, or type your own…');
+    expect(container.querySelector('button[aria-label="Answer"]')?.textContent).toContain('Answer');
+    expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
+
+    await typeAndSend(container, 'canary');
+
+    expect(answers).toEqual([['ask', 'canary']]);
+    expect(messages).toEqual([]);
+    // Once it is answered the composer sends messages again.
+    expect(composerOf(container).placeholder).not.toBe('Choose an answer above, or type your own…');
+    expect(container.querySelector('button[aria-label="Send message"]')).not.toBeNull();
+  });
+
+  test('picking a choice answers at once, with no separate confirm', async () => {
+    const answers: unknown[] = [];
+    render(Chat, {
+      id: 'q-choice-other-pick',
+      conversation: questionConversation('q-choice-other-pick', CHOICE_OTHER),
+      answerInComposer: true,
+      onInputSubmit: (_toolCallId: string, value: unknown) => {
+        answers.push(value);
+      },
+    });
+    await tick();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Staging' }));
+    await settle();
+
+    expect(answers).toEqual(['staging']);
+  });
+
+  test('a host that draws the question itself puts the composer in answer mode with composerAnswering, and words the placeholder itself', async () => {
+    const { container } = render(Chat, {
+      id: 'q-host',
+      conversation: createConversationHistory({ id: 'q-host' }),
+      composerAnswering: true,
+      composerPlaceholder: 'Message Tool runner…',
+    });
+    await tick();
+
+    expect(composerOf(container).placeholder).toBe('Message Tool runner…');
+    expect(container.querySelector('button[aria-label="Answer"]')).not.toBeNull();
+  });
+
+  test('without a question the placeholder is the host own', async () => {
+    const { container } = render(Chat, {
+      id: 'q-none',
+      conversation: createConversationHistory({ id: 'q-none' }),
+      composerPlaceholder: 'Message Tool runner…',
+    });
+    await tick();
+
+    expect(composerOf(container).placeholder).toBe('Message Tool runner…');
+    expect(container.querySelector('button[aria-label="Send message"]')).not.toBeNull();
+  });
+});
+
 describe('answered questions', () => {
   test('keep their You answered row once the run resumes and the result is the tool output', async () => {
     const schema = {

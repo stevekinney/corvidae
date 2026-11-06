@@ -34,7 +34,10 @@
     disabled,
     readonly = false,
     description,
+    descriptionVisible = true,
+    descriptionPlacement = 'inline',
     mutating = false,
+    nameDetail,
     labelVisible = true,
     standalone = false,
     labelPosition = 'end',
@@ -95,7 +98,8 @@
     type="button"
     role="switch"
     aria-checked={checked}
-    aria-labelledby={labelId}
+    aria-labelledby={nameDetail ? undefined : labelId}
+    aria-label={nameDetail ? `${label}, ${nameDetail}` : undefined}
     aria-describedby={describedBy}
     aria-readonly={readonly ? 'true' : undefined}
     disabled={resolvedDisabled}
@@ -125,7 +129,11 @@
 
 {#snippet descriptionText()}
   {#if description}
-    <span id={descriptionId} class="cinder-toggle-field__description">{description}</span>
+    <span
+      id={descriptionId}
+      class={descriptionVisible ? 'cinder-toggle-field__description' : 'cinder-sr-only'}
+      >{description}</span
+    >
   {/if}
 {/snippet}
 
@@ -160,6 +168,23 @@
     {@render control()}
     {@render descriptionText()}
   {/if}
+{:else if descriptionPlacement === 'below' && description}
+  <span class="cinder-toggle-field" data-cinder-description="below">
+    {@render control()}
+    <span class="cinder-toggle-field__text">
+      <span
+        id={labelId}
+        class="cinder-toggle-field__label"
+        role="presentation"
+        data-hidden={!labelVisible || undefined}
+        data-disabled={resolvedDisabled || staleInert || undefined}
+        onclick={toggle}
+      >
+        {label}
+      </span>
+      {@render descriptionText()}
+    </span>
+  </span>
 {:else}
   <span class="cinder-toggle-field" data-label-position={labelPosition}>
     {#if labelPosition === 'start'}

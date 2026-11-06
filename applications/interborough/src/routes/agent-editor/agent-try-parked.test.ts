@@ -141,10 +141,10 @@ type View = ReturnType<typeof mount>;
 
 async function startChat(view: View): Promise<void> {
   await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
-  await fireEvent.input(await view.findByRole('textbox', { name: copy.try.messageLabel }), {
+  await fireEvent.input(await view.findByRole('textbox', { name: 'Message' }), {
     target: { value: 'Refund it' },
   });
-  await fireEvent.click(view.getByRole('button', { name: copy.try.send }));
+  await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
 }
 
 describe('Try it, parked on a question', () => {
@@ -205,10 +205,10 @@ describe('Try it, on an agent with references', () => {
     const note = await view.findByTestId('agent-try-left-out');
     expect(note.textContent?.trim()).toBe(copy.try.leftOut(['notes.md', 'style.md']));
 
-    await fireEvent.input(await view.findByRole('textbox', { name: copy.try.messageLabel }), {
+    await fireEvent.input(await view.findByRole('textbox', { name: 'Message' }), {
       target: { value: 'Hi' },
     });
-    await fireEvent.click(view.getByRole('button', { name: copy.try.send }));
+    await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
     await view.findByRole('region', { name: copy.try.chatLabel });
     const sent = calls.callsTo('bureau.agents.try')[0]?.params['definition'];
     expect(sent).not.toHaveProperty('references');

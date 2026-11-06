@@ -15,8 +15,6 @@ const SOURCE_ROOT = join(import.meta.dir, '..');
 const KEYED_BY_OCCURRENCE: Readonly<Record<string, string>> = {
   'routes/goals/goal-list.svelte':
     'keys each row through keyedByOccurrence, which cannot repeat a key',
-  'routes/audit/index.svelte':
-    'keys each record through keyedByOccurrence, which cannot repeat a key',
 };
 
 function sourceFiles(directory: string): string[] {

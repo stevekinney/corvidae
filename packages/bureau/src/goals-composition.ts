@@ -1,3 +1,4 @@
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 /**
  * COR-851 — assembles `bureau.goals` from the pieces `createBureau` already has.
  *
@@ -60,6 +61,7 @@ import type { GoalAttemptClaimFence, GoalAttemptClaimOwner } from './runtime-com
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
 export interface GoalsCompositionDependencies {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   /** Built by the caller before the durable engine, so a bad registration fails startup first. */
   readonly catalog: GoalValidatorCatalog;
   readonly kv: ConditionalTextValueStore | undefined;
@@ -284,6 +286,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
   let backgroundSweep: Promise<void> | undefined;
 
   const goalDependencies = {
+    workspace: dependencies.workspace,
     store,
     catalog,
     runtime: runtimeServices,

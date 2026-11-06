@@ -35,6 +35,10 @@
     tagGate = { disabled: false, title: undefined },
   }: RunTagsProps = $props();
 
+  function editableTags(values: readonly string[] | null | undefined): string[] {
+    return (values ?? []).filter((tag) => tag !== 'origin:agent-run');
+  }
+
   const queryClient = useQueryClient();
 
   function invalidateDetail(): void {
@@ -60,11 +64,11 @@
     onSettled: invalidateWhenWritesHaveSettled,
   }));
 
-  let tags = $state<string[]>(untrack(() => [...(workflow.tags ?? [])]));
-  let requested: readonly string[] = untrack(() => [...(workflow.tags ?? [])]);
+  let tags = $state<string[]>(untrack(() => editableTags(workflow.tags)));
+  let requested: readonly string[] = untrack(() => editableTags(workflow.tags));
   $effect(() => {
-    tags = [...(workflow.tags ?? [])];
-    requested = [...(workflow.tags ?? [])];
+    tags = editableTags(workflow.tags);
+    requested = editableTags(workflow.tags);
   });
 
   function changeTags(next: string[]): void {

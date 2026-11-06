@@ -22,10 +22,11 @@ import type {
   ChatAttachmentErrorFormatter,
   ChatAttachmentUpload,
 } from './input/chat-attachment.ts';
+import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
-import type { ReasoningInfo, StepInfo } from './utilities/types.ts';
+import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
 /**
  * A participant who is currently typing. Out-of-band UI state — NOT stored on
@@ -155,8 +156,21 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * - `'bubble'` (default): colored backgrounds differentiate user from assistant.
    * - `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.
    *   Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.
+   * - `'transcript'`: a reply is plain text with no card or role label, a person's message keeps its
+   *   tinted bubble, and one muted line under each message carries its time, `messageActions`, Copy
+   *   and Quote as visible words. A message that was not sent keeps its bubble under a red icon
+   *   (`notSent`), a follow-up the run has not taken yet is a dashed bubble marked Queued
+   *   (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).
    */
-  variant?: 'bubble' | 'flat';
+  variant?: 'bubble' | 'flat' | 'transcript';
+  /** A one-line composer for a small surface, such as a test chat in a side panel: the field and Send (or Stop, while a reply streams and the field is disabled) share one row, with no controls, attachments or formatting; the hint stays under it. Default `false`. */
+  composerCompact?: boolean;
+  /** With `variant="transcript"`, the words of the "Not sent" popover on a message that was not delivered, and whether its Retry works now. */
+  notSent?: ChatNotSent | undefined;
+  /** With `variant="transcript"`, called when the person removes a queued follow-up, when the adapter has no `removeRunInput` (which Chat calls instead). Remove shows only when one of them is set, because only the host knows whether a message it has sent can still be taken back. */
+  onRemoveQueued?: ((messageId: string) => void) | undefined;
+  /** With `variant="transcript"`, drawn at the end of a run's note line, such as a Retry beside a failed run's stop note. Receives the note. */
+  noteAction?: Snippet<[note: MessageNoteInfo]> | undefined;
   /** Distance in pixels from the bottom of the scroll viewport within which the chat is considered "at bottom" and will auto-scroll on new messages. Default `150`. */
   bottomThreshold?: number;
   /** Distance in pixels scrolled up from the bottom required before the jump-to-latest button appears. Must be greater than `bottomThreshold` to prevent button flickering. Default `200`. */
@@ -198,15 +212,27 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   header?: Snippet;
   /** Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. */
   composerActions?: Snippet;
+  /** Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether the composer is narrower than `COMPOSER_FOLD_WIDTH` (`folded`), so a host can draw one Settings control in place of several selects; the footer never wraps. */
+  composerControls?: Snippet<[ChatComposerControlsContext]> | undefined;
+  /** The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it. */
+  composerHeader?: Snippet | undefined;
+  /** The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`. */
+  composerPlaceholder?: string | undefined;
+  /** Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`. */
+  composerAnswering?: boolean;
+  /** The line of help under the composer while no status shows. Default `Enter to send · Shift and Enter for a new line`; `false` hides it. */
+  composerHint?: string | false | undefined;
   /** Toolbar slot at the start of the composer footer, given a `format` command for the composer's selection. */
   composerToolbar?: Snippet<[ChatComposerToolbarContext]>;
-  /** Show the composer's Bold, Italic, Code, Link, and List buttons. Default `false`. */
+  /** Show a row of Bold, Italic, Code, Link, and List buttons above the composer's text, with the words of their shortcuts at its right, while the composer has focus. Link is Cmd or Ctrl with Shift and K; plain Cmd or Ctrl with K is left to the host. Default `false`. */
   composerFormattingToolbar?: boolean;
   /** Style Markdown in place in the composer while it still sends Markdown. Default `true`. */
   composerMarkdownStyling?: boolean;
-  /** The status line under the composer, such as a reconnect or queued follow-ups the host knows about. When omitted, Chat shows that an approval is waiting while one is pending. */
-  composerStatus?: ChatComposerStatus;
+  /** The line under the composer, such as a reconnect, queued follow-ups or the host's own note; or, with `kind: 'blocked'`, the whole composer: one compact row that says why sending is off, in place of the text box and the controls. When omitted, the composer shows its hint. */
+  composerStatus?: ChatComposerStatus | undefined;
   empty?: Snippet;
+  /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
+  trailing?: Snippet;
   /** List of suggested starter prompt strings shown as clickable buttons in the default empty state. Clicking a prompt submits it immediately as a user message. Has no effect when a custom `empty` snippet is provided. */
   emptyPrompts?: string[];
   /** Actions rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageStatus` and `row`, including resolved tool pairs and artifact metadata. */

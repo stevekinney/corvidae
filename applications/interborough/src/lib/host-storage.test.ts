@@ -2,7 +2,12 @@
 import { describe, expect, test } from 'bun:test';
 
 import { urlOf } from './bureau-stub.test-support.ts';
-import { getHostStorage, HOST_STORAGE_ROUTE } from './host-storage.ts';
+import {
+  getHostStorage,
+  getHostStorageSummary,
+  HOST_STORAGE_ROUTE,
+  HOST_STORAGE_SUMMARY_ROUTE,
+} from './host-storage.ts';
 
 describe('getHostStorage', () => {
   test('asks the host and returns the prefixes it names', async () => {
@@ -49,5 +54,37 @@ describe('getHostStorage', () => {
       () => 'rejected',
     );
     expect(wrong).toBe('rejected');
+  });
+});
+
+describe('getHostStorageSummary', () => {
+  test('asks for every key, or for one prefix, and returns the count and the size', async () => {
+    const seen: string[] = [];
+    const fetcher = async (input: Parameters<typeof fetch>[0]) => {
+      seen.push(urlOf(input));
+      return Response.json({ keyCount: 4236, sizeBytes: 1_600_000_000 });
+    };
+    const all = await getHostStorageSummary('', { fetch: fetcher });
+    const group = await getHostStorageSummary('agent-session:', { fetch: fetcher });
+    expect(seen).toEqual([
+      HOST_STORAGE_SUMMARY_ROUTE,
+      `${HOST_STORAGE_SUMMARY_ROUTE}?prefix=agent-session%3A`,
+    ]);
+    expect(all).toEqual({ keyCount: 4236, sizeBytes: 1_600_000_000 });
+    expect(group.keyCount).toBe(4236);
+  });
+
+  test('keeps a size the backend cannot report as null, and fails on a refusal', async () => {
+    const unknown = await getHostStorageSummary('', {
+      fetch: async () => Response.json({ keyCount: 3, sizeBytes: null }),
+    });
+    expect(unknown.sizeBytes).toBeNull();
+    const refused = await getHostStorageSummary('', {
+      fetch: async () => new Response('no', { status: 403 }),
+    }).then(
+      () => 'resolved',
+      (error: unknown) => (error as Error).message,
+    );
+    expect(refused).toBe('The host answered 403.');
   });
 });

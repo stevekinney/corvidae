@@ -31,7 +31,11 @@ import type { BureauGoalCreateOutcome } from '../../goal-types.ts';
 import type { GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import type { Bureau } from '../../types.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import {
+  mayUseCrossOwnerScope,
+  type BureauOwnershipHost,
+  ownerOfPrincipal,
+} from '../owner-predicate.ts';
 import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
 import {
   DEFAULT_PAGE_LIMIT,
@@ -40,6 +44,7 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /** What the goal operations read from the handler's `host`. */
 export type BureauGoalsOperationHost = BureauOwnershipHost &
@@ -155,10 +160,6 @@ function viewOf(goal: GoalState): GoalView {
 }
 
 /** Whether `principal` holds an operator scope (an unauthenticated principal holds none). */
-function holds(principal: Principal, scope: 'bureau.goals:read' | 'bureau.goals:write'): boolean {
-  return principal.method !== 'unauthenticated' && principal.hasScope(scope);
-}
-
 /**
  * The goal `goalRunId` when `principal` may use `operatorScope` on it, and `NotFound` otherwise:
  * a goal the caller may not see and one that does not exist are the same answer. The read is the
@@ -199,6 +200,7 @@ export const goalsListOperation = defineOperation<
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.list',
+  authorize: authorizeWorkspaceOperation('bureau.goals.list'),
   mcpExposable: true,
   summary: 'List goals',
   description:
@@ -213,7 +215,7 @@ export const goalsListOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const everyOwner = holds(principal, 'bureau.goals:read');
+    const everyOwner = mayUseCrossOwnerScope(principal, 'bureau.goals:read');
     const caller = ownerOfPrincipal(principal);
     if (!everyOwner && caller === undefined) return { goals: [], nextOffset: null };
     const goals = await host.goals.list({
@@ -239,6 +241,7 @@ export const goalsGetOperation = defineOperation<
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.get',
+  authorize: authorizeWorkspaceOperation('bureau.goals.get'),
   mcpExposable: true,
   summary: 'Read one goal',
   description:
@@ -393,6 +396,7 @@ export const goalsCreateOperation = defineOperation<
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.create',
+  authorize: authorizeWorkspaceOperation('bureau.goals.create'),
   mcpExposable: false,
   summary: 'Create a goal',
   description:
@@ -530,6 +534,7 @@ export const goalsCancelOperation = defineOperation<
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.cancel',
+  authorize: authorizeWorkspaceOperation('bureau.goals.cancel'),
   mcpExposable: false,
   summary: 'Cancel a goal',
   description:

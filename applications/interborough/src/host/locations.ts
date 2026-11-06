@@ -95,10 +95,19 @@ export type HostWriteLocks = Readonly<
 >;
 
 /** The writes `bungalow`'s home refuses and why. Empty for a local home. */
-export function hostWriteLocks(bungalow: Pick<Bungalow, 'mode'>): HostWriteLocks {
-  return bungalow.mode === 'remote'
-    ? { configuration: 'deployment', providerKeys: 'deployment' }
-    : {};
+export function hostWriteLocks(
+  bungalow: Pick<Bungalow, 'configurationWriteCapability' | 'secretProvider'>,
+): HostWriteLocks {
+  return {
+    ...(bungalow.configurationWriteCapability === 'writable'
+      ? {}
+      : { configuration: 'deployment' as const }),
+    ...(bungalow.secretProvider.capabilities.prepare &&
+    bungalow.secretProvider.capabilities.transitions &&
+    bungalow.configurationWriteCapability === 'writable'
+      ? {}
+      : { providerKeys: 'deployment' as const }),
+  };
 }
 
 /** What `/host/paths` answers: where the host keeps its state, with no credential in any of it. */
@@ -130,7 +139,15 @@ export type HostPathsReport = {
  * {@link redactDatabase}, so a Postgres URL's user name, password, and query string never reach it.
  */
 export function hostPathsReport(
-  bungalow: Pick<Bungalow, 'mode' | 'database' | 'configurationLocation' | 'secretLocation'>,
+  bungalow: Pick<
+    Bungalow,
+    | 'mode'
+    | 'database'
+    | 'configurationLocation'
+    | 'workspaceId'
+    | 'configurationWriteCapability'
+    | 'secretProvider'
+  >,
   content: { readonly agents: ContentLocation; readonly workflows: ContentLocation },
   providers: readonly { readonly name: string; readonly secretKey: string }[],
   a2aDirectoryUrl: string,
@@ -144,7 +161,7 @@ export function hostPathsReport(
     locked: hostWriteLocks(bungalow),
     providers: providers.map(({ name, secretKey }) => ({
       name,
-      secretFile: bungalow.secretLocation(secretKey),
+      secretFile: `workspace:${bungalow.workspaceId}/${secretKey}`,
     })),
     a2aDirectoryUrl,
   };
@@ -152,12 +169,15 @@ export function hostPathsReport(
 
 /**
  * The storage for the host's database: a SQLite file on this machine, or a Postgres server. The
- * Postgres pool connects when first used, and it is the only place the URL is read.
+ * Postgres pool connects when first used, and it is the only place the URL is read. `now` is the
+ * clock each key's write time is read from, the host's own, so a host running on an injected
+ * runtime records the times its records carry; it defaults to the system clock.
  */
-export function createHostStorage(database: DatabaseLocation): Storage {
+export function createHostStorage(database: DatabaseLocation, now?: () => number): Storage {
+  const clock = now === undefined ? {} : { now };
   return database.kind === 'sqlite'
-    ? new BunSQLiteStorage(database.path)
-    : new PostgresStorage({ url: database.url });
+    ? new BunSQLiteStorage(database.path, clock)
+    : new PostgresStorage({ url: database.url, ...clock });
 }
 
 /** Release a storage the host opened, awaiting a pool's shutdown when the storage has one. */

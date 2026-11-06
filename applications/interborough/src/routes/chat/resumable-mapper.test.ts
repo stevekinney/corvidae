@@ -315,3 +315,9 @@ test('reasoning and announcements read before a disconnect are kept when the run
     expect.objectContaining({ type: 'thinking', thinking: 'Check the order.' }),
   );
 });
+
+test('a stream that ends before its first event is the transport’s incomplete stream', async () => {
+  const mapper = new ResumableMapper(() => undefined);
+  const failure = await rejectionOf(Array.fromAsync(mapper.map(source([]), empty())));
+  expect(failure).toMatchObject({ kind: 'incomplete-stream' });
+});

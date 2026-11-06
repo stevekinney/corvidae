@@ -20,6 +20,25 @@
     text-wrap: balance;
   }
 
+  /* The foot of a framed table or list: the count or the message at the start, the button at the
+     end. A failure is the warning tone, with its first sentence in bold. */
+  .cinder-load-more[data-cinder-variant='footer'] {
+    justify-content: space-between;
+    padding-block: var(--cinder-space-2);
+  }
+
+  .cinder-load-more[data-cinder-variant='footer'] .cinder-load-more__summary {
+    text-align: start;
+  }
+
+  .cinder-load-more[data-cinder-variant='footer'] .cinder-load-more__summary[data-cinder-error] {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-load-more[data-cinder-variant='footer'] .cinder-load-more__summary strong {
+    font-weight: var(--cinder-font-semibold);
+  }
+
   .cinder-load-more__sentinel {
     inline-size: 100%;
     block-size: 1px;

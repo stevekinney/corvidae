@@ -49,7 +49,8 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.schedules.pause` | exposed | `src/routes/schedules/schedule-queries.ts` | `pauseSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.resume` | exposed | `src/routes/schedules/schedule-queries.ts` | `resumeSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.runnow` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-queries.test.ts` |  | A schedule that runs an agent is run through `bureau.schedules.runnow`, which checks its owner. |
-| `weft.schedules.skipnext` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-queries.test.ts` |  | Sent as the REST call, because the JSON-RPC client reads its empty answer as invalid. The body names the run the page showed (`occurrence`, milliseconds since the epoch), and a run that is no longer the next one is refused as `ScheduleOccurrenceNotNextError`, which the page shows as a stale schedule. A schedule that runs an agent is skipped through `bureau.schedules.skipnext`, which checks its owner. |
+| `weft.schedules.skipnext` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-queries.test.ts` |  | Sent as the REST call, because the JSON-RPC client reads its empty answer as invalid. The body names the run the page showed (`occurrence`, milliseconds since the epoch), the next or any upcoming run after it, and a run that is no longer upcoming is refused as `ScheduleOccurrenceNotNextError`, which the page shows as a stale schedule. A schedule that runs an agent is skipped through `bureau.schedules.skipnext`, which checks its owner. |
+| `weft.schedules.unskip` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-time-engine.test.ts` |  | Undo on a skipped run. Sent as the REST call, for the reason `weft.schedules.skipnext` is; a run that has passed is refused as `ScheduleOccurrenceNotNextError`, which the page shows as a stale schedule. A schedule that runs an agent takes its skip back through `bureau.schedules.unskip`, which checks its owner. |
 | `weft.schedules.update` | exposed | `src/routes/schedules/schedule-queries.ts` | `updateSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.storage.capabilities` | exposed | `src/routes/storage/index.svelte` |  | `src/routes/storage/index.test.ts` | COR-1539 |  |
 | `weft.system.lease` | exposed | `src/lib/system-lease.ts` |  | `src/lib/system-lease.test.ts` | COR-124 |  |
@@ -57,6 +58,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.system.principal` | exposed | `src/lib/scopes.svelte.ts` |  | `src/lib/scopes.svelte.test.ts` |  |  |
 | `weft.system.registry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-registry-data.test.ts` | COR-162 |  |
 | `weft.task.queues.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
+| `weft.task.queues.tasks` | exposed | `src/routes/workers/queue-tasks-data.ts` |  | `src/routes/workers/index-tasks.test.ts` | COR-2018 |  |
 | `weft.tasks.deadletters.get` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-dead-letter-panel.test.ts` | COR-284 |  |
 | `weft.tasks.deadletters.retry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions-queues.additional.test.ts` | COR-1973 |  |
 | `weft.tasks.deliveries` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-delivery-history.test.ts` | COR-284 |  |
@@ -75,6 +77,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.worker.startoverrides.preview` | exposed | `src/routes/workflows/detail/restart-worker-override.svelte` |  | `src/routes/workflows/detail/restart-dialog-worker-override.test.ts` | COR-164 |  |
 | `weft.workers.diagnostics` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-manifest-data.test.ts` | COR-124, COR-162 |  |
 | `weft.workers.drain` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |
+| `weft.workers.forget` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` | COR-2018 |  |
 | `weft.workers.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
 | `weft.workers.rejections` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
 | `weft.workers.resume` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |

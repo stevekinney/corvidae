@@ -23,6 +23,11 @@
    * With nothing to keep, a request that got no answer replaces the view with the unreachable
    * page, and any other failure with the error.
    *
+   * A view that `ownsStates` (`views.ts`) keeps its header in every state, so the frame renders it
+   * while it is loading, empty, failing or unreachable and draws no refresh error above it: the page
+   * says each of those itself, in the words `copy.ts` holds. `data-state` and `data-stale` stay
+   * true to what the probe learned, and forbidden and not found are still the frame's.
+   *
    * Only the frame writes the words for the non-ready states, and it reads them from `copy.ts`.
    * A view with no probe, such as one run's detail page, is ready unless its scopes are missing:
    * the page handles its own missing run.
@@ -84,6 +89,7 @@
   const errorCopy = copy.errorByPattern?.[initial.pattern ?? ''] ?? copy.error;
   const forbiddenCopy = copy.forbiddenByPattern?.[initial.pattern ?? ''];
   const definition = VIEWS[initial.view];
+  const ownsStates = definition.ownsStates === true;
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
   const scopeDenied = $derived(
@@ -256,8 +262,8 @@
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >
-  {#if state === 'ready' || (state === 'loading' && definition.pageOwnsLoading === true) || (state === 'error' && definition.pageOwnsFailure === true)}
-    {#if refreshFailed && !connection.unreachable}
+  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && definition.pageOwnsLoading === true) || (state === 'error' && definition.pageOwnsFailure === true)}
+    {#if refreshFailed && !connection.unreachable && !ownsStates}
       {@render refreshError()}
     {/if}
     {@render children()}

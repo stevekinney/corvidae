@@ -1,0 +1,460 @@
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+
+import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
+import { linkPluginRuntime, writeFixture } from './test-installed-release-fixture.ts';
+import { mcp, runFixtureAgent, type InstalledFetch } from './test-installed-release-transport.ts';
+export { parseRunStartedRunId } from './test-installed-release-transport.ts';
+
+const DEFAULT_EVIDENCE = 'tmp/chef/COR-2039';
+const TIMEOUT = 240_000;
+
+export type InstalledReleaseArguments =
+  | { readonly mode: 'archive'; readonly archive: string; readonly evidence?: string }
+  | { readonly mode: 'command'; readonly command: string; readonly evidence?: string };
+
+export function parseInstalledReleaseArguments(argv: readonly string[]): InstalledReleaseArguments {
+  if (
+    (argv.length !== 2 && argv.length !== 4) ||
+    (argv[0] !== '--archive' && argv[0] !== '--command') ||
+    argv[1]?.trim() === '' ||
+    (argv.length === 4 && (argv[2] !== '--evidence' || argv[3]?.trim() === ''))
+  )
+    throw new Error(
+      'Usage: bun scripts/test-installed-release.ts --archive <archive> | --command <executable>',
+    );
+  return {
+    mode: argv[0] === '--archive' ? 'archive' : 'command',
+    [argv[0] === '--archive' ? 'archive' : 'command']: resolve(argv[1]!),
+    ...(argv.length === 4 ? { evidence: resolve(argv[3]!) } : {}),
+  } as InstalledReleaseArguments;
+}
+
+type Child = ReturnType<typeof Bun.spawn>;
+type Probe = {
+  readonly process: Child;
+  readonly stdout: Promise<string>;
+  readonly stderr: Promise<string>;
+  readonly output: () => string;
+};
+type Acceptance = {
+  readonly assertion: string;
+  readonly command: string;
+  readonly exit: number;
+  readonly details?: Record<string, unknown>;
+};
+
+export function referencedAssets(html: string): string[] {
+  return [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
+}
+
+function spawn(
+  executable: string,
+  arguments_: readonly string[],
+  home: string,
+  cwd: string,
+  registryUrl: string,
+): Probe {
+  const process = Bun.spawn([executable, ...arguments_], {
+    cwd,
+    env: {
+      PATH: '/usr/bin:/bin',
+      HOME: home,
+      INTERBOROUGH_HOME: home,
+      npm_config_registry: registryUrl,
+      BUN_CONFIG_REGISTRY: registryUrl,
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  let output = '';
+  const stdout = (async () => {
+    for await (const chunk of process.stdout) output += new TextDecoder().decode(chunk);
+    return output;
+  })();
+  return { process, stdout, stderr: new Response(process.stderr).text(), output: () => output };
+}
+
+export async function waitForListening(
+  probe: Probe,
+  timeout = TIMEOUT,
+): Promise<{ port: number; text: string }> {
+  const start = Date.now();
+  for (;;) {
+    const text = probe.output();
+    const match = text.match(/Interborough is listening on http:\/\/127\.0\.0\.1:(\d+)/);
+    if (match) return { port: Number(match[1]), text };
+    if (probe.process.exitCode !== null)
+      throw new Error(
+        `Installed release exited ${probe.process.exitCode}: ${text}\n${await probe.stderr}`,
+      );
+    if (Date.now() - start > timeout) throw new Error(`Installed release did not listen: ${text}`);
+    await Bun.sleep(100);
+  }
+}
+
+export async function waitForHttp(url: string, timeout = TIMEOUT): Promise<Response> {
+  const start = Date.now();
+  for (;;) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return response;
+    } catch {
+      /* startup race */
+    }
+    if (Date.now() - start > timeout) throw new Error(`Timed out waiting for ${url}`);
+    await Bun.sleep(100);
+  }
+}
+
+async function freePort(): Promise<number> {
+  const reservation = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    routes: { '/': new Response() },
+  });
+  const port = reservation.port;
+  await reservation.stop(true);
+  if (port === undefined) throw new Error('Could not reserve a free port');
+  return port;
+}
+
+export type InstalledJourneyOperations = {
+  readonly spawn?: typeof spawn;
+  readonly waitForListening?: typeof waitForListening;
+  readonly waitForHttp?: typeof waitForHttp;
+  readonly fetch?: InstalledFetch;
+  readonly assertBrowser?: typeof assertInstalledAppsInChromium;
+  readonly now?: () => number;
+  readonly sleep?: (milliseconds: number) => Promise<unknown>;
+  readonly isProcessAlive?: (pid: number) => boolean;
+};
+
+export async function runInstalled(
+  executable: string,
+  prefix: string,
+  relocated = false,
+  port = 0,
+  existingHome?: string,
+  operations: InstalledJourneyOperations = {},
+): Promise<Acceptance[]> {
+  const assertions: Acceptance[] = [];
+  const pass = (assertion: string, command: string, details?: Record<string, unknown>) =>
+    assertions.push({ assertion, command, exit: 0, ...(details === undefined ? {} : { details }) });
+
+  const processOperations = {
+    spawn: operations.spawn ?? spawn,
+    waitForListening: operations.waitForListening ?? waitForListening,
+    waitForHttp: operations.waitForHttp ?? waitForHttp,
+    fetch: operations.fetch ?? fetch,
+    assertBrowser: operations.assertBrowser ?? assertInstalledAppsInChromium,
+    now: operations.now ?? Date.now,
+    sleep: operations.sleep ?? Bun.sleep,
+    isProcessAlive: operations.isProcessAlive ?? isProcessAlive,
+  };
+  const home = existingHome ?? join(prefix, 'home');
+  const cwd = join(prefix, 'unrelated-cwd');
+  await mkdir(home, { recursive: true });
+  await mkdir(cwd, { recursive: true });
+  const marker = join(home, 'tool-marker.txt');
+  if (existingHome === undefined) {
+    await writeFile(join(home, 'deployment-id'), '01ARZ3NDEKTSV4RRFFQ69G5FAV\n');
+    await writeFixture(home, executable, marker);
+  }
+  console.info(`starting ${executable} home=${home}`);
+  const probes: Probe[] = [];
+  const registryRequests: string[] = [];
+  const registry = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (request) => {
+      registryRequests.push(request.url);
+      return new Response('{}', { status: 404 });
+    },
+  });
+  const registryUrl = registry.url.href;
+  try {
+    const probe = processOperations.spawn(
+      executable,
+      ['start', '--port', String(port), '--home', home],
+      home,
+      cwd,
+      registryUrl,
+    );
+    probes.push(probe);
+    const listening = await processOperations.waitForListening(probe);
+    const url = `http://127.0.0.1:${listening.port}`;
+    const shell = await processOperations.waitForHttp(`${url}/`);
+    const html = await shell.text();
+    const assets = referencedAssets(html);
+    if (assets.length < 2) throw new Error('Shell did not mount JavaScript and CSS');
+    for (const path of assets) {
+      const response = await processOperations.fetch(`${url}${path}`);
+      if (response.status !== 200) throw new Error(`${path} returned ${response.status}`);
+    }
+    pass('mounted shell and HTTP 200 JavaScript/CSS', `GET ${url}/`, {
+      port: listening.port,
+      sanitizedPath: '/usr/bin:/bin',
+    });
+    const pluginResponse = await processOperations.fetch(`${url}/host/plugins`);
+    const plugins = (await pluginResponse.json()) as {
+      plugins: Array<Record<string, unknown>>;
+      unloaded: Array<Record<string, unknown>>;
+    };
+    const fixture = plugins.plugins.find(
+      (entry) => (entry['descriptor'] as Record<string, unknown>)?.['name'] === 'installed-fixture',
+    );
+    if (
+      (fixture?.['status'] as string) !== 'running' ||
+      !plugins.unloaded.some((entry) => JSON.stringify(entry).includes('missing-installed-import'))
+    )
+      throw new Error(`Fixture/broken plugin isolation failed: ${JSON.stringify(plugins)}`);
+    const agent = await runFixtureAgent(url, processOperations.fetch);
+    if (!agent.stream.includes('fixture greeted Ada'))
+      throw new Error('Fixture tool output was not deterministic');
+    if (!(await Bun.file(marker).exists())) throw new Error('Fixture tool marker was not written');
+    const appsResponse = await processOperations.fetch(`${url}/host/mcp-apps`);
+    const apps = (await appsResponse.json()) as {
+      apps: Array<Record<string, unknown>>;
+    };
+    if (
+      !apps.apps.some(
+        (entry) => entry['plugin'] === 'installed-fixture' && entry['app'] === 'fixture-panel',
+      )
+    )
+      throw new Error('Fixture MCP panel was not mounted');
+    const panel = await processOperations.fetch(
+      `${url}/host/plugins/installed-fixture/apps/fixture-panel`,
+    );
+    const panelPayload = (await panel.json()) as { html?: string; ui?: { csp?: unknown } };
+    if (
+      !panelPayload.html?.includes('Installed fixture MCP panel') ||
+      panelPayload.ui?.csp === undefined
+    )
+      throw new Error('Fixture panel text or UI metadata missing');
+    const run = await mcp(
+      url,
+      2,
+      'tools/call',
+      {
+        name: 'bureau.tasks.inspect',
+        arguments: { taskId: agent.runId },
+      },
+      processOperations.fetch,
+    );
+    const inspection = run['result'] as { isError?: boolean } | undefined;
+    if (inspection === undefined || inspection.isError === true || run['error'] !== undefined)
+      throw new Error('Built-in inspector did not answer for the fixture run');
+    const inspector = await processOperations.fetch(
+      `${url}/host/plugins/inspectors/apps/run-inspector`,
+    );
+    const inspectorPayload = (await inspector.json()) as { html?: string; ui?: { csp?: unknown } };
+    if (inspector.status !== 200 || !inspectorPayload.html?.includes('<div id="root">'))
+      throw new Error(`Built-in inspector page missing (${inspector.status})`);
+    await processOperations.assertBrowser(
+      url,
+      `${url}/host/plugins/installed-fixture/apps/fixture-panel`,
+      `${url}/host/plugins/inspectors/apps/run-inspector`,
+      agent.runId,
+    );
+    pass(
+      'Chromium rendered the installed shell, fixture MCP panel, and run inspector',
+      `chromium ${url}`,
+      {
+        runId: agent.runId,
+        assets: assets.length,
+      },
+    );
+    pass(
+      'SDK plugin, fixture-owned additional dependency, tool, panel, inspector, and broken import isolation',
+      `GET ${url}/host/plugins`,
+    );
+    const status = await processOperations.fetch(`${url}/host/status`);
+    if (status.status !== 200) throw new Error('Host status unavailable');
+    const restarted = await processOperations.fetch(`${url}/host/restart`, { method: 'POST' });
+    if (restarted.status !== 202) throw new Error(`Restart returned ${restarted.status}`);
+    const restartStart = processOperations.now();
+    let secondPort: number | undefined;
+    while (secondPort === undefined && processOperations.now() - restartStart < TIMEOUT) {
+      const matches = [
+        ...probe.output().matchAll(/Interborough is listening on http:\/\/127\.0\.0\.1:(\d+)/g),
+      ];
+      if (matches.length > 1) secondPort = Number(matches[1]![1]);
+      else await processOperations.sleep(100);
+    }
+    if (secondPort === undefined)
+      throw new Error(`Restart did not report a replacement port: ${probe.output()}`);
+    if (port !== 0 && secondPort !== port)
+      throw new Error(`Explicit port changed across restart: ${port} -> ${secondPort}`);
+    const second = await processOperations.waitForHttp(`http://127.0.0.1:${secondPort}`);
+    if (!second.ok) throw new Error('Restart did not preserve listener');
+    const restartedAgent = await runFixtureAgent(
+      `http://127.0.0.1:${secondPort}`,
+      processOperations.fetch,
+    );
+    if (!restartedAgent.stream.includes('fixture greeted Ada'))
+      throw new Error('Restarted fixture tool output was not deterministic');
+    if ((await readFile(marker, 'utf8')) !== 'fixture-owned-dependency')
+      throw new Error('Restarted fixture tool did not resolve its additional dependency');
+    await processOperations.sleep(300);
+    const output = probe.output();
+    const pids = [...output.matchAll(/Started the host \(process (\d+)\)/g)].map((match) =>
+      Number(match[1]),
+    );
+    if (pids.length < 2 || pids[0] === pids[1])
+      throw new Error('Restart did not replace child PID');
+    pass(
+      'POST /host/restart changed child PID and preserved home/plugins',
+      `POST ${url}/host/restart`,
+      { pids, port: listening.port, replacementPort: secondPort },
+    );
+    probe.process.kill('SIGTERM');
+    const exit = await probe.process.exited;
+    if (exit !== 0) throw new Error(`SIGTERM exit was ${exit}`);
+    await processOperations.sleep(100);
+    const recordedPids = pids;
+    if (recordedPids.some(processOperations.isProcessAlive))
+      throw new Error(`SIGTERM left a recorded child alive: ${recordedPids.join(',')}`);
+    for (const listener of [
+      `http://127.0.0.1:${listening.port}`,
+      `http://127.0.0.1:${secondPort}`,
+    ]) {
+      let open = false;
+      try {
+        await processOperations.fetch(listener);
+        open = true;
+      } catch {
+        /* closed */
+      }
+      if (open) throw new Error(`Listener remained after SIGTERM: ${listener}`);
+    }
+    const reacquire = processOperations.spawn(
+      executable,
+      ['start', '--port', String(secondPort), '--home', home],
+      home,
+      cwd,
+      registryUrl,
+    );
+    probes.push(reacquire);
+    await processOperations.waitForListening(reacquire);
+    reacquire.process.kill('SIGTERM');
+    if ((await reacquire.process.exited) !== 0)
+      throw new Error('State lock could not be reacquired after clean shutdown');
+    pass(
+      'SIGTERM returned 0 and closed supervised process tree/listener',
+      'SIGTERM installed command',
+      { exit },
+    );
+    if (relocated) {
+      const deploymentMarker = join(home, 'deployment-id');
+      if (!(await Bun.file(deploymentMarker).exists()))
+        throw new Error('Relocation did not preserve deployment marker');
+      const link = join(home, 'plugins', 'node_modules', '@lostgradient', 'interborough-plugin');
+      const target = await realpath(link);
+      if (!target.includes('plugin-runtime/node_modules'))
+        throw new Error(`Plugin dependency link target was ${target}`);
+      pass(
+        'relocation preserved home marker and dependency link target',
+        'realpath plugins/node_modules',
+        { marker: deploymentMarker, target },
+      );
+    }
+    if (registryRequests.length !== 0)
+      throw new Error(
+        `Installed release attempted registry access: ${registryRequests.join(', ')}`,
+      );
+    pass('no package registry requests during installed lifecycle', 'local rejecting registry', {
+      requests: registryRequests,
+    });
+    return assertions;
+  } finally {
+    await registry.stop(true);
+    for (const child of probes) {
+      if (child.process.exitCode === null) child.process.kill('SIGTERM');
+      await child.process.exited;
+      await Promise.all([child.stdout, child.stderr]);
+    }
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function unpack(
+  archive: string,
+  prefix: string,
+): Promise<{ executable: string; sha256: string }> {
+  const sha256 = createHash('sha256')
+    .update(await readFile(archive))
+    .digest('hex');
+  const result = Bun.spawnSync(['tar', '-xzf', archive, '-C', prefix]);
+  if (result.exitCode !== 0) throw new Error(`tar failed: ${result.stderr.toString()}`);
+  return { executable: join(prefix, 'interborough', 'bin', 'interborough'), sha256 };
+}
+
+export type InstalledReleaseOperations = {
+  readonly unpack?: typeof unpack;
+  readonly runInstalled?: typeof runInstalled;
+};
+
+export async function runInstalledRelease(
+  argv: readonly string[] = process.argv.slice(2),
+  operations: InstalledReleaseOperations = {},
+): Promise<string> {
+  const options = parseInstalledReleaseArguments(argv);
+  const assertions: Acceptance[] = [];
+  const unpackOperation = operations.unpack ?? unpack;
+  const runOperation = operations.runInstalled ?? runInstalled;
+  const root = await mkdtemp(join(tmpdir(), 'interborough-installed-release-'));
+  try {
+    let executable: string;
+    if (options.mode === 'archive') {
+      const archive = await unpackOperation(options.archive, root);
+      executable = archive.executable;
+      assertions.push({
+        assertion: 'archive SHA-256 and disposable unpack',
+        command: `sha256sum ${options.archive}`,
+        exit: 0,
+        details: { sha256: archive.sha256 },
+      });
+    } else executable = options.command;
+    assertions.push(...(await runOperation(executable, root, false, await freePort())));
+    if (options.mode === 'archive') {
+      const relocated = join(root, 'relocated');
+      await mkdir(relocated, { recursive: true });
+      await rename(join(root, 'interborough'), join(relocated, 'interborough'));
+      const moved = join(relocated, 'interborough', 'bin', 'interborough');
+      await rm(join(root, 'home', 'plugins', 'node_modules'), { recursive: true, force: true });
+      const movedRuntime = resolve(
+        dirname(await realpath(moved)),
+        '..',
+        'share',
+        'interborough',
+        'plugin-runtime',
+        'node_modules',
+      );
+      await linkPluginRuntime(join(root, 'home'), movedRuntime);
+      assertions.push(...(await runOperation(moved, relocated, true, 0, join(root, 'home'))));
+    }
+    const evidenceDirectory = options.evidence ?? DEFAULT_EVIDENCE;
+    const evidence = join(evidenceDirectory, `installed-release-${Date.now()}.json`);
+    await mkdir(evidenceDirectory, { recursive: true });
+    await writeFile(
+      evidence,
+      `${JSON.stringify({ archive: options.mode === 'archive' ? options.archive : undefined, assertions }, null, 2)}\n`,
+    );
+    return evidence;
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+if (import.meta.main) console.info(await runInstalledRelease());

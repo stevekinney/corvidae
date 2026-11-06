@@ -33,6 +33,7 @@ export {
   narrowToolAuthority,
   privilegedExecutionSnapshot,
   projectExecutionSnapshot,
+  readRunWorkspaceAuthority,
 } from './execution-context';
 export type {
   EffectiveToolExecutionContext,
@@ -40,6 +41,7 @@ export type {
   ExternalFieldClass,
   ExternalProjectionAudience,
   ExternalProjectionOptions,
+  RunWorkspaceAuthority,
   ToolAuthority,
   ToolRequestContext,
 } from './execution-context';
@@ -292,6 +294,7 @@ export * from './inspect';
 export * from './instrumentation';
 export * from './integrations/mcp';
 export * from './integrations/mcp/oauth';
+export * from './integrations/mcp/oauth-token-request-gate';
 export * from './integrations/openapi';
 export * from './middleware';
 export * from './query';

@@ -4,6 +4,9 @@ import type { HTMLAttributes } from 'svelte/elements';
 /** Layout of an error state: the centred page layout with a tinted disc, or a flat block with no disc or padding. */
 export type ErrorStateVariant = 'default' | 'flat';
 
+/** How prominent the retry button is: the page's one `'primary'` action, or `'secondary'` where the page has none to protect. */
+export type ErrorStateRetryVariant = 'primary' | 'secondary';
+
 /**
  * What kind of problem the state reports. `'danger'` is a failure (a red disc with a warning glyph,
  * announced as an alert); `'neutral'` is a state where nothing failed, such as a thing that no longer
@@ -41,6 +44,13 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
   /** Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action. */
   onRetry?: () => void;
   /**
+   * How prominent the retry button is. `'primary'` suits a full-page failure, where retrying is
+   * the one thing to do. `'secondary'` suits a section of a page that has other controls, such as
+   * a tab's body under a tab bar, so the retry does not outrank them.
+   * @default 'primary'
+   */
+  retryVariant?: ErrorStateRetryVariant;
+  /**
    * A second action rendered after the retry button, such as an "Open Health" link or a
    * "Back to chats" button. Give it the secondary or ghost button variant so the retry button
    * stays the only primary on the page.
@@ -74,6 +84,13 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Draws the state inside a bordered, rounded box, for a list or page body that has no
+   * container of its own. Leave it off when a card or panel already surrounds the state. It
+   * applies to the centred layout; the `'flat'` variant has no box.
+   * @default false
+   */
+  bordered?: boolean;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 };
@@ -115,6 +132,13 @@ export interface ErrorStateSchemaProps {
    */
   retryLabel?: string;
   /**
+   * How prominent the retry button is. `'primary'` suits a full-page failure, where retrying is
+   * the one thing to do. `'secondary'` suits a section of a page that has other controls, such as
+   * a tab's body under a tab bar, so the retry does not outrank them.
+   * @default 'primary'
+   */
+  retryVariant?: ErrorStateRetryVariant;
+  /**
    * Heading level for the title element.
    * @default 2
    */
@@ -127,6 +151,13 @@ export interface ErrorStateSchemaProps {
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Draws the state inside a bordered, rounded box, for a list or page body that has no
+   * container of its own. Leave it off when a card or panel already surrounds the state. It
+   * applies to the centred layout; the `'flat'` variant has no box.
+   * @default false
+   */
+  bordered?: boolean;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 }

@@ -6,6 +6,7 @@ import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';
 import type { AccumulatedCost } from './cost-estimation';
+import type { PendingChildWait } from './durable/types';
 import type { EffectiveContextTail, StoredEffectiveContext } from './effective-context-record';
 import { type AgentRunErrorKind, GeneratedMediaNotAdmittedError } from './errors';
 import {
@@ -122,6 +123,13 @@ export interface StepDeps {
    * (see the toolbox execute call site), matching `delegatedAuthority`.
    */
   readonly parentSignals: RunOptions['parentSignals'];
+  readonly requestChildWait?:
+    | ((
+        request: Omit<PendingChildWait, 'schemaVersion'>,
+      ) => { parked: true } | { parked: false; reason: 'already-parked' | 'unauthorized' })
+    | undefined;
+  readonly getPendingChildWait?: (() => PendingChildWait | undefined) | undefined;
+  readonly childWaitPrincipal?: string | undefined;
   readonly durableOperationKeys: boolean;
   readonly defaultToolChoice: ToolChoice | undefined;
   /**

@@ -1,44 +1,59 @@
 <script lang="ts">
   /**
-   * One turn's tool calls: a row per call (glyph, tool, one line about the answer, and a chevron
-   * that opens its arguments and result). Calls are quiet: a finished or denied one is set in
-   * muted text, and only a failure or a call waiting on a person takes a colour. Several calls fold
-   * into one line, "Used N tools · lookup-order ×2", with a chevron that opens the rows, but a call
-   * that needs a decision is never inside the fold: its row stays, and its approval is the flat
-   * decision row directly under it.
+   * One turn's tool calls on Cinder's rail: a row per call (its name for a person, the key input,
+   * what came back), with the middle of a long turn folded. A call that needs a decision, failed,
+   * was refused or was interrupted is never inside the fold; a call that needs a decision has its
+   * decision directly under its row, and any call opens its arguments and result when its row is
+   * chosen. A turn that ends on a tool call closes with the run's end state.
    */
   import type { Snippet } from 'svelte';
 
-  import { Button } from '@lostgradient/cinder';
-  import { Ban, Check, ChevronDown, ChevronRight, CircleAlert, Hourglass, X } from '@lucide/svelte';
+  import { ToolCallRail } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import { argumentEntries, displayValue } from '../../lib/tool-text.ts';
-  import { groupSummary, type ToolCallEntry } from './tool-activity.ts';
+  import { railCall, type ToolCallEntry } from './tool-activity.ts';
 
   interface ToolCallsProps {
     id: string;
     entries: readonly ToolCallEntry[];
     /** The decision a call that needs one is shown with, directly under its row. */
     decision?: Snippet<[ToolCallEntry]>;
+    /** The run's end state, on its own line after the last row, for a turn that ends on a tool call. */
+    endLabel?: string | undefined;
+    /** An inline plugin panel for a completed tool call. */
+    mcpApp?: Snippet<[ToolCallEntry]>;
   }
 
-  let { id, entries, decision }: ToolCallsProps = $props();
+  let { id, entries, decision, endLabel, mcpApp }: ToolCallsProps = $props();
 
-  let open = $state(false);
-  const folded = $derived(entries.length > 1 && !open);
-  const visible = $derived(
-    folded ? entries.filter((entry) => entry.state === 'needs-you') : entries,
+  let openDetails = $state<ReadonlySet<string>>(new Set());
+
+  const byId = $derived(new Map(entries.map((entry) => [entry.callId, entry] as const)));
+  /** A finished revision proposal keeps its inline panel on the rail, whatever the fold. */
+  const showsPanel = (entry: ToolCallEntry): boolean =>
+    mcpApp !== undefined &&
+    entry.state === 'done' &&
+    entry.name === 'bureau__workflows-propose-update';
+  const calls = $derived(
+    entries.map((entry) => ({
+      ...railCall(
+        entry,
+        (entry.state === 'needs-you' && decision !== undefined) ||
+          openDetails.has(entry.callId) ||
+          showsPanel(entry),
+      ),
+      ...(showsPanel(entry) ? { pinned: true } : {}),
+    })),
   );
-  let detailsOpen = $state<Readonly<Record<string, boolean>>>({});
+  const running = $derived(entries.some((entry) => entry.state === 'running'));
 
-  const STATE_LABEL = {
-    running: 'Running',
-    'needs-you': 'Needs you',
-    done: 'Done',
-    failed: 'Failed',
-    denied: CHAT_COPY.tools.denied,
-  } as const;
+  function toggleDetails(callId: string): void {
+    const next = new Set(openDetails);
+    if (next.has(callId)) next.delete(callId);
+    else next.add(callId);
+    openDetails = next;
+  }
 
   const resultEntries = (entry: ToolCallEntry) =>
     entry.result === undefined || entry.result === null
@@ -49,86 +64,36 @@
 </script>
 
 <div class="ib-tools" data-tool-group={id}>
-  {#if entries.length > 1}
-    <div class="ib-tools__fold">
-      <Button
-        variant="ghost"
-        size="sm"
-        iconOnly
-        label={open ? CHAT_COPY.tools.hide : CHAT_COPY.tools.show}
-        aria-expanded={open}
-        onclick={() => (open = !open)}
-      >
-        {#if open}
-          <ChevronDown aria-hidden="true" size={16} />
-        {:else}
-          <ChevronRight aria-hidden="true" size={16} />
+  <ToolCallRail
+    {calls}
+    {running}
+    {endLabel}
+    label={CHAT_COPY.tools.railLabel}
+    selectedId={undefined}
+    onSelect={toggleDetails}
+  >
+    {#snippet children(call)}
+      {@const entry = byId.get(call.id)}
+      {#if entry !== undefined}
+        {#if openDetails.has(entry.callId)}
+          <dl class="ib-tool__details" id={`${id}-${entry.callId}-details`}>
+            {#each argumentEntries(entry.arguments) as [key, value] (`argument-${key}`)}
+              <dt>{key}</dt>
+              <dd>{value}</dd>
+            {/each}
+            {#each resultEntries(entry) as [key, value] (`result-${key}`)}
+              <dt>{CHAT_COPY.tools.resultPrefix} {key}</dt>
+              <dd>{value}</dd>
+            {/each}
+          </dl>
         {/if}
-      </Button>
-      <span class="ib-tools__fold-summary">{groupSummary(entries)}</span>
-    </div>
-  {/if}
-  {#each visible as entry (entry.callId)}
-    <div class="ib-tool" data-tool-call-row={entry.callId} data-state={entry.state}>
-      <div class="ib-tool__line">
-        <span
-          class="ib-tool__glyph"
-          data-state={entry.state}
-          role="img"
-          aria-label={STATE_LABEL[entry.state]}
-        >
-          {#if entry.state === 'done'}
-            <Check aria-hidden="true" size={16} />
-          {:else if entry.state === 'failed'}
-            <X aria-hidden="true" size={16} />
-          {:else if entry.state === 'denied'}
-            <Ban aria-hidden="true" size={16} />
-          {:else if entry.state === 'needs-you'}
-            <CircleAlert aria-hidden="true" size={16} />
-          {:else}
-            <Hourglass aria-hidden="true" size={16} />
-          {/if}
-        </span>
-        <span class="ib-tool__name">{entry.name}</span>
-        <span class="ib-tool__summary">
-          {entry.state === 'needs-you'
-            ? CHAT_COPY.tools.waitingForApproval
-            : entry.state === 'running'
-              ? CHAT_COPY.tools.running
-              : entry.summary}
-        </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          iconOnly
-          label={CHAT_COPY.tools.detailsFor(entry.name)}
-          aria-expanded={detailsOpen[entry.callId] === true}
-          aria-controls={`${id}-${entry.callId}-details`}
-          onclick={() =>
-            (detailsOpen = { ...detailsOpen, [entry.callId]: detailsOpen[entry.callId] !== true })}
-        >
-          {#if detailsOpen[entry.callId] === true}
-            <ChevronDown aria-hidden="true" size={16} />
-          {:else}
-            <ChevronRight aria-hidden="true" size={16} />
-          {/if}
-        </Button>
-      </div>
-      {#if detailsOpen[entry.callId] === true}
-        <dl class="ib-tool__details" id={`${id}-${entry.callId}-details`}>
-          {#each argumentEntries(entry.arguments) as [key, value] (`argument-${key}`)}
-            <dt>{key}</dt>
-            <dd>{value}</dd>
-          {/each}
-          {#each resultEntries(entry) as [key, value] (`result-${key}`)}
-            <dt>{CHAT_COPY.tools.resultPrefix} {key}</dt>
-            <dd>{value}</dd>
-          {/each}
-        </dl>
+        {#if entry.state === 'needs-you' && decision !== undefined}
+          {@render decision(entry)}
+        {/if}
+        {#if mcpApp !== undefined}
+          {@render mcpApp(entry)}
+        {/if}
       {/if}
-      {#if entry.state === 'needs-you' && decision !== undefined}
-        {@render decision(entry)}
-      {/if}
-    </div>
-  {/each}
+    {/snippet}
+  </ToolCallRail>
 </div>

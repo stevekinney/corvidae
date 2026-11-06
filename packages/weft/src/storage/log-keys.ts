@@ -25,6 +25,12 @@ const LOG_SEQUENCE_WIDTH = 16;
  * finished run keeps its lines until the retention window passes.
  */
 export const WORKFLOW_LOG_KEYS = {
+  /** The prefix every file-workflow event receipt shares. */
+  fileWorkflowEventReceiptPrefix: (workflowId: string): string =>
+    `file-workflow-receipt:${encodeStorageKeyComponent(workflowId)}:`,
+  /** Durable idempotency receipt for one file-workflow lifecycle event key. */
+  fileWorkflowEventReceipt: (workflowId: string, eventKey: string): string =>
+    `file-workflow-receipt:${encodeStorageKeyComponent(workflowId)}:${encodeStorageKeyComponent(eventKey)}`,
   /** The prefix every line of `workflowId` shares. */
   workflowLogPrefix: (workflowId: string): string =>
     `log:${encodeStorageKeyComponent(workflowId)}:`,

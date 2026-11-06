@@ -104,6 +104,10 @@
     scrollFadeVisible = false,
     density = 'comfortable',
     variant = 'bubble',
+    notSent,
+    composerCompact = false,
+    onRemoveQueued,
+    noteAction,
     bottomThreshold = DEFAULT_SCROLL_CONFIGURATION.bottomThreshold,
     jumpThreshold = DEFAULT_SCROLL_CONFIGURATION.jumpThreshold,
     streaming = false,
@@ -118,11 +122,17 @@
     loadingEarlierLabel = 'Loading earlier messages',
     header,
     composerActions,
+    composerControls,
+    composerHeader,
+    composerPlaceholder,
+    composerAnswering = false,
+    composerHint,
     composerToolbar,
     composerFormattingToolbar = false,
     composerMarkdownStyling = true,
     composerStatus,
     empty,
+    trailing,
     emptyPrompts,
     messageActions,
     messageStatus,
@@ -338,6 +348,7 @@
     getOnAdapterError: () => onAdapterError,
     getOnSubmit: () => onSubmit,
     getOnRetry: () => onRetry,
+    getOnRemoveQueued: () => onRemoveQueued,
     getOnEdit: () => onEdit,
     getOnApprovalResolve: () => onApprovalResolve,
     getOnStop: () => onStopGenerating,
@@ -690,7 +701,7 @@
         typeof schema === 'object' &&
         schema !== null &&
         !Array.isArray(schema) &&
-        classifyQuestion(schema as Record<string, unknown>) === 'text' &&
+        ['text', 'choice-other'].includes(classifyQuestion(schema as Record<string, unknown>)) &&
         !questions.answers.has(callId)
       ) {
         openCallId = callId;
@@ -1208,13 +1219,20 @@
   }
   // The adapter opting in to run input is what keeps the composer live during a run.
   const followUpsEnabled = $derived(adapter?.sendRunInput !== undefined);
-  // The host's status wins; otherwise say when an approval is holding the run.
-  const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(
-    composerStatus ??
-      (commandActions.hasPendingApproval()
-        ? { kind: 'waiting', steers: followUpsEnabled }
-        : undefined),
-  );
+  // The line under the composer is the host's. A pending approval is shown in the transcript, so
+  // the composer keeps its hint and stays live (a message sent now steers the run).
+  const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
+  // While a question Chat draws waits on the composer, its placeholder says what to do: a free-text
+  // question just reads Answer; a choice says the choices are above and an answer of your own is
+  // welcome. A host that draws its own question (`composerAnswering`) words the placeholder itself.
+  const composerAnswerPlaceholder = $derived.by(() => {
+    const target = questions.composerTarget;
+    if (target === undefined) return undefined;
+    return target.kind === 'text' ? 'Answer' : 'Choose an answer above, or type your own…';
+  });
+  // A dropped stream is a run that is still going on the server: while the host says it is
+  // reconnecting, the composer keeps Stop, though nothing is streaming into the transcript now.
+  const composerSending = $derived(streaming || composerStatus?.kind === 'reconnecting');
   const handleRetry = commandActions.handleRetry;
   const handleEdit = commandActions.handleEdit;
   const handleApprovalResolve = commandActions.resolveToolApproval;
@@ -1797,6 +1815,13 @@
           {messagePart}
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
+          presentation={variant === 'transcript' ? 'transcript' : 'default'}
+          {notSent}
+          onRemoveQueued={commandActions.canRemoveQueued &&
+          !commandActions.removingMessageIds.has(message.id)
+            ? commandActions.handleRemoveQueued
+            : undefined}
+          {noteAction}
           onEdit={allowEditing && canEdit ? handleEdit : undefined}
           onQuote={allowQuote ? handleQuote : undefined}
           quoteDisabled={quotes.isFull}
@@ -1989,6 +2014,12 @@
           participantCount={typingIndicatorState.participantCount}
         />
 
+        {#if trailing}
+          <div class="chat-trailing">
+            {@render trailing()}
+          </div>
+        {/if}
+
         <!-- Bottom sentinel for IntersectionObserver -->
         <div class="chat-bottom-sentinel" aria-hidden="true" {@attach sentinelAttach}></div>
       </div>
@@ -2020,19 +2051,24 @@
           id={inputId}
           bind:this={inputRef}
           onsubmit={handleComposerSubmit}
-          {...questions.composerTarget === undefined ? {} : { placeholder: 'Answer' }}
-          disabled={streaming && !followUpsEnabled}
+          placeholder={composerAnswerPlaceholder ?? composerPlaceholder}
+          answering={questions.composerTarget !== undefined || composerAnswering}
+          hint={composerHint}
+          controls={composerControls}
+          header={composerHeader}
+          disabled={streaming && (!followUpsEnabled || composerCompact)}
           paused={disabled}
           {pausedReason}
-          sending={streaming}
-          allowFollowUp={followUpsEnabled}
+          sending={composerSending}
+          allowFollowUp={followUpsEnabled && !composerCompact}
+          compact={composerCompact}
           actions={composerActions}
           toolbar={composerToolbar}
           formattingToolbar={composerFormattingToolbar}
           markdownStyling={composerMarkdownStyling}
           status={resolvedComposerStatus}
           {allowAttachments}
-          onstop={streaming ? handleStopGenerating : undefined}
+          onstop={composerSending ? handleStopGenerating : undefined}
           {onComposerInput}
           {oncomposerkeydown}
           {oncomposerselectionchange}
@@ -2385,6 +2421,12 @@
     color: var(--cinder-accent-text);
     background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
     border-radius: var(--cinder-radius-full);
+  }
+
+  /* The host's last item of the transcript, held to the same measure as a message. */
+  .chat-trailing {
+    inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
+    min-inline-size: 0;
   }
 
   /* Bottom Sentinel (invisible) */

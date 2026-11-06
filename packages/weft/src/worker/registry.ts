@@ -2,6 +2,7 @@
 // Server-side worker tracking and pluggable routing policies.
 import { WorkerRegistrationRejectedEvent } from '../core/events/fleet-state-events.ts';
 import { workerDeploymentRolloutBucket } from './deployment-routing.ts';
+import { DepartedWorkers } from './registry/departed.ts';
 import {
   DeploymentConsistencyGuard,
   type DeploymentConsistencyResult,
@@ -119,6 +120,8 @@ export class WorkerRegistry {
   /** Bounded, in-memory log of declined `register` attempts (WFT-29). */
   #rejections: RegistrationRejectionEntry[];
   #dispatchEvent: ((event: Event) => void) | undefined;
+  /** Workers that went away and are still listed, and drained workers an operator forgot. */
+  #departed: DepartedWorkers;
 
   constructor(options?: WorkerRegistryOptions) {
     this.#workers = new Map();
@@ -130,6 +133,7 @@ export class WorkerRegistry {
     this.#fairShareCounts = new FairShareCounters();
     this.#deploymentConsistency = new DeploymentConsistencyGuard();
     this.#rejections = [];
+    this.#departed = new DepartedWorkers();
     this.#dispatchEvent = options?.dispatchEvent;
   }
 
@@ -201,6 +205,8 @@ export class WorkerRegistry {
       resumingSessionGeneration !== undefined && resumingSessionGeneration === currentGeneration
         ? resumingSessionGeneration
         : (currentGeneration ?? 0) + 1;
+    // A worker that registers is connected, so nothing lists it as gone, and a forget no longer applies.
+    this.#departed.clear(info.id);
     this.#workers.set(info.id, {
       id: info.id,
       queue: info.queue,
@@ -244,6 +250,8 @@ export class WorkerRegistry {
     const info = this.#workers.get(workerId);
     if (info === undefined) return undefined;
 
+    // Kept, as it stood, so the list can say the worker went away rather than lose it.
+    this.#departed.record(this.#snapshotOf(info), Date.now());
     this.#workers.delete(workerId);
     this.#fairShareCounts.purge(workerId);
 
@@ -568,6 +576,7 @@ export class WorkerRegistry {
 
     delete worker.drainReason;
     delete worker.drainStartedAt;
+    this.#departed.restore(workerId);
 
     return {
       target: 'worker',
@@ -658,7 +667,11 @@ export class WorkerRegistry {
 
   /** Build a plain-object snapshot of all workers with computed health. */
   #workerSnapshots(): WorkerSnapshot[] {
-    return [...this.#workers.values()].map((worker) => ({
+    return [...this.#workers.values()].map((worker) => this.#snapshotOf(worker));
+  }
+
+  #snapshotOf(worker: WorkerInfo): WorkerSnapshot {
+    return {
       id: worker.id,
       queue: worker.queue,
       transport: worker.transport,
@@ -670,11 +683,51 @@ export class WorkerRegistry {
       startedAt: worker.startedAt,
       capabilities: worker.capabilities,
       health: workerHealth(worker, this.#drainStates),
+      workflows: Object.keys(worker.manifest.workflows).toSorted(),
       deploymentName: worker.deploymentName,
       buildId: worker.buildId,
       runtimeVersion: worker.runtimeVersion,
       ...drainProgressOf(worker, this.#drainStates),
-    }));
+    };
+  }
+
+  /**
+   * What `weft.workers.list` reports: every connected worker the operator has not forgotten, and
+   * every worker that went away and has not been forgotten or registered again, sorted by id. A
+   * worker that went away reads `disconnected`, with its last heartbeat as when it was last heard
+   * from. Unlike {@link WorkerRegistry.getWorkerSummaries}, which is the live fleet that routing
+   * and the queue totals count, this is the list an operator reads and manages.
+   */
+  getWorkerListing(now: number): WorkerSummary[] {
+    const live = this.#workerSnapshots().filter(
+      (snapshot) =>
+        !(
+          snapshot.health === 'drained' &&
+          this.#departed.isForgotten(
+            snapshot.id,
+            this.#workers.get(snapshot.id)?.sessionGeneration ?? -1,
+          )
+        ),
+    );
+    const departed = this.#departed.list().map((entry) => entry.snapshot);
+    return projectWorkerSummaries([...live, ...departed], now);
+  }
+
+  /**
+   * Stop listing one worker. A worker that went away is dropped from the list; a connected worker
+   * that finished draining is hidden until it registers again or is resumed. A connected worker
+   * still taking work is refused, since forgetting it would not stop it.
+   *
+   * @returns `forgotten`, `connected` for a worker still routable or draining, or `undefined` when
+   * no listed worker has that id.
+   */
+  forgetWorker(workerId: string): 'forgotten' | 'connected' | undefined {
+    if (this.#departed.forgetDeparted(workerId)) return 'forgotten';
+    const worker = this.#workers.get(workerId);
+    if (worker === undefined) return undefined;
+    if (workerHealth(worker, this.#drainStates) !== 'drained') return 'connected';
+    this.#departed.forgetConnected(workerId, worker.sessionGeneration);
+    return 'forgotten';
   }
 
   /**

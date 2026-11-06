@@ -1,3 +1,7 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { WorkspaceIdentity } from '@lostgradient/weft';
+import { createHash } from 'node:crypto';
+import { createHostMutationContext } from './host-mutation-context.ts';
 import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1880: the host lists the plugins it loads, persists the owner's choices for them in
@@ -6,6 +10,7 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  * own HTTP surface; the remote home, which needs a database and a bucket, is covered against the
  * manager and a real Bureau with a home that cannot write.
  */
+import { createLocalSecretProvider, parseSecretReference } from '@lostgradient/bungalow';
 import { createBureau, type BureauPluginEntry } from '@lostgradient/bureau';
 import {
   definePlugin,
@@ -24,7 +29,8 @@ import { z } from 'zod';
 
 import { startHost, type Host } from './host.ts';
 import { createHostMemory } from './memory.ts';
-import { createPluginManager } from './plugin-manager.ts';
+import { createPluginManager, type PluginAuditEntry } from './plugin-manager.ts';
+import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -160,12 +166,56 @@ async function standings(host: Host): Promise<Record<string, Standing>> {
   return Object.fromEntries(body.plugins.map((plugin) => [plugin.descriptor.name, plugin]));
 }
 
-function put(host: Host, path: string, body: unknown, headers: Record<string, string> = {}) {
+async function put(host: Host, path: string, body: unknown, headers: Record<string, string> = {}) {
+  const snapshot = await host.plugins.snapshot();
   return fetch(new URL(path, host.url), {
     method: 'PUT',
     headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...(typeof body === 'object' && body !== null ? body : {}),
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    }),
   });
+}
+
+function managerHome(options: { readonly outcome?: 'conflict' | 'unknown' } = {}) {
+  let configuration: string | undefined;
+  const writes: string[] = [];
+  const committedConfigurations: string[] = [];
+  const state = { secrets: new Map<string, string>() };
+  const workspaceId = 'plugin-manager-fixture';
+  return {
+    writes,
+    committedConfigurations,
+    configurationText: () => configuration,
+    bungalow: {
+      mode: 'local' as const,
+      workspaceId,
+      configurationWriteCapability: 'writable' as const,
+      secretProvider: fixtureSecretProvider(workspaceId, state, true),
+      configurationLocation: '/home/configuration.json',
+      readConfiguration: async () => ({
+        text: configuration,
+        revision: configuration === undefined ? null : Bun.hash(configuration).toString(),
+      }),
+      writeConfiguration: async (text: string, condition: { expectedRevision: string | null }) => {
+        const revision = configuration === undefined ? null : Bun.hash(configuration).toString();
+        if (condition.expectedRevision !== revision) return { outcome: 'conflict' as const };
+        writes.push('configuration');
+        if (options.outcome === 'conflict') return { outcome: 'conflict' as const };
+        if (options.outcome === 'unknown') return { outcome: 'unknown' as const };
+        configuration = text;
+        committedConfigurations.push(text);
+        return { outcome: 'committed' as const };
+      },
+      deploymentSecrets: {
+        read: async (key: string) => state.secrets.get(key),
+        write: async (key: string, value: string) => void state.secrets.set(key, value),
+        location: (key: string) => `/home/secrets/${key}`,
+      },
+    },
+  };
 }
 
 /** The plugin `name` as `GET /host/plugins` reports it now. */
@@ -198,13 +248,29 @@ async function textOf(host: Host, path: string): Promise<string> {
   return response.text();
 }
 
-/** The mode bits of a secret's file. */
+/** Resolve only the reference published in this home's configuration. */
+async function secretBinding(home: string, key: string) {
+  const identity = await readFile(join(home, 'deployment-id'), 'utf8');
+  const workspaceId = identity.trim();
+  const text = await configurationText(home);
+  const document = JSON.parse(text ?? '{}') as { secretBindings?: Record<string, string> };
+  const binding = document.secretBindings?.[key];
+  const reference = binding === undefined ? undefined : parseSecretReference(binding, workspaceId);
+  if (reference !== undefined && reference.key !== key) throw new Error('Wrong secret binding');
+  return { workspaceId, reference };
+}
+
+/** Measure actual permission bits on the active version or legacy file. */
 async function secretMode(home: string, key: string): Promise<number> {
-  const file = await stat(join(home, 'secrets', key));
+  const { reference } = await secretBinding(home, key);
+  const path =
+    reference === undefined
+      ? join(home, 'secrets', key)
+      : join(home, '.managed-secrets', 'versions', reference.version);
+  const file = await stat(path);
   return file.mode & 0o777;
 }
 
-/** How many characters a secret holds, or `undefined` when it is not stored. */
 async function secretLength(home: string, key: string): Promise<number | undefined> {
   const text = await secretText(home, key);
   return text?.length;
@@ -215,7 +281,9 @@ async function configurationText(home: string): Promise<string | undefined> {
 }
 
 async function secretText(home: string, key: string): Promise<string | undefined> {
-  return readFile(join(home, 'secrets', key), 'utf8').catch(() => undefined);
+  const { workspaceId, reference } = await secretBinding(home, key);
+  const provider = createLocalSecretProvider({ root: home, workspaceId });
+  return reference === undefined ? provider.readLegacy(key) : provider.readVersion(reference);
 }
 
 describe('GET /host/plugins', () => {
@@ -350,6 +418,7 @@ describe('PUT /host/plugins/:name', () => {
     });
     expect(plugins['limited']).toMatchObject({ configuration: { limit: 5 }, status: 'running' });
     expect(JSON.parse((await configurationText(home)) ?? '{}')).toEqual({
+      secretBindings: { [MINTED_SECRET]: expect.any(String) },
       plugins: { quiet: { enabled: true }, limited: { configuration: { limit: 5 } } },
     });
   });
@@ -369,6 +438,7 @@ describe('PUT /host/plugins/:name', () => {
     expect(await statusOf(put(host, '/host/plugins/limited', { enabled: false }))).toBe(200);
 
     expect(JSON.parse((await configurationText(home)) ?? '{}')).toEqual({
+      secretBindings: { [MINTED_SECRET]: expect.any(String) },
       skills: { sources: [], trusted: [] },
       plugins: { limited: { enabled: false, configuration: { limit: 2 } } },
     });
@@ -377,12 +447,13 @@ describe('PUT /host/plugins/:name', () => {
   test('refuses a configuration its schema rejects, naming the field, and writes nothing', async () => {
     const home = await scratch();
     const host = await startAt(home);
+    const before = await configurationText(home);
 
     const response = await put(host, '/host/plugins/limited', { configuration: { limit: 'many' } });
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: 'invalid', field: 'configuration.limit' });
-    expect(await configurationText(home)).toBeUndefined();
+    expect(await configurationText(home)).toBe(before);
   });
 
   test.each([
@@ -394,22 +465,24 @@ describe('PUT /host/plugins/:name', () => {
   ])('refuses %s, and writes nothing', async (_name, plugin, body, field) => {
     const home = await scratch();
     const host = await startAt(home);
+    const before = await configurationText(home);
 
     const response = await put(host, `/host/plugins/${plugin}`, body);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ field });
-    expect(await configurationText(home)).toBeUndefined();
+    expect(await configurationText(home)).toBe(before);
   });
 
   test('answers 404 for a plugin it does not load, and writes nothing', async () => {
     const home = await scratch();
     const host = await startAt(home);
+    const before = await configurationText(home);
 
     const response = await put(host, '/host/plugins/missing', { enabled: true });
 
     expect(response.status).toBe(404);
-    expect(await configurationText(home)).toBeUndefined();
+    expect(await configurationText(home)).toBe(before);
   });
 
   test('refuses a file that became invalid instead of overwriting it', async () => {
@@ -446,6 +519,7 @@ describe('PUT /host/plugins/:name', () => {
     expect(await statusOf(put(host, '/host/plugins/limited', { configuration: null }))).toBe(200);
 
     expect(JSON.parse((await configurationText(home)) ?? '{}')).toEqual({
+      secretBindings: { [MINTED_SECRET]: expect.any(String) },
       plugins: { limited: {} },
     });
   });
@@ -597,23 +671,30 @@ describe('a remote home', () => {
   /** A home whose files belong to the deployment: it reads secrets and refuses to write. */
   function remoteHome(environment: Record<string, string> = {}) {
     const writes: string[] = [];
+    const state = { secrets: new Map(Object.entries(environment)) };
+    const workspaceId = 'plugin-remote-fixture';
     return {
       writes,
       bungalow: {
         mode: 'remote' as const,
+        workspaceId,
+        configurationWriteCapability: 'read-only' as const,
+        secretProvider: fixtureSecretProvider(workspaceId, state, false),
         configurationLocation: 's3://bucket/configuration.json',
         readConfiguration: async () => ({ text: undefined, revision: null }),
         writeConfiguration: async () => {
           writes.push('configuration');
           return { outcome: 'read-only' as const };
         },
-        readSecret: (key: string) => environment[key],
-        writeSecret: () => {
-          writes.push('secret');
-          throw new Error('The remote home cannot be written.');
+        deploymentSecrets: {
+          read: async (key: string) => environment[key],
+          write: async () => {
+            writes.push('secret');
+            throw new Error('The remote home cannot be written.');
+          },
+          location: (key: string) =>
+            `INTERBOROUGH_SECRET_${key.toUpperCase().replaceAll('-', '_')}`,
         },
-        secretLocation: (key: string) =>
-          `INTERBOROUGH_SECRET_${key.toUpperCase().replaceAll('-', '_')}`,
       },
     };
   }
@@ -696,26 +777,119 @@ describe('a remote home', () => {
   });
 });
 
-describe('a secret write that stores the file and then fails', () => {
+describe('plugin configuration audit metadata', () => {
+  async function managerFor(home: ReturnType<typeof managerHome>, audits: PluginAuditEntry[]) {
+    const manager = await createPluginManager({
+      bungalow: home.bungalow,
+      plugins: fixturePlugins(),
+      listing: async () => [],
+      reservedSecretKeys: [],
+      reservedSecretPrefixes: [],
+      audit: async (entry) => {
+        audits.push(entry);
+      },
+    });
+    return manager;
+  }
+
+  test('records committed enable and configuration changes without request values', async () => {
+    const audits: PluginAuditEntry[] = [];
+    const home = managerHome();
+    const manager = await managerFor(home, audits);
+
+    await manager.update('limited', { configuration: { limit: 7 } });
+    expect(home.committedConfigurations).toHaveLength(2);
+    const [configured, generated] = home.committedConfigurations;
+    if (configured === undefined || generated === undefined)
+      throw new Error('Expected both committed configuration writes');
+    expect(JSON.parse(configured)).not.toHaveProperty('secretBindings');
+    expect(JSON.parse(generated)).toHaveProperty('secretBindings');
+    const firstConfiguration = home.configurationText();
+    if (firstConfiguration === undefined) throw new Error('expected first configuration');
+    await manager.update('quiet', { enabled: true });
+    const secondConfiguration = home.configurationText();
+    if (secondConfiguration === undefined) throw new Error('expected second configuration');
+
+    expect(audits).toHaveLength(2);
+    expect(audits[0]).toMatchObject({
+      runId: 'plugin:limited',
+      type: 'plugin.configured',
+      principal: 'anonymous:local',
+      detail: {
+        outcome: 'committed',
+        changedKeys: ['configuration'],
+        hash: createHash('sha256').update(configured).digest('hex'),
+        previousRevision: null,
+      },
+    });
+    expect(audits[1]).toMatchObject({
+      runId: 'plugin:quiet',
+      type: 'plugin.configured',
+      principal: 'anonymous:local',
+      detail: {
+        outcome: 'committed',
+        changedKeys: ['enabled'],
+        hash: createHash('sha256').update(secondConfiguration).digest('hex'),
+        previousRevision: Bun.hash(firstConfiguration).toString(),
+      },
+    });
+    for (const audit of audits) {
+      expect(Object.keys(audit.detail).toSorted()).toEqual([
+        'changedKeys',
+        'hash',
+        'outcome',
+        'previousRevision',
+      ]);
+    }
+  });
+
+  test('does not audit configuration conflicts or uncertain writes', async () => {
+    const conflictAudits: PluginAuditEntry[] = [];
+    const conflictManager = await managerFor(managerHome({ outcome: 'conflict' }), conflictAudits);
+    expect(
+      await rejectionOf(conflictManager.update('limited', { configuration: { limit: 7 } })),
+    ).toMatchObject({ code: 'conflict', definitelyRejected: true });
+    expect(conflictAudits).toEqual([]);
+
+    const uncertainAudits: PluginAuditEntry[] = [];
+    const uncertainManager = await managerFor(managerHome({ outcome: 'unknown' }), uncertainAudits);
+    expect(
+      await rejectionOf(uncertainManager.update('limited', { configuration: { limit: 7 } })),
+    ).toMatchObject({ code: 'unavailable', definitelyRejected: false });
+    expect(uncertainAudits).toEqual([]);
+  });
+});
+
+describe('a secret preparation that fails before publication', () => {
   /**
-   * A local home whose `writeSecret` keeps the value and then throws, as Bungalow's does when the
-   * rename lands and the directory sync after it fails: the secret is on disk, the call is an error.
+   * A local fixture whose managed provider refuses preparation before any version can activate.
+   * The separate deployment writer is not used by these managed-secret requests.
    */
   function flakyHome() {
     const stored = new Map<string, string>();
+    const workspaceId = 'plugin-flaky-fixture';
     return {
       stored,
       bungalow: {
         mode: 'local' as const,
+        workspaceId,
+        configurationWriteCapability: 'writable' as const,
+        secretProvider: fixtureSecretProvider(
+          workspaceId,
+          { secrets: stored, secretWrites: 0, secretWritesBeforeFailing: 0 },
+          true,
+        ),
         configurationLocation: '/home/configuration.json',
         readConfiguration: async () => ({ text: undefined, revision: null }),
         writeConfiguration: async () => ({ outcome: 'committed' as const }),
-        readSecret: (key: string) => stored.get(key),
-        writeSecret: (key: string, value: string) => {
-          stored.set(key, value);
-          throw new Error('The directory could not be synced.');
+        deploymentSecrets: {
+          read: async (key: string) => stored.get(key),
+          write: async (key: string, value: string) => {
+            stored.set(key, value);
+            throw new Error('The directory could not be synced.');
+          },
+          location: (key: string) => `/home/secrets/${key}`,
         },
-        secretLocation: (key: string) => `/home/secrets/${key}`,
       },
     };
   }
@@ -741,7 +915,7 @@ describe('a secret write that stores the file and then fails', () => {
     return listed[0]?.status;
   };
 
-  test('a saved secret still moves a needs-setup plugin to running, and the save still fails', async () => {
+  test('a failed preparation leaves a saved-secret plugin waiting for setup', async () => {
     const home = flakyHome();
     const keyed = fixturePlugins().find((entry) => entry.descriptor.name === 'keyed');
     if (keyed === undefined) throw new Error('The keyed fixture is missing.');
@@ -755,16 +929,16 @@ describe('a secret write that stores the file and then fails', () => {
       );
 
       expect(failure).toBeInstanceOf(Error);
-      expect((failure as Error).message).toBe('The directory could not be synced.');
-      await waitUntil(async () => (await pluginStatus(bureau)) === 'running', {
-        message: 'the keyed plugin to leave needs-setup',
-      });
+      expect((failure as Error).message).toBe(
+        'The secret provider could not complete the operation.',
+      );
+      expect(await pluginStatus(bureau)).toBe('needs-setup');
     } finally {
       await bureau.dispose();
     }
   });
 
-  test('a generated secret still moves a needs-setup plugin to running, and generation still fails', async () => {
+  test('a failed preparation leaves a generated-secret plugin waiting for setup', async () => {
     const home = flakyHome();
     const minted = fixturePlugins().find((entry) => entry.descriptor.name === 'minted');
     if (minted === undefined) throw new Error('The minted fixture is missing.');
@@ -778,27 +952,26 @@ describe('a secret write that stores the file and then fails', () => {
       );
 
       expect(failure).toBeInstanceOf(Error);
-      expect((failure as Error).message).toBe('The directory could not be synced.');
-      await waitUntil(async () => (await pluginStatus(bureau)) === 'running', {
-        message: 'the minted plugin to leave needs-setup',
-      });
+      expect((failure as Error).message).toBe(
+        'The secret provider could not complete the operation.',
+      );
+      expect(await pluginStatus(bureau)).toBe('needs-setup');
     } finally {
       await bureau.dispose();
     }
   });
 
-  test('the provider-route writer the host hands out notifies the same way', async () => {
+  test('a failed secret save does not notify a plugin of an active value', async () => {
     const home = flakyHome();
     const keyed = fixturePlugins().find((entry) => entry.descriptor.name === 'keyed');
     if (keyed === undefined) throw new Error('The keyed fixture is missing.');
     const { manager, bureau } = await standingOf(keyed, home);
     try {
-      expect(() => manager.writeSecret(KEYED_SECRET, SECRET_VALUE)).toThrow(
-        'The directory could not be synced.',
-      );
-      await waitUntil(async () => (await pluginStatus(bureau)) === 'running', {
-        message: 'the keyed plugin to leave needs-setup',
-      });
+      const failure = await manager
+        .saveSecret('keyed', KEYED_SECRET, SECRET_VALUE)
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(await pluginStatus(bureau)).toBe('needs-setup');
     } finally {
       await bureau.dispose();
     }
@@ -826,7 +999,7 @@ describe('/host/paths', () => {
     const paths = await pathsOf(host);
 
     expect(paths.providers).toEqual([
-      { name: 'lender', secretFile: join(home, 'secrets', 'lender-api-key') },
+      { name: 'lender', secretFile: expect.stringContaining('/lender-api-key') },
     ]);
   });
 
@@ -840,7 +1013,7 @@ describe('/host/paths', () => {
     expect(paths.providers).toEqual(
       ['anthropic', 'openai', 'gemini'].map((name) => ({
         name,
-        secretFile: join(home, 'secrets', `${name}-api-key`),
+        secretFile: expect.stringContaining(`/${name}-api-key`),
       })),
     );
   });
@@ -861,4 +1034,75 @@ describe('the host’s governed memory', () => {
 
     expect(memory.embedding.availability('keyed:tiny')).toBe('available');
   });
+});
+
+test('workspace administrators edit writable remote plugin configuration without deployment powers', async () => {
+  const home = managerHome();
+  const bungalow = { ...home.bungalow, mode: 'remote' as const };
+  const administrator: WorkspaceIdentity = {
+    version: 1,
+    workspaceId: bungalow.workspaceId,
+    actorId: 'administrator',
+    actorKind: 'user',
+    owner: 'owner-administrator',
+    membershipRevision: '1',
+    capabilities: ['workspace:use', 'workspace:manage'],
+  };
+  let current: WorkspaceIdentity | undefined = administrator;
+  const mutation = async (operationId: string) => {
+    const snapshot = await bungalow.readConfiguration();
+    return createHostMutationContext(
+      administrator,
+      { operationId, expectedRevision: snapshot.revision },
+      async () => current,
+    );
+  };
+  const manager = await createPluginManager({
+    bungalow,
+    plugins: fixturePlugins().filter((entry) =>
+      ['limited', 'keyed'].includes(entry.descriptor.name),
+    ),
+    listing: async () => [],
+    reservedSecretKeys: [],
+    reservedSecretPrefixes: [],
+  });
+  const initial = await mutation('remote-configuration');
+  await manager.update('limited', { configuration: { limit: 7 } }, initial);
+  expect(home.configurationText()).toContain('7');
+  expect(
+    await rejectionOf(manager.update('limited', { configuration: { limit: 9 } }, initial)),
+  ).toMatchObject({ code: 'conflict' });
+  const enabling = await mutation('executable-change');
+  expect(await rejectionOf(manager.update('limited', { enabled: false }, enabling))).toMatchObject({
+    code: 'forbidden',
+  });
+  await manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE, await mutation('plugin-secret'));
+  const readOnly = await createPluginManager({
+    bungalow: {
+      ...bungalow,
+      secretProvider: {
+        ...bungalow.secretProvider,
+        capabilities: { read: true, prepare: false, transitions: false },
+      },
+    },
+    plugins: fixturePlugins().filter((entry) => entry.descriptor.name === 'limited'),
+    listing: async () => [],
+    reservedSecretKeys: [],
+    reservedSecretPrefixes: [],
+  });
+  const standing = await readOnly.snapshot();
+  expect(standing.lockReason).toBeUndefined();
+  expect(standing.credentialLockReason).toBe('deployment');
+  await readOnly.update(
+    'limited',
+    { configuration: { limit: 11 } },
+    await mutation('configuration-only'),
+  );
+  const revoked = await mutation('revoked');
+  current = undefined;
+  const before = home.configurationText();
+  expect(
+    await rejectionOf(manager.update('limited', { configuration: { limit: 12 } }, revoked)),
+  ).toMatchObject({ code: 'forbidden' });
+  expect(home.configurationText()).toBe(before);
 });

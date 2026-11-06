@@ -103,6 +103,31 @@ export type SystemOperationTypes = {
     };
     readonly faults: never;
   };
+  'weft.task.queues.tasks': {
+    readonly input: {
+      readonly cursor?: string;
+      readonly limit?: number;
+      readonly queue: string;
+      readonly status?: 'all' | 'waiting' | 'failed';
+    };
+    readonly output: {
+      readonly counts: { readonly failed: number; readonly waiting: number };
+      readonly items: ReadonlyArray<{
+        readonly activityName: string;
+        readonly at: number;
+        readonly attempt: number;
+        readonly error?: string;
+        readonly operationId: string;
+        readonly persistenceFailureReason?: string;
+        readonly status: 'waiting' | 'failed';
+        readonly workflowId?: string;
+        readonly workflowType: string;
+      }>;
+      readonly nextCursor: string | null;
+      readonly queue: string;
+    };
+    readonly faults: 'InvalidParams';
+  };
   'weft.worker.deployments.diagnostics': {
     readonly input: { readonly deploymentName?: string };
     readonly output: { readonly routing: unknown; readonly versions: ReadonlyArray<unknown> };
@@ -187,6 +212,11 @@ export type SystemOperationTypes = {
       SharedAffectedWorkersHealthInF_c3f6ebcc | SharedAffectedWorkersBuildIdDe_a9c15090;
     readonly faults: 'NotFound';
   };
+  'weft.workers.forget': {
+    readonly input: { readonly workerId: string };
+    readonly output: { readonly forgotten: true; readonly workerId: string };
+    readonly faults: 'Conflict' | 'NotFound';
+  };
   'weft.workers.list': {
     readonly input: {};
     readonly output: {
@@ -211,6 +241,7 @@ export type SystemOperationTypes = {
         readonly concurrency: number;
         readonly connectedAt: number;
         readonly deploymentName?: string;
+        readonly disconnectedAt?: number;
         readonly drainFinishedTasks?: number;
         readonly drainedAt?: number;
         readonly health: 'active' | 'draining' | 'drained';
@@ -218,10 +249,12 @@ export type SystemOperationTypes = {
         readonly id: string;
         readonly inFlight: number;
         readonly lastHeartbeatAt: number;
+        readonly name?: string;
         readonly queue: string;
         readonly runtimeVersion?: string;
         readonly startedAt: number;
         readonly transport: 'websocket' | 'long-poll';
+        readonly workflows?: ReadonlyArray<string>;
       }>;
       readonly routingPolicy: 'least-loaded' | 'round-robin' | 'fair-share';
     };

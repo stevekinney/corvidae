@@ -1,7 +1,7 @@
 /**
- * A turn's tool calls: a row per call with where it stands, a chevron that opens what it was
- * given and what it answered, and a fold for a turn with several that never hides a call waiting
- * on a person.
+ * A turn's tool calls on Cinder's rail: a row per call with its name for a person, its key input
+ * and what it answered, an interrupted call that says how little is known, and a chosen row that
+ * opens what the call was given and what it answered.
  */
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
@@ -12,6 +12,8 @@ import Harness from './tool-calls.test-harness.svelte';
 function entry(overrides: Partial<ToolCallEntry> & { callId: string }): ToolCallEntry {
   return {
     name: 'lookup-order',
+    title: 'Lookup order',
+    input: 'A-1',
     arguments: { orderId: 'A-1' },
     state: 'done',
     summary: 'Found the order',
@@ -20,133 +22,153 @@ function entry(overrides: Partial<ToolCallEntry> & { callId: string }): ToolCall
   };
 }
 
-describe('a turn’s tool calls', () => {
-  test('a single call shows its name, where it stands and one line about the answer', () => {
-    const view = render(Harness, { props: { entries: [entry({ callId: 'c1' })] } } as never);
+const rowOf = (container: HTMLElement, callId: string) =>
+  container.querySelector<HTMLElement>(`[data-cinder-tool-call-row="${callId}"]`);
 
-    expect(view.getByText('lookup-order')).not.toBeNull();
-    expect(view.getByRole('img', { name: 'Done' })).not.toBeNull();
-    expect(view.getByText('Found the order')).not.toBeNull();
-    // One call is not folded into a group.
-    expect(view.queryByRole('button', { name: 'Show tool calls' })).toBeNull();
+describe('a turn’s tool calls', () => {
+  test('a call shows its name for a person, its key input and one line about the answer', () => {
+    const { container } = render(Harness, {
+      props: { entries: [entry({ callId: 'c1' })] },
+    } as never);
+    const row = rowOf(container, 'c1');
+    expect(row?.textContent).toContain('Lookup order');
+    expect(row?.textContent).toContain('A-1');
+    expect(row?.textContent).toContain('→ Found the order');
+    // The identifier is the tooltip, not the row's text.
+    expect(row?.textContent).not.toContain('lookup-order');
   });
 
-  test('each state is named for a person, and a running or waiting call has no answer line', () => {
-    const view = render(Harness, {
+  test('a running call shows Running…, and a call waiting on a person its decision under the row', () => {
+    const { container, getByText } = render(Harness, {
+      props: {
+        entries: [
+          entry({ callId: 'c1', state: 'running', summary: '', result: undefined }),
+          entry({
+            callId: 'c2',
+            name: 'issue-refund',
+            title: 'Issue refund',
+            state: 'needs-you',
+            summary: '',
+            result: undefined,
+          }),
+        ],
+      },
+    } as never);
+    expect(rowOf(container, 'c1')?.textContent).toContain('Running…');
+    expect(rowOf(container, 'c2')?.textContent).toContain('Waiting on you');
+    expect(getByText('Decide on issue-refund')).not.toBeNull();
+  });
+
+  test('a call the person refused reads Denied in its own words, never Failed', () => {
+    const { container } = render(Harness, {
+      props: { entries: [entry({ callId: 'c1', state: 'denied', summary: 'Too much' })] },
+    } as never);
+    const item = container.querySelector(
+      '.cinder-tool-call-rail__item[data-cinder-status="denied"]',
+    );
+    expect(item).not.toBeNull();
+    expect(item?.textContent).toContain('Too much');
+    expect(
+      container.querySelector('.cinder-tool-call-rail__item[data-cinder-status="failed"]'),
+    ).toBeNull();
+  });
+
+  test('an interrupted call that only reads says it did not finish, in danger text, with no arrow', () => {
+    const { container } = render(Harness, {
       props: {
         entries: [
           entry({
             callId: 'c1',
-            state: 'failed',
-            summary: 'Order service down',
+            state: 'interrupted',
+            tier: 'read-only',
+            summary: '',
             result: undefined,
           }),
-          entry({ callId: 'c2', state: 'running', summary: '', result: undefined }),
-          entry({ callId: 'c3', state: 'needs-you', summary: '', result: undefined }),
         ],
       },
     } as never);
-
-    // Several calls fold, but the failed row is shown once the group opens.
-    return fireEvent.click(view.getByRole('button', { name: 'Show tool calls' })).then(() => {
-      expect(view.getByRole('img', { name: 'Failed' })).not.toBeNull();
-      expect(view.getByRole('img', { name: 'Running' })).not.toBeNull();
-      expect(view.getByRole('img', { name: 'Needs you' })).not.toBeNull();
-      expect(view.getByText('Order service down')).not.toBeNull();
-      expect(view.getByText('Waiting for your approval')).not.toBeNull();
-    });
+    const result = container.querySelector(
+      '[data-cinder-status="interrupted"] .cinder-tool-call-rail__result',
+    );
+    expect(result?.textContent?.trim()).toBe('Interrupted · didn’t finish');
   });
 
-  test('a call the person refused reads Denied, in muted text, and not Failed', async () => {
-    const view = render(Harness, {
-      props: { entries: [entry({ callId: 'c1', state: 'denied', summary: 'Too much' })] },
+  test('an interrupted call that changes things, or that nothing classifies, says it may have run', () => {
+    for (const tier of ['mutating', 'dangerous', null, undefined] as const) {
+      const { container, unmount } = render(Harness, {
+        props: {
+          entries: [
+            entry({ callId: 'c1', state: 'interrupted', tier, summary: '', result: undefined }),
+          ],
+        },
+      } as never);
+      expect(
+        container
+          .querySelector('[data-cinder-status="interrupted"] .cinder-tool-call-rail__result')
+          ?.textContent?.trim(),
+      ).toBe('Interrupted · may have run');
+      unmount();
+    }
+  });
+
+  test('choosing a row opens what the call was given and what it answered, and again closes it', async () => {
+    const { container, getByText, queryByText } = render(Harness, {
+      props: { entries: [entry({ callId: 'c1' })] },
     } as never);
+    const row = rowOf(container, 'c1');
+    expect(queryByText('orderId')).toBeNull();
 
-    expect(view.getByRole('img', { name: 'Denied' })).not.toBeNull();
-    expect(view.queryByRole('img', { name: 'Failed' })).toBeNull();
-    expect(view.getByText('Too much')).not.toBeNull();
-  });
+    await fireEvent.click(row as HTMLElement);
+    expect(getByText('orderId')).not.toBeNull();
+    expect(getByText('Result: status')).not.toBeNull();
+    expect(getByText('shipped')).not.toBeNull();
 
-  test('the chevron on a call lists what the call was given and what it answered', async () => {
-    const view = render(Harness, { props: { entries: [entry({ callId: 'c1' })] } } as never);
-    const details = view.getByRole('button', { name: 'Details for lookup-order' });
-    expect(details.getAttribute('aria-expanded')).toBe('false');
-
-    await fireEvent.click(details);
-
-    expect(details.getAttribute('aria-expanded')).toBe('true');
-    expect(view.getByText('orderId')).not.toBeNull();
-    expect(view.getByText('A-1')).not.toBeNull();
-    expect(view.getByText('Result: status')).not.toBeNull();
-    expect(view.getByText('shipped')).not.toBeNull();
-
-    await fireEvent.click(details);
-    expect(view.queryByText('orderId')).toBeNull();
+    await fireEvent.click(row as HTMLElement);
+    expect(queryByText('orderId')).toBeNull();
   });
 
   test('a result that is not an object is shown as a single result, and no result shows none', async () => {
-    const view = render(Harness, {
+    const { container, getByText, getAllByText } = render(Harness, {
       props: {
         entries: [
-          entry({ callId: 'c1', name: 'count-orders', result: 42 }),
-          entry({ callId: 'c2', name: 'ping', result: undefined, arguments: {} }),
+          entry({ callId: 'c1', name: 'count-orders', title: 'Count orders', result: 42 }),
+          entry({ callId: 'c2', name: 'ping', title: 'Ping', result: undefined, arguments: {} }),
         ],
       },
     } as never);
-    await fireEvent.click(view.getByRole('button', { name: 'Show tool calls' }));
-
-    await fireEvent.click(view.getByRole('button', { name: 'Details for count-orders' }));
-    expect(view.getByText('Result: result')).not.toBeNull();
-    expect(view.getByText('42')).not.toBeNull();
-
-    await fireEvent.click(view.getByRole('button', { name: 'Details for ping' }));
-    expect(view.getAllByText(/^Result:/)).toHaveLength(1);
+    await fireEvent.click(rowOf(container, 'c1') as HTMLElement);
+    expect(getByText('Result: result')).not.toBeNull();
+    expect(getByText('42')).not.toBeNull();
+    await fireEvent.click(rowOf(container, 'c2') as HTMLElement);
+    expect(getAllByText(/^Result:/)).toHaveLength(1);
   });
 
-  test('several calls fold into one line, and a call waiting on a person stays outside the fold', async () => {
-    const view = render(Harness, {
-      props: {
-        entries: [
-          entry({ callId: 'c1', name: 'lookup-order' }),
-          entry({ callId: 'c2', name: 'issue-refund', state: 'needs-you', summary: '' }),
-        ],
-      },
+  test('a turn that ends on a tool call closes with the run’s end state', () => {
+    const { container } = render(Harness, {
+      props: { entries: [entry({ callId: 'c1' })], endLabel: 'Run finished · no reply' },
     } as never);
-
-    // Folded: the finished call is hidden, the waiting one and its decision are not.
-    expect(view.queryByText('lookup-order')).toBeNull();
-    expect(view.getByText('issue-refund')).not.toBeNull();
-    expect(view.getByText('Decide on issue-refund')).not.toBeNull();
-
-    const toggle = view.getByRole('button', { name: 'Show tool calls' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    await fireEvent.click(toggle);
-
-    expect(view.getByText('lookup-order')).not.toBeNull();
-    const hide = view.getByRole('button', { name: 'Hide tool calls' });
-    expect(hide.getAttribute('aria-expanded')).toBe('true');
-    await fireEvent.click(hide);
-    expect(view.queryByText('lookup-order')).toBeNull();
+    expect(container.querySelector('.cinder-tool-call-rail__end')?.textContent).toContain(
+      'Run finished · no reply',
+    );
   });
 
-  test('the fold line names each tool with its count, and every toggle is an icon button, not a worded one', async () => {
-    const view = render(Harness, {
-      props: {
-        entries: [
-          entry({ callId: 'c1', name: 'lookup-order' }),
-          entry({ callId: 'c2', name: 'lookup-order' }),
-        ],
-      },
-    } as never);
-
-    expect(view.getByText('Used 2 tools · lookup-order ×2')).not.toBeNull();
-    await fireEvent.click(view.getByRole('button', { name: 'Show tool calls' }));
-    const buttons = view.getAllByRole('button');
-    // The group's chevron and one on each of the two calls.
-    expect(buttons).toHaveLength(3);
-    for (const button of buttons) {
-      expect(button.querySelector('svg')).not.toBeNull();
-      expect(button.hasAttribute('aria-expanded')).toBe(true);
-    }
+  test('three calls fold into a summary line, and an interrupted call is never folded away', () => {
+    const entries = [
+      ...Array.from({ length: 12 }, (_, index) =>
+        entry({ callId: `d${String(index)}`, input: String(index) }),
+      ),
+      entry({
+        callId: 'cut',
+        state: 'interrupted',
+        tier: 'mutating',
+        summary: '',
+        result: undefined,
+      }),
+    ];
+    const { container } = render(Harness, { props: { entries } } as never);
+    expect(container.querySelector('.cinder-tool-call-rail__summary')?.textContent).toContain(
+      'Used 13 tools',
+    );
+    expect(rowOf(container, 'cut')).not.toBeNull();
   });
 });

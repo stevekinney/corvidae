@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-1527 — `bureau.workflows.*` over a real Bureau and its handler: the owner predicate and the
  * operator scopes on every operation (a black-box test with several principals, over the exported
@@ -8,8 +9,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 import { createBureau } from '../../create-bureau.ts';
+import { waitForCondition } from '../../test';
 import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
@@ -24,8 +27,14 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
-const serve = (onDiagnostic?: (event: { level: string; message: string }) => void) =>
-  serveWorkflows(cleanups, onDiagnostic === undefined ? {} : { onDiagnostic });
+const serve = (
+  onDiagnostic?: (event: { level: string; message: string }) => void,
+  workspace?: WorkspaceMembershipOptions,
+) =>
+  serveWorkflows(cleanups, {
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
+    ...(workspace === undefined ? {} : { workspace }),
+  });
 
 /** The array an operation's result holds under `key`, empty when it holds none. */
 function listOf(response: RpcBody, key: string): Array<{ id: string }> {
@@ -36,7 +45,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the sixteen workflow operations, with their scopes registered', () => {
+  it('serves the eighteen workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -51,6 +60,8 @@ describe('the operations list', () => {
       'bureau.workflows.impact',
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
+      'bureau.workflows.runs.cancel',
+      'bureau.workflows.runs.history',
       'bureau.workflows.start',
       'bureau.workflows.internal.get',
       'bureau.workflows.signal',
@@ -60,6 +71,68 @@ describe('the operations list', () => {
     for (const operation of bureauWorkflowsOperations) {
       expect(BUREAU_HANDLER_OPERATIONS).toContain(operation);
     }
+  });
+
+  it('keeps run cancellation strict HTTP-only and destructive', () => {
+    const cancel = bureauWorkflowsOperations.find(
+      (operation) => operation.name === 'bureau.workflows.runs.cancel',
+    );
+    expect(cancel).toMatchObject({
+      mcpExposable: false,
+      destructive: true,
+      transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+    });
+  });
+
+  it('allows a writer-only API key to cancel, while read-only and foreign keys cannot', async () => {
+    const served = await serve();
+    await seed(served);
+    const writer = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'workflows-writer-key',
+    );
+    expect(writer.error).toBeUndefined();
+    expect(writer.result).toMatchObject({ runId: 'digest-run', status: 'cancel-requested' });
+
+    const reader = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'workflows-reader-key',
+    );
+    expect(reader.error?.data?.httpStatus).toBe(404);
+
+    const foreign = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'alice-key',
+    );
+    expect(foreign.error?.data?.httpStatus).toBe(404);
+  });
+
+  it('denies an A2A request at the HTTP boundary without trusting a caller-supplied owner', async () => {
+    const served = await serve();
+    await seed(served);
+    const history = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.history',
+      { runId: 'digest-run' },
+      'a2a-key',
+    );
+    expect(history.result).toBeUndefined();
+    expect(history.error?.data?.httpStatus).toBe(404);
+
+    const cancel = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'a2a-key',
+    );
+    expect(cancel.result).toBeUndefined();
+    expect(cancel.error?.data?.httpStatus).toBe(404);
   });
 });
 
@@ -89,6 +162,16 @@ const CALLS: readonly Call[] = [
   },
   { method: 'bureau.workflows.runs.list', params: () => ({}), scope: 'read' },
   { method: 'bureau.workflows.runs.get', params: () => ({ runId: 'digest-run' }), scope: 'read' },
+  {
+    method: 'bureau.workflows.runs.cancel',
+    params: () => ({ runId: 'digest-run' }),
+    scope: 'write',
+  },
+  {
+    method: 'bureau.workflows.runs.history',
+    params: () => ({ runId: 'digest-run' }),
+    scope: 'read',
+  },
   {
     method: 'bureau.workflows.create',
     params: () => ({ id: 'another', definition: DEFINITION }),
@@ -206,6 +289,211 @@ describe('the owner predicate, with several principals', () => {
 });
 
 describe('results', () => {
+  it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
+    const binding = workspaceAdministratorDirectory();
+    const served = await serve(undefined, binding);
+    await served.bureau.workflows!.create('digest', DEFINITION);
+    const workspace = served.keyed;
+    const listed = await rpc(
+      workspace,
+      'bureau.workflows.list',
+      { includeRuns: true },
+      'operator-key',
+    );
+    expect(listOf(listed, 'workflows')).toMatchObject([{ id: 'digest', runs: null }]);
+    const readByMember = await rpc(
+      workspace,
+      'bureau.workflows.get',
+      { id: 'digest' },
+      'alice-key',
+    );
+    expect(readByMember.result).toMatchObject({ id: 'digest' });
+
+    const operatorRun = await rpc(
+      workspace,
+      'bureau.workflows.start',
+      { id: 'digest' },
+      'operator-key',
+    );
+    const aliceRun = await rpc(workspace, 'bureau.workflows.start', { id: 'digest' }, 'alice-key');
+    const operatorRunAgain = await rpc(
+      workspace,
+      'bureau.workflows.start',
+      { id: 'digest' },
+      'operator-key',
+    );
+    const operatorRunId = operatorRun.result?.['runId'] as string;
+    const aliceRunId = aliceRun.result?.['runId'] as string;
+    const operatorRunAgainId = operatorRunAgain.result?.['runId'] as string;
+    expect(operatorRunId).toBeString();
+    expect(aliceRunId).toBeString();
+    expect(operatorRunAgainId).toBeString();
+    await waitForCondition(async () => {
+      const runs = await served.bureau.durableEngine()!.list({ type: 'digest' });
+      return runs.items.length >= 3;
+    }, 'workspace workflow runs never became visible');
+
+    const ownRuns = await rpc(
+      workspace,
+      'bureau.workflows.runs.list',
+      { limit: 1 },
+      'operator-key',
+    );
+    const ownRunsNext = await rpc(
+      workspace,
+      'bureau.workflows.runs.list',
+      { limit: 1, offset: 1 },
+      'operator-key',
+    );
+    expect(listOf(ownRuns, 'runs').map((run) => run.id)).toEqual([operatorRunAgainId]);
+    expect(listOf(ownRunsNext, 'runs').map((run) => run.id)).toEqual([operatorRunId]);
+    expect(ownRuns.result?.['nextOffset']).toBe(1);
+    const ownGet = await rpc(
+      workspace,
+      'bureau.workflows.runs.get',
+      { runId: operatorRunId },
+      'operator-key',
+    );
+    expect(ownGet.result).toMatchObject({ id: operatorRunId, workflow: 'digest' });
+    const foreignGet = await rpc(
+      workspace,
+      'bureau.workflows.runs.get',
+      { runId: aliceRunId },
+      'operator-key',
+    );
+    const unknownGet = await rpc(
+      workspace,
+      'bureau.workflows.runs.get',
+      { runId: 'run-missing' },
+      'operator-key',
+    );
+    expect(JSON.stringify(foreignGet).replaceAll(aliceRunId, '<id>')).toBe(
+      JSON.stringify(unknownGet).replaceAll('run-missing', '<id>'),
+    );
+
+    const revisions = await rpc(
+      workspace,
+      'bureau.workflows.revisions',
+      { id: 'digest' },
+      'operator-key',
+    );
+    expect(revisions.result?.['revisions']).toHaveLength(1);
+    const history = await rpc(
+      workspace,
+      'bureau.workflows.history',
+      { id: 'digest' },
+      'operator-key',
+    );
+    const revisionsValue = history.result?.['revisions'];
+    expect(Array.isArray(revisionsValue)).toBe(true);
+    if (!Array.isArray(revisionsValue))
+      throw new Error(`Expected revisions, got ${JSON.stringify(history)}`);
+    const historyRevisions = revisionsValue as Array<{ runs: unknown }>;
+    expect(historyRevisions.length).toBeGreaterThan(0);
+    expect(historyRevisions.every((revision) => revision.runs === null)).toBe(true);
+    const local = createBureauHandler(served.bureau, {
+      workspace: binding,
+      unauthenticatedAccess: 'allow',
+    });
+    const localList = await ownerRpc(local, 'bureau.workflows.list', { includeRuns: true });
+    expect(localList.result?.['workflows']).toMatchObject([
+      { id: 'digest', runs: { last24Hours: 3 } },
+    ]);
+    const localHistory = await ownerRpc(local, 'bureau.workflows.history', { id: 'digest' });
+    expect(localHistory.result?.['revisions']).toMatchObject([{ runs: { count: 3 } }]);
+    const localRevisions = await ownerRpc(local, 'bureau.workflows.revisions', { id: 'digest' });
+    expect(localRevisions.result?.['revisions']).toHaveLength(1);
+    const localImpact = await ownerRpc(local, 'bureau.workflows.impact', {
+      id: 'digest',
+      definition: DEFINITION,
+    });
+    expect(localImpact.result?.['inFlight']).toBeNumber();
+    const memberImpact = await rpc(
+      workspace,
+      'bureau.workflows.impact',
+      { id: 'digest', definition: DEFINITION },
+      'operator-key',
+    );
+    expect(memberImpact.result?.['inFlight']).toBeNull();
+  });
+
+  it('signals only the caller-owned waiting runs and starts new runs with the caller owner', async () => {
+    const served = await serve(undefined, workspaceAdministratorDirectory());
+    await served.bureau.workflows!.create('starter', {
+      agent: 'writer',
+      trigger: { kind: 'signal', name: 'go' },
+      steps: [AGENT_STEP],
+    });
+    await served.bureau.workflows!.create('waiter', {
+      agent: 'writer',
+      trigger: FAST_SCHEDULE,
+      steps: [{ kind: 'await-signal', signal: 'go' }],
+    });
+    const workspace = served.keyed;
+    const aliceStart = await rpc(
+      workspace,
+      'bureau.workflows.start',
+      { id: 'waiter' },
+      'alice-key',
+    );
+    const bobStart = await rpc(workspace, 'bureau.workflows.start', { id: 'waiter' }, 'bob-key');
+    const aliceWaiting = aliceStart.result?.['runId'] as string;
+    const bobWaiting = bobStart.result?.['runId'] as string;
+    expect(aliceWaiting).toBeString();
+    expect(bobWaiting).toBeString();
+    await waitForCondition(async () => {
+      const engine = served.bureau.durableEngine()!;
+      const [alice, bob] = await Promise.all([engine.get(aliceWaiting), engine.get(bobWaiting)]);
+      return (
+        alice?.waitingForSignals?.includes('go') === true &&
+        bob?.waitingForSignals?.includes('go') === true
+      );
+    }, 'workspace signal waiters never became eligible');
+
+    const aliceSignal = await rpc(
+      workspace,
+      'bureau.workflows.signal',
+      { name: 'go', payload: { owner: 'alice' } },
+      'alice-key',
+    );
+    expect(aliceSignal.result?.['delivered']).toEqual([aliceWaiting]);
+    expect(aliceSignal.result?.['started']).toHaveLength(1);
+    const aliceStartedList = aliceSignal.result?.['started'];
+    expect(Array.isArray(aliceStartedList)).toBe(true);
+    if (!Array.isArray(aliceStartedList)) throw new Error('Expected started workflow runs');
+    const aliceStarted = String(aliceStartedList[0]);
+    const aliceDetail = await rpc(
+      workspace,
+      'bureau.workflows.runs.get',
+      { runId: aliceStarted },
+      'alice-key',
+    );
+    expect(aliceDetail.result).toBeDefined();
+    if (aliceDetail.result === undefined) throw new Error('Expected Alice workflow run');
+    expect(aliceDetail.result['trigger']).toMatchObject({
+      origin: { principal: 'api-key:alice' },
+    });
+    const bobWaitingRun = await served.bureau.durableEngine()!.get(bobWaiting);
+    expect(bobWaitingRun?.waitingForSignals).toEqual(['go']);
+
+    const bobSignal = await rpc(workspace, 'bureau.workflows.signal', { name: 'go' }, 'bob-key');
+    expect(bobSignal.result?.['delivered']).toEqual([bobWaiting]);
+    expect(bobSignal.result?.['started']).toHaveLength(1);
+    const bobStartedList = bobSignal.result?.['started'];
+    expect(Array.isArray(bobStartedList)).toBe(true);
+    if (!Array.isArray(bobStartedList)) throw new Error('Expected started workflow runs');
+    const bobStarted = String(bobStartedList[0]);
+    const bobDetail = await rpc(
+      workspace,
+      'bureau.workflows.runs.get',
+      { runId: bobStarted },
+      'bob-key',
+    );
+    expect(bobDetail.result?.['trigger']).toMatchObject({
+      origin: { principal: 'api-key:bob' },
+    });
+  });
+
   it('creates, reads, lists, and writes the file a person could write by hand', async () => {
     const served = await serve();
     const created = await ownerRpc(served.owner, 'bureau.workflows.create', {
@@ -467,6 +755,10 @@ describe('results', () => {
       error: null,
       result: { content: 'written', output: null, finishReason: 'stop-condition' },
     });
+    const cancelled = await ownerRpc(served.owner, 'bureau.workflows.runs.cancel', {
+      runId: 'digest-run',
+    });
+    expect(cancelled.result).toEqual({ runId: 'digest-run', status: 'cancel-requested' });
     const none = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
       workflow: 'unknown-flow',
     });
