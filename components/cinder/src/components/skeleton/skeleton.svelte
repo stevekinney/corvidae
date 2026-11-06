@@ -36,6 +36,7 @@
     onCancel,
     stillLoadingLabel = 'Still loading. This is taking longer than usual.',
     cancelLabel = 'Cancel',
+    children,
   }: SkeletonProps = $props();
 
   const MAXIMUM_LINES = 20;
@@ -89,7 +90,12 @@
     const whole = Math.trunc(Number(rows));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 3;
   });
-  const grouped = $derived(lineCount > 1 || shape !== 'row' || stillLoadingThreshold !== undefined);
+  const grouped = $derived(
+    lineCount > 1 ||
+      shape !== 'row' ||
+      stillLoadingThreshold !== undefined ||
+      children !== undefined,
+  );
 
   const style = $derived(
     [
@@ -153,24 +159,32 @@
   </div>
 {:else if visible}
   {#if grouped}
-    <div class={classNames('cinder-skeleton-group', className)} data-cinder-variant={shape}>
+    <div
+      class={classNames('cinder-skeleton-group', className)}
+      data-cinder-variant={children ? 'custom' : shape}
+      aria-busy={children ? 'true' : undefined}
+    >
       {#if label}
         <VisuallyHidden role="status">{label}</VisuallyHidden>
       {/if}
-      <div class="cinder-skeleton-lines" aria-hidden="true">
-        {#if shape === 'card'}
-          <div class="cinder-skeleton cinder-skeleton-heading"></div>
-        {/if}
-        {#each { length: lineCount } as _, index (index)}
-          <div
-            class="cinder-skeleton"
-            data-cinder-last={index === lineCount - 1 && lineCount > 1 && width === undefined
-              ? ''
-              : undefined}
-            {style}
-          ></div>
-        {/each}
-      </div>
+      {#if children}
+        {@render children()}
+      {:else}
+        <div class="cinder-skeleton-lines" aria-hidden="true">
+          {#if shape === 'card'}
+            <div class="cinder-skeleton cinder-skeleton-heading"></div>
+          {/if}
+          {#each { length: lineCount } as _, index (index)}
+            <div
+              class="cinder-skeleton"
+              data-cinder-last={index === lineCount - 1 && lineCount > 1 && width === undefined
+                ? ''
+                : undefined}
+              {style}
+            ></div>
+          {/each}
+        </div>
+      {/if}
       {@render stillLoadingStatus()}
     </div>
   {:else}

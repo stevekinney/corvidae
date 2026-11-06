@@ -16,7 +16,8 @@
  *   before the page's own handler sees it, from a pointer, from Enter, and from Space alike;
  * - `aria-disabled="true"` and the reason as the title on a control that carries neither, so a
  *   screen reader says it is off and the control stays focusable and reachable. A control that
- *   already has either keeps the page's value, which is also what is put back.
+ *   already has either keeps the page's value, which is also what is put back. A page that draws
+ *   the control again, and so removes what was added, has it added again.
  */
 
 /** The controls that change something: a marked one, and a submit button. */
@@ -52,7 +53,17 @@ export function holdChangingActions(root: HTMLElement, reason: string): () => vo
   const held = new Map<HTMLElement, Added>();
 
   function hold(control: HTMLElement): void {
-    if (held.has(control)) return;
+    const already = held.get(control);
+    if (already !== undefined) {
+      // A page that draws the control again (a Cinder button whose props were recomputed) removes
+      // what was added to it, because it sets an attribute it has no value for to nothing: put back
+      // what this module added.
+      if (already.aria && !control.hasAttribute('aria-disabled')) {
+        control.setAttribute('aria-disabled', 'true');
+      }
+      if (already.title && !control.hasAttribute('title')) control.setAttribute('title', reason);
+      return;
+    }
     const aria = !control.hasAttribute('aria-disabled');
     const title = !control.hasAttribute('title');
     if (aria) control.setAttribute('aria-disabled', 'true');
@@ -90,12 +101,24 @@ export function holdChangingActions(root: HTMLElement, reason: string): () => vo
   holdWithin(root);
   const observer = new MutationObserver((records) => {
     for (const record of records) {
+      // A control marked after it was drawn, or one that lost what was added to it.
+      if (record.type === 'attributes') {
+        if (isChanging(record.target instanceof Element ? record.target : null)) {
+          hold(record.target);
+        }
+        continue;
+      }
       for (const added of record.addedNodes) {
         if (added instanceof Element) holdWithin(added);
       }
     }
   });
-  observer.observe(root, { childList: true, subtree: true });
+  observer.observe(root, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['data-changes', 'aria-disabled', 'title'],
+  });
 
   return () => {
     observer.disconnect();

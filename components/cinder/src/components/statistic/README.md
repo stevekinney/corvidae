@@ -53,6 +53,7 @@ Set `attention` to draw an amber dot before the label when the value is a non-ze
 | `caption` | `string` | no | — | A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-statistic`. |
 | `label` | `string` | yes | — | Short label describing the metric, e.g. "Monthly Revenue". |
+| `loading` | `boolean` | no | — | Draws a placeholder block where the value goes, for a statistic whose number has not been read yet, so the tile keeps its size when the number arrives. The tile is marked busy, and `value` is not shown or announced while it is set. |
 | `style` | `string` | no | — | Inline style string applied to the `.cinder-statistic` root. |
 | `theme` | { background?: `string`; foreground?: `string`; grid?: `string`; muted?: `string`; palette?: `string`[] } | no | — | Partial visual theme override. Omitted fields inherit the surrounding application. |
 | `value` | `string` \| `number` | yes | — | The statistic. Strings rendered verbatim; numbers formatted via formatNumber. |

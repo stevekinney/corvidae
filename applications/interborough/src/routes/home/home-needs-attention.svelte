@@ -10,7 +10,10 @@
    * leaves that row out; the rest stay.
    *
    * With nothing to show the card gives way to one line, "Nothing needs attention", and the link to
-   * Health stays. A read that failed says so in the card's own place and never claims all is well.
+   * Health stays. A read that failed says so in the card's own place, with a Try again and no link
+   * to Health, and never claims all is well; while it has not answered the card holds placeholder
+   * rows in the rows' own shape. While the server does not answer each row's button is held like
+   * every control that changes something.
    */
   import { Card, DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -21,7 +24,9 @@
   import { router } from '../../lib/router.svelte.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
+  import HomeCardError from './home-card-error.svelte';
   import HomeLink from './home-link.svelte';
+  import HomeSkeletonRows from './home-skeleton-rows.svelte';
   import { useAgentList, useAttentionItems } from './home-queries.svelte.ts';
   import { attentionRows } from './home-rows.ts';
 
@@ -85,8 +90,18 @@
     </div>
   </Card>
 {:else}
-  <HomeCard title={copy.title} link={{ label: copy.link, href: '/health' }}>
-    {#if rows.length > 0}
+  <HomeCard
+    title={copy.title}
+    link={items.data === undefined ? undefined : { label: copy.link, href: '/health' }}
+  >
+    {#if items.data === undefined && items.isError}
+      <HomeCardError
+        title={HOME_COPY.states.cardFailed.attention}
+        onRetry={() => void items.refetch()}
+      />
+    {:else if items.data === undefined}
+      <HomeSkeletonRows rows={3} action />
+    {:else if rows.length > 0}
       <DataList items={rows} key={(row) => row.key} aria-label={copy.listLabel}>
         {#snippet children(row)}
           <StackedListItem
@@ -97,6 +112,7 @@
                 label: row.action.label,
                 href: router.href(row.action.href),
                 onclick: (event) => open(event, row.action.href),
+                changes: true,
               },
             ]}
           >

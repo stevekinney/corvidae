@@ -7,7 +7,10 @@
    * waited. With nothing waiting the card says so, and the link to Reviews stays.
    *
    * It reads the same list as Reviews (`waitingReviewsQuery`), so the two cannot disagree. A read
-   * that fails is that card's own failure and no other card is held.
+   * that fails is that card's own failure, said in the card with a Try again, and no other card is
+   * held; while it has not answered the card holds placeholder rows in the rows' own shape. On a
+   * phone each action is a full-width button under the row's text, and while the server does not
+   * answer each is held like every control that changes something.
    */
   import { DataList, EmptyState, StackedListItem } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -20,7 +23,9 @@
   import { waitingReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
+  import HomeCardError from './home-card-error.svelte';
   import HomeLink from './home-link.svelte';
+  import HomeSkeletonRows from './home-skeleton-rows.svelte';
   import { useAgentList } from './home-queries.svelte.ts';
   import { NEEDS_YOU_ROW_LIMIT, needsYouRows } from './home-rows.ts';
 
@@ -54,11 +59,18 @@
 <!-- With nothing waiting the link to Reviews moves into the empty state, at the end of its line. -->
 <HomeCard
   title={copy.title}
-  link={reviews.data !== undefined && rows.length === 0
+  link={reviews.data === undefined || rows.length === 0
     ? undefined
     : { label: copy.link, href: '/reviews' }}
 >
-  {#if reviews.data !== undefined && rows.length === 0}
+  {#if reviews.data === undefined && reviews.isError}
+    <HomeCardError
+      title={HOME_COPY.states.cardFailed.needsYou}
+      onRetry={() => void reviews.refetch()}
+    />
+  {:else if reviews.data === undefined}
+    <HomeSkeletonRows rows={2} action />
+  {:else if rows.length === 0}
     <EmptyState
       kind="done"
       layout="row"
@@ -76,11 +88,13 @@
         <StackedListItem
           data-review={row.key}
           lines
+          phoneActions="buttons"
           actions={[
             {
               label: row.action,
               href: router.href(row.href),
               onclick: (event) => open(event, row.href),
+              changes: true,
             },
           ]}
         >

@@ -56,12 +56,13 @@
   // An unknown tone behaves as a failure, so an error is never silently demoted to a quiet group.
   const safeTone = $derived(tone === 'neutral' ? 'neutral' : 'danger');
   const flat = $derived(variant === 'flat');
+  const row = $derived(variant === 'row');
 </script>
 
 <div
   {...rest}
   class={classNames('cinder-error-state', className)}
-  data-cinder-variant={flat ? 'flat' : undefined}
+  data-cinder-variant={flat ? 'flat' : row ? 'row' : undefined}
   data-cinder-tone={safeTone}
 >
   <!-- A failure is announced as an alert; a neutral state (nothing failed) is a plain group. -->
@@ -70,8 +71,8 @@
     role={safeTone === 'danger' ? 'alert' : 'group'}
     aria-labelledby={titleId}
   >
-    {#if !flat}
-      <span class="cinder-error-state-icon" aria-hidden="true">
+    {#if row}
+      <span class="cinder-error-state-glyph" aria-hidden="true">
         {#if icon}
           {@render icon()}
         {:else if safeTone === 'neutral'}
@@ -80,37 +81,80 @@
           <TriangleAlert />
         {/if}
       </span>
-    {/if}
-    <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
-      {title}
-    </svelte:element>
-    <p class="cinder-error-state-description">{description}</p>
-    {#if retryStatus}
-      <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
-    {/if}
-    {#if onRetry || secondaryAction}
-      <div class="cinder-error-state-action">
-        {#if onRetry}
-          <Button variant="primary" label={retryLabel} onclick={() => onRetry()}>
-            {#snippet leadingIcon()}
-              {#if retryIcon}
-                {@render retryIcon()}
-              {:else}
-                <RefreshCw />
-              {/if}
-            {/snippet}
-          </Button>
-        {/if}
-        {#if secondaryAction}
-          {@render secondaryAction()}
+      <div class="cinder-error-state-text">
+        <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
+          {title}
+        </svelte:element>
+        <p class="cinder-error-state-description">{description}</p>
+        {#if retryStatus}
+          <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
         {/if}
       </div>
-    {/if}
-    {#if detail}
-      <details class="cinder-error-state-details">
-        <summary class="cinder-error-state-details-summary">{detailsLabel}</summary>
-        <p class="cinder-error-state-detail">{detail}</p>
-      </details>
+      {#if onRetry || secondaryAction}
+        <div class="cinder-error-state-action">
+          {#if onRetry}
+            {#if retryIcon}
+              <Button variant="secondary" size="sm" label={retryLabel} onclick={() => onRetry()}>
+                {#snippet leadingIcon()}{@render retryIcon()}{/snippet}
+              </Button>
+            {:else}
+              <Button variant="secondary" size="sm" label={retryLabel} onclick={() => onRetry()} />
+            {/if}
+          {/if}
+          {#if secondaryAction}
+            {@render secondaryAction()}
+          {/if}
+        </div>
+      {/if}
+      {#if detail}
+        <details class="cinder-error-state-details">
+          <summary class="cinder-error-state-details-summary">{detailsLabel}</summary>
+          <p class="cinder-error-state-detail">{detail}</p>
+        </details>
+      {/if}
+    {:else}
+      {#if !flat}
+        <span class="cinder-error-state-icon" aria-hidden="true">
+          {#if icon}
+            {@render icon()}
+          {:else if safeTone === 'neutral'}
+            <Search />
+          {:else}
+            <TriangleAlert />
+          {/if}
+        </span>
+      {/if}
+      <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
+        {title}
+      </svelte:element>
+      <p class="cinder-error-state-description">{description}</p>
+      {#if retryStatus}
+        <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
+      {/if}
+      {#if onRetry || secondaryAction}
+        <div class="cinder-error-state-action">
+          {#if onRetry}
+            <Button variant="primary" label={retryLabel} onclick={() => onRetry()}>
+              {#snippet leadingIcon()}
+                {#if retryIcon}
+                  {@render retryIcon()}
+                {:else}
+                  <RefreshCw />
+                {/if}
+              {/snippet}
+            </Button>
+          {/if}
+          {#if secondaryAction}
+            {@render secondaryAction()}
+          {/if}
+        </div>
+      {/if}
+      {#if detail}
+        <details class="cinder-error-state-details">
+          <summary class="cinder-error-state-details-summary">{detailsLabel}</summary>
+          <p class="cinder-error-state-detail">{detail}</p>
+        </details>
+      {/if}
     {/if}
   </div>
 </div>

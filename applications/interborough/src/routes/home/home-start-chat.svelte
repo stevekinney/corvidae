@@ -8,8 +8,10 @@
    * sends there as its first (`new-chat-handoff.ts`); with nothing typed it opens New chat with the
    * agent alone.
    *
-   * While the server does not answer, what was typed stays, the agent select is off with a note
-   * saying so, and Send is held by the shell like every control that changes something.
+   * While the server does not answer, what was typed stays, a note beside the agent says the box is
+   * off until it is back, and Send is disabled (and held by the shell like every control that
+   * changes something); the agent can still be chosen, which changes nothing. When the agents
+   * cannot be read the card says so, with a Try again.
    */
   import { ChatInput } from '@lostgradient/chat';
   import { Button, Select, Textarea } from '@lostgradient/cinder';
@@ -22,6 +24,7 @@
   import { composerStatusOf } from '../chat/composer-state.ts';
   import { handOffFirstMessage } from '../chat/new-chat-handoff.ts';
   import HomeCard from './home-card.svelte';
+  import HomeCardError from './home-card-error.svelte';
   import { useAgentList, useHostProviders } from './home-queries.svelte.ts';
   import { newChatAddress, startingAgent } from './home-start-chat.ts';
 
@@ -86,7 +89,9 @@
 
 <div data-testid="home-start-chat">
   <HomeCard title={copy.title} flush={false}>
-    {#if blocked !== undefined}
+    {#if agents.data === undefined && agents.isError}
+      <HomeCardError title={copy.failed} onRetry={() => void agents.refetch()} />
+    {:else if blocked !== undefined}
       <ChatInput id="home-start-chat-blocked" status={blocked} />
     {:else}
       <form class="ib-home-start" onsubmit={send}>
@@ -110,7 +115,7 @@
               size="sm"
               {options}
               {...selected === undefined ? {} : { value: selected }}
-              disabled={connection.unreachable || options.length === 0}
+              disabled={options.length === 0}
               onValueChange={(value) => (chosen = value)}
             />
             {#if connection.unreachable}

@@ -566,7 +566,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       },
       cancelLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Cancel') },
     },
-    snippets: {},
+    snippets: { children: s0(true) },
   },
 
   spinner: {

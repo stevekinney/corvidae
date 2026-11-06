@@ -8,7 +8,9 @@
    * It reads what the chat list reads: the recent runs, so a chat whose latest run failed says
    * Failed here too, and the reviews waiting, so a chat that waits on you says what it asks. When
    * either read fails the rows still show, without it. Before the first message is sent the card is
-   * a compact empty state with an accent chat disc, and its link to All chats waits for a chat.
+   * a compact empty state with an accent chat disc, and its link to All chats waits for a chat. A
+   * list that cannot be read says so in the card, with a Try again and no link; while it has not
+   * answered the card holds placeholder rows in the rows' own shape.
    */
   import { DataList, EmptyState, StackedListItem, StatusDot } from '@lostgradient/cinder';
   import { MessageSquare } from '@lucide/svelte';
@@ -22,6 +24,8 @@
   import { bureauReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
+  import HomeCardError from './home-card-error.svelte';
+  import HomeSkeletonRows from './home-skeleton-rows.svelte';
   import { useRecentChats } from './home-queries.svelte.ts';
   import { recentChatRows } from './home-rows.ts';
 
@@ -58,11 +62,18 @@
 
 <HomeCard
   title={copy.title}
-  link={chats.data !== undefined && rows.length === 0
+  link={chats.data === undefined || rows.length === 0
     ? undefined
     : { label: copy.link, href: '/chats' }}
 >
-  {#if chats.data !== undefined && rows.length === 0}
+  {#if chats.data === undefined && chats.isError}
+    <HomeCardError
+      title={HOME_COPY.states.cardFailed.recent}
+      onRetry={() => void chats.refetch()}
+    />
+  {:else if chats.data === undefined}
+    <HomeSkeletonRows rows={3} />
+  {:else if rows.length === 0}
     <EmptyState
       kind="first-use"
       size="compact"
@@ -72,7 +83,7 @@
     >
       {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
     </EmptyState>
-  {:else if rows.length > 0}
+  {:else}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div onclick={follow}>
       <DataList items={rows} key={(row) => row.id} aria-label={copy.listLabel} statusColumn>

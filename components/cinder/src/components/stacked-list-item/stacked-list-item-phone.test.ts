@@ -111,4 +111,82 @@ describe('StackedListItem on a phone', () => {
     cleanup();
     setPhone(false);
   });
+
+  test('phoneActions="buttons" keeps each action a button, stacked full width under the text', () => {
+    setPhone(true);
+    const { container, getByRole, queryByRole } = render(ExtrasFixture, {
+      props: {
+        mode: 'actions',
+        phoneActions: 'buttons',
+        actions: [
+          { label: 'Answer', href: '/reviews/one' },
+          { label: 'Review', href: '/reviews/two' },
+        ],
+      },
+    });
+    expect(queryByRole('button', { name: 'More actions' })).toBeNull();
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--phone-buttons')).toBe(true);
+    // Not the collapsed form, so the narrow container query puts the actions under the body.
+    expect(row?.classList.contains('cinder-stacked-list-item--collapsed-actions')).toBe(false);
+    expect(getByRole('link', { name: 'Answer' }).getAttribute('href')).toBe('/reviews/one');
+    expect(getByRole('link', { name: 'Review' }).getAttribute('href')).toBe('/reviews/two');
+    expect(stylesheet).toMatch(
+      /--phone-buttons \.cinder-stacked-list-item__actions\s*\{[^}]*flex-direction:\s*column/,
+    );
+    expect(stylesheet).toMatch(
+      /--phone-buttons \.cinder-stacked-list-item__actions > \.cinder-button\s*\{[^}]*inline-size:\s*100%/,
+    );
+    // A two-line row gives the actions a row of their own under both lines.
+    expect(stylesheet).toMatch(
+      /--phone-buttons\s*>\s*\.cinder-stacked-list-item__layout\s*\{[^}]*'trailing trailing trailing trailing'/,
+    );
+    cleanup();
+    setPhone(false);
+  });
+
+  test('phoneActions="buttons" changes nothing on a tablet or desktop', () => {
+    setPhone(false);
+    const { container } = render(ExtrasFixture, {
+      props: {
+        mode: 'actions',
+        phoneActions: 'buttons',
+        actions: [{ label: 'Answer', href: '/a' }],
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--phone-buttons')).toBe(false);
+    expect(container.querySelector('.cinder-stacked-list-item__actions')).not.toBeNull();
+    cleanup();
+  });
+
+  test('an action marked `changes` carries data-changes as a button, a link and a menu item', async () => {
+    setPhone(false);
+    const wide = render(ExtrasFixture, {
+      props: {
+        mode: 'actions',
+        actions: [
+          { label: 'Answer', href: '/a', changes: true },
+          { label: 'Plain', href: '/b' },
+          { label: 'Press', onclick: () => undefined, changes: true },
+        ],
+      },
+    });
+    expect(wide.getByRole('link', { name: 'Answer' }).hasAttribute('data-changes')).toBe(true);
+    expect(wide.getByRole('link', { name: 'Plain' }).hasAttribute('data-changes')).toBe(false);
+    expect(wide.getByRole('button', { name: 'Press' }).hasAttribute('data-changes')).toBe(true);
+    cleanup();
+
+    setPhone(true);
+    const narrow = render(ExtrasFixture, {
+      props: { mode: 'actions', actions: [{ label: 'Answer', href: '/a', changes: true }] },
+    });
+    await fireEvent.click(narrow.getByRole('button', { name: 'More actions' }));
+    const item = [...document.querySelectorAll('.cinder-dropdown-item')].find((element) =>
+      element.textContent?.includes('Answer'),
+    );
+    expect(item?.hasAttribute('data-changes')).toBe(true);
+    cleanup();
+    setPhone(false);
+  });
 });

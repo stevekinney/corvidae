@@ -2127,6 +2127,8 @@ export const HOME_COPY = {
     send: 'Send',
     /** The note beside the agent while the server is off, and Send is disabled with it. */
     offNote: 'Off until it’s back',
+    /** What the card says when the agents it offers could not be read. */
+    failed: 'Couldn’t load agents.',
   },
   recent: {
     title: 'Recent chats',
@@ -2136,6 +2138,30 @@ export const HOME_COPY = {
     empty: {
       title: 'No chats yet',
       description: 'Your chats appear here once you send a first message.',
+    },
+  },
+  /**
+   * What Home says while it loads and when a read fails: one card that cannot be read says so in
+   * its own place and the rest stay live, a load that takes long can be canceled, and a server
+   * that does not answer with nothing loaded yet is the full error state.
+   */
+  states: {
+    /** The words of the status line under the loading placeholders, and its button. */
+    stillLoading: 'Still loading Home. This is taking longer than usual.',
+    /** The line that names the loading region for assistive technology. */
+    loadingLabel: 'Loading Home',
+    /** What the page says after the person canceled a slow load, with Try again beside it. */
+    canceled: {
+      title: 'Loading canceled',
+      description: 'Home stopped loading. Try again when you’re ready.',
+    },
+    /** The sentence that ends every card's own failure: the other cards are fine. */
+    restIsLive: 'The rest of Home is live.',
+    /** What each card says it could not load; the card's title is already above it. */
+    cardFailed: {
+      needsYou: 'Couldn’t load what needs you.',
+      attention: 'Couldn’t load system problems.',
+      recent: 'Couldn’t load recent chats.',
     },
   },
   /** The Running now card, which sits under Needs you while any run is going. */

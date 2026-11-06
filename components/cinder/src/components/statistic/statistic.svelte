@@ -23,6 +23,7 @@
   import { resolveChartTheme } from '../../_internal/chart/chart-utilities.ts';
   import type { StatisticProps } from './statistic.types.ts';
   import { getLocaleContext } from '../../_internal/locale-context.ts';
+  import Skeleton from '../skeleton/skeleton.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import { formatNumber } from '../../utilities/format-number.ts';
 
@@ -38,6 +39,7 @@
     change,
     icon,
     caption,
+    loading = false,
     theme,
     valueFormatOptions,
     valueLocale,
@@ -123,6 +125,7 @@
   aria-describedby={hasCaption ? captionId : undefined}
   data-cinder-has-icon={icon ? '' : undefined}
   data-cinder-attention={attention ? '' : undefined}
+  aria-busy={loading ? 'true' : undefined}
   style:--_cinder-chart-foreground={resolvedTheme.foreground}
   style:--_cinder-chart-muted={resolvedTheme.muted}
   style:--_cinder-chart-background={resolvedTheme.background}
@@ -134,7 +137,9 @@
     >{#if attention}<span class="cinder-statistic__attention" aria-hidden="true"
       ></span>{/if}{label}</span
   >
-  <span id={valueId} class="cinder-statistic__value">{displayValue}</span>
+  <span id={valueId} class="cinder-statistic__value"
+    >{#if loading}<Skeleton width="2.25rem" height="1.1em" />{:else}{displayValue}{/if}</span
+  >
   {#if hasCaption}
     <span id={captionId} class="cinder-statistic__caption">{caption}</span>
   {/if}

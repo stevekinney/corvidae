@@ -5,8 +5,10 @@
    * count is above zero and bad (reviews waiting, a run that failed, a schedule that missed runs);
    * a running run is not a problem, so Running now never has one.
    *
-   * Each count reads on its own: one that cannot be read, or that this caller may not read, shows a
-   * dash and leaves the other three alone. Running now counts the Bureau's runs that are going
+   * Each count reads on its own, and the row's reads are its own: the Needs attention card and the
+   * Needs you card cannot make a count read differently. One that has not answered yet shows a
+   * placeholder where the number goes; one that cannot be read, or that this caller may not read,
+   * shows a dash; a number that was read stays when a later read fails. None touches the other three. Running now counts the Bureau's runs that are going
    * (`useRunningTasks`, the read the Running now card lists), never one parked on a review; Failed in 24 hours is made with the filter
    * Health's count uses (`routes/dashboard/health-counts.ts`), so the number agrees with its rows.
    */
@@ -22,7 +24,7 @@
   import { aggregateInputFor, failedRecentlyFilter } from '../dashboard/health-counts.ts';
   import { usePendingReviewsCount } from '../reviews/pending-reviews-count.svelte.ts';
   import { missedRunCount } from './home-rows.ts';
-  import { useAttentionItems, useRunningTasks } from './home-queries.svelte.ts';
+  import { useAttentionCountItems, useRunningTasks } from './home-queries.svelte.ts';
 
   const client: HttpClient = getClient();
   const principalStore = getPrincipalStore();
@@ -45,28 +47,36 @@
     enabled: canReadRuns,
   }));
   const waiting = usePendingReviewsCount(() => client);
-  const attention = useAttentionItems();
+  const attention = useAttentionCountItems();
 
-  /** What one count shows: its number, or the dash where it is not read (yet, or at all). */
+  /** What one count shows: its number, or the dash where it is not read at all. */
   function shown(value: number | undefined | null): number | string {
     return value ?? HOME_COPY.unavailable;
   }
 
-  const running = $derived(runningQuery.isError ? null : runningQuery.data?.length);
-  const failed = $derived(
-    !canReadRuns || failedQuery.isError
-      ? null
-      : failedQuery.data === undefined
-        ? undefined
-        : failedQuery.data.total,
-  );
-  const needsYou = $derived(waiting.failed() ? null : waiting.count());
+  /**
+   * A count's number while its read has not answered is `undefined` (a placeholder holds the place),
+   * and `null` when it cannot be read at all. A number that was read stays after a later read
+   * fails: old data keeps its place, as it does on every page.
+   */
+  function counted(
+    value: number | undefined,
+    failed: boolean,
+    readable = true,
+  ): number | undefined | null {
+    if (!readable) return null;
+    if (value !== undefined) return value;
+    return failed ? null : undefined;
+  }
+
+  const running = $derived(counted(runningQuery.data?.length, runningQuery.isError));
+  const failed = $derived(counted(failedQuery.data?.total, failedQuery.isError, canReadRuns));
+  const needsYou = $derived(counted(waiting.count(), waiting.failed()));
   const missed = $derived(
-    attention.isError
-      ? null
-      : attention.data === undefined
-        ? undefined
-        : missedRunCount(attention.data),
+    counted(
+      attention.data === undefined ? undefined : missedRunCount(attention.data),
+      attention.isError,
+    ),
   );
 
   /** Whether a count is above zero, which is what makes a bad one worth a dot. */
@@ -82,8 +92,23 @@
   edge="border"
   data-testid="home-counts"
 >
-  <Statistic label={copy.running} value={shown(running)} />
-  <Statistic label={copy.needsYou} value={shown(needsYou)} attention={above(needsYou)} />
-  <Statistic label={copy.failed} value={shown(failed)} attention={above(failed)} />
-  <Statistic label={copy.missed} value={shown(missed)} attention={above(missed)} />
+  <Statistic label={copy.running} value={shown(running)} loading={running === undefined} />
+  <Statistic
+    label={copy.needsYou}
+    value={shown(needsYou)}
+    loading={needsYou === undefined}
+    attention={above(needsYou)}
+  />
+  <Statistic
+    label={copy.failed}
+    value={shown(failed)}
+    loading={failed === undefined}
+    attention={above(failed)}
+  />
+  <Statistic
+    label={copy.missed}
+    value={shown(missed)}
+    loading={missed === undefined}
+    attention={above(missed)}
+  />
 </StatisticGroup>

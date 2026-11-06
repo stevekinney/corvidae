@@ -72,6 +72,22 @@ Flat — no disc and no padding of its own, for a card or tab whose container al
 />
 ```
 
+Row — a small warning glyph, the title and description read as one sentence, and a secondary "Try again" at the end of the line, for one card that failed to load while the others stay live. The retry drops under the words on a phone:
+
+```svelte
+<script lang="ts">
+  import { ErrorState } from '@lostgradient/cinder';
+</script>
+
+<ErrorState
+  variant="row"
+  headingLevel={3}
+  title="Couldn’t load system problems."
+  description="The rest of Home is live."
+  onRetry={() => console.log('retry')}
+/>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -87,7 +103,7 @@ Flat — no disc and no padding of its own, for a card or tab whose container al
 | `retryStatus` | `string` | no | — | A line of progress under the description, such as "Retrying in 8 s (attempt 3 of 8)". It renders in tabular figures and is not a live region, so a countdown never announces itself every second. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
 | `tone` | `"danger"` \| `"neutral"` | no | `"danger"` | What kind of problem this reports. `'danger'` is a failure and is announced as an alert; `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group. |
-| `variant` | `"default"` \| `"flat"` | no | `"default"` | Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title, the description, the progress line, then the actions, centred in the region it fills. `'flat'` renders the same text as a start-aligned block with no disc and no padding of its own, for a card or tab whose container already pads it. |
+| `variant` | `"default"` \| `"flat"` \| `"row"` | no | `"default"` | Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title, the description, the progress line, then the actions, centred in the region it fills. `'flat'` renders the same text as a start-aligned block with no disc and no padding of its own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph, the title and description as one sentence, and a secondary retry button (no refresh glyph unless `retryIcon` is given) on one line, for the failure of one card among others that are live; the retry drops under the words on a phone. |
 | `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. The default is a warning triangle for the `'danger'` tone and a magnifying glass for `'neutral'`. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetry` | `(opaque)` | no | — | Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action. Not expressible in JSON Schema; see the component types for the signature. |
 | `retryIcon` | `(opaque)` | no | — | Replaces the refresh glyph on the primary button. Use it when the primary action is not a retry, such as a "New chat" button with a pencil on a not-found page. Decorative. Not expressible in JSON Schema; see the component types for the signature. |

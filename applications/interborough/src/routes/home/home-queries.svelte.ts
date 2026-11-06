@@ -36,6 +36,25 @@ export function useAttentionItems(): CreateQueryResult<readonly AttentionItem[]>
     // poll-reason: fallback
     refetchInterval: ATTENTION_POLL_MILLISECONDS,
     retry: false,
+    // Three components read this answer, and each mounting beside a failed read would ask again:
+    // the page asks again on the timer above, and the card's Try again asks at once.
+    retryOnMount: false,
+  }));
+}
+
+/**
+ * The same problems again, for the count that sums the missed runs. Home's counts row has its own
+ * reads, so the Missed schedule runs count reads as it did when the Needs attention card cannot
+ * be read (and the card reads as it did when a count cannot). Call it while a component
+ * initializes.
+ */
+export function useAttentionCountItems(): CreateQueryResult<readonly AttentionItem[]> {
+  return createQuery(() => ({
+    queryKey: queryKeys.bureauAttention.homeCounts(),
+    queryFn: ({ signal }: { signal: AbortSignal }) => listAttentionItems({ signal }),
+    // poll-reason: fallback
+    refetchInterval: ATTENTION_POLL_MILLISECONDS,
+    retry: false,
   }));
 }
 

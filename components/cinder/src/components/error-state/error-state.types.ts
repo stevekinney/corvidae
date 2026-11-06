@@ -1,8 +1,12 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-/** Layout of an error state: the centred page layout with a tinted disc, or a flat block with no disc or padding. */
-export type ErrorStateVariant = 'default' | 'flat';
+/**
+ * Layout of an error state: the centred page layout with a tinted disc, a flat block with no disc
+ * or padding, or one row (a small warning glyph, the words on one line and a secondary retry
+ * button at the end) for a card or a list that failed to load.
+ */
+export type ErrorStateVariant = 'default' | 'flat' | 'row';
 
 /**
  * What kind of problem the state reports. `'danger'` is a failure (a red disc with a warning glyph,
@@ -70,7 +74,10 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title,
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
-   * own, for a card or tab whose container already pads it.
+   * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
+   * the title and description as one sentence, and a secondary retry button (no refresh glyph
+   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
+   * live; the retry drops under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
@@ -123,7 +130,10 @@ export interface ErrorStateSchemaProps {
    * Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title,
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
-   * own, for a card or tab whose container already pads it.
+   * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
+   * the title and description as one sentence, and a secondary retry button (no refresh glyph
+   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
+   * live; the retry drops under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;

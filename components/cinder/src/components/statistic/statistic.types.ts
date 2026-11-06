@@ -27,6 +27,8 @@ export type StatisticProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   attention?: boolean;
   /** A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. */
   caption?: string;
+  /** Draws a placeholder block where the value goes, for a statistic whose number has not been read yet, so the tile keeps its size when the number arrives. The tile is marked busy, and `value` is not shown or announced while it is set. */
+  loading?: boolean;
   /** Optional change indicator with direction and accessible wording. */
   change?: StatisticChange;
   /** Partial visual theme override. Omitted fields inherit the surrounding application. */
@@ -51,6 +53,8 @@ export interface StatisticSchemaProps {
   attention?: boolean;
   /** A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. */
   caption?: string;
+  /** Draws a placeholder block where the value goes, for a statistic whose number has not been read yet, so the tile keeps its size when the number arrives. The tile is marked busy, and `value` is not shown or announced while it is set. */
+  loading?: boolean;
   /** Optional change indicator with direction and accessible wording. */
   change?: StatisticChange;
   /** Partial visual theme override. Omitted fields inherit the surrounding application. */

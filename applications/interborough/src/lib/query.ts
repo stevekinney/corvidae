@@ -230,8 +230,13 @@ export const queryKeys = {
     count: () => ['bureau-attention', 'count'] as const,
     /** The rules that are firing, for the notification bell. */
     alerts: () => ['bureau-attention', 'alerts'] as const,
-    /** Every problem, for Home's Needs attention card and the count that sums the missed runs. */
+    /** Every problem, for Home's Needs attention card. */
     items: () => ['bureau-attention', 'items'] as const,
+    /**
+     * Every problem again, for the Missed schedule runs count on Home, which is a read of its own:
+     * the count row must read as it did when the Needs attention card could not be read.
+     */
+    homeCounts: () => ['bureau-attention', 'home-counts'] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {

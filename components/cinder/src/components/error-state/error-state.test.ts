@@ -9,6 +9,7 @@ import { declarationsFor } from '../../test/css.ts';
 setupHappyDom();
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { createRawSnippet } = await import('svelte');
 const { default: ErrorState } = await import('./error-state.svelte');
 
 afterEach(() => {
@@ -325,5 +326,65 @@ describe('ErrorState neutral tone', () => {
       props: { title: 'Failed', description: 'Nope.', tone: 'bogus' as never },
     });
     expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  });
+});
+
+describe('ErrorState row variant', () => {
+  test('is one line: a small glyph, the title and description as one sentence, a secondary retry', async () => {
+    const onRetry = mock();
+    const { container, getByRole } = render(ErrorState, {
+      props: {
+        variant: 'row',
+        title: 'Couldn’t load system problems.',
+        description: 'The rest of Home is live.',
+        headingLevel: 3,
+        onRetry,
+      },
+    });
+    const root = container.querySelector('.cinder-error-state');
+    expect(root?.getAttribute('data-cinder-variant')).toBe('row');
+    // A failure is still announced as an alert, and the heading names it.
+    expect(root?.querySelector('[role="alert"]')).not.toBeNull();
+    expect(root?.querySelector('.cinder-error-state-title')?.tagName).toBe('H3');
+    // No disc: the glyph is small and decorative.
+    expect(root?.querySelector('.cinder-error-state-icon')).toBeNull();
+    expect(root?.querySelector('.cinder-error-state-glyph')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+    const button = getByRole('button', { name: 'Try again' });
+    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    // The retry is a plain word: no refresh glyph unless the caller gives one.
+    expect(button.querySelector('svg')).toBeNull();
+    await fireEvent.click(button);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    // The title and the description run on as one sentence.
+    expect(css).toMatch(
+      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-description \{\s*display: inline;/,
+    );
+  });
+
+  test('an icon given for the retry button is drawn', () => {
+    const { getByRole } = render(ErrorState, {
+      props: {
+        variant: 'row',
+        title: 'Failed.',
+        description: 'Nope.',
+        onRetry: () => undefined,
+        retryIcon: createRawSnippet(() => ({ render: () => '<svg data-retry-icon></svg>' })),
+      },
+    });
+    expect(
+      getByRole('button', { name: 'Try again' }).querySelector('[data-retry-icon]'),
+    ).not.toBeNull();
+  });
+
+  test('a neutral row is a plain group with the muted glyph', () => {
+    const { container } = render(ErrorState, {
+      props: { variant: 'row', tone: 'neutral', title: 'Canceled.', description: 'Try later.' },
+    });
+    expect(container.querySelector('[role="group"]')).not.toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 });

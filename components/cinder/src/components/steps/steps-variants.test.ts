@@ -48,6 +48,18 @@ function itemsOf(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('.cinder-steps__item')];
 }
 
+describe('Steps checklist variant on a narrow container', () => {
+  test('stacks each action full width under the text, one per line', () => {
+    const narrow = stepsCss.slice(stepsCss.indexOf('@container cinder-steps (max-width: 28rem)'));
+    expect(narrow).toMatch(
+      /\[data-cinder-variant='checklist'\] \.cinder-steps__action \{[^}]*flex-basis: 100%;[^}]*flex-direction: column;[^}]*align-items: stretch;/,
+    );
+    expect(narrow).toMatch(
+      /\[data-cinder-variant='checklist'\] \.cinder-steps__action > \.cinder-button \{[^}]*inline-size: 100%;/,
+    );
+  });
+});
+
 describe('Steps checklist variant', () => {
   test('is a section named by its heading, with a "N of M done" counter', () => {
     const { container } = render(Steps, {

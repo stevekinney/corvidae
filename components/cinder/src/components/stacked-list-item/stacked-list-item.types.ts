@@ -24,6 +24,12 @@ export type StackedListItemTone = 'neutral' | 'warning';
 export type StackedListItemGroupLayout = 'row' | 'band';
 /** The colour of the tile behind a row's `leading` glyph. */
 export type StackedListItemLeadingTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+/**
+ * What a row's `actions` become on a phone. `menu` collapses them into one "···" menu button, the
+ * default for every list. `buttons` keeps each action a button and stacks them full width under
+ * the row's text, for a row whose action is the point of the row (a review waiting on you).
+ */
+export type StackedListItemPhoneActions = 'menu' | 'buttons';
 /** A text action at the end of a row. */
 export type StackedListItemAction = {
   /** The visible text of the button, and the text of its item in the phone menu. */
@@ -39,6 +45,12 @@ export type StackedListItemAction = {
   disabled?: boolean;
   /** Why the action is unavailable, said as its description and its tooltip. */
   disabledReason?: string;
+  /**
+   * Marks the action as one that changes something (`data-changes`), so an application that holds
+   * such controls while its server does not answer holds this one too, whether it is drawn as a
+   * link or a button.
+   */
+  changes?: boolean;
 };
 type LiEventAttribute = Extract<keyof HTMLAttributes<HTMLLIElement>, `on${string}`>;
 type ForwardedLiAttributes = Omit<
@@ -138,6 +150,11 @@ type StackedListItemBase = ForwardedLiAttributes & {
   actions?: StackedListItemAction[];
   /** Accessible name of the phone menu button that holds `actions`. Default `More actions`. */
   actionsLabel?: string;
+  /**
+   * What `actions` become on a phone: one menu button (`'menu'`, the default) or full-width
+   * buttons stacked under the row's text (`'buttons'`), each a 44px target under a coarse pointer.
+   */
+  phoneActions?: StackedListItemPhoneActions;
   /**
    * Turns the row into a collapsed group row (the missed runs on Runs): a "Show" / "Hide" button
    * at the right of line one reveals this snippet beneath the row, aligned with the title. A

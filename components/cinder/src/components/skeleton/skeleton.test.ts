@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, jest, test } from 'bun:test';
-import { flushSync } from 'svelte';
+import { createRawSnippet, flushSync } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -445,9 +445,60 @@ describe('Skeleton list variant timing', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  test('the slow-loading line is centred under a page’s own placeholder, as under a list', () => {
+    expect(skeletonCss).toMatch(
+      /\[data-cinder-variant='custom'\] > \.cinder-skeleton-status\s*\{[^}]*justify-content: center/,
+    );
+  });
+
   test('the slow-loading line is centred under the list', () => {
     expect(skeletonCss).toMatch(
       /\[data-cinder-variant='list'\] > \.cinder-skeleton-status\s*\{[^}]*justify-content: center/,
     );
+  });
+
+  describe('children', () => {
+    function placeholder() {
+      return createRawSnippet(() => ({
+        render: () =>
+          '<div><p data-real-text>Needs you</p><div class="cinder-skeleton" aria-hidden="true"></div></div>',
+      }));
+    }
+
+    test('are the page’s own placeholder, drawn instead of the bars and not hidden from assistive technology', () => {
+      const { container } = mountUnderFakeTimers({ children: placeholder() });
+      const group = container.querySelector('.cinder-skeleton-group');
+      expect(group?.getAttribute('data-cinder-variant')).toBe('custom');
+      expect(group?.getAttribute('aria-busy')).toBe('true');
+      expect(container.querySelector('.cinder-skeleton-lines')).toBeNull();
+      expect(
+        container.querySelector('[data-real-text]')?.closest('[aria-hidden="true"]'),
+      ).toBeNull();
+    });
+
+    test('wait for the delay, and the status line follows them at stillLoadingAfter with Cancel', () => {
+      const onCancel = jest.fn();
+      const { container, getByRole } = mountUnderFakeTimers({
+        children: placeholder(),
+        delay: 300,
+        stillLoadingAfter: 10_000,
+        stillLoadingLabel: 'Still loading Home. This is taking longer than usual.',
+        onCancel,
+      });
+      expect(container.querySelector('[data-real-text]')).toBeNull();
+      advance(300);
+      expect(container.querySelector('[data-real-text]')).not.toBeNull();
+      advance(9_699);
+      expect(container.textContent).not.toContain('Still loading Home.');
+      advance(1);
+      expect(container.querySelector('[role="status"]')?.textContent).toContain(
+        'Still loading Home. This is taking longer than usual.',
+      );
+      // The status comes after the placeholder.
+      const group = container.querySelector('.cinder-skeleton-group');
+      expect(group?.lastElementChild?.getAttribute('role')).toBe('status');
+      getByRole('button', { name: 'Cancel' }).click();
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
   });
 });

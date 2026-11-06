@@ -14,12 +14,16 @@
  * 14j). The fresh installation's own host lists no Assistant, so `first-run.spec.ts` reads the
  * checklist there as it completes and without one.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
-import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import {
+  SAMPLE_NOW,
+  SAMPLE_NOW_MILLISECONDS,
+  SAMPLE_TIME_ZONE,
+} from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_JOURNEY_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, holdBureauFeed, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -53,12 +57,18 @@ async function answerBureau(
       await route.fallback();
       return;
     }
-    const response = await route.fetch();
-    const answer = (await response.json()) as { result?: unknown };
-    await route.fulfill({
-      response,
-      json: { ...answer, result: change(answer.result, body.params ?? {}) },
-    });
+    // A page that navigates away while the host is still answering disposes the response; the
+    // request is then of no use to anyone.
+    try {
+      const response = await route.fetch();
+      const answer = (await response.json()) as { result?: unknown };
+      await route.fulfill({
+        response,
+        json: { ...answer, result: change(answer.result, body.params ?? {}) },
+      });
+    } catch {
+      await route.abort().catch(() => undefined);
+    }
   });
 }
 
@@ -519,6 +529,512 @@ test.describe('Home with a run going', () => {
     expect(running!.y + running!.height).toBeLessThan(attention!.y);
     await captureForDesignReview(page, { route: '/', state: 'running now', source: SOURCE });
     await checkA11y('Home with a run going');
+  });
+});
+
+/** Holds the reads that decide Home's shape until the returned function is called. */
+async function holdHomeReads(page: Page): Promise<() => void> {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const held = async (route: Route): Promise<void> => {
+    await gate;
+    await route.fallback().catch(() => undefined);
+  };
+  await page.route('**/bureau/jsonrpc', held);
+  await page.route('**/host/providers', held);
+  return release;
+}
+
+/**
+ * Pins the page to the sample world's clock and stops it, so a timer fires only when the test runs
+ * the clock (`page.clock.runFor`): the loading page's 300 ms and 10 s are then exact, and nothing
+ * waits in real time.
+ */
+async function pausedClock(page: Page): Promise<void> {
+  await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 1_000 });
+  await page.clock.pauseAt(SAMPLE_NOW);
+}
+
+const homeBody = (page: Page) => page.locator('[data-page="home"]');
+
+test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
+  test('draws nothing for the first 300 ms, then placeholders in its real layout (02c, 02d)', async ({
+    page,
+    checkA11y,
+  }) => {
+    await pausedClock(page);
+    const release = await holdHomeReads(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    // The page is mounted (its heading is for screen readers), and its body draws nothing yet.
+    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toHaveClass(
+      /cinder-sr-only/,
+    );
+    await expect(homeBody(page)).toHaveCount(0);
+    await page.clock.runFor(299);
+    await expect(homeBody(page)).toHaveCount(0);
+    await page.clock.runFor(1);
+    const body = homeBody(page);
+    await expect(body).toHaveAttribute('data-mode', 'loading');
+    // The page region is marked busy.
+    await expect(body).toHaveAttribute('aria-busy', 'true');
+    // The date line, the four count labels and the section headings are real text.
+    await expect(page.getByTestId('home-date')).toHaveText(
+      'Monday, Nov 2 · Times show in Central time (CST)',
+    );
+    const counts = page.getByTestId('home-loading-counts').locator('.cinder-statistic');
+    await expect(counts.locator('.cinder-statistic__label')).toHaveText([
+      'Running now',
+      'Needs you',
+      'Failed in 24 hours',
+      'Missed schedule runs (7 days)',
+    ]);
+    // The values, the rows and the composer are placeholders.
+    await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(4);
+    await expect(counts.locator('.cinder-statistic__value')).toHaveText(['', '', '', '']);
+    await expect(body.getByRole('heading', { level: 2 })).toHaveText([
+      'Needs you',
+      'Needs attention',
+      'Start a chat',
+      'Recent chats',
+    ]);
+    await expect(body.getByTestId('home-skeleton-rows')).toHaveCount(3);
+    await expect(body.getByRole('textbox')).toHaveCount(0);
+    await expect(body.getByRole('listitem')).toHaveCount(0);
+    // The skeleton shimmers, and is static under reduced motion (the suite's default).
+    const animation = () =>
+      page
+        .locator('.cinder-skeleton')
+        .first()
+        .evaluate((element) => getComputedStyle(element).animationName);
+    expect(await animation()).toBe('none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    expect(await animation()).not.toBe('none');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await captureForDesignReview(page, { route: '/', state: 'loading', source: SOURCE });
+    // The page settles its paint on animation frames, which a stopped clock never delivers.
+    await page.clock.resume();
+    await checkA11y('Home loading');
+
+    // The page, once it has its answers, is laid out as the placeholders were.
+    const before = await page.locator('[data-home-card="Start a chat"]').boundingBox();
+    release();
+    await expect(page.getByTestId('home-counts')).toBeVisible();
+    await expect(homeBody(page)).toHaveAttribute('data-mode', 'overview');
+    await expect(homeBody(page)).not.toHaveAttribute('aria-busy', 'true');
+    const after = await page.locator('[data-home-card="Start a chat"]').boundingBox();
+    expect(Math.round(after!.x)).toBe(Math.round(before!.x));
+    expect(Math.round(after!.width)).toBe(Math.round(before!.width));
+  });
+
+  test('after 10 s the skeleton’s own status line offers Cancel, and Cancel says Loading canceled (02e, 02f)', async ({
+    page,
+  }) => {
+    await pausedClock(page);
+    await holdHomeReads(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeAttached();
+    await page.clock.runFor(300);
+    await expect(homeBody(page)).toHaveAttribute('data-mode', 'loading');
+    await page.clock.runFor(9_699);
+    await expect(page.getByText('Still loading Home.')).toHaveCount(0);
+    await page.clock.runFor(1);
+    const status = page.locator('.cinder-skeleton-status');
+    await expect(status).toContainText('Still loading Home. This is taking longer than usual.');
+    await expect(status.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
+      'data-cinder-variant',
+      'ghost',
+    );
+    // It is the skeleton's own line below the placeholders, not a banner.
+    await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
+    const placeholders = await page.locator('[data-home-card="Recent chats"]').boundingBox();
+    const line = await status.boundingBox();
+    expect(line!.y).toBeGreaterThan(placeholders!.y + placeholders!.height - 1);
+    await captureForDesignReview(page, { route: '/', state: 'still loading', source: SOURCE });
+
+    await status.getByRole('button', { name: 'Cancel' }).click();
+    // The page keeps its date line, and says the load was canceled in place of the cards.
+    await expect(homeBody(page)).toHaveAttribute('data-mode', 'canceled');
+    await expect(page.getByTestId('home-date')).toHaveText(
+      'Monday, Nov 2 · Times show in Central time (CST)',
+    );
+    const canceled = page.getByTestId('home-canceled');
+    await expect(canceled).toContainText('Loading canceled');
+    await expect(canceled.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.locator('[data-home-card]')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'still loading, canceled',
+      source: SOURCE,
+    });
+  });
+});
+
+test.describe('Home when one card cannot be read (01n, 01o)', () => {
+  test('Needs attention says so in its own card with Try again, and every other card stays live', async ({
+    page,
+    checkA11y,
+  }) => {
+    // The event feed's catch-up asks every list again, which would heal the card at once; it is
+    // held, so the failure stays on screen for the test to read.
+    await holdBureauFeed(page);
+    // Four things read the problems in this order: the sidebar's Health dot, the notification bell,
+    // Home's Needs attention card, then the counts row, which asks on its own. The third fails.
+    let reads = 0;
+    let healed = false;
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { id?: unknown; method?: string };
+      if (body.method !== 'bureau.health.attention') {
+        await route.fallback();
+        return;
+      }
+      reads += 1;
+      if (reads !== 3 || healed) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: {
+          jsonrpc: '2.0',
+          id: body.id,
+          error: {
+            code: -32000,
+            message: 'Unavailable',
+            data: { weftCode: 'Unavailable', httpStatus: 503 },
+          },
+        },
+      });
+    });
+    await openHome(page);
+    const card = page.locator('[data-home-card="Needs attention"]');
+    const failure = card.getByTestId('home-card-error');
+    await expect(failure).toHaveText(
+      /Couldn’t load system problems\.\s*The rest of Home is live\.\s*Try again/,
+    );
+    await expect(failure.getByRole('button', { name: 'Try again' })).toHaveAttribute(
+      'data-cinder-variant',
+      'secondary',
+    );
+    // One flat row inside the card: the card keeps its title, and has no link and no list.
+    await expect(card.getByRole('heading', { level: 2, name: 'Needs attention' })).toBeVisible();
+    await expect(card.getByRole('link')).toHaveCount(0);
+    await expect(card.getByRole('listitem')).toHaveCount(0);
+    // The counts row has its own read and is unchanged (0, 2, 0, 4).
+    await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
+      /Running now\s*0/,
+      /Needs you\s*2/,
+      /Failed in 24 hours\s*0/,
+      /Missed schedule runs \(7 days\)\s*4/,
+    ]);
+    // Needs you, Start a chat and Recent chats render normally.
+    await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
+    await expect(page.getByTestId('home-start-chat').getByRole('textbox')).toBeVisible();
+    await expect(
+      page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem'),
+    ).toHaveCount(3);
+    await captureForDesignReview(page, { route: '/', state: 'one card fails', source: SOURCE });
+    await checkA11y('Home with one card failing');
+
+    // Try again asks that card's read again.
+    healed = true;
+    await failure.getByRole('button', { name: 'Try again' }).click();
+    await expect(card.getByRole('listitem')).toHaveCount(3);
+    await expect(card.getByTestId('home-card-error')).toHaveCount(0);
+  });
+});
+
+const HOST_REQUESTS = /\/(v1|bureau|api|host)\//;
+const REFUSED = /net::ERR_CONNECTION_REFUSED/;
+/** What Home reads, and the server's health probe: the shell itself (who the caller is) is not cut off. */
+const HOME_READS = /\/(bureau\/jsonrpc|host\/providers|v1\/health)$/;
+
+test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () => {
+  test('with data on screen, a banner over the old data names its age and counts down; only the controls that change something are held (02g, 02h, 02i)', async ({
+    page,
+    pageErrors,
+  }) => {
+    pageErrors.expectEvery({
+      pattern: REFUSED,
+      reason: 'the test takes the page’s network away on purpose',
+    });
+    // The page loads at 10:44 AM, two minutes before the sample "now".
+    await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 2 * 60_000 });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await expect(page.getByTestId('home-counts')).toBeVisible();
+    await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
+    await expect(
+      page.locator('[data-home-card="Needs attention"]').getByRole('listitem'),
+    ).toHaveCount(3);
+    const message = page.getByRole('textbox', { name: 'Message' });
+    await message.fill('What did I approve yesterday?');
+
+    // From here a timer fires only when the test runs the clock.
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 500);
+    await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));
+    // The person comes back to the tab, which makes every read ask again: the one that finds the
+    // server gone.
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+    const banner = page.getByRole('region', { name: 'Connection problem' });
+    await expect(banner).toBeVisible();
+    // The probes wait 1 s, then 2 s, then 4 s: the third attempt is 4 s away.
+    await page.clock.runFor(1_000);
+    await expect(banner).toContainText('Retrying in 2 s (attempt 2 of 8)');
+    await page.clock.runFor(2_000);
+    await expect(banner).toContainText(
+      'Can’t reach the Interborough server. Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. Retrying in 4 s (attempt 3 of 8).',
+    );
+    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    // The banner sits under the top bar, above the page.
+    const bannerBox = await banner.boundingBox();
+    const topBar = await page.getByRole('banner').boundingBox();
+    const date = await page.getByTestId('home-date').boundingBox();
+    expect(bannerBox!.y).toBeGreaterThanOrEqual(topBar!.y + topBar!.height - 1);
+    expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(date!.y);
+
+    // Old data keeps full contrast (never dimmed with opacity), and the counts are not zeroed.
+    await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
+      /Running now\s*0/,
+      /Needs you\s*2/,
+      /Failed in 24 hours\s*0/,
+      /Missed schedule runs \(7 days\)\s*4/,
+    ]);
+    const opacity = (locator: Locator) =>
+      locator.first().evaluate((element) => {
+        let node: Element | null = element;
+        let product = 1;
+        while (node !== null) {
+          product *= Number(getComputedStyle(node).opacity);
+          node = node.parentElement;
+        }
+        return product;
+      });
+    expect(await opacity(page.getByRole('heading', { level: 2, name: 'Needs you' }))).toBe(1);
+    expect(
+      await opacity(needsYou(page).getByText('Which environment should the release go to?')),
+    ).toBe(1);
+    expect(await opacity(page.getByTestId('home-counts'))).toBe(1);
+    // Only the controls that change something are inert.
+    for (const [name, scope] of [
+      ['Answer', needsYou(page)],
+      ['Review', needsYou(page)],
+      ['Review storage', page.locator('[data-home-card="Needs attention"]')],
+      ['View schedule', page.locator('[data-home-card="Needs attention"]')],
+      ['Connect a provider', page.locator('[data-home-card="Needs attention"]')],
+    ] as const) {
+      const control = scope.getByRole('link', { name, exact: true });
+      await expect(control, `${name} is held`).toHaveAttribute('aria-disabled', 'true');
+      expect(await opacity(control), `${name} reads as off`).toBeLessThan(1);
+    }
+    await expect(needsYou(page).getByRole('link', { name: 'Open Reviews' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    // The composer keeps what was typed; Assistant is still the agent, with the note beside it,
+    // and Send is disabled.
+    const composer = page.getByTestId('home-start-chat');
+    await expect(message).toHaveValue('What did I approve yesterday?');
+    await expect(composer.getByRole('combobox', { name: 'Agent' })).toContainText('Assistant');
+    await expect(composer.getByText('Off until it’s back')).toBeVisible();
+    await expect(composer.getByRole('button', { name: 'Send' })).toBeDisabled();
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'couldn’t reach Interborough',
+      source: SOURCE,
+    });
+  });
+
+  test('with nothing loaded the full error state shows instead of the banner, never both, and says Try again (02j)', async ({
+    page,
+    pageErrors,
+  }) => {
+    pageErrors.expectEvery({
+      pattern: REFUSED,
+      reason: 'the test takes the page’s network away on purpose',
+    });
+    await page.route(HOME_READS, (route) => route.abort('connectionrefused'));
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    const state = page.getByTestId('home-unreachable');
+    await expect(state).toContainText('Server unreachable');
+    await expect(state.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
+    await expect(page.locator('[data-home-card]')).toHaveCount(0);
+    await expect(page.getByTestId('home-counts')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'couldn’t reach Interborough, nothing loaded',
+      source: SOURCE,
+    });
+
+    // The server is back: Try again reads again, and Home is drawn.
+    await page.unroute(HOME_READS);
+    await state.getByRole('button', { name: 'Try again' }).click();
+    await expect(page.getByTestId('home-counts')).toBeVisible();
+    await expect(page.getByTestId('home-unreachable')).toHaveCount(0);
+  });
+});
+
+test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test('has a menu button, Home and three icon buttons, a two by two grid of counts, and full-width 44px buttons under each review (05c, 05o, 05p, 05q)', async ({
+    page,
+    checkA11y,
+  }) => {
+    await openHome(page, 375);
+    const bar = page.getByRole('banner');
+    await expect(bar.getByRole('button', { name: 'Open navigation' })).toBeVisible();
+    await expect(
+      bar.getByRole('navigation', { name: 'Breadcrumb' }).getByText('Home'),
+    ).toBeVisible();
+    for (const name of [/^Search everything/, /^Notifications/, 'Quick settings']) {
+      await expect(bar.getByRole('button', { name })).toBeVisible();
+    }
+    // The visible page heading is dropped; an h1 stays for screen readers.
+    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toHaveClass(
+      /cinder-sr-only/,
+    );
+    await expect(page.getByTestId('home-date')).toHaveText(
+      'Monday, Nov 2 · Times show in Central time (CST)',
+    );
+    // Four count cards in two columns, with a dot only on a non-zero bad count.
+    const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
+    await expect(stats).toHaveText([
+      /Running now\s*0/,
+      /Needs you\s*2/,
+      /Failed in 24 hours\s*0/,
+      /Missed schedule runs \(7 days\)\s*4/,
+    ]);
+    const boxes = await stats.evaluateAll((elements) =>
+      elements.map((element) => {
+        const { x, y } = element.getBoundingClientRect();
+        return { x: Math.round(x), y: Math.round(y) };
+      }),
+    );
+    expect(new Set(boxes.map((box) => box.x)).size, 'two columns').toBe(2);
+    expect(new Set(boxes.map((box) => box.y)).size, 'two rows').toBe(2);
+    await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(2);
+    await expect(stats.nth(1)).toHaveAttribute('data-cinder-attention', '');
+    await expect(stats.nth(3)).toHaveAttribute('data-cinder-attention', '');
+    // Needs you, oldest first: each button is full width and 44px, under its text.
+    const rows = needsYou(page).getByRole('listitem');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('Which environment should the release go to?');
+    await expect(rows.nth(0)).toContainText('Question · Request human input');
+    await expect(rows.nth(1)).toContainText('Refund order 4471 for $42.00?');
+    await expect(rows.nth(1)).toContainText('Approval · Tool runner · Can’t be undone');
+    for (const [index, name] of [
+      [0, 'Answer'],
+      [1, 'Review'],
+    ] as const) {
+      const row = await rows.nth(index).boundingBox();
+      const button = rows.nth(index).getByRole('link', { name });
+      const box = await button.boundingBox();
+      const title = await rows
+        .nth(index)
+        .getByRole('link', { name: /Which environment|Refund order/ })
+        .count();
+      expect(title).toBeLessThanOrEqual(1);
+      expect(box!.height, `${name} is 44px`).toBeGreaterThanOrEqual(44);
+      expect(box!.width, `${name} is the row's width`).toBeGreaterThan(row!.width - 40);
+    }
+    await expect(needsYou(page).getByRole('button', { name: 'More actions' })).toHaveCount(0);
+    // The phone's order: counts, Needs you, the composer card, then Needs attention and Recent chats.
+    const tops = await Promise.all(
+      [
+        page.getByTestId('home-counts'),
+        needsYou(page),
+        page.getByTestId('home-start-chat'),
+        page.locator('[data-home-card="Needs attention"]'),
+        page.locator('[data-home-card="Recent chats"]'),
+      ].map(async (locator) => (await locator.boundingBox())!.y),
+    );
+    expect(tops).toEqual(tops.toSorted((first, second) => first - second));
+    expect(new Set(tops).size).toBe(5);
+    // The page never scrolls sideways.
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+    await captureForDesignReview(page, { route: '/', state: 'phone', source: SOURCE });
+    await checkA11y('Home on a phone');
+  });
+
+  test('stacks each step’s actions full width under its text on a first run (05c)', async ({
+    page,
+  }) => {
+    await asNewInstallation(page);
+    await openFirstRun(page, 375);
+    const steps = stepsOf(page);
+    await expect(steps).toHaveCount(3);
+    for (const index of [0, 1, 2]) {
+      const step = await steps.nth(index).boundingBox();
+      const text = await steps.nth(index).locator('.cinder-steps__body').boundingBox();
+      const actions = steps.nth(index).locator('.cinder-steps__action').locator('a, button');
+      const count = await actions.count();
+      for (let item = 0; item < count; item += 1) {
+        const button = actions.nth(item);
+        // Not the quiet link, which is text in a line.
+        if ((await button.getAttribute('data-cinder-variant')) === 'ghost-accent') continue;
+        const box = await button.boundingBox();
+        expect(
+          box!.y,
+          `step ${String(index + 1)}'s button is under its text`,
+        ).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
+        expect(box!.width, `step ${String(index + 1)}'s button is full width`).toBeGreaterThan(
+          step!.width - 80,
+        );
+      }
+    }
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'first run, phone',
+      source: SOURCE,
+    });
+  });
+});
+
+test.describe('Home on a tablet with a fine pointer (05s)', () => {
+  test('keeps the 56px rail, the full top bar, the four counts across and the buttons trailing their rows', async ({
+    page,
+    checkA11y,
+  }) => {
+    await openHome(page, 768);
+    const rail = page.locator('aside.weft-shell-sidebar');
+    expect(Math.round((await rail.boundingBox())!.width)).toBe(56);
+    await expect(
+      page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
+    ).toContainText('⌘K');
+    await expect(
+      page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
+    ).toContainText('2');
+    const tops = await page
+      .getByTestId('home-counts')
+      .locator('.cinder-statistic')
+      .evaluateAll((elements) =>
+        elements.map((element) => Math.round(element.getBoundingClientRect().y)),
+      );
+    expect(new Set(tops).size, 'four counts across').toBe(1);
+    const rows = needsYou(page).getByRole('listitem');
+    for (const [index, name] of [
+      [0, 'Answer'],
+      [1, 'Review'],
+    ] as const) {
+      const row = await rows.nth(index).boundingBox();
+      const button = await rows.nth(index).getByRole('link', { name }).boundingBox();
+      // The button trails its row: at the end, on the row's own line.
+      expect(button!.x + button!.width).toBeGreaterThan(row!.x + row!.width - 40);
+      expect(button!.width).toBeLessThan(row!.width / 3);
+      expect(button!.y + button!.height).toBeLessThan(row!.y + row!.height + 1);
+    }
+    await captureForDesignReview(page, { route: '/', state: 'tablet', source: SOURCE });
+    await checkA11y('Home on a tablet');
   });
 });
 

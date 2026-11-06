@@ -62,6 +62,7 @@
     trailing,
     actions,
     actionsLabel = 'More actions',
+    phoneActions = 'menu',
     details,
     groupLayout = 'row',
     tone = 'neutral',
@@ -115,6 +116,9 @@
   const linkHref = $derived(details === undefined && error === undefined ? href : undefined);
   const phone = $derived(phoneViewport.current);
   const hasActions = $derived(actions !== undefined && actions.length > 0);
+  // On a phone the actions are one menu button, unless the row asks to keep them as buttons.
+  const actionsAsMenu = $derived(hasActions && phone && phoneActions !== 'buttons');
+  const actionsAsPhoneButtons = $derived(hasActions && phone && phoneActions === 'buttons');
   const detailsId = $derived(`${generatedId}-details`);
   const errorId = $derived(`${generatedId}-error`);
 
@@ -191,7 +195,8 @@
     selected && 'cinder-stacked-list-item--selected',
     isLines && `cinder-stacked-list-item--status-${statusPlacement}`,
     linkHref !== undefined && 'cinder-stacked-list-item--linked',
-    hasActions && phone && 'cinder-stacked-list-item--collapsed-actions',
+    actionsAsMenu && 'cinder-stacked-list-item--collapsed-actions',
+    actionsAsPhoneButtons && 'cinder-stacked-list-item--phone-buttons',
     className,
   )}
   data-cinder-density={resolvedDensity}
@@ -328,7 +333,7 @@
         <div class="cinder-stacked-list-item__trailing">
           {#if trailing}{@render trailing()}{/if}
           {#if hasActions && actions}
-            {#if phone}
+            {#if actionsAsMenu}
               <Dropdown id={`${generatedId}-actions`} placement="bottom-end">
                 <Dropdown.Trigger
                   class="cinder-stacked-list-item__actions-trigger"
@@ -342,6 +347,7 @@
                     {@const reasonId = `${generatedId}-action-${index}-reason`}
                     <Dropdown.Item
                       {...action.href !== undefined ? { href: action.href } : {}}
+                      data-changes={action.changes ? '' : undefined}
                       disabled={action.disabled}
                       title={action.disabled ? action.disabledReason : undefined}
                       aria-describedby={action.disabled && action.disabledReason
@@ -368,6 +374,7 @@
                       variant="secondary"
                       size="sm"
                       href={action.href}
+                      data-changes={action.changes ? '' : undefined}
                       aria-disabled={action.disabled ? 'true' : undefined}
                       aria-describedby={action.disabled && action.disabledReason
                         ? reasonId
@@ -381,6 +388,7 @@
                     <Button
                       variant="secondary"
                       size="sm"
+                      data-changes={action.changes ? '' : undefined}
                       aria-disabled={action.disabled ? 'true' : undefined}
                       aria-describedby={action.disabled && action.disabledReason
                         ? reasonId

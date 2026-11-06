@@ -46,6 +46,24 @@ describe('connectionBannerPreset', () => {
   });
 });
 
+describe('a page that says the unreachable state itself', () => {
+  test('is recorded on the monitor, which the shell reads to keep its banner out, and is undone', () => {
+    const monitor = open(() => Promise.resolve());
+    expect(monitor.shownInPlace).toBe(false);
+    monitor.setShownInPlace(true);
+    expect(monitor.shownInPlace).toBe(true);
+    monitor.setShownInPlace(false);
+    expect(monitor.shownInPlace).toBe(false);
+  });
+
+  test('does not make the server reachable: the changes stay held', () => {
+    const monitor = open(() => Promise.reject(new Error('down')));
+    monitor.reportUnreachable();
+    monitor.setShownInPlace(true);
+    expect(monitor.unreachable).toBe(true);
+  });
+});
+
 describe('ConnectionMonitor', () => {
   test('probes until the server answers, then says so once and refetches', async () => {
     let answers = false;

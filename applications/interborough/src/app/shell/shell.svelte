@@ -335,8 +335,9 @@
   <Sidebar {client} />
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen />
-    {#if connection.unreachable && !restartActivity.active}
-      <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet.
+    {#if connection.unreachable && !connection.shownInPlace && !restartActivity.active}
+      <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet,
+           and so does a page that has nothing to show but the unreachable state, which says it in place.
            The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
            answering with its countdown, or the retries stopped. Retry now is always there. -->
       <Banner

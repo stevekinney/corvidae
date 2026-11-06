@@ -1001,6 +1001,7 @@ export type {
   StackedListItemDensity,
   StackedListItemGroupLayout,
   StackedListItemLeadingTone,
+  StackedListItemPhoneActions,
   StackedListItemProps,
   StackedListItemStatusPlacement,
   StackedListItemTitleLines,
