@@ -83,11 +83,17 @@ for (const width of WIDTHS) {
       'Decisions',
     ]);
     await expect(page.getByRole('tab')).toHaveCount(0);
-    await expect(
-      page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', {
-        name: 'Models',
-      }),
-    ).toHaveAttribute('aria-current', 'page');
+    // The section navigation is a column from 640px up and a Section select below it.
+    if (width >= 640) {
+      await expect(
+        page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', {
+          name: 'Models',
+          exact: true,
+        }),
+      ).toHaveAttribute('aria-current', 'page');
+    } else {
+      await expect(page.getByRole('combobox', { name: 'Section' })).toHaveValue('/settings/models');
+    }
     // A connected provider has a green Connected dot and Manage; one that is not has only Connect.
     await expect(provider(page, 'anthropic')).toContainText(MODELS_COPY.providers.connected);
     await expect(provider(page, 'anthropic').getByRole('button', { name: /Manage/ })).toBeVisible();

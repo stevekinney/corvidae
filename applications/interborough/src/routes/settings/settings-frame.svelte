@@ -130,6 +130,7 @@
   <div class="weft-settings__nav"><SettingsSectionNav /></div>
   <div class="weft-settings__title-area">
     <PageHeader
+      flush
       title={wide.current ? title : SETTINGS_COPY.general.narrowTitle}
       {...wide.current ? { description: intro } : {}}
     />
@@ -219,6 +220,7 @@
     grid-area: header;
     max-inline-size: 46rem;
     min-inline-size: 0;
+    margin-block-end: var(--cinder-space-6);
   }
 
   .weft-settings__content {
@@ -249,6 +251,10 @@
         'content';
       grid-template-rows: auto;
       row-gap: var(--cinder-space-3);
+    }
+
+    .weft-settings__title-area {
+      margin-block-end: 0;
     }
   }
 </style>

@@ -2068,58 +2068,62 @@ export const HEALTH_OVERVIEW_COPY = {
   },
 } as const;
 
-/** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
-export const MODEL_POLICY_COPY = {
-  intro:
-    'Choose which providers and models agent files and plans may use. Everything not ruled out here stays allowed.',
-  allowedModels: {
-    title: 'Allowed models',
+/**
+ * The words of Settings › Allowed models (board PageSettingsSections, "Allowed models ·
+ * /settings/allowed-models"): which models agents may use, and the caller's own preferences among
+ * them. Saving is explicit, because it raises the policy revision.
+ */
+export const ALLOWED_MODELS_COPY = {
+  intro: 'Which models agents may use, and what to prefer among them.',
+  models: {
+    title: 'Models',
     description:
-      'Nothing listed here can be used by an agent file or a plan, whoever starts it. Leave a list empty to allow everything in it.',
+      'Every model your connected providers offer; untick one to keep agents from using it.',
+    empty: 'No models yet. Connect a provider and its models appear here to allow.',
+    goToProviders: 'Go to Providers',
+    /** The name of a provider's group of models. */
+    groupLabel: (provider: string): string => `${provider} models`,
+    loading: 'Loading models…',
+    loadFailed: 'Couldn’t load the models.',
+    tryAgain: 'Try again',
+    /** Said under a model whose whole provider the policy keeps agents from using. */
+    providerDenied: 'Its provider is not allowed by the host.',
+    /** What a model that has none of the abilities below says in their place. */
+    noAbilities: 'Text only',
+    abilities: { tools: 'tools', images: 'images' },
   },
-  yourPreferences: {
-    title: 'Your preferences',
-    description:
-      'What your own chats and plans should choose from, among what is allowed above. Anything left empty makes no choice for you.',
+  preferences: {
+    title: 'Preferences',
+    description: 'Cost, speed and effort, among the models allowed above.',
+    prefer: {
+      label: 'Prefer',
+      identifier: 'preferences.prefer',
+      description: 'Which to favour when more than one allowed model fits.',
+      options: {
+        neither: 'Neither',
+        cost: 'Lowest cost',
+        speed: 'Fastest',
+        both: 'Lowest cost and fastest',
+      },
+    },
+    effort: {
+      label: 'Default effort',
+      identifier: 'preferences.effort',
+      description: 'How hard a model thinks when an agent doesn’t say.',
+      notSet: 'Not set',
+    },
+  },
+  /** The effect of saving, under the preferences and beside the buttons. */
+  note: 'Saving raises the policy revision, so plans made under the old policy are re-checked.',
+  effect: 'Saving raises the policy revision.',
+  reset: 'Reset to default',
+  save: 'Save',
+  saveFailed: {
+    title: 'Couldn’t save.',
+    didNotAnswer: 'Interborough didn’t answer.',
+    stillHere: 'Your choices are still here.',
   },
   lockedNote: 'The host sets the model policy, and it cannot be changed here.',
-  /** Said under a list of providers when a name is not the form a provider takes. */
-  providerName: 'A provider is lowercase letters, numbers and hyphens, such as anthropic.',
-  /** Said while a list holds text that has not been added, which Save would leave out. */
-  pendingEntry: 'Press Enter to add the text you typed to its list, or clear it, before saving.',
-  notRequired: 'Not required',
-  noPreference: 'No preference',
-  fields: {
-    deniedProviders: 'Providers not allowed',
-    deniedModels: 'Models not allowed',
-    deniedRoutes: 'Routes not allowed',
-    deniedRegions: 'Regions not allowed',
-    requireDataPolicy: 'Data retention required',
-    allowedProviders: 'Only these providers',
-    preferredDeniedProviders: 'Never these providers',
-    allowedModels: 'Only these models',
-    preferredDeniedModels: 'Never these models',
-    dataPolicy: 'Data retention',
-    defaultEffort: 'Default effort',
-    costPreference: 'Cost',
-    latencyPreference: 'Speed',
-    effortFallbackMode: 'When the effort is not available',
-  },
-  options: {
-    dataPolicy: {
-      'no-retention': 'No retention',
-      'zero-day-retention': 'Zero-day retention',
-      standard: 'Standard',
-    },
-    effort: EFFORT_LABELS,
-    cost: { 'lowest-cost': 'Lowest cost', balanced: 'Balanced', 'no-preference': 'No preference' },
-    latency: {
-      'lowest-latency': 'Fastest',
-      balanced: 'Balanced',
-      'no-preference': 'No preference',
-    },
-    effortFallback: { reject: 'Refuse the request', degrade: 'Use a lower effort' },
-  },
 } as const;
 
 /** The words the settings page (`/settings`) uses outside its view states. */

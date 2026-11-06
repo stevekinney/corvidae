@@ -1,5 +1,5 @@
 /**
- * The sections of Settings (COR-1837): the section navigation lists General, Models, Model policy, Data and retention, and
+ * The sections of Settings (COR-1837): the section navigation lists General, Models, Allowed models, A2A, Plugins, Data and retention, and
  * API reference, marks the one that is open, and moves between them; Data and retention carries the
  * retention overview and API reference carries the server's reference groups.
  */
@@ -58,7 +58,7 @@ describe('the section navigation', () => {
     expect(SETTINGS_SECTIONS.map((section) => section.path)).toEqual([
       '/settings',
       '/settings/models',
-      '/settings/model-policy',
+      '/settings/allowed-models',
       '/settings/a2a',
       '/settings/plugins',
       '/settings/data-and-retention',
@@ -79,6 +79,10 @@ describe('the section navigation', () => {
       const { getByRole, queryByRole } = render(SettingsSectionNav);
       expect(queryByRole('navigation')).toBeNull();
       const select = getByRole('combobox', { name: 'Section' }) as HTMLSelectElement;
+      // The label shows above the select (boards ResponsiveAndDark, "Phone", rows 06s and 06t).
+      const label = document.querySelector<HTMLElement>('label[for="weft-settings-section"]');
+      expect(label?.textContent?.trim()).toBe('Section');
+      expect(label?.className).not.toContain('visually-hidden');
       expect(select.value).toBe('/settings/data-and-retention');
       expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
         'General',

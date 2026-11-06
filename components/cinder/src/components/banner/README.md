@@ -71,7 +71,7 @@ Passing `children` replaces the generated words and keeps everything else; with 
 </Banner>
 ```
 
-When the width runs out (a phone) the message wraps and the actions drop to a line of their own at the right. On a touch pointer each action is 44px tall.
+When the width runs out (a phone) the message wraps and the actions drop to a line of their own at the right. Below 640px, and on a touch pointer, each action is 44px tall. `stackActions` goes further below 640px: the actions take a row of their own, one above the next, each a full-width button, which is how a phone's restart notice offers Revert and Restart now.
 
 ## Props
 
@@ -89,6 +89,7 @@ When the width runs out (a phone) the message wraps and the actions drop to a li
 | `retryInSeconds` | `number` | no | — | Seconds until the next automatic retry. A preset writes "Retrying in 4 s". |
 | `retryLabel` | `string` | no | `"Retry"` | Label of the Retry button. A preset labels it "Retry now" unless this says otherwise. |
 | `retryVariant` | `"primary"` \| `"secondary"` | no | — | How prominent the Retry button is. A preset makes it `primary` where Retry now is the way back (`stopped`) and `secondary` everywhere else, so one action at a time looks primary. |
+| `stackActions` | `boolean` | no | `false` | Below 640px, puts the actions on a row of their own under the words, one above the next, each a full-width 44px button. A phone's restart notice does this, so its buttons are targets wide enough to press; without it the actions stay at the right of their line, at 44px. |
 | `staleDataLabel` | `string` | no | `"Showing data from"` | Text that precedes the relative time in the stale-data notice. |
 | `sticky` | `boolean` | no | — | Keeps the banner at the top of its scroll container while the page scrolls under it. |
 | `subject` | `string` | no | `"what loaded"` | What the page is showing, completing the preset's "Showing … as of …" sentence. |
@@ -111,7 +112,10 @@ When the width runs out (a phone) the message wraps and the actions drop to a li
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-button-height-md`
+- `--cinder-button-height-sm`
+- `--cinder-button-height-xs`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

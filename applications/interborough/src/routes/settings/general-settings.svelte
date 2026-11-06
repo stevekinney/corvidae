@@ -13,8 +13,6 @@
    * the agent a new chat starts with and the keyboard.
    */
   import {
-    Banner,
-    Button,
     FormSection,
     Segment,
     SegmentedControl,
@@ -24,17 +22,13 @@
     formatTimeOfDay,
     validateSchemaFormValue,
   } from '@lostgradient/cinder';
-  import { RotateCw, TriangleAlert } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 
-  import { RESTART_COPY, SETTINGS_COPY } from '../../app/copy.ts';
+  import { SETTINGS_COPY } from '../../app/copy.ts';
   import { getKeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
   import { getLayoutPreferences } from '../../app/layout-preferences.svelte.ts';
   import { HostRestartFlow } from '../../app/restart/host-restart-flow.svelte.ts';
-  import RestartBackBanner from '../../app/restart/restart-back-banner.svelte';
-  import RestartConfirmDialog from '../../app/restart/restart-confirm-dialog.svelte';
-  import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { getTheme, type ThemeMode } from '../../app/theme.svelte.ts';
   import { dismissToast, showToast } from '../../app/toast-host.svelte';
   import {
@@ -54,6 +48,7 @@
   import { controlFor, settingLabel, type Control } from './settings-controls.ts';
   import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
   import { SettingsForm } from './settings-form.svelte.ts';
+  import SettingsRestartNotice from './settings-restart-notice.svelte';
   import { SettingsRevert } from './settings-revert.svelte.ts';
 
   interface Props {
@@ -158,12 +153,6 @@
     waiting: (current) => Object.values(current.keys).some((key) => key.pendingRestart),
   });
   onDestroy(() => restartFlow.dispose());
-  let confirmingRestart = $state(false);
-  const restartRefusalWords = $derived(
-    restartFlow.refusal === undefined || restartFlow.refusal === 'save-failed'
-      ? ''
-      : RESTART_COPY.refusal[restartFlow.refusal],
-  );
 
   /** When the host came back, and which settings the restart applied, for their rows ("In effect since 10:44 AM"). */
   let appliedAt = $state<number | undefined>(undefined);
@@ -242,62 +231,13 @@
   {/if}
 {/snippet}
 
-{#if restartFlow.phase === 'back' || restartFlow.phase === 'unconfirmed' || restartKeys.length > 0}
-  <div class="weft-general__banner" data-testid="settings-banner">
-    {#if restartFlow.phase === 'back'}
-      <RestartBackBanner
-        title={RESTART_COPY.back.title}
-        text={RESTART_COPY.back.applied(restartFlow.intent.changes)}
-        onDismiss={() => restartFlow.close()}
-      />
-    {:else if restartFlow.phase === 'unconfirmed'}
-      <Banner
-        variant="warning"
-        dismissible
-        onDismiss={() => restartFlow.close()}
-        title={RESTART_COPY.unconfirmed.title}
-        titleLayout="stacked"
-        data-testid="settings-restart-unconfirmed"
-      >
-        {RESTART_COPY.unconfirmed.description}
-      </Banner>
-    {:else if restartKeys.length > 0}
-      <Banner
-        variant="warning"
-        sticky
-        title={SETTINGS_COPY.general.restartBanner.title(restartKeys.length)}
-        titleLayout="stacked"
-        data-testid="settings-restart-summary"
-      >
-        {#snippet icon()}<TriangleAlert size={16} aria-hidden="true" />{/snippet}
-        {SETTINGS_COPY.general.restartBanner.detail(restartKeys.map(settingLabel))}
-        {#if restartRefusalWords !== ''}
-          <span data-testid="settings-restart-refused">{restartRefusalWords}</span>
-        {/if}
-        {#snippet actions()}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={restartFlow.running || revert.busy || autosave.busy}
-            data-testid="settings-revert"
-            onclick={() => void revert.revert(restartKeys, snapshot)}
-          >
-            {SETTINGS_COPY.general.restartBanner.revert(restartKeys.length)}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={restartFlow.running || revert.busy}
-            onclick={() => (confirmingRestart = true)}
-          >
-            {#snippet leadingIcon()}<RotateCw size={14} aria-hidden="true" />{/snippet}
-            {RESTART_COPY.confirm.confirm}
-          </Button>
-        {/snippet}
-      </Banner>
-    {/if}
-  </div>
-{/if}
+<SettingsRestartNotice
+  keys={restartKeys}
+  {snapshot}
+  flow={restartFlow}
+  {revert}
+  saving={autosave.busy}
+/>
 
 <div class="weft-general__content" role="group" aria-label={SETTINGS_COPY.formLabel}>
   {#each sections as section (section.id)}
@@ -362,6 +302,7 @@
             <Select
               id="weft-setting-sidebar"
               label={copy.label}
+              labelVisible={false}
               value={layout.sidebarCollapsed ? 'collapsed' : 'expanded'}
               options={[
                 { value: 'expanded', label: copy.options.expanded },
@@ -387,6 +328,7 @@
             <Select
               id="weft-setting-default-agent"
               label={copy.label}
+              labelVisible={false}
               value={agentChoice}
               options={(agents.data ?? [])
                 .filter((agent) => agent.ready || agent.name === agentChoice)
@@ -445,23 +387,7 @@
   </section>
 </div>
 
-<RestartConfirmDialog
-  bind:open={confirmingRestart}
-  changes={restartKeys.length}
-  onConfirm={() => void restartFlow.restart({ changes: restartKeys.map(settingLabel) })}
-/>
-<RestartDialog flow={restartFlow} />
-
 <style>
-  .weft-general__banner {
-    grid-area: banner;
-    position: sticky;
-    inset-block-start: 0;
-    z-index: 1;
-    min-inline-size: 0;
-    margin-block-end: var(--cinder-space-4);
-  }
-
   .weft-general__content {
     grid-area: content;
     display: flex;

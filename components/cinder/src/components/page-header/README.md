@@ -32,6 +32,18 @@ While a full-page `ErrorState` shows under the header, pass `error` so the heade
 
 `status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`.
 
+## Flush
+
+`flush` draws the header with no rule under it and no padding around it, so its title lines up with the content beneath. Use it where the page lays out its own column, such as a page of settings with a section navigation beside it; a header across the top of a page keeps its rule.
+
+```svelte
+<script lang="ts">
+  import { PageHeader } from '@lostgradient/cinder';
+</script>
+
+<PageHeader flush title="Allowed models" description="Which models agents may use." />
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -41,6 +53,7 @@ While a full-page `ErrorState` shows under the header, pass `error` so the heade
 | `class` | `string` | no | — | Additional class names merged with `.cinder-page-header`. |
 | `description` | `string` | no | — | Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet. |
 | `error` | `boolean` | no | `false` | A full-page error state shows under this header, so its primary buttons draw as secondary. |
+| `flush` | `boolean` | no | `false` | Draws the header with no rule under it and no padding around it, so its title lines up with the content beneath it. A page that lays out its own column, such as a page of settings with a section navigation beside it, uses this; a header across the top of a page keeps its rule. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `1` | Heading level for the title element. Defaults to `1`. |
 | `statusPlacement` | `"inline"` \| `"below"` | no | `"below"` | Where `status` sits: `inline` beside the title on its first line, or `below` the title. |
 | `title` | `string` | yes | — | Page-level heading text rendered inside the `headingLevel` heading; the runtime API also accepts a template-only snippet. |

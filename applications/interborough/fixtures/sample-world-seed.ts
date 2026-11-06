@@ -455,6 +455,13 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
   // Settings › General holds one saved change that waits for a restart: the claim renew interval
   // at 15 seconds (board SettingsShell, "General · /settings", row 47f).
   await saveSetting(host, 'engine.workflowClaimRenewInterval', 15_000);
+  // Settings › Allowed models draws the caller's default effort as High (board PageSettingsSections,
+  // "Allowed models · /settings/allowed-models", row 49e). The schema has no default for the policy,
+  // so the sample world stores one: nothing denied, and the one local caller's effort.
+  await saveSetting(host, 'modelPolicy', {
+    policyRevision: 1,
+    users: { 'anonymous:local': { defaultEffort: 'high' } },
+  });
 
   return {
     runs: { refund4472: refund4472.runId, refund4471: refund4471.runId },

@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
    * The navigation between the sections of Settings (`settings-sections.ts`), beside the content as
-   * a 170px column from 640px up and a "Section" select above it below that (design rows 05f, 47a,
-   * 47s). Every section renders it, so the sections read as one page of Settings with several parts.
+   * a 170px column from 640px up and a "Section" select above it below that, its "Section" label
+   * showing (design rows 05f, 06s, 06u, 47a, 47s). Every section renders it, so the sections read
+   * as one page of Settings with several parts.
    */
   import { Select, SideNavigation } from '@lostgradient/cinder';
   import { MediaQuery } from 'svelte/reactivity';
@@ -45,7 +46,6 @@
     <Select
       id="weft-settings-section"
       label={SETTINGS_COPY.sectionSelect}
-      labelVisible={false}
       value={current}
       options={SETTINGS_SECTIONS.map((section) => ({ value: section.path, label: section.label }))}
       onchange={(event) => router.navigate(event.currentTarget.value)}

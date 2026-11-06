@@ -102,7 +102,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/health/audit': '/health/audit',
     '/settings': '/settings',
     '/settings/models': '/settings/models',
-    '/settings/model-policy': '/settings/model-policy',
+    '/settings/allowed-models': '/settings/allowed-models',
     '/settings/a2a': '/settings/a2a',
     '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',

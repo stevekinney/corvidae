@@ -345,11 +345,11 @@ export const routes: readonly RouteDefinition[] = [
     load: () => import('../routes/settings/models/index.svelte'),
   },
   {
-    pattern: '/settings/model-policy',
+    pattern: '/settings/allowed-models',
     kind: 'editor',
     crumb: SETTINGS_SECTION_COPY.modelPolicy,
     view: 'settings',
-    load: () => import('../routes/settings/model-policy.svelte'),
+    load: () => import('../routes/settings/allowed-models.svelte'),
   },
   {
     pattern: '/settings/a2a',

@@ -52,6 +52,8 @@ Groups related form fields under a heading with optional description and layout 
 </FormSection>
 ```
 
+A section with no children draws its heading and description alone, for a list that has nothing in it yet and says so in the page's own words beneath, with no empty card.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -66,7 +68,7 @@ Groups related form fields under a heading with optional description and layout 
 | `heading` | `string` | no | — | Heading text rendered as `<h{level}>`. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | — | Heading level. Default 2. |
 | `meta` | `string` | no | — | A short muted note beside the heading, on its baseline ("Read with every chat", "3 of 9"). It says what the section is for or how much is in it; a sentence of guidance is the `description`. |
-| `children` | `(opaque)` | yes | — | Children (FormField instances or arbitrary content). Not expressible in JSON Schema; see the component types for the signature. |
+| `children` | `(opaque)` | no | — | Children (FormField instances or arbitrary content). Optional: a section with none draws its heading and description alone, for a list that is empty and says so in the page's own words. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

@@ -19,8 +19,11 @@ type FormSectionSharedProps = {
   grouped?: boolean;
   /** Additional class merged with `.cinder-form-section`. */
   class?: string;
-  /** Children (FormField instances or arbitrary content). */
-  children: Snippet;
+  /**
+   * Children (FormField instances or arbitrary content). Optional: a section with none draws its
+   * heading and description alone, for a list that is empty and says so in the page's own words.
+   */
+  children?: Snippet;
 };
 /**
  * Discriminated union: `as="fieldset"` requires `heading` (a legend-less fieldset

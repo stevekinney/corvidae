@@ -1,6 +1,6 @@
 /**
  * `/settings` (COR-1711) against the real host: the page draws a control for every setting the
- * Bureau publishes but the model policy and the decisions, which have sections of their own, shows the key the host locked read-only, and changes what the Bureau does.
+ * Bureau publishes but the model policy and the decisions, which have sections of their own (`settings-allowed-models.spec.ts` covers the first), shows the key the host locked read-only, and changes what the Bureau does.
  * `tools.humanInput` is the setting whose effect a person can see: with it off, a chat with
  * `request-human-input` asks nothing and leaves nothing to review; with it back on, the same chat
  * parks on its question and the question is waiting in Reviews.
@@ -21,7 +21,6 @@ const WIDTHS = [375, 1280] as const;
 const settingRow = (page: Page, key: string) => page.locator(`[data-setting="${key}"]`);
 const humanInputSwitch = (page: Page) =>
   settingRow(page, 'tools.humanInput').getByRole('switch', { name: 'Human input' });
-const saveButton = (page: Page) => page.getByRole('button', { name: SETTINGS_COPY.saveAction });
 
 type Snapshot = { values: Record<string, unknown>; revision: number };
 
@@ -262,53 +261,5 @@ test('edits an object without JSON, and a model name from the catalog', async ({
         expectedRevision: current.revision,
       });
     }
-  }
-});
-
-test('changes the model policy in plain words, and raises its revision when saved', async ({
-  page,
-  request,
-}) => {
-  const original = await valueOf(request, 'modelPolicy');
-  try {
-    await page.goto('/settings/model-policy');
-    await expect(page.getByRole('heading', { name: 'Allowed models', level: 2 })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Your preferences', level: 2 })).toBeVisible();
-    await expect(page.locator('textarea')).toHaveCount(0);
-
-    await page.getByLabel('Default effort').selectOption('high');
-    // A list of providers is a field of its own, and no provider is in use under this name.
-    const never = page.getByRole('textbox', { name: 'Never these providers' });
-    await never.fill('unused-provider');
-    await never.press('Enter');
-    await expect(page.locator('[data-setting="modelPolicy"]')).toHaveAttribute(
-      'data-dirty',
-      'true',
-    );
-    await saveButton(page).click();
-    await expect(page.getByText(SETTINGS_COPY.saved.title)).toBeVisible();
-
-    const policy = (await valueOf(request, 'modelPolicy')) as {
-      policyRevision: number;
-      users?: Record<string, { defaultEffort?: string; deniedProviders?: string[] }>;
-    };
-    expect(policy.users?.['anonymous:local']?.defaultEffort).toBe('high');
-    expect(policy.users?.['anonymous:local']?.deniedProviders).toEqual(['unused-provider']);
-    expect(policy.policyRevision).toBe(
-      ((original as { policyRevision?: number })?.policyRevision ?? 0) + 1,
-    );
-  } finally {
-    const current = await snapshotOf(request);
-    await bureauCall(request, 'bureau.settings.update', {
-      patch: {
-        modelPolicy: {
-          ...(original as object),
-          policyRevision:
-            ((current.values['modelPolicy'] as { policyRevision?: number })?.policyRevision ?? 0) +
-            1,
-        },
-      },
-      expectedRevision: current.revision,
-    });
   }
 });

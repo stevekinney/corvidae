@@ -116,6 +116,18 @@ describe('PageHeader', () => {
     expect(container.querySelector('.cinder-page-header__actions')).toBeNull();
   });
 
+  test('flush marks the header so it draws no rule and no padding', () => {
+    const { container } = render(PageHeader, { props: { title: 'Allowed models', flush: true } });
+    expect(container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-flush')).toBe(
+      'true',
+    );
+    cleanup();
+    const plain = render(PageHeader, { props: { title: 'Allowed models' } });
+    expect(
+      plain.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-flush'),
+    ).toBe(false);
+  });
+
   test('class prop merges onto root div element', () => {
     const { container } = render(PageHeader, {
       props: { title: 'Memory', class: 'my-page-header' },

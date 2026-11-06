@@ -177,15 +177,15 @@ export const SETTING_UNITS: Readonly<Record<string, string>> = {
   'engine.maxConcurrentRuns': 'runs',
 };
 
-/** The one setting the Model policy section holds, and so the General section does not. */
+/** The one setting the Allowed models section holds, and so the General section does not. */
 export const MODEL_POLICY_KEY = 'modelPolicy';
 
 /**
- * The sections of Settings that edit settings: General holds every key but the three below, Model
- * policy holds the model policy, the Decisions part of the Models page holds `decisions.*`, and
+ * The sections of Settings that edit settings: General holds every key but the three below, Allowed
+ * models holds the model policy, the Decisions part of the Models page holds `decisions.*`, and
  * the A2A section holds `a2a.*`.
  */
-export type SettingsSectionId = 'general' | 'model-policy' | 'decisions' | 'a2a' | 'retention';
+export type SettingsSectionId = 'general' | 'allowed-models' | 'decisions' | 'a2a' | 'retention';
 
 /** The settings the Models page holds: the decision model, its fallback, and its limit per task. */
 function isDecisionKey(key: string): boolean {
@@ -204,7 +204,7 @@ function isRetentionKey(key: string): boolean {
 
 /** Whether the section `section` edits the key `key`. */
 export function inSection(key: string, section: SettingsSectionId): boolean {
-  if (section === 'model-policy') return key === MODEL_POLICY_KEY;
+  if (section === 'allowed-models') return key === MODEL_POLICY_KEY;
   if (section === 'decisions') return isDecisionKey(key);
   if (section === 'a2a') return isA2aKey(key);
   if (section === 'retention') return isRetentionKey(key);

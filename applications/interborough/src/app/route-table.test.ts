@@ -113,7 +113,7 @@ describe('the route table', () => {
         '/health/audit',
         '/settings',
         '/settings/models',
-        '/settings/model-policy',
+        '/settings/allowed-models',
         '/settings/plugins',
         '/settings/data-and-retention',
         '/settings/api-reference',

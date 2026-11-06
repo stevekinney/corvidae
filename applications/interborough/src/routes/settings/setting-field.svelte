@@ -225,6 +225,7 @@
         <Select
           {id}
           {label}
+          labelVisible={false}
           options={spec.options.map((option) => ({ value: option, label: option }))}
           {...typeof draft === 'string' ? { value: draft } : {}}
           disabled={locked}
@@ -237,6 +238,7 @@
         <Select
           {id}
           {label}
+          labelVisible={false}
           options={hasValue ? choices : [{ value: '', label: SETTINGS_COPY.notSet }, ...choices]}
           value={typeof draft === 'string' ? draft : ''}
           disabled={locked}

@@ -68,9 +68,11 @@
     {#if description}
       <p class="cinder-form-section__description">{description}</p>
     {/if}
-    <div class="cinder-form-section__grid">
-      {@render children()}
-    </div>
+    {#if children}
+      <div class="cinder-form-section__grid">
+        {@render children()}
+      </div>
+    {/if}
   </fieldset>
 {:else}
   <section
@@ -93,8 +95,10 @@
     {#if description}
       <p class="cinder-form-section__description">{description}</p>
     {/if}
-    <div class="cinder-form-section__grid">
-      {@render children()}
-    </div>
+    {#if children}
+      <div class="cinder-form-section__grid">
+        {@render children()}
+      </div>
+    {/if}
   </section>
 {/if}

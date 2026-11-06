@@ -28,7 +28,6 @@
   } from '../../lib/bureau-settings.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
-  import ModelPolicyEditor from './model-policy-editor.svelte';
   import SettingRow from './setting-row.svelte';
   import {
     controlFor,
@@ -36,7 +35,6 @@
     groupOf,
     groupsOf,
     inSection,
-    MODEL_POLICY_KEY,
     settingLabel,
     type Control,
     type SettingsSectionId,
@@ -56,7 +54,7 @@
   /** The route each section lives at, which scopes its shortcut. */
   const SECTION_ROUTES: Readonly<Record<SettingsSectionId, string>> = {
     general: '/settings',
-    'model-policy': '/settings/model-policy',
+    'allowed-models': '/settings/allowed-models',
     decisions: '/settings/models',
     a2a: '/settings/a2a',
     retention: '/settings/data-and-retention',
@@ -315,33 +313,26 @@
 <div class="weft-settings-editor" role="group" aria-label={SETTINGS_COPY.formLabel}>
   <!-- The controls stop while a save is in flight, so an edit is not lost to the settings it reads back. -->
   <fieldset class="weft-settings-editor__fields" disabled={submit.isPending}>
-    {#if section === 'model-policy'}
-      <ModelPolicyEditor {form} keyState={stateOf(MODEL_POLICY_KEY)} />
-    {:else}
-      {#each groups as group (group)}
-        <section
-          class="weft-settings-editor__group"
-          aria-labelledby={`weft-settings-group-${group}`}
-        >
-          <h2 id={`weft-settings-group-${group}`} class="weft-settings-editor__group-title">
-            {groupLabel(group)}
-          </h2>
-          {#each keys.filter((key) => groupOf(key) === group) as key (key)}
-            {@const control = controls.get(key)}
-            {#if control !== undefined && schema[key] !== undefined}
-              <SettingRow
-                name={key}
-                node={schema[key]}
-                {control}
-                {form}
-                keyState={stateOf(key)}
-                {requestSave}
-              />
-            {/if}
-          {/each}
-        </section>
-      {/each}
-    {/if}
+    {#each groups as group (group)}
+      <section class="weft-settings-editor__group" aria-labelledby={`weft-settings-group-${group}`}>
+        <h2 id={`weft-settings-group-${group}`} class="weft-settings-editor__group-title">
+          {groupLabel(group)}
+        </h2>
+        {#each keys.filter((key) => groupOf(key) === group) as key (key)}
+          {@const control = controls.get(key)}
+          {#if control !== undefined && schema[key] !== undefined}
+            <SettingRow
+              name={key}
+              node={schema[key]}
+              {control}
+              {form}
+              keyState={stateOf(key)}
+              {requestSave}
+            />
+          {/if}
+        {/each}
+      </section>
+    {/each}
   </fieldset>
 
   <div class="weft-settings-editor__actions">

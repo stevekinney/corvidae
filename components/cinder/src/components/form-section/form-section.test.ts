@@ -299,3 +299,16 @@ describe('FormSection grouped', () => {
     expect(section?.getAttribute('data-columns')).toBe('2');
   });
 });
+
+describe('FormSection with no children', () => {
+  test('draws its heading and description and no empty card', () => {
+    const { container } = render(FormSection, {
+      props: { heading: 'Models', description: 'Every model.', grouped: true },
+    });
+    expect(container.querySelector('h2')?.textContent?.trim()).toBe('Models');
+    expect(container.querySelector('.cinder-form-section__description')?.textContent).toBe(
+      'Every model.',
+    );
+    expect(container.querySelector('.cinder-form-section__grid')).toBeNull();
+  });
+});

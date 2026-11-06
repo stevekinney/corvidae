@@ -45,8 +45,8 @@ const schema = {
       {
         name: 'children',
         reason: 'function-or-snippet',
-        required: true,
-        description: 'Children (FormField instances or arbitrary content).',
+        description:
+          "Children (FormField instances or arbitrary content). Optional: a section with none draws its\nheading and description alone, for a list that is empty and says so in the page's own words.",
       },
     ],
   },
