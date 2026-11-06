@@ -169,7 +169,8 @@ describe('GET /v1/task-queues/:queue/tasks', () => {
   });
 
   it('answers with the defaults when the query names nothing', async () => {
-    const body = (await (await ask('?limit=')).json()) as ListQueueTasksOutput;
+    const response = await ask('?limit=');
+    const body = (await response.json()) as ListQueueTasksOutput;
     expect(body.counts).toEqual({ waiting: 3, failed: 2 });
   });
 
