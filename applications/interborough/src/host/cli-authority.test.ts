@@ -602,6 +602,7 @@ describe('CLI authenticated workspace authority', () => {
     });
     await waitUntil(() => barrier.waiting() === 1, { message: 'the control barrier admission' });
     const controlAdmitted = Promise.withResolvers<void>();
+    const controlChunks: string[] = [];
     const controlFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await https.fetch(input, init);
       if (new URL(input).pathname.includes('/v1/subscriptions/')) controlAdmitted.resolve();
@@ -617,21 +618,23 @@ describe('CLI authenticated workspace authority', () => {
         '--connection',
         'alice',
         '--output',
-        'json',
+        'jsonl',
       ],
-      { ...base, fetch: controlFetch },
+      { ...base, fetch: controlFetch, writeStdout: (chunk) => controlChunks.push(chunk) },
     );
     await controlAdmitted.promise;
     barrier.release();
     const controlResult = await controlWatch;
     expect(controlResult.exitCode).toBe(0);
-    expect(controlResult.stdout).toContain(BARRIER_FIRST_REPLY);
+    expect(controlChunks.join('')).toContain(BARRIER_FIRST_REPLY);
 
     const revokedRun = await host.bureau.tasks.start(BARRIER_AGENT_NAME, 'private sentinel', {
       principal: 'owner-alice',
     });
     await waitUntil(() => barrier.waiting() === 1, { message: 'the revoked barrier admission' });
     const revokedAdmitted = Promise.withResolvers<void>();
+    const revokedSnapshot = Promise.withResolvers<void>();
+    const revokedChunks: string[] = [];
     const revokedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await https.fetch(input, init);
       if (new URL(input).pathname.includes('/v1/subscriptions/')) revokedAdmitted.resolve();
@@ -647,18 +650,28 @@ describe('CLI authenticated workspace authority', () => {
         '--connection',
         'alice',
         '--output',
-        'json',
+        'jsonl',
       ],
-      { ...base, fetch: revokedFetch },
+      {
+        ...base,
+        fetch: revokedFetch,
+        writeStdout: (chunk) => {
+          revokedChunks.push(chunk);
+          if (chunk.includes('task.snapshot')) revokedSnapshot.resolve();
+        },
+      },
     );
     await revokedAdmitted.promise;
+    await revokedSnapshot.promise;
+    const snapshotChunkCount = revokedChunks.length;
     revoked = true;
     barrier.release();
     const watchedResult = await watched;
     expect(watchedResult.exitCode).toBe(1);
     expect(watchedResult.stderr).toContain('Run event stream ended before a terminal event');
-    expect(watchedResult.stdout).not.toContain(BARRIER_FIRST_REPLY);
-    expect(watchedResult.stdout).not.toContain('private sentinel');
+    const afterRevocation = revokedChunks.slice(snapshotChunkCount).join('');
+    expect(afterRevocation).not.toContain(BARRIER_FIRST_REPLY);
+    expect(afterRevocation).not.toContain('private sentinel');
     const denied = await executeCli(['chats', 'list', '--connection', 'alice'], {
       ...base,
       fetch: https.fetch,
