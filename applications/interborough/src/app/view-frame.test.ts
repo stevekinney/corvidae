@@ -12,7 +12,6 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
-import { queryKeys } from '../lib/query.ts';
 import { router } from '../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
 import {
@@ -27,7 +26,7 @@ import {
 } from '../lib/workflow-world.test-support.ts';
 import { FIRST_RUN_COPY, FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
-import { RUNS_RECHECK_MS } from './view-probes.ts';
+import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
 
 type Outcome = 'content' | 'empty' | 'error' | 'forbidden';
@@ -228,6 +227,15 @@ function mount(
   return { ...result, store: () => store, queryClient: () => queryClient };
 }
 
+/**
+ * How a view is mounted to read its probe's states. The list of chats asks no probe (it words its
+ * own states in its pane), so the chat view's probe states are those of a new chat, which asks
+ * whether an agent can run.
+ */
+function mountWithProbe(view: ViewName, options: Parameters<typeof mount>[1] = {}) {
+  return mount(view, view === 'chat' ? { pattern: '/chats/new', ...options } : options);
+}
+
 function frame(container: HTMLElement): HTMLElement {
   const element = container.querySelector<HTMLElement>('.weft-view');
   if (element === null) throw new Error('The view frame did not render.');
@@ -254,7 +262,7 @@ describe('every view whose probe fails the page, when its probe fails', () => {
 
     test(`${view} is failing when its probe fails`, async () => {
       stub(view, 'error');
-      const { container, findByRole, getByRole } = mount(view);
+      const { container, findByRole, getByRole } = mountWithProbe(view);
       expect(await findByRole('heading', { level: 1, name: copy.error.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('error');
       expect(container.textContent).toContain(copy.error.description);
@@ -268,10 +276,11 @@ describe('every view, in every state', () => {
     const copy = VIEW_COPY[view];
 
     test(`${view} is empty when its probe finds nothing, with its own words`, async () => {
-      const emptyCopy = copy.empty;
+      // The chat view is empty only where it asks a probe: a new chat, with no agent to start it.
+      const emptyCopy = view === 'chat' ? copy.emptyByPattern?.['/chats/new'] : copy.empty;
       if (!VIEWS[view].canBeEmpty || emptyCopy === undefined) return;
       stub(view, 'empty');
-      const { container, findByRole } = mount(view);
+      const { container, findByRole } = mountWithProbe(view);
       const heading = await findByRole('heading', { level: 1, name: emptyCopy.title });
       expect(heading).not.toBeNull();
       expect(frame(container).dataset['view']).toBe(view);
@@ -282,7 +291,7 @@ describe('every view, in every state', () => {
     test(`${view} is forbidden when its probe is refused`, async () => {
       if (view === 'health' || view === 'home') return;
       stub(view, 'forbidden');
-      const { container, findByRole } = mount(view);
+      const { container, findByRole } = mountWithProbe(view);
       expect(await findByRole('heading', { level: 1, name: copy.forbidden.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('forbidden');
     });
@@ -290,7 +299,7 @@ describe('every view, in every state', () => {
     test(`${view} is loading while its probe is pending`, async () => {
       if (view === 'health' || view === 'home') return;
       restore = installFetchImplementation(() => new Promise<Response>(() => {}));
-      const { container, findByRole } = mount(view);
+      const { container, findByRole } = mountWithProbe(view);
       expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('loading');
       expect(container.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
@@ -464,13 +473,6 @@ describe('one chat session’s page', () => {
 describe('the chat list, a new chat, and the agents', () => {
   const rpc = (method: string, result: unknown) =>
     Response.json({ jsonrpc: '2.0', id: method, result });
-  const fault = (status: number, code: string) =>
-    Response.json({
-      jsonrpc: '2.0',
-      id: 1,
-      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
-    });
-
   /** Answers each Bureau operation the frame's probes ask, by name. */
   function stubBureau(answers: Record<string, () => Response>): void {
     restore = installFetchImplementation(async (_input, init) => {
@@ -484,32 +486,33 @@ describe('the chat list, a new chat, and the agents', () => {
   const agents = (...entries: Array<Partial<typeof AGENT>>) =>
     rpc('bureau.agents.list', { agents: entries.map((entry) => ({ ...AGENT, ...entry })) });
 
-  test('is forbidden when the Bureau refuses the caller the list of sessions', async () => {
-    stubBureau({ 'bureau.contexts.list': () => fault(403, 'Forbidden') });
-    const { container, findByRole } = mount('chat', { pattern: '/chats' });
+  test('asks nothing before the list of chats shows: the list words its own loading, first use and failure', async () => {
+    expect(probeFor('chat', {}, '/chats')).toBeUndefined();
+    const { requests } = stub('chat', 'content');
+    const { container, findByTestId } = mount('chat', { pattern: '/chats' });
 
-    expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.forbidden.title }),
-    ).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('forbidden');
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toEqual([]);
   });
 
-  test('is empty, with a New chat action, when the caller has no session', async () => {
-    stubBureau({ 'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }) });
-    const { container, findByRole } = mount('chat', { pattern: '/chats' });
+  test('a new chat is empty, with its own words, when no agent can run', async () => {
+    stubBureau({ 'bureau.agents.list': () => agents() });
+    const words = VIEW_COPY.chat.emptyByPattern?.['/chats/new'];
+    const { container, findByRole } = mount('chat', { pattern: '/chats/new' });
 
-    expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
-    ).not.toBeNull();
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('empty');
-    expect(container.querySelector('a[href="/chats/new"]')?.textContent?.trim()).toBe('New chat');
+    expect(container.querySelector('a[href="/settings/plugins"]')?.textContent?.trim()).toBe(
+      'Open plugins',
+    );
     // The second action goes to the agents a chat can start with, and both are buttons.
     const browse = container.querySelector('a[href="/agents"]');
     expect(browse?.textContent?.trim()).toBe('Browse agents');
     expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
   });
 
-  test('an empty chat page on a fresh installation shows the first-run steps above its actions, and none once they are dismissed', async () => {
+  test('a new chat with no agent on a fresh installation shows the first-run steps above its actions, and none once they are dismissed', async () => {
     window.localStorage.removeItem('interborough:first-run:dismissed');
     restore = installFetchImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -523,10 +526,10 @@ describe('the chat list, a new chat, and the agents', () => {
       }
       const method = operationOf(init?.body)?.method ?? '';
       if (method === 'bureau.contexts.list') return rpc(method, { contexts: [], nextOffset: null });
-      if (method === 'bureau.agents.list') return agents({ name: 'assistant' });
+      if (method === 'bureau.agents.list') return agents();
       throw new Error(`Unexpected request: ${url} ${method}`);
     });
-    const { container, findByTestId, findByRole } = mount('chat', { pattern: '/chats' });
+    const { container, findByTestId, findByRole } = mount('chat', { pattern: '/chats/new' });
 
     const checklist = await findByTestId('first-run');
 
@@ -540,47 +543,8 @@ describe('the chat list, a new chat, and the agents', () => {
     ).toBeTruthy();
     await fireEvent.click(await findByRole('button', { name: FIRST_RUN_COPY.dismissLabel }));
     expect(container.querySelector('[data-testid="first-run"]')).toBeNull();
-    expect(container.querySelector('a[href="/chats/new"]')?.textContent?.trim()).toBe('New chat');
+    expect(container.querySelector('a[href="/settings/plugins"]')).not.toBeNull();
     window.localStorage.removeItem('interborough:first-run:dismissed');
-  });
-
-  test('the welcome names the agents a chat can start with, by their identifiers in monospace, and adds no padding of its own', async () => {
-    stubBureau({
-      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
-      'bureau.agents.list': () =>
-        agents({ name: 'assistant' }, { name: 'tool-runner' }, { name: 'internal' }),
-    });
-    const { container, findByTestId } = mount('chat', { pattern: '/chats' });
-
-    const line = await findByTestId('welcome-agents');
-
-    expect(line.textContent).toContain('Agents:');
-    expect(
-      [...line.querySelectorAll('code.ib-identifier')].map((code) => code.textContent),
-    ).toEqual(['assistant', 'tool-runner', 'internal']);
-    // The outlet pads the page, so the empty state is Cinder's with its own padding removed.
-    expect(container.querySelector('.cinder-empty-state')?.classList).toContain('weft-view__empty');
-  });
-
-  test('the welcome says nothing of agents when the Bureau lists none', async () => {
-    stubBureau({
-      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
-      'bureau.agents.list': () => agents(),
-    });
-    const { container, findByRole, queryClient } = mount('chat', { pattern: '/chats' });
-
-    await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' });
-    // The line is not there for want of an answer: the Bureau has answered, and said none.
-    await waitFor(() =>
-      expect(queryClient()?.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
-    );
-    const answered: unknown = queryClient()?.getQueryData(queryKeys.agents.list());
-    expect(answered).toEqual([]);
-    // One turn of the event loop lets the page take the answer in.
-    // load-proof: the Bureau answer is already in the query cache, so the page only needs its Svelte flush, which settles inside the promise chain
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(container.querySelector('[data-testid="welcome-agents"]')).toBeNull();
   });
 
   test('a new chat is ready for an agent the Bureau lists', async () => {
@@ -635,7 +599,6 @@ describe('the chat list, a new chat, and the agents', () => {
     const words = VIEW_COPY.chat.emptyByPattern?.['/chats/new'];
 
     expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(words?.title).not.toBe(VIEW_COPY.chat.empty?.title);
     expect(frame(container).dataset['state']).toBe('empty');
   });
 

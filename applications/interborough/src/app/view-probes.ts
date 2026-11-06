@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
-import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
+import { callBureau, listAgents } from '../lib/bureau-client.ts';
 import { getGoal, listGoals } from '../lib/bureau-goals.ts';
 import { getHook, listHooks } from '../lib/bureau-hooks.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
@@ -205,12 +205,10 @@ export function probeFor(
           return { empty: false };
         };
       }
-      // The list is empty when the caller has started no chat: a goal's or a schedule's session is
-      // not listed here, so it does not make the list not empty.
-      return async () => {
-        const page = await listContexts({ origin: 'chat', limit: 1 });
-        return { empty: page.contexts.length === 0 };
-      };
+      // The list of chats words its own states (loading, first use, a search that matches nothing,
+      // and a read that fails) inside its pane, so the rest of the page stays live in each, and
+      // asks for no probe. A goal's or a schedule's session is not listed there either.
+      return undefined;
     case 'agents':
       return async () => {
         const agents = await listAgents();

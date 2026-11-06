@@ -23,13 +23,17 @@ const mount = () => render(QueryPage, { props: { page: Chats } } as never);
 /** Bureau requests that answer `contexts.get` as `answer` says, counting how often it is asked. */
 function contextAnswering(answer: () => Response): { asked: () => number } {
   let asked = 0;
-  restore = bureau({}, (url, init) => {
-    if (url.endsWith('/messages') || url.includes('/threads/')) return undefined;
-    const body = typeof init?.body === 'string' ? init.body : '{}';
-    if (!body.includes('bureau.contexts.get')) return undefined;
-    asked += 1;
-    return answer();
-  }).restore;
+  // The list beside the chat reads its own page of chats, and answers them none.
+  restore = bureau(
+    { 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) },
+    (url, init) => {
+      if (url.endsWith('/messages') || url.includes('/threads/')) return undefined;
+      const body = typeof init?.body === 'string' ? init.body : '{}';
+      if (!body.includes('bureau.contexts.get')) return undefined;
+      asked += 1;
+      return answer();
+    },
+  ).restore;
   return { asked: () => asked };
 }
 

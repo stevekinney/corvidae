@@ -98,24 +98,14 @@ function bureauProbe(method: string, empty: unknown): ProbeRoute {
 }
 
 /**
- * Every view that has a probe: Health reads its bands apart and has none, and Home reads what other
- * views read, each card on its own, so it has none either.
+ * Every view that has a probe, at the path this spec opens it: Health reads its bands apart and has
+ * none, Home reads what other views read, each card on its own, so it has none either, and the
+ * chat list words its own loading, first use and failure inside its pane, so `/chats` has none
+ * (`chat-list.spec.ts`). A new chat has one, which `chat/new` states cover.
  */
-type ProbedView = Exclude<ViewName, 'health' | 'home'>;
+type ProbedView = Exclude<ViewName, 'health' | 'home' | 'chat'>;
 
 const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
-  // The view asks for one chat to learn whether the caller has any. The shell's notification bell
-  // reads the same list, a hundred at a time and every few seconds, for the title of each chat an
-  // item names; it is not the view's probe, so it goes through and is never answered with the
-  // error (a poll that lands in a slow test would otherwise log a response the guard does not count).
-  chat: {
-    url: /\/bureau\/jsonrpc/,
-    matches: (url, body) =>
-      url.pathname === '/bureau/jsonrpc' &&
-      body.includes('"bureau.contexts.list"') &&
-      /"limit":1[,}]/.test(body),
-    empty: { contexts: [], nextOffset: null },
-  },
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: bureauProbe('bureau.audit.query', { records: [], nextCursor: null }),
   goals: bureauProbe('bureau.goals.list', { goals: [], nextOffset: null }),
@@ -188,7 +178,7 @@ async function holdOnlyScopes(page: Page, scopes: readonly string[]): Promise<vo
 
 /** The probe a view asks, which Health does not have. */
 function probeOf(view: ViewName): ProbeRoute {
-  const probe = view === 'health' || view === 'home' ? undefined : PROBES[view];
+  const probe = view === 'health' || view === 'home' || view === 'chat' ? undefined : PROBES[view];
   if (probe === undefined) throw new Error(`${view} has no probe to answer`);
   return probe;
 }
@@ -263,7 +253,8 @@ function statesOf(view: ViewName): Outcome[] {
   // when the principal lacks both scopes. Its bands' own states are covered below.
   if (view === 'health') return ['forbidden', 'ready'];
   // Home has no probe either: each of its cards reads on its own, so the view is only ever ready.
-  if (view === 'home') return ['ready'];
+  // The chat list is the same: its states are the list's own, drawn in its pane (`chat-list.spec.ts`).
+  if (view === 'home' || view === 'chat') return ['ready'];
   // The reviews probe swallows a Bureau failure such as a 5xx, and the page shows it in a banner
   // beside the engine's reviews (`31-reviews.spec.ts`), so the view is not in the error state for
   // it. A 401 does reach the error state (`view-frame.test.ts`, "the Reviews view").

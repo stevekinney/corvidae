@@ -1,10 +1,13 @@
+import type { DataListGroup } from '@lostgradient/cinder';
+
 import { CHAT_COPY } from '../../app/copy.ts';
 import type { ChatContext } from '../../lib/bureau-client.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
+import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
 import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
 
-/** The groups the chat list is cut into, in the order a person reads them. */
-export type SessionGroupKey = 'needs-you' | 'today' | 'yesterday' | 'earlier';
+/** The status words of a chat, in the one table every status word comes from (`StatusDot`'s). */
+export type ChatStatusWord = 'Waiting on you' | 'Running' | 'Failed' | 'Ended' | 'Done';
 
 /** One chat as a row of the list: everything the row shows, and nothing it does not. */
 export type SessionRow = {
@@ -15,17 +18,24 @@ export type SessionRow = {
   readonly agentName: string;
   /** Epoch milliseconds of the chat's last change, or `null` when the Bureau's time is unreadable. */
   readonly updatedAt: number | null;
-  /** Whether the chat's run waits on the person: the Bureau's `awaiting-input` activity. */
-  readonly needsYou: boolean;
-  /** Whether the chat is idle and its latest run failed (`chatsWithFailedRun`). */
-  readonly failed: boolean;
+  /**
+   * The status word that leads line two: waiting on the person (the Bureau's `awaiting-input`
+   * activity), running, failed (idle with a failed latest run), ended by the host, or done.
+   */
+  readonly status: ChatStatusWord;
 };
 
-export type SessionGroup = {
-  readonly key: SessionGroupKey;
-  readonly label: string;
-  readonly rows: readonly SessionRow[];
-};
+/** The status word of a chat: waiting on you, running, failed, ended by the host, or done. */
+export function chatStatusWord(
+  context: Pick<ChatContext, 'id' | 'activity' | 'endReason'>,
+  failedChats: ReadonlySet<string>,
+): ChatStatusWord {
+  if (context.activity === 'awaiting-input') return 'Waiting on you';
+  if (context.activity === 'running') return 'Running';
+  if (failedChats.has(context.id)) return 'Failed';
+  if (context.endReason === 'host-stopped') return 'Ended';
+  return 'Done';
+}
 
 /**
  * What a pending review asks the person, in the words the chat itself uses: an approval is the
@@ -78,21 +88,31 @@ export function waitingChatIds(reviews: readonly BureauReview[]): readonly strin
   return [...ids];
 }
 
+/** Why a chat ended, in words, for line two: the host stopping it is the one reason the Bureau names. */
+function endedBecause(context: Pick<ChatContext, 'endReason'>): string {
+  return context.endReason === 'host-stopped'
+    ? CHAT_COPY.list.endedBecause['host-stopped']
+    : CHAT_COPY.list.endedBecause.other;
+}
+
 /**
  * A session as a row. The snippet is the latest message the Bureau records; while the chat waits on
  * the person it is the question being asked instead, because the last thing said is then the
- * person's own message, which the title already is. A chat with nothing to show says how many
- * messages it holds.
+ * person's own message, which the title already is, and once the host has ended the chat it is why
+ * it ended. A chat with nothing to show says how many messages it holds.
  */
 export function sessionRow(
   context: ChatContext,
   questions: ReadonlyMap<string, string>,
   failedChats: ReadonlySet<string> = new Set(),
 ): SessionRow {
-  const needsYou = context.activity === 'awaiting-input';
+  const status = chatStatusWord(context, failedChats);
   const preview = context.lastMessagePreview?.trim();
   const snippet =
-    (needsYou ? questions.get(context.id) : undefined) ??
+    (status === 'Waiting on you' ? questions.get(context.id) : undefined) ??
+    // A chat that ended says why, which is the thing to read: its last message is only the
+    // person's own.
+    (status === 'Ended' ? endedBecause(context) : undefined) ??
     (preview === undefined || preview === '' ? undefined : preview) ??
     CHAT_COPY.messageCount(context.messageCount);
   const updated = Date.parse(context.updatedAt);
@@ -102,81 +122,90 @@ export function sessionRow(
     snippet,
     agentName: context.agentName,
     updatedAt: Number.isNaN(updated) ? null : updated,
-    needsYou,
-    failed: context.activity === 'idle' && failedChats.has(context.id),
+    status,
   };
 }
 
-function startOfDay(timestamp: number): number {
-  const day = new Date(timestamp);
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
-}
-
 /**
- * Which day-group a change at `updatedAt` belongs to, by the reader's calendar day: "Today" is
- * since local midnight and "Yesterday" the day before. A change in the future (a clock that is ahead) is
- * today's, and one with no readable time is Earlier, where nothing claims it is recent.
+ * The chats as the list orders them, newest first: by when they last changed, the ones with no
+ * readable time last, and rows with the same time in the order the Bureau listed them.
  */
-export function dayGroupOf(
-  updatedAt: number | null,
-  now: number,
-): Exclude<SessionGroupKey, 'needs-you'> {
-  if (updatedAt === null) return 'earlier';
-  const today = startOfDay(now);
-  if (updatedAt >= today) return 'today';
-  const yesterday = startOfDay(today - 1);
-  return updatedAt >= yesterday ? 'yesterday' : 'earlier';
-}
-
-/**
- * The rows cut into the groups of the list: "Needs you" first, whatever its age, then Today,
- * Yesterday and Earlier. Each group is newest first, and a group with no row is left out. Rows with
- * the same time keep the order the Bureau listed them in.
- */
-export function groupSessions(rows: readonly SessionRow[], now: number): readonly SessionGroup[] {
-  const buckets: Record<SessionGroupKey, SessionRow[]> = {
-    'needs-you': [],
-    today: [],
-    yesterday: [],
-    earlier: [],
-  };
-  for (const row of rows) {
-    buckets[row.needsYou ? 'needs-you' : dayGroupOf(row.updatedAt, now)].push(row);
-  }
-  const order: readonly SessionGroupKey[] = ['needs-you', 'today', 'yesterday', 'earlier'];
-  return order
-    .map((key) => ({
-      key,
-      label: CHAT_COPY.groups[key],
-      rows: buckets[key].toSorted((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0)),
-    }))
-    .filter((group) => group.rows.length > 0);
-}
-
-/** A row of the chat list: a session's row, and the group it is listed in. */
-export type ChatListRow = SessionRow & {
-  /** The group the row falls in; `draft` is a new chat that no run has started yet. */
-  readonly group: SessionGroupKey | 'draft';
-};
-
-/**
- * The chat list as one list for ListDetail, which has no headings: the groups of
- * {@link groupSessions} flattened in order, so the chats that wait on the person come first,
- * whatever their age, then Today, Yesterday and Earlier, each newest first. A `draft` (the new chat
- * the person is writing, which the Bureau does not list yet) leads the list, and is left out once
- * `rows` holds the chat itself, so a key is never listed twice.
- */
-export function chatListRows(
-  rows: readonly SessionRow[],
-  now: number,
-  draft?: Pick<SessionRow, 'id' | 'title' | 'snippet' | 'agentName'>,
-): ChatListRow[] {
-  const listed = groupSessions(rows, now).flatMap((group) =>
-    group.rows.map((row): ChatListRow => ({ ...row, group: group.key })),
+export function chatListRows(rows: readonly SessionRow[]): SessionRow[] {
+  return rows.toSorted(
+    (left, right) => (right.updatedAt ?? -Infinity) - (left.updatedAt ?? -Infinity),
   );
-  // Once any read of the chat has landed (the list, or the chat's own page), it is that row.
-  if (draft === undefined || rows.some((row) => row.id === draft.id)) return listed;
-  return [{ ...draft, updatedAt: null, needsYou: false, failed: false, group: 'draft' }, ...listed];
+}
+
+/** Which segment of the list's status control a row falls in; `all` holds every row. */
+export type ChatSegment = 'all' | 'waiting' | 'done';
+
+/** The segments in the order the control draws them. */
+export const CHAT_SEGMENTS: readonly ChatSegment[] = ['all', 'waiting', 'done'];
+
+/**
+ * Whether a row is in a segment: `waiting` holds the chats that wait on the person and `done` the
+ * ones that finished. A chat that ended, failed or is running is only in `all`.
+ */
+export function inSegment(row: Pick<SessionRow, 'status'>, segment: ChatSegment): boolean {
+  if (segment === 'waiting') return row.status === 'Waiting on you';
+  if (segment === 'done') return row.status === 'Done';
+  return true;
+}
+
+/** How many of `rows` each segment holds. */
+export function segmentCounts(
+  rows: readonly Pick<SessionRow, 'status'>[],
+): Readonly<Record<ChatSegment, number>> {
+  return {
+    all: rows.length,
+    waiting: rows.filter((row) => inSegment(row, 'waiting')).length,
+    done: rows.filter((row) => inSegment(row, 'done')).length,
+  };
+}
+
+/**
+ * The rows a search leaves: those whose title or latest message holds the words typed, whatever
+ * their case, or whose agent is named in them. A search of nothing but space leaves every row.
+ */
+export function matchingRows<Row extends Pick<SessionRow, 'title' | 'snippet'>>(
+  rows: readonly Row[],
+  search: string,
+  agentLabelOf: (row: Row) => string,
+): Row[] {
+  const needle = search.trim().toLocaleLowerCase();
+  if (needle === '') return [...rows];
+  return rows.filter((row) =>
+    [row.title, row.snippet, agentLabelOf(row)].some((text) =>
+      text.toLocaleLowerCase().includes(needle),
+    ),
+  );
+}
+
+/**
+ * The day band a row is listed under, as a `DataList` group. The band names its day by the
+ * viewer's calendar ("Today", "Yesterday · Sunday, Nov 1", "Thursday, Oct 29") and the zone its
+ * times are in at the right ("Central time"). A wide list (a pane dragged out past what its rows
+ * need) names today's date too, as the list pattern does. A chat with no readable time is Earlier,
+ * where nothing claims it is recent.
+ */
+export function chatDayGroup(
+  row: Pick<SessionRow, 'updatedAt'>,
+  now: number,
+  zone: string,
+  wide: boolean,
+): DataListGroup {
+  const detail = zoneLabel(now, zone);
+  if (row.updatedAt === null) return { key: 'earlier', label: CHAT_COPY.list.earlier, detail };
+  const days = calendarDay(now, zone) - calendarDay(row.updatedAt, zone);
+  if (days <= 0) return { key: 'today', label: todayLabel(now, zone, wide), detail };
+  const day = dateLine(row.updatedAt, zone);
+  if (days === 1)
+    return { key: 'yesterday', label: `${CHAT_COPY.list.yesterday} · ${day}`, detail };
+  return { key: `day-${String(calendarDay(row.updatedAt, zone))}`, label: day, detail };
+}
+
+function todayLabel(now: number, zone: string, wide: boolean): string {
+  return wide ? `${CHAT_COPY.list.today} · ${dateLine(now, zone)}` : CHAT_COPY.list.today;
 }
 
 /**

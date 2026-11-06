@@ -2845,13 +2845,8 @@ export const CHAT_COPY = {
     needsProvider: 'Needs a provider',
   },
   sessionsTitle: 'Chats',
-  /** The headings the list of chats is cut under; "Needs you" is the run states' word for waiting on a person. */
-  groups: {
-    'needs-you': 'Needs you',
-    today: 'Today',
-    yesterday: 'Yesterday',
-    earlier: 'Earlier',
-  },
+  /** The list's heading on a phone, where the list is a screen of its own under the page's name. */
+  sessionsTitlePhone: 'Chat',
   /** What the chat says when its live connection to the run could not be restored. */
   disconnected: {
     title: 'Disconnected',
@@ -2862,8 +2857,6 @@ export const CHAT_COPY = {
   newChatWelcome: {
     /** Said before the name of the agent the chat is with. */
     greeting: 'Chat with',
-    /** Said before the agents' identifiers under the welcome of a fresh Interborough. */
-    agentsLine: 'Agents:',
     promptsLabel: 'Example prompts',
     otherAgents: 'Or start with another agent',
     chooseAgent: 'Choose an agent to start with',
@@ -2872,10 +2865,48 @@ export const CHAT_COPY = {
   list: {
     /** The accessible name of the pane that holds the open chat. */
     detailLabel: 'Open chat',
+    /** The day bands: today and yesterday by their names, any other day by its date. */
+    today: 'Today',
+    yesterday: 'Yesterday',
+    earlier: 'Earlier',
+    /** The field that narrows the list by what a chat says. */
+    searchLabel: 'Search chats',
+    searchPlaceholder: 'Search chats',
+    /** The status segments over the list; the count is part of each one's accessible name. */
+    segmentsLabel: 'Status',
+    segments: { all: 'All', waiting: 'Waiting on you', done: 'Done' },
+    /** First use: no chat has been started, and the one primary New chat is here. */
     emptyTitle: 'No chats yet',
-    emptyDescription: 'A chat you start is listed here.',
+    emptyDescription: 'Start one with an agent.',
+    /** A search that matched nothing says what was searched. */
+    noMatchTitle: (search: string): string => `No chats match “${search}”`,
+    noMatchDescription: 'Check the spelling or try another word.',
+    clearSearch: 'Clear search',
+    /** A status segment with no chat in it, and the way back to every chat. */
+    segmentEmpty: {
+      waiting: {
+        title: 'Nothing is waiting on you',
+        description: 'Chats that ask for an approval or an answer are listed here.',
+      },
+      done: {
+        title: 'No finished chats yet',
+        description: 'A chat is done once its latest reply is in.',
+      },
+    },
+    showAll: 'Show all chats',
+    /** What line two says of a chat that ended, in place of its last message: why it ended. */
+    endedBecause: {
+      'host-stopped': 'The server restarted before I finished.',
+      other: 'This chat ended before the agent finished.',
+    },
+    /** The list could not be read: the error stays in the list and the page stays live. */
+    failedTitle: 'Couldn’t load chats',
+    failedDescription: 'Interborough didn’t send them back.',
     pickTitle: 'Pick a chat',
     pickDescription: 'Choose a chat from the list, or start a new one.',
+    /** What the open pane says when there is no chat to pick, so the list's one primary stays alone. */
+    noChatTitle: 'No chat open',
+    noChatDescription: 'A chat you start opens here.',
   },
   /** What a chat with no message says in place of its transcript. */
   emptyTranscript: {
@@ -4662,12 +4693,6 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     loading: {
       title: 'Loading chat',
       description: 'Checking that the server is ready to take messages.',
-    },
-    empty: {
-      title: 'Start a chat',
-      description:
-        'Pick an agent and say what you need. Your chats are kept here, and anything an agent needs from you shows in Reviews.',
-      action: { label: 'New chat', href: '/chats/new' },
     },
     error: {
       title: 'Chat is unavailable',

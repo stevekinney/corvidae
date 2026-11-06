@@ -60,6 +60,16 @@ export function zoneName(at: number, zone: string = viewerTimeZone()): string {
   return short === '' || short.startsWith('GMT') ? sentence : `${sentence} (${short})`;
 }
 
+/**
+ * The zone's generic name alone, as a day band names the zone its times are in: "Central time". A
+ * zone with no generic name of its own is said by its short form.
+ */
+export function zoneLabel(at: number, zone: string = viewerTimeZone()): string {
+  const long = partOf(at, zone, { timeZoneName: 'longGeneric' }, 'timeZoneName');
+  if (long === '' || long.startsWith('GMT')) return zoneName(at, zone);
+  return long.replace(/ Time$/, ' time');
+}
+
 /** The sentence that says which zone every time on a page is in: "Times show in Central time (CST)". */
 export function timesShowIn(at: number, zone: string = viewerTimeZone()): string {
   return `Times show in ${zoneName(at, zone)}`;
@@ -85,6 +95,14 @@ export function waitedFor(at: number, now: number, zone: string = viewerTimeZone
   if (elapsed < 60_000) return 'just now';
   if (elapsed < 86_400_000) return `${formatCompactAge(at, { now, timeZone: zone })} ago`;
   return formatRelativeTime(at, { now, timeZone: zone });
+}
+
+/**
+ * The calendar day of an instant in a zone, as a number that two instants on one day share and that
+ * grows by one each day, so the difference of two is the days between them.
+ */
+export function calendarDay(at: number, zone: string = viewerTimeZone()): number {
+  return dayNumber(at, zone);
 }
 
 /** The calendar day of an instant in a zone, as a number that two instants on one day share. */

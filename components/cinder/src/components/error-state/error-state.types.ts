@@ -9,6 +9,12 @@ import type { HTMLAttributes } from 'svelte/elements';
 export type ErrorStateVariant = 'default' | 'flat' | 'row';
 
 /**
+ * Scale of the centred state: `'default'` fills a page region, `'compact'` fits a list pane or a
+ * panel (a smaller neutral disc, quieter type, and a secondary retry button).
+ */
+export type ErrorStateSize = 'default' | 'compact';
+
+/**
  * What kind of problem the state reports. `'danger'` is a failure (a red disc with a warning glyph,
  * announced as an alert); `'neutral'` is a state where nothing failed, such as a thing that no longer
  * exists (a neutral disc with a search glyph, not announced).
@@ -81,6 +87,15 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Scale of the centred layout. `'compact'` tightens the padding, shrinks the disc to 40px and
+   * tints it neutral, sets the title in the base size, and makes the retry a small secondary
+   * button with no refresh glyph, so the state fits a list pane that failed to load without
+   * claiming the page's one primary action. It has no effect on the `'flat'` and `'row'`
+   * variants.
+   * @default 'default'
+   */
+  size?: ErrorStateSize;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 };
@@ -137,6 +152,15 @@ export interface ErrorStateSchemaProps {
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Scale of the centred layout. `'compact'` tightens the padding, shrinks the disc to 40px and
+   * tints it neutral, sets the title in the base size, and makes the retry a small secondary
+   * button with no refresh glyph, so the state fits a list pane that failed to load without
+   * claiming the page's one primary action. It has no effect on the `'flat'` and `'row'`
+   * variants.
+   * @default 'default'
+   */
+  size?: ErrorStateSize;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 }

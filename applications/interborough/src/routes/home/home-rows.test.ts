@@ -8,9 +8,9 @@ import { describe, expect, test } from 'bun:test';
 
 import type { AttentionItem } from '../../lib/bureau-attention.ts';
 import { contextFixture, taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { chatStatusWord } from '../chat/session-groups.ts';
 import {
   attentionRows,
-  chatStatusWord,
   checklistSteps,
   missedRunCount,
   needsYouRows,

@@ -63,6 +63,33 @@
     color: var(--cinder-text-muted);
   }
 
+  /* Compact fits a list pane: less padding, a smaller neutral disc, and quieter type. */
+  .cinder-error-state[data-cinder-size='compact'] {
+    padding-block: var(--cinder-space-6);
+    padding-inline: var(--cinder-space-4);
+  }
+
+  .cinder-error-state[data-cinder-size='compact'] .cinder-error-state-icon {
+    inline-size: var(--cinder-space-10);
+    block-size: var(--cinder-space-10);
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-error-state[data-cinder-size='compact'] .cinder-error-state-icon > svg {
+    inline-size: var(--cinder-space-5);
+    block-size: var(--cinder-space-5);
+  }
+
+  .cinder-error-state[data-cinder-size='compact'] .cinder-error-state-title {
+    margin-block-start: var(--cinder-space-2);
+    font-size: var(--cinder-text-base);
+  }
+
+  .cinder-error-state[data-cinder-size='compact'] .cinder-error-state-action {
+    margin-block-start: var(--cinder-space-2);
+  }
+
   .cinder-error-state-title {
     margin: 0;
     margin-block-start: var(--cinder-space-3-5);

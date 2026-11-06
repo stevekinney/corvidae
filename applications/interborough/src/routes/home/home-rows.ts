@@ -23,7 +23,7 @@ import { clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import { formatBytes, formatDuration } from '../../lib/format/index.ts';
 import { hookPath } from '../../lib/identifier-paths.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
-import { sessionRow } from '../chat/session-groups.ts';
+import { chatStatusWord, sessionRow, type ChatStatusWord } from '../chat/session-groups.ts';
 import { reviewTitle, waitingItems } from '../reviews/review-items.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 import { providerDisplayName } from '../settings/models/format-model.ts';
@@ -305,23 +305,11 @@ export interface RecentChatRow {
   /** The latest message the chat holds, which is line two. */
   readonly latest: string;
   /** The status word, which leads the row: the word and its tone come from Cinder's table. */
-  readonly status: 'Waiting on you' | 'Running' | 'Failed' | 'Ended' | 'Done';
+  readonly status: ChatStatusWord;
   /** When it last changed, as the row says it ("10:42 AM", "Yesterday, 4:12 PM"). */
   readonly time: string;
   /** The same instant, for the element's `datetime`. */
   readonly timestamp: number | null;
-}
-
-/** The status word of a chat: waiting on you, running, failed, ended by the host, or done. */
-export function chatStatusWord(
-  context: Pick<ChatContext, 'id' | 'activity' | 'endReason'>,
-  failedChats: ReadonlySet<string>,
-): RecentChatRow['status'] {
-  if (context.activity === 'awaiting-input') return 'Waiting on you';
-  if (context.activity === 'running') return 'Running';
-  if (failedChats.has(context.id)) return 'Failed';
-  if (context.endReason === 'host-stopped') return 'Ended';
-  return 'Done';
 }
 
 /**

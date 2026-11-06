@@ -388,3 +388,46 @@ describe('ErrorState row variant', () => {
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 });
+
+describe('compact size', () => {
+  test('a compact state keeps the disc and the alert, and its retry is a small secondary button with no glyph', async () => {
+    const onRetry = mock(() => undefined);
+    const { container, getByRole } = render(ErrorState, {
+      props: {
+        size: 'compact',
+        title: 'Couldn’t load chats',
+        description: 'Interborough didn’t send them back.',
+        onRetry,
+      },
+    });
+    const root = container.querySelector('.cinder-error-state');
+    expect(root?.getAttribute('data-cinder-size')).toBe('compact');
+    expect(container.querySelector('.cinder-error-state-icon')).not.toBeNull();
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    const button = getByRole('button', { name: 'Try again' });
+    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button.querySelector('svg')).toBeNull();
+    await fireEvent.click(button);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  test('the default size keeps the primary retry, and compact is ignored by the flat and row layouts', () => {
+    const plain = render(ErrorState, {
+      props: { title: 'Failed.', description: 'Nope.', onRetry: () => undefined },
+    });
+    expect(
+      plain.container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-size'),
+    ).toBe(false);
+    expect(
+      plain.getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant'),
+    ).toBe('primary');
+    const flat = render(ErrorState, {
+      props: { variant: 'flat', size: 'compact', title: 'Failed.', description: 'Nope.' },
+    });
+    expect(
+      flat.container
+        .querySelector('.cinder-error-state[data-cinder-variant="flat"]')
+        ?.hasAttribute('data-cinder-size'),
+    ).toBe(false);
+  });
+});

@@ -50,7 +50,6 @@
   import ForbiddenState from './forbidden-state.svelte';
   import NotFoundState from './not-found-state.svelte';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
-  import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
   import { VIEWS, type ViewName } from './views.ts';
 
@@ -303,9 +302,6 @@
               onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</a
             >
           {/if}
-        {/if}
-        {#if initial.view === 'chat'}
-          <WelcomeAgents />
         {/if}
       {/snippet}
     </EmptyState>

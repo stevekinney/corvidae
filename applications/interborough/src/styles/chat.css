@@ -227,7 +227,7 @@
   color: var(--cinder-status-danger-text);
 }
 
-/* ── Chat list: the chats beside the open one, "Needs you" first ───────────────── */
+/* ── Chat list: the chats beside the open one, newest first under their days ─────── */
 
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-chats {
@@ -240,9 +240,17 @@
   overflow: hidden;
 }
 
+/* The pane's header: the title and "+", then the search field and the status segments under
+ * them, each on a line of its own so the action never reads as the field's submit button. */
+.ib-chats__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-inline-size: 0;
+}
+
 .ib-chats__title-row {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--cinder-space-2) var(--cinder-space-3);
   align-items: center;
   justify-content: space-between;
@@ -254,13 +262,9 @@
   font-weight: 600;
 }
 
-.ib-chat-row__title,
-.ib-chat-row__snippet {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* The agent that line two names in a pane wide enough for it keeps the muted line's colour. */
+.ib-chat-row__agent {
+  color: var(--cinder-text-muted);
 }
 
 /* An agent keeps its colour: eight of Cinder's categorical series, tinted so the initials keep

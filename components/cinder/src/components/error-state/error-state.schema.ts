@@ -50,6 +50,12 @@ const schema = {
         "Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title,\nthe description, the progress line, then the actions, centred in the region it fills.\n`'flat'` renders the same text as a start-aligned block with no disc and no padding of its\nown, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,\nthe title and description as one sentence, and a secondary retry button (no refresh glyph\nunless `retryIcon` is given) on one line, for the failure of one card among others that are\nlive; the retry drops under the words on a phone.",
       default: 'default',
     },
+    size: {
+      enum: ['default', 'compact'],
+      description:
+        "Scale of the centred layout. `'compact'` tightens the padding, shrinks the disc to 40px and\ntints it neutral, sets the title in the base size, and makes the retry a small secondary\nbutton with no refresh glyph, so the state fits a list pane that failed to load without\nclaiming the page's one primary action. It has no effect on the `'flat'` and `'row'`\nvariants.",
+      default: 'default',
+    },
     class: {
       type: 'string',
       description: 'Additional class merged onto the `.cinder-error-state` root element.',

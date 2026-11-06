@@ -37,6 +37,7 @@
     icon,
     headingLevel = 2,
     variant = 'default',
+    size = 'default',
     class: className,
     ...rest
   }: ErrorStateProps = $props();
@@ -57,12 +58,14 @@
   const safeTone = $derived(tone === 'neutral' ? 'neutral' : 'danger');
   const flat = $derived(variant === 'flat');
   const row = $derived(variant === 'row');
+  const compact = $derived(size === 'compact' && !flat && !row);
 </script>
 
 <div
   {...rest}
   class={classNames('cinder-error-state', className)}
   data-cinder-variant={flat ? 'flat' : row ? 'row' : undefined}
+  data-cinder-size={compact ? 'compact' : undefined}
   data-cinder-tone={safeTone}
 >
   <!-- A failure is announced as an alert; a neutral state (nothing failed) is a plain group. -->
@@ -134,15 +137,30 @@
       {#if onRetry || secondaryAction}
         <div class="cinder-error-state-action">
           {#if onRetry}
-            <Button variant="primary" label={retryLabel} onclick={() => onRetry()}>
-              {#snippet leadingIcon()}
-                {#if retryIcon}
-                  {@render retryIcon()}
-                {:else}
-                  <RefreshCw />
-                {/if}
-              {/snippet}
-            </Button>
+            {#if compact}
+              {#if retryIcon}
+                <Button variant="secondary" size="sm" label={retryLabel} onclick={() => onRetry()}>
+                  {#snippet leadingIcon()}{@render retryIcon()}{/snippet}
+                </Button>
+              {:else}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  label={retryLabel}
+                  onclick={() => onRetry()}
+                />
+              {/if}
+            {:else}
+              <Button variant="primary" label={retryLabel} onclick={() => onRetry()}>
+                {#snippet leadingIcon()}
+                  {#if retryIcon}
+                    {@render retryIcon()}
+                  {:else}
+                    <RefreshCw />
+                  {/if}
+                {/snippet}
+              </Button>
+            {/if}
           {/if}
           {#if secondaryAction}
             {@render secondaryAction()}

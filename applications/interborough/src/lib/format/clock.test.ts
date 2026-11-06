@@ -5,12 +5,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  calendarDay,
   clockTime,
   dateLine,
   rowTime,
   timesShowIn,
   viewerTimeZone,
   waitedFor,
+  zoneLabel,
   zoneName,
 } from './clock.ts';
 
@@ -85,5 +87,22 @@ describe('waitedFor', () => {
 describe('viewerTimeZone', () => {
   test('names a zone the formatters accept', () => {
     expect(() => dateLine(NOW, viewerTimeZone())).not.toThrow();
+  });
+});
+
+describe('zoneLabel and calendarDay', () => {
+  test('zoneLabel names the zone as a day band does, without its short form', () => {
+    expect(zoneLabel(NOW, ZONE)).toBe('Central time');
+    expect(zoneLabel(Date.parse('2026-07-01T12:00:00Z'), ZONE)).toBe('Central time');
+    expect(zoneLabel(NOW, 'UTC')).toBe('UTC');
+  });
+
+  test('calendarDay counts days in the zone, so a difference is the days between two instants', () => {
+    const yesterday = Date.parse('2026-11-01T16:12:00-06:00');
+    const lateEvening = Date.parse('2026-11-03T03:30:00Z');
+    expect(calendarDay(NOW, ZONE) - calendarDay(yesterday, ZONE)).toBe(1);
+    // 9:30 PM on Monday in Chicago is already Tuesday in Tokyo.
+    expect(calendarDay(lateEvening, ZONE)).toBe(calendarDay(NOW, ZONE));
+    expect(calendarDay(lateEvening, 'Asia/Tokyo')).toBe(calendarDay(NOW, ZONE) + 1);
   });
 });

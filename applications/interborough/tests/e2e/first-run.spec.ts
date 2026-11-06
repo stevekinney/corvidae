@@ -1,9 +1,10 @@
 /**
  * First run (COR-1862) against a fresh installation: a host with an empty home, no provider key, no
- * agent file and no chat (`E2E_FIRST_RUN_PORT`, `e2e-server.ts`). Chat's empty state shows the
- * checklist, each step completes from the host's own answer, a provider is connected from the page
- * the checklist links to and a person who came from the agent form returns to it, and a dismissal is
- * kept in this browser.
+ * agent file and no chat (`E2E_FIRST_RUN_PORT`, `e2e-server.ts`). New chat's empty state (no agent
+ * can run) shows the checklist, each step completes from the host's own answer, a provider is
+ * connected from the page the checklist links to and a person who came from the agent form returns
+ * to it, and a dismissal is kept in this browser. The chat list at `/chats` is not the checklist's
+ * place: its first use is the list's own empty state (`chat-list.spec.ts`).
  *
  * Home (COR-2016, rows 01y to 02b, 13c to 13j, 14c to 14j) is the first-run checklist on this host
  * too: three steps under a welcome line with Recent chats empty, then, as the third case connects
@@ -18,13 +19,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import {
-  AGENT_EDITOR_COPY,
-  CHAT_COPY,
-  FIRST_RUN_COPY,
-  MODELS_COPY,
-  VIEW_COPY,
-} from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY, FIRST_RUN_COPY, MODELS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -53,16 +48,19 @@ async function connectAnthropic(page: Page): Promise<void> {
 }
 
 for (const width of [375, 1280] as const) {
-  test(`a fresh installation shows the three steps on Chat, none done, at ${width} pixels`, async ({
+  test(`a fresh installation shows the three steps on New chat, none done, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/chats');
+    await page.goto('/chats/new');
 
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
     await expect(
-      page.getByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
+      page.getByRole('heading', {
+        level: 1,
+        name: VIEW_COPY.chat.emptyByPattern?.['/chats/new']?.title ?? '',
+      }),
     ).toBeVisible();
     await expect(checklist(page)).toBeVisible();
     await expect(page.locator('[data-step]')).toHaveCount(3);
@@ -87,7 +85,7 @@ for (const width of [375, 1280] as const) {
       clientWidth: element.clientWidth,
     }));
     expect(outlet.scrollWidth).toBeLessThanOrEqual(outlet.clientWidth);
-    await checkA11y(`Chat on a fresh installation at ${width}px`);
+    await checkA11y(`New chat on a fresh installation at ${width}px`);
   });
 }
 
@@ -197,7 +195,7 @@ test('Home’s step 3 is live while steps 1 and 2 are open (02a, 13g, 14c)', asy
 });
 
 test('dismissing the steps keeps the choice in this browser, across a reload', async ({ page }) => {
-  await page.goto('/chats');
+  await page.goto('/chats/new');
   await expect(checklist(page)).toBeVisible();
 
   await page.getByRole('button', { name: FIRST_RUN_COPY.dismissLabel }).click();
@@ -217,8 +215,8 @@ test('dismissing the steps keeps the choice in this browser, across a reload', a
   await page.reload();
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
   await expect(checklist(page)).toHaveCount(0);
-  // The empty state is still there, with its own way to start.
-  await expect(page.getByRole('link', { name: CHAT_COPY.newChat }).first()).toBeVisible();
+  // The empty state is still there, with its own way forward.
+  await expect(page.getByRole('link', { name: 'Open plugins' })).toBeVisible();
 });
 
 test('each step completes from its own signal, from connecting a provider to saying hello', async ({
@@ -253,8 +251,8 @@ test('each step completes from its own signal, from connecting a provider to say
   ).toBeVisible();
   await expect(page.getByTestId('home-counts')).toHaveCount(0);
 
-  // The provider step is done and the others are not.
-  await page.goto('/chats');
+  // The provider step is done and the others are not, where the empty New chat page shows them.
+  await page.goto('/chats/new');
   await expect(step(page, 'provider')).toHaveAttribute('data-done', 'true');
   await expect(step(page, 'agent')).toHaveAttribute('data-done', 'false');
   await expect(step(page, 'chat')).toHaveAttribute('data-done', 'false');
@@ -269,10 +267,6 @@ test('each step completes from its own signal, from connecting a provider to say
   await page.getByRole('textbox', { name: /^Instructions/ }).fill('Answer in one short sentence.');
   await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_IDENTIFIER}$`));
-  await page.goto('/chats');
-  await expect(step(page, 'provider')).toHaveAttribute('data-done', 'true');
-  await expect(step(page, 'agent')).toHaveAttribute('data-done', 'true');
-  await expect(step(page, 'chat')).toHaveAttribute('data-done', 'false');
 
   // Home says one step left, Start a chat is its primary button, and the composer is there (14j).
   await page.goto('/');
@@ -293,13 +287,8 @@ test('each step completes from its own signal, from connecting a provider to say
     source: 'first-run.spec.ts',
   });
 
-  // Back on Chat, the old checklist's chat step is the one left.
-  await page.goto('/chats');
-
   // Saying hello completes the third, and the steps are gone.
-  await step(page, 'chat')
-    .getByRole('link', { name: FIRST_RUN_COPY.steps.chat.action.label })
-    .click();
+  await homeSteps(page).nth(2).getByRole('link', { name: 'Start a chat' }).click();
   const composer = page.getByRole('textbox');
   await composer.fill('Hello');
   await composer.press('Enter');

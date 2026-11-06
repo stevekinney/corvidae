@@ -103,9 +103,8 @@ export function holdChangingActions(root: HTMLElement, reason: string): () => vo
     for (const record of records) {
       // A control marked after it was drawn, or one that lost what was added to it.
       if (record.type === 'attributes') {
-        if (isChanging(record.target instanceof Element ? record.target : null)) {
-          hold(record.target);
-        }
+        const marked = record.target instanceof Element ? record.target : null;
+        if (isChanging(marked)) hold(marked);
         continue;
       }
       for (const added of record.addedNodes) {

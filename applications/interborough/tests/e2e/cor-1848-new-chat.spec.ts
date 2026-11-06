@@ -45,13 +45,11 @@ test.describe('a new chat', () => {
     await expect(page.getByTestId('new-chat-welcome').getByRole('heading')).toHaveCount(0);
   });
 
-  test('lists itself as the first row, and becomes the chat without a reload', async ({ page }) => {
+  test('lists no row of its own, and becomes the chat without a reload', async ({ page }) => {
     await page.goto('/chats/new');
     const list = page.getByRole('region', { name: 'Chats' });
-    const draft = list.locator('[data-group="draft"]');
-    await expect(draft).toHaveCount(1);
-    await expect(draft).toContainText('New chat');
-    await expect(draft).toHaveAttribute('aria-current', 'true');
+    // The list is the chats there are: a chat nothing has started yet is the pane, not a row.
+    await expect(list.locator('[aria-current="true"]')).toHaveCount(0);
     await page.evaluate(() => {
       Reflect.set(window, '__stillHere', true);
     });
@@ -63,7 +61,6 @@ test.describe('a new chat', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Hello from the new chat');
     expect(await page.evaluate(() => Reflect.get(window, '__stillHere'))).toBe(true);
     // The Bureau lists the chat now, and the list marks it as the open one.
-    await expect(list.locator('[data-group="draft"]')).toHaveCount(0);
     await expect(list.locator('[aria-current="true"]')).toContainText('Hello from the new chat');
   });
 
@@ -126,7 +123,7 @@ test.describe('a new chat', () => {
 });
 
 test.describe('the chat list beside the open chat', () => {
-  test('puts a chat that needs you first and keeps the open chat beside it', async ({
+  test('lists a chat that needs you with Waiting on you and keeps the open chat beside it', async ({
     page,
     request,
   }) => {
@@ -139,15 +136,17 @@ test.describe('the chat list beside the open chat', () => {
     await page.goto(`/chats/${finished}`);
 
     const list = page.getByRole('region', { name: 'Chats' });
-    await expect(list.locator('[data-chat]').first()).toHaveAttribute('data-group', 'needs-you');
-    await expect(list.locator(`[data-chat="${waiting}"]`)).toContainText('Needs you');
+    await expect(list.locator(`[data-chat="${waiting}"]`)).toContainText('Waiting on you');
     // Both panes are on screen: the list, and the conversation of the chat named by the address.
-    await expect(list.locator(`[data-chat="${finished}"]`)).toHaveAttribute('aria-current', 'true');
+    await expect(list.locator(`[data-chat="${finished}"] a`)).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
     await expect(page.getByRole('region', { name: 'Open chat' })).toContainText(
       'A chat that finished',
     );
 
-    await list.locator(`[data-chat="${waiting}"]`).click();
+    await list.locator(`[data-chat="${waiting}"] a`).click();
 
     await expect(page).toHaveURL(new RegExp(`/chats/${waiting}$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(
