@@ -132,6 +132,12 @@ describe('engine runConcurrency', () => {
   });
 
   it('refuses a cap that is not a positive safe integer, a counts that is not a function, and worker mode', () => {
+    expect(() => new Engine({ runConcurrency: 4 as unknown as { max: number } })).toThrow(
+      'options.runConcurrency must be an object when provided',
+    );
+    expect(() => new Engine({ runConcurrency: null as unknown as { max: number } })).toThrow(
+      'options.runConcurrency must be an object when provided',
+    );
     expect(() => new Engine({ runConcurrency: { max: 0 } })).toThrow(
       'options.runConcurrency.max must be a positive safe integer',
     );
