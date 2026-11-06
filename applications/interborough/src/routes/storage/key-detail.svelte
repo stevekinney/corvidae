@@ -148,6 +148,7 @@
       queryKey: storageQueryKeys.watch(entry.key),
       queryFn: ({ signal }) => storageEntry(client, entry.key, signal),
       enabled: editing,
+      // poll-reason: time-derived
       refetchInterval: watchInterval,
       refetchOnWindowFocus: watchInterval !== false,
       retry: false,
@@ -441,6 +442,7 @@
           {#snippet actions()}
             <Button variant="secondary" onclick={discardEdit}>{copy.rewritten.discard}</Button>
             <Button
+              data-changes
               variant="secondary"
               loading={saveMutation.isPending}
               onclick={() => (confirmSaveOver = true)}>{copy.rewritten.saveOver}</Button
