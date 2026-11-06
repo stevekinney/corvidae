@@ -215,7 +215,9 @@ export function probeFor(
       };
     case 'agents':
       return async (_client, queryClient) => {
-        const agents = await queryClient.fetchQuery(agentsListQuery());
+        // A completed route prefetch may be stale after another host changes membership. Keep
+        // concurrent probe/page reads deduplicated, but make this existence observation current.
+        const agents = await queryClient.fetchQuery({ ...agentsListQuery(), staleTime: 0 });
         const agent = parameters['agent'];
         if (agent === undefined) return { empty: agents.length === 0 };
         if (!agents.some((entry) => entry.name === agent)) throw notFound('agent');

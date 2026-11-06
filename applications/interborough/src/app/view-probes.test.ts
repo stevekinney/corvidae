@@ -83,6 +83,39 @@ describe('the agents probe', () => {
     expect(calls).toBe(1);
   });
 
+  test('rechecks existence after a completed prefetch so a deleted agent becomes not found', async () => {
+    let calls = 0;
+    stub = installBureauStub({
+      'bureau.agents.list': () => {
+        calls += 1;
+        return calls === 1
+          ? {
+              agents: [
+                {
+                  name: 'alpha',
+                  displayName: 'Alpha',
+                  description: null,
+                  definitionRevision: 1,
+                  kind: 'code',
+                  a2a: false,
+                  media: null,
+                },
+              ],
+            }
+          : { agents: [] };
+      },
+    });
+    const queryClient = new QueryClient();
+    await queryClient.fetchQuery(agentsListQuery());
+    const probe = probeFor('agents', { agent: 'alpha' });
+    if (probe === undefined) throw new Error('Expected an agent probe.');
+
+    expect(
+      await rejectionOf(probe(new HttpClient({ baseUrl: 'http://localhost/api' }), queryClient)),
+    ).toMatchObject({ status: 404 });
+    expect(calls).toBe(2);
+  });
+
   test('keeps forbidden and missing-agent faults at the probe boundary', async () => {
     stub = installBureauStub({
       'bureau.agents.list': () => {
