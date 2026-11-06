@@ -91,6 +91,28 @@ describe('buildApiOperations', () => {
     ]);
   });
 
+  test('keys every row apart, even where the document gives two operations one operationId', () => {
+    const repeated = buildApiOperations({
+      paths: {
+        '/api/workflows/{id}/query/{name}': {
+          get: {
+            operationId: 'weft.workflows.query',
+            'x-weft-access': { kind: 'authenticated' },
+            responses: { '200': {} },
+          },
+          post: {
+            operationId: 'weft.workflows.query',
+            'x-weft-access': { kind: 'authenticated' },
+            responses: { '200': {} },
+          },
+        },
+      },
+    });
+    const identifiers = repeated.map((operation) => operation.id);
+    expect(identifiers).toHaveLength(2);
+    expect(new Set(identifiers).size).toBe(2);
+  });
+
   test('says each operation’s summary, group and scope', () => {
     const start = operations.find((operation) => operation.id === 'weft.workflows.start');
     expect(start).toMatchObject({

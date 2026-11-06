@@ -37,14 +37,19 @@ async function open(page: Page) {
   await expect(settingRow(page, 'a2a.agents').locator('[data-agent]').first()).toBeVisible();
 }
 
-/** The sample world's agents, in the order the Agents page lists them. */
+/**
+ * The sample world's eight agents, in the order the board lists them: the six built-ins, then the
+ * two the disabled Demo plugin holds back, which a switch is still drawn for.
+ */
 const AGENTS = [
   ['Assistant', true],
-  ['Echo', false],
   ['Tool runner', true],
   ['Request human input', false],
+  ['Echo', false],
   ['Model switcher', false],
   ['Workflow author', false],
+  ['Release helper', false],
+  ['Changelog writer', false],
 ] as const;
 
 test.describe('Settings › A2A', () => {
@@ -97,7 +102,7 @@ test.describe('Settings › A2A', () => {
       if (on) await expect(entry).toBeChecked();
       else await expect(entry).not.toBeChecked();
     }
-    await expect(agents.locator('[data-agent]')).toContainText(AGENTS.map(([name]) => name));
+    await expect(agents.locator('[data-agent]')).toHaveText(AGENTS.map(([name]) => name));
 
     const push = settingRow(page, 'a2a.push.enabled');
     await expect(push).toContainText('Push notifications');

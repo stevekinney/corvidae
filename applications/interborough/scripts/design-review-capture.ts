@@ -65,6 +65,10 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/settings-general.spec.ts',
   'tests/e2e/settings-allowed-models.spec.ts',
   'tests/e2e/settings-models.spec.ts',
+  'tests/e2e/settings-a2a.spec.ts',
+  'tests/e2e/settings-plugins.spec.ts',
+  'tests/e2e/settings-data-and-retention.spec.ts',
+  'tests/e2e/api-reference.spec.ts',
   'tests/e2e/first-run.spec.ts',
 ] as const;
 

@@ -14,7 +14,12 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import { HEALTH_OVERVIEW_COPY, NOT_FOUND_ROUTE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import {
+  HEALTH_OVERVIEW_COPY,
+  NOT_FOUND_ROUTE_COPY,
+  SETTINGS_COPY,
+  VIEW_COPY,
+} from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -304,7 +309,20 @@ for (const view of VIEW_NAMES) {
         if (outcome !== 'ready') {
           const copy = VIEW_COPY[view];
           const title = outcome === 'empty' ? copy.empty?.title : copy[outcome]?.title;
-          await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
+          if (outcome === 'loading' && VIEWS[view].pageOwnsLoading === true) {
+            // The page draws its own loading: its heading and navigation are real text, and only the
+            // rows are placeholders (Settings, row 48t). Nothing here is the frame's generic words.
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+              width < 640 ? SETTINGS_COPY.general.narrowTitle : 'General',
+            );
+            await expect(
+              width < 640
+                ? frame.getByRole('combobox', { name: SETTINGS_COPY.sectionSelect })
+                : frame.getByRole('navigation', { name: 'Settings sections' }),
+            ).toBeVisible();
+          } else {
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
+          }
         }
         await captureForDesignReview(page, {
           route: PATHS[view],

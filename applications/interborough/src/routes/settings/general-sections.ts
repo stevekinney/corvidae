@@ -4,11 +4,12 @@
  * deployment owns. The page is drawn from the schema, so a key the Bureau adds lands in a section
  * with no change here; only the order of the first rows of Runs is the page's.
  *
- * "Engine" is not a name the interface shows, so every key that is not a tool sits under Runs. The
+ * "Engine" is not a name the interface shows, so every key that is not one of the two drawn tools
+ * sits under Runs. The
  * retention windows belong to Data and retention, the decision model to Models and the A2A
  * settings to A2A (`inSection`).
  */
-import { groupOf, inSection } from './settings-controls.ts';
+import { inSection } from './settings-controls.ts';
 
 /** The sections of the General page that hold the Bureau's settings, in the order they are drawn. */
 export type GeneralSectionId = 'tools' | 'runs' | 'storage' | 'remote';
@@ -18,6 +19,12 @@ export interface GeneralSection {
   readonly id: GeneralSectionId;
   readonly keys: readonly string[];
 }
+
+/**
+ * The tool settings Tools lists: the two the board draws (47e). Any other `tools.*` key the Bureau
+ * publishes is not drawn, so it follows the designed rows under Runs, like every undrawn key.
+ */
+const TOOLS_DRAWN: readonly string[] = ['tools.humanInput', 'tools.wakeup'];
 
 /** The settings Runs lists first, in this order: the two a person changes to tune how runs execute. */
 const RUNS_FIRST: readonly string[] = [
@@ -37,8 +44,8 @@ export function generalSections(
   const general = keys.filter((key) => inSection(key, 'general'));
   const owned = remote ? general.filter(locked) : [];
   const own = remote ? general.filter((key) => !locked(key)) : general;
-  const tools = own.filter((key) => groupOf(key) === 'tools');
-  const rest = own.filter((key) => groupOf(key) !== 'tools');
+  const tools = TOOLS_DRAWN.filter((key) => own.includes(key));
+  const rest = own.filter((key) => !tools.includes(key));
   const first = RUNS_FIRST.filter((key) => rest.includes(key));
   const runs = [...first, ...rest.filter((key) => !first.includes(key))];
   const sections: GeneralSection[] = [];

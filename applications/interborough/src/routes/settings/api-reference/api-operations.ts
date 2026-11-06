@@ -178,12 +178,41 @@ function methodOrder(method: string): number {
   return METHODS.findIndex((candidate) => candidate === method.toLowerCase());
 }
 
+/** How many operations of the document carry each `operationId`. */
+function operationIdCounts(document: OpenApiDocumentLike): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of Object.values(document.paths ?? {})) {
+    for (const method of METHODS) {
+      const operationId = entry[method]?.operationId;
+      if (operationId !== undefined) counts.set(operationId, (counts.get(operationId) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/**
+ * The identifier of an operation's row, which keys it in the table. It is the `operationId`, which
+ * OpenAPI says is unique but a generated document can repeat (the server gives the GET and the POST
+ * of a workflow query one), so a repeated one also names its method and path, and a row never
+ * shares a key with another.
+ */
+function rowIdentifier(
+  operationId: string | undefined,
+  method: string,
+  path: string,
+  counts: ReadonlyMap<string, number>,
+): string {
+  if (operationId === undefined) return `${method} ${path}`;
+  return (counts.get(operationId) ?? 0) > 1 ? `${operationId} ${method} ${path}` : operationId;
+}
+
 /**
  * Every operation the document serves, by group, then path, then method. A route that carries no
  * access policy (the health check, the documents themselves) is not an operation of the API.
  */
 export function buildApiOperations(document: OpenApiDocumentLike): readonly ApiOperation[] {
   const operations: ApiOperation[] = [];
+  const claimed = operationIdCounts(document);
   for (const [path, entry] of Object.entries(document.paths ?? {})) {
     for (const method of METHODS) {
       const operation = entry[method];
@@ -191,7 +220,7 @@ export function buildApiOperations(document: OpenApiDocumentLike): readonly ApiO
       const requestSchema = jsonSchemaOf(operation.requestBody);
       const success = successOf(operation);
       operations.push({
-        id: operation.operationId ?? `${method} ${path}`,
+        id: rowIdentifier(operation.operationId, method, path, claimed),
         method: method.toUpperCase(),
         path,
         summary: operation.summary ?? operation.operationId ?? '',

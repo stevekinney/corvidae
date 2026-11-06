@@ -378,3 +378,66 @@ describe('Recent calls', () => {
     expect(failed.textContent).toContain(A2A_COPY.recent.loadFailed.title);
   });
 });
+
+describe('the agents a disabled plugin holds back', () => {
+  test('are listed after the agents that can run, each with a switch, and counted', async () => {
+    const running = SAMPLE_AGENTS.slice(0, 6);
+    const held = [
+      ['demo:release-helper', 'release-helper'],
+      ['demo:changelog-writer', 'changelog-writer'],
+    ] as const;
+    const served = servedSettings();
+    stub = installSettingsBureau(served, {
+      'bureau.agents.list': () => ({ agents: running }),
+      'bureau.agents.definitions.list': () => ({
+        agents: [
+          ...running.map((agent) => ({
+            id: agent.name,
+            source: 'code',
+            state: 'ready',
+            unavailable: null,
+            name: agent.displayName,
+            description: null,
+            a2a: false,
+            hash: null,
+            problem: null,
+          })),
+          ...held.map(([id, name]) => ({
+            id,
+            source: 'code',
+            state: 'unavailable',
+            unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+            name,
+            description: null,
+            a2a: false,
+            hash: null,
+            problem: null,
+          })),
+        ],
+        nextOffset: null,
+      }),
+      'bureau.audit.query': () => ({ records: [], nextCursor: null }),
+    });
+    landAt('/settings/a2a');
+    const view = render(RouteOutletHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+
+    const switches = await view.findByTestId('a2a-agent-switches');
+    await waitFor(() => expect(switches.querySelectorAll('li')).toHaveLength(8));
+    expect([...switches.querySelectorAll('li')].map((item) => item.textContent?.trim())).toEqual([
+      'Assistant',
+      'Tool runner',
+      'Request human input',
+      'Echo',
+      'Model switcher',
+      'Workflow author',
+      'Release helper',
+      'Changelog writer',
+    ]);
+    expect(view.container.textContent).toContain('All eight agents are listed');
+  });
+});

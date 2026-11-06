@@ -1,6 +1,6 @@
 /**
  * The built-in agents and tools of the showcase sample world (`tmp/design-review/decisions.md`):
- * Assistant, Echo, Tool runner, Request human input, Model switcher and Workflow author, and the
+ * Assistant, Tool runner, Request human input, Echo, Model switcher and Workflow author, and the
  * Lookup order, Issue refund and Triage refunds tools Tool runner holds. Only the showcase host
  * registers them, as `HostOptions.extraAgents` (`showcase.ts`), so they are built in rather than a
  * plugin's: the Demo plugin keeps its own copies under `demo:`, and the sample world keeps it
@@ -38,9 +38,9 @@ import type { ExtraAgents } from './host.ts';
 /** The identifiers of the six built-in agents, in the order the sample world lists them. */
 export const SHOWCASE_AGENT_IDENTIFIERS = [
   'assistant',
-  'echo',
   'tool-runner',
   'request-human-input',
+  'echo',
   'model-switcher',
   'workflow-author',
 ] as const;
@@ -545,13 +545,6 @@ export function showcaseBuiltInAgents(
         generate: scripts.assistant,
         stopWhen: stopWhen.noToolCalls(),
       }),
-      echo: createAgent({
-        name: 'echo',
-        description: 'Repeats the last message it was sent.',
-        examples: ['Hello echo, say this back'],
-        generate: scripts.echo,
-        stopWhen: stopWhen.noToolCalls(),
-      }),
       'tool-runner': createAgent({
         name: 'tool-runner',
         description: 'Looks an order up, then asks for approval to refund it.',
@@ -568,6 +561,13 @@ export function showcaseBuiltInAgents(
         // The run ends on the request so it parks; once a person answers it continues to the
         // reply, which has no tool call.
         stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],
+      }),
+      echo: createAgent({
+        name: 'echo',
+        description: 'Repeats the last message it was sent.',
+        examples: ['Hello echo, say this back'],
+        generate: scripts.echo,
+        stopWhen: stopWhen.noToolCalls(),
       }),
       'model-switcher': createAgent({
         name: 'model-switcher',

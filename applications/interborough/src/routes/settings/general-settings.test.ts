@@ -126,13 +126,41 @@ describe('the page', () => {
         found.getAttribute('data-setting'),
       );
     };
-    expect(keysIn('Tools')).toEqual(['tools.humanInput', 'tools.wakeup', 'tools.decide']);
+    // Tools holds the two rows the board draws; Decide, which it does not draw, follows them under Runs.
+    expect(keysIn('Tools')).toEqual(['tools.humanInput', 'tools.wakeup']);
     const runs = keysIn('Runs');
     expect(runs[0]).toBe('engine.workflowClaimRenewInterval');
+    expect(runs).toContain('tools.decide');
     expect(runs).toContain('engine.history');
     expect(runs).not.toContain('retention.audit');
     expect(runs).not.toContain('decisions.model');
     expect(runs).not.toContain('a2a.push.enabled');
+  });
+
+  test('names the default agent the way the Agents list does, in words and not as its identifier', async () => {
+    const view = open(servedSettings(), {
+      extra: {
+        'bureau.agents.list': () => ({
+          agents: [
+            {
+              name: 'assistant',
+              displayName: 'assistant',
+              description: null,
+              definitionRevision: 1,
+              kind: 'code',
+              a2a: false,
+            },
+          ],
+        }),
+      },
+    });
+    await view.findByRole('group', READY);
+    const selectIn = () =>
+      row(view.container, 'chat.defaultAgent')?.querySelector<HTMLSelectElement>('select');
+    await waitFor(() => expect(selectIn()).toBeTruthy());
+    expect([...(selectIn()?.options ?? [])].map((option) => option.textContent?.trim())).toEqual([
+      'Assistant',
+    ]);
   });
 
   test('words each row as a label with its raw key beside it, and the Bureau’s description', async () => {

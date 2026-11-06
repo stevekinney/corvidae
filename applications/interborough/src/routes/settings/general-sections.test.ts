@@ -19,7 +19,14 @@ describe('generalSections', () => {
     expect(shown.filter((key) => key.startsWith('decisions.'))).toEqual([]);
     expect(shown.filter((key) => key.startsWith('a2a.'))).toEqual([]);
     expect(shown).not.toContain('modelPolicy');
-    expect(sections[0]?.keys).toEqual(['tools.humanInput', 'tools.wakeup', 'tools.decide']);
+    expect(sections[0]?.keys).toEqual(['tools.humanInput', 'tools.wakeup']);
+  });
+
+  test('lists the undrawn tool setting under Runs, after the designed rows', () => {
+    const runs = generalSections(KEYS, none, false).find((section) => section.id === 'runs');
+    const keys = runs?.keys ?? [];
+    expect(keys).toContain('tools.decide');
+    expect(keys.indexOf('tools.decide')).toBeGreaterThan(keys.indexOf('engine.maxConcurrentRuns'));
   });
 
   test('puts every engine setting under Runs, the claim interval first, then the run limit', () => {

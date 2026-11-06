@@ -80,6 +80,13 @@ export type ViewDefinition = {
    * content for that location instead of the empty state it just came from.
    */
   readonly creating?: (search: URLSearchParams) => boolean;
+  /**
+   * Whether the page draws its own loading state. The frame then shows the page while its probe is
+   * still pending, instead of the generic loading heading, so the page's navigation and heading are
+   * real text and only its rows are placeholders (Settings, design row 48t). A failed or refused
+   * probe still replaces the page with the frame's error or forbidden state.
+   */
+  readonly pageOwnsLoading?: boolean;
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
@@ -121,7 +128,7 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   audit: { scopes: [], canBeEmpty: true },
   // The Bureau's runtime settings. They are deployment-wide, so no owner scopes them, and the view
   // holds no console scope: the Bureau answers the scopes it declares. It always has something to show.
-  settings: { scopes: [], canBeEmpty: false },
+  settings: { scopes: [], canBeEmpty: false, pageOwnsLoading: true },
   // In the sidebar after Schedules. Holds no console scope, as the audit trail holds none: a caller
   // sees the goals it owns. `/goals/new` is where the first goal is made, so it is never empty.
   goals: { scopes: [], canBeEmpty: true },

@@ -32,6 +32,7 @@
   import { HostRestartFlow } from '../../../app/restart/host-restart-flow.svelte.ts';
   import { dismissToast, showToast } from '../../../app/toast-host.svelte';
   import { agentLabel } from '../../../lib/agent-label.ts';
+  import { listAgentDefinitions } from '../../../lib/agent-definitions.ts';
   import { listAgents } from '../../../lib/bureau-client.ts';
   import {
     getSettings,
@@ -163,6 +164,35 @@
     undefined,
   );
 
+  // The agents a plugin that is switched off holds back are not in the list above, because no run
+  // can start on one, but the board lists them with a switch, so the choice is made before the
+  // plugin is enabled (`bureau.agents.definitions.list`). A read that fails only leaves them out.
+  const definitions = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.definitions(),
+      queryFn: ({ signal }) => listAgentDefinitions({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+
+  /** The agents the row lists, in order: those that can run, then those a disabled plugin holds back. */
+  const listed = $derived.by(() => {
+    if (agents.data === undefined) return undefined;
+    const running = agents.data.map((agent) => ({
+      name: agent.name,
+      displayName: agent.displayName,
+      definition: agent.a2a,
+    }));
+    // An agent a disabled plugin holds back is listed unless an agent that can run has its name
+    // (the plugin's copy of Assistant, beside the built-in one).
+    const available = new Set(running.flatMap((agent) => [agent.name, agent.displayName]));
+    const held = (definitions.data ?? [])
+      .filter((entry) => entry.state === 'unavailable' && !available.has(entry.name))
+      .map((entry) => ({ name: entry.id, displayName: entry.name, definition: false }));
+    return [...running, ...held];
+  });
+
   /** What the `a2a.agents` record holds now: the agents the person named, each shared or withdrawn. */
   const overrides = $derived.by((): Readonly<Record<string, boolean>> => {
     const draft = form.draft(AGENTS);
@@ -217,19 +247,19 @@
 
 {#snippet agentSwitches({ id, disabled }: { id: string; disabled: boolean })}
   <div class="ib-a2a__agents" data-testid="a2a-agent-switches">
-    {#if agents.data !== undefined}
-      {#if agents.data.length === 0}
+    {#if listed !== undefined && !definitions.isPending}
+      {#if listed.length === 0}
         <span class="ib-a2a__muted">{copy.agents.none}</span>
       {:else}
         <ul class="ib-a2a__agent-list" aria-label={copy.agents.listLabel}>
-          {#each agents.data as agent (agent.name)}
+          {#each listed as agent (agent.name)}
             <li data-agent={agent.name}>
               <Toggle
                 id={switchId(id, agent.name)}
-                label={agentLabel(agent.name, agents.data)}
+                label={agentLabel(agent.name, listed)}
                 standalone
                 labelPosition="start"
-                checked={shared(agent.name, agent.a2a)}
+                checked={shared(agent.name, agent.definition)}
                 {disabled}
                 onValueChange={(next) => share(agent.name, next)}
               />
@@ -303,7 +333,7 @@
         keyState={stateOf(AGENTS)}
         {autosave}
         reverted={revert.isReverted(AGENTS)}
-        descriptionOverride={copy.agents.description(agents.data?.length ?? 0)}
+        descriptionOverride={copy.agents.description(listed?.length ?? 0)}
         labelOverride={copy.agents.label}
         disabled={off}
         custom={agentSwitches}

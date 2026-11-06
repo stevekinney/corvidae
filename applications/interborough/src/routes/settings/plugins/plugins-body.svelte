@@ -389,6 +389,7 @@
           emptyTitle={copy.emptyDetail.title}
           emptyDescription={copy.emptyDetail.description}
           bind:selectedKey={openKey}
+          openFirst
           selectionParameter="plugin"
           {selectionLocation}
           storageKey="interborough-settings-plugins"

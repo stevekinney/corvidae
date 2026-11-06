@@ -124,6 +124,21 @@ export function didNotLoadCount(snapshot: PluginsSnapshot): number {
   );
 }
 
+/**
+ * How many plugins need attention after a startup with problems: when any plugin did not load, every
+ * plugin that has a problem to fix (one waiting for a secret beside one that was skipped) and every
+ * folder it could not load a plugin from. It is the number of plugins the Plugins page lists
+ * problems for, so the banner and the list agree. A startup where nothing failed to load has none:
+ * a plugin that only waits for its key is not a problem startup (`didNotLoadCount`).
+ */
+export function needAttentionCount(snapshot: PluginsSnapshot): number {
+  if (didNotLoadCount(snapshot) === 0) return 0;
+  return (
+    snapshot.plugins.filter((plugin) => plugin.status === 'skipped' || plugin.problems.length > 0)
+      .length + snapshot.unloaded.length
+  );
+}
+
 /** What the host reports after it stores a plugin's choices. */
 export type PluginChange = {
   /** The plugin's name. */

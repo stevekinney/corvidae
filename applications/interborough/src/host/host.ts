@@ -350,6 +350,13 @@ export type HostOptions = {
    */
   readonly plugins?: readonly BureauPluginEntry[];
   /**
+   * Leaves the built-in `bureau` plugin out of Settings › Plugins. The Bureau still supplies its
+   * tools; only the listing and the manager's entry for it go. The showcase host sets it, because the
+   * sample world's plugin list (decisions.md, "Plugins: the sample world uses real plugins") holds
+   * the plugins a person adds, never Interborough's own.
+   */
+  readonly omitBuiltInPlugin?: boolean;
+  /**
    * Plugin folders to load as well, each marked `development-source` (`--plugin <path>` on the
    * development entry). They load like the folders in Bungalow's `plugins/`. Copied before the host
    * opens anything.
@@ -754,7 +761,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     // The built-in `bureau` plugin (COR-1890) is listed first so the Plugins page shows it and the
     // manager refuses to turn it off. Bureau supplies the plugin itself, so it is not given to it again.
-    const plugins = [BUREAU_PLUGIN_ENTRY, ...packagePlugins, ...folderPlugins.entries];
+    const plugins = [
+      ...(options.omitBuiltInPlugin === true ? [] : [BUREAU_PLUGIN_ENTRY]),
+      ...packagePlugins,
+      ...folderPlugins.entries,
+    ];
     // The plugins read their choices from the same file, before the Bureau composes them. A secret
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const isProviderPlugin = (plugin: string): boolean =>

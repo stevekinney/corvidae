@@ -14,6 +14,7 @@ import { MODELS_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { sampleCatalogModels, withSampleCatalog } from './sample-catalog.ts';
 
 const SOURCE = 'settings-models.spec.ts';
 const ROUTE = '/settings/models';
@@ -35,43 +36,6 @@ async function open(page: Page, origin: string) {
 }
 
 const providerRow = (page: Page, name: string) => page.locator(`[data-provider="${name}"]`);
-
-/** The sample world's Anthropic catalog, as the board draws it (Opus 5.5, Sonnet 5.5 and Haiku 5.5). */
-function sampleModel(model: string, extra: Record<string, unknown>) {
-  return {
-    provider: 'anthropic',
-    model,
-    aliases: [],
-    contextWindowTokens: 1_000_000,
-    maxOutputTokens: 128_000,
-    streaming: true,
-    tools: true,
-    structuredOutput: true,
-    images: true,
-    off: false,
-    ...extra,
-  };
-}
-
-/** Answers the host's providers with Anthropic connected and the sample world's three models. */
-async function withSampleCatalog(page: Page) {
-  await page.route('**/host/providers', async (route) => {
-    if (route.request().method() !== 'GET') return route.continue();
-    const response = await route.fetch();
-    const body = (await response.json()) as Record<string, unknown>;
-    return route.fulfill({
-      response,
-      json: {
-        ...body,
-        models: [
-          sampleModel('claude-opus-5-5', {}),
-          sampleModel('claude-sonnet-5-5', {}),
-          sampleModel('claude-haiku-5-5', { images: false, contextWindowTokens: 200_000 }),
-        ],
-      },
-    });
-  });
-}
 
 test.describe('Settings › Models, no provider connected', () => {
   test('is Providers, an empty Models and Decisions waiting on TypeSafe, under one heading', async ({
@@ -269,11 +233,7 @@ async function withAnthropicConnected(page: Page) {
         providers: body.providers.map((entry) =>
           entry.name === 'anthropic' ? { ...entry, configured: true, hasKey: true } : entry,
         ),
-        models: [
-          sampleModel('claude-opus-5-5', {}),
-          sampleModel('claude-sonnet-5-5', {}),
-          sampleModel('claude-haiku-5-5', { images: false, contextWindowTokens: 200_000 }),
-        ],
+        models: sampleCatalogModels(),
       },
     });
   });

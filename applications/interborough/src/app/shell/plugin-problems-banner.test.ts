@@ -58,6 +58,23 @@ describe('the plugins that did not load banner', () => {
     );
   });
 
+  test('counts a plugin that waits for its key beside one that was skipped, the list the Plugins page opens with', async () => {
+    const { region } = mount([
+      { name: 'anthropic' },
+      {
+        name: 'gemini',
+        status: 'needs-setup',
+        problems: [{ code: 'secret-missing', key: 'gemini-api-key' }],
+      },
+      SKIPPED,
+    ]);
+
+    await waitFor(() => expect(region()).not.toBeNull());
+    expect(region()?.textContent).toContain(
+      '2 plugins need attention after a startup with problems',
+    );
+  });
+
   test('counts a folder with no descriptor when no plugin was skipped', async () => {
     const { region } = mount([{ name: 'anthropic' }], [UNLOADED]);
 

@@ -58,6 +58,29 @@ test.describe('Settings › Plugins', () => {
     const count = page.getByTestId('plugins-count');
     await expect(count).toContainText(PLUGINS_COPY.listHeader.heading);
     await expect(page.getByRole('link', { name: PLUGINS_COPY.listHeader.howToAdd })).toBeVisible();
+    // The sample world's nine plugins, in the order the board lists them, each at 1.0.0, and not
+    // Interborough's own built-in plugin.
+    await expect(count).toContainText('9');
+    await expect(page.locator('[data-plugin-row]')).toHaveCount(9);
+    expect(
+      await page
+        .locator('[data-plugin-row]')
+        .evaluateAll((rows) => rows.map((entry) => entry.getAttribute('data-plugin-row'))),
+    ).toEqual([
+      'inspectors',
+      'anthropic',
+      'openai',
+      'gemini',
+      'typesafe',
+      'guardrails',
+      'voyage',
+      'demo',
+      'ollama',
+    ]);
+    for (const entry of await page.locator('[data-plugin-row]').all()) {
+      await expect(entry).toContainText('1.0.0');
+      await expect(entry).not.toContainText('Built in');
+    }
     // A plugin that needs a key reads Needs setup, a neutral word.
     await expect(row(page, 'anthropic')).toContainText('Needs setup');
     await expect(row(page, 'anthropic').locator('[data-cinder-status]').first()).toHaveAttribute(
@@ -91,6 +114,28 @@ test.describe('Settings › Plugins', () => {
 
     await checkA11y('settings plugins at 1280px');
     await captureAtEveryWidth(page, 'list-and-detail');
+  });
+
+  test('with nothing named in the address the first plugin is open beside the list, and below the push breakpoint the list comes first', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
+    // Inspectors stands in for the board's Web search, the first plugin of the list.
+    const opened = detail(page, 'inspectors');
+    await expect(opened.getByRole('heading', { level: 3, name: 'Inspectors' })).toBeVisible();
+    await expect(opened.getByRole('switch', { name: 'Enabled' })).toBeChecked();
+    await expect(opened).toContainText('@lostgradient/plugin-inspectors');
+    await expect(opened).toContainText('Package plugin, loaded at startup');
+    await expect(opened.getByTestId('plugin-adds')).toBeVisible();
+    await expect(page.getByText(PLUGINS_COPY.emptyDetail.title)).toHaveCount(0);
+    await captureAtEveryWidth(page, 'first-open');
+
+    // Stacked, one pane shows at a time and the list is where it starts.
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
+    await expect(row(page, 'inspectors')).toBeVisible();
+    await expect(page.locator('[data-plugin-detail]')).toHaveCount(0);
   });
 
   test('Save configuration failed: the typed value stays, the error is named under the button, and Save is the retry', async ({
@@ -133,7 +178,7 @@ test.describe('Settings › Plugins', () => {
     await expect(demo.getByRole('switch', { name: 'Disabled' })).not.toBeChecked();
     await expect(demo.getByTestId('plugin-holding-back')).toContainText('Holding back.');
     await expect(demo.getByTestId('plugin-holding-back')).toContainText(
-      'Internal, Release helper and Changelog writer are unavailable until Demo is enabled.',
+      'Release helper and Changelog writer are unavailable until Demo is enabled.',
     );
     await expect(demo).toContainText(PLUGINS_COPY.enableNote);
     await captureAtEveryWidth(page, 'disabled-plugin');
@@ -257,33 +302,51 @@ test.describe('Settings › Plugins', () => {
     page,
     checkA11y,
   }) => {
-    // The sample world starts clean, so the host's answer is changed to the one a startup with
-    // problems gives: Guardrails is skipped for an invalid setting.
+    // The sample world starts clean, so the host's answer is changed to the one the board draws, a
+    // startup for which only Gemini waits for its key and one plugin is skipped for an invalid
+    // setting: Guardrails stands in for Web search (decisions: "Plugins: the sample world uses real
+    // plugins"), and the other plugins that wait for a key are taken as set.
     await page.route('**/host/plugins', async (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
       const response = await route.fetch();
       const snapshot = await response.json();
-      const target = snapshot.plugins.find(
-        (plugin: { descriptor: { name: string } }) => plugin.descriptor.name === 'guardrails',
-      );
-      target.status = 'skipped';
-      target.problems = [
-        {
-          code: 'configuration-invalid',
-          field: 'groundingThreshold',
-          message: 'Grounding threshold must be a number from 0 to 1. You entered “high”.',
-        },
-      ];
+      for (const plugin of snapshot.plugins as {
+        descriptor: { name: string };
+        status: string;
+        problems: unknown[];
+      }[]) {
+        if (['anthropic', 'openai', 'typesafe'].includes(plugin.descriptor.name)) {
+          plugin.status = 'running';
+          plugin.problems = [];
+        }
+        if (plugin.descriptor.name === 'guardrails') {
+          plugin.status = 'skipped';
+          plugin.problems = [
+            {
+              code: 'configuration-invalid',
+              field: 'groundingThreshold',
+              message: 'Grounding threshold must be a number from 0 to 1. You entered “high”.',
+            },
+          ];
+        }
+      }
       return route.fulfill({ response, json: snapshot });
     });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
 
     const banner = page.getByTestId('plugins-startup-banner');
-    await expect(banner).toContainText('1 plugin needs attention after a startup with problems');
-    await expect(banner).toContainText('Agents and workflows that use it show as unavailable.');
+    await expect(banner).toContainText('2 plugins need attention after a startup with problems');
+    await expect(banner).toContainText('Agents and workflows that use them show as unavailable.');
     await expect(banner.getByRole('link', { name: 'Open Plugins' })).toBeVisible();
     const list = page.getByTestId('plugins-attention');
+    const gemini = list.locator('[data-plugin-problem="secret-missing"]');
+    await expect(gemini).toHaveCount(1);
+    await expect(gemini).toContainText('Gemini');
+    await expect(gemini).toContainText('Needs setup');
+    await expect(gemini).toContainText('A secret isn’t saved yet');
+    await expect(gemini).toContainText('gemini-api-key isn’t saved, so Gemini models');
+    await expect(gemini.getByRole('button', { name: 'Add the key' })).toBeVisible();
     const card = list.locator('[data-plugin-problem="configuration-invalid"]');
     await expect(card).toContainText('Guardrails');
     await expect(card).toContainText('Not loaded');

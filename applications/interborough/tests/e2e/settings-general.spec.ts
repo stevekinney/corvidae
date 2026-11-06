@@ -9,10 +9,10 @@
  */
 import type { Page } from '@playwright/test';
 
-import { SETTINGS_COPY } from '../../src/app/copy.ts';
+import { SETTINGS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const SOURCE = 'settings-general.spec.ts';
 const ROUTE = '/settings';
@@ -230,6 +230,39 @@ test.describe('Settings › General', () => {
     await expect(cap.getByRole('spinbutton')).toBeDisabled();
     await expect(cap.getByRole('spinbutton')).toHaveValue('4');
     await captureAtBothWidths(page, 'locked-remote');
+  });
+
+  test('load failed: with nothing to show, the full error state replaces the section, with Try again and no banner', async ({
+    page,
+    pageErrors,
+  }) => {
+    // The test answers every read of the settings with an error, and Chromium logs each one. How
+    // many there are is not the test's to say: the view's probe and the page's own reads both ask.
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      reason: 'the test answers the reads of the settings with a 500',
+    });
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method === 'bureau.settings.get' || body?.method === 'bureau.settings.schema') {
+        await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
+
+    const frame = page.locator('[data-view="settings"]');
+    await expect(frame).toHaveAttribute('data-state', 'error');
+    await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+      VIEW_COPY.settings.error.title,
+    );
+    await expect(frame.getByRole('button', { name: 'Try again' })).toBeVisible();
+    // The whole section is the error state: no rows, and no banner beside it.
+    await expect(settingRow(page, 'tools.wakeup')).toHaveCount(0);
+    await expect(frame.getByRole('alert')).toHaveCount(1);
+    await captureAtBothWidths(page, 'load-failed');
   });
 
   test('loading: the navigation and heading are real, the rows are placeholders after 300 ms, and Still loading follows at 10 s', async ({

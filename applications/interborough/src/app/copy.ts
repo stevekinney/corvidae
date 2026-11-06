@@ -1446,6 +1446,11 @@ export const DATA_RETENTION_COPY = {
     daysLabel: (name: string): string => `${name}: days before deleting`,
     daysProblem: 'Enter a number from 1 to 3650.',
   },
+  /** The section of the retention windows the board draws no row for: events, tasks, receipts and the rest. */
+  otherRetention: {
+    heading: 'Other retention',
+    description: 'How long the rest of what Interborough records is kept.',
+  },
   storage: {
     heading: 'Storage',
     label: 'Space used',

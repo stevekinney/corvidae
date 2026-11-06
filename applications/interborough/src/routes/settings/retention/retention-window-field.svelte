@@ -130,6 +130,7 @@
   }
 
   .ib-retention-field__days {
-    inline-size: 8rem;
+    /* Wide enough for the days, their unit and the stepper at once. */
+    inline-size: 10rem;
   }
 </style>

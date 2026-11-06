@@ -24,6 +24,7 @@ import {
   servedSettings,
   type SettingsServed,
 } from '../settings-fixtures.test-support.ts';
+import { maskedKey } from './format-model.ts';
 import { installFakeHost, model, type FakeHost } from './models-host.test-support.ts';
 
 const KEY = 'sk-live-0123456789-never-print-this';
@@ -520,7 +521,9 @@ describe('connecting a provider', () => {
     const { dialog, field } = await connect(container, KEY);
 
     await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.testing));
-    expect(field.value).toBe(KEY);
+    // The field shows the key's masked form while it is tested, never the key.
+    expect(field.value).toBe(maskedKey('openai'));
+    expect(field.value).not.toContain(KEY);
     expect(field.readOnly).toBe(true);
     expect(dialog.textContent).toContain(copy.testing);
     expect(
@@ -571,6 +574,10 @@ describe('connecting a provider', () => {
     await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.failed));
     expect(dialog.textContent).toContain(MODELS_COPY.keyTest.rejected('OpenAI', 401));
     expect(field.getAttribute('aria-invalid')).toBe('true');
+    // The refused key stays masked until the person goes back into the field to change it.
+    expect(field.value).toBe(maskedKey('openai'));
+    await fireEvent.focus(field);
+    expect(field.type).toBe('password');
     expect(field.value).toBe(refused);
     for (const name of [copy.cancel, copy.test, copy.connect]) {
       expect(

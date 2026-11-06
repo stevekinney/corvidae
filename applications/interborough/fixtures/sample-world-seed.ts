@@ -77,6 +77,8 @@ export const SAMPLE_WORLD_TIMES = {
   billingAsked: central('2026-10-29T11:04:00', '-05:00'),
   billingStopped: central('2026-10-29T11:05:00', '-05:00'),
   toolRunnerVersion4: central('2026-10-29T11:38:00', '-05:00'),
+  /** The nightly clean-up of Sunday, Nov 1, 3:00 AM, which Data and retention reports as the last one. */
+  cleanedUp: central('2026-11-01T03:00:00', '-06:00'),
   sayHello: central('2026-11-01T16:12:00', '-06:00'),
   serverStarted: central('2026-11-02T09:00:00', '-06:00'),
   releaseAsked: central('2026-11-02T09:46:00', '-06:00'),
@@ -538,6 +540,12 @@ export async function seedSampleWorld(
   );
   await session(story, history.sayHelloGoal - 60_000, october30);
   await session(story, times.sayHello, async (context) => {
+    // The clean-up of that night ran at 3:00 AM, with this host's own clock, so its record is real.
+    // The host that starts on Monday finds it older than the 3:00 AM it was off for, which Data and
+    // retention words as "Skipped today while Interborough was off."
+    runtime.setTime(times.cleanedUp);
+    await context.host.cleanUp.cleanUpNow();
+    runtime.setTime(times.sayHello);
     await sayHelloChat(context);
     await november1Afternoon(context);
   });

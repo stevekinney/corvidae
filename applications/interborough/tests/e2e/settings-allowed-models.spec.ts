@@ -14,6 +14,7 @@ import { ALLOWED_MODELS_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { withSampleCatalog } from './sample-catalog.ts';
 import { bureauCall } from './task-support.ts';
 
 const SOURCE = 'settings-allowed-models.spec.ts';
@@ -142,6 +143,34 @@ test.describe('Settings › Allowed models, no provider connected', () => {
   });
 });
 
+/**
+ * Gives the policy the sample world's default effort (High), as the showcase seed does, so the main
+ * host reads as the board draws "Provider connected". Returns the policy it left, one revision on.
+ */
+async function withDefaultEffort(request: APIRequestContext, original: unknown) {
+  const current = await snapshotOf(request);
+  const policy = (original ?? { policyRevision: 0 }) as {
+    policyRevision?: number;
+    users?: Record<string, Record<string, unknown>>;
+  };
+  await bureauCall(request, 'bureau.settings.update', {
+    patch: {
+      modelPolicy: {
+        ...policy,
+        users: {
+          ...policy.users,
+          'anonymous:local': { ...policy.users?.['anonymous:local'], defaultEffort: 'high' },
+        },
+        policyRevision:
+          ((current.values['modelPolicy'] as { policyRevision?: number } | undefined)
+            ?.policyRevision ?? 0) + 1,
+      },
+    },
+    expectedRevision: current.revision,
+  });
+  return (await policyOf(request)) as { policyRevision: number };
+}
+
 test.describe('Settings › Allowed models, provider connected', () => {
   test('lists the connected provider’s models, each allowed, and saves an edit with one Save', async ({
     page,
@@ -150,18 +179,34 @@ test.describe('Settings › Allowed models, provider connected', () => {
   }) => {
     const original = await policyOf(request);
     try {
+      // The board draws the sample world's catalog and its default effort, not this host's own.
+      const seeded = await withDefaultEffort(request, original);
+      await withSampleCatalog(page);
       await open(page, E2E_BASE_URL);
       await expect(page.getByRole('heading', { level: 3, name: 'Anthropic' })).toBeVisible();
       const models = page.locator('[data-model]');
-      await expect(models).toHaveCount(2);
+      await expect(models).toHaveCount(3);
       for (const row of await models.all()) {
         await expect(row.getByRole('checkbox')).toBeChecked();
         await expect(row.locator('code')).toBeVisible();
       }
-      const sonnet = page.locator('[data-model="anthropic/claude-sonnet-5"]');
-      await expect(sonnet).toContainText('Claude Sonnet 5');
-      await expect(sonnet.locator('code')).toHaveText('claude-sonnet-5');
-      await expect(sonnet).toContainText('Tools');
+      const expected = [
+        ['claude-opus-5-5', 'Claude Opus 5.5', 'Tools · images'],
+        ['claude-sonnet-5-5', 'Claude Sonnet 5.5', 'Tools · images'],
+        ['claude-haiku-5-5', 'Claude Haiku 5.5', 'Tools'],
+      ] as const;
+      for (const [identifier, name, abilities] of expected) {
+        const row = page.locator(`[data-model="anthropic/${identifier}"]`);
+        await expect(row).toContainText(name);
+        await expect(row.locator('code')).toHaveText(identifier);
+        await expect(row).toContainText(abilities);
+      }
+      const sonnet = page.locator('[data-model="anthropic/claude-sonnet-5-5"]');
+      await expect(page.locator('[data-model="anthropic/claude-haiku-5-5"]')).not.toContainText(
+        'images',
+      );
+      await expect(preferRow(page).getByRole('combobox')).toHaveValue('neither');
+      await expect(effortRow(page).getByRole('combobox')).toHaveValue('high');
       await expect(page.getByTestId('allowed-models-empty')).toHaveCount(0);
       await expect(actionsBar(page)).toHaveCount(0);
       await checkA11y('allowed models with a provider, at 1280px');
@@ -172,6 +217,7 @@ test.describe('Settings › Allowed models, provider connected', () => {
       await preferRow(page).getByRole('combobox').selectOption('speed');
       await expect(actionsBar(page)).toContainText('2 unsaved changes');
       await expect(actionsBar(page)).toContainText(ALLOWED_MODELS_COPY.effect);
+      await expect(effortRow(page).getByRole('combobox')).toHaveValue('high');
       await expect(page.getByText(ALLOWED_MODELS_COPY.note)).toBeVisible();
       await checkA11y('allowed models with unsaved changes, at 1280px');
       await captureAtEveryWidth(page, 'unsaved-changes');
@@ -183,14 +229,12 @@ test.describe('Settings › Allowed models, provider connected', () => {
         deployment?: { deniedModels?: string[] };
         users?: Record<string, { latencyPreference?: string }>;
       };
-      expect(stored.deployment?.deniedModels).toEqual(['claude-sonnet-5']);
+      expect(stored.deployment?.deniedModels).toEqual(['claude-sonnet-5-5']);
       expect(stored.users?.['anonymous:local']?.latencyPreference).toBe('lowest-latency');
-      expect(stored.policyRevision).toBe(
-        ((original as { policyRevision?: number } | undefined)?.policyRevision ?? 0) + 1,
-      );
+      expect(stored.policyRevision).toBe(seeded.policyRevision + 1);
       await page.reload();
       await expect(
-        page.locator('[data-model="anthropic/claude-sonnet-5"]').getByRole('checkbox'),
+        page.locator('[data-model="anthropic/claude-sonnet-5-5"]').getByRole('checkbox'),
       ).not.toBeChecked();
       await expect(preferRow(page).getByRole('combobox')).toHaveValue('speed');
     } finally {

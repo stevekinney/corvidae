@@ -6,6 +6,7 @@
  * days, so this is the one place that converts between the two and says which days a window may be.
  */
 import { DATA_RETENTION_COPY } from '../../../app/copy.ts';
+import type { SchemaNode } from '../../../lib/bureau-settings.ts';
 
 /** The four windows the page draws as rows, in the order it draws them. */
 export const RETENTION_ROW_KEYS = [
@@ -21,6 +22,17 @@ export type RetentionRowKey = (typeof RETENTION_ROW_KEYS)[number];
 /** Whether `key` is one of the rows the page draws with the Keep forever and Delete after choice. */
 export function isRetentionRowKey(key: string): key is RetentionRowKey {
   return (RETENTION_ROW_KEYS as readonly string[]).includes(key);
+}
+
+/**
+ * Whether a setting's schema is a retention window: an object holding `olderThan`, alone or as one
+ * branch of a union with `'forever'`. The page draws every such window with the Keep forever and
+ * Delete after choice, so each of them reads the same, whether or not the board names it.
+ */
+export function isRetentionWindowNode(node: SchemaNode | undefined): boolean {
+  if (node === undefined) return false;
+  if (node.properties !== undefined && Object.hasOwn(node.properties, 'olderThan')) return true;
+  return (node.anyOf ?? []).some((branch) => isRetentionWindowNode(branch));
 }
 
 /** Milliseconds in a day, the unit a person reads a window in. */

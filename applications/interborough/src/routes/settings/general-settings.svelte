@@ -38,6 +38,7 @@
     type SettingsSchema,
     type SettingsSnapshot,
   } from '../../lib/bureau-settings.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { defaultAgentQuery, listAgentsWithReadiness } from '../../lib/default-agent.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { readPreferredAgent, writePreferredAgent } from '../../lib/preferred-agent.ts';
@@ -332,7 +333,10 @@
               value={agentChoice}
               options={(agents.data ?? [])
                 .filter((agent) => agent.ready || agent.name === agentChoice)
-                .map((agent) => ({ value: agent.name, label: agent.displayName }))}
+                .map((agent) => ({
+                  value: agent.name,
+                  label: agentLabel(agent.name, agents.data),
+                }))}
               onchange={(event) => chooseAgent(event.currentTarget.value)}
             />
           {/snippet}

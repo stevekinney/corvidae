@@ -53,6 +53,18 @@
               : copy.subtitle.idle,
   );
 
+  /**
+   * Whether the field shows the key's masked form (`sk-ant-••••`) instead of the key: while it is
+   * tested, and after a provider refused it until the person goes back into the field to change it
+   * (board SettingsShell, "Connect · testing" and "Connect · invalid key"). A password field can only
+   * show bullets, so the masked form is a text the field is given, never built from the key itself.
+   */
+  let revealed = $state(false);
+  const masked = $derived(
+    provider !== null && (flow.busy || (flow.phase === 'failed' && !revealed)),
+  );
+  const shownKey = $derived(masked && provider !== null ? maskedKey(provider) : flow.key);
+
   // Whatever closes the dialog, the sequence starts over the next time it opens.
   $effect(() => {
     if (provider === null) flow.reset();
@@ -104,7 +116,7 @@
       {:else}
         <Input
           id="provider-api-key"
-          type="password"
+          type={masked ? 'text' : 'password'}
           autocomplete="off"
           spellcheck={false}
           variant="code"
@@ -112,8 +124,17 @@
           placeholder={copy.keyPlaceholder}
           required
           description={copy.keyHelp}
-          bind:value={flow.key}
-          onValueChange={() => flow.edited()}
+          bind:value={
+            () => shownKey,
+            (next) => {
+              if (!masked) flow.key = next;
+            }
+          }
+          onValueChange={() => {
+            if (!masked) flow.edited();
+          }}
+          onfocus={() => (revealed = true)}
+          onblur={() => (revealed = false)}
           error={flow.fieldError}
           readonly={flow.busy}
         >

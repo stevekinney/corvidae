@@ -58,6 +58,9 @@ test.describe('Settings › Data and retention', () => {
       'true',
     );
     await expect(audit.getByRole('spinbutton')).toHaveValue('90');
+    // The days are readable: the field is wide enough to show them beside their unit and stepper.
+    const daysBox = await audit.getByRole('spinbutton').boundingBox();
+    expect(daysBox?.width ?? 0).toBeGreaterThan(40);
     for (const [key, name] of [
       ['retention.runs', 'Run history'],
       ['retention.chats', 'Chats'],
@@ -70,6 +73,28 @@ test.describe('Settings › Data and retention', () => {
       );
       await expect(row(page, key).getByRole('spinbutton')).toHaveCount(0);
     }
+
+    // Retention holds its four rows. The windows the board draws no row for follow in a section of
+    // their own, read the same way: one label style, a name with the raw key beside it.
+    await expect(page.locator('main h2')).toHaveText([
+      'Retention',
+      'Other retention',
+      'Storage',
+      'Clean-up',
+    ]);
+    await expect(page.locator('[data-setting^="retention."]')).toHaveCount(11);
+    for (const key of [
+      'retention.events',
+      'retention.tasks',
+      'retention.receipts',
+      'retention.logs',
+      'retention.notifications',
+      'retention.hookDeliveries',
+    ]) {
+      await expect(row(page, key).locator('.cinder-setting-row__identifier')).toHaveText(key);
+      await expect(row(page, key).getByRole('radio', { name: 'Delete after' })).toBeVisible();
+    }
+    await expect(page.getByText(/older than/i)).toHaveCount(0);
 
     // Storage is one read-only row, with the alert firing and a link to Health, and no meter.
     const storage = row(page, 'storage-usage');
@@ -140,12 +165,15 @@ test.describe('Settings › Data and retention', () => {
   test('Clean-up is one row, "Remove expired records", with Clean up now as its own action', async ({
     page,
   }) => {
-    await page.goto(ROUTE);
+    await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
 
     const cleanUp = row(page, 'clean-up');
     await expect(page.locator('main h2').last()).toHaveText('Clean-up');
     await expect(cleanUp).toContainText('Remove expired records');
     await expect(cleanUp).toContainText(/Interborough does this every night at 3:00 AM .+ time\./);
+    // The host last cleaned up at 3:00 AM on Sunday, and was off for Monday's.
+    await expect(cleanUp).toContainText(/Last cleaned up .*Nov 1, 3:00 AM\./);
+    await expect(cleanUp).toContainText(/Skipped .* while Interborough was off\./);
     // The button belongs to the row, and no button of that name is anywhere else on the page.
     await expect(cleanUp.getByRole('button', { name: 'Clean up now' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Clean up now' })).toHaveCount(1);

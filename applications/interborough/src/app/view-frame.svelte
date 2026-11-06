@@ -253,7 +253,7 @@
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >
-  {#if state === 'ready'}
+  {#if state === 'ready' || (state === 'loading' && definition.pageOwnsLoading === true)}
     {#if refreshFailed && !connection.unreachable}
       {@render refreshError()}
     {/if}
