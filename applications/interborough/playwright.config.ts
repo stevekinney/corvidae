@@ -8,6 +8,10 @@ import {
 } from './scripts/environment-configuration.ts';
 import { E2E_BASE_URL } from './tests/e2e/e2e-constants.ts';
 
+// Playwright forces color in its workers and web servers. Remove the conflicting
+// inherited opt-out in this test process before those children are created.
+delete process.env['NO_COLOR'];
+
 const continuousIntegration = isContinuousIntegration();
 // Unset outside a design-review capture (`scripts/design-review-capture.ts`), which leaves Playwright's light default.
 const colorScheme = designReviewColorScheme();

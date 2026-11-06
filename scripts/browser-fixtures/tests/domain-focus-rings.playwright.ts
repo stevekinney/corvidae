@@ -219,7 +219,7 @@ test.describe('domain focus rings -- chat harness', () => {
       await composer.click();
       await tabUntilFocused(page, sendButton, 'send button', 8);
       await expect(sendButton).toBeFocused();
-      await assertSharedOuterRing(sendButton, 'send button', { filled: true });
+      await assertSharedOuterRing(sendButton, 'send button');
     } finally {
       await dispose();
     }

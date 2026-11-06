@@ -145,6 +145,19 @@ describe('a one-click answer is held for a short Undo window', () => {
     expect(status(container)?.textContent).toContain('You answered: Staging');
   });
 
+  test('a native focusout with no related target resumes when the question remains connected', async () => {
+    const { submitted } = await ask();
+    const staging = screen.getByRole('button', { name: 'Staging' });
+    await fireEvent.click(staging);
+    await fireEvent.focusIn(staging);
+    await elapse(30000);
+    expect(submitted).toEqual([]);
+
+    await fireEvent.focusOut(staging);
+    await elapse(5000);
+    expect(submitted).toEqual(['staging']);
+  });
+
   test('moving focus from a choice to Undo keeps the count paused', async () => {
     const { submitted } = await ask();
     const staging = screen.getByRole('button', { name: 'Staging' });
@@ -186,7 +199,9 @@ describe('a one-click answer is held for a short Undo window', () => {
 
   test('a question that goes away with the answer held sends it at once', async () => {
     const { unmount, submitted } = await ask();
-    await fireEvent.click(screen.getByRole('button', { name: 'Production' }));
+    const production = screen.getByRole('button', { name: 'Production' });
+    await fireEvent.click(production);
+    await fireEvent.focusIn(production);
     await elapse(1000);
     unmount();
     expect(submitted).toEqual(['production']);

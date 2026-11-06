@@ -158,7 +158,16 @@
   $effect(() => {
     const element = root;
     if (element === undefined) return;
-    const update = (): void => hold.setPaused(pointerInside || focusInside);
+    let active = true;
+    const update = (): void => {
+      // Flush after the focus event has finished. During question teardown Svelte dispatches a
+      // focusout before running this effect's cleanup; the active/connected checks then discard
+      // that event instead of mutating the hold from inside the destroy effect.
+      queueMicrotask(() => {
+        if (!active || !element.isConnected) return;
+        hold.setPaused(pointerInside || focusInside);
+      });
+    };
     const enter = (): void => {
       pointerInside = true;
       update();
@@ -180,6 +189,7 @@
     element.addEventListener('focusin', focusIn);
     element.addEventListener('focusout', focusOut);
     return () => {
+      active = false;
       element.removeEventListener('pointerenter', enter);
       element.removeEventListener('pointerleave', leave);
       element.removeEventListener('focusin', focusIn);
