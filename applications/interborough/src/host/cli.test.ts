@@ -189,6 +189,9 @@ const productionServer = Bun.serve({
               'data: {"type":"RUN_STARTED","threadId":"thread-sigint","runId":"run-sigint"}\n\n',
             ),
           );
+          await writer.write(
+            encoder.encode('data: {"type":"TEXT_MESSAGE_CONTENT","delta":"stream-ready"}\n\n'),
+          );
           await writer.closed.catch(() => undefined);
         })();
         return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
@@ -322,14 +325,15 @@ await waitUntil(() => compiledStreamHandshakes.includes('sigint-started'), {
 const sigintStdoutReader = sigintCall.stdout.getReader();
 const sigintStdoutDecoder = new TextDecoder();
 let sigintStdout = '';
-let sigintRunStarted = false;
-while (!sigintRunStarted) {
+let sigintStreamReady = false;
+while (!sigintStreamReady) {
   const next = await sigintStdoutReader.read();
   if (next.done) break;
   sigintStdout += sigintStdoutDecoder.decode(next.value, { stream: true });
-  sigintRunStarted = sigintStdout.includes('thread-sigint') && sigintStdout.includes('run-sigint');
+  sigintStreamReady = sigintStdout.includes('stream-ready');
 }
-if (!sigintRunStarted) throw new Error('compiled chat did not parse RUN_STARTED before SIGINT');
+if (!sigintStreamReady)
+  throw new Error('compiled chat did not render stream readiness before SIGINT');
 sigintCall.kill('SIGINT');
 while (true) {
   const next = await sigintStdoutReader.read();
