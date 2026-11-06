@@ -119,14 +119,6 @@ export class ScriptedFetch {
     });
   }
 
-  /** Standing route matched on EXACT URL equality — for when a substring match would be ambiguous (e.g. `/mcp` is also a substring of `/.well-known/mcp.json`). */
-  routeExactUrl(url: string, body: unknown, init?: ResponseInit): void {
-    this.#routes.push({
-      matches: (call) => call.url === url,
-      respond: () => Response.json(body, init),
-    });
-  }
-
   /** Standing route variant of `routeUrl` for a plain-text response (e.g. `/v1/metrics`'s Prometheus exposition), which isn't JSON-encoded. */
   routeUrlText(urlSubstring: string, body: string, init?: ResponseInit): void {
     this.#routes.push({

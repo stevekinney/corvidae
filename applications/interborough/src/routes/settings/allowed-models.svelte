@@ -10,7 +10,6 @@
 </script>
 
 <SettingsFrame
-  section="allowed-models"
   title={SETTINGS_SECTION_COPY.modelPolicy}
   intro={ALLOWED_MODELS_COPY.intro}
   page="settings-allowed-models"

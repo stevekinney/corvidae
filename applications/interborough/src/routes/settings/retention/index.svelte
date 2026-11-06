@@ -11,7 +11,6 @@
 </script>
 
 <SettingsFrame
-  section="retention"
   title={SETTINGS_SECTION_COPY.dataAndRetention}
   intro={DATA_RETENTION_COPY.intro}
   page="settings-data-and-retention"

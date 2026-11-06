@@ -9,12 +9,7 @@
   import ModelsBody from './models-body.svelte';
 </script>
 
-<SettingsFrame
-  section="decisions"
-  title={MODELS_COPY.title}
-  intro={MODELS_COPY.intro}
-  page="settings-models"
->
+<SettingsFrame title={MODELS_COPY.title} intro={MODELS_COPY.intro} page="settings-models">
   {#snippet body({ schema, snapshot })}
     <ModelsBody {schema} {snapshot} />
   {/snippet}

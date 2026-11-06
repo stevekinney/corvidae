@@ -37,7 +37,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.conformance.targets` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/conformance-panel.test.ts` | COR-160 |  |
 | `weft.realms.diagnostics` | exposed | `src/routes/system/realms-view.ts` |  | `src/routes/system/realms-tab.test.ts` |  |  |
 | `weft.recover.all` | exposed | `src/routes/system/health-tab.svelte` |  | `src/routes/system/health-tab.test.ts` |  |  |
-| `weft.retention.get` | exposed | `src/routes/system/retention-panel.svelte` | `getRetentionOverview` | `src/routes/system/retention-panel.test.ts` |  |  |
+| `weft.retention.get` | not-in-dashboard |  |  |  |  | Settings › Data and retention edits each window through `bureau.settings` and reads the storage size from the host, so the page no longer renders Weft's retention overview. |
 | `weft.reviews.decision.submit` | exposed | `src/routes/reviews/reviews-data.ts` | `submitReview` | `src/routes/reviews/review-decision-form.test.ts` |  |  |
 | `weft.reviews.get` | not-in-dashboard |  |  |  |  | The reviews inbox reads every review record, artifact included, from `weft.reviews.list`, so fetching one review by workflow adds nothing it lacks. |
 | `weft.reviews.list` | exposed | `src/routes/reviews/reviews-data.ts` | `listReviews` | `src/routes/reviews/reviews.integration.test.ts` |  |  |

@@ -25,12 +25,7 @@
   );
 </script>
 
-<SettingsFrame
-  section="plugins"
-  title={PLUGINS_COPY.title}
-  intro={PLUGINS_COPY.intro}
-  page="settings-plugins"
->
+<SettingsFrame title={PLUGINS_COPY.title} intro={PLUGINS_COPY.intro} page="settings-plugins">
   {#snippet body({ schema, snapshot })}
     <PluginsBody {plugins} {schema} {snapshot} />
   {/snippet}

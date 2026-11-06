@@ -11,7 +11,6 @@
 </script>
 
 <SettingsFrame
-  section="api-reference"
   title={API_REFERENCE_COPY.title}
   intro={API_REFERENCE_COPY.intro}
   page="settings-api-reference"

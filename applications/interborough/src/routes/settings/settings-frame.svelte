@@ -25,32 +25,24 @@
     type SettingsSnapshot,
   } from '../../lib/bureau-settings.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import SettingsEditor from './settings-editor.svelte';
   import SettingsSectionNav from './settings-section-nav.svelte';
   import { SettingsFollower } from './settings-follower.ts';
   import { SettingsReader } from './settings-reader.ts';
-  import type { SettingsSectionId } from './settings-controls.ts';
 
   interface Props {
-    /** Which settings this section edits. */
-    section: SettingsSectionId;
     /** The page's heading. */
     title: string;
     /** The sentence under the heading. */
     intro: string;
     /** Names the page for tests and the responsive specification. */
     page: string;
-    /** What comes between the header and the editor. */
-    before?: Snippet;
-    /** What follows the editor. */
-    after?: Snippet;
     /**
-     * Replaces the batch editor. It draws straight into the page's grid, so it places what it draws
+     * The section's settings. It draws straight into the page's grid, so it places what it draws
      * in the grid areas `banner` (a sticky notice over the whole page) and `content` (the reading
-     * column); a section that saves each setting as it is left uses it. `setHeaderStatus` puts a
-     * status at the right of the heading ("Saved just now"), or takes it away when given nothing.
+     * column); a section saves each setting as it is left. `setHeaderStatus` puts a status at the
+     * right of the heading ("Saved just now"), or takes it away when given nothing.
      */
-    body?: Snippet<
+    body: Snippet<
       [
         {
           schema: SettingsSchema;
@@ -61,7 +53,7 @@
     >;
   }
 
-  let { section, title, intro, page, before, after, body }: Props = $props();
+  let { title, intro, page, body }: Props = $props();
 
   /** Whether the section navigation sits beside the content: 640px and wider. */
   const wide = new MediaQuery('(min-width: 40rem)', true);
@@ -156,7 +148,7 @@
     />
   </div>
 
-  {#if body !== undefined && phase === 'ready' && schema.data !== undefined && snapshot.data !== undefined}
+  {#if phase === 'ready' && schema.data !== undefined && snapshot.data !== undefined}
     {#if !snapshot.data.persisted}
       <div class="weft-settings__content">
         <Alert variant="info" data-testid="settings-not-persisted">
@@ -171,7 +163,6 @@
     })}
   {:else}
     <div class="weft-settings__content">
-      {@render before?.()}
       {#if phase === 'error'}
         <Alert variant="danger">
           <p class="weft-settings__alert-title">{VIEW_COPY.settings.error.title}</p>
@@ -196,21 +187,7 @@
           label={SETTINGS_COPY.general.loading.label}
           onCancel={cancelLoading}
         />
-      {:else if schema.data !== undefined && snapshot.data !== undefined}
-        {#if !snapshot.data.persisted}
-          <Alert variant="info" data-testid="settings-not-persisted">
-            <p class="weft-settings__alert-body">{SETTINGS_COPY.notPersisted}</p>
-          </Alert>
-        {/if}
-        {#if snapshot.isError}
-          <Alert variant="warning" data-testid="settings-refresh-failed">
-            <p class="weft-settings__alert-title">{SETTINGS_COPY.refreshFailed.title}</p>
-            <p class="weft-settings__alert-body">{SETTINGS_COPY.refreshFailed.description}</p>
-          </Alert>
-        {/if}
-        <SettingsEditor schema={schema.data} snapshot={snapshot.data} {section} />
       {/if}
-      {@render after?.()}
     </div>
   {/if}
 </section>

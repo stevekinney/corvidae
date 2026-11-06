@@ -9,12 +9,7 @@
   import A2aBody from './a2a-body.svelte';
 </script>
 
-<SettingsFrame
-  section="a2a"
-  title={SETTINGS_SECTION_COPY.a2a}
-  intro={A2A_COPY.intro}
-  page="settings-a2a"
->
+<SettingsFrame title={SETTINGS_SECTION_COPY.a2a} intro={A2A_COPY.intro} page="settings-a2a">
   {#snippet body({ schema, snapshot })}
     <A2aBody {schema} {snapshot} />
   {/snippet}

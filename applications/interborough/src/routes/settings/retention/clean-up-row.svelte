@@ -79,6 +79,7 @@
         variant="secondary"
         size="sm"
         disabled={clean.isPending}
+        data-changes
         aria-describedby="ib-clean-up-description"
         onclick={() => clean.mutate()}
       >

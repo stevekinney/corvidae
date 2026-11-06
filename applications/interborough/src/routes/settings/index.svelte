@@ -11,7 +11,6 @@
 </script>
 
 <SettingsFrame
-  section="general"
   title={SETTINGS_SECTION_COPY.general}
   intro={SETTINGS_COPY.general.intro}
   page="settings"
