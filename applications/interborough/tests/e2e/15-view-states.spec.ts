@@ -14,11 +14,7 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import {
-  NOT_FOUND_ROUTE_COPY,
-  SETTINGS_COPY,
-  VIEW_COPY,
-} from '../../src/app/copy.ts';
+import { NOT_FOUND_ROUTE_COPY, SETTINGS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { HEALTH_ATTENTION_COPY, HEALTH_COUNTS_COPY } from '../../src/routes/health/health-copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
