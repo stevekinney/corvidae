@@ -944,15 +944,16 @@
   }
   // The chat's state beside its title, in the shared status words: a person's turn first, then a
   // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
-  // A run this page is reading is going, whatever an earlier read of the chat said: a chat that
-  // waited on an approval decided elsewhere is Running once the page joins the run that continues
-  // it (design row 18j), before the Bureau's record of the chat is read again.
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (context.data?.endReason === 'host-stopped') return CHAT_COPY.status.ended;
-    if (approvals.length > 0 || shownRequests.length > 0) return CHAT_COPY.status.waiting;
-    if (session.streaming) return CHAT_COPY.status.running;
-    if (context.data?.activity === 'awaiting-input') return CHAT_COPY.status.waiting;
+    if (
+      approvals.length > 0 ||
+      shownRequests.length > 0 ||
+      context.data?.activity === 'awaiting-input'
+    ) {
+      return CHAT_COPY.status.waiting;
+    }
     if (runGoing) return CHAT_COPY.status.running;
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
@@ -1134,9 +1135,15 @@
     if (!going || session.attaching) return;
     untrack(() => void joinContinuation());
   });
-  /** Joins the run the chat's runs show going, and stops waiting for one once it has. */
+  /**
+   * Joins the run the chat's runs show going, and stops waiting for one once it has. The chat is
+   * read again then: what was read while it waited on the approval says it still does, and the
+   * header reads Running from the Bureau's own record of the chat (design row 18j).
+   */
   async function joinContinuation(): Promise<void> {
-    if (await session.attach()) awaitingContinuation = false;
+    if (!(await session.attach())) return;
+    awaitingContinuation = false;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
   }
   const seen = new SeenReviews();
   $effect(() => {

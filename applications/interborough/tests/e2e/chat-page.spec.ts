@@ -419,8 +419,21 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await page.route('**/bureau/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;
-        params?: { contextId?: string; id?: string; activity?: string };
+        params?: { contextId?: string; activity?: string };
       };
+      if (
+        continuing &&
+        body.method === 'bureau.contexts.get' &&
+        body.params?.contextId === SAMPLE_WORLD_THREADS.refund
+      ) {
+        const response = await route.fetch();
+        const read = (await response.json()) as { result: Record<string, unknown> };
+        await route.fulfill({
+          response,
+          json: { ...read, result: { ...read.result, activity: 'running' } },
+        });
+        return;
+      }
       if (continuing && body.method === 'bureau.contexts.list') {
         const response = await route.fetch();
         const page = (await response.json()) as {

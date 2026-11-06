@@ -215,9 +215,11 @@ describe('the run a decision on another page continues the chat with (design row
     let continued = false;
     const served = bureau(
       {
-        // The chat as read when it opened, waiting on the approval: not read again before the
-        // continuation is joined.
-        'bureau.contexts.get': () => ({ ...CONTEXT, activity: 'awaiting-input' }),
+        // The chat waits on the approval, and is running once the continuation has started.
+        'bureau.contexts.get': () => ({
+          ...CONTEXT,
+          activity: continued ? 'running' : 'awaiting-input',
+        }),
         'bureau.reviews.list': () => ({
           reviews: decided
             ? []
@@ -279,8 +281,11 @@ describe('the run a decision on another page continues the chat with (design row
       expect(container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull(),
     );
     expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
-    // The chat reads Running beside its title, whatever the earlier read of it said.
-    expect(container.querySelector('[role="img"][aria-label="Running"]')).not.toBeNull();
+    // The chat is read again on joining, so its title reads Running, not what it read while it
+    // waited on the approval.
+    await until(() =>
+      expect(container.querySelector('[role="img"][aria-label="Running"]')).not.toBeNull(),
+    );
     expect(container.querySelector('[role="img"][aria-label="Waiting on you"]')).toBeNull();
     await until(() =>
       expect(container.querySelector('.chat-input-status')?.textContent?.trim()).toBe(

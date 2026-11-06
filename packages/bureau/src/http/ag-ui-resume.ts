@@ -1099,8 +1099,9 @@ export function createResume(context: ResumeContext) {
     }
     if (executed && !superseded) {
       // The conversation now ends in the executed results, so a run with no new
-      // message starts from them. Its request id is the command's key, so a
-      // retry that finds the claim after a restart finds the run too.
+      // message starts from them. Its request id is the decided run's
+      // (`review-continuation.ts`), so a retry that finds the claim after a
+      // restart, or a decision in Reviews that settled the run, finds the run too.
       if (!(await holds())) return LEASE_LOST;
       let created;
       try {
