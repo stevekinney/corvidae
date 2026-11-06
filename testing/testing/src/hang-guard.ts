@@ -208,6 +208,67 @@ export function withoutAutoInstall(command: readonly string[]): string[] {
   return [executable, '--no-install', ...rest];
 }
 
+/**
+ * The progress a test reports for a child that lives through a scenario of several steps, such as
+ * a server or a supervisor it drives request by request. Passed to {@link spawnWithHangGuard} as
+ * `progress`, it makes the child's guard count awake time since the scenario last moved on rather
+ * than since the spawn.
+ *
+ * A guard on the child's whole life is a bound on the sum of its steps: each step finishes well
+ * inside the hang guard on a loaded host, yet five of them together do not, and the guard kills a
+ * child that was never hung (the supervisor scenarios of `supervisor.slow.test.ts` did exactly
+ * that). With progress reported after each step, a child is killed only when one step makes no
+ * progress for the whole guard, which is what a hang is.
+ */
+export class HangGuardProgress {
+  readonly #listeners = new Set<() => void>();
+
+  /** Report that the scenario moved on: every guard watching this one counts from now. */
+  progressed(): void {
+    for (const listener of this.#listeners) listener();
+  }
+
+  /** Call `listener` on every report until the returned function is called. */
+  subscribe(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+}
+
+/**
+ * {@link afterAwakeTime}, counted from the latest report on `progress` instead of from the call:
+ * each `progress.progressed()` cancels the running deadline and arms a fresh one of the same
+ * length. Returns a function that cancels it; neither cancelling nor reporting after it fired
+ * does anything.
+ */
+export function afterAwakeTimeSinceProgress(
+  milliseconds: number,
+  onElapsed: () => void,
+  progress: HangGuardProgress,
+  options: AwakeTimeOptions = {},
+): () => void {
+  let settled = false;
+  const elapse = (): void => {
+    if (settled) return;
+    settled = true;
+    unsubscribe();
+    onElapsed();
+  };
+  let cancelDeadline = afterAwakeTime(milliseconds, elapse, options);
+  const unsubscribe = progress.subscribe(() => {
+    if (settled) return;
+    cancelDeadline();
+    cancelDeadline = afterAwakeTime(milliseconds, elapse, options);
+  });
+  return () => {
+    settled = true;
+    unsubscribe();
+    cancelDeadline();
+  };
+}
+
 export type HangGuardedSpawnOptions<
   In extends SpawnOptions.Writable,
   Out extends SpawnOptions.Readable,
@@ -215,6 +276,11 @@ export type HangGuardedSpawnOptions<
 > = Omit<SpawnOptions.SpawnOptions<In, Out, Err>, 'timeout'> & {
   /** Awake time after which the child is killed with `killSignal`. */
   hangGuardMilliseconds?: number;
+  /**
+   * For a child that lives through several steps of a scenario: the guard counts awake time since
+   * the latest report on it ({@link HangGuardProgress}) rather than since the spawn.
+   */
+  progress?: HangGuardProgress;
 };
 
 /**
@@ -223,18 +289,29 @@ export type HangGuardedSpawnOptions<
  * `exitCode` and `signalCode` read as they would after `timeout`. Test files start every process
  * through this or `runWithHangGuard`; `scripts/check-test-process-spawns.ts` enforces it, and so it
  * is also the one place a Bun child is kept from auto-installing from the network
- * (`withoutAutoInstall`).
+ * (`withoutAutoInstall`). With `progress`, the guard counts from the latest progress the test
+ * reported instead of from the spawn ({@link HangGuardProgress}).
  */
 export function spawnWithHangGuard<
   const In extends SpawnOptions.Writable = 'ignore',
   const Out extends SpawnOptions.Readable = 'pipe',
   const Err extends SpawnOptions.Readable = 'inherit',
 >(command: string[], options?: HangGuardedSpawnOptions<In, Out, Err>): Subprocess<In, Out, Err> {
-  const { hangGuardMilliseconds = HANG_GUARD_MILLISECONDS, ...spawnOptions } = options ?? {};
+  const {
+    hangGuardMilliseconds = HANG_GUARD_MILLISECONDS,
+    progress,
+    ...spawnOptions
+  } = options ?? {};
   const child = Bun.spawn<In, Out, Err>(withoutAutoInstall(command), spawnOptions);
   // `killSignal` is typed as any string, but Bun accepts only signal names and numbers there.
   const killSignal = (spawnOptions.killSignal ?? 'SIGTERM') as NodeJS.Signals | number;
-  const cancel = afterAwakeTime(hangGuardMilliseconds, () => child.kill(killSignal));
+  const kill = (): void => {
+    child.kill(killSignal);
+  };
+  const cancel =
+    progress === undefined
+      ? afterAwakeTime(hangGuardMilliseconds, kill)
+      : afterAwakeTimeSinceProgress(hangGuardMilliseconds, kill, progress);
   void child.exited.finally(cancel);
   return child;
 }
