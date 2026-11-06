@@ -1,5 +1,6 @@
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES } from '@lostgradient/bureau';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -501,6 +502,7 @@ describe('CLI authenticated workspace authority', () => {
     expect(mismatch.stderr).toBe('Workspace membership required');
   });
 
+  // spawn-free: executeCli uses the injected in-process client and does not spawn a child.
   test('credential diagnostics preserve status while redacting active credentials', async () => {
     const fixture = await remoteFixture();
     await executeCli(
@@ -511,7 +513,7 @@ describe('CLI authenticated workspace authority', () => {
       ...fixture,
       environment: { TOKEN: 'alice-secret' },
       fetch: async (input, init) => {
-        const path = new URL(input).pathname;
+        const path = new URL(input instanceof Request ? input.url : input).pathname;
         if (path === '/api/v1/principal') return fixture.fetch(input, init);
         return new Response('reflected x-api-key=alice-secret', { status: 401 });
       },
@@ -523,7 +525,7 @@ describe('CLI authenticated workspace authority', () => {
       ...fixture,
       environment: { TOKEN: 'alice-secret' },
       fetch: async (input, init) => {
-        const path = new URL(input).pathname;
+        const path = new URL(input instanceof Request ? input.url : input).pathname;
         if (path === '/api/v1/principal') return fixture.fetch(input, init);
         return Response.json({ message: 'reflected x-api-key=alice-secret' }, { status: 401 });
       },
@@ -533,6 +535,7 @@ describe('CLI authenticated workspace authority', () => {
     expect(json.stderr).not.toContain('alice-secret');
   });
 
+  // spawn-free: executeCli uses the injected in-process client and does not spawn a child.
   test('private chat ownership is enforced by the real host for CLI context reads', async () => {
     const host = await authenticatedHost(() => false);
     const https = await authenticatedHttpsFixture(host);
@@ -574,6 +577,7 @@ describe('CLI authenticated workspace authority', () => {
     expect(bobList.stdout).not.toContain('alice-private-chat secret');
   });
 
+  // spawn-free: executeCli uses the injected in-process client and does not spawn a child.
   test('admitted CLI watch is revoked before the next private frame and action', async () => {
     let revoked = false;
     const barrier = createBarrier();
@@ -605,7 +609,12 @@ describe('CLI authenticated workspace authority', () => {
     const controlChunks: string[] = [];
     const controlFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await https.fetch(input, init);
-      if (new URL(input).pathname.includes('/v1/subscriptions/')) controlAdmitted.resolve();
+      if (
+        (input instanceof Request ? new URL(input.url) : new URL(input)).pathname.includes(
+          '/v1/subscriptions/',
+        )
+      )
+        controlAdmitted.resolve();
       return response;
     };
     const controlWatch = executeCli(
@@ -637,7 +646,12 @@ describe('CLI authenticated workspace authority', () => {
     const revokedChunks: string[] = [];
     const revokedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await https.fetch(input, init);
-      if (new URL(input).pathname.includes('/v1/subscriptions/')) revokedAdmitted.resolve();
+      if (
+        (input instanceof Request ? new URL(input.url) : new URL(input)).pathname.includes(
+          '/v1/subscriptions/',
+        )
+      )
+        revokedAdmitted.resolve();
       return response;
     };
     const watched = executeCli(
@@ -680,6 +694,7 @@ describe('CLI authenticated workspace authority', () => {
     expect(denied.stderr).toBe('Workspace membership required');
   });
 
+  // spawn-free: executeCli uses the injected in-process client and does not spawn a child.
   test('connection switching gives each CLI watch a distinct server stream', async () => {
     const first = await authenticatedHost(() => false);
     const second = await authenticatedHost(() => false);
@@ -745,6 +760,7 @@ describe('CLI authenticated workspace authority', () => {
     expect(secondWatch.stdout).not.toContain(firstRun.id);
   });
 
+  // spawn-free: direct transport calls use injected dependencies and do not spawn a child.
   test('credential-bearing asset, stream, and A2A paths fail before fetch', async () => {
     const parsedResult = parseCliArguments(['status']);
     if ('exitCode' in parsedResult) throw new Error('status parser fixture unexpectedly failed');
@@ -760,15 +776,17 @@ describe('CLI authenticated workspace authority', () => {
         return Response.json({});
       },
     };
-    await expect(
-      requestBytes(target, '/bureau/assets/asset/content', parsedResult, dependencies),
-    ).rejects.toMatchObject({ exitCode: 3 });
-    await expect(
-      stream(target, '/bureau/a2a/demo', parsedResult, dependencies),
-    ).rejects.toMatchObject({
-      exitCode: 3,
-    });
-    await expect(request(target, '/jsonrpc', parsedResult, dependencies)).rejects.toMatchObject({
+    expect(
+      await rejectionOf(
+        requestBytes(target, '/bureau/assets/asset/content', parsedResult, dependencies),
+      ),
+    ).toMatchObject({ exitCode: 3 });
+    expect(
+      await rejectionOf(stream(target, '/bureau/a2a/demo', parsedResult, dependencies)),
+    ).toMatchObject({ exitCode: 3 });
+    expect(
+      await rejectionOf(request(target, '/jsonrpc', parsedResult, dependencies)),
+    ).toMatchObject({
       exitCode: 3,
     });
     expect(calls).toBe(0);
