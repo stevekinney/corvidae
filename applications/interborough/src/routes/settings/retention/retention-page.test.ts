@@ -141,7 +141,12 @@ describe('Settings › Data and retention', () => {
       expect(row.textContent).toContain(label);
       expect(row.querySelector('.cinder-setting-row__identifier')?.textContent).toBe(key);
       expect(row.textContent).toContain(description);
-      expect(choiceOf(row, 'Keep forever')).not.toBeNull();
+      // Memory deletes while unset, so it offers Delete after alone (decisions, B11 after round 3).
+      if (key === 'retention.memory') {
+        expect(within(row).queryByRole('radio', { name: 'Keep forever' })).toBeNull();
+      } else {
+        expect(choiceOf(row, 'Keep forever')).not.toBeNull();
+      }
       expect(choiceOf(row, 'Delete after')).not.toBeNull();
     }
   });
@@ -192,11 +197,11 @@ describe('Settings › Data and retention', () => {
     expect(updates()).toHaveLength(0);
   });
 
-  test('choosing Keep forever saves forever, and for memory, which has no such value, clears it', async () => {
+  test('choosing Keep forever saves forever, and for a window kept while unset, which has no such value, clears it', async () => {
     const { view, served } = open({
       values: {
         'retention.audit': { olderThan: 90 * DAY },
-        'retention.memory': { olderThan: 30 * DAY },
+        'retention.logs': { olderThan: 30 * DAY },
       },
     });
 
@@ -204,10 +209,36 @@ describe('Settings › Data and retention', () => {
     await waitFor(() => expect(updates()).toHaveLength(1));
     expect(updates()[0]?.params['patch']).toEqual({ 'retention.audit': 'forever' });
 
-    await fireEvent.click(choiceOf(await rowReady(view, 'retention.memory'), 'Keep forever'));
+    // Unset, the Bureau keeps a finished run's log lines until the run is purged.
+    await fireEvent.click(choiceOf(await rowReady(view, 'retention.logs'), 'Keep forever'));
     await waitFor(() => expect(updates()).toHaveLength(2));
-    expect(updates()[1]?.params['patch']).toEqual({ 'retention.memory': null });
+    expect(updates()[1]?.params['patch']).toEqual({ 'retention.logs': null });
+    expect(served.values['retention.logs']).toBeUndefined();
+  });
+
+  test('Memory offers only Delete after and shows the 90 days in force while unset, and never saves a cleared value', async () => {
+    const { view, served } = open();
+    const memory = await rowReady(view, 'retention.memory');
+
+    expect(within(memory).queryByRole('radio', { name: 'Keep forever' })).toBeNull();
+    expect(choiceOf(memory, 'Delete after').getAttribute('aria-checked')).toBe('true');
+    expect((within(memory).getByRole('spinbutton') as HTMLInputElement).value).toBe('90');
     expect(served.values['retention.memory']).toBeUndefined();
+
+    // Leaving the field writes nothing; typing days saves a window, never a null patch.
+    const days = within(memory).getByRole('spinbutton') as HTMLInputElement;
+    await fireEvent.focusOut(days);
+    expect(updates()).toHaveLength(0);
+    await fireEvent.input(days, { target: { value: '30' } });
+    await fireEvent.blur(days);
+    await fireEvent.focusOut(days);
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params['patch']).toEqual({ 'retention.memory': { olderThan: 30 * DAY } });
+    expect(
+      updates().some(
+        (call) => (call.params['patch'] as Record<string, unknown>)['retention.memory'] === null,
+      ),
+    ).toBe(false);
   });
 
   test('Receipts offers only Delete after, so no click can clear it back to its one-week default', async () => {

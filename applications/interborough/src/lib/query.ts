@@ -253,6 +253,8 @@ export const queryKeys = {
   principal: () => ['principal'] as const,
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
+  /** Who this session is and the scopes of Interborough's API it holds (`/host/session`). */
+  hostSession: () => ['host', 'session'] as const,
   /** The remote A2A calls the audit trail kept, newest first (`bureau.audit.query`, type `a2a.call`). */
   a2aCalls: () => ['a2a', 'calls'] as const,
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */

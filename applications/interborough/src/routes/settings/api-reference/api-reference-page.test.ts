@@ -10,6 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { API_REFERENCE_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
+import { API_SCOPES } from '../../../lib/api-scopes.ts';
 import { STUB_A2A_DIRECTORY_URL, type BureauStub } from '../../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
@@ -41,17 +42,17 @@ const DOCUMENT: OpenApiDocumentLike = {
   paths: {
     '/api/runs': {
       get: {
-        operationId: 'weft.workflows.list',
+        operationId: 'runs.list',
         summary: 'List runs',
         tags: ['Runs'],
-        'x-weft-access': { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['workflows:read'] } },
+        'x-interborough-scope': 'runs:read',
         responses: { '200': {} },
       },
       post: {
-        operationId: 'weft.workflows.start',
+        operationId: 'runs.start',
         summary: 'Start a run',
         tags: ['Runs'],
-        'x-weft-access': { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['workflows:write'] } },
+        'x-interborough-scope': 'runs:write',
         requestBody: {
           content: { 'application/json': { schema: { $ref: '#/components/schemas/StartInput' } } },
         },
@@ -64,10 +65,10 @@ const DOCUMENT: OpenApiDocumentLike = {
     },
     '/api/schedules': {
       get: {
-        operationId: 'weft.schedules.list',
+        operationId: 'schedules.list',
         summary: 'List schedules',
         tags: ['Schedules'],
-        'x-weft-access': { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['schedules:read'] } },
+        'x-interborough-scope': 'schedules:read',
         responses: { '200': {} },
       },
     },
@@ -104,9 +105,21 @@ afterEach(() => {
   stub = undefined;
 });
 
-type Open = { path?: string; openapi?: 'fail' | 'hang' | OpenApiDocumentLike; files?: 'fail' };
+type Open = {
+  path?: string;
+  openapi?: 'fail' | 'hang' | OpenApiDocumentLike;
+  files?: 'fail';
+  session?: 'fail' | { subject: string; scopes: readonly string[] };
+};
 
-function open({ path = '/settings/api-reference', openapi = DOCUMENT, files }: Open = {}) {
+const SESSION = { subject: 'anonymous:local', scopes: API_SCOPES };
+
+function open({
+  path = '/settings/api-reference',
+  openapi = DOCUMENT,
+  files,
+  session = SESSION,
+}: Open = {}) {
   stub = installSettingsBureau(servedSettings(), {
     'bureau.workflows.list': () => {
       if (files === 'fail') throw new Error('The Bureau is down.');
@@ -116,7 +129,11 @@ function open({ path = '/settings/api-reference', openapi = DOCUMENT, files }: O
   const delegate = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (new URL(url, 'http://localhost').pathname !== '/openapi.json') return delegate(input, init);
+    const { pathname } = new URL(url, 'http://localhost');
+    if (pathname === '/host/session') {
+      return session === 'fail' ? new Response('nope', { status: 503 }) : Response.json(session);
+    }
+    if (pathname !== '/api/openapi.json') return delegate(input, init);
     if (openapi === 'hang') return new Promise<Response>(() => undefined);
     if (openapi === 'fail') return new Response('nope', { status: 500 });
     return Response.json(openapi);
@@ -160,16 +177,31 @@ describe('Settings › API reference', () => {
     expect(
       within(table)
         .getAllByRole('columnheader')
-        .map((header) => header.textContent?.trim())
-        .slice(0, 4),
-    ).toEqual(['Method', 'Path', 'What it does', 'Scope']);
+        .map((header) => header.textContent?.trim()),
+    ).toEqual(['Method', 'Path', 'What it does', 'Scope', 'Details']);
     expect(view.getByTestId('api-operations-count').textContent).toBe('3 operations');
     expect(view.getByRole('combobox', { name: 'Group' }).textContent).toContain('All groups');
-    const row = table.querySelector('[data-operation="weft.workflows.start"]');
-    expect(row?.textContent).toContain('POST');
-    expect(row?.textContent).toContain('/api/runs');
-    expect(row?.textContent).toContain('Start a run');
-    expect(row?.textContent).toContain('workflows:write');
+    const row = table.querySelector('[data-operation="runs.start"]');
+    const cells = [...(row?.querySelectorAll('td') ?? [])];
+    expect(cells.map((cell) => cell.textContent?.trim())).toEqual([
+      'POST',
+      '/api/runs',
+      'Start a run',
+      'runs:write',
+      'Request and response for POST /api/runs',
+    ]);
+    // The method is monospaced text, not a badge, and the chevron that opens the row is at its right.
+    expect(cells[0]?.querySelector('code[data-method="POST"]')).not.toBeNull();
+    expect(cells[0]?.querySelector('.cinder-badge')).toBeNull();
+    expect(
+      within(cells[4]!).getByRole('button', { name: 'Request and response for POST /api/runs' }),
+    ).not.toBeNull();
+    // The rows are in the order the description lists them.
+    expect(
+      [...table.querySelectorAll('tbody tr[data-operation]')].map((element) =>
+        element.getAttribute('data-operation'),
+      ),
+    ).toEqual(['runs.list', 'runs.start', 'schedules.list']);
   });
 
   test('choosing a group narrows the table and the count', async () => {
@@ -183,8 +215,8 @@ describe('Settings › API reference', () => {
     await waitFor(() =>
       expect(view.getByTestId('api-operations-count').textContent).toBe('1 operation'),
     );
-    expect(view.container.querySelector('[data-operation="weft.workflows.start"]')).toBeNull();
-    expect(view.container.querySelector('[data-operation="weft.schedules.list"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-operation="runs.start"]')).toBeNull();
+    expect(view.container.querySelector('[data-operation="schedules.list"]')).not.toBeNull();
   });
 
   test('opening an operation shows its request body and its response in code blocks', async () => {
@@ -213,7 +245,7 @@ describe('Settings › API reference', () => {
         'openapi',
         'OpenAPI description',
         'Every operation, for generating a client.',
-        '/openapi.json',
+        'http://localhost/api/openapi.json',
       ],
       [
         'agent-card',
@@ -232,15 +264,45 @@ describe('Settings › API reference', () => {
     }
   });
 
-  test('Your scopes opens with the single-user sentence and lists the scopes this session holds', async () => {
+  test('Your scopes opens with the single-user sentence and lists the ten scopes the session holds, with what each lets it do', async () => {
     const view = open({ path: '/settings/api-reference?group=scopes' });
 
     const panel = await view.findByTestId('api-scopes');
     expect(panel.textContent).toContain(API_REFERENCE_COPY.scopes.intro);
-    const names = [...panel.querySelectorAll('li code')].map((code) => code.textContent);
-    expect(names).toContain('workflows:read');
-    expect(names).toContain('schedules:write');
-    expect(names.length).toBeGreaterThan(5);
+    await waitFor(() => expect(panel.querySelectorAll('li').length).toBe(10));
+    const rows = [...panel.querySelectorAll('li')].map((row) => [
+      row.querySelector('code')?.textContent,
+      row.querySelector('span')?.textContent,
+    ]);
+    expect(rows).toEqual([
+      ['runs:read', 'See runs and their steps'],
+      ['runs:write', 'Start, cancel and retry runs'],
+      ['chats:write', 'Send messages'],
+      ['reviews:write', 'Approve or deny reviews'],
+      ['agents:read', 'See agents'],
+      ['schedules:read', 'See schedules'],
+      ['schedules:write', 'Create, edit, skip and delete schedules'],
+      ['agents:write', 'Create and edit agents'],
+      ['hooks:write', 'Create, edit and delete hooks'],
+      ['settings:write', 'Change settings and manage plugins'],
+    ]);
+  });
+
+  test('Your scopes lists only what the host says the session holds, and says so when the host does not answer', async () => {
+    const narrow = open({
+      path: '/settings/api-reference?group=scopes',
+      session: { subject: 'anonymous:local', scopes: ['runs:read'] },
+    });
+    const panel = await narrow.findByTestId('api-scopes');
+    await waitFor(() => expect(panel.querySelectorAll('li').length).toBe(1));
+    expect(panel.querySelector('li code')?.textContent).toBe('runs:read');
+    cleanup();
+    restoreFetch?.();
+    stub?.restore();
+
+    const failing = open({ path: '/settings/api-reference?group=scopes', session: 'fail' });
+    const failed = await failing.findByTestId('api-reference-load-failed');
+    expect(failed.textContent).toContain('The server answered with an error (503).');
   });
 
   test('Workflow sources lists each workflow file with what it holds, and offers no Open file', async () => {

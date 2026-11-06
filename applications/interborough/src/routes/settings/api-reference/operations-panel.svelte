@@ -2,13 +2,14 @@
   /**
    * The Operations tab (board PageSettingsSections, "API reference · Operations"): a group select
    * that reads "All groups", the count of operations shown, and a table of method, path, what the
-   * operation does and the scope it needs. A row opens to show an example request body and the
-   * response, in code blocks; its toggle sits before the method, so the four columns the board
-   * names are the whole table and the scope is never pushed out of view. The path and the summary
-   * are held to a width and wrap inside it, so no column asks for more than the table has. The
-   * operations are the server's own OpenAPI description (`api-operations.ts`).
+   * operation does and the scope it needs, with the chevron that opens a row at the row's right.
+   * The method is monospaced text in its method's colour, as the board draws it. A row opens to
+   * show an example request body and the response, in code blocks. The path and the summary are
+   * held to a width and wrap inside it, so no column asks for more than the table has, at 375px
+   * as at 1280. The operations are Interborough's own OpenAPI description (`/api/openapi.json`,
+   * `api-operations.ts`), in the order it lists them.
    */
-  import { Badge, Button, CodeBlock, Select, Table } from '@lostgradient/cinder';
+  import { Button, CodeBlock, Select, Table, VisuallyHidden } from '@lostgradient/cinder';
   import { ChevronDown, ChevronRight } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { SvelteSet } from 'svelte/reactivity';
@@ -30,13 +31,13 @@
   const queryClient = useQueryClient();
   const copy = API_REFERENCE_COPY.operations;
   const ALL = '';
-  const QUERY_KEY = ['api-reference', 'openapi'] as const;
+  const QUERY_KEY = ['api-reference', 'api'] as const;
 
   const document = createQuery(
     () => ({
       queryKey: QUERY_KEY,
       queryFn: async (): Promise<OpenApiDocumentLike> =>
-        (await fetchDiscoveryDocument(client, 'openapi')) as OpenApiDocumentLike,
+        (await fetchDiscoveryDocument(client, 'api')) as OpenApiDocumentLike,
       // A failure is shown with Try again, not retried behind the person's back.
       retry: false,
     }),
@@ -104,30 +105,18 @@
             <Table.HeaderCell>{copy.columns.path}</Table.HeaderCell>
             <Table.HeaderCell>{copy.columns.summary}</Table.HeaderCell>
             <Table.HeaderCell>{copy.columns.scope}</Table.HeaderCell>
+            <Table.HeaderCell
+              ><VisuallyHidden>{copy.columns.details}</VisuallyHidden></Table.HeaderCell
+            >
           </Table.Row>
         </Table.Header>
         <Table.Body>
           {#each shown as operation (operation.id)}
             <Table.Row data-operation={operation.id}>
               <Table.Cell>
-                <span class="ib-api-operations__method">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    iconOnly
-                    label={copy.toggleLabel(operation.method, operation.path)}
-                    aria-expanded={open.has(operation.id)}
-                    aria-controls={detailId(operation)}
-                    onclick={() => toggle(operation.id)}
-                  >
-                    {#if open.has(operation.id)}
-                      <ChevronDown size={16} aria-hidden="true" />
-                    {:else}
-                      <ChevronRight size={16} aria-hidden="true" />
-                    {/if}
-                  </Button>
-                  <Badge variant="neutral" monospace>{operation.method}</Badge>
-                </span>
+                <code class="ib-api-operations__method" data-method={operation.method}
+                  >{operation.method}</code
+                >
               </Table.Cell>
               <Table.Cell
                 ><code class="ib-api-operations__path"
@@ -145,10 +134,29 @@
                   <code class="ib-api-operations__scope">{operation.scope}</code>
                 {/if}
               </Table.Cell>
+              <Table.Cell>
+                <span class="ib-api-operations__toggle">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    label={copy.toggleLabel(operation.method, operation.path)}
+                    aria-expanded={open.has(operation.id)}
+                    aria-controls={detailId(operation)}
+                    onclick={() => toggle(operation.id)}
+                  >
+                    {#if open.has(operation.id)}
+                      <ChevronDown size={14} aria-hidden="true" />
+                    {:else}
+                      <ChevronRight size={14} aria-hidden="true" />
+                    {/if}
+                  </Button>
+                </span>
+              </Table.Cell>
             </Table.Row>
             {#if open.has(operation.id)}
               <Table.Row>
-                <Table.Cell colspan={4}>
+                <Table.Cell colspan={5}>
                   <div class="ib-api-operations__detail" id={detailId(operation)}>
                     <section aria-label={copy.requestBody}>
                       <h3 class="ib-api-operations__heading">{copy.requestBody}</h3>
@@ -240,9 +248,35 @@
   }
 
   .ib-api-operations__method {
-    display: inline-flex;
-    gap: var(--cinder-space-1);
-    align-items: center;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-bold);
+    color: var(--cinder-text-muted);
+  }
+
+  /* The board's method colours: a read in the info hue, a write in the success hue. */
+  .ib-api-operations__method[data-method='GET'] {
+    color: var(--cinder-status-info-text);
+  }
+
+  .ib-api-operations__method[data-method='POST'],
+  .ib-api-operations__method[data-method='PUT'],
+  .ib-api-operations__method[data-method='PATCH'] {
+    color: var(--cinder-status-success-text);
+  }
+
+  .ib-api-operations__method[data-method='DELETE'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .ib-api-operations__scope {
+    color: var(--cinder-text-muted);
+  }
+
+  .ib-api-operations__toggle {
+    display: flex;
+    justify-content: flex-end;
+    color: var(--cinder-text-muted);
   }
 
   .ib-api-operations__detail {

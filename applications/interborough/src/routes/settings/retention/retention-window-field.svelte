@@ -6,8 +6,10 @@
    * number of days in it. Choosing Delete after only opens the field, so a click never starts
    * deleting records: nothing is saved until the person has typed a number of days.
    *
-   * The draft is the Bureau's own value: `'forever'` or `{ olderThan }` in milliseconds, or, for
-   * a window with no `'forever'` (`retention.memory`), nothing at all for Keep forever.
+   * The draft is the Bureau's own value: `'forever'` or `{ olderThan }` in milliseconds, or, for a
+   * window with no `'forever'` that keeps its records while unset (`retention.logs`), nothing at all
+   * for Keep forever. A window that deletes while unset is drawn with Delete after alone, so its
+   * row never saves nothing.
    */
   import { NumberInput, Segment, SegmentedControl } from '@lostgradient/cinder';
 
@@ -68,6 +70,9 @@
 
   function choose(next: string): void {
     if (next === 'forever') {
+      // A row that offers no Keep forever never clears its window: clearing would put back a
+      // window that deletes, so the choice cannot stand for keeping.
+      if (!keepForeverOffered) return;
       pendingAfter = false;
       typing = undefined;
       onChange(forever);

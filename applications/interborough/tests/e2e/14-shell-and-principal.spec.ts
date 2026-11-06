@@ -400,9 +400,9 @@ test('the old paths are gone, and /reviews took the inbox’s place', async ({ r
   expect(reviews.status()).toBe(200);
 });
 
-test('API reference loads the server’s OpenAPI description through the relay', async ({ page }) => {
+test('API reference loads the host’s own OpenAPI description', async ({ page }) => {
   const openapi = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/openapi.json',
+    (response) => new URL(response.url()).pathname === '/api/openapi.json',
   );
   await page.goto('/settings/api-reference?group=operations');
   const answered = await openapi;

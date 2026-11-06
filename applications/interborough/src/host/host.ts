@@ -46,8 +46,12 @@
  *
  * The routes on the public origin:
  *
- * - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents: Weft's engine
- *   operations, relayed to its server.
+ * - `/api/runs`, `/api/runs/<run>`, `/api/chats/<chat>/messages`, `/api/agents`, `/api/schedules`,
+ *   `/api/reviews/<review>/decision`, their description at `/api/openapi.json`, and `/host/session`:
+ *   Interborough's own API over the Bureau, each operation checked against the session's scopes
+ *   (`api-routes.ts`, `api-description.ts`).
+ * - The rest of `/api/*` (`/api/v1/*` and so on), `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery
+ *   documents: Weft's engine operations, relayed to its server.
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
  *   served by `createBureauHandler` with the `/bureau` prefix removed. A WebSocket upgrade there
  *   (`bureau.events` at `/bureau/jsonrpc`) goes to the same handler's `upgrade`, and
@@ -129,6 +133,8 @@ import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
+import { API_DESCRIPTION_ROUTE, apiDescription } from './api-description.ts';
+import { apiRoutes, localApiPrincipal } from './api-routes.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
@@ -1169,6 +1175,25 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ),
         ...skillRoutes(skills, refuse),
         ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
+        // Interborough's own API over the Bureau (COR-2019), checked against the session's scopes.
+        // Interborough is single-user for now, so every request is the local person, who holds
+        // every scope. Weft's engine operations under `/api/v1` are relayed below, as before.
+        ...apiRoutes(
+          {
+            bureau,
+            timeline: (runId) => engine.getTimeline(runId),
+            principal: () => localApiPrincipal(ANONYMOUS_LOCAL_OWNER),
+          },
+          refuse,
+        ),
+        [API_DESCRIPTION_ROUTE]: {
+          GET: (request: Request) =>
+            refuse(request) ??
+            Response.json(
+              // The API answers only the host's own address, not an A2A public origin.
+              apiDescription(hostOrigin ?? `http://${LOOPBACK}:${startPort}`),
+            ),
+        },
         // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
         [HOST_STORAGE_ROUTE]: {
           GET: async (request: Request) =>

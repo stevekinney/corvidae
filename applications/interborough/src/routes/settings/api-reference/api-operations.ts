@@ -1,7 +1,8 @@
 /**
  * The operations Settings › API reference lists (board PageSettingsSections, "API reference ·
- * Operations"), read from the server's own OpenAPI description: each operation's method, path and
- * summary, the scope it needs, the group it belongs to (its first tag), and an example request and
+ * Operations"), read from Interborough's own OpenAPI description (`/api/openapi.json`,
+ * `src/host/api-description.ts`): each operation's method, path and summary, the scope it needs
+ * (`x-interborough-scope`), the group it belongs to (its first tag), and an example request and
  * response made from its schemas. The document is what other programs generate their clients from,
  * so the page cannot list an operation the server does not serve.
  */
@@ -25,24 +26,13 @@ interface ContentLike {
   readonly content?: Readonly<Record<string, { readonly schema?: SchemaLike }>>;
 }
 
-interface ScopeRequirementLike {
-  readonly kind?: string;
-  readonly scopes?: readonly string[];
-}
-
-interface AccessLike {
-  readonly kind?: string;
-  readonly scopes?: ScopeRequirementLike;
-  readonly alternatives?: readonly ScopeRequirementLike[];
-}
-
 interface OperationLike {
   readonly operationId?: string;
   readonly summary?: string;
   readonly tags?: readonly string[];
   readonly requestBody?: ContentLike;
   readonly responses?: Readonly<Record<string, ContentLike>>;
-  readonly 'x-weft-access'?: AccessLike;
+  readonly 'x-interborough-scope'?: string;
 }
 
 /** The parts of an OpenAPI document this page reads. */
@@ -141,28 +131,35 @@ function jsonSchemaOf(content: ContentLike | undefined): SchemaLike | undefined 
   return content?.content?.[JSON_MEDIA_TYPE]?.schema;
 }
 
-function requirementText(requirement: ScopeRequirementLike | undefined): string | undefined {
-  const scopes = requirement?.scopes ?? [];
-  if (scopes.length === 0) return undefined;
-  return scopes.join(requirement?.kind === 'anyOf' ? ' or ' : ', ');
+/** The scope an operation names, or `undefined` for one open to any caller. */
+export function scopeOf(operation: OperationLike): string | undefined {
+  const scope = operation['x-interborough-scope'];
+  return typeof scope === 'string' && scope !== '' ? scope : undefined;
 }
 
-/** The scope an operation's access policy names, or `undefined` for one open to any caller. */
-export function scopeOf(access: AccessLike | undefined): string | undefined {
-  if (access === undefined) return undefined;
-  if (access.kind === 'scoped') return requirementText(access.scopes);
-  if (access.kind === 'scopedAlternatives') {
-    const alternatives = (access.alternatives ?? []).flatMap((alternative) => {
-      const text = requirementText(alternative);
-      return text === undefined ? [] : [text];
-    });
-    return alternatives.length === 0 ? undefined : alternatives.join(' or ');
+/** The longest example the table writes on one line, as the board draws a short one. */
+const INLINE_EXAMPLE_LENGTH = 72;
+
+function inline(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length === 0 ? '[]' : `[${value.map((item) => inline(item)).join(', ')}]`;
   }
-  return undefined;
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) return '{}';
+    return `{ ${entries.map(([key, item]) => `${JSON.stringify(key)}: ${inline(item)}`).join(', ')} }`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
-function pretty(value: unknown): string {
-  return JSON.stringify(value, null, 2);
+/**
+ * An example as the table writes it: on one line, spaced as the board draws
+ * `{ "workflow": "order-refund", "input": { "order": 4471 } }`, when that fits; indented JSON
+ * when it does not.
+ */
+export function formatExample(value: unknown): string {
+  const line = inline(value);
+  return line.length <= INLINE_EXAMPLE_LENGTH ? line : JSON.stringify(value, null, 2);
 }
 
 function successOf(
@@ -171,11 +168,6 @@ function successOf(
   const status = Object.keys(operation.responses ?? {}).find((code) => /^2\d\d$/.test(code));
   if (status === undefined) return undefined;
   return { status, schema: jsonSchemaOf(operation.responses?.[status]) };
-}
-
-/** Where a method falls among the ones the table lists: the order of {@link METHODS}. */
-function methodOrder(method: string): number {
-  return METHODS.findIndex((candidate) => candidate === method.toLowerCase());
 }
 
 /** How many operations of the document carry each `operationId`. */
@@ -207,8 +199,8 @@ function rowIdentifier(
 }
 
 /**
- * Every operation the document serves, by group, then path, then method. A route that carries no
- * access policy (the health check, the documents themselves) is not an operation of the API.
+ * Every operation the document serves, in the order it lists them: by path as the document orders
+ * its paths, then by method. The order is the server's, so the table reads as the description does.
  */
 export function buildApiOperations(document: OpenApiDocumentLike): readonly ApiOperation[] {
   const operations: ApiOperation[] = [];
@@ -216,7 +208,7 @@ export function buildApiOperations(document: OpenApiDocumentLike): readonly ApiO
   for (const [path, entry] of Object.entries(document.paths ?? {})) {
     for (const method of METHODS) {
       const operation = entry[method];
-      if (operation === undefined || operation['x-weft-access'] === undefined) continue;
+      if (operation === undefined) continue;
       const requestSchema = jsonSchemaOf(operation.requestBody);
       const success = successOf(operation);
       operations.push({
@@ -224,22 +216,21 @@ export function buildApiOperations(document: OpenApiDocumentLike): readonly ApiO
         method: method.toUpperCase(),
         path,
         summary: operation.summary ?? operation.operationId ?? '',
-        scope: scopeOf(operation['x-weft-access']),
+        scope: scopeOf(operation),
         group: operation.tags?.[0] ?? UNTAGGED_GROUP,
         request:
-          requestSchema === undefined ? undefined : pretty(exampleOf(requestSchema, document)),
+          requestSchema === undefined
+            ? undefined
+            : formatExample(exampleOf(requestSchema, document)),
         responseStatus: success?.status,
         response:
-          success?.schema === undefined ? undefined : pretty(exampleOf(success.schema, document)),
+          success?.schema === undefined
+            ? undefined
+            : formatExample(exampleOf(success.schema, document)),
       });
     }
   }
-  return operations.toSorted(
-    (left, right) =>
-      left.group.localeCompare(right.group) ||
-      left.path.localeCompare(right.path) ||
-      methodOrder(left.method) - methodOrder(right.method),
-  );
+  return operations;
 }
 
 /** The groups the operations fall in, in the order the table lists them. */

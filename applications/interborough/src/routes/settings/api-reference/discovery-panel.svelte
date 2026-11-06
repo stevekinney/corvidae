@@ -2,8 +2,9 @@
   /**
    * The Discovery documents tab (board PageSettingsSections, "API reference · Discovery documents"):
    * three documents other programs read, each with what it is for, its address in small monospace
-   * and a Copy button named for the document ("Copy Agent card"). The OpenAPI description and the
-   * tool server are at this server's own address; the agent card is the host's directory card.
+   * and a Copy button named for the document ("Copy Agent card"). The OpenAPI description is
+   * Interborough's own API at `/api/openapi.json`, and the tool server is at this server's own
+   * address; the agent card is the host's directory card.
    */
   import { CopyButton, FormSection, SettingRow } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -12,7 +13,7 @@
   import { getClient } from '../../../lib/client.ts';
   import { getHostPaths } from '../../../lib/host-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { discoveryOrigin } from '../../system/discovery-client.ts';
+  import { discoveryDocumentUrl, discoveryOrigin } from '../../system/discovery-client.ts';
 
   const client = getClient();
   const copy = API_REFERENCE_COPY.discovery;
@@ -30,7 +31,8 @@
 
   /** The documents, in the order the board lists them. The agent card's address is the host's to say. */
   const documents = $derived([
-    { id: 'openapi', ...copy.documents.openapi, address: `${origin}/openapi.json` },
+    // Interborough's own API (`/api/openapi.json`); Weft's engine description stays at `/openapi.json`.
+    { id: 'openapi', ...copy.documents.openapi, address: discoveryDocumentUrl(client, 'api') },
     {
       id: 'agent-card',
       ...copy.documents.agentCard,

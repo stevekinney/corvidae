@@ -2,8 +2,10 @@
  * The retention windows Settings › Data and retention draws (board PageSettingsSections, "Data and
  * retention"): a choice between keeping a record for ever and deleting it after some days, with the
  * days in a field. The Bureau holds a window as `'forever'` or `{ olderThan }` in milliseconds (a key
- * with no `'forever'`, such as `retention.memory`, holds nothing instead), and a person reads it in
- * days, so this is the one place that converts between the two and says which days a window may be.
+ * with no `'forever'` holds nothing while unset), and a person reads it in days, so this is the one
+ * place that converts between the two and says which days a window may be. A key with no
+ * `'forever'` whose unset value still prunes (`retention.memory`, `retention.receipts`) offers no
+ * Keep forever at all, so the page never clears it.
  */
 import { DATA_RETENTION_COPY } from '../../../app/copy.ts';
 import type { SchemaNode } from '../../../lib/bureau-settings.ts';
@@ -35,18 +37,36 @@ export function isRetentionWindowNode(node: SchemaNode | undefined): boolean {
   return (node.anyOf ?? []).some((branch) => isRetentionWindowNode(branch));
 }
 
+/** Milliseconds in a day, the unit a person reads a window in. */
+const DAY = 86_400_000;
+
 /**
- * The retention windows where leaving the setting unset does not keep the records: the Bureau
- * falls back to a finite built-in window (`retention.receipts`, one week), and its schema has no
- * `'forever'` to store. Offering Keep forever there would clear the setting, and the default
- * would then delete the records the person chose to keep, so such a row is drawn without it. Every
- * other window either takes `'forever'` or, being in `SETTINGS_WITHOUT_DEFAULT`, keeps its records
- * while unset. `retention-window.test.ts` checks this list against the Bureau.
+ * The windows that prune while nothing sets them, though the Bureau publishes no default for them:
+ * each with the window in force then. `retention.memory` unset falls back to the memory policy's
+ * episodic window, 90 days (Memory's `DEFAULT_EPISODIC_RETENTION_MILLISECONDS`), so the row shows
+ * those 90 days rather than reading as kept forever. `retention-window.test.ts` checks it against
+ * Memory.
  */
-export const RETENTION_WITHOUT_KEEP_FOREVER: ReadonlySet<string> = new Set(['retention.receipts']);
+export const RETENTION_IN_FORCE_WHILE_UNSET: ReadonlyMap<string, { readonly olderThan: number }> =
+  new Map([['retention.memory', { olderThan: 90 * DAY }]]);
+
+/**
+ * The retention windows that cannot be kept forever: the schema has no `'forever'` to store, and
+ * leaving the setting unset still deletes records, because the Bureau falls back to a finite
+ * built-in window (`retention.receipts`, one day) or the memory policy's own window
+ * (`retention.memory`, 90 days). Offering Keep forever there would clear the setting, and the
+ * fallback would then delete the records the person chose to keep, so such a row is drawn with
+ * Delete after alone and never saves a cleared value. A window with no `'forever'` that keeps its
+ * records while unset (`retention.logs`, `.notifications`, `.hookDeliveries`) is not one of them.
+ * `retention-window.test.ts` derives this list from the Bureau's schema and fallbacks.
+ */
+export const RETENTION_WITHOUT_KEEP_FOREVER: ReadonlySet<string> = new Set([
+  'retention.receipts',
+  'retention.memory',
+]);
 
 /** Milliseconds in a day, the unit a person reads a window in. */
-export const RETENTION_DAY_MILLISECONDS = 86_400_000;
+export const RETENTION_DAY_MILLISECONDS = DAY;
 
 /** The fewest days a window may name. */
 export const RETENTION_DAYS_MINIMUM = 1;

@@ -12,8 +12,9 @@
    * same choice and days, so every row has one label style; a setting that is no window
    * (`retention.checkpoints`) is drawn as the schema says. A window nothing stored a value for
    * shows the one in force (`effective`), so events kept for seven days do not read as kept forever.
-   * A window whose unset value is itself a finite window (`retention.receipts`) offers no Keep
-   * forever, because clearing it would put the default back.
+   * A window that still deletes while unset (`retention.receipts`, whose default is a finite window,
+   * and `retention.memory`, which falls back to the memory policy's 90 days) offers no Keep
+   * forever, because clearing it would put that window back, and shows the window in force.
    */
   import { FormSection } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
@@ -30,6 +31,7 @@
     isRetentionRowKey,
     RETENTION_WITHOUT_KEEP_FOREVER,
     isRetentionWindowNode,
+    RETENTION_IN_FORCE_WHILE_UNSET,
     RETENTION_ROW_KEYS,
     retentionProblemWith,
   } from './retention-window.ts';
@@ -97,7 +99,9 @@
       <RetentionWindowField
         id={fieldProps.id}
         name={copy.labels[key] ?? settingLabel(key)}
-        value={form.draft(key) ?? snapshot.effective[key]}
+        value={form.draft(key) ??
+          snapshot.effective[key] ??
+          RETENTION_IN_FORCE_WHILE_UNSET.get(key)}
         forever={foreverOf(key)}
         keepForeverOffered={!RETENTION_WITHOUT_KEEP_FOREVER.has(key)}
         disabled={fieldProps.disabled}

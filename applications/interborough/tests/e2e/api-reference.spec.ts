@@ -2,8 +2,8 @@
  * Settings › API reference (board PageSettingsSections, "API reference · /settings/api-reference",
  * "API reference · Discovery documents", "Your scopes", "Workflow sources" and "API reference loading
  * and failing to load"): one tabs row of four tabs, each filled from what the running server answers.
- * The seeded server serves its OpenAPI description and treats the one local caller as holding every
- * scope; the showcase host holds the sample world's workflow files. A failed read must be an error in
+ * The seeded host serves Interborough's own API description at `/api/openapi.json` and says the one
+ * local session holds every scope; the showcase host holds the sample world's workflow files. A failed read must be an error in
  * its tab, never an empty one.
  *
  * Each captioned state is captured for the design review (`design-review-capture.ts`) at the three
@@ -12,6 +12,7 @@
 import type { Page } from '@playwright/test';
 
 import { API_REFERENCE_COPY } from '../../src/app/copy.ts';
+import { API_SCOPE_CATALOG } from '../../src/lib/api-scopes.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -53,7 +54,7 @@ test('one tabs row holds the four tabs, and the page has no key management', asy
   await captureAtEveryWidth(page, 'operations', 'Operations');
 });
 
-test('Operations lists the server’s operations with their scope, a group select and a count, and a row opens to its request and response', async ({
+test('Operations lists the seven operations of Interborough’s API with their scope, a group select and a count, and POST /api/runs opens to its request and response', async ({
   page,
 }) => {
   await page.goto(`${ROUTE}?group=operations`);
@@ -65,49 +66,67 @@ test('Operations lists the server’s operations with their scope, a group selec
     'Path',
     'What it does',
     'Scope',
+    'Details',
   ]);
   const count = page.getByTestId('api-operations-count');
-  await expect(count).toHaveText(/^\d+ operations$/);
-  const all = Number.parseInt((await count.textContent()) ?? '0', 10);
-  expect(all).toBeGreaterThan(1);
-  // The whole row is in view at the table's width: the scope is not pushed out to a scroll, and
-  // the summary wraps whole words instead of being clipped.
-  const frame = await page.locator('.cinder-table-scroll').boundingBox();
-  const firstScope = await table.locator('tbody tr').first().locator('td').nth(3).boundingBox();
-  expect((firstScope?.x ?? 0) + (firstScope?.width ?? 0)).toBeLessThanOrEqual(
-    (frame?.x ?? 0) + (frame?.width ?? 0),
-  );
-  expect(
-    await page
-      .locator('.cinder-table-scroll')
-      .evaluate((element) => element.scrollWidth <= element.clientWidth),
-  ).toBe(true);
-  // The scope a row names is one the server's own description names.
-  await expect(table.locator('[data-operation="weft.workflows.start"]')).toContainText(
-    'workflows:write',
-  );
+  await expect(count).toHaveText('7 operations');
+  const rows = table.locator('tbody tr[data-operation]');
+  const cells = async (index: number) => {
+    const texts = await rows.nth(index).locator('td').allTextContents();
+    return texts.slice(0, 4).map((text) => text.trim());
+  };
+  const expected = [
+    ['GET', '/api/runs', 'List runs', 'runs:read'],
+    ['POST', '/api/runs', 'Start a run', 'runs:write'],
+    ['GET', '/api/runs/{run}', 'Get one run and its steps', 'runs:read'],
+    ['POST', '/api/chats/{chat}/messages', 'Send a message to a chat', 'chats:write'],
+    ['GET', '/api/agents', 'List agents', 'agents:read'],
+    ['GET', '/api/schedules', 'List schedules', 'schedules:read'],
+    ['POST', '/api/reviews/{review}/decision', 'Approve or deny a review', 'reviews:write'],
+  ];
+  await expect(rows).toHaveCount(expected.length);
+  for (const [index, row] of expected.entries()) expect(await cells(index)).toEqual(row);
+  // The method is coloured monospaced text, and the chevron that opens a row is at its right.
+  await expect(rows.first().locator('td').first().locator('code[data-method="GET"]')).toBeVisible();
+  await expect(
+    rows
+      .first()
+      .locator('td')
+      .last()
+      .getByRole('button', { name: /^Request and response for/ }),
+  ).toBeVisible();
+
+  // The whole row is in view at the table's width, at every width Settings is drawn at: the
+  // scope is not pushed out to a scroll, and the summary wraps whole words instead of being clipped.
+  for (const width of [1280, 768, 375] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page
+        .locator('.cinder-table-scroll')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   // A group narrows the table and the count.
   const group = page.getByRole('combobox', { name: 'Group' });
   await expect(group).toContainText('All groups');
-  const options = await group.locator('option').allTextContents();
-  const narrower = options.find((option) => option !== 'All groups');
-  expect(narrower).toBeDefined();
-  await group.selectOption({ label: narrower! });
-  await expect(count).not.toHaveText(`${all} operations`);
+  await group.selectOption({ label: 'Runs' });
+  await expect(count).toHaveText('3 operations');
   await group.selectOption({ label: 'All groups' });
-  await expect(count).toHaveText(`${all} operations`);
+  await expect(count).toHaveText('7 operations');
 
-  // A row opens to an example request body and the response.
-  // Starting a workflow is the operation the board opens: its request is a body, not the empty one.
-  const toggle = table
-    .locator('[data-operation="weft.workflows.start"]')
-    .getByRole('button', { name: /Request and response for POST/ });
+  // POST /api/runs opens to the board's request body and its 201 response.
+  const toggle = table.getByRole('button', { name: 'Request and response for POST /api/runs' });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('region', { name: 'Request body' }).first()).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Request body' }).first()).toContainText('"type"');
-  await expect(page.getByRole('region', { name: /^Response, 2\d\d$/ }).first()).toBeVisible();
+  const request = page.getByRole('region', { name: 'Request body' });
+  await expect(request).toContainText('{ "workflow": "order-refund", "input": { "order": 4471 } }');
+  const response = page.getByRole('region', { name: 'Response, 201' });
+  await expect(response).toContainText('{ "run": "run-1-9f3a", "status": "running" }');
   await captureAtEveryWidth(page, 'operation-open', 'Operations');
 });
 
@@ -128,23 +147,25 @@ test('Discovery documents lists the three documents, each with its address and a
     await expect(panel).toContainText(description);
     await expect(panel.getByRole('button', { name: `Copy ${title}` })).toBeVisible();
   }
-  await expect(panel.locator('[data-document="openapi"] code')).toHaveText(/\/openapi\.json$/);
+  await expect(panel.locator('[data-document="openapi"] code')).toHaveText(/\/api\/openapi\.json$/);
   await expect(panel.locator('[data-document="agent-card"] code')).toHaveText(/agent-card\.json$/);
   await expect(panel.locator('[data-document="tools"] code')).toHaveText(/\/mcp$/);
   await captureAtEveryWidth(page, 'discovery-documents', 'Discovery documents');
 });
 
-test('Your scopes opens with the single-user sentence and lists the scopes this session holds', async ({
+test('Your scopes opens with the single-user sentence and lists the ten scopes this session holds, with what each lets it do', async ({
   page,
 }) => {
   await page.goto(`${ROUTE}?group=scopes`);
 
   const panel = page.getByTestId('api-scopes');
-  await expect(panel).toContainText(API_REFERENCE_COPY.scopes.intro);
-  await expect(panel.locator('li code', { hasText: /^workflows:read$/ })).toBeVisible();
-  await expect(
-    panel.locator('li code', { hasText: /^settings|^system:read$/ }).first(),
-  ).toBeVisible();
+  await expect(panel.locator('p').first()).toHaveText(API_REFERENCE_COPY.scopes.intro);
+  const rows = panel.locator('li');
+  await expect(rows).toHaveCount(API_SCOPE_CATALOG.length);
+  for (const [index, entry] of API_SCOPE_CATALOG.entries()) {
+    await expect(rows.nth(index).locator('code')).toHaveText(entry.scope);
+    await expect(rows.nth(index)).toContainText(entry.description);
+  }
   await captureAtEveryWidth(page, 'your-scopes', 'Your scopes');
 });
 
@@ -174,13 +195,13 @@ test('loading shows skeleton rows with the tab row live, then a status line with
   pageErrors,
 }) => {
   pageErrors.expect({
-    pattern: loggedFailedResponse(500, /openapi\.json/),
+    pattern: loggedFailedResponse(500, /api\/openapi\.json/),
     reason: 'The test answers the OpenAPI description with an error to draw the failed state.',
   });
   await page.clock.install();
   let release: (() => void) | undefined;
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route('**/openapi.json', async (route) => {
+  await page.route('**/api/openapi.json', async (route) => {
     await held;
     return route.fulfill({ status: 500, body: 'nope' });
   });

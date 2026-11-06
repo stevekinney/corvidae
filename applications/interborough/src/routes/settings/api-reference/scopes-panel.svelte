@@ -1,23 +1,63 @@
 <script lang="ts">
   /**
    * The Your scopes tab (board PageSettingsSections, "API reference · Your scopes"): what this
-   * session may do. Interborough is single-user for now, so these are the scopes of the person at
-   * the keyboard, and the page's own boards act with them. Each scope is a small monospaced name
-   * with what it lets the session do. A forbidden page links here (`app/copy.ts`, `scopes`).
+   * session may do through Interborough's API. Interborough is single-user for now, so these are
+   * the scopes of the person at the keyboard, and the page's own boards act with them. The host
+   * says which scopes the session holds (`/host/session`), because the host is what checks them on
+   * every `/api` operation; each is a small monospaced name with what it lets the session do, from
+   * the one catalog the host enforces (`lib/api-scopes.ts`). A forbidden page links here
+   * (`app/copy.ts`, `scopes`).
    */
-  import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
-  import { SCOPE_CATALOG } from '../../system/scope-catalog.ts';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  const principal = getPrincipalStore();
+  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_SCOPE_CATALOG } from '../../../lib/api-scopes.ts';
+  import { getHostSession } from '../../../lib/host-session.ts';
+  import { queryKeys } from '../../../lib/query.ts';
+  import { failureStatusOf } from './failure-status.ts';
+  import LoadState from './load-state.svelte';
+
+  const queryClient = useQueryClient();
   const copy = API_REFERENCE_COPY.scopes;
 
-  const granted = $derived(SCOPE_CATALOG.filter((entry) => principal.hasScope(entry.scope)));
+  const session = createQuery(
+    () => ({
+      queryKey: queryKeys.hostSession(),
+      queryFn: ({ signal }) => getHostSession({ signal }),
+      // A failure is shown with Try again, not retried behind the person's back.
+      retry: false,
+    }),
+    undefined,
+  );
+
+  let canceled = $state(false);
+
+  const granted = $derived.by(() => {
+    const held = new Set(session.data?.scopes ?? []);
+    return API_SCOPE_CATALOG.filter((entry) => held.has(entry.scope));
+  });
+
+  function cancelLoading(): void {
+    canceled = true;
+    void queryClient.cancelQueries({ queryKey: queryKeys.hostSession() });
+  }
+
+  function tryAgain(): void {
+    canceled = false;
+    void session.refetch();
+  }
 </script>
 
 <div class="ib-scopes" data-testid="api-scopes">
   <p class="ib-scopes__intro">{copy.intro}</p>
-  {#if granted.length === 0}
+  {#if session.data === undefined}
+    <LoadState
+      kind={session.isError ? 'error' : canceled ? 'canceled' : 'loading'}
+      status={failureStatusOf(session.error)}
+      onCancel={cancelLoading}
+      onRetry={tryAgain}
+    />
+  {:else if granted.length === 0}
     <p class="ib-scopes__muted">{copy.none}</p>
   {:else}
     <ul class="ib-scopes__list" aria-label={copy.listLabel}>

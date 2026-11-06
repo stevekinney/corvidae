@@ -1615,6 +1615,8 @@ export const API_REFERENCE_COPY = {
       path: 'Path',
       summary: 'What it does',
       scope: 'Scope',
+      /** The column of the button that opens a row, named for a screen reader only. */
+      details: 'Details',
     },
     /** The accessible name of the button that opens a row's request and response. */
     toggleLabel: (method: string, path: string): string =>

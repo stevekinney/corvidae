@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildApiOperations,
   exampleOf,
+  formatExample,
   operationGroups,
   scopeOf,
   type OpenApiDocumentLike,
@@ -39,17 +40,17 @@ const DOCUMENT: OpenApiDocumentLike = {
   paths: {
     '/api/runs': {
       get: {
-        operationId: 'weft.workflows.list',
+        operationId: 'runs.list',
         summary: 'List runs',
         tags: ['Runs'],
-        'x-weft-access': { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['workflows:read'] } },
+        'x-interborough-scope': 'runs:read',
         responses: { '200': {} },
       },
       post: {
-        operationId: 'weft.workflows.start',
+        operationId: 'runs.start',
         summary: 'Start a run',
         tags: ['Runs'],
-        'x-weft-access': { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['workflows:write'] } },
+        'x-interborough-scope': 'runs:write',
         requestBody: {
           content: { 'application/json': { schema: { $ref: '#/components/schemas/StartInput' } } },
         },
@@ -63,17 +64,8 @@ const DOCUMENT: OpenApiDocumentLike = {
     },
     '/api/agents': {
       get: {
-        operationId: 'weft.agents.list',
+        operationId: 'agents.list',
         summary: 'List agents',
-        'x-weft-access': { kind: 'authenticated' },
-        responses: { '200': {} },
-      },
-    },
-    '/v1/health': {
-      get: {
-        operationId: 'healthCheck',
-        summary: 'Health',
-        tags: ['System'],
         responses: { '200': {} },
       },
     },
@@ -83,11 +75,11 @@ const DOCUMENT: OpenApiDocumentLike = {
 describe('buildApiOperations', () => {
   const operations = buildApiOperations(DOCUMENT);
 
-  test('lists the routes that carry an access policy and leaves out the ones that do not', () => {
+  test('lists every operation in the order the document does: by path, then by method', () => {
     expect(operations.map((operation) => `${operation.method} ${operation.path}`)).toEqual([
-      'GET /api/agents',
       'GET /api/runs',
       'POST /api/runs',
+      'GET /api/agents',
     ]);
   });
 
@@ -97,12 +89,10 @@ describe('buildApiOperations', () => {
         '/api/workflows/{id}/query/{name}': {
           get: {
             operationId: 'weft.workflows.query',
-            'x-weft-access': { kind: 'authenticated' },
             responses: { '200': {} },
           },
           post: {
             operationId: 'weft.workflows.query',
-            'x-weft-access': { kind: 'authenticated' },
             responses: { '200': {} },
           },
         },
@@ -114,20 +104,20 @@ describe('buildApiOperations', () => {
   });
 
   test('says each operation’s summary, group and scope', () => {
-    const start = operations.find((operation) => operation.id === 'weft.workflows.start');
+    const start = operations.find((operation) => operation.id === 'runs.start');
     expect(start).toMatchObject({
       summary: 'Start a run',
       group: 'Runs',
-      scope: 'workflows:write',
+      scope: 'runs:write',
     });
-    expect(operations.find((operation) => operation.id === 'weft.agents.list')).toMatchObject({
+    expect(operations.find((operation) => operation.id === 'agents.list')).toMatchObject({
       group: 'Other',
       scope: undefined,
     });
   });
 
   test('makes the example request from the required fields of its schema', () => {
-    const start = operations.find((operation) => operation.id === 'weft.workflows.start');
+    const start = operations.find((operation) => operation.id === 'runs.start');
     expect(JSON.parse(start?.request ?? 'null')).toEqual({
       workflow: 'string',
       input: { order: 0 },
@@ -135,17 +125,17 @@ describe('buildApiOperations', () => {
   });
 
   test('makes the example response from the success status, and takes none for an operation without one', () => {
-    const start = operations.find((operation) => operation.id === 'weft.workflows.start');
+    const start = operations.find((operation) => operation.id === 'runs.start');
     expect(start?.responseStatus).toBe('201');
     expect(JSON.parse(start?.response ?? 'null')).toEqual({ run: 'string', status: 'running' });
-    const list = operations.find((operation) => operation.id === 'weft.workflows.list');
+    const list = operations.find((operation) => operation.id === 'runs.list');
     expect(list?.request).toBeUndefined();
     expect(list?.responseStatus).toBe('200');
     expect(list?.response).toBeUndefined();
   });
 
   test('lists the groups in the order the table does', () => {
-    expect(operationGroups(operations)).toEqual(['Other', 'Runs']);
+    expect(operationGroups(operations)).toEqual(['Runs', 'Other']);
   });
 
   test('an empty document lists nothing', () => {
@@ -154,31 +144,29 @@ describe('buildApiOperations', () => {
 });
 
 describe('scopeOf', () => {
-  test('names the scopes of a scoped policy, joined by what it needs of them', () => {
-    expect(
-      scopeOf({ kind: 'scoped', scopes: { kind: 'allOf', scopes: ['a:read', 'b:read'] } }),
-    ).toBe('a:read, b:read');
-    expect(
-      scopeOf({ kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['a:read', 'b:read'] } }),
-    ).toBe('a:read or b:read');
+  test('is the scope the operation names', () => {
+    expect(scopeOf({ 'x-interborough-scope': 'runs:read' })).toBe('runs:read');
   });
 
-  test('joins the alternatives of a policy that offers them', () => {
-    expect(
-      scopeOf({
-        kind: 'scopedAlternatives',
-        alternatives: [
-          { kind: 'allOf', scopes: ['a:read'] },
-          { kind: 'allOf', scopes: ['b:write'] },
-        ],
-      }),
-    ).toBe('a:read or b:write');
+  test('is nothing for an operation that names none', () => {
+    expect(scopeOf({})).toBeUndefined();
+    expect(scopeOf({ 'x-interborough-scope': '' })).toBeUndefined();
+  });
+});
+
+describe('formatExample', () => {
+  test('writes a short example on one line, spaced as the board draws it', () => {
+    expect(formatExample({ workflow: 'order-refund', input: { order: 4471 } })).toBe(
+      '{ "workflow": "order-refund", "input": { "order": 4471 } }',
+    );
+    expect(formatExample({ list: [1, 'a'], empty: {}, none: [] })).toBe(
+      '{ "list": [1, "a"], "empty": {}, "none": [] }',
+    );
   });
 
-  test('is nothing for a policy any caller satisfies', () => {
-    expect(scopeOf({ kind: 'public' })).toBeUndefined();
-    expect(scopeOf({ kind: 'authenticated' })).toBeUndefined();
-    expect(scopeOf(undefined)).toBeUndefined();
+  test('indents an example too long for one line', () => {
+    const long = { description: 'x'.repeat(80) };
+    expect(formatExample(long)).toBe(JSON.stringify(long, null, 2));
   });
 });
 
