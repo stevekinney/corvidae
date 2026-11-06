@@ -1372,37 +1372,6 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             },
           } satisfies HostStatus),
       },
-      // Where a person edits what the host keeps by hand. The pages show an agent's file path and
-      // a workflow's.
-      '/host/integrations': {
-        GET: async () => {
-          const [providerSnapshot, pluginSnapshot, sourceSnapshot] = await Promise.all([
-            providers.snapshot(),
-            pluginManager.snapshot(),
-            toolSources.snapshot(),
-          ]);
-          // Explicit shared projection: never forward configuration, locations, credentials or diagnostics.
-          return Response.json({
-            providers: providerSnapshot.providers.map(({ name }) => ({
-              id: name,
-              name,
-              available: providerSnapshot.models.some(
-                (model) => model.provider === name && !model.off,
-              ),
-            })),
-            plugins: pluginSnapshot.plugins.map(({ descriptor, status }) => ({
-              id: descriptor.name,
-              name: descriptor.title,
-              available: status === 'running',
-            })),
-            toolSources: sourceSnapshot.sources.map(({ id, state }) => ({
-              id,
-              name: id,
-              available: state === 'loaded',
-            })),
-          });
-        },
-      },
       ...providerRoutes(providers, refuseSettingsWrites, authority),
       ...pluginRoutes(pluginManager, refuseSettingsWrites, authority),
       // The nightly clean-up's standing, and "Clean up now" (COR-2009).

@@ -24,6 +24,7 @@ import { runRowHolderId } from './assets/row-asset-claims';
 import type { AssetHeldClaim, AssetService } from './assets/types';
 import {
   type CatalogRunAssetReleaserDependencies,
+  createCatalogAssetReleaseDrain,
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
   type EndedRunConversation,
@@ -561,5 +562,64 @@ describe('the recovered-run listener', () => {
     expect(calls).toEqual([]);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]?.message).toContain(RUN);
+  });
+});
+
+/** A promise the test resolves when it chooses, standing in for storage work under load. */
+function barrier() {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
+describe('the drain a shutdown waits on before the asset service closes', () => {
+  it('waits for a release that is still in its storage work when the shutdown begins, so nothing is written after the storage is disposed', async () => {
+    const drain = createCatalogAssetReleaseDrain();
+    const storageWork = barrier();
+    const reached = barrier();
+    let disposed = false;
+    const afterDisposal: string[] = [];
+    const { releaser, released } = setup({
+      references: { checkpointed: [held('row-1')] },
+      isClosed: () => drain.isClosed(),
+      readEnded: async () => {
+        reached.open();
+        await storageWork.promise;
+        if (disposed) afterDisposal.push('read the conversation');
+        return {
+          status: 'ended',
+          conversation: conversationOf([imageRow('row-1', 'checkpointed')]),
+        };
+      },
+    });
+    const releasing = drain.track(
+      releaser.releaseAfterRecovery({ runId: RUN, principalId: 'alice' }),
+    );
+    await reached.promise;
+
+    // The shutdown begins while the release is reading, and disposes the storage once the drain
+    // lets it go on. The storage work finishes only after that.
+    const shutdown = drain.drain().then(() => {
+      disposed = true;
+    });
+    storageWork.open();
+    await shutdown;
+    await releasing;
+
+    expect(released).toEqual([['checkpointed', held('row-1')]]);
+    expect(afterDisposal).toEqual([]);
+    expect(drain.isClosed()).toBe(true);
+  });
+
+  it('refuses a release that starts once it has drained, which reads and writes nothing', async () => {
+    const drain = createCatalogAssetReleaseDrain();
+    const { releaser, released, reads } = setup({ isClosed: () => drain.isClosed() });
+
+    await drain.drain();
+    await drain.track(releaser.releaseAfterRecovery({ runId: RUN, principalId: 'alice' }));
+
+    expect([released, reads]).toEqual([[], []]);
   });
 });

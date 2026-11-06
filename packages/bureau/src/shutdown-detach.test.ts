@@ -434,7 +434,13 @@ describe('COR-1716 shutdown readiness baseline', () => {
     bureaus.push(bureau);
     try {
       const shutdown = bureau.shutdown({ policy: 'detach', timeoutMilliseconds: 50 });
-      for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
+      // The timeout is advanced once the shutdown has reached the engine's disposal, which the gate
+      // holds, so the engine is the one owner still unresolved; a count of microtask turns before
+      // advancing would be a bet on how many awaits the steps ahead of it take.
+      for await (const _turn of awakeTurns()) {
+        if (asyncDisposeSpy.mock.calls.length > 0) break;
+      }
+      expect(asyncDisposeSpy.mock.calls.length).toBeGreaterThan(0);
       await runtime.advance(50);
       const report = await shutdown;
       expect(report.policy).toBe('detach');

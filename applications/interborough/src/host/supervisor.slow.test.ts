@@ -7,9 +7,15 @@
  * one is ended and proven gone when its scenario is over. Each scenario runs at module scope, under
  * the hang guard, so none is on Bun's per-test clock; the tests assert on what it recorded. Nothing
  * asserts on how long anything takes.
+ *
+ * A supervisor lives through a whole scenario of several steps (start, edit, reload, restart), and
+ * on a loaded host those steps together run past the hang guard although none of them is hung. Its
+ * guard therefore counts from the scenario's latest step ({@link Supervised.step}), not from the
+ * spawn: a guard on the supervisor's whole life killed it in the middle of a healthy restart, and
+ * the scenario then waited out a second guard for a host that was already gone.
  */
 import { HUMAN_INPUT_SIGNAL } from '@lostgradient/plugin-demo';
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { HangGuardProgress, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -29,6 +35,14 @@ type Supervised = {
   readonly stderr: () => string;
   /** The process ids of every host the supervisor has started, oldest first. */
   readonly pids: () => number[];
+  /**
+   * Run one step of the scenario: a wait or a request. The supervisor's hang guard counts from the
+   * start of the step and again from its end, so it ends the supervisor only when one step makes no
+   * progress for the whole guard, never because the steps of a long scenario add up to more.
+   */
+  readonly step: <T>(work: () => Promise<T>) => Promise<T>;
+  /** Everything the supervisor and its hosts have written so far, and whether it still runs. */
+  readonly report: () => string;
   readonly stop: () => Promise<void>;
 };
 
@@ -83,6 +97,7 @@ async function supervise(
   const home = await scratch();
   await enableDemoPlugin(home);
   const port = await freePort();
+  const progress = new HangGuardProgress();
   const child = spawnWithHangGuard(
     [
       process.execPath,
@@ -102,10 +117,15 @@ async function supervise(
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
+      progress,
     },
   );
   const stdout = collect(child.stdout);
   const stderr = collect(child.stderr);
+  let exited = 'the supervisor is running';
+  void child.exited.then((code) => {
+    exited = `the supervisor exited with code ${code}${child.signalCode === null ? '' : ` (${child.signalCode})`}`;
+  });
   const pids = (): number[] =>
     [...stdout().matchAll(/Started the host \(process (\d+)\)\./g)].map((match) =>
       Number(match[1]),
@@ -115,6 +135,15 @@ async function supervise(
     stdout,
     stderr,
     pids,
+    step: async (work) => {
+      progress.progressed();
+      try {
+        return await work();
+      } finally {
+        progress.progressed();
+      }
+    },
+    report: () => `${exited}\nstandard output:\n${stdout()}\nstandard error:\n${stderr()}`,
     stop: async () => {
       child.kill('SIGTERM');
       await child.exited;
@@ -151,9 +180,29 @@ async function stubBuild(): Promise<string> {
   return directory;
 }
 
+/**
+ * Wait, as one step of the scenario, until `condition` holds. A wait that gives up says what the
+ * supervisor and its hosts had written by then, and whether the supervisor was still running,
+ * rather than what they had written when the wait began.
+ */
+async function waitFor(
+  supervised: Supervised,
+  condition: () => boolean | Promise<boolean>,
+  message: string,
+): Promise<void> {
+  await supervised.step(async () => {
+    try {
+      await waitUntil(condition, { message, yieldTurn: () => Bun.sleep(50) });
+    } catch (error) {
+      throw new Error(`${String(error)}\n${supervised.report()}`, { cause: error });
+    }
+  });
+}
+
 /** Wait until the host answers on its port, which only a started host does. */
 async function waitForHost(supervised: Supervised): Promise<void> {
-  await waitUntil(
+  await waitFor(
+    supervised,
     async () => {
       try {
         const response = await fetch(new URL('/host/paths', supervised.url));
@@ -162,25 +211,29 @@ async function waitForHost(supervised: Supervised): Promise<void> {
         return false;
       }
     },
-    {
-      message: `the host to answer on ${supervised.url.href}\n${supervised.stdout()}\n${supervised.stderr()}`,
-      yieldTurn: () => Bun.sleep(50),
-    },
+    `the host to answer on ${supervised.url.href}`,
   );
 }
 
 async function waitForStarts(supervised: Supervised, count: number): Promise<number[]> {
-  await waitUntil(() => supervised.pids().length >= count, {
-    message: `${count} host starts\n${supervised.stdout()}\n${supervised.stderr()}`,
-    yieldTurn: () => Bun.sleep(50),
-  });
+  await waitFor(supervised, () => supervised.pids().length >= count, `${count} host starts`);
   return supervised.pids();
 }
 
+/** The status of `GET <path>` on the host, as one step of the scenario. */
+function statusOf(supervised: Supervised, path: string): Promise<number> {
+  return supervised.step(async () => {
+    const response = await fetch(new URL(path, supervised.url));
+    return response.status;
+  });
+}
+
 /** Ask the host to restart, and say how it answered. */
-async function requestRestart(supervised: Supervised): Promise<number> {
-  const response = await fetch(new URL(HOST_RESTART_ROUTE, supervised.url), { method: 'POST' });
-  return response.status;
+function requestRestart(supervised: Supervised): Promise<number> {
+  return supervised.step(async () => {
+    const response = await fetch(new URL(HOST_RESTART_ROUTE, supervised.url), { method: 'POST' });
+    return response.status;
+  });
 }
 
 /** What a restart did: the processes either side of it, and whether each was alive afterwards. */
@@ -219,31 +272,35 @@ function runBody(threadId: string, extra: Record<string, unknown> = {}): string 
   });
 }
 
-async function agUiStream(supervised: Supervised, body: string): Promise<string> {
-  const response = await fetch(
-    new URL('/bureau/ag-ui/agents/demo:request-human-input/run', supervised.url),
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-      body,
-    },
-  );
-  return response.text();
+function agUiStream(supervised: Supervised, body: string): Promise<string> {
+  return supervised.step(async () => {
+    const response = await fetch(
+      new URL('/bureau/ag-ui/agents/demo:request-human-input/run', supervised.url),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        body,
+      },
+    );
+    return response.text();
+  });
 }
 
 /** The identifiers of the human waits the Bureau holds, from `bureau.reviews.list`. */
-async function humanWaits(supervised: Supervised): Promise<string[]> {
-  const response = await fetch(new URL('/bureau/jsonrpc', supervised.url), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.reviews.list', params: {} }),
+function humanWaits(supervised: Supervised): Promise<string[]> {
+  return supervised.step(async () => {
+    const response = await fetch(new URL('/bureau/jsonrpc', supervised.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.reviews.list', params: {} }),
+    });
+    const body = (await response.json()) as {
+      result: { reviews: { id: string; kind: string; signalName?: string }[] };
+    };
+    return body.result.reviews
+      .filter((review) => review.kind === 'human-wait' && review.signalName === HUMAN_INPUT_SIGNAL)
+      .map((review) => review.id);
   });
-  const body = (await response.json()) as {
-    result: { reviews: { id: string; kind: string; signalName?: string }[] };
-  };
-  return body.result.reviews
-    .filter((review) => review.kind === 'human-wait' && review.signalName === HUMAN_INPUT_SIGNAL)
-    .map((review) => review.id);
 }
 
 const interruptOf = (stream: string): string =>
@@ -256,8 +313,8 @@ const startRestart = await withSupervised(
     await waitForHost(supervised);
     const first = supervised.pids().at(0);
     const restarted = await restart(supervised);
-    const answer = await fetch(new URL('/host/paths', supervised.url));
-    return { first, restarted, answerStatus: answer.status, stdout: supervised.stdout() };
+    const answerStatus = await statusOf(supervised, '/host/paths');
+    return { first, restarted, answerStatus, stdout: supervised.stdout() };
   },
 );
 
@@ -319,8 +376,8 @@ const devRestart = await withSupervised(
   async (supervised) => {
     await waitForHost(supervised);
     const restarted = await restart(supervised);
-    const page = await fetch(new URL('/', supervised.url));
-    return { restarted, pageStatus: page.status };
+    const pageStatus = await statusOf(supervised, '/');
+    return { restarted, pageStatus };
   },
 );
 
@@ -356,20 +413,19 @@ const devReload = await (async () => {
     // starts it again (COR-1944): rewriting the module every second until the second generation
     // appeared restarted the reload faster than a busy host could finish it. How long Bun takes to
     // notice the edit is Bun's, so the wait is for the reload and for nothing shorter.
-    await waitUntil(() => supervised.stdout().includes('Entry evaluated'), {
-      message: 'the first generation to finish evaluating',
-      yieldTurn: () => Bun.sleep(50),
-    });
+    await waitFor(
+      supervised,
+      () => supervised.stdout().includes('Entry evaluated'),
+      'the first generation to finish evaluating',
+    );
     await writeFile(generationModule, generationSource(2));
     edits += 1;
-    await waitUntil(() => supervised.stdout().includes('Generation 2 loaded'), {
-      message: 'the edited module to load',
-      yieldTurn: () => Bun.sleep(50),
-    });
-    await waitUntil(() => listening() >= 2, {
-      message: 'the reloaded host to listen',
-      yieldTurn: () => Bun.sleep(50),
-    });
+    await waitFor(
+      supervised,
+      () => supervised.stdout().includes('Generation 2 loaded'),
+      'the edited module to load',
+    );
+    await waitFor(supervised, () => listening() >= 2, 'the reloaded host to listen');
     await waitForHost(supervised);
     // A reload keeps the process: the supervisor was not involved.
     const pidsAfterReload = supervised.pids();
@@ -404,39 +460,39 @@ const devPlugin = await (async () => {
     plugins: [folder],
   });
   /** The plugin as `GET /host/plugins` lists it now, or `undefined` while the host is between processes. */
-  const listed = async () => {
-    try {
-      const response = await fetch(new URL('/host/plugins', supervised.url));
-      const body = (await response.json()) as {
-        plugins: {
-          descriptor: { name: string; version: string };
-          status: string;
-          problems: { code: string; path?: string }[];
-        }[];
-      };
-      return body.plugins.find((plugin) => plugin.descriptor.name === 'wip');
-    } catch {
-      return undefined;
-    }
-  };
+  const listed = () =>
+    supervised.step(async () => {
+      try {
+        const response = await fetch(new URL('/host/plugins', supervised.url));
+        const body = (await response.json()) as {
+          plugins: {
+            descriptor: { name: string; version: string };
+            status: string;
+            problems: { code: string; path?: string }[];
+          }[];
+        };
+        return body.plugins.find((plugin) => plugin.descriptor.name === 'wip');
+      } catch {
+        return undefined;
+      }
+    });
   return withSupervised(supervised, async () => {
     await waitForHost(supervised);
     const pid = supervised.pids().at(0);
     const before = await listed();
-    await waitUntil(() => supervised.stdout().includes('Entry evaluated'), {
-      message: 'the first generation to finish evaluating',
-      yieldTurn: () => Bun.sleep(50),
-    });
+    await waitFor(
+      supervised,
+      () => supervised.stdout().includes('Entry evaluated'),
+      'the first generation to finish evaluating',
+    );
     await writeFile(file, source('2.0.0'));
-    await waitUntil(
+    await waitFor(
+      supervised,
       async () => {
         const current = await listed();
         return current?.descriptor.version === '2.0.0';
       },
-      {
-        message: `the edited plugin to be listed at 2.0.0\n${supervised.stdout()}\n${supervised.stderr()}`,
-        yieldTurn: () => Bun.sleep(50),
-      },
+      'the edited plugin to be listed at 2.0.0',
     );
     const after = await listed();
     return {
