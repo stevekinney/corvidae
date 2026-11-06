@@ -47,6 +47,12 @@ export type FakePluginHost = {
   downFor: number;
   /** Whether a restart request makes the host stop. */
   restartApplies: boolean;
+  /** How many reads the host still answers after it accepted a restart, before it stops. */
+  answersBeforeStopping: number;
+  /** How many times the host started again: a restart that really happened. */
+  restarts: number;
+  /** Called each time the host starts again, for the other services a test stands in for. */
+  onRestarted?: () => void;
   /** Makes the restart request answer with this response instead of accepting it. */
   refuseRestart?: Response;
   /** Makes the restart request fail the way a request that gets no answer does. */
@@ -138,6 +144,8 @@ export function snapshotOf(host: FakePluginHost): PluginsSnapshot {
 
 /** The host starting again: what was stored is what runs. */
 function restarted(host: FakePluginHost): void {
+  host.restarts += 1;
+  host.onRestarted?.();
   host.plugins = host.plugins.map((plugin) => {
     const stored = host.stored[plugin.name];
     if (stored === undefined) return plugin;
@@ -158,7 +166,13 @@ function restarted(host: FakePluginHost): void {
 /** Installs the stand-in over the current `fetch`. Call `restore` before the layer underneath is restored. */
 export function installFakePluginHost(
   plugins: PluginFixture[],
-  options: { lockReason?: 'deployment'; restartApplies?: boolean; downFor?: number } = {},
+  options: {
+    lockReason?: 'deployment';
+    restartApplies?: boolean;
+    downFor?: number;
+    answersBeforeStopping?: number;
+    onRestarted?: () => void;
+  } = {},
 ): FakePluginHost {
   const underneath = globalThis.fetch;
   const host: FakePluginHost = {
@@ -166,6 +180,9 @@ export function installFakePluginHost(
     stored: {},
     downFor: options.downFor ?? 2,
     restartApplies: options.restartApplies ?? true,
+    answersBeforeStopping: options.answersBeforeStopping ?? 0,
+    restarts: 0,
+    ...(options.onRestarted === undefined ? {} : { onRestarted: options.onRestarted }),
     failReads: 0,
     launch: 'bun run start',
     unloaded: [],
@@ -175,6 +192,7 @@ export function installFakePluginHost(
   };
   let stopped = 0;
   let stopping = false;
+  let answeredWhileStopping = 0;
   const restore = installFetchImplementation(async (input, init) => {
     const path = new URL(urlOf(input), 'http://localhost').pathname;
     if (!path.startsWith('/host/plugins') && path !== '/host/restart') {
@@ -190,7 +208,10 @@ export function installFakePluginHost(
           host.launch === null ? null : { command: host.launch, directory: '/home/steve/app' },
       });
     }
-    if (method === 'GET' && stopping) {
+    if (method === 'GET' && stopping && answeredWhileStopping < host.answersBeforeStopping) {
+      // The host accepted the restart and has not stopped yet: it still answers as it was.
+      answeredWhileStopping += 1;
+    } else if (method === 'GET' && stopping) {
       if (stopped < host.downFor) {
         stopped += 1;
         throw new TypeError('Failed to fetch');
@@ -212,6 +233,7 @@ export function installFakePluginHost(
       if (host.restartApplies) {
         stopping = true;
         stopped = 0;
+        answeredWhileStopping = 0;
       }
       return Response.json({ restarting: true }, { status: 202 });
     }

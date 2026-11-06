@@ -1,6 +1,6 @@
 /**
  * Contract tests for `fixtures/dynamic-sources.ts` (WFT-116), run against a
- * REAL `Engine` rather than a double. The dev harness assumes this fixture
+ * REAL `Engine` rather than a double. The end-to-end host assumes this fixture
  * produces three specific engine states — `idle` before any load, `ready`
  * after a successful preload, and `failed` with a bounded failure category
  * after a rejected one. These tests fail with the actual reason when any of

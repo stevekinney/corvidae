@@ -7,14 +7,20 @@
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import type { BureauStub } from '../../lib/bureau-stub.test-support.ts';
 import {
   installFakePluginHost,
   type FakePluginHost,
 } from '../../routes/settings/plugins/plugins-host.test-support.ts';
 import { RestartFlow } from '../../routes/settings/plugins/restart-flow.svelte.ts';
+import {
+  installSettingsBureau,
+  servedSettings,
+} from '../../routes/settings/settings-fixtures.test-support.ts';
 import { restartActivity, restartProbing } from './host-restart-flow.svelte.ts';
 
 let host: FakePluginHost | undefined;
+let bureau: BureauStub | undefined;
 let flow: RestartFlow | undefined;
 const probing = { ...restartProbing };
 
@@ -26,12 +32,17 @@ beforeEach(() => {
 afterEach(() => {
   flow?.dispose();
   flow = undefined;
+  // Newest first: each stand-in restores the fetch it found.
   host?.restore();
   host = undefined;
+  bureau?.restore();
+  bureau = undefined;
   Object.assign(restartProbing, probing);
 });
 
 function start(options: Parameters<typeof installFakePluginHost>[1] = {}) {
+  // The watch reads the settings too, so the Bureau answers them; no setting waits for a restart.
+  bureau = installSettingsBureau(servedSettings());
   host = installFakePluginHost([{ name: 'demo', enabled: false }], options);
   flow = new RestartFlow();
   return flow;

@@ -4,8 +4,8 @@
    * pool diagnostics — lifecycle state, activation generation, restart
    * count, and in-flight turn count. Data comes from
    * `weft.realms.diagnostics`, reachable only via `client.operations[...]`
-   * (no ergonomic `HttpClient` method exists for it), matching
-   * `registry-tab.svelte`'s identical observation about `weft.system.registry`.
+   * (no ergonomic `HttpClient` method exists for it), as is the case
+   * for `weft.system.registry`.
    *
    * An engine that never opted into `workflowExecutionMode: 'realm'`
    * returns `pools: []` — rendered as the plain "not in realm mode" empty

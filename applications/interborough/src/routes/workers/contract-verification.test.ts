@@ -16,7 +16,6 @@ import {
   registryActivityContractHashes,
   verificationCommands,
   verificationFault,
-  verifyRegistryWorkflow,
   verifyWorkerContracts,
   WORKFLOW_IDENTITY_REASONS,
 } from './contract-verification.ts';
@@ -251,28 +250,6 @@ describe('registryActivityContractHashes', () => {
       charge: CHARGE_HASH,
       reserve: RESERVE_HASH,
     });
-  });
-});
-
-describe('verifyRegistryWorkflow', () => {
-  test('verifies every worker that serves the workflow and counts the rest', () => {
-    const drifted = { ...matchingCheckout(), workflowRevision: 'rev-9' };
-    const result = verifyRegistryWorkflow(
-      'checkout',
-      [
-        workerManifest({ checkout: drifted }, { workerId: 'worker-b' }),
-        workerManifest({ checkout: matchingCheckout() }, { workerId: 'worker-a' }),
-        workerManifest({}, { workerId: 'worker-c' }),
-      ],
-      registrySnapshot(),
-      REGISTRY_HASHES,
-    );
-
-    expect(result.workers.map((entry) => [entry.workerId, entry.verification.status])).toEqual([
-      ['worker-a', 'matched'],
-      ['worker-b', 'drift'],
-    ]);
-    expect(result.workersNotAdvertising).toBe(1);
   });
 });
 

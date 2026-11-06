@@ -31,8 +31,8 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.activities.complete` | exposed | `src/routes/workflows/detail/async-activity/async-activity-drawer.svelte` | `activity.complete` | `src/routes/workflows/detail/async-activity/async-activity-drawer.test.ts` |  |  |
 | `weft.activities.fail` | exposed | `src/routes/workflows/detail/async-activity/async-activity-drawer.svelte` | `activity.completeExceptionally` | `src/routes/workflows/detail/async-activity/async-activity-drawer.test.ts` |  |  |
 | `weft.alerts.list` | exposed | `src/routes/system/alerts-tab.svelte` |  | `src/routes/system/alerts-tab.test.ts` |  |  |
-| `weft.catalog.diagnostics` | exposed | `src/routes/system/source-load-diagnostics.svelte` |  | `src/routes/system/source-load-diagnostics.test.ts` |  |  |
-| `weft.catalog.sources.list` | exposed | `src/routes/system/dynamic-source-list.svelte` |  | `src/routes/system/dynamic-source-list.test.ts` |  |  |
+| `weft.catalog.diagnostics` | not-in-dashboard |  |  |  |  | Settings › API reference lists where workflow files load from, and no page draws an engine source's load state since the registry's page went (COR-2019). |
+| `weft.catalog.sources.list` | not-in-dashboard |  |  |  |  | Settings › API reference lists where workflow files load from through the workflow files the Bureau reads, so no page lists the engine's registered sources since the registry's page went (COR-2019). |
 | `weft.conformance.report` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/conformance-panel.test.ts` | COR-160 |  |
 | `weft.conformance.targets` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/conformance-panel.test.ts` | COR-160 |  |
 | `weft.realms.diagnostics` | exposed | `src/routes/system/realms-view.ts` |  | `src/routes/system/realms-tab.test.ts` |  |  |
@@ -104,8 +104,8 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.logs.list` | exposed | `src/routes/workflows/runs/run-logs-data.ts` |  | `src/routes/workflows/detail/timeline-tab-logs.test.ts` | COR-1811, COR-1860, COR-1988 |  |
 | `weft.workflows.purge` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
 | `weft.workflows.query` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `query` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
-| `weft.workflows.refresh` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel-actions.test.ts` | COR-166 |  |
-| `weft.workflows.refresh.diagnostics` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel.test.ts` | COR-166 |  |
+| `weft.workflows.refresh` | not-in-dashboard |  |  |  |  | A refresh source is code the host supplies and no page operates it since the registry's page went (COR-2019). |
+| `weft.workflows.refresh.diagnostics` | not-in-dashboard |  |  |  |  | A refresh source is code the host supplies and no page reads its state since the registry's page went (COR-2019). |
 | `weft.workflows.replay` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` | `replayTo` | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.result.get` | not-in-dashboard |  |  |  |  | Workflow detail shows the result from the `weft.workflows.get` state it already loads, and this operation waits for the run to settle, which would hold a dashboard request open. |
 | `weft.workflows.resume` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `resume` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
@@ -113,7 +113,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.revisions.get` | exposed | `src/routes/system/revision-detail.svelte` |  | `src/routes/system/revision-detail.test.ts` | COR-1464 |  |
 | `weft.workflows.revisions.install` | exposed | `src/routes/system/revision-install-form.svelte` |  | `src/routes/system/revision-install-form.test.ts` | COR-1464 |  |
 | `weft.workflows.revisions.list` | exposed | `src/routes/system/workflow-revisions-panel.svelte` |  | `src/routes/system/workflow-revisions-panel-activation.test.ts` |  |  |
-| `weft.workflows.revisions.preload` | exposed | `src/routes/system/dynamic-source-panel.svelte` |  | `src/routes/system/dynamic-source-panel.test.ts` |  |  |
+| `weft.workflows.revisions.preload` | not-in-dashboard |  |  |  |  | Preloading a dynamic source is done from the command line; no page offers it since the registry's page went (COR-2019). |
 | `weft.workflows.scheduleprovenance.get` | exposed | `src/routes/workflows/detail/lineage-panel.svelte` |  | `src/routes/workflows/detail/lineage-panel.test.ts` |  |  |
 | `weft.workflows.signal` | exposed | `src/routes/workflows/detail/signals-tab.svelte` | `signal` | `src/routes/workflows/detail/signals-tab.test.ts` |  |  |
 | `weft.workflows.start` | exposed | `src/routes/workflow-definitions/run-setup-form.svelte` | `start` | `src/routes/workflow-definitions/run-setup.test.ts` | COR-164, COR-1855 |  |

@@ -1788,8 +1788,6 @@ export const API_REFERENCE_COPY = {
     stillLoading: 'Still loading. This is taking longer than usual.',
     canceled: 'Loading was canceled.',
     tryAgain: 'Try again',
-    diagnostics: 'Loading the diagnostics',
-    refreshSources: 'Loading the refresh sources',
   },
   /** A read that failed with nothing to show; `status` is the HTTP status the server answered, if it answered. */
   loadFailed: {
@@ -1799,9 +1797,6 @@ export const API_REFERENCE_COPY = {
         ? 'Interborough didn’t answer.'
         : `The server answered with an error (${String(status)}).`,
   },
-  /** Said in place of a part the caller's scopes do not reach. */
-  notAvailable: (what: string): string => `${what} is not available to you`,
-  requiresScope: (scope: string, action: string): string => `Requires ${scope} to ${action}.`,
   operations: {
     groupLabel: 'Group',
     allGroups: 'All groups',
@@ -1856,19 +1851,6 @@ export const API_REFERENCE_COPY = {
     schedules: (count: number): string =>
       `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
     empty: 'No workflow files yet. Add one to the workflows folder and it loads on the next start.',
-    noRegistryTitle: 'No workflow types are registered',
-    noRegistryDescription:
-      'No eagerly registered workflow or activity definitions appear in this server. Dynamic sources never appear here; they are listed above.',
-    noActivitiesTitle: 'No activities are registered',
-    noActivitiesDescription: 'No activity definitions are registered with this server.',
-    staleRegistry: 'Refresh failed. Showing the last registry snapshot.',
-    loadingRegistry: 'Loading the registry',
-    loadingSources: 'Loading the registered sources',
-    sourceListEmptyTitle: 'No dynamic sources registered',
-    sourceListEmptyDescription: 'This server has no registered dynamic workflow sources to select.',
-    sourcePageEmptyTitle: 'No sources on this page',
-    sourcePageEmptyDescription: 'Go back to the previous page or use the manual lookup below.',
-    previousPage: 'Previous page',
   },
 } as const;
 

@@ -123,7 +123,8 @@ function mount(
   } = {},
 ) {
   const { agents = [], skills = [], pendingSettings = [], ...hostOptions } = options;
-  stub = installSettingsBureau(servedSettings({ pendingRestart: new Set(pendingSettings) }), {
+  const served = servedSettings({ pendingRestart: new Set(pendingSettings) });
+  stub = installSettingsBureau(served, {
     'bureau.agents.definitions.list': () => ({
       agents: agents.map((agent) => ({
         ...agent,
@@ -153,7 +154,11 @@ function mount(
       sources: [],
     }),
   });
-  host = installFakePluginHost(plugins, hostOptions);
+  // The host starting again is the Bureau starting again: what was stored is what runs.
+  host = installFakePluginHost(plugins, {
+    ...hostOptions,
+    onRestarted: () => served.pendingRestart.clear(),
+  });
   landAt(at);
   return render(RouteOutletHarness, {
     props: {
@@ -940,6 +945,56 @@ describe('restarting', () => {
     });
     expect(notice.textContent).toContain(RESTART_COPY.unconfirmed.description);
     expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull();
+  });
+
+  test('with only a setting waiting, the host is not back until it has really restarted', async () => {
+    // The host keeps answering for a few reads after it accepts the restart, as a real one does
+    // before it stops; no plugin waits, so only the setting says the restart has not happened.
+    const { container } = open('linear', fixtures(), {
+      pendingSettings: ['engine.maxConcurrentRuns'],
+      answersBeforeStopping: 3,
+    });
+    await loaded(container, 'linear');
+    await waitFor(() => expect(bannerText(container)).not.toBeNull());
+    // Whether the page already called the host back at the instant it really restarted.
+    let backBeforeRestart: boolean | undefined;
+    const restartedElsewhere = host!.onRestarted;
+    host!.onRestarted = () => {
+      backBeforeRestart = container.querySelector('[data-testid="restart-back"]') !== null;
+      restartedElsewhere?.();
+    };
+
+    await restartNow(container);
+
+    await backBanner(container);
+    expect(backBeforeRestart).toBe(false);
+    expect(host!.restarts).toBe(1);
+    // Every read before the host stopped found the setting still waiting, so none ended the wait.
+    const reads = host!.requests.filter(
+      (request) => request.method === 'GET' && request.path === '/host/plugins',
+    );
+    expect(reads.length).toBeGreaterThan(3);
+    expect(bannerText(container)).toBeNull();
+  });
+
+  test('with only a setting waiting, a host that keeps answering is said not to have restarted', async () => {
+    restartProbing.unchangedLimit = 3;
+    const { container } = open('linear', fixtures(), {
+      pendingSettings: ['engine.maxConcurrentRuns'],
+      restartApplies: false,
+    });
+    await loaded(container, 'linear');
+    await waitFor(() => expect(bannerText(container)).not.toBeNull());
+
+    await restartNow(container);
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="settings-restart-unconfirmed"]'),
+      ).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-testid="restart-back"]')).toBeNull();
+    expect(host!.restarts).toBe(0);
   });
 
   test('says when the host refuses to restart, or keeps its choices in its deployment', async () => {

@@ -153,7 +153,8 @@
     const result = flow.result;
     if (result === undefined) return;
     untrack(() => {
-      queryClient.setQueryData(queryKeys.hostPlugins(), result);
+      queryClient.setQueryData(queryKeys.hostPlugins(), result.plugins);
+      queryClient.setQueryData(queryKeys.settings.snapshot(), result.settings);
       if (flow.phase === 'back') {
         drafts.discard();
         // The host started again: what the rest of the application kept is from the host that stopped.
@@ -337,7 +338,7 @@
     busy: reverting,
   }}
   onRestart={() => restart()}
-  back={flow.phase === 'back' ? restartBackWords(flow.intent, flow.result) : undefined}
+  back={flow.phase === 'back' ? restartBackWords(flow.intent, flow.result?.plugins) : undefined}
 />
 
 <div class="ib-plugins" data-testid="plugins-body">
