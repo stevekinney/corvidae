@@ -30,6 +30,7 @@ afterEach(() => {
 });
 
 const PROVIDERS = (hasKey: boolean) => ({
+  configurationRevision: null,
   providers: [{ name: 'anthropic', configured: hasKey, hasKey }],
   catalog: [],
   models: [],

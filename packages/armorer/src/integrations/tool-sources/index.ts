@@ -1,3 +1,7 @@
+import type {
+  BeforeMcpOAuthTokenRequest,
+  McpOAuthTokenRequest,
+} from '../mcp/oauth-token-request-gate';
 /**
  * Saved tool sources: build the tools of an MCP server or an OpenAPI service from a plain-JSON
  * description plus an injected credential resolver.
@@ -222,6 +226,11 @@ export class ToolSourceAuthorizationRequiredError extends Error {
 
 /** Host-owned pieces of the MCP OAuth flow, which a persisted description cannot carry. */
 export type ToolSourceOAuthOptions = {
+  /** Claim a source's exact OAuth credential immediately before each token exchange. */
+  beforeTokenRequest?: (
+    sourceId: string,
+    request: McpOAuthTokenRequest,
+  ) => ReturnType<BeforeMcpOAuthTokenRequest>;
   /** Where one source's tokens, client registration, and PKCE state live. */
   tokenStorage: (sourceId: string) => McpOAuthTokenStorage;
   /** The redirect URI registered with the authorization server for one source. */
@@ -419,11 +428,15 @@ async function connectHttp(
       );
     }
     const provider = createToolSourceOAuthProvider(sourceId, authentication, oauth);
+    const beforeTokenRequest = oauth.beforeTokenRequest;
     try {
       return await connectMcpClientWithOAuth({
         serverUrl: transport.url,
         provider,
         transportOptions: fetchOption,
+        ...(beforeTokenRequest
+          ? { beforeTokenRequest: (request) => beforeTokenRequest(sourceId, request) }
+          : {}),
       });
     } catch (error) {
       if (isMcpUnauthorizedError(error)) {
@@ -514,10 +527,14 @@ export async function completeToolSourceAuthorization(
   // Caller-owned, read after the awaits below.
   const oauth = { ...options.oauth };
   const provider = createToolSourceOAuthProvider(source.id, authentication, oauth);
+  const beforeTokenRequest = oauth.beforeTokenRequest;
   await completeMcpOAuthAuthorization(provider, {
     serverUrl: source.transport.url,
     callbackUrl: options.callbackUrl,
     tokenStorage: oauth.tokenStorage(source.id),
+    ...(beforeTokenRequest
+      ? { beforeTokenRequest: (request) => beforeTokenRequest(source.id, request) }
+      : {}),
     ...(options.fetch ? { fetchFn: options.fetch } : {}),
   });
 }

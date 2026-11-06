@@ -294,6 +294,7 @@ export * from './inspect';
 export * from './instrumentation';
 export * from './integrations/mcp';
 export * from './integrations/mcp/oauth';
+export * from './integrations/mcp/oauth-token-request-gate';
 export * from './integrations/openapi';
 export * from './middleware';
 export * from './query';

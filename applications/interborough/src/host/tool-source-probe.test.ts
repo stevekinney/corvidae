@@ -19,7 +19,11 @@ import {
   type ToolSourceManager,
   type ToolSourceManagerOptions,
 } from './tool-source-manager.ts';
-import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import {
+  fixtureToolSourceMutation,
+  keysOf,
+  memoryHome,
+} from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import {
   petsDocument,
@@ -573,7 +577,9 @@ describe('a probe of a source that never answers', () => {
 
 describe('the probe route', () => {
   function post(manager: ToolSourceManager, id: string, body: unknown, principal = owner) {
-    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => principal });
+    const routes = toolSourceRoutes(manager, () => undefined, {
+      mutation: fixtureToolSourceMutation(manager, principal),
+    });
     const request = Object.assign(
       new Request(`http://127.0.0.1/host/tool-sources/${id}/probe`, {
         method: 'POST',
@@ -632,6 +638,6 @@ describe('the probe route', () => {
     expect(notJson.status).toBe(400);
     expect(await missing.json()).toMatchObject({ error: 'invalid', field: 'credentials.token' });
     expect(command.status).toBe(403);
-    expect(await command.json()).toMatchObject({ error: 'owner-only' });
+    expect(await command.json()).toMatchObject({ error: 'forbidden' });
   });
 });

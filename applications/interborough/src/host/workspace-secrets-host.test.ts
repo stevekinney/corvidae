@@ -110,12 +110,17 @@ test('management reports typed provider failures without their values or causes'
       ['unavailable', 503],
     ] as const) {
       code = next;
+      const snapshot = await host.plugins.snapshot();
       const response = await fetch(
         new URL('/host/plugins/provider-error/secrets/api-key', host.url),
         {
           method: 'PUT',
           headers: { 'content-type': 'application/json', origin: host.url.origin },
-          body: JSON.stringify({ value: 'candidate-value' }),
+          body: JSON.stringify({
+            value: 'candidate-value',
+            operationId: crypto.randomUUID(),
+            expectedRevision: snapshot.configurationRevision,
+          }),
         },
       );
       expect(response.status).toBe(status);

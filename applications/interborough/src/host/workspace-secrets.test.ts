@@ -6,7 +6,13 @@ test('preparation is invisible until configuration publishes its exact reference
   using home = await openTemporaryBungalow({ name: 'secret-test' });
   await home.deploymentSecrets.write('api-key', 'original');
   const secrets = createWorkspaceSecrets(home);
-  const input = { operationId: 'first', key: 'api-key', value: 'next', expectedRevision: null };
+  const input = {
+    operationId: 'first',
+    key: 'api-key',
+    value: 'next',
+    requestDigest: 'a'.repeat(64),
+    expectedRevision: null,
+  };
   const prepared = await home.secretProvider.prepare(input);
   expect(await secrets.read('api-key')).toBe('original');
   expect(await secrets.publish({ ...input, document: {} })).toMatchObject({ outcome: 'committed' });
@@ -132,6 +138,7 @@ test('startup abandons never-attempted preparation without exposing it', async (
   using home = await openTemporaryBungalow({ name: 'secret-test' });
   const operation = await home.secretProvider.prepare({
     operationId: 'crash',
+    requestDigest: 'a'.repeat(64),
     key: 'api-key',
     value: 'secret',
     expectedRevision: null,
@@ -187,7 +194,13 @@ test('malformed injected preparation is rejected before configuration publicatio
 
 test('a crash after claiming publication retains the uncertain version without sending CAS', async () => {
   using home = await openTemporaryBungalow({ name: 'secret-test' });
-  const input = { operationId: 'claimed', key: 'api-key', value: 'secret', expectedRevision: null };
+  const input = {
+    operationId: 'claimed',
+    key: 'api-key',
+    value: 'secret',
+    requestDigest: 'a'.repeat(64),
+    expectedRevision: null,
+  };
   const prepared = await home.secretProvider.prepare(input);
   await home.secretProvider.transitionOperation('claimed', { from: 'prepared', to: 'publishing' });
   let calls = 0;
@@ -244,6 +257,7 @@ test('provider unavailability never changes a pending operation into abandonment
   using home = await openTemporaryBungalow({ name: 'secret-test' });
   await home.secretProvider.prepare({
     operationId: 'pending',
+    requestDigest: 'a'.repeat(64),
     key: 'api-key',
     value: 'value',
     expectedRevision: null,
@@ -316,4 +330,56 @@ test('recovery never reclaims an active reference when provider metadata reports
   await recovery.reconcile();
   expect(reclaimed).toBe(0);
   expect(await recovery.read('api-key')).toBe('active-value');
+});
+
+test('one logical receipt cannot publish two different configurations', async () => {
+  using home = await openTemporaryBungalow({ name: 'secret-test' });
+  let writes = 0;
+  const shared = {
+    ...home,
+    async writeConfiguration(text: string, condition: { expectedRevision: string | null }) {
+      writes++;
+      return home.writeConfiguration(text, condition);
+    },
+  };
+  const input = {
+    operationId: 'same-intent',
+    key: 'api-key',
+    value: 'same-key',
+    expectedRevision: null,
+  };
+  const results = await Promise.allSettled([
+    createWorkspaceSecrets(shared).publish({ ...input, document: { models: ['first'] } }),
+    createWorkspaceSecrets(shared).publish({ ...input, document: { models: ['second'] } }),
+  ]);
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+  expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+  expect(writes).toBe(1);
+});
+
+test('logical encrypted retries retain the first encoding and never republish', async () => {
+  using home = await openTemporaryBungalow({ name: 'secret-test' });
+  let writes = 0;
+  const secrets = createWorkspaceSecrets({
+    ...home,
+    async writeConfiguration(text, condition) {
+      writes++;
+      return home.writeConfiguration(text, condition);
+    },
+  });
+  const input = {
+    operationId: 'encrypted-retry',
+    key: 'token',
+    value: 'random-one',
+    expectedRevision: null,
+    requestDigest: 'a'.repeat(64),
+    document: {},
+  };
+  await secrets.publish(input);
+  expect(await secrets.publish({ ...input, value: 'random-two' })).toMatchObject({
+    outcome: 'committed',
+    publishedNow: false,
+  });
+  expect(await secrets.read('token')).toBe('random-one');
+  expect(writes).toBe(1);
 });

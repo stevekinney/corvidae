@@ -1,3 +1,4 @@
+import { createLocalHostMutationContext } from './host-mutation-context.ts';
 /**
  * COR-1930 correction: what a saved tool source must not do. A tool name an agent file stores must
  * keep meaning the same tool; a credential must go only to the place it was given for and never to
@@ -530,6 +531,61 @@ describe('a sign-in', () => {
     const replay = await failureOf(manager.completeAuthorization('calendar', callback));
     expect((replay as ToolSourceInputError).message).toContain('no sign-in is waiting');
     expect(oauth.issuedAccessTokens).toEqual([]);
+  });
+
+  test('repeating an explicit sign-in returns its original URL without replacing state', async () => {
+    const { home, keys, manager } = await signingIn();
+    const mutation = await createLocalHostMutationContext(home.bungalow);
+    const first = await manager.authorize('calendar', mutation);
+    const saved = await secretsOf(home, keys, 'calendar');
+    const revision = await home.bungalow.readConfiguration();
+    const repeated = await manager.authorize('calendar', mutation);
+    expect(repeated).toEqual(first);
+    expect(await home.bungalow.readConfiguration()).toEqual(revision);
+    expect(await secretsOf(home, keys, 'calendar')).toEqual(saved);
+  });
+
+  test('two hosts completing one callback spend its code only once', async () => {
+    const { oauth, home, keys, manager } = await signingIn();
+    const callback = await callbackAfterAuthorizing(manager, 'calendar');
+    const replacement = managerOver(home, keys);
+    const results = await Promise.allSettled([
+      manager.completeAuthorization('calendar', callback),
+      replacement.completeAuthorization('calendar', callback),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(oauth.issuedAccessTokens).toHaveLength(1);
+    const current = await secretsOf(home, keys, 'calendar');
+    expect(current.oauth?.tokens?.access_token).toBe(oauth.issuedAccessTokens[0]);
+    expect(current.oauthClaim?.state).toBe('published');
+  });
+
+  test('a lost token response cannot be retried by a replacement host', async () => {
+    let tokenRequests = 0;
+    const loseResponse = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const response = await fetch(input, init);
+      if (url.pathname === '/token') {
+        tokenRequests++;
+        throw new Error('response lost');
+      }
+      return response;
+    }, fetch);
+    const { oauth, home, keys, manager } = await signingIn({ fetch: loseResponse });
+    const callback = await callbackAfterAuthorizing(manager, 'calendar');
+    expect(await failureOf(manager.completeAuthorization('calendar', callback))).toBeInstanceOf(
+      ToolSourceInputError,
+    );
+    const replacement = managerOver(home, keys, { fetch: loseResponse });
+    expect(await failureOf(replacement.completeAuthorization('calendar', callback))).toBeInstanceOf(
+      ToolSourceInputError,
+    );
+    expect(tokenRequests).toBe(1);
+    expect(oauth.issuedAccessTokens).toHaveLength(1);
+    const current = await secretsOf(home, keys, 'calendar');
+    expect(current.oauth?.tokens).toBeUndefined();
+    expect(current.oauthClaim?.state).toBe('unknown');
   });
 
   test('is accepted up to the moment it expires', async () => {

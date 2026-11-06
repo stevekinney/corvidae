@@ -320,6 +320,7 @@ export async function october21(context: SessionContext): Promise<void> {
   }
 
   runtime.setTime(times.gitHubConnected);
+  const toolSources = await context.host.toolSources.snapshot();
   await hostRequest(context.host, 'PUT', `/host/tool-sources/${GITHUB_SOURCE_ID}`, {
     source: {
       id: GITHUB_SOURCE_ID,
@@ -331,6 +332,8 @@ export async function october21(context: SessionContext): Promise<void> {
       },
     },
     tools: { delete_branch: { enabled: false } },
+    operationId: crypto.randomUUID(),
+    expectedRevision: toolSources.configurationRevision,
   });
 }
 

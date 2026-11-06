@@ -15,7 +15,10 @@ import {
 
 const KEY = 'sk-test-key-that-must-never-be-repeated';
 
+const mutation = { operationId: 'test-operation', expectedRevision: 'test-revision' };
+
 const SNAPSHOT = {
+  configurationRevision: 'test-revision',
   providers: [
     { name: 'anthropic', configured: true, hasKey: true, models: ['sonnet'] },
     { name: 'openai', configured: false, hasKey: false },
@@ -89,12 +92,12 @@ describe('getProviders', () => {
 describe('connectProvider', () => {
   test('puts the key to the provider’s route and nothing else', async () => {
     const { seen, fetch } = recording(() => Response.json({ providers: [], catalogRevision: 2 }));
-    await connectProvider('openai', KEY, { fetch });
+    await connectProvider('openai', KEY, { fetch, mutation });
     expect(seen).toEqual([
       {
         path: `${HOST_PROVIDERS_ROUTE}/openai`,
         method: 'PUT',
-        body: JSON.stringify({ apiKey: KEY }),
+        body: JSON.stringify({ apiKey: KEY, ...mutation }),
       },
     ]);
   });
@@ -106,7 +109,7 @@ describe('connectProvider', () => {
         { status: 400 },
       ),
     );
-    const failure = await failureOf(connectProvider('openai', KEY, { fetch }));
+    const failure = await failureOf(connectProvider('openai', KEY, { fetch, mutation }));
     expect(failure).toBeInstanceOf(HostProviderError);
     expect(failure).toMatchObject({
       kind: 'invalid',
@@ -123,12 +126,17 @@ describe('connectProvider', () => {
     ] as const;
     for (const [body, status, kind] of answers) {
       const { fetch } = recording(() => Response.json(body, { status }));
-      expect(await failureOf(connectProvider('openai', KEY, { fetch })), kind).toMatchObject({
+      expect(
+        await failureOf(connectProvider('openai', KEY, { fetch, mutation })),
+        kind,
+      ).toMatchObject({
         kind,
       });
     }
     const html = recording(() => new Response('<html>', { status: 502 }));
-    expect(await failureOf(connectProvider('openai', KEY, { fetch: html.fetch }))).toMatchObject({
+    expect(
+      await failureOf(connectProvider('openai', KEY, { fetch: html.fetch, mutation })),
+    ).toMatchObject({
       kind: 'failed',
       message: '',
     });
@@ -141,7 +149,7 @@ describe('connectProvider', () => {
         { status: 400 },
       ),
     );
-    const failure = await failureOf(connectProvider('openai', KEY, { fetch }));
+    const failure = await failureOf(connectProvider('openai', KEY, { fetch, mutation }));
     expect(failure).toBeInstanceOf(HostProviderError);
     expect((failure as HostProviderError).message).not.toContain(KEY);
     expect((failure as HostProviderError).toString()).not.toContain(KEY);
@@ -149,7 +157,7 @@ describe('connectProvider', () => {
 
   test('escapes a provider name in the path', async () => {
     const { seen, fetch } = recording(() => Response.json({}));
-    await connectProvider('a/b', KEY, { fetch });
+    await connectProvider('a/b', KEY, { fetch, mutation });
     expect(seen[0]?.path).toBe(`${HOST_PROVIDERS_ROUTE}/a%2Fb`);
   });
 });
@@ -158,10 +166,10 @@ describe('replaceCatalogEdits and reloadProviders', () => {
   test('put the whole list of edits, and post the reload', async () => {
     const { seen, fetch } = recording(() => Response.json({}));
     const edits = [{ provider: 'anthropic', model: 'haiku', off: true }];
-    await replaceCatalogEdits(edits, { fetch });
+    await replaceCatalogEdits(edits, { fetch, mutation });
     await reloadProviders({ fetch });
     expect(seen).toEqual([
-      { path: HOST_CATALOG_ROUTE, method: 'PUT', body: JSON.stringify({ edits }) },
+      { path: HOST_CATALOG_ROUTE, method: 'PUT', body: JSON.stringify({ edits, ...mutation }) },
       { path: HOST_PROVIDERS_RELOAD_ROUTE, method: 'POST', body: undefined },
     ]);
   });
@@ -170,11 +178,11 @@ describe('replaceCatalogEdits and reloadProviders', () => {
     const { seen, fetch } = recording(() => Response.json({}));
     const edits = [{ provider: 'anthropic', model: 'haiku', off: true }];
     const base = [{ provider: 'anthropic', model: 'sonnet', off: true }];
-    await replaceCatalogEdits(edits, { fetch, base });
-    await replaceCatalogEdits(edits, { fetch, base: [] });
+    await replaceCatalogEdits(edits, { fetch, mutation, base });
+    await replaceCatalogEdits(edits, { fetch, mutation, base: [] });
     expect(seen.map((entry) => entry.body)).toEqual([
-      JSON.stringify({ edits, base }),
-      JSON.stringify({ edits, base: [] }),
+      JSON.stringify({ edits, base, ...mutation }),
+      JSON.stringify({ edits, base: [], ...mutation }),
     ]);
   });
 
@@ -182,7 +190,7 @@ describe('replaceCatalogEdits and reloadProviders', () => {
     const { fetch } = recording(() =>
       Response.json({ error: 'conflict', message: 'Changed.', catalog: [] }, { status: 409 }),
     );
-    expect(await failureOf(replaceCatalogEdits([], { fetch, base: [] }))).toMatchObject({
+    expect(await failureOf(replaceCatalogEdits([], { fetch, mutation, base: [] }))).toMatchObject({
       kind: 'conflict',
       message: 'Changed.',
     });
@@ -195,7 +203,7 @@ describe('replaceCatalogEdits and reloadProviders', () => {
         { status: 400 },
       ),
     );
-    expect(await failureOf(replaceCatalogEdits([], { fetch }))).toMatchObject({
+    expect(await failureOf(replaceCatalogEdits([], { fetch, mutation }))).toMatchObject({
       kind: 'invalid',
       field: 'catalog[0].model',
     });
@@ -206,9 +214,9 @@ describe('replaceCatalogEdits and reloadProviders', () => {
 describe('disconnectProvider', () => {
   test('deletes the provider’s route, with the name escaped and no body', async () => {
     const { seen, fetch } = recording(() => Response.json({}));
-    await disconnectProvider('a/b', { fetch });
+    await disconnectProvider('a/b', { fetch, mutation });
     expect(seen).toEqual([
-      { path: `${HOST_PROVIDERS_ROUTE}/a%2Fb`, method: 'DELETE', body: undefined },
+      { path: `${HOST_PROVIDERS_ROUTE}/a%2Fb`, method: 'DELETE', body: JSON.stringify(mutation) },
     ]);
   });
 
@@ -216,8 +224,35 @@ describe('disconnectProvider', () => {
     const { fetch } = recording(() =>
       Response.json({ error: 'locked', message: 'Remote.' }, { status: 403 }),
     );
-    expect(await failureOf(disconnectProvider('anthropic', { fetch }))).toMatchObject({
+    expect(await failureOf(disconnectProvider('anthropic', { fetch, mutation }))).toMatchObject({
       kind: 'locked',
     });
+  });
+});
+
+test('a new provider mutation reads the committed revision and sends one explicit operation identity', async () => {
+  const { seen, fetch } = recording((request) =>
+    request.method === 'PUT' ? Response.json({}) : Response.json(SNAPSHOT),
+  );
+  await connectProvider('anthropic', KEY, { fetch });
+  expect(seen).toHaveLength(2);
+  expect(seen[0]?.path).toBe(HOST_PROVIDERS_ROUTE);
+  const request = JSON.parse(seen[1]?.body ?? '{}') as Record<string, unknown>;
+  expect(request['expectedRevision']).toBe(SNAPSHOT.configurationRevision);
+  expect(request['operationId']).toBeString();
+  expect(request['apiKey']).toBe(KEY);
+});
+
+test('catalog edits accept proxied state and snapshot it before awaiting', async () => {
+  const edit = { provider: 'anthropic', model: 'sonnet', off: true };
+  const edits = new Proxy([new Proxy(edit, {})], {});
+  const base = new Proxy([{ provider: 'anthropic', model: 'haiku' }], {});
+  const { seen, fetch } = recording(() => Response.json({}));
+  const pending = replaceCatalogEdits(edits, { fetch, mutation, base });
+  edit.off = false;
+  await pending;
+  expect(JSON.parse(seen[0]?.body ?? '{}')).toMatchObject({
+    edits: [{ off: true }],
+    base: [{ model: 'haiku' }],
   });
 });

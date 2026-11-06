@@ -1,4 +1,5 @@
 import {
+  authorizeHostRoutes,
   inventoryEngineRelay,
   inventoryHostRoutes,
   type HostRouteInventoryEntry,
@@ -97,6 +98,11 @@ import {
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
+import {
+  combineHostAuthentication,
+  createHostAuthority,
+  type HostWorkspaceAuthentication,
+} from './host-authority.ts';
 import { localWorkspaceMembership } from './workspace-principal.ts';
 
 import {
@@ -106,7 +112,6 @@ import {
   type SecretProviderFactory,
 } from '@lostgradient/bungalow';
 import {
-  ANONYMOUS_LOCAL_OWNER,
   BUREAU_PLUGIN_ENTRY,
   createBureau,
   createBureauHandler,
@@ -128,6 +133,7 @@ import {
 import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
+  handleRequest,
   serve,
   type AlertingOptions,
   type RegistryAgnosticEngine,
@@ -139,7 +145,7 @@ import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lost
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
-import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
+import { A2A_API_KEY_SECRET_KEY, A2A_SUBJECT, resolveA2aExposure } from './a2a-authentication.ts';
 import { createA2APeerTools, readA2APeersConfiguration } from './a2a-peers.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
@@ -332,6 +338,8 @@ export type HostOptions = {
   readonly environment?: BungalowEnvironment;
   /** The workspace identity to bind to the trusted backing store. */
   readonly workspaceId?: string;
+  /** Inject verified credentials and a directory for this exact workspace; no listener expansion. */
+  readonly workspaceAuthentication?: HostWorkspaceAuthentication;
   /** Trusted provider factory; browser payloads cannot select it. */
   readonly secretProvider?: SecretProviderFactory;
   /** Opt in to revision-checked remote configuration publication. */
@@ -773,6 +781,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   };
   try {
     // No engine, plugin or listener may start before the workspace is bound and secrets validate.
+    if (
+      options.workspaceAuthentication !== undefined &&
+      (options.workspaceAuthentication.authentication === undefined ||
+        options.workspaceAuthentication.workspace?.workspaceId !== bungalow.workspaceId)
+    )
+      throw new Error(
+        'Workspace authentication requires credentials and this workspace directory.',
+      );
     const database = redactDatabase(bungalow.database);
     const workspaceSecrets = createWorkspaceSecrets(bungalow);
     await workspaceSecrets.reconcile();
@@ -883,6 +899,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const startPort = options.port ?? resolvePort(environment);
     const toolSources = createToolSourceManager({
       workspaceSecrets,
+      ...(options.workspaceAuthentication === undefined
+        ? {}
+        : { workspace: options.workspaceAuthentication.workspace }),
       bungalow,
       keys: answerKeys,
       configurationQueue,
@@ -984,9 +1003,37 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         );
       }
     }
-    const workspace = localWorkspaceMembership(
+    const localWorkspace = localWorkspaceMembership(
       bungalow.workspaceId,
       a2aExposure.authentication !== undefined,
+    );
+    const configuredWorkspace = options.workspaceAuthentication?.workspace ?? localWorkspace;
+    if (configuredWorkspace.workspaceId !== bungalow.workspaceId)
+      throw new Error('The authentication directory belongs to another workspace.');
+    const workspace =
+      options.workspaceAuthentication === undefined || a2aExposure.authentication === undefined
+        ? configuredWorkspace
+        : {
+            ...configuredWorkspace,
+            resolveMembership: async (
+              credential: Parameters<typeof configuredWorkspace.resolveMembership>[0],
+            ) =>
+              credential.method === 'api-key' && credential.subject === A2A_SUBJECT
+                ? localWorkspace.resolveMembership(credential)
+                : configuredWorkspace.resolveMembership(credential),
+            resolveOwnerMembership: async (owner: string) =>
+              owner === `api-key:${encodeURIComponent(A2A_SUBJECT)}`
+                ? ((await localWorkspace.resolveOwnerMembership?.(owner)) ?? null)
+                : ((await configuredWorkspace.resolveOwnerMembership?.(owner)) ?? null),
+          };
+    const authentication = await combineHostAuthentication(
+      options.workspaceAuthentication?.authentication,
+      a2aExposure.authentication,
+    );
+    const authority = await createHostAuthority(
+      workspace,
+      authentication,
+      options.workspaceAuthentication === undefined,
     );
     const bureau = await createBureau({
       peerCallsReady: (journal) => {
@@ -1201,6 +1248,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         : restartHandler(options.onRestartRequested);
     const publicRoutes = {
       ...applicationRoutes(buildDirectory, refuse, shell),
+      '/api/v1/principal': {
+        GET: async (request: Request) => {
+          const context = await authority.authenticate(request);
+          if (context instanceof Response) return context;
+          const principalUrl = new URL(request.url);
+          principalUrl.pathname = '/v1/principal';
+          return handleRequest(new Request(principalUrl, request), engine, {
+            authContext: context,
+          });
+        },
+      },
       // The development reload stream. A production host registers no route, so the path is a 404.
       ...(devReload === undefined
         ? {}
@@ -1266,8 +1324,37 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       },
       // Where a person edits what the host keeps by hand. The pages show an agent's file path and
       // a workflow's.
-      ...providerRoutes(providers, refuse),
-      ...pluginRoutes(pluginManager, refuse),
+      '/host/integrations': {
+        GET: async () => {
+          const [providerSnapshot, pluginSnapshot, sourceSnapshot] = await Promise.all([
+            providers.snapshot(),
+            pluginManager.snapshot(),
+            toolSources.snapshot(),
+          ]);
+          // Explicit shared projection: never forward configuration, locations, credentials or diagnostics.
+          return Response.json({
+            providers: providerSnapshot.providers.map(({ name }) => ({
+              id: name,
+              name,
+              available: providerSnapshot.models.some(
+                (model) => model.provider === name && !model.off,
+              ),
+            })),
+            plugins: pluginSnapshot.plugins.map(({ descriptor, status }) => ({
+              id: descriptor.name,
+              name: descriptor.title,
+              available: status === 'running',
+            })),
+            toolSources: sourceSnapshot.sources.map(({ id, state }) => ({
+              id,
+              name: id,
+              available: state === 'loaded',
+            })),
+          });
+        },
+      },
+      ...providerRoutes(providers, refuse, authority),
+      ...pluginRoutes(pluginManager, refuse, authority),
       // The nightly clean-up's standing, and "Clean up now" (COR-2009).
       ...cleanUpRoutes(nightlyCleanUp, refuse),
       // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
@@ -1278,8 +1365,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           (await bureauHandler?.(request)) ??
           new Response('The Bureau is not serving yet.', { status: 503 }),
       ),
-      ...skillRoutes(skills, refuse),
-      ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
+      ...skillRoutes(skills, refuse, authority),
+      ...toolSourceRoutes(toolSources, refuse, {
+        mutation: (request, input) => authority.mutation(request, input),
+      }),
       // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
       [HOST_STORAGE_ROUTE]: {
         GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
@@ -1311,7 +1400,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // one (COR-1643). The listener is loopback-only behind the request guard, so a connection
       // that stays open costs nothing a timeout would save.
       idleTimeout: 0,
-      routes: publicRoutes,
+      routes: authorizeHostRoutes(publicRoutes, authority, refuse),
       async fetch(request, listener) {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
@@ -1321,6 +1410,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           if (isShellNavigation(request)) return shell();
           return new Response('Not found', { status: 404 });
         }
+        const denied = await authority.authorize(request, 'deployment-operator');
+        if (denied !== undefined) return denied;
         const { url, key } = await upstream;
         if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const data = webSocketRelayData(request, url, key);
@@ -1359,10 +1450,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       workspace,
       // The local caller, unless the request carries a credential. With an A2A key configured
       // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
-      unauthenticatedAccess: 'allow',
-      ...(a2aExposure.authentication === undefined
-        ? {}
-        : { authentication: a2aExposure.authentication }),
+      ...(options.workspaceAuthentication === undefined
+        ? {
+            unauthenticatedAccess: 'allow' as const,
+            ...(authentication === undefined ? {} : { authentication }),
+          }
+        : { authentication: authentication! }),
       // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
       // `RunAgentInput` Chat's transport sends.
       agUi: {},
@@ -1423,34 +1516,35 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       generateFor,
       configurationQueue,
       toolSources: {
-        probe: (request) => toolSources.probe(request),
-        connect: (request) => toolSources.connect(request),
-        configureTools: (request) => toolSources.configureTools(request),
-        remove: (request) => toolSources.remove(request),
+        probe: (request, mutation) => toolSources.probe(request, mutation),
+        connect: (request, mutation) => toolSources.connect(request, mutation),
+        configureTools: (request, mutation) => toolSources.configureTools(request, mutation),
+        remove: (request, mutation) => toolSources.remove(request, mutation),
         affectedAgents: (id) => toolSources.affectedAgents(id),
         snapshot: () => toolSources.snapshot(),
-        authorize: (id) => toolSources.authorize(id),
-        completeAuthorization: (id, callbackUrl) =>
-          toolSources.completeAuthorization(id, callbackUrl),
+        authorize: (id, mutation) => toolSources.authorize(id, mutation),
+        completeAuthorization: (id, callbackUrl, mutation) =>
+          toolSources.completeAuthorization(id, callbackUrl, mutation),
       },
       skills: {
-        setTrust: (request) => skills.setTrust(request),
+        setTrust: (request, mutation) => skills.setTrust(request, mutation),
         refresh: () => skills.refresh(),
         standing: () => skills.standing(),
       },
       plugins: {
         snapshot: () => pluginManager.snapshot(),
-        update: (name, request) => pluginManager.update(name, request),
-        saveSecret: (name, secretKey, value) => pluginManager.saveSecret(name, secretKey, value),
+        update: (name, request, mutation) => pluginManager.update(name, request, mutation),
+        saveSecret: (name, secretKey, value, mutation) =>
+          pluginManager.saveSecret(name, secretKey, value, mutation),
       },
       cleanUp: {
         standing: () => nightlyCleanUp.standing(),
         cleanUpNow: () => nightlyCleanUp.cleanUpNow(),
       },
       providers: {
-        connect: (connection) => providers.connect(connection),
-        disconnect: (provider) => providers.disconnect(provider),
-        editCatalog: (edits, base) => providers.editCatalog(edits, base),
+        connect: (connection, mutation) => providers.connect(connection, mutation),
+        disconnect: (provider, mutation) => providers.disconnect(provider, mutation),
+        editCatalog: (edits, base, mutation) => providers.editCatalog(edits, base, mutation),
         reload: () => providers.reload(),
         snapshot: () => providers.snapshot(),
       },

@@ -1,3 +1,4 @@
+import { secretPublicationDigest } from './secret-publication-digest.ts';
 /**
  * COR-1930: the encrypted store of tool-source credentials and OAuth state.
  */
@@ -179,4 +180,60 @@ describe('the tool-source vault', () => {
       ),
     ).toBeInstanceOf(ToolSourceSecretsLockedError);
   });
+});
+
+test('a replacement observes the original encrypted publication after response loss', async () => {
+  const home = memory();
+  const keys = { current: await generateEncryptionKey() };
+  const snapshot = await home.bungalow.readConfiguration();
+  let failRead = false;
+  let writes = 0;
+  const backend = {
+    ...home.bungalow,
+    async readConfiguration() {
+      if (failRead) throw new Error('response lost');
+      return home.bungalow.readConfiguration();
+    },
+    async writeConfiguration(text: string, condition: { expectedRevision: string | null }) {
+      writes++;
+      await home.bungalow.writeConfiguration(text, condition);
+      failRead = true;
+      return { outcome: 'unknown' as const };
+    },
+  };
+  const input = { credentials: new Map([['token', 'logical-secret']]), oauth: undefined, snapshot };
+  const first = createToolSourceVault({ bungalow: backend, keys });
+  expect(
+    await first.write('files', input).then(
+      () => undefined,
+      (error: unknown) => error,
+    ),
+  ).toBeInstanceOf(Error);
+  const original = activeFixtureSecret(home, toolSourceSecretKey('files'));
+  failRead = false;
+  const replacement = createToolSourceVault({ bungalow: backend, keys });
+  await replacement.write('files', input);
+  const retried = activeFixtureSecret(home, toolSourceSecretKey('files'));
+  expect(retried).toEqual(original);
+  expect(writes).toBe(1);
+  const privateDigest = secretPublicationDigest({
+    operation: 'tool-source-vault',
+    target: 'files',
+    expectedRevision: snapshot.revision,
+    payload: { document: {}, credentials: { token: 'logical-secret' } },
+  });
+  expect(JSON.stringify(await backend.secretProvider.listOperations())).not.toContain(
+    privateDigest,
+  );
+  expect(
+    await replacement
+      .write('files', { ...input, credentials: new Map([['token', 'different-secret']]) })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      ),
+  ).toMatchObject({ code: 'conflict' });
+  expect(writes).toBe(1);
+  const persisted = await replacement.read('files');
+  expect(persisted.credentials.get('token')).toBe('logical-secret');
 });

@@ -1,4 +1,6 @@
 export type { WorkspaceOperationClass } from './http/operation-map.ts';
+export { authorizeWorkspaceClass } from './http/workspace-authorization.ts';
+export { withWorkspaceMembership } from './http/workspace-principal.ts';
 export type {
   WorkspaceCredential,
   WorkspaceMembership,

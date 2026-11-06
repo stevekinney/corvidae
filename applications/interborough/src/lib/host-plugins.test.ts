@@ -15,7 +15,9 @@ import {
 
 const VALUE = 'tsk-test-value-that-must-never-be-repeated';
 
+const mutation = { operationId: 'test-operation', expectedRevision: 'test-revision' };
 const SNAPSHOT = {
+  configurationRevision: 'test-revision',
   plugins: [
     {
       descriptor: {
@@ -113,9 +115,13 @@ describe('updatePlugin', () => {
     const { seen, fetch } = recording(() =>
       Response.json({ plugin: 'a/b', enabled: false, configuration: {}, restartRequired: true }),
     );
-    const change = await updatePlugin('a/b', { enabled: false }, { fetch });
+    const change = await updatePlugin('a/b', { enabled: false }, { fetch, mutation });
     expect(seen).toEqual([
-      { path: `${HOST_PLUGINS_ROUTE}/a%2Fb`, method: 'PUT', body: '{"enabled":false}' },
+      {
+        path: `${HOST_PLUGINS_ROUTE}/a%2Fb`,
+        method: 'PUT',
+        body: JSON.stringify({ enabled: false, ...mutation }),
+      },
     ]);
     expect(change.restartRequired).toBe(true);
   });
@@ -129,21 +135,21 @@ describe('updatePlugin', () => {
     ];
     for (const [status, body, kind] of answers) {
       const { fetch } = recording(() => Response.json(body, { status }));
-      const error = await failureOf(updatePlugin('a', { enabled: true }, { fetch }));
+      const error = await failureOf(updatePlugin('a', { enabled: true }, { fetch, mutation }));
       expect(error).toBeInstanceOf(HostPluginError);
       expect((error as HostPluginError).kind).toBe(kind);
     }
     const { fetch } = recording(() =>
       Response.json({ error: 'invalid', field: 'enabled', message: 'm' }, { status: 400 }),
     );
-    expect(((await failureOf(updatePlugin('a', {}, { fetch }))) as HostPluginError).field).toBe(
-      'enabled',
-    );
+    expect(
+      ((await failureOf(updatePlugin('a', {}, { fetch, mutation }))) as HostPluginError).field,
+    ).toBe('enabled');
   });
 
   test('is a plain failure for an answer that is not JSON', async () => {
     const { fetch } = recording(() => new Response('nope', { status: 502 }));
-    const error = await failureOf(updatePlugin('a', {}, { fetch }));
+    const error = await failureOf(updatePlugin('a', {}, { fetch, mutation }));
     expect((error as HostPluginError).kind).toBe('failed');
   });
 });
@@ -153,12 +159,12 @@ describe('savePluginSecret', () => {
     const { seen, fetch } = recording(() =>
       Response.json({ plugin: 'linear', key: 'linear-api-key', set: true }),
     );
-    await savePluginSecret('linear', 'linear-api-key', VALUE, { fetch });
+    await savePluginSecret('linear', 'linear-api-key', VALUE, { fetch, mutation });
     expect(seen).toEqual([
       {
         path: `${HOST_PLUGINS_ROUTE}/linear/secrets/linear-api-key`,
         method: 'PUT',
-        body: JSON.stringify({ value: VALUE }),
+        body: JSON.stringify({ value: VALUE, ...mutation }),
       },
     ]);
     expect(seen[0]?.path).not.toContain(VALUE);
@@ -172,7 +178,7 @@ describe('savePluginSecret', () => {
       ),
     );
     const error = (await failureOf(
-      savePluginSecret('linear', 'linear-api-key', VALUE, { fetch }),
+      savePluginSecret('linear', 'linear-api-key', VALUE, { fetch, mutation }),
     )) as HostPluginError;
     expect(error.message).not.toContain(VALUE);
     expect(error.kind).toBe('invalid');
@@ -209,4 +215,29 @@ describe('getRestartStanding', () => {
     const broken = recording(() => Response.json({ available: 'yes' }));
     expect(await failureOf(getRestartStanding({ fetch: broken.fetch }))).toBeInstanceOf(Error);
   });
+});
+
+test('a new plugin secret mutation reads the committed revision before sending its operation identity', async () => {
+  const { seen, fetch } = recording((request) =>
+    request.method === 'PUT' ? Response.json({}) : Response.json(SNAPSHOT),
+  );
+  await savePluginSecret('linear', 'linear-api-key', VALUE, { fetch });
+  expect(seen).toHaveLength(2);
+  expect(seen[0]?.path).toBe(HOST_PLUGINS_ROUTE);
+  const request = JSON.parse(seen[1]?.body ?? '{}') as Record<string, unknown>;
+  expect(request['expectedRevision']).toBe(SNAPSHOT.configurationRevision);
+  expect(request['operationId']).toBeString();
+  expect(request['value']).toBe(VALUE);
+});
+
+test('plugin configuration snapshots proxied state before awaiting', async () => {
+  const configuration = { limit: 3 };
+  const change = new Proxy({ configuration: new Proxy(configuration, {}) }, {});
+  const { seen, fetch } = recording(() =>
+    Response.json({ plugin: 'sample', enabled: true, configuration: {}, restartRequired: true }),
+  );
+  const pending = updatePlugin('sample', change, { fetch, mutation });
+  configuration.limit = 7;
+  await pending;
+  expect(JSON.parse(seen[0]?.body ?? '{}')).toMatchObject({ configuration: { limit: 3 } });
 });

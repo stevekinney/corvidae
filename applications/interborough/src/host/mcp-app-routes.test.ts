@@ -230,15 +230,23 @@ describe('POST a panel’s tool call', () => {
     });
   });
 
-  test('forwards no header of the browser’s request, so the Bureau answers as the local owner', async () => {
+  test('forwards only credentials to the in-process verifier, never caller-selected identity', async () => {
     const bureau = bureauDouble();
     await call(routes(bureau), 'call', {
-      headers: { authorization: 'Bearer stolen', 'x-api-key': 'guess', cookie: 'session=1' },
+      headers: {
+        authorization: 'Bearer stolen',
+        'x-api-key': 'guess',
+        cookie: 'session=1',
+        'x-workspace-id': 'forged',
+        'x-actor-id': 'forged',
+      },
       body: { name: 'bureau.tasks.inspect' },
     });
     const sent = bureau.mock.calls[0]?.[0] as Request;
-    expect(sent.headers.get('authorization')).toBeNull();
-    expect(sent.headers.get('x-api-key')).toBeNull();
+    expect(sent.headers.get('authorization')).toBe('Bearer stolen');
+    expect(sent.headers.get('x-api-key')).toBe('guess');
+    expect(sent.headers.get('x-workspace-id')).toBeNull();
+    expect(sent.headers.get('x-actor-id')).toBeNull();
     expect(sent.headers.get('cookie')).toBeNull();
     expect(sent.headers.get('origin')).toBeNull();
     const sentBody = (await sent.json()) as { params: { arguments: unknown } };

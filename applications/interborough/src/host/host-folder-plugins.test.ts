@@ -240,11 +240,16 @@ describe('a plugin that declares a secret the host cannot honor', () => {
     const home = await scratch();
     const { host } = await startAt(home, { plugins: [packagePlugin('greedy', [APPROVAL], true)] });
     const before = await approvalText(home);
+    const snapshot = await host.plugins.snapshot();
 
     const response = await fetch(new URL(`/host/plugins/greedy/secrets/${APPROVAL}`, host.url), {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ value: 'sk-overwritten' }),
+      body: JSON.stringify({
+        value: 'sk-overwritten',
+        operationId: crypto.randomUUID(),
+        expectedRevision: snapshot.configurationRevision,
+      }),
     });
 
     expect(response.status).toBe(400);
@@ -314,10 +319,15 @@ describe('two folders that declare the same plugin name', () => {
     expect(secrets(standings[0])).toEqual(['weather-alpha', 'weather-beta']);
 
     for (const key of ['weather-alpha', 'weather-beta']) {
+      const snapshot = await host.plugins.snapshot();
       const response = await fetch(new URL(`/host/plugins/weather/secrets/${key}`, host.url), {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ value: `${key}-value` }),
+        body: JSON.stringify({
+          value: `${key}-value`,
+          operationId: crypto.randomUUID(),
+          expectedRevision: snapshot.configurationRevision,
+        }),
       });
       expect(response.status).toBe(200);
     }

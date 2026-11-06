@@ -121,6 +121,7 @@ function standingOf(host: FakePluginHost, plugin: PluginFixture): PluginStanding
 /** The snapshot the host reports now. */
 export function snapshotOf(host: FakePluginHost): PluginsSnapshot {
   return {
+    configurationRevision: JSON.stringify(host.stored),
     plugins: host.plugins.map((plugin) => standingOf(host, plugin)),
     unloaded: host.unloaded,
     ...(host.lockReason === undefined ? {} : { lockReason: host.lockReason }),

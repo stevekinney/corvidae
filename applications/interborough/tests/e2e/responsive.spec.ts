@@ -56,6 +56,11 @@ interface CatalogEdit {
   readonly basedOn?: string;
 }
 
+interface ProviderSnapshot {
+  readonly configurationRevision: string | null;
+  readonly catalog: CatalogEdit[];
+}
+
 /** A scrolling region may hold this many viewports of content before it counts as overflow. */
 const SCROLL_REGION_VIEWPORTS = 2;
 
@@ -422,10 +427,10 @@ async function problemsAt(page: Page, pattern: string, width: number): Promise<s
   return findings;
 }
 
-/** The catalog edits the host holds now. */
-async function catalogEdits(request: APIRequestContext): Promise<CatalogEdit[]> {
+async function providerSnapshot(request: APIRequestContext): Promise<ProviderSnapshot> {
   const response = await request.get('/host/providers');
-  return ((await response.json()) as { catalog: CatalogEdit[] }).catalog;
+  expect(response.ok(), 'reading provider snapshot').toBe(true);
+  return (await response.json()) as ProviderSnapshot;
 }
 
 /**
@@ -433,23 +438,39 @@ async function catalogEdits(request: APIRequestContext): Promise<CatalogEdit[]> 
  * serves it (the end-to-end home restricts Anthropic to two models). Connecting is safe to repeat.
  */
 async function addCatalogRow(request: APIRequestContext, model: string): Promise<void> {
+  const providerSnapshotBeforeConnect = await providerSnapshot(request);
   const connected = await request.put('/host/providers/gemini', {
-    data: { apiKey: 'e2e-responsive-gemini-key' },
+    data: {
+      apiKey: 'e2e-responsive-gemini-key',
+      operationId: crypto.randomUUID(),
+      expectedRevision: providerSnapshotBeforeConnect.configurationRevision,
+    },
   });
   expect(connected.ok(), 'connecting gemini').toBe(true);
-  const current = await catalogEdits(request);
-  const edits = current.filter((edit) => edit.model !== model);
+  const snapshot = await providerSnapshot(request);
+  const edits = snapshot.catalog.filter((edit) => edit.model !== model);
   const put = await request.put('/host/catalog', {
-    data: { edits: [...edits, { provider: 'gemini', model, basedOn: 'gemini-2.5-pro' }] },
+    data: {
+      edits: [...edits, { provider: 'gemini', model, basedOn: 'gemini-2.5-pro' }],
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    },
   });
   expect(put.status(), 'adding the long model').toBe(200);
 }
 
 /** Takes the row named `model` out of the host's catalog edits. */
 async function removeCatalogRow(request: APIRequestContext, model: string): Promise<void> {
-  const current = await catalogEdits(request);
-  const edits = current.filter((edit) => edit.model !== model);
-  await request.put('/host/catalog', { data: { edits } });
+  const snapshot = await providerSnapshot(request);
+  const edits = snapshot.catalog.filter((edit) => edit.model !== model);
+  const response = await request.put('/host/catalog', {
+    data: {
+      edits,
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    },
+  });
+  expect(response.ok(), 'removing the long model').toBe(true);
 }
 
 /**

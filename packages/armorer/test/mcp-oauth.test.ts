@@ -1,7 +1,17 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { DpopSession } from '@modelcontextprotocol/client';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
+import type {
+  McpOAuthTokenRequest,
+  McpOAuthTokenRequestOutcome,
+} from '../src/integrations/mcp/oauth-token-request-gate';
+import {
+  completeToolSourceAuthorization,
+  loadToolSource,
+  type ToolSourceDescription,
+} from '../src/integrations/tool-sources';
 
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
@@ -349,6 +359,150 @@ describe('MCP OAuth client support', () => {
     } finally {
       await client.close();
     }
+  });
+
+  it('propagates source-bound admission through completion and connection refresh', async () => {
+    const tokenStorage = createInMemoryMcpOAuthTokenStorage();
+    let authorizationUrl: URL | undefined;
+    const requests: Array<{ sourceId: string; request: McpOAuthTokenRequest }> = [];
+    const outcomes: McpOAuthTokenRequestOutcome[] = [];
+    const source: ToolSourceDescription = {
+      id: 'shared-source',
+      kind: 'mcp',
+      transport: { type: 'http', url: mockServer.issuer, authentication: { type: 'oauth' } },
+    };
+    const oauth = {
+      tokenStorage: () => tokenStorage,
+      redirectUrl: () => 'http://127.0.0.1:9999/callback',
+      onAuthorizationRequired(_sourceId: string, url: URL) {
+        authorizationUrl = url;
+      },
+      beforeTokenRequest(sourceId: string, request: McpOAuthTokenRequest) {
+        requests.push({ sourceId, request });
+        return {
+          settle(outcome: McpOAuthTokenRequestOutcome) {
+            outcomes.push(outcome);
+          },
+        };
+      },
+    };
+    await expectPromiseToReject(
+      loadToolSource(source, { oauth, resolveCredential: () => undefined }),
+      (error) => expect(error).toBeInstanceOf(Error),
+    );
+    expect(authorizationUrl).toBeDefined();
+    const redirect = await fetch(authorizationUrl!, { redirect: 'manual' });
+    const callbackUrl = redirect.headers.get('location')!;
+    const callback = new URL(callbackUrl);
+    const authorizationCode = callback.searchParams.get('code');
+    if (!authorizationCode) throw new Error('Expected authorization code');
+    await completeToolSourceAuthorization(source, { oauth, callbackUrl });
+    expect(requests).toEqual([
+      {
+        sourceId: source.id,
+        request: {
+          grantType: 'authorization_code',
+          tokenEndpoint: `${mockServer.issuer}token`,
+          credential: authorizationCode,
+        },
+      },
+    ]);
+    const stored = await tokenStorage.load();
+    if (!stored.tokens?.refresh_token) throw new Error('Expected refresh token');
+    await tokenStorage.save({ tokens: { ...stored.tokens, access_token: 'expired-token' } });
+    const loaded = await loadToolSource(source, { oauth, resolveCredential: () => undefined });
+    try {
+      expect(requests[1]).toEqual({
+        sourceId: source.id,
+        request: {
+          grantType: 'refresh_token',
+          tokenEndpoint: `${mockServer.issuer}token`,
+          credential: stored.tokens.refresh_token,
+        },
+      });
+      expect(outcomes).toEqual(['response', 'response']);
+      expect(mockServer.refreshRequestCount).toBe(1);
+    } finally {
+      await loaded.close();
+    }
+  });
+
+  it('validates callback identity before admission and re-admits the SDK nonce retry', async () => {
+    const tokenStorage = createInMemoryMcpOAuthTokenStorage();
+    let authorizationUrl: URL | undefined;
+    const provider = createMcpOAuthProvider({
+      redirectUrl: 'http://127.0.0.1:9999/callback',
+      clientMetadata: {
+        redirect_uris: ['http://127.0.0.1:9999/callback'],
+        token_endpoint_auth_method: 'none',
+      },
+      tokenStorage,
+      onAuthorizationRequired(url) {
+        authorizationUrl = url;
+      },
+    });
+    await expectPromiseToReject(
+      connectMcpClientWithOAuth({ serverUrl: mockServer.issuer, provider }),
+      (error) => expect(isMcpUnauthorizedError(error)).toBe(true),
+    );
+    const redirect = await fetch(authorizationUrl!, { redirect: 'manual' });
+    const callback = new URL(redirect.headers.get('location')!);
+    let admissions = 0;
+    const outcomes: McpOAuthTokenRequestOutcome[] = [];
+    const beforeTokenRequest = () => {
+      admissions += 1;
+      return {
+        settle(outcome: McpOAuthTokenRequestOutcome) {
+          outcomes.push(outcome);
+        },
+      };
+    };
+    for (const [key, value] of [
+      ['iss', 'https://wrong.example/'],
+      ['state', 'wrong'],
+      ['code', ''],
+    ]) {
+      const invalid = new URL(callback);
+      invalid.searchParams.set(key!, value!);
+      await expectPromiseToReject(
+        completeMcpOAuthAuthorization(provider, {
+          serverUrl: mockServer.issuer,
+          callbackUrl: invalid,
+          tokenStorage,
+          beforeTokenRequest,
+        }),
+        (error) => expect(error).toBeInstanceOf(Error),
+      );
+    }
+    expect(admissions).toBe(0);
+    expect(mockServer.tokenRequestCount).toBe(0);
+    let tokenAttempts = 0;
+    const dpop = await DpopSession.create();
+    provider.dpop = async () => dpop;
+    await completeMcpOAuthAuthorization(provider, {
+      serverUrl: mockServer.issuer,
+      callbackUrl: callback,
+      tokenStorage,
+      beforeTokenRequest,
+      fetchFn: async (input, init) => {
+        if (String(input).endsWith('/token')) {
+          tokenAttempts += 1;
+          if (tokenAttempts === 1)
+            return Response.json(
+              { error: 'use_dpop_nonce' },
+              { status: 400, headers: { 'DPoP-Nonce': 'nonce' } },
+            );
+          expect(dpop.nonceFor(mockServer.issuer)).toBe('nonce');
+          expect(new Headers(init?.headers).get('DPoP')?.split('.')).toHaveLength(3);
+          expect(outcomes).toEqual(['nonce-challenge']);
+        }
+        return fetch(input, init);
+      },
+    });
+    expect(admissions).toBe(2);
+    expect(tokenAttempts).toBe(2);
+    expect(outcomes).toEqual(['nonce-challenge', 'response']);
+    expect(mockServer.tokenRequestCount).toBe(1);
   });
 
   it('rejects an authorization response whose `iss` does not match the recorded issuer (RFC 9207)', async () => {

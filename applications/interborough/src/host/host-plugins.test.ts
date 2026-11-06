@@ -1,5 +1,7 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { WorkspaceIdentity } from '@lostgradient/weft';
 import { createHash } from 'node:crypto';
+import { createHostMutationContext } from './host-mutation-context.ts';
 import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1880: the host lists the plugins it loads, persists the owner's choices for them in
@@ -162,11 +164,16 @@ async function standings(host: Host): Promise<Record<string, Standing>> {
   return Object.fromEntries(body.plugins.map((plugin) => [plugin.descriptor.name, plugin]));
 }
 
-function put(host: Host, path: string, body: unknown, headers: Record<string, string> = {}) {
+async function put(host: Host, path: string, body: unknown, headers: Record<string, string> = {}) {
+  const snapshot = await host.plugins.snapshot();
   return fetch(new URL(path, host.url), {
     method: 'PUT',
     headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...(typeof body === 'object' && body !== null ? body : {}),
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    }),
   });
 }
 
@@ -806,14 +813,14 @@ describe('plugin configuration audit metadata', () => {
     const conflictManager = await managerFor(managerHome({ outcome: 'conflict' }), conflictAudits);
     expect(
       await rejectionOf(conflictManager.update('limited', { configuration: { limit: 7 } })),
-    ).toMatchObject({ message: 'Configuration write outcome: conflict. Reload before retrying.' });
+    ).toMatchObject({ code: 'conflict', definitelyRejected: true });
     expect(conflictAudits).toEqual([]);
 
     const uncertainAudits: PluginAuditEntry[] = [];
     const uncertainManager = await managerFor(managerHome({ outcome: 'unknown' }), uncertainAudits);
     expect(
       await rejectionOf(uncertainManager.update('limited', { configuration: { limit: 7 } })),
-    ).toMatchObject({ message: 'Configuration write outcome: unknown. Reload before retrying.' });
+    ).toMatchObject({ code: 'unavailable', definitelyRejected: false });
     expect(uncertainAudits).toEqual([]);
   });
 });
@@ -992,4 +999,75 @@ describe('the host’s governed memory', () => {
 
     expect(memory.embedding.availability('keyed:tiny')).toBe('available');
   });
+});
+
+test('workspace administrators edit writable remote plugin configuration without deployment powers', async () => {
+  const home = managerHome();
+  const bungalow = { ...home.bungalow, mode: 'remote' as const };
+  const administrator: WorkspaceIdentity = {
+    version: 1,
+    workspaceId: bungalow.workspaceId,
+    actorId: 'administrator',
+    actorKind: 'user',
+    owner: 'owner-administrator',
+    membershipRevision: '1',
+    capabilities: ['workspace:use', 'workspace:manage'],
+  };
+  let current: WorkspaceIdentity | undefined = administrator;
+  const mutation = async (operationId: string) => {
+    const snapshot = await bungalow.readConfiguration();
+    return createHostMutationContext(
+      administrator,
+      { operationId, expectedRevision: snapshot.revision },
+      async () => current,
+    );
+  };
+  const manager = await createPluginManager({
+    bungalow,
+    plugins: fixturePlugins().filter((entry) =>
+      ['limited', 'keyed'].includes(entry.descriptor.name),
+    ),
+    listing: async () => [],
+    reservedSecretKeys: [],
+    reservedSecretPrefixes: [],
+  });
+  const initial = await mutation('remote-configuration');
+  await manager.update('limited', { configuration: { limit: 7 } }, initial);
+  expect(home.configurationText()).toContain('7');
+  expect(
+    await rejectionOf(manager.update('limited', { configuration: { limit: 9 } }, initial)),
+  ).toMatchObject({ code: 'conflict' });
+  const enabling = await mutation('executable-change');
+  expect(await rejectionOf(manager.update('limited', { enabled: false }, enabling))).toMatchObject({
+    code: 'forbidden',
+  });
+  await manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE, await mutation('plugin-secret'));
+  const readOnly = await createPluginManager({
+    bungalow: {
+      ...bungalow,
+      secretProvider: {
+        ...bungalow.secretProvider,
+        capabilities: { read: true, prepare: false, transitions: false },
+      },
+    },
+    plugins: fixturePlugins().filter((entry) => entry.descriptor.name === 'limited'),
+    listing: async () => [],
+    reservedSecretKeys: [],
+    reservedSecretPrefixes: [],
+  });
+  const standing = await readOnly.snapshot();
+  expect(standing.lockReason).toBeUndefined();
+  expect(standing.credentialLockReason).toBe('deployment');
+  await readOnly.update(
+    'limited',
+    { configuration: { limit: 11 } },
+    await mutation('configuration-only'),
+  );
+  const revoked = await mutation('revoked');
+  current = undefined;
+  const before = home.configurationText();
+  expect(
+    await rejectionOf(manager.update('limited', { configuration: { limit: 12 } }, revoked)),
+  ).toMatchObject({ code: 'forbidden' });
+  expect(home.configurationText()).toBe(before);
 });

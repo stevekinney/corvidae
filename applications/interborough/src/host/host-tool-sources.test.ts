@@ -66,12 +66,28 @@ async function track<Server extends TestServer>(server: Promise<Server>): Promis
   return started;
 }
 
-function send(host: Host, method: string, path: string, body?: unknown): Promise<Response> {
+async function send(host: Host, method: string, path: string, body?: unknown): Promise<Response> {
+  const mutationSnapshot =
+    (method === 'PUT' || method === 'POST' || method === 'DELETE') &&
+    typeof body === 'object' &&
+    body !== null
+      ? await host.toolSources.snapshot()
+      : undefined;
+  const payload =
+    (method === 'PUT' || method === 'POST' || method === 'DELETE') &&
+    typeof body === 'object' &&
+    body !== null
+      ? {
+          ...body,
+          operationId: crypto.randomUUID(),
+          expectedRevision: mutationSnapshot?.configurationRevision,
+        }
+      : body;
   return fetch(new URL(path, host.url), {
     method,
-    ...(body === undefined
+    ...(payload === undefined
       ? {}
-      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
   });
 }
 
@@ -341,7 +357,11 @@ describe('saved tool sources', () => {
     // Nothing is contacted until a person signs in.
     expect(await firstSourceOf(first)).toMatchObject({ authorized: false });
 
-    const started = await send(first, 'POST', '/host/tool-sources/calendar/authorize');
+    const authorizationSnapshot = await first.toolSources.snapshot();
+    const started = await send(first, 'POST', '/host/tool-sources/calendar/authorize', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: authorizationSnapshot.configurationRevision,
+    });
     const { authorized, authorizationUrl } = (await started.json()) as {
       authorized: boolean;
       authorizationUrl: string;
@@ -397,10 +417,15 @@ describe('saved tool sources', () => {
 
     const unsolicited = await fetch(
       new URL('/host/oauth/callback/calendar?code=forged&state=forged', host.url),
+      { headers: { origin: host.url.origin } },
     );
-    expect(unsolicited.status).toBe(400);
+    expect(unsolicited.status).toBe(403);
 
-    await send(host, 'POST', '/host/tool-sources/calendar/authorize');
+    const authorizationSnapshot = await host.toolSources.snapshot();
+    await send(host, 'POST', '/host/tool-sources/calendar/authorize', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: authorizationSnapshot.configurationRevision,
+    });
     const forged = await fetch(
       new URL('/host/oauth/callback/calendar?code=forged&state=forged&iss=x', host.url),
     );
@@ -502,7 +527,11 @@ describe('saved tool sources', () => {
       credentials: { key: API_KEY },
     });
 
-    const removed = await send(host, 'DELETE', '/host/tool-sources/pets');
+    const removalSnapshot = await host.toolSources.snapshot();
+    const removed = await send(host, 'DELETE', '/host/tool-sources/pets', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: removalSnapshot.configurationRevision,
+    });
 
     expect(removed.status).toBe(200);
     expect(JSON.parse(await readFile(join(path, 'configuration.json'), 'utf8'))).not.toHaveProperty(
@@ -515,7 +544,15 @@ describe('saved tool sources', () => {
       sourceId: 'pets',
       credentials: {},
     });
-    expect(await statusOf(send(host, 'DELETE', '/host/tool-sources/pets'))).toBe(404);
+    const secondRemovalSnapshot = await host.toolSources.snapshot();
+    expect(
+      await statusOf(
+        send(host, 'DELETE', '/host/tool-sources/pets', {
+          operationId: crypto.randomUUID(),
+          expectedRevision: secondRemovalSnapshot.configurationRevision,
+        }),
+      ),
+    ).toBe(404);
   });
 
   test('stops the host, naming the field, for a toolSources entry it cannot use', async () => {
