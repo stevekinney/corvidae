@@ -109,6 +109,7 @@ import {
   createBureauHandler,
   createDurableAssetStorage,
   resolveProviderGenerate,
+  startIdleTurn,
   type AgentDefinitions,
   type AgentWithBureauTools,
   type Bureau,
@@ -1204,6 +1205,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             bureau,
             timeline: (runId) => engine.getTimeline(runId),
             principal: apiPrincipal,
+            // A message sent through the API takes the admission Chat's own send takes.
+            startTurn: (input) => startIdleTurn(bureau, input),
           },
           refuse,
         ),

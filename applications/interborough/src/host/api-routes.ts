@@ -6,7 +6,8 @@
  * - `GET /api/runs` lists runs (`runs:read`).
  * - `POST /api/runs` starts a run of a workflow (`runs:write`).
  * - `GET /api/runs/{run}` reads one run and its steps (`runs:read`).
- * - `POST /api/chats/{chat}/messages` sends a message to a chat (`chats:write`).
+ * - `POST /api/chats/{chat}/messages` sends a message to a chat (`chats:write`), or answers `409`
+ *   while the chat has a turn in progress, as Chat's own send does.
  * - `GET /api/agents` lists agents (`agents:read`).
  * - `GET /api/schedules` lists schedules (`schedules:read`).
  * - `POST /api/reviews/{review}/decision` approves or denies a review (`reviews:write`).
@@ -109,14 +110,6 @@ export interface ApiBureau {
   readonly contexts: {
     get(id: string): Promise<{ readonly agentName: string } | undefined>;
   };
-  /** Starts the turn that answers a message. */
-  readonly tasks: {
-    start(
-      agentName: string,
-      input: string,
-      options: { readonly contextId: string; readonly principal: string },
-    ): Promise<{ readonly id: string }>;
-  };
   /** The agents the deployment has. */
   readonly agents: {
     list(): readonly {
@@ -162,6 +155,17 @@ export interface ApiRouteDependencies {
   readonly timeline: (runId: string) => Promise<readonly ApiTimelineEntry[]>;
   /** Who a request acts as. */
   readonly principal: (request: Request) => ApiPrincipal;
+  /**
+   * Starts the turn that answers a message sent to a chat, under the same admission Chat's own send
+   * path takes (the chat's thread lease, then whether a run is live on it): it throws a
+   * {@link BureauError} with code `CONFLICT` while the chat has a turn in progress, so the API
+   * answers 409 and never starts a second run on the session. Bureau's `startIdleTurn` is that.
+   */
+  readonly startTurn: (input: {
+    readonly threadId: string;
+    readonly input: string;
+    readonly principal: string;
+  }) => Promise<{ readonly id: string }>;
 }
 
 /** The path of every API operation, as Bun's router names it. */
@@ -376,8 +380,11 @@ function operationsOf(
           if (context === undefined) {
             throw new Refusal(404, { error: 'not-found', message: 'No chat has that identifier.' });
           }
-          const task = await bureau.tasks.start(context.agentName, body.text, {
-            contextId: chat,
+          // The chat may have a turn in progress, which this message must wait for: the admission
+          // (and so the 409) is the one Chat's own send takes, not a check made here.
+          const task = await dependencies.startTurn({
+            threadId: chat,
+            input: body.text,
             principal: principal.subject,
           });
           return { status: 201, body: messageSent.parse({ chat, run: task.id }) };

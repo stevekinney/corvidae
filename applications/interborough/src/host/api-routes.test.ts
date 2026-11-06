@@ -68,12 +68,6 @@ function fakeBureau(recorded: Recorded, overrides: Partial<ApiBureau> = {}): Api
         return id === 'chat-7c21' ? { agentName: 'assistant' } : undefined;
       },
     },
-    tasks: {
-      start: async (agentName, input, options) => {
-        record('tasks.start', { agentName, input, ...options });
-        return { id: 'task-2-b81e' };
-      },
-    },
     agents: {
       list: () => [
         {
@@ -119,7 +113,9 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop(true);
 });
 
-function serve(options: { scopes?: readonly ApiScope[]; bureau?: Partial<ApiBureau> } = {}) {
+function serve(
+  options: { scopes?: readonly ApiScope[]; bureau?: Partial<ApiBureau>; busy?: boolean } = {},
+) {
   const recorded: Recorded = { calls: [] };
   const principal: ApiPrincipal = {
     subject: 'anonymous:local',
@@ -133,6 +129,13 @@ function serve(options: { scopes?: readonly ApiScope[]; bureau?: Partial<ApiBure
         bureau: fakeBureau(recorded, options.bureau),
         timeline: async (runId) => (runId === RUN.id ? TIMELINE : []),
         principal: () => principal,
+        startTurn: async (input) => {
+          recorded.calls.push({ name: 'startTurn', argument: input });
+          if (options.busy === true) {
+            throw new BureauError('The chat has a run in progress.', 'CONFLICT');
+          }
+          return { id: 'task-2-b81e' };
+        },
       },
       () => undefined,
     ),
@@ -320,14 +323,23 @@ describe('POST /api/chats/{chat}/messages', () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ chat: 'chat-7c21', run: 'task-2-b81e' });
     expect(recorded.calls.at(-1)).toEqual({
-      name: 'tasks.start',
+      name: 'startTurn',
       argument: {
-        agentName: 'assistant',
+        threadId: 'chat-7c21',
         input: 'Refund order 4471 in full.',
-        contextId: 'chat-7c21',
         principal: 'anonymous:local',
       },
     });
+  });
+
+  test('answers 409 conflict while the chat has a turn in progress', async () => {
+    const { call } = serve({ busy: true });
+    const response = await call('/api/chats/chat-7c21/messages', {
+      method: 'POST',
+      body: { text: 'Refund order 4471 in full.' },
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: 'conflict' });
   });
 
   test('refuses an empty message, and answers a chat that does not exist with 404', async () => {
@@ -474,6 +486,7 @@ describe('the request guard', () => {
         {
           bureau: fakeBureau(recorded),
           timeline: async () => [],
+          startTurn: async () => ({ id: 'task-2-b81e' }),
           principal: () => ({ subject: 'anonymous:local', scopes: new Set() }),
         },
         () => new Response('Forbidden', { status: 403 }),

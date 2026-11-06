@@ -76,6 +76,8 @@ export interface ApiOperationDescription {
   };
   /** Whether the operation names something that may not exist, and so can answer `404`. */
   readonly names?: boolean;
+  /** Why the operation can answer `409`, when it can: what it refuses while something is in progress. */
+  readonly conflict?: string;
 }
 
 const RUN_EXAMPLE = {
@@ -153,7 +155,8 @@ export const API_OPERATIONS: readonly ApiOperationDescription[] = [
     path: '/api/chats/{chat}/messages',
     operationId: 'chats.messages.send',
     summary: 'Send a message to a chat',
-    description: 'Sends a message to a chat and starts the turn in which its agent answers it.',
+    description:
+      'Sends a message to a chat and starts the turn in which its agent answers it. A chat answers one turn at a time, as it does when the message is sent from Chat: while it has a turn in progress, the message is refused with 409 and no second turn starts. Send it again once the turn has ended.',
     group: 'Chats',
     scope: 'chats:write',
     pathParameters: chatParameters,
@@ -164,6 +167,7 @@ export const API_OPERATIONS: readonly ApiOperationDescription[] = [
       example: { chat: 'chat-7c21', run: 'task-2-b81e' },
     },
     names: true,
+    conflict: 'The chat has a turn in progress.',
   },
   {
     method: 'get',
@@ -294,6 +298,7 @@ function operationOf(operation: ApiOperationDescription): JsonSchema {
       '400': refusal('The request is not what the operation takes.'),
       '403': refusal(`The session does not hold ${operation.scope}.`),
       ...(operation.names === true ? { '404': refusal('Nothing has that identifier.') } : {}),
+      ...(operation.conflict === undefined ? {} : { '409': refusal(operation.conflict) }),
     },
   };
 }

@@ -71,6 +71,16 @@ describe('the API description', () => {
     });
   });
 
+  test('POST /api/chats/{chat}/messages documents the 409 for a chat with a turn in progress, and no other operation does', () => {
+    const send = document.paths['/api/chats/{chat}/messages']?.['post'];
+    expect(send?.responses['409']).toBeDefined();
+    expect(String(send?.['description'])).toContain('409');
+    const withConflict = operations
+      .filter(({ operation }) => operation.responses['409'] !== undefined)
+      .map(({ method, path }) => `${method} ${path}`);
+    expect(withConflict).toEqual(['POST /api/chats/{chat}/messages']);
+  });
+
   test('every example is one the route takes or answers with', () => {
     for (const operation of API_OPERATIONS) {
       expect(operation.response.schema.safeParse(operation.response.example).success).toBe(true);
@@ -98,6 +108,9 @@ describe('each operation’s scope', () => {
         {
           bureau,
           timeline: async () => [],
+          startTurn: async () => {
+            throw new Error('The scope is checked before the Bureau is called.');
+          },
           principal: () => ({ subject: 'anonymous:local', scopes: new Set(lacking) }),
         },
         () => undefined,
