@@ -75,6 +75,10 @@ export async function request(
     try {
       body = text === '' ? undefined : JSON.parse(text);
     } catch {
+      if (!response.ok)
+        throw makeCliFailure(text === '' ? `HTTP ${response.status}` : text, {
+          status: response.status,
+        });
       throw makeCliFailure(
         'The host returned malformed JSON.',
         init?.method === 'POST' ? { exitCode: 7 } : {},

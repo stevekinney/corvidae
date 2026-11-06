@@ -12,11 +12,60 @@ import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
 
 const endpoint = 'https://management.example.test';
+const tlsKey = `-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCooh2RVeKQwjKd
+py01LuZ+4FcacDIMEjO8SBh+bG0fZbN/LasD/PAHmKIz7mihT6+sSeHRdGMbmkqq
+iP0Fz/+dbJy8iPNCAIcNRXfaOrYWZXbhFkhySn3gtvC8Qmzqz2Dh3R0n9cwH2/Gs
+0Z4WTqmH5cUZTguJAIxuQ9HcAUCTrcMgkRjsxyxubSSkv5/VnRcH1asNOaS6Xh4K
+6tfuUS7gtnW+8/vn1Sbz6ov88Wz7IB1zSQd2eXVZp/Egt+Vawzn1Uto+BEVMwk9+
+eb45vvXC6s5O/BQ4gnXc4eUdf4KOdflSpg8ONZrJc9bY+OF7rGAR17ROUKIc2GJh
+Irs+LQI/AgMBAAECggEAKktGqS3mPjJGqZ3FS+Jwcv/nOL1NABQMn7thUUv2bnp+
+c3ZLvxtQREd23xl7aoHm6Io7NeI//StMcMsc0rlhPeWAxhR/Fl21gZGbxsMU6jcW
+gsuo7ela+uJHLKBoWtgaT2u6pUwTmSED0zlbsfKWuHvbXEZjxD+7+OfPmaNCxAbX
+e9ybyahfQXV0hY4qWqTbr3q8fvbUbrkCvb3V01Jb7+I2GDR81aO+LrWNTKbD0oqx
+OAGjbKIon9d+nMxZjcmmFdcVQKpx1rHqAgTkMpZlIv+eZheNAGE23DwztbhqHGSC
+X9VmHDGx/yfo3IEcx0+/vtWG+YOBm35mNaFqfGELSQKBgQDUHc6Oy2c0XHrhyKWf
+KXu3bwmsgUsCRIRfu3whqcStWacCmC4ct2pOg7ifqti/s7pkeJaOOGYbQXK/+vw2
+xWBE6LFUseAo1fQ22ORrIuL4/awW5URgLp1wAN4op4MaVUPC10Qf+wKO2FMRImlS
+T18GcMVkl5lGBS6mwi9q2VX8gwKBgQDLhVYJYu0LlnWuGz72bWB+AkL4HnP+b3lA
+XLlmJkTX1pz6CWfc4dGgCRhdc5itYhWQUZMZgEYy9J4wYTKWtJxKFEKH1z8gE0GG
+PxabKUJhFJn6P4bYIEmdmI9ZEJvc2WMS829sIUQs/loyFyesEqx2orfbYuLblhUD
+9uv2BICulQKBgGIx5kSejwljYpORcnKrHpW9dooAVLwZAfrbbUycLeteHH2L+5TZ
+qAHu4pIv4iVky33lgTUXkNU/SCLtysKEPtvHqQgfTDk7StH1OFEMlmxT6s2ylyO7
+kLCgBjhly8BuBm91fhkb94QvSs0c1AsBqWju3cKCl7cdgQo7zP223SKHAoGAHEsq
+Hd3x5HWDYLQK+clU68+2rbXWHF409hyt7aSOV49PfXdHSC7grKX3DC7g3+HN66Vb
+lOT/XWAiiclJdigfvjC42xeyf+wNZPNqWiHPR53Mljy0q2E5ur4V16T2diqGmoDb
+UaYCS1sFAQe1DTf/X/LZKpfBwBNKUqXGQgp4NU0CgYAH5Zs2pXlVMs4mf02cC7iH
+0Prp6W7zGM0CUOxscl4gSHgThF03L4gnIUZ8o5LZHU/a1Y4OjlPIaO9SRE4tXbed
+J36snAtKo/Cv4AldWSZSGelUky9WaGkRBvP1XIp0nR7VpRy7x5KaXZ7UAbwlCzpz
+Y4RgXXPeLZLVZ9iEx0fAgw==
+-----END PRIVATE KEY-----`;
+const tlsCertificate = `-----BEGIN CERTIFICATE-----
+MIIDHzCCAgegAwIBAgIUQS97fImX3AHkOcxr7TJeHIqfNm4wDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MTEwNjEwMTQzNVoXDTM2MTEw
+MzEwMTQzNVowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAqKIdkVXikMIynactNS7mfuBXGnAyDBIzvEgYfmxtH2Wz
+fy2rA/zwB5iiM+5ooU+vrEnh0XRjG5pKqoj9Bc//nWycvIjzQgCHDUV32jq2FmV2
+4RZIckp94LbwvEJs6s9g4d0dJ/XMB9vxrNGeFk6ph+XFGU4LiQCMbkPR3AFAk63D
+IJEY7Mcsbm0kpL+f1Z0XB9WrDTmkul4eCurX7lEu4LZ1vvP759Um8+qL/PFs+yAd
+c0kHdnl1WafxILflWsM59VLaPgRFTMJPfnm+Ob71wurOTvwUOIJ13OHlHX+CjnX5
+UqYPDjWayXPW2Pjhe6xgEde0TlCiHNhiYSK7Pi0CPwIDAQABo2kwZzAdBgNVHQ4E
+FgQUlcMDEE9lq/ZT9cDrm/husE7ge08wHwYDVR0jBBgwFoAUlcMDEE9lq/ZT9cDr
+m/husE7ge08wDwYDVR0TAQH/BAUwAwEB/zAUBgNVHREEDTALgglsb2NhbGhvc3Qw
+DQYJKoZIhvcNAQELBQADggEBADU4x2SI5/ydADyv9wSsnah1W1t8UJMFkqIQyQph
+nnu82VIr9KOdvvHA/5gxa9D5Ee7NFIyk8gPbXbtiH2534xA6Rn4lv64qb3Yrc43l
+kDSW6gRp+zYLFj/EySY2p9lzgGhf1U6RKvk5kSw8VVejWnF5eX06qlYDSq08tsXe
+NeR2K3qzirdLQoJ8h1CQCLw8YbUYW4a3yTWBC8q55KW/xEWbQDu3ZMrlpfBTElog
+aBEufpxyIflhDu0O1EB7dRn2+NfOwXKMuVvNK+nWd1EIINCyBHxbvGGCofbEInwT
+x9YXoFbmLBQyK6PqjLUtKlNIWWpFjSNysS1UIdsioO7phBs=
+-----END CERTIFICATE-----`;
 const hosts: Host[] = [];
 const homes: string[] = [];
+const tlsServers: Array<{ stop(): void }> = [];
 
 afterEach(async () => {
   for (const host of hosts.splice(0)) await host.close();
+  for (const server of tlsServers.splice(0)) server.stop();
   for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
@@ -69,17 +118,31 @@ async function authenticatedHost(removed: () => boolean): Promise<Host> {
   return host;
 }
 
-function injectedHttpsFetch(
-  host: Host,
-): (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
-  return async (input, init) => {
-    const incoming = new Request(input, init);
-    const target = new URL(incoming.url);
-    target.protocol = host.url.protocol;
-    target.hostname = host.url.hostname;
-    target.port = host.url.port;
-    return fetch(target, incoming);
-  };
+async function authenticatedHttpsFixture(host: Host) {
+  const server = Bun.serve({
+    port: 0,
+    tls: { key: tlsKey, cert: tlsCertificate },
+    fetch: async (request) => {
+      const target = new URL(request.url);
+      target.protocol = host.url.protocol;
+      target.hostname = host.url.hostname;
+      target.port = host.url.port;
+      const headers = new Headers(request.headers);
+      headers.set('host', target.host);
+      return fetch(target, {
+        method: request.method,
+        headers,
+        ...(request.method === 'GET' || request.method === 'HEAD'
+          ? {}
+          : { body: await request.arrayBuffer() }),
+      });
+    },
+  });
+  tlsServers.push(server);
+  const url = new URL(server.url);
+  const fetcher = (input: RequestInfo | URL, init?: RequestInit) =>
+    fetch(input, { ...init, tls: { ca: tlsCertificate } });
+  return { url, fetch: fetcher };
 }
 
 function principal(actorId: string, workspaceId: string, capabilities: string[]) {
@@ -127,6 +190,49 @@ describe('CLI authenticated workspace authority', () => {
     expect(insecure.exitCode).toBe(3);
     expect(missingReference.exitCode).toBe(3);
     expect(fixture.calls).toHaveLength(0);
+  });
+
+  // spawn-free: executeCli invokes the in-process client; the TLS fixture is a Bun listener.
+  test('performs certificate validation on the real HTTPS management request', async () => {
+    const host = await authenticatedHost(() => false);
+    const https = await authenticatedHttpsFixture(host);
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-authority-tls-'));
+    homes.push(directory);
+    const preferencesPath = join(directory, 'preferences.json');
+    const connection = [
+      'connection',
+      'add',
+      'tls',
+      '--url',
+      https.url.toString(),
+      '--credential-reference',
+      'TOKEN',
+    ];
+    const dependencies = { preferencesPath, environment: { TOKEN: 'alice' } };
+    const added = await executeCli(connection, dependencies);
+    expect(added.exitCode).toBe(0);
+    const untrusted = await executeCli(['whoami', '--connection', 'tls'], dependencies);
+    expect(untrusted.exitCode).toBe(1);
+    expect(untrusted.stderr).toContain('certificate');
+    const wrongHost = new URL(https.url);
+    wrongHost.hostname = '127.0.0.1';
+    const wrong = await executeCli(
+      ['whoami', '--connection', 'tls', '--url', wrongHost.toString()],
+      {
+        ...dependencies,
+        fetch: https.fetch,
+      },
+    );
+    expect(wrong.exitCode).toBe(1);
+    const trusted = await executeCli(['whoami', '--connection', 'tls'], {
+      ...dependencies,
+      fetch: https.fetch,
+    });
+    expect(trusted.exitCode).toBe(0);
+    expect(JSON.parse(trusted.stdout)).toMatchObject({
+      actor: 'alice',
+      workspace: host.workspaceId,
+    });
   });
 
   // spawn-free: injected fetch replaces the remote management process.
@@ -243,13 +349,15 @@ describe('CLI authenticated workspace authority', () => {
     let revoked = false;
     const first = await authenticatedHost(() => revoked);
     const second = await authenticatedHost(() => false);
+    const firstHttps = await authenticatedHttpsFixture(first);
+    const secondHttps = await authenticatedHttpsFixture(second);
     const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-authority-preferences-'));
     homes.push(directory);
     const preferencesPath = join(directory, 'preferences.json');
     const dependencies = {
       preferencesPath,
       environment: { ALICE: 'alice', BOB: 'bob', ADMIN: 'administrator' },
-      fetch: injectedHttpsFetch(first),
+      fetch: firstHttps.fetch,
     };
     await executeCli(
       [
@@ -257,7 +365,7 @@ describe('CLI authenticated workspace authority', () => {
         'add',
         'first',
         '--url',
-        'https://first.example',
+        firstHttps.url.toString(),
         '--credential-reference',
         'ALICE',
       ],
@@ -269,7 +377,7 @@ describe('CLI authenticated workspace authority', () => {
         'add',
         'second',
         '--url',
-        'https://second.example',
+        secondHttps.url.toString(),
         '--credential-reference',
         'BOB',
       ],
@@ -287,7 +395,7 @@ describe('CLI authenticated workspace authority', () => {
 
     const bob = await executeCli(
       ['whoami', '--connection', 'second', '--workspace', second.workspaceId],
-      { ...dependencies, fetch: injectedHttpsFetch(second) },
+      { ...dependencies, fetch: secondHttps.fetch },
     );
     expect(bob.exitCode).toBe(0);
     expect(JSON.parse(bob.stdout)).toMatchObject({
@@ -300,7 +408,7 @@ describe('CLI authenticated workspace authority', () => {
         'memory',
         'remember',
         '--agent',
-        'shared',
+        'demo:assistant',
         '--content',
         'alice-private-memory',
         '--connection',
@@ -308,51 +416,60 @@ describe('CLI authenticated workspace authority', () => {
       ],
       dependencies,
     );
-    expect([0, 7]).toContain(privateMemory.exitCode);
-    expect(privateMemory.stdout).not.toContain('alice-private-memory');
+    expect(privateMemory.exitCode).toBe(0);
+    expect(privateMemory.stdout).toContain('alice-private-memory');
     await executeCli(
       [
         'connection',
         'add',
         'bob-first',
         '--url',
-        'https://first.example',
+        firstHttps.url.toString(),
         '--credential-reference',
         'BOB',
       ],
       dependencies,
     );
     const bobPrivateMemory = await executeCli(
-      ['memory', 'search', '--agent', 'shared', '--query', 'private', '--connection', 'bob-first'],
+      [
+        'memory',
+        'search',
+        '--agent',
+        'demo:assistant',
+        '--query',
+        'private',
+        '--connection',
+        'bob-first',
+      ],
       dependencies,
     );
     expect(bobPrivateMemory.exitCode).toBe(0);
     expect(bobPrivateMemory.stdout).not.toContain('alice-private-memory');
     const administratorMutation = await executeCli(
-      [
-        'schedules',
-        'create',
-        '--file',
-        '-',
-        '--connection',
-        'first',
-        '--workspace',
-        first.workspaceId,
-      ],
-      { ...dependencies, stdin: async () => '{}' },
+      ['restart', '--connection', 'bob-first', '--yes'],
+      dependencies,
     );
-    expect([3, 7]).toContain(administratorMutation.exitCode);
+    expect(administratorMutation.exitCode).toBe(3);
+    expect(administratorMutation.stderr).toBe('Trusted deployment operation required');
+    const forbiddenMutation = await dependencies.fetch(
+      new URL('/host/providers/reload', firstHttps.url),
+      { method: 'POST', headers: { 'x-api-key': 'bob' } },
+    );
+    expect(forbiddenMutation.status).toBe(403);
+    expect(await forbiddenMutation.text()).toBe('Workspace administration required');
 
     revoked = true;
     const afterRemoval = await executeCli(
       ['memory', 'search', '--agent', 'missing', '--query', 'private', '--connection', 'first'],
       dependencies,
     );
-    expect(afterRemoval.exitCode).not.toBe(0);
+    expect(afterRemoval.exitCode).toBe(3);
+    expect(afterRemoval.stderr).toBe('Workspace membership required');
     const mismatch = await executeCli(
       ['whoami', '--connection', 'first', '--workspace', second.workspaceId],
       dependencies,
     );
-    expect(mismatch.exitCode).not.toBe(0);
+    expect(mismatch.exitCode).toBe(3);
+    expect(mismatch.stderr).toBe('Workspace membership required');
   });
 });
