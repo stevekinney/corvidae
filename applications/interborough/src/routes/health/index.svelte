@@ -10,6 +10,8 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
+  import { HEALTH_RUNNING_RUNS_KEY } from '../../lib/live-source/cache-integration.ts';
   import { readAttention } from '../../lib/bureau-attention.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, isForbidden } from '../../lib/scopes.svelte.ts';
@@ -45,6 +47,7 @@
   const client = getClient();
   const principalStore = getPrincipalStore();
   const canReadRuns = $derived(principalStore.hasScope('workflows:read'));
+  const fleetLive = useFleetEventsLive();
 
   /** The clock the windows are cut from, moved a minute at a time so a query and its window agree. */
   let now = $state(Math.floor(Date.now() / 60_000) * 60_000);
@@ -69,14 +72,14 @@
   const waitingByRun = $derived(waitingRuns(waiting.data ?? []));
 
   const runningRuns = createQuery(() => ({
-    queryKey: ['health', 'runs', 'running'],
+    queryKey: HEALTH_RUNNING_RUNS_KEY,
     queryFn: () =>
       readEveryRun((page) =>
         client.operations['weft.workflows.list']({ status: 'running', ...page }),
       ),
     enabled: canReadRuns,
-    // poll-reason: timer
-    refetchInterval: 15_000,
+    // poll-reason: fallback
+    refetchInterval: fleetLive() ? false : 15_000,
     retry: false,
   }));
   const startedRuns = createQuery(() => ({

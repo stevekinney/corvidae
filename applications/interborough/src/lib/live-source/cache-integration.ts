@@ -90,6 +90,8 @@ export function workflowEventsKey(workflowId: string): QueryKey {
 
 /** The query-key prefix of every workflow list. */
 export const WORKFLOWS_LIST_KEY_PREFIX: QueryKey = ['workflows', 'list'];
+/** The Health Overview's current running-workflows query. */
+export const HEALTH_RUNNING_RUNS_KEY: QueryKey = ['health', 'runs', 'running'];
 /** The query-key prefix of every workflow aggregate. */
 export const WORKFLOWS_AGGREGATE_KEY_PREFIX: QueryKey = ['workflows', 'aggregate'];
 /** The query-key prefix of every schedule list. */
@@ -157,6 +159,12 @@ const WORKFLOW_UPDATE_KINDS: ReadonlySet<string> = new Set(['update:received', '
 
 /** The fleet kind of a run beginning: the first run of a type fills a runs page that was empty. */
 const WORKFLOW_STARTED_KIND = 'workflow:started';
+
+/** Lifecycle frames change the Health Overview's current running count. */
+const HEALTH_RUNNING_WORKFLOW_KINDS: readonly string[] = [
+  WORKFLOW_STARTED_KIND,
+  ...WORKFLOW_SETTLED_KINDS,
+];
 
 /** The kind of the retention notice a fleet feed sends when a cursor names events it no longer holds (`FleetEventGapEnvelope`). */
 const FLEET_GAP_KIND = 'fleet:gap';
@@ -442,6 +450,7 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
     WORKFLOWS_UPDATES_KEY_PREFIX,
     WORKFLOWS_LOGS_KEY_PREFIX,
     WORKFLOWS_RELATED_KEY_PREFIX,
+    HEALTH_RUNNING_RUNS_KEY,
     ...WORKER_FLEET_KEYS,
     WORKERS_REJECTIONS_KEY,
     WORKERS_DEPLOYMENTS_KEY,
@@ -471,6 +480,9 @@ export function applyFleetEventFrame(queryClient: QueryClient, frame: FleetEvent
   // Before the run-scoped branch below, which returns: a kind that maps to a list is read by kind.
   for (const queryKey of FLEET_KIND_INVALIDATION.get(frame.kind) ?? []) {
     void queryClient.invalidateQueries({ queryKey });
+  }
+  if (HEALTH_RUNNING_WORKFLOW_KINDS.includes(frame.kind)) {
+    void queryClient.invalidateQueries({ queryKey: HEALTH_RUNNING_RUNS_KEY });
   }
   if (frame.kind === WORKFLOW_STARTED_KIND) invalidateEmptyViews(queryClient);
   if (isReviewFleetEventKind(frame.kind)) {
