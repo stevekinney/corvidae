@@ -102,6 +102,112 @@ function request(host: Host, path: string, actor: string, init: RequestInit = {}
 }
 
 describe('injected workspace transport authority', () => {
+  test('stops a live stream when its credential is remapped before a private result', async () => {
+    const release = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const { host, members, workspaceId } = await authenticatedHost(undefined, {
+      started: started.resolve,
+      promise: release.promise,
+    });
+    const run = await host.bureau.tasks.start('waiting', 'ordinary input', {
+      principal: 'owner-member',
+    });
+    try {
+      await started.promise;
+      const expected = encodeURIComponent(JSON.stringify([workspaceId, 'member']));
+      const response = await request(
+        host,
+        `/bureau/ag-ui/runs/${encodeURIComponent(run.id)}`,
+        'member',
+        {
+          headers: { accept: 'text/event-stream', 'x-interborough-expected-identity': expected },
+        },
+      );
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      await reader.read();
+      members.set('member', { ...members.get('member')!, actorId: 'peer', owner: 'owner-peer' });
+      release.resolve();
+      let after = '';
+      const decoder = new TextDecoder();
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        after += decoder.decode(part.value, { stream: true });
+      }
+      expect(after).not.toContain('PRIVATE-HOST-TRANSPORT-SENTINEL');
+      const controlRelease = Promise.withResolvers<void>();
+      const controlStarted = Promise.withResolvers<void>();
+      const controlFixture = await authenticatedHost(undefined, {
+        started: controlStarted.resolve,
+        promise: controlRelease.promise,
+      });
+      const control = await controlFixture.host.bureau.tasks.start('waiting', 'ordinary input', {
+        principal: 'owner-member',
+      });
+      try {
+        await controlStarted.promise;
+        const controlResponse = await request(
+          controlFixture.host,
+          `/bureau/ag-ui/runs/${encodeURIComponent(control.id)}`,
+          'member',
+          {
+            headers: {
+              accept: 'text/event-stream',
+              'x-interborough-expected-identity': encodeURIComponent(
+                JSON.stringify([controlFixture.workspaceId, 'member']),
+              ),
+            },
+          },
+        );
+        controlRelease.resolve();
+        expect(await controlResponse.text()).toContain('PRIVATE-HOST-TRANSPORT-SENTINEL');
+        await control.result();
+      } finally {
+        controlRelease.resolve();
+        await control.result().catch(() => {});
+      }
+    } finally {
+      release.resolve();
+      await run.result().catch(() => {});
+    }
+  });
+
+  test('rejects a stale browser identity across host, engine, and Bureau transports', async () => {
+    const { host, members, workspaceId } = await authenticatedHost();
+    const expected = encodeURIComponent(JSON.stringify([workspaceId, 'member']));
+    const headers = { 'x-interborough-expected-identity': expected };
+    const initial = await request(host, '/api/v1/principal', 'member', { headers });
+    expect(initial.status).toBe(200);
+    members.set('member', { ...members.get('member')!, actorId: 'peer', owner: 'owner-peer' });
+    for (const path of [
+      '/api/v1/principal',
+      '/api/v1/workflows',
+      '/host/integrations',
+      '/bureau/jsonrpc',
+    ]) {
+      const response = await request(
+        host,
+        path,
+        'member',
+        path === '/bureau/jsonrpc'
+          ? {
+              method: 'POST',
+              headers: { ...headers, 'content-type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'weft.system.principal',
+                params: {},
+              }),
+            }
+          : { headers },
+      );
+      expect(response.status, path).toBe(409);
+      expect(response.headers.get('x-interborough-identity-mismatch'), path).toBe('1');
+    }
+  });
+
   test('members see only shared integration identity and availability', async () => {
     const { host, members } = await authenticatedHost();
     await host.toolSources.connect({

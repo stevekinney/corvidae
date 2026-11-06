@@ -124,6 +124,78 @@ describe('armWriteGuard', () => {
     expect(sent).toBe(2);
   });
 
+  test('expires only the current host lifetime on an authentication failure', async () => {
+    let expired = 0;
+    const target = {
+      fetch: Object.assign(
+        async (_input: RequestInfo | URL, _init?: RequestInit) =>
+          new Response(null, { status: 401 }),
+        {
+          preconnect: fetch.preconnect,
+        },
+      ),
+    };
+    release = armWriteGuard(
+      () => false,
+      ['http://localhost'],
+      target,
+      () => {
+        expired += 1;
+      },
+    );
+    await target.fetch('http://elsewhere.example/private');
+    expect(expired).toBe(0);
+    await target.fetch('http://localhost/bureau/jsonrpc');
+    expect(expired).toBe(1);
+  });
+
+  test('binds requests to the lifetime identity and reports a host identity mismatch', async () => {
+    const observed: { expected: string | null } = { expected: null };
+    let mismatches = 0;
+    const target = {
+      fetch: Object.assign(
+        async (_input: RequestInfo | URL, init?: RequestInit) => {
+          observed.expected = new Headers(init?.headers).get('x-interborough-expected-identity');
+          return new Response(null, {
+            status: 409,
+            headers: { 'x-interborough-identity-mismatch': '1' },
+          });
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    };
+    release = armWriteGuard(() => false, ['http://localhost'], target, undefined, {
+      identity: { workspaceId: 'workspace-a', actorId: 'actor-a' },
+      onMismatch: () => {
+        mismatches += 1;
+      },
+    });
+    await target.fetch('http://localhost/bureau/jsonrpc');
+    expect(observed.expected).toBe(encodeURIComponent(JSON.stringify(['workspace-a', 'actor-a'])));
+    expect(mismatches).toBe(1);
+  });
+
+  test('requests identity revalidation after a forbidden host response, without recursion on the principal probe', async () => {
+    let revalidations = 0;
+    const target = {
+      fetch: Object.assign(
+        async (_input: RequestInfo | URL, _init?: RequestInit) =>
+          new Response(null, { status: 403 }),
+        { preconnect: fetch.preconnect },
+      ),
+    };
+    release = armWriteGuard(() => false, ['http://localhost'], target, undefined, {
+      identity: { workspaceId: 'a', actorId: 'a' },
+      onMismatch: () => {},
+      onForbidden: () => {
+        revalidations += 1;
+      },
+    });
+    await target.fetch('http://localhost/bureau/jsonrpc');
+    await target.fetch('http://localhost/api/v1/principal');
+    expect(revalidations).toBe(1);
+  });
+
   test('puts the previous fetch back', () => {
     const { target, original } = arm(false);
     expect(target.fetch).not.toBe(original);

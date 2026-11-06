@@ -124,6 +124,12 @@ export function armWriteGuard(
   isUnreachable: () => boolean,
   ownOrigins: readonly string[],
   target: { fetch: typeof fetch } = globalThis,
+  onUnauthorized?: () => void,
+  lifetime?: {
+    readonly identity: { readonly workspaceId: string; readonly actorId: string };
+    readonly onMismatch: () => void;
+    readonly onForbidden?: () => void;
+  },
 ): () => void {
   const previousFetch = target.fetch;
   const previousRefusing = refusing;
@@ -138,7 +144,39 @@ export function armWriteGuard(
           return Promise.reject(new ServerUnreachableError());
         }
       }
-      return previousFetch(input, init);
+      const { url } = requestParts(input, init);
+      const origin = new URL(url, globalThis.location?.href ?? 'http://localhost').origin;
+      let requestInit = init;
+      if (own.has(origin) && lifetime !== undefined) {
+        const headers = new Headers(
+          init?.headers ?? (input instanceof Request ? input.headers : undefined),
+        );
+        headers.set(
+          'x-interborough-expected-identity',
+          encodeURIComponent(
+            JSON.stringify([lifetime.identity.workspaceId, lifetime.identity.actorId]),
+          ),
+        );
+        requestInit = { ...init, headers };
+      }
+      return previousFetch(input, requestInit).then((response) => {
+        if (own.has(origin) && response.status === 401) onUnauthorized?.();
+        if (
+          own.has(origin) &&
+          response.status === 403 &&
+          !new URL(url, globalThis.location?.href ?? 'http://localhost').pathname.endsWith(
+            '/v1/principal',
+          )
+        )
+          lifetime?.onForbidden?.();
+        if (
+          own.has(origin) &&
+          response.status === 409 &&
+          response.headers.get('x-interborough-identity-mismatch') === '1'
+        )
+          lifetime?.onMismatch();
+        return response;
+      });
     },
     { preconnect: previousFetch.preconnect },
   );

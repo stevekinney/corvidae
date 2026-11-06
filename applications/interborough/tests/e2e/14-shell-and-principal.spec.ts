@@ -504,3 +504,37 @@ test.describe('a tab opened before the host was rebuilt', () => {
     expect(loads).toBe(1);
   });
 });
+
+test('keeps the open palette and its text when focus returns to the same identity', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /^Search everything/ }).click();
+  const search = page.getByRole('dialog', { name: 'Command palette' }).getByRole('combobox');
+  await search.fill('retained text');
+  const principalCheck = page.waitForResponse((response) =>
+    response.url().endsWith('/api/v1/principal'),
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  const response = await principalCheck;
+  expect(response.status()).toBe(200);
+  await expect(search).toHaveValue('retained text');
+});
+
+test('clears the shell when a current host request rejects its credentials', async ({
+  page,
+  pageErrors,
+}) => {
+  pageErrors.expect({
+    pattern: loggedFailedResponse(401, /\/host\/integrations/),
+    reason: 'the test rejects this request to exercise expired credentials',
+  });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
+  await page.route('**/host/integrations', (route) => route.fulfill({ status: 401 }));
+  await page.evaluate(async () => {
+    await fetch('/host/integrations');
+  });
+  await expect(page.locator('[data-view="boot"][data-state="error"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Search everything/ })).toHaveCount(0);
+});

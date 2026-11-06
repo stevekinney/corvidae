@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { CHAT_COPY } from '../../app/copy.ts';
+import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { chooseOption, optionLabels } from './listbox.test-support.ts';
@@ -55,10 +56,11 @@ const sse = (events: readonly unknown[]) =>
 
 const provider = (hasKey: boolean) =>
   Response.json({
+    configurationRevision: null,
     providers: [{ name: 'anthropic', configured: true, hasKey }],
     catalog: [],
     models: [],
-  });
+  } satisfies ProvidersSnapshot);
 
 interface Served {
   readonly steers: Array<Record<string, unknown>>;

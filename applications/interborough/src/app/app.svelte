@@ -13,6 +13,7 @@
    * `providePrincipalStore()`.
    */
   import type { HttpClient } from '@lostgradient/weft';
+  import { tick } from 'svelte';
 
   import { Skeleton, setCodeHighlighterContext } from '@lostgradient/cinder';
   import { QueryClientProvider } from '@tanstack/svelte-query';
@@ -21,12 +22,12 @@
   import { codeHighlighter } from '../lib/code-highlighter.ts';
   import { readRuntimeConfig, type WeftUiRuntimeConfig } from '../lib/config.ts';
   import { createQueryClient } from '../lib/query.ts';
-  import { resolvePrincipal, type Principal } from '../lib/scopes.svelte.ts';
+  import { resolveHostPrincipal, type Principal } from '../lib/scopes.svelte.ts';
   import BootFailure from './boot-failure.svelte';
   import Shell from './shell/shell.svelte';
   import ToastHost, { provideToastHost } from './toast-host.svelte';
+  import { WorkspaceLifetime } from './workspace-lifetime.ts';
 
-  const queryClient = createQueryClient();
   // The `<ToastHost>` below serves every view in the shell, so a view never
   // mounts a second one of its own.
   provideToastHost();
@@ -41,65 +42,74 @@
   type BootPhase =
     | { readonly status: 'resolving' }
     | { readonly status: 'unidentified' }
-    | { readonly status: 'ready'; readonly client: HttpClient; readonly principal: Principal };
+    | {
+        readonly status: 'ready';
+        readonly client: HttpClient;
+        readonly principal: Principal;
+        readonly queryClient: ReturnType<typeof createQueryClient>;
+      };
 
   let phase = $state<BootPhase>({ status: 'resolving' });
+  const lifetime = new WorkspaceLifetime({
+    resolve: async () => {
+      await tick();
+      const client = createClient(config);
+      const principal = await resolveHostPrincipal(client.headers);
+      if (principal?.workspace === undefined) throw new Error('Workspace identity unavailable');
+      return { client, principal };
+    },
+    open: ({ client, principal }) => {
+      const queryClient = createQueryClient();
+      phase = { status: 'ready', client, principal, queryClient };
+      return () => {
+        phase = { status: 'resolving' };
+        void queryClient.cancelQueries();
+        queryClient.clear();
+      };
+    },
+    fail: () => {
+      phase = { status: 'unidentified' };
+    },
+  });
 
   $effect(() => {
-    let cancelled = false;
-    const initialClient = createClient(config);
-
-    void resolvePrincipal(initialClient).then(
-      (principal) => {
-        if (cancelled) return undefined;
-        phase =
-          principal === null
-            ? { status: 'unidentified' }
-            : { status: 'ready', client: initialClient, principal };
-        return undefined;
-      },
-      () => {
-        // A non-auth failure (network error, 500) from the boot probe isn't
-        // one of the two documented boot states — fail open into the
-        // unauthenticated-mode path so the shell still mounts and the real
-        // surfaces (backed by <FaultBoundary>/query error handling) report
-        // the underlying problem instead of the boot sequence hanging.
-        if (cancelled) return undefined;
-        phase = {
-          status: 'ready',
-          client: initialClient,
-          principal: { scopes: [], unauthenticatedAccess: null },
-        };
-        return undefined;
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
+    void lifetime.refresh();
+    return () => lifetime.dispose();
   });
+
+  function onIdentityMismatch(expiredClient: HttpClient): void {
+    if (phase.status !== 'ready' || phase.client !== expiredClient) return;
+    void lifetime.refresh();
+  }
 
   function onAuthExpired(expiredClient: HttpClient): void {
     if (phase.status !== 'ready' || phase.client !== expiredClient) return;
-    queryClient.clear();
+    lifetime.dispose();
     phase = { status: 'unidentified' };
   }
 </script>
 
-<QueryClientProvider client={queryClient}>
-  {#if phase.status === 'ready'}
-    <Shell client={phase.client} initialPrincipal={phase.principal} {onAuthExpired} />
-  {:else if phase.status === 'unidentified'}
-    <BootFailure />
-  {:else}
-    <div
-      class="weft-shell-boot-skeleton"
-      role="status"
-      aria-busy="true"
-      aria-label="Loading Interborough"
-    >
-      <Skeleton height="100vh" radius="0" />
-    </div>
-  {/if}
-  <ToastHost />
-</QueryClientProvider>
+{#if phase.status === 'ready'}
+  {#key phase.queryClient}
+    <QueryClientProvider client={phase.queryClient}>
+      <Shell
+        client={phase.client}
+        initialPrincipal={phase.principal}
+        {onAuthExpired}
+        {onIdentityMismatch}
+      />
+    </QueryClientProvider>
+  {/key}
+{:else if phase.status === 'unidentified'}
+  <BootFailure />
+{:else}
+  <div
+    class="weft-shell-boot-skeleton"
+    role="status"
+    aria-busy="true"
+    aria-label="Loading Interborough"
+  >
+    <Skeleton height="100vh" radius="0" />
+  </div>
+{/if}
+<ToastHost />

@@ -104,6 +104,14 @@ export function withWorkspaceMembership(
     const workspace = resolveSnapshot(resolved, workspaceId, credential);
     if (workspace === undefined)
       return new Response('Workspace membership required', { status: 403 });
+    // This is a precondition, not authority: only the verified directory supplies the identity.
+    const expected = request.headers.get('x-interborough-expected-identity');
+    const actual = encodeURIComponent(JSON.stringify([workspace.workspaceId, workspace.actorId]));
+    if (expected !== null && expected !== actual)
+      return new Response('Workspace identity changed', {
+        status: 409,
+        headers: { 'x-interborough-identity-mismatch': '1' },
+      });
     return {
       ...contextSnapshot,
       principal: Object.freeze({
