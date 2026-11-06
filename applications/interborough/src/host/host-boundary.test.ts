@@ -129,6 +129,7 @@ describe('/host/paths', () => {
     expect(response.status).toBe(200);
     const paths = (await response.json()) as Record<string, unknown>;
     expect(Object.keys(paths).toSorted()).toEqual([
+      'a2aDirectoryUrl',
       'agentDirectory',
       'configurationFile',
       'database',
@@ -157,6 +158,7 @@ describe('/host/paths', () => {
         { name: 'openai', secretFile: join(home, 'secrets', 'openai-api-key') },
         { name: 'gemini', secretFile: join(home, 'secrets', 'gemini-api-key') },
       ],
+      a2aDirectoryUrl: `http://127.0.0.1:${host.url.port}/bureau/a2a/.well-known/agent-card.json`,
     });
   });
 

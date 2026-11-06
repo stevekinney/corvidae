@@ -162,6 +162,9 @@ export const SHOWCASE_ALERTS: AlertingOptions = {
   rules: [{ metric: 'storage.size', threshold: SHOWCASE_STORAGE_WARNING_BYTES, action: 'webhook' }],
 };
 
+/** The built-in agents the sample world shares over A2A, as the board draws Settings › A2A. */
+const SHOWCASE_A2A_AGENTS = ['assistant', 'tool-runner'] as const;
+
 /**
  * What a showcase host is started with beside its environment: the stub provider's resolver (built
  * from the host's run lookup, over the same scripts the built-in agents answer from), the sample
@@ -176,6 +179,7 @@ export function showcaseHostOptions(
 ): Pick<
   HostOptions,
   | 'extraAgents'
+  | 'a2aAgents'
   | 'resolveProviderGenerateFor'
   | 'nightlyCleanUp'
   | 'plugins'
@@ -186,6 +190,9 @@ export function showcaseHostOptions(
   const scripts = showcaseAgentScripts(pacing);
   return {
     extraAgents: showcaseBuiltInAgents(pacing, scripts),
+    // Settings › A2A shows Assistant and Tool runner shared and the rest not (board
+    // PageSettingsSections, "A2A · /settings/a2a").
+    a2aAgents: SHOWCASE_A2A_AGENTS,
     resolveProviderGenerateFor: (agentOfRun) => showcaseProviderResolver(agentOfRun, scripts),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
     plugins: showcasePlugins(),

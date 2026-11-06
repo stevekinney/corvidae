@@ -82,6 +82,8 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   maintenance: 'manual',
   'durableOwnership.ownership': 'none',
   workflowVersion: 'v2',
+  'a2a.enabled': false,
+  'a2a.agents': { support: true, billing: false },
   'a2a.push.enabled': true,
   'a2a.push.sweepIntervalMs': 600_000,
 };

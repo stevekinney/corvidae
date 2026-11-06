@@ -45,6 +45,18 @@ const schema = {
         'Whether the label is visibly rendered. Set `false` for icon-only or\ninline contexts — it stays the accessible name.',
       default: true,
     },
+    standalone: {
+      type: 'boolean',
+      description:
+        'Makes the switch its own field: it is named and labelled by its own `label` even inside a\n`<FormField>` or `<SettingRow>`, whose label would otherwise name it. Use it for one switch\namong several in a field, such as a list of agents in a setting.',
+      default: false,
+    },
+    labelPosition: {
+      enum: ['start', 'end'],
+      description:
+        "Which side of the switch the label sits on. `start` puts the label first and spreads the two\nacross the switch's full width, the way a list of switches reads; `end` keeps them together.\nApplies to a visible label that the switch owns (outside a field, or `standalone`).",
+      default: 'end',
+    },
     name: {
       type: 'string',
       description:

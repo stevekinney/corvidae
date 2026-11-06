@@ -35,7 +35,11 @@ import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from '../types.ts';
-import { A2A_PUSH_DEFAULTS, DEFAULT_MAX_CONCURRENT_RUNS } from './settings-options.ts';
+import {
+  A2A_DEFAULTS,
+  A2A_PUSH_DEFAULTS,
+  DEFAULT_MAX_CONCURRENT_RUNS,
+} from './settings-options.ts';
 import type { SettingKey, SettingsValues } from './settings-schema.ts';
 
 /** {@link BureauRetentionOptions.events}'s default window: 7 days. */
@@ -51,10 +55,11 @@ export const DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS = 60 * 60 * 1000;
  * The keys that have no one value while nothing sets them, because leaving them unset is itself
  * the behavior: no model policy, no summarizer, the memory policy's own windows, log lines and hook
  * deliveries kept with what owns them, notifications kept up to a count, and no workflow version
- * stamped. Each key's description in the schema says what unset means. `effective` omits them.
+ * stamped, and no agent named for A2A (each follows its own file). Each key's description in the schema says what unset means. `effective` omits them.
  */
 export const SETTINGS_WITHOUT_DEFAULT = [
   'modelPolicy',
+  'a2a.agents',
   'context.summarizerModel',
   'retention.memory',
   'retention.logs',
@@ -113,6 +118,7 @@ export function builtInSettingDefaults(context: BuiltInDefaultsContext): BuiltIn
     durable: context.persistentStorage,
     maintenance: 'automatic',
     'durableOwnership.ownership': 'workflow-lease',
+    'a2a.enabled': A2A_DEFAULTS.enabled,
     'a2a.push.enabled': A2A_PUSH_DEFAULTS.enabled,
     'a2a.push.sweepIntervalMs': A2A_PUSH_DEFAULTS.sweepIntervalMs,
   };

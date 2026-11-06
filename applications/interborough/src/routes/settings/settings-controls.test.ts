@@ -11,6 +11,7 @@ import {
   holdsJson,
   inSection,
   MODEL_POLICY_KEY,
+  settingLabel,
 } from './settings-controls.ts';
 
 /** The schema the Bureau publishes, built as `bureau.settings.schema()` builds it. */
@@ -85,6 +86,9 @@ describe('the controls', () => {
       maintenance: 'select',
       'durableOwnership.ownership': 'select',
       workflowVersion: 'text',
+      'a2a.enabled': 'toggle',
+      // A record of agent names to booleans: the A2A page draws its own switch per agent.
+      'a2a.agents': 'json',
       'a2a.push.enabled': 'toggle',
       'a2a.push.sweepIntervalMs': 'number',
     });
@@ -190,7 +194,12 @@ describe('the sections', () => {
 
   test('give the A2A section exactly the a2a settings, and no other section any of them', () => {
     const a2a = SETTING_KEYS.filter((key) => key.startsWith('a2a.'));
-    expect(a2a.toSorted()).toEqual(['a2a.push.enabled', 'a2a.push.sweepIntervalMs']);
+    expect(a2a.toSorted()).toEqual([
+      'a2a.agents',
+      'a2a.enabled',
+      'a2a.push.enabled',
+      'a2a.push.sweepIntervalMs',
+    ]);
     for (const key of a2a) {
       expect(inSection(key, 'a2a'), key).toBe(true);
       expect(inSection(key, 'general'), key).toBe(false);
@@ -245,5 +254,14 @@ describe('the groups', () => {
 
   test('know how every key applies', () => {
     expect(Object.keys(SETTING_APPLY)).toEqual([...SETTING_KEYS]);
+  });
+});
+
+describe('the names of the A2A settings', () => {
+  test('say what each does, so the rows and the restart notice agree', () => {
+    expect(settingLabel('a2a.enabled')).toBe('Accept A2A calls');
+    expect(settingLabel('a2a.agents')).toBe('Shared agents');
+    expect(settingLabel('a2a.push.enabled')).toBe('Push notifications');
+    expect(settingLabel('a2a.push.sweepIntervalMs')).toBe('Sweep interval ms');
   });
 });

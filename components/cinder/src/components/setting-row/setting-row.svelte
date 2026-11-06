@@ -37,6 +37,7 @@
     required,
     disabled,
     managed,
+    controlWidth,
     control,
     disclosure,
     class: className,
@@ -87,7 +88,12 @@
   {/if}
 {/snippet}
 
-<div class={classNames('cinder-setting-row', className)}>
+<div
+  class={classNames('cinder-setting-row', className)}
+  style={controlWidth === undefined
+    ? undefined
+    : `--cinder-setting-row-control-width: ${controlWidth}`}
+>
   <FormFieldFrame
     {id}
     {label}

@@ -104,6 +104,14 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
     reads: 'literal',
   },
   {
+    // Read on every A2A request, and when the agents are listed: an agent shared or withdrawn is
+    // served or refused at once (`http/a2a-opt-in.ts`).
+    name: 'A2A opt-in',
+    module: 'http/a2a-opt-in.ts',
+    keys: ['a2a.agents'],
+    reads: 'literal',
+  },
+  {
     name: 'engine reconfigure',
     module: 'settings/settings-options.ts',
     keys: Object.keys(ENGINE_PATCH_FIELDS) as SettingKey[],

@@ -1402,37 +1402,86 @@ export const FIRST_RUN_COPY = {
   },
 } as const;
 
+/** The numbers a sentence about the agents says in words; a larger count says its digits. */
+const COUNT_WORDS = [
+  'no',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+] as const;
+
 /**
- * The words of Settings › A2A: the agents that opt in to being found and called by other agents,
- * the address of each one's Agent Card, and (under them) the push-notification settings.
+ * The words of Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with
+ * Accept A2A calls off"): the switch that accepts remote calls, the address of the agent card, the
+ * agents that answer, push notifications, and the calls that were made. The rows save as they are
+ * left, like the rest of Settings.
  */
 export const A2A_COPY = {
   intro:
-    'Other agents and A2A clients can find and call the agents you opt in. Each one publishes an Agent Card at the address below.',
-  agentsHeading: 'Agents reachable over A2A',
-  agentsDescription:
-    'Opt an agent in from its editor, with Available over A2A. Chats with an agent work either way.',
-  listLabel: 'Agents reachable over A2A',
-  loading: 'Loading the agents reachable over A2A',
-  loadFailed: {
-    title: 'The agents could not be listed',
-    description: 'The host did not answer. Check that it is running, then try again.',
+    'Let other agents and tools call yours over the Agent2Agent protocol. Settings save as you leave a field.',
+  heading: 'Agent2Agent',
+  enabled: {
+    label: 'Accept A2A calls',
+    description: 'Let other agents and tools call your agents over the Agent2Agent protocol.',
+    /** Said under the switch while it is off and nothing waits for a restart. */
+    off: 'Off. No remote call is answered. Turning it on applies after a restart.',
   },
-  empty: {
-    title: 'No agent is reachable over A2A',
-    description: 'Turn on Available over A2A in an agent’s editor and its Agent Card appears here.',
-    action: { label: 'Open agents', href: '/agents' },
+  cardUrl: {
+    label: 'Agent card URL',
+    description: 'Share this address with a caller so it can discover which agents you offer.',
+    copy: 'Copy the agent card URL',
+    copied: 'Copied',
+    unavailable: 'Not known yet',
   },
-  cardLabel: 'Agent Card address',
-  copyCard: 'Copy address',
-  copiedCard: 'Copied',
-  editAction: 'Edit',
-  editAgent: (name: string): string => `Edit ${name}`,
-  fromCode: 'Defined in code',
-  needsKey: 'Needs an API key',
-  cardLoading: 'Reading the card',
-  cardUnavailable: 'Card unavailable',
-  cardRetry: 'Try again',
+  agents: {
+    label: 'Shared agents',
+    /** The row's words: how many agents it lists, and where else the same choice is made. */
+    description: (count: number): string => {
+      const listed =
+        count === 0
+          ? 'Agents you add are listed here'
+          : count === 1
+            ? 'The one agent is listed'
+            : `All ${COUNT_WORDS[count] ?? String(count)} agents are listed`;
+      return `${listed}; only the ones you turn on here answer remote calls. You can also set this on each agent’s Settings tab.`;
+    },
+    listLabel: 'Agents that answer remote calls',
+    loading: 'Loading the agents',
+    loadFailed: 'The agents could not be listed.',
+    retry: 'Try again',
+    none: 'No agents yet.',
+  },
+  pushNotifications: {
+    label: 'Push notifications',
+    description: 'Let a remote caller register a webhook to be told when its task finishes.',
+  },
+  /** The line under the rows while Accept A2A calls is off. */
+  readOnly: 'Agent card URL, Shared agents and Push notifications are read-only while this is off.',
+  recent: {
+    heading: 'Recent calls',
+    empty: {
+      title: 'No remote calls yet',
+      description:
+        'When another agent or tool calls yours, each call appears here with who made it and which agent answered.',
+    },
+    tableLabel: 'Recent remote calls',
+    columns: { when: 'When', caller: 'Caller', agent: 'Agent' },
+    loading: 'Loading the recent calls',
+    loadFailed: {
+      title: 'The recent calls could not be loaded',
+      description: 'The host did not answer. Check that it is running, then try again.',
+    },
+    retry: 'Try again',
+  },
 } as const;
 
 /**
@@ -2273,13 +2322,6 @@ export const SETTINGS_COPY = {
     singleKeyLabel: 'Use single-key shortcuts',
     singleKeyDescription:
       'Press G then a letter to go somewhere, or C for a new chat. They never act while you type in a field. Shortcuts held with ⌘ and the ? map always work. This applies to this browser only.',
-  },
-  /** What the A2A section asks before it saves. */
-  confirmA2a: {
-    title: 'Save the A2A settings?',
-    description:
-      'Push notifications make this host send requests to servers other people run. The change applies when the host restarts.',
-    confirm: 'Save settings',
   },
   intro:
     'These apply to the whole deployment. A setting that applies live takes effect at its next use, and one that needs a restart is kept and applies when the host starts again.',

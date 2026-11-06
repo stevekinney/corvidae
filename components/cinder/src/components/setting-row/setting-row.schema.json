@@ -68,6 +68,10 @@
       "additionalProperties": false,
       "description": "Renders a managed-policy line with a lock glyph; pair with `PolicyLock`. Give it a `message`\nfor a locked setting (\"Locked by your deployment (remote mode). Change it in the deployment's\nconfiguration.\"). The control stays the page's to make read-only."
     },
+    "controlWidth": {
+      "type": "string",
+      "description": "The width of the column the control sits in, as a CSS length (`\"25rem\"`). Leave it unset for the\ndefault of `15rem`, which fits a switch, a short field or a select; give a control that needs\nmore room, such as the address of a feed or a list of switches, its own. Below the container\nwidth where the row stacks, the control takes the row's width whatever this says."
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged with the component's root class."

@@ -53,6 +53,20 @@ export type ToggleProps = {
    */
   labelVisible?: boolean;
   /**
+   * Makes the switch its own field: it is named and labelled by its own `label` even inside a
+   * `<FormField>` or `<SettingRow>`, whose label would otherwise name it. Use it for one switch
+   * among several in a field, such as a list of agents in a setting.
+   * @default false
+   */
+  standalone?: boolean;
+  /**
+   * Which side of the switch the label sits on. `start` puts the label first and spreads the two
+   * across the switch's full width, the way a list of switches reads; `end` keeps them together.
+   * Applies to a visible label that the switch owns (outside a field, or `standalone`).
+   * @default 'end'
+   */
+  labelPosition?: 'start' | 'end';
+  /**
    * Form field name. When set, a hidden checkbox mirrors `checked` so the toggle
    * participates in native form submission. Omit for purely client-side toggles
    * (no hidden input is rendered, so there is zero overhead).

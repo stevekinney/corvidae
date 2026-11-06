@@ -253,8 +253,8 @@ export const queryKeys = {
   principal: () => ['principal'] as const,
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
-  /** One agent's public A2A Agent Card (`/bureau/a2a/<agent>/.well-known/agent-card.json`). */
-  a2aCard: (agent: string) => ['a2a', 'card', agent] as const,
+  /** The remote A2A calls the audit trail kept, newest first (`bureau.audit.query`, type `a2a.call`). */
+  a2aCalls: () => ['a2a', 'calls'] as const,
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
   hostStorage: () => ['host', 'storage'] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */

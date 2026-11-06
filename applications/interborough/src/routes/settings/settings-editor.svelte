@@ -7,7 +7,7 @@
    * says so and offers to reload, because saving over a change would overwrite it. A save the
    * Bureau refuses as stale says the same.
    */
-  import { Alert, Button, ConfirmDialog, validateSchemaFormValue } from '@lostgradient/cinder';
+  import { Alert, Button, validateSchemaFormValue } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, onMount, untrack } from 'svelte';
 
@@ -163,20 +163,9 @@
     submit.mutate({ patch: form.patch(), expectedRevision: form.revision });
   }
 
-  /**
-   * Whether the A2A section is asking to be sure. Its settings decide whether the host sends
-   * requests to servers other people run, and they apply only after a restart, so a save is
-   * confirmed first; the other sections save at once, as they always have.
-   */
-  let confirming = $state(false);
-
-  /** Saves, after asking when the section's settings are the kind that reach other servers. */
+  /** Saves the dirty keys; the shortcut, the Save button and a field's own submit all come here. */
   function requestSave(): void {
-    if (section !== 'a2a') {
-      void save();
-      return;
-    }
-    if (form.canSave && !submit.isPending && !sending) confirming = true;
+    void save();
   }
 
   // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
@@ -358,14 +347,6 @@
   onConfirm={() => void restartFlow.restart({ changes: restartKeys.map(settingLabel) })}
 />
 <RestartDialog flow={restartFlow} />
-
-<ConfirmDialog
-  bind:open={confirming}
-  title={SETTINGS_COPY.confirmA2a.title}
-  description={SETTINGS_COPY.confirmA2a.description}
-  confirmLabel={SETTINGS_COPY.confirmA2a.confirm}
-  onConfirm={() => void save()}
-/>
 
 <style>
   .weft-settings-editor {

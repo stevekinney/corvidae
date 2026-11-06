@@ -130,7 +130,7 @@ describe('the registry holds row 25f', () => {
     expect(spelled()).not.toContain('⌘+enter');
 
     settingsBureau = installSettingsBureau(servedSettings());
-    landAt('/settings/a2a');
+    landAt('/settings/allowed-models');
     const view = render(RouteOutletHarness, {
       props: {
         client: new HttpClient({ baseUrl: 'http://localhost/api' }),

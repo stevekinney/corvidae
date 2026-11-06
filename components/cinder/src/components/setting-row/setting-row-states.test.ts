@@ -233,3 +233,18 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
     expect(retry).toContain('color: var(--cinder-accent-text)');
   });
 });
+
+describe('SettingRow control width', () => {
+  test('is the column the control sits in, set on the row and left alone when not given', () => {
+    const { container, unmount } = render(Fixture, { props: { controlWidth: '25rem' } });
+    const row = requiredInstance(container.querySelector('.cinder-setting-row'), HTMLElement);
+    expect(row.style.getPropertyValue('--cinder-setting-row-control-width')).toBe('25rem');
+    unmount();
+    const plain = render(Fixture);
+    const plainRow = requiredInstance(
+      plain.container.querySelector('.cinder-setting-row'),
+      HTMLElement,
+    );
+    expect(plainRow.getAttribute('style')).toBeNull();
+  });
+});

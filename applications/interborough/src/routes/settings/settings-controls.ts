@@ -14,6 +14,7 @@
  * while it is on. Only a node nothing else reads (an array or a bare `null`) falls to the JSON
  * editor, which can edit any value.
  */
+import { A2A_COPY } from '../../app/copy.ts';
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
 /** What a select of catalog rows offers: the models the catalog lists, or the decision models a host registers. */
@@ -145,7 +146,7 @@ export const SETTING_GROUPS = [
   { id: 'children', label: 'Children' },
   { id: 'engine', label: 'Workflows' },
   { id: 'durability', label: 'Durability' },
-  { id: 'a2a', label: 'Push notifications' },
+  { id: 'a2a', label: 'Agent2Agent' },
 ] as const;
 
 /** The keys whose first segment is not their group: the ones that fix how the deployment is built. */
@@ -235,10 +236,21 @@ export function groupsOf(keys: readonly string[]): readonly string[] {
 }
 
 /**
+ * The settings whose name is not the last part of their key put into words: the A2A switches are
+ * named for what they do, so the restart notice and the rows say the same thing.
+ */
+const SETTING_LABELS: Readonly<Record<string, string>> = {
+  'a2a.enabled': A2A_COPY.enabled.label,
+  'a2a.agents': A2A_COPY.agents.label,
+  'a2a.push.enabled': A2A_COPY.pushNotifications.label,
+};
+
+/**
  * A setting's name as a person reads it: the last part of its key, split into words and in
  * sentence case, so `engine.workflowClaimRenewInterval` is "Workflow claim renew interval".
  */
 export function settingLabel(key: string): string {
+  if (Object.hasOwn(SETTING_LABELS, key)) return SETTING_LABELS[key] ?? key;
   const last = key.split('.').at(-1) ?? key;
   const words = last
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')

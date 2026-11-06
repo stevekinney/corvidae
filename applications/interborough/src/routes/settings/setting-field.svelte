@@ -19,6 +19,7 @@
     Toggle,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
+  import type { Snippet } from 'svelte';
 
   import { SETTINGS_COPY } from '../../app/copy.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
@@ -54,6 +55,22 @@
     labelOverride?: string | undefined;
     /** Called when the person changes the value, which ends what Revert said about it. */
     onEdit?: (() => void) | undefined;
+    /**
+     * Draws the row's control in place of the one the schema shape calls for, such as a switch per
+     * agent for a record of agents. The row still words the save, the error and the lock; the
+     * control is told the row's id and whether it is disabled, and saves through `form` and
+     * `autosave` itself.
+     */
+    custom?: Snippet<[{ id: string; disabled: boolean }]> | undefined;
+    /** The width of the column the control sits in, when it needs more room than a switch (`"16rem"`). */
+    controlWidth?: string | undefined;
+    /** Disables the control without saying a deployment locked it, such as while another setting is off. */
+    disabled?: boolean;
+    /**
+     * What the status line says for a restart-applied setting that waits for nothing: in place of
+     * "Applies after restart", such as the words for a switch that is off.
+     */
+    statusNote?: string | undefined;
   }
 
   let {
@@ -68,6 +85,10 @@
     descriptionOverride,
     labelOverride,
     onEdit,
+    custom,
+    controlWidth,
+    disabled = false,
+    statusNote,
   }: Props = $props();
 
   const id = $derived(`weft-setting-${name.replaceAll('.', '-')}`);
@@ -81,6 +102,8 @@
   );
   const draft = $derived(form.draft(name));
   const locked = $derived(keyState.locked);
+  /** Whether the control cannot be changed: the deployment locked the setting, or the page holds it. */
+  const inert = $derived(locked || disabled);
   const hasValue = $derived(draft !== undefined);
   const saveState = $derived(autosave.stateOf(name));
   const problem = $derived(form.error(name));
@@ -128,7 +151,11 @@
     return undefined;
   });
   const statusLabel = $derived(
-    status === 'saved' && saveState?.phase !== 'saved' ? appliedNote : undefined,
+    status === 'saved' && saveState?.phase !== 'saved'
+      ? appliedNote
+      : status === 'restart'
+        ? statusNote
+        : undefined,
   );
 
   // The catalog is read only for a key that names one of its rows.
@@ -197,15 +224,18 @@
     {...error === undefined ? {} : { error }}
     {...retriable ? { onRetry: () => void autosave.retry(name) } : {}}
     {...locked ? { managed: { message: SETTINGS_COPY.lockedMessage } } : {}}
-    disabled={locked}
+    {...controlWidth === undefined ? {} : { controlWidth }}
+    disabled={inert}
   >
     {#snippet control()}
-      {#if spec.kind === 'toggle'}
+      {#if custom !== undefined}
+        {@render custom({ id, disabled: inert })}
+      {:else if spec.kind === 'toggle'}
         <Toggle
           {id}
           {label}
           checked={draft === true}
-          disabled={locked}
+          disabled={inert}
           onValueChange={(next) => {
             change(next);
             leave();
@@ -216,7 +246,7 @@
           {id}
           {label}
           checked={switchedOn}
-          disabled={locked}
+          disabled={inert}
           onValueChange={(next) => {
             autosave.clear(name);
             onEdit?.();
@@ -231,7 +261,7 @@
           labelVisible={false}
           options={spec.options.map((option) => ({ value: option, label: option }))}
           {...typeof draft === 'string' ? { value: draft } : {}}
-          disabled={locked}
+          disabled={inert}
           onchange={(event) => {
             change(event.currentTarget.value);
             leave();
@@ -244,7 +274,7 @@
           labelVisible={false}
           options={hasValue ? choices : [{ value: '', label: SETTINGS_COPY.notSet }, ...choices]}
           value={typeof draft === 'string' ? draft : ''}
-          disabled={locked}
+          disabled={inert}
           onchange={(event) => {
             change(event.currentTarget.value || undefined);
             leave();
@@ -257,7 +287,7 @@
             {label}
             variant="code"
             value={typeof draft === 'string' ? draft : ''}
-            disabled={locked}
+            disabled={inert}
             onValueChange={(next) => change(next)}
           />
         </div>
@@ -268,7 +298,7 @@
             value={typeof draft === 'number' ? draft : null}
             unit={duration.unit}
             unitSelectable={duration.selectable}
-            disabled={locked}
+            disabled={inert}
             onValueChange={(next) => change(next ?? undefined)}
           />
         </div>
@@ -277,7 +307,7 @@
           <NumberInput
             {id}
             value={typeof draft === 'number' ? draft : null}
-            disabled={locked}
+            disabled={inert}
             {...unit === undefined ? {} : { adornment: unit }}
             onValueChange={(next) => change(next ?? undefined)}
           />
@@ -294,10 +324,12 @@
       {/if}
     {/snippet}
     {#snippet disclosure()}
-      {#if formSchema !== undefined && formShown}
+      {#if custom !== undefined}
+        <!-- A custom control draws the whole value itself, so there is nothing to disclose. -->
+      {:else if formSchema !== undefined && formShown}
         <!-- A `SchemaForm` takes its value once, so it is made again whenever the draft starts over. -->
         {#key form.generation}
-          <fieldset class="weft-setting__form" disabled={locked} onfocusout={leaveControl}>
+          <fieldset class="weft-setting__form" disabled={inert} onfocusout={leaveControl}>
             <SchemaForm
               schema={formSchema}
               name={`setting-${id}`}
@@ -315,7 +347,7 @@
             {label}
             rows={8}
             validFeedbackVisible={false}
-            disabled={locked}
+            disabled={inert}
             value={form.text(name)}
             error={problem ?? ''}
             onValueChange={(next) => {

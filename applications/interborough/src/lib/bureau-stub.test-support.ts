@@ -75,6 +75,10 @@ export const STUB_REMOTE_PROVIDERS: { name: string; secretFile: string }[] = [
   { name: 'gemini', secretFile: 'INTERBOROUGH_SECRET_GEMINI_API_KEY' },
 ];
 
+/** The address of the A2A directory card the stubbed host reports. */
+export const STUB_A2A_DIRECTORY_URL =
+  'http://127.0.0.1:4310/bureau/a2a/.well-known/agent-card.json';
+
 /** The body `/host/paths` answers with for a host that keeps its state in Postgres and a bucket. */
 export function stubRemoteHostPaths() {
   return {
@@ -85,6 +89,7 @@ export function stubRemoteHostPaths() {
     configurationFile: STUB_REMOTE_CONFIGURATION_FILE,
     locked: { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_REMOTE_PROVIDERS,
+    a2aDirectoryUrl: STUB_A2A_DIRECTORY_URL,
   };
 }
 
@@ -108,6 +113,7 @@ export function stubHostPaths(
         ? {}
         : { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_PROVIDERS,
+    a2aDirectoryUrl: STUB_A2A_DIRECTORY_URL,
   };
 }
 

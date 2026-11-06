@@ -72,6 +72,7 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
     maintenance: options.maintenance,
     'durableOwnership.ownership': options.durableOwnership?.ownership,
     workflowVersion: options.workflowVersion,
+    'a2a.enabled': A2A_DEFAULTS.enabled,
     'a2a.push.enabled': A2A_PUSH_DEFAULTS.enabled,
     'a2a.push.sweepIntervalMs': A2A_PUSH_DEFAULTS.sweepIntervalMs,
   });
@@ -82,6 +83,13 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
  * execute at once on one host. Agent runs, goals and schedule ticks are not counted.
  */
 export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
+
+/**
+ * The default of `a2a.enabled`: A2A is accepted, as it was before the setting existed, so an agent
+ * that opts in is served. There is no code option to take it from: the host reads the key when it
+ * builds the handler.
+ */
+export const A2A_DEFAULTS = { enabled: true } as const;
 
 /**
  * The defaults of the `a2a.push.*` settings. There is no code option to take them from: the host
@@ -97,6 +105,7 @@ export const A2A_PUSH_DEFAULTS = { enabled: false, sweepIntervalMs: 3_600_000 } 
  * `setting-owners.test.ts` holds this list and {@link RESTART_OPTION_PATHS} to the `restart` keys.
  */
 export const HOST_RESTART_KEYS = [
+  'a2a.enabled',
   'a2a.push.enabled',
   'a2a.push.sweepIntervalMs',
 ] as const satisfies readonly SettingKey[];

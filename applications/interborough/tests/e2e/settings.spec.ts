@@ -227,9 +227,9 @@ test('saves a number as its field is left, and puts nothing else in the update',
 });
 
 test('lists ⌘Enter among the shortcuts of a section that has a Save', async ({ page }) => {
-  await page.goto('/settings/a2a');
+  await page.goto('/settings/allowed-models');
   await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
-  await expect(settingRow(page, 'a2a.push.enabled')).toBeVisible();
+  await expect(settingRow(page, 'preferences.prefer')).toBeVisible();
   await page.keyboard.press('?');
   const map = page.getByRole('dialog');
   await expect(map).toContainText(SETTINGS_COPY.saveAction);

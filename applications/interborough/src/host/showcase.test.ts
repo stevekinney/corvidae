@@ -148,6 +148,10 @@ describe('showcaseHostOptions', () => {
     expect(options.resolveProviderGenerateFor).toBeFunction();
   });
 
+  test('shares Assistant and Tool runner over A2A, and no other built-in agent', () => {
+    expect(showcaseHostOptions().a2aAgents).toEqual(['assistant', 'tool-runner']);
+  });
+
   test('loads Guardrails, Ollama and Voyage beside the workspace’s plugins', () => {
     const names = (showcaseHostOptions().plugins ?? []).map((entry) => entry.descriptor.name);
     expect(names).toEqual([

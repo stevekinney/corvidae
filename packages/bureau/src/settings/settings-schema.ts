@@ -280,6 +280,16 @@ export const settingsSchema = z
       .enum(['none', 'workflow-lease'])
       .describe('How servers that share storage divide the work between them.'),
     workflowVersion: z.string().min(1).describe('The version recorded on new runs.'),
+    'a2a.enabled': z
+      .boolean()
+      .describe(
+        'Whether other agents and tools can call this one over the Agent2Agent protocol. Off, no remote call is answered.',
+      ),
+    'a2a.agents': z
+      .record(z.string().min(1), z.boolean())
+      .describe(
+        'Which agents answer remote calls, by name. An agent named here follows its entry; an agent left out follows its own file, or the host that registered it.',
+      ),
     'a2a.push.enabled': z
       .boolean()
       .describe(
@@ -346,6 +356,9 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   maintenance: 'restart',
   'durableOwnership.ownership': 'restart',
   workflowVersion: 'restart',
+  'a2a.enabled': 'restart',
+  // Read on every A2A request, so an agent shared or withdrawn is served or refused at once.
+  'a2a.agents': 'live',
   'a2a.push.enabled': 'restart',
   'a2a.push.sweepIntervalMs': 'restart',
 };

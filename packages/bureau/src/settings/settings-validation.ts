@@ -107,6 +107,8 @@ export const SCHEMA_CHECKED_KEYS = [
   'engine.checkpointHistory',
   'engine.maxNestingDepth',
   'engine.maxConcurrentRuns',
+  'a2a.enabled',
+  'a2a.agents',
   'a2a.push.enabled',
   'a2a.push.sweepIntervalMs',
 ] as const satisfies readonly SettingKey[];

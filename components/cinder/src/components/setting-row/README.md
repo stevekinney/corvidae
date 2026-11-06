@@ -34,6 +34,7 @@ A setting saves when the person leaves its field and shows what happened on its 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
+| `controlWidth` | `string` | no | — | The width of the column the control sits in, as a CSS length (`"25rem"`). Leave it unset for the default of `15rem`, which fits a switch, a short field or a select; give a control that needs more room, such as the address of a feed or a list of switches, its own. Below the container width where the row stacks, the control takes the row's width whatever this says. |
 | `description` | `string` | no | — | Guidance text describing the setting. |
 | `disabled` | `boolean` | no | `false` | Forwards a disabled state into `FormField` context for the row's control. Only takes effect for a control that opts into and reads that context—a native element or a third-party component that doesn't consume it stays interactive and must receive `disabled` directly. Does not disable automatically while saving. `SettingRow` forwards `undefined` when omitted; `FormField` normalizes that to `false`. Defaults to `false`. |
 | `error` | `string` | no | — | Corrective error message. `FormField` renders this text itself, as a sibling of the control, not through context—a custom `control` that reads `FormField` context sees only the derived `errorId`, `invalid`, and the composed `describedBy`, never the message string itself. |

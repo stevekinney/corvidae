@@ -96,6 +96,13 @@ export type SettingRowProps = {
    * configuration."). The control stays the page's to make read-only.
    */
   managed?: FormFieldManaged;
+  /**
+   * The width of the column the control sits in, as a CSS length (`"25rem"`). Leave it unset for the
+   * default of `15rem`, which fits a switch, a short field or a select; give a control that needs
+   * more room, such as the address of a feed or a list of switches, its own. Below the container
+   * width where the row stacks, the control takes the row's width whatever this says.
+   */
+  controlWidth?: string;
   /** The setting's control, rendered with `FormField` context applied. */
   control: Snippet;
   /** Optional disclosure content rendered beneath the row. */

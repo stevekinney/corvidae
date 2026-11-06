@@ -1174,6 +1174,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
                   .providers.flatMap(({ name, secretKey }) =>
                     secretKey === undefined ? [] : [{ name, secretKey }],
                   ),
+                // The directory of the agents shared over A2A, at the address a caller reaches: the
+                // public origin when one is set (COR-1904), else this host's own.
+                `${a2aExposure.publicOrigin?.origin ?? hostOrigin ?? `http://${LOOPBACK}:${startPort}`}${BUREAU_PATH_PREFIX}/a2a/.well-known/agent-card.json`,
               ),
             ),
         },
@@ -1206,12 +1209,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // A2A push delivery is a restart-applied setting: the values read here are the ones this
     // process booted with (COR-1819).
     const { values: bootedSettings } = await bureau.settings.get();
-    const pushDelivery = startHostPushDelivery(
-      storage,
-      bungalow.deploymentId,
-      bootedSettings,
-      options.warn ?? ((message) => console.warn(message)),
-    );
+    // `a2a.enabled` is a restart-applied setting too: off, no A2A mount is built, so no remote
+    // call is answered and there is no push delivery to run (COR-2019).
+    const a2aEnabled = bootedSettings['a2a.enabled'] !== false;
+    const pushDelivery = a2aEnabled
+      ? startHostPushDelivery(
+          storage,
+          bungalow.deploymentId,
+          bootedSettings,
+          options.warn ?? ((message) => console.warn(message)),
+        )
+      : undefined;
     if (pushDelivery !== undefined) held.pushDelivery = pushDelivery;
     // COR-2009 — the audit log's "Server started", recorded once the listener is up. The missed
     // schedule occurrences this start finds are recorded by the Bureau as `schedule.missed`.
@@ -1243,8 +1251,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // the listener is loopback-only behind the request guard and every call acts as the owner,
       // so A2A is no more reachable than the rest of the host. With a public origin (COR-1904) the
       // cards name it, because that is the address a remote caller reaches.
-      publicUrl: `${a2aExposure.publicOrigin?.origin ?? publicOrigin}${BUREAU_PATH_PREFIX}`,
-      ...(a2aAgents === undefined ? {} : { a2aAgents }),
+      ...(a2aEnabled
+        ? {
+            publicUrl: `${a2aExposure.publicOrigin?.origin ?? publicOrigin}${BUREAU_PATH_PREFIX}`,
+            ...(a2aAgents === undefined ? {} : { a2aAgents }),
+          }
+        : {}),
       // `bureau.skills.list` reads the host's standing on every request, so a trust change shows
       // on the next call.
       skills: { standing: () => skills.standing() },
