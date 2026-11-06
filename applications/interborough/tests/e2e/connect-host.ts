@@ -102,7 +102,6 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
   let bearer: TestServer | undefined;
   let oauth: OAuthMcpServer | undefined;
   let pets: TestServer | undefined;
-  let supervisor: Bun.Subprocess | undefined;
   try {
     bearer = await startMcpServer(E2E_CONNECT_TOKEN);
     oauth = await startOAuthMcpServer();
@@ -118,7 +117,6 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       stdout: 'pipe',
       stderr: 'inherit',
     });
-    supervisor = startedSupervisor;
     let stopped = false;
     const stop = async (): Promise<void> => {
       if (stopped) return;
