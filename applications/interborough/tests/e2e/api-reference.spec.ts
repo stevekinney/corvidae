@@ -96,15 +96,16 @@ test('Operations lists the seven operations of Interborough’s API with their s
       .getByRole('button', { name: /^Request and response for/ }),
   ).toBeVisible();
 
-  // The whole row is in view at the table's width, at every width Settings is drawn at: the
-  // scope is not pushed out to a scroll, and the summary wraps whole words instead of being clipped.
+  // The whole row, chevron included, is in view at every width Settings is drawn at: the table
+  // wraps its cells instead of scrolling sideways, and the page never scrolls sideways.
   for (const width of [1280, 768, 375] as const) {
     await page.setViewportSize({ width, height: 900 });
-    expect(
-      await page
-        .locator('.cinder-table-scroll')
-        .evaluate((element) => element.scrollWidth <= element.clientWidth),
-    ).toBe(true);
+    const panelBox = await page.getByTestId('api-operations').boundingBox();
+    const tableBox = await table.boundingBox();
+    expect((tableBox?.x ?? 0) + (tableBox?.width ?? 0)).toBeLessThanOrEqual(
+      (panelBox?.x ?? 0) + (panelBox?.width ?? 0) + 0.5,
+    );
+    await expect(rows.first().locator('td').last().getByRole('button')).toBeInViewport();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);

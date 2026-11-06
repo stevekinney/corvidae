@@ -98,7 +98,7 @@
     {#if shown.length === 0}
       <p class="ib-api-operations__empty">{copy.empty}</p>
     {:else}
-      <Table caption={copy.caption} scrollable>
+      <Table caption={copy.caption} scrollable={false}>
         <Table.Header>
           <Table.Row>
             <Table.HeaderCell>{copy.columns.method}</Table.HeaderCell>
@@ -140,6 +140,7 @@
                     variant="ghost"
                     size="sm"
                     iconOnly
+                    quiet
                     label={copy.toggleLabel(operation.method, operation.path)}
                     aria-expanded={open.has(operation.id)}
                     aria-controls={detailId(operation)}
@@ -235,8 +236,9 @@
     overflow-wrap: anywhere;
   }
 
-  /* A scrolling table is as wide as its cells' text unwrapped, so the two long columns are held to
-   * a width and wrap inside it: the whole row, scope included, is in view at the table's width. */
+  /* The table never scrolls sideways: it is as wide as its column and its cells wrap, the path at
+   * each slash and the scope anywhere, so the whole row, chevron included, fits at 375px. The two
+   * long columns are held to a width, so on a wide page neither takes the room of the others. */
   .ib-api-operations__path {
     display: block;
     max-inline-size: 13rem;

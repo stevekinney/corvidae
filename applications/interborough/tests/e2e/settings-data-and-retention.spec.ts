@@ -61,10 +61,19 @@ test.describe('Settings › Data and retention', () => {
     // The days are readable: the field is wide enough to show them beside their unit and stepper.
     const daysBox = await audit.getByRole('spinbutton').boundingBox();
     expect(daysBox?.width ?? 0).toBeGreaterThan(40);
+    // Memory deletes while unset (the memory policy's 90 days), so it offers Delete after alone and
+    // shows the window in force (decisions, B11 after round 3).
+    const memory = row(page, 'retention.memory');
+    await expect(memory).toContainText('Memory');
+    await expect(memory.getByRole('radio', { name: 'Keep forever' })).toHaveCount(0);
+    await expect(memory.getByRole('radio', { name: 'Delete after' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await expect(memory.getByRole('spinbutton')).toHaveValue('90');
     for (const [key, name] of [
       ['retention.runs', 'Run history'],
       ['retention.chats', 'Chats'],
-      ['retention.memory', 'Memory'],
     ] as const) {
       await expect(row(page, key)).toContainText(name);
       await expect(row(page, key).getByRole('radio', { name: 'Keep forever' })).toHaveAttribute(
