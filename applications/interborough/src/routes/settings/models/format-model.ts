@@ -102,3 +102,31 @@ export function formatModelAbilities(model: {
   const text = named.join(' · ');
   return `${text.slice(0, 1).toUpperCase()}${text.slice(1)}`;
 }
+
+/** Where a person gets an API key from each provider the page connects. */
+const KEY_PAGES: Readonly<Record<string, string>> = {
+  anthropic: 'https://console.anthropic.com/settings/keys',
+  openai: 'https://platform.openai.com/api-keys',
+  gemini: 'https://aistudio.google.com/app/apikey',
+};
+
+/** The page where a person creates an API key for `provider`, or `undefined` for one the page has no address for. */
+export function providerKeyPage(provider: string): string | undefined {
+  return Object.hasOwn(KEY_PAGES, provider) ? KEY_PAGES[provider] : undefined;
+}
+
+/** How each provider's keys begin, so a connected key can be drawn the way the dialog shows a saved one. */
+const KEY_PREFIXES: Readonly<Record<string, string>> = {
+  anthropic: 'sk-ant-',
+  openai: 'sk-',
+  gemini: 'AIza',
+};
+
+/**
+ * A saved key as the dialogs draw it: the way keys of the provider begin, then dots. It is never
+ * built from the key itself, which the page does not keep once the host has it.
+ */
+export function maskedKey(provider: string): string {
+  const prefix = Object.hasOwn(KEY_PREFIXES, provider) ? (KEY_PREFIXES[provider] ?? '') : '';
+  return `${prefix}${'•'.repeat(16)}`;
+}

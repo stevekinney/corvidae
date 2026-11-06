@@ -18,6 +18,7 @@ import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
+/** A key the stub provider refuses carries `rejected-key` (`STUB_PROVIDER_REJECTED_KEY_MARKER`). */
 const KEY = 'e2e-gemini-key-that-must-never-be-printed';
 
 type Snapshot = {
@@ -105,7 +106,7 @@ test('lists the models of the connected providers as a read-only table with what
   await expect(page.getByRole('button', { name: /Add a model|Save models|Edit/ })).toHaveCount(0);
 });
 
-test('connects a provider, adds its models with no restart, and never prints the key', async ({
+test('connects a provider after testing its key, adds its models with no restart, and never prints the key', async ({
   page,
   pageErrors,
   request,
@@ -120,15 +121,25 @@ test('connects a provider, adds its models with no restart, and never prints the
   const row = provider(page, 'gemini');
   await expect(row.getByRole('button', { name: /Manage/ })).toHaveCount(0);
   await row.getByRole('button', { name: /Connect/ }).click();
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: MODELS_COPY.connectDialog.title('Gemini') });
   const field = dialog.locator('input[type="password"]');
   await expect(field).toBeVisible();
+  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle.idle);
 
-  // The key is asked for before anything is sent.
-  await dialog.getByRole('button', { name: /^(Connect|Replace key)$/ }).click();
+  // The key is asked for before anything is sent, at the field.
+  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.connect }).click();
   await expect(dialog).toContainText(MODELS_COPY.connectDialog.keyRequired);
 
-  // A refusal says the key could not be saved, and leaves neither the key nor an echo of it.
+  // A key the provider refuses is worded at the field, and nothing is saved.
+  await field.fill(`${KEY}-rejected-key`);
+  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.connect }).click();
+  await expect(dialog).toContainText(MODELS_COPY.keyTest.rejected('Gemini', 401));
+  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle.failed);
+  const refused = await snapshotOf(request);
+  expect(refused.providers.find((entry) => entry.name === 'gemini')?.hasKey).toBe(false);
+
+  // A key the provider accepts but the host cannot save says the key could not be saved, and
+  // leaves no echo of it.
   await page.route('**/host/providers/gemini', (route) =>
     route.fulfill({
       status: 400,
@@ -136,15 +147,20 @@ test('connects a provider, adds its models with no restart, and never prints the
     }),
   );
   await field.fill(KEY);
-  await dialog.getByRole('button', { name: /^(Connect|Replace key)$/ }).click();
+  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.connect }).click();
   await expect(page.getByTestId('provider-connect-failure')).toBeVisible();
-  await expect(field).toHaveValue('');
-  expect(await page.content()).not.toContain(KEY);
+  expect(await dialog.innerText()).not.toContain(KEY);
   await page.unroute('**/host/providers/gemini');
 
-  // Saved for real, the provider is Connected and its models are in the catalog.
+  // Saved for real, the dialog says Connected with a single Done, and the provider is Connected
+  // with its models in the catalog.
   await field.fill(KEY);
-  await dialog.getByRole('button', { name: /^(Connect|Replace key)$/ }).click();
+  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.connect }).click();
+  await expect(page.getByTestId('provider-connect-success')).toContainText(
+    MODELS_COPY.connectDialog.connectedTitle,
+  );
+  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle.connected);
+  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.done }).click();
   await expect(dialog).toBeHidden();
   await expect(row).toContainText(MODELS_COPY.providers.connected);
   await expect(row.getByRole('button', { name: /Manage/ })).toBeVisible();
@@ -160,29 +176,46 @@ test('connects a provider, adds its models with no restart, and never prints the
   expect(JSON.stringify(agentCatalog)).not.toContain(KEY);
   expect(JSON.stringify(agentCatalog)).toContain('gemini');
 
-  // Reopening Manage shows an empty field.
+  // Manage names the provider, never shows the key, and offers Remove key, Replace key and Done.
   await row.getByRole('button', { name: /Manage/ }).click();
-  await expect(dialog.locator('input[type="password"]')).toHaveValue('');
-  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.cancel }).click();
-  await expect(dialog).toBeHidden();
+  const manage = page.getByRole('dialog', { name: 'Gemini' });
+  await expect(manage).toContainText(MODELS_COPY.manageDialog.connected);
+  await expect(manage.locator('input')).toHaveCount(0);
+  await manage.getByRole('button', { name: MODELS_COPY.manageDialog.done }).click();
+  await expect(manage).toBeHidden();
+
+  // Replace key tests the new key first: a refused one leaves the old key in use.
+  await row.getByRole('button', { name: /Manage/ }).click();
+  await manage.getByRole('button', { name: MODELS_COPY.manageDialog.replaceKey }).click();
+  const replace = page.getByRole('dialog', { name: MODELS_COPY.replaceDialog.title('Gemini') });
+  await expect(replace).toContainText(MODELS_COPY.replaceDialog.subtitle);
+  await replace.getByLabel(MODELS_COPY.replaceDialog.keyLabel).fill(`${KEY}-rejected-key`);
+  await replace.getByRole('button', { name: MODELS_COPY.replaceDialog.replace }).click();
+  await expect(replace).toContainText(MODELS_COPY.keyTest.rejected('Gemini', 401));
+  const old = await snapshotOf(request);
+  expect(old.providers.find((entry) => entry.name === 'gemini')?.hasKey).toBe(true);
+  await replace.getByLabel(MODELS_COPY.replaceDialog.keyLabel).fill(`${KEY}-second`);
+  await replace.getByRole('button', { name: MODELS_COPY.replaceDialog.replace }).click();
+  await expect(replace).toBeHidden();
+  expect(await page.content()).not.toContain(`${KEY}-second`);
 
   // Remove key asks first, and Cancel leaves the key alone.
   await row.getByRole('button', { name: /Manage/ }).click();
-  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.removeKey }).click();
-  await expect(dialog).toContainText(MODELS_COPY.disconnectDialog.title('Gemini'));
+  await manage.getByRole('button', { name: MODELS_COPY.manageDialog.removeKey }).click();
+  const remove = page.getByRole('dialog', { name: MODELS_COPY.removeDialog.title('Gemini') });
   await expect(
-    dialog.getByRole('button', { name: MODELS_COPY.disconnectDialog.confirm }),
+    remove.getByRole('button', { name: MODELS_COPY.removeDialog.confirm }),
   ).toBeEnabled();
-  await dialog.getByRole('button', { name: MODELS_COPY.disconnectDialog.cancel }).click();
-  await expect(dialog).toBeHidden();
+  await remove.getByRole('button', { name: MODELS_COPY.removeDialog.cancel }).click();
+  await expect(remove).toBeHidden();
   const kept = await snapshotOf(request);
   expect(kept.providers.find((entry) => entry.name === 'gemini')?.hasKey).toBe(true);
 
   // Confirmed, the key is gone: the provider offers Connect again and its models leave the catalog.
   await row.getByRole('button', { name: /Manage/ }).click();
-  await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.removeKey }).click();
-  await dialog.getByRole('button', { name: MODELS_COPY.disconnectDialog.confirm }).click();
-  await expect(dialog).toBeHidden();
+  await manage.getByRole('button', { name: MODELS_COPY.manageDialog.removeKey }).click();
+  await remove.getByRole('button', { name: MODELS_COPY.removeDialog.confirm }).click();
+  await expect(remove).toBeHidden();
   await expect(row.getByRole('button', { name: /Connect/ })).toBeVisible();
   await expect(row).not.toContainText(MODELS_COPY.providers.connected);
   await expect(page.locator('[data-model^="gemini/"]')).toHaveCount(0);

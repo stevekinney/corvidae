@@ -40,6 +40,7 @@ An `error` leads with a warning glyph (a triangle) and sits under the control in
 | `required` | `boolean` | no | — | Renders a visual required marker and exposes `required: true` on the context. |
 | `warning` | `string` | no | — | Advisory for a legal but potentially risky value; does not mark the control invalid. |
 | `children` | `(opaque)` | yes | — | Control(s) rendered inside the field. Not expressible in JSON Schema; see the component types for the signature. |
+| `descriptionAction` | `(opaque)` | no | — | Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. Not expressible in JSON Schema; see the component types for the signature. |
 | `errorAction` | `(opaque)` | no | — | Rendered after the error message inside the same live region, such as a link to the record that conflicts ("Open GitHub") or a quiet Retry. Not expressible in JSON Schema; see the component types for the signature. |
 | `trailing` | `(opaque)` | no | — | Rendered beside the control on the same row, such as a Try again button after a failed test. The control takes the room the trailing content leaves. Not expressible in JSON Schema; see the component types for the signature. |
 

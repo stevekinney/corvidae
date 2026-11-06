@@ -19,6 +19,7 @@
     label,
     labelVisible = true,
     description,
+    descriptionAction,
     warning,
     error,
     errorGlyph = 'warning',
@@ -53,6 +54,8 @@
     label?: string | undefined;
     labelVisible?: boolean | undefined;
     description?: string | undefined;
+    /** Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. */
+    descriptionAction?: Snippet | undefined;
     warning?: string | undefined;
     error?: string | undefined;
     /** The glyph drawn before the error message: a triangle for a value that needs fixing, a circle for a conflict. */
@@ -202,7 +205,7 @@
 
   {#if description}
     <p id={descriptionId} class={classNames('cinder-form-field__description', descriptionClass)}>
-      {description}
+      {description}{#if descriptionAction}{' '}{@render descriptionAction()}{/if}
     </p>
   {/if}
   {#if note}

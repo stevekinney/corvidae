@@ -404,28 +404,98 @@ describe('the whole page failing to load', () => {
   });
 });
 
+/** The page's text and markup, without what is typed into a field, for a test that a key is not printed. */
+function printed(container: HTMLElement): string {
+  return `${container.ownerDocument.body.innerHTML}\n${container.ownerDocument.body.textContent}`;
+}
+
+const dialogOf = (container: HTMLElement) =>
+  within(container.ownerDocument.body).findByRole('dialog');
+const posts = () => (host?.requests ?? []).filter((request) => request.method === 'POST');
+
 describe('connecting a provider', () => {
-  async function connect(container: HTMLElement, key: string) {
-    await fireEvent.click(within(providerOf(container, 'openai')!).getByRole('button'));
-    const dialog = await within(container.ownerDocument.body).findByRole('dialog');
+  const copy = MODELS_COPY.connectDialog;
+
+  /** Presses Connect on a provider's row and returns the dialog and its field. */
+  async function begin(container: HTMLElement, name = 'openai') {
+    await fireEvent.click(within(providerOf(container, name)!).getByRole('button'));
+    const dialog = await dialogOf(container);
     const field = dialog.querySelector<HTMLInputElement>('input[type="password"]')!;
-    await fireEvent.input(field, { target: { value: key } });
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: MODELS_COPY.connectDialog.connect }),
-    );
     return { dialog, field };
   }
+  const press = (dialog: HTMLElement, name: string) =>
+    fireEvent.click(within(dialog).getByRole('button', { name }));
 
-  test('sends the key once, adds the provider’s models without a restart, and shows it connected', async () => {
+  async function connect(container: HTMLElement, key: string) {
+    const opened = await begin(container);
+    await fireEvent.input(opened.field, { target: { value: key } });
+    await press(opened.dialog, copy.connect);
+    return opened;
+  }
+
+  test('opens empty: a subtitle, a required API key field, the help line with its link, and Cancel, Test and Connect', async () => {
     const { container } = open();
     await loaded(container);
 
-    await connect(container, KEY);
+    const { dialog, field } = await begin(container);
 
-    await waitFor(() => expect(rowOf(container, 'openai/gpt-5')).not.toBeNull());
-    expect(writes()).toEqual([
+    expect(within(dialog).getByRole('heading', { name: copy.title('OpenAI') })).toBeDefined();
+    expect(dialog.textContent).toContain(copy.subtitle.idle);
+    expect(dialog.getAttribute('aria-describedby')).not.toBeNull();
+    expect(within(dialog).getByLabelText(copy.keyLabel)).toBe(field);
+    expect(field.value).toBe('');
+    expect(field.placeholder).toBe(copy.keyPlaceholder);
+    expect(dialog.querySelector('.cinder-_required-marker')).not.toBeNull();
+    expect(dialog.textContent).toContain(copy.keyHelp);
+    const link = within(dialog).getByRole('link', { name: copy.getKey });
+    expect(link.getAttribute('href')).toBe('https://platform.openai.com/api-keys');
+    expect(link.getAttribute('target')).toBe('_blank');
+    // Connect is always enabled, Test is the optional secondary, and Test comes before Connect.
+    const labels = within(dialog)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim())
+      .filter((label) => label !== undefined && label !== '');
+    expect(labels).toEqual([copy.cancel, copy.test, copy.connect]);
+    expect(
+      (within(dialog).getByRole('button', { name: copy.connect }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(writes()).toEqual([]);
+  });
+
+  test('tests the key first, then saves it, adds the models with no restart, and says Connected with a single Done', async () => {
+    const { container } = open();
+    await loaded(container);
+
+    const { dialog } = await connect(container, KEY);
+
+    await within(dialog).findByTestId('provider-connect-success');
+    // The test came first and stored nothing; the save followed it.
+    expect((host?.requests ?? []).filter((request) => request.method !== 'GET')).toEqual([
+      { method: 'POST', path: '/host/providers/openai/test', body: { apiKey: KEY } },
       { method: 'PUT', path: '/host/providers/openai', body: { apiKey: KEY } },
     ]);
+    expect(dialog.textContent).toContain(copy.subtitle.connected);
+    const banner = within(dialog).getByTestId('provider-connect-success');
+    expect(banner.textContent).toContain(copy.connectedTitle);
+    expect(banner.textContent).toContain(copy.models(1));
+    expect(within(dialog).getByTestId('provider-connect-result').getAttribute('role')).toBe(
+      'status',
+    );
+    const buttons = within(dialog)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim())
+      .filter((label) => label !== undefined && label !== '');
+    expect(buttons).toContain(copy.done);
+    expect(buttons).not.toContain(copy.cancel);
+    expect(buttons).not.toContain(copy.test);
+    expect(buttons).not.toContain(copy.connect);
+    // The field shows a masked key, never the one that was typed.
+    const masked = dialog.querySelector<HTMLInputElement>('input');
+    expect(masked?.disabled).toBe(true);
+    expect(masked?.value.startsWith('sk-')).toBe(true);
+    expect(masked?.value).not.toContain(KEY);
+
+    await waitFor(() => expect(rowOf(container, 'openai/gpt-5')).not.toBeNull());
     expect(providerOf(container, 'openai')?.textContent).toContain(MODELS_COPY.providers.connected);
     expect(
       within(providerOf(container, 'openai')!).getByRole('button', { name: /Manage/ }),
@@ -434,25 +504,159 @@ describe('connecting a provider', () => {
     await waitFor(() =>
       expect(stub?.callsTo('bureau.agents.catalog').length).toBeGreaterThanOrEqual(1),
     );
+
+    await press(dialog, copy.done);
+    await waitFor(() =>
+      expect(container.ownerDocument.querySelector('dialog[open]')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(printed(container)).not.toContain(KEY);
   });
 
-  test('never echoes the key after it is saved: not on the page, not in a field, not on reopening', async () => {
+  test('shows the test running: the subtitle, the masked field, a status with a spinner, a disabled Testing… and an enabled Cancel', async () => {
+    const { container } = open();
+    await loaded(container);
+    host!.holdTests = true;
+
+    const { dialog, field } = await connect(container, KEY);
+
+    await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.testing));
+    expect(field.value).toBe(KEY);
+    expect(field.readOnly).toBe(true);
+    expect(dialog.textContent).toContain(copy.testing);
+    expect(
+      dialog.querySelector('.cinder-inline-loading [role="status"], .cinder-spinner'),
+    ).not.toBeNull();
+    const primary = within(dialog).getByRole('button', { name: copy.connecting });
+    expect((primary as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (within(dialog).getByRole('button', { name: copy.cancel }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    // Nothing is saved while the provider is being asked.
+    expect(writes().filter((request) => request.method === 'PUT')).toEqual([]);
+
+    host!.heldTests.splice(0).forEach((release) => release());
+    await within(dialog).findByTestId('provider-connect-success');
+  });
+
+  test('stops at Cancel while the test runs: the key is not saved, even if the provider answers afterwards', async () => {
+    const { container } = open();
+    await loaded(container);
+    host!.holdTests = true;
+    const { dialog } = await connect(container, KEY);
+    await waitFor(() => expect(host?.heldTests).toHaveLength(1));
+
+    await press(dialog, copy.cancel);
+    host!.heldTests.splice(0).forEach((release) => release());
+    await waitFor(() =>
+      expect(container.ownerDocument.querySelector('dialog[open]')?.outerHTML ?? null).toBeNull(),
+    );
+
+    expect(writes().filter((request) => request.method === 'PUT')).toEqual([]);
+    expect(providerOf(container, 'openai')?.textContent).not.toContain(
+      MODELS_COPY.providers.connected,
+    );
+    // Opening it again starts empty.
+    const again = await begin(container);
+    expect(again.field.value).toBe('');
+    expect(again.dialog.textContent).toContain(copy.subtitle.idle);
+  });
+
+  test('puts a refused key at the field with the status and what to do, keeps Cancel, Test and Connect enabled, and saves nothing', async () => {
+    const { container } = open();
+    await loaded(container);
+    const refused = `${KEY}-rejected-key`;
+
+    const { dialog, field } = await connect(container, refused);
+
+    await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.failed));
+    expect(dialog.textContent).toContain(MODELS_COPY.keyTest.rejected('OpenAI', 401));
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.value).toBe(refused);
+    for (const name of [copy.cancel, copy.test, copy.connect]) {
+      expect(
+        (within(dialog).getByRole('button', { name }) as HTMLButtonElement).disabled,
+        name,
+      ).toBe(false);
+    }
+    expect(writes().filter((request) => request.method === 'PUT')).toEqual([]);
+    expect(dialog.textContent).not.toContain(refused);
+
+    // Typing again takes the refusal away.
+    await fireEvent.input(field, { target: { value: KEY } });
+    expect(dialog.textContent).toContain(copy.subtitle.idle);
+    expect(dialog.textContent).not.toContain(MODELS_COPY.keyTest.rejected('OpenAI', 401));
+    expect(
+      field.hasAttribute('aria-invalid') && field.getAttribute('aria-invalid') === 'true',
+    ).toBe(false);
+  });
+
+  test('words a test that could not finish without blaming the key', async () => {
+    const { container } = open();
+    await loaded(container);
+    const opened = await begin(container);
+    host!.testAnswer = { ok: false, status: 503 };
+
+    await fireEvent.input(opened.field, { target: { value: KEY } });
+    await press(opened.dialog, copy.test);
+
+    await waitFor(() =>
+      expect(opened.dialog.textContent).toContain(MODELS_COPY.keyTest.unfinished('OpenAI', 503)),
+    );
+    expect(opened.dialog.textContent).not.toContain(MODELS_COPY.keyTest.rejected('OpenAI', 503));
+  });
+
+  test('Test only asks: a passing test says the key works and saves nothing, and Connect then saves without testing again', async () => {
+    const { container } = open();
+    await loaded(container);
+    const { dialog, field } = await begin(container);
+
+    await fireEvent.input(field, { target: { value: KEY } });
+    await press(dialog, copy.test);
+
+    const banner = await within(dialog).findByTestId('provider-connect-success');
+    expect(banner.textContent).toContain(copy.testedTitle);
+    expect(dialog.textContent).toContain(copy.subtitle.tested);
+    expect(writes()).toEqual([
+      { method: 'POST', path: '/host/providers/openai/test', body: { apiKey: KEY } },
+    ]);
+    expect(within(dialog).getByRole('button', { name: copy.connect })).toBeDefined();
+
+    await press(dialog, copy.connect);
+
+    await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.connected));
+    expect(posts()).toHaveLength(1);
+    expect(writes().filter((request) => request.method === 'PUT')).toHaveLength(1);
+  });
+
+  test('asks for the key before sending anything, at the field', async () => {
+    const { container } = open();
+    await loaded(container);
+    const { dialog } = await begin(container);
+
+    await press(dialog, copy.connect);
+
+    expect(dialog.textContent).toContain(copy.keyRequired);
+    expect(writes()).toEqual([]);
+  });
+
+  test('never prints the key after it is saved: not on the page, not in a field, not on reopening', async () => {
     const { container } = open();
     await loaded(container);
 
-    await connect(container, KEY);
+    const { dialog } = await connect(container, KEY);
+    await within(dialog).findByTestId('provider-connect-success');
+    await press(dialog, copy.done);
     await waitFor(() => expect(rowOf(container, 'openai/gpt-5')).not.toBeNull());
 
     expect(everything(container)).not.toContain(KEY);
     await fireEvent.click(
       within(providerOf(container, 'openai')!).getByRole('button', { name: /Manage/ }),
     );
-    const dialog = await within(container.ownerDocument.body).findByRole('dialog');
-    expect(dialog.querySelector<HTMLInputElement>('input[type="password"]')?.value).toBe('');
+    await dialogOf(container);
     expect(everything(container)).not.toContain(KEY);
   });
 
-  test('never echoes the key when the host refuses it, however the refusal is worded', async () => {
+  test('never prints the key when the host refuses to save it, however the refusal is worded', async () => {
     const refusals = [
       Response.json(
         { error: 'invalid', field: 'apiKey', message: 'Invalid apiKey: expected a key.' },
@@ -470,11 +674,11 @@ describe('connecting a provider', () => {
       await loaded(container);
       host!.refuseNext = refusal;
 
-      const { dialog, field } = await connect(container, KEY);
+      const { dialog } = await connect(container, KEY);
 
       await within(dialog).findByTestId('provider-connect-failure');
-      expect(field.value).toBe('');
-      expect(everything(container)).not.toContain(KEY);
+      expect(dialog.textContent).toContain(copy.subtitle.saveFailed);
+      expect(printed(container)).not.toContain(KEY);
       expect(rowOf(container, 'openai/gpt-5')).toBeNull();
       cleanup();
       host?.restore();
@@ -495,82 +699,218 @@ describe('connecting a provider', () => {
     expect(button.disabled).toBe(true);
     expect(writes()).toEqual([]);
   });
-
-  test('asks for the key before sending anything', async () => {
-    const { container } = open();
-    await loaded(container);
-    await fireEvent.click(within(providerOf(container, 'openai')!).getByRole('button'));
-    const dialog = await within(container.ownerDocument.body).findByRole('dialog');
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: MODELS_COPY.connectDialog.connect }),
-    );
-    expect(dialog.textContent).toContain(MODELS_COPY.connectDialog.keyRequired);
-    expect(writes()).toEqual([]);
-  });
 });
 
-describe('disconnecting a provider', () => {
-  /** Opens Manage, presses Remove key, and returns the Disconnect dialog that follows. */
-  async function ask(container: HTMLElement, name = 'anthropic') {
+describe('managing a connected provider', () => {
+  const copy = MODELS_COPY.manageDialog;
+
+  async function manage(container: HTMLElement, name = 'anthropic') {
     await fireEvent.click(
       within(providerOf(container, name)!).getByRole('button', { name: /^Manage/ }),
     );
-    const manage = await within(container.ownerDocument.body).findByRole('dialog');
-    await fireEvent.click(
-      within(manage).getByRole('button', { name: MODELS_COPY.connectDialog.removeKey }),
-    );
-    return waitFor(() => {
-      const dialogs = within(container.ownerDocument.body).getAllByRole('dialog');
-      const disconnect = dialogs.find((dialog) =>
-        dialog.textContent?.includes(MODELS_COPY.disconnectDialog.confirm),
-      );
-      expect(disconnect).toBeDefined();
-      return disconnect!;
-    });
+    return dialogOf(container);
   }
-  const confirm = (dialog: HTMLElement) =>
-    within(dialog).getByRole('button', { name: MODELS_COPY.disconnectDialog.confirm });
 
-  test('is offered as Remove key in Manage for a provider with a key, and not on the row or for one without', async () => {
+  test('opens a dialog named for the provider: connected, how many models, Remove key, Replace key and a primary Done', async () => {
+    const { container } = open();
+    await loaded(container);
+
+    const dialog = await manage(container);
+
+    expect(within(dialog).getByRole('heading', { name: 'Anthropic' })).toBeDefined();
+    expect(dialog.textContent).toContain(copy.subtitle);
+    expect(within(dialog).getByTestId('provider-manage-body').textContent).toContain(
+      copy.connected,
+    );
+    expect(within(dialog).getByTestId('provider-manage-body').textContent).toContain(
+      copy.models(2),
+    );
+    expect(
+      dialog.querySelector('[data-cinder-status="success"], .cinder-status-dot'),
+    ).not.toBeNull();
+    const labels = within(dialog)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim())
+      .filter((label) => label !== undefined && label !== '');
+    expect(labels).toEqual([copy.removeKey, copy.replaceKey, copy.done]);
+    expect(
+      within(dialog).getByRole('button', { name: copy.done }).getAttribute('data-cinder-variant'),
+    ).toBe('primary');
+    // The saved key is never shown again: there is no field.
+    expect(dialog.querySelector('input')).toBeNull();
+    expect(writes()).toEqual([]);
+
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.done }));
+    await waitFor(() =>
+      expect(container.ownerDocument.querySelector('dialog[open]')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(writes()).toEqual([]);
+  });
+
+  test('is offered on the row as Manage for a provider with a key, and not as Disconnect', async () => {
     const { container } = open();
     await loaded(container);
 
     expect(
       within(providerOf(container, 'anthropic')!).queryByRole('button', { name: /^Disconnect/ }),
     ).toBeNull();
+    expect(
+      within(providerOf(container, 'openai')!).queryByRole('button', { name: /^Manage/ }),
+    ).toBeNull();
+  });
+});
+
+describe('replacing a provider’s key', () => {
+  const copy = MODELS_COPY.replaceDialog;
+
+  async function replace(container: HTMLElement) {
     await fireEvent.click(
       within(providerOf(container, 'anthropic')!).getByRole('button', { name: /^Manage/ }),
     );
-    const manage = await within(container.ownerDocument.body).findByRole('dialog');
-    expect(
-      within(manage).getByRole('button', { name: MODELS_COPY.connectDialog.removeKey }),
-    ).toBeDefined();
-    await fireEvent.click(within(manage).getByRole('button', { name: /^Cancel/ }));
-
+    const manage = await dialogOf(container);
     await fireEvent.click(
-      within(providerOf(container, 'openai')!).getByRole('button', { name: /^Connect/ }),
+      within(manage).getByRole('button', { name: MODELS_COPY.manageDialog.replaceKey }),
     );
-    const connect = await within(container.ownerDocument.body).findByRole('dialog');
-    expect(
-      within(connect).queryByRole('button', { name: MODELS_COPY.connectDialog.removeKey }),
-    ).toBeNull();
+    const dialog = await waitFor(() => {
+      const found = [...container.ownerDocument.querySelectorAll<HTMLElement>('dialog[open]')].find(
+        (candidate) => candidate.textContent?.includes(copy.subtitle),
+      );
+      expect(found).toBeDefined();
+      return found!;
+    });
+    return { dialog, field: dialog.querySelector<HTMLInputElement>('input[type="password"]')! };
+  }
+
+  test('opens with the old key staying in use, an empty New API key field and no required mark', async () => {
+    const { container } = open();
+    await loaded(container);
+
+    const { dialog, field } = await replace(container);
+
+    expect(within(dialog).getByRole('heading', { name: copy.title('Anthropic') })).toBeDefined();
+    expect(dialog.textContent).toContain(copy.subtitle);
+    expect(within(dialog).getByLabelText(copy.keyLabel)).toBe(field);
+    expect(field.value).toBe('');
+    expect(dialog.querySelector('.cinder-_required-marker')).toBeNull();
+    expect(dialog.textContent).not.toContain(MODELS_COPY.connectDialog.keyHelp);
+    expect(writes()).toEqual([]);
   });
 
-  test('names the agents that use the provider’s models, then removes the key and the models with it', async () => {
-    const { container } = open({
-      agents: { writer: 'anthropic/claude-sonnet-5', helper: 'openai/gpt-5' },
-    });
+  test('tests the new key while the old one stays in use, then replaces it and says so', async () => {
+    const { container } = open();
     await loaded(container);
-    await waitFor(() => expect(rowOf(container, 'anthropic/claude-sonnet-5')).not.toBeNull());
+    const { dialog, field } = await replace(container);
+    host!.holdTests = true;
+
+    await fireEvent.input(field, { target: { value: KEY } });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.replace }));
+
+    await waitFor(() => expect(dialog.textContent).toContain(copy.testing));
+    expect(
+      (within(dialog).getByRole('button', { name: copy.replace }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(dialog).getByRole('button', { name: copy.cancel }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    // The old key is still the one in use: nothing has been saved.
+    expect(writes().filter((request) => request.method === 'PUT')).toEqual([]);
+    expect(providerOf(container, 'anthropic')?.textContent).toContain(
+      MODELS_COPY.providers.connected,
+    );
+
+    host!.heldTests.splice(0).forEach((release) => release());
+
+    await waitFor(() =>
+      expect(writes().filter((request) => request.method === 'PUT')).toEqual([
+        { method: 'PUT', path: '/host/providers/anthropic', body: { apiKey: KEY } },
+      ]),
+    );
+    await waitFor(() =>
+      expect(container.ownerDocument.body.textContent).toContain(copy.toast('Anthropic')),
+    );
+    await waitFor(() =>
+      expect(container.ownerDocument.querySelector('dialog[open]')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(printed(container)).not.toContain(KEY);
+  });
+
+  test('leaves the old key alone when the new one is refused, with the reason at the field', async () => {
+    const { container } = open();
+    await loaded(container);
+    const { dialog, field } = await replace(container);
+
+    await fireEvent.input(field, { target: { value: `${KEY}-rejected-key` } });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.replace }));
+
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(MODELS_COPY.keyTest.rejected('Anthropic', 401)),
+    );
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(writes().filter((request) => request.method === 'PUT')).toEqual([]);
+    expect(providerOf(container, 'anthropic')?.textContent).toContain(
+      MODELS_COPY.providers.connected,
+    );
+  });
+});
+
+describe('removing a provider’s key', () => {
+  const copy = MODELS_COPY.removeDialog;
+  const MODEL_AGENTS = {
+    'Tool runner': 'anthropic/claude-sonnet-5',
+    'Request human input': 'anthropic/claude-haiku-4-5',
+    'Model switcher': 'anthropic/claude-sonnet-5',
+    'Workflow author': 'anthropic/claude-sonnet-5',
+    Assistant: '',
+  };
+
+  /** Opens Manage, presses Remove key, and returns the confirmation that follows. */
+  async function ask(container: HTMLElement, name = 'anthropic') {
+    await fireEvent.click(
+      within(providerOf(container, name)!).getByRole('button', { name: /^Manage/ }),
+    );
+    const manage = await dialogOf(container);
+    await fireEvent.click(
+      within(manage).getByRole('button', { name: MODELS_COPY.manageDialog.removeKey }),
+    );
+    return waitFor(() => {
+      const found = [...container.ownerDocument.querySelectorAll<HTMLElement>('dialog[open]')].find(
+        (candidate) => candidate.textContent?.includes(copy.title(providerName(name))),
+      );
+      expect(found).toBeDefined();
+      return found!;
+    });
+  }
+  const providerName = (name: string) =>
+    name === 'anthropic' ? 'Anthropic' : name === 'openai' ? 'OpenAI' : 'Gemini';
+  const confirm = (dialog: HTMLElement) =>
+    within(dialog).getByRole('button', { name: copy.confirm });
+
+  test('is a confirm dialog that names the four model agents and not the scripted ones, with a solid danger button', async () => {
+    const { container } = open({ agents: MODEL_AGENTS });
+    await loaded(container);
 
     const dialog = await ask(container);
-    const named = await within(dialog).findByTestId('provider-disconnect-agents');
-    expect(named.textContent).toContain('writer');
-    expect(named.textContent).not.toContain('helper');
-    expect(named.textContent).toContain(
-      MODELS_COPY.disconnectDialog.invalidHeading('Anthropic', 1),
+
+    expect(
+      within(dialog).getByRole('heading', { name: 'Remove the Anthropic key?' }),
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(
+        'Tool runner, Request human input, Model switcher and Workflow author stop answering until you add a key. Run now on their schedules is disabled too. Chats and runs stay.',
+      ),
     );
+    expect(dialog.textContent).not.toContain('Assistant');
+    expect(confirm(dialog).getAttribute('data-cinder-variant')).toBe('danger');
+    expect(within(dialog).getByRole('button', { name: copy.cancel })).toBeDefined();
     expect(writes()).toEqual([]);
+  });
+
+  test('removes the key and the models with it, and says so', async () => {
+    const { container } = open({ agents: MODEL_AGENTS });
+    await loaded(container);
+    await waitFor(() => expect(rowOf(container, 'anthropic/claude-sonnet-5')).not.toBeNull());
+    const dialog = await ask(container);
+    await waitFor(() => expect(dialog.textContent).toContain('Workflow author stop'));
 
     await fireEvent.click(confirm(dialog));
 
@@ -589,24 +929,38 @@ describe('disconnecting a provider', () => {
     expect(
       within(providerOf(container, 'anthropic')!).getByRole('button', { name: /^Connect/ }),
     ).toBeDefined();
-    expect(container.ownerDocument.body.textContent).toContain(
-      MODELS_COPY.disconnectDialog.toast('Anthropic'),
-    );
+    expect(container.ownerDocument.body.textContent).toContain(copy.toast('Anthropic'));
     expect(everything(container)).not.toContain(KEY);
   });
 
-  test('says so when no agent names one of the provider’s models', async () => {
+  test('sends nothing on Cancel and leaves the provider connected', async () => {
+    const { container } = open({ agents: MODEL_AGENTS });
+    await loaded(container);
+    const dialog = await ask(container);
+
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.cancel }));
+
+    await waitFor(() =>
+      expect(container.ownerDocument.querySelector('dialog[open]')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(writes()).toEqual([]);
+    expect(providerOf(container, 'anthropic')?.textContent).toContain(
+      MODELS_COPY.providers.connected,
+    );
+  });
+
+  test('says so when no agent uses the provider’s models', async () => {
     const { container } = open({ agents: { helper: 'openai/gpt-5' } });
     await loaded(container);
 
     const dialog = await ask(container);
 
-    const none = await within(dialog).findByTestId('provider-disconnect-none');
-    expect(none.textContent).toContain(MODELS_COPY.disconnectDialog.noAgents('Anthropic'));
-    expect(within(dialog).queryByTestId('provider-disconnect-agents')).toBeNull();
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(copy.descriptionNoAgents('Anthropic')),
+    );
   });
 
-  test('separates agents that become invalid from agents that only lose listed models, and flags the embedder', async () => {
+  test('speaks of one agent in the singular, and notes agents that only lose listed models', async () => {
     const { container } = open({
       agents: { writer: 'anthropic/sonnet', switcher: 'openai/gpt-5' },
       listedModels: { switcher: ['anthropic/haiku'] },
@@ -615,60 +969,51 @@ describe('disconnecting a provider', () => {
 
     const dialog = await ask(container);
 
-    const invalid = await within(dialog).findByTestId('provider-disconnect-invalid');
-    expect(invalid.textContent).toContain('writer');
-    expect(invalid.textContent).not.toContain('switcher');
-    expect(invalid.textContent).toContain(MODELS_COPY.disconnectDialog.invalidConsequence);
-    const trimmed = within(dialog).getByTestId('provider-disconnect-trimmed');
-    expect(trimmed.textContent).toContain('switcher');
-    expect(trimmed.textContent).toContain(MODELS_COPY.disconnectDialog.trimmedConsequence);
-    expect(within(dialog).queryByTestId('provider-disconnect-embedder')).toBeNull();
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(
+        'Writer stops answering until you add a key. Run now on its schedules is disabled too.',
+      ),
+    );
+    expect(within(dialog).getByTestId('provider-remove-trimmed').textContent).toContain(
+      copy.trimmedNote(['Switcher'], 'Anthropic'),
+    );
+    expect(within(dialog).queryByTestId('provider-remove-embedder')).toBeNull();
   });
 
-  test('says which agents are unknown when they cannot be read, and still lets the person disconnect', async () => {
+  test('flags the memory embedder for a provider that offers one', async () => {
+    const { container } = open({ keys: { anthropic: true, openai: true, gemini: false } });
+    await loaded(container);
+
+    const dialog = await ask(container, 'openai');
+
+    expect(within(dialog).getByTestId('provider-remove-embedder').textContent).toContain(
+      copy.embedderNote,
+    );
+  });
+
+  test('says which agents are unknown when they cannot be read, and still lets the person remove the key', async () => {
     const { container } = open({ agents: { writer: 'anthropic/sonnet' }, agentsUnreadable: true });
     await loaded(container);
 
     const dialog = await ask(container);
 
-    const unknown = await within(dialog).findByTestId('provider-disconnect-unknown');
-    expect(unknown.textContent).toContain(MODELS_COPY.disconnectDialog.agentsUnknown('Anthropic'));
-    await waitFor(() => expect((confirm(dialog) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect(dialog.textContent).toContain(copy.agentsUnknown('Anthropic')));
+    expect((confirm(dialog) as HTMLButtonElement).disabled).toBe(false);
     await fireEvent.click(confirm(dialog));
     await waitFor(() => expect(writes()).toHaveLength(1));
   });
 
-  test('holds the confirm button until the agents have been read, and sends nothing on Cancel', async () => {
-    const { container } = open({ agents: { writer: 'anthropic/sonnet' } });
-    await loaded(container);
-
-    const dialog = await ask(container);
-    expect((confirm(dialog) as HTMLButtonElement).disabled).toBe(true);
-    await within(dialog).findByTestId('provider-disconnect-agents');
-    expect((confirm(dialog) as HTMLButtonElement).disabled).toBe(false);
-    expect(confirm(dialog).hasAttribute('data-changes')).toBe(true);
-
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: MODELS_COPY.disconnectDialog.cancel }),
-    );
-
-    expect(writes()).toEqual([]);
-    expect(providerOf(container, 'anthropic')?.textContent).toContain(
-      MODELS_COPY.providers.connected,
-    );
-  });
-
   test('keeps the dialog open and says the key was not removed when the host refuses', async () => {
-    const { container } = open();
+    const { container } = open({ agents: MODEL_AGENTS });
     await loaded(container);
     const dialog = await ask(container);
-    await within(dialog).findByTestId('provider-disconnect-none');
     host!.refuseNext = Response.json({ error: 'failed', message: '' }, { status: 500 });
 
     await fireEvent.click(confirm(dialog));
 
-    const failure = await within(dialog).findByTestId('provider-disconnect-failure');
-    expect(failure.textContent).toContain(MODELS_COPY.disconnectDialog.failed);
+    await waitFor(() => expect(dialog.textContent).toContain(copy.failedTitle));
+    expect(dialog.textContent).toContain(copy.failed);
+    expect(confirm(dialog)).toBeDefined();
     expect(providerOf(container, 'anthropic')?.textContent).toContain(
       MODELS_COPY.providers.connected,
     );

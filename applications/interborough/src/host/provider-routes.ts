@@ -7,6 +7,10 @@
  *   provider, or replaces its key. `models` is optional, and `null` clears the allowlist.
  * - `DELETE /host/providers/<name>` removes the provider's key, so its models leave the catalog.
  *   Its allowlist and the catalog edits stay for a later connect.
+ * - `POST /host/providers/<name>/test` with `{ "apiKey": "..." }` asks the provider whether it
+ *   accepts the key, with one request of one token, and stores nothing. It answers 200 with
+ *   `{ "ok": true, "models": 3 }` or `{ "ok": false, "status": 401 }`: a refused key is an answer.
+ *   The request's own abort stops the call to the provider.
  * - `PUT /host/catalog` with `{ "edits": [...], "base": [...] }` replaces the catalog edits. `base`
  *   is optional: the edits the caller read before it changed them. When it is given and the stored
  *   edits are not equal to it, nothing is written and the answer is 409 with `error: "conflict"`
@@ -42,6 +46,9 @@ export const HOST_PROVIDERS_RELOAD_ROUTE = '/host/providers/reload';
 
 /** The route that connects, or disconnects, the provider it names. */
 const HOST_PROVIDER_ROUTE = `${HOST_PROVIDERS_ROUTE}/:name`;
+
+/** The route that asks a provider whether it accepts a key, without storing it. */
+const HOST_PROVIDER_TEST_ROUTE = `${HOST_PROVIDERS_ROUTE}/:name/test`;
 
 /** The largest request body the host's configuration routes read. */
 const MAXIMUM_BODY_BYTES = 256 * 1024;
@@ -140,6 +147,17 @@ export function providerRoutes(manager: ProviderManager, refuse: Refuse) {
         }),
       DELETE: (request: Bun.BunRequest<typeof HOST_PROVIDER_ROUTE>) =>
         refuse(request) ?? respond(() => manager.disconnect(request.params.name)),
+    },
+    [HOST_PROVIDER_TEST_ROUTE]: {
+      POST: (request: Bun.BunRequest<typeof HOST_PROVIDER_TEST_ROUTE>) =>
+        refuse(request) ??
+        respond(async () => {
+          const body = await readObject(request);
+          return manager.testKey(
+            { provider: request.params.name, apiKey: body['apiKey'] },
+            request.signal,
+          );
+        }),
     },
     [HOST_PROVIDERS_RELOAD_ROUTE]: {
       POST: (request: Request) => refuse(request) ?? respond(() => manager.reload()),

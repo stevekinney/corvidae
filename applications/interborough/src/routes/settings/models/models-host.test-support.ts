@@ -22,6 +22,15 @@ export type FakeHost = {
   lockReason?: 'deployment';
   /** Makes the next write answer with this response instead of making the change. */
   refuseNext?: Response;
+  /**
+   * Holds the next key test until it is called, so a test can see the dialog while the test runs.
+   * The test then answers as it would have.
+   */
+  holdTests?: boolean;
+  /** Answers every key test with this result instead of judging the key. */
+  testAnswer?: { ok: false; status?: number };
+  /** Called with a held test's release function, in the order the tests arrived. */
+  readonly heldTests: (() => void)[];
   /** Answers every read with this status and no body while set, as a host that is failing does. */
   readStatus?: number;
   readonly requests: HostRequest[];
@@ -96,6 +105,7 @@ export function installFakeHost(initial: {
     catalog: initial.catalog ?? [],
     ...(initial.lockReason === undefined ? {} : { lockReason: initial.lockReason }),
     requests: [],
+    heldTests: [],
     restore: () => undefined,
   };
   const restore = installFetchImplementation(async (input, init) => {
@@ -120,6 +130,19 @@ export function installFakeHost(initial: {
         models: modelsOf(host),
         ...(host.lockReason === undefined ? {} : { lockReason: host.lockReason }),
       });
+    }
+    if (method === 'POST' && path.endsWith('/test')) {
+      const name = decodeURIComponent(path.slice('/host/providers/'.length, -'/test'.length));
+      const apiKey = String(
+        Reflect.get(typeof body === 'object' && body !== null ? body : {}, 'apiKey'),
+      );
+      if (host.holdTests === true) {
+        await new Promise<void>((resolve) => host.heldTests.push(resolve));
+      }
+      if (init?.signal?.aborted === true) throw new DOMException('Stopped', 'AbortError');
+      if (host.testAnswer !== undefined) return Response.json(host.testAnswer);
+      if (apiKey.includes('rejected-key')) return Response.json({ ok: false, status: 401 });
+      return Response.json({ ok: true, models: (host.offered[name] ?? []).length });
     }
     if (host.refuseNext !== undefined) {
       const refusal = host.refuseNext;

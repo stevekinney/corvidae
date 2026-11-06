@@ -237,3 +237,253 @@ test.describe('Settings › Models, provider connected', () => {
     await expect(failed).toHaveCount(0);
   });
 });
+
+/** A key shaped like Anthropic's, which only ever goes to a mocked route here. */
+const PASTED_KEY = 'sk-ant-api03-0000000000000000';
+
+/** Answers every write to a provider's key and every test of one, so no capture changes the host. */
+async function mockKeyRoutes(
+  page: Page,
+  tests: { ok: true; models: number } | { ok: false; status: number },
+) {
+  await page.route('**/host/providers/*/test', (route) => route.fulfill({ json: tests }));
+  await page.route(/\/host\/providers\/[a-z]+$/, (route) =>
+    route.request().method() === 'GET'
+      ? route.fallback()
+      : route.fulfill({ json: { providers: [], catalogRevision: 2 } }),
+  );
+}
+
+/** Answers the host's providers as if Anthropic held a key, with the sample world's three models. */
+async function withAnthropicConnected(page: Page) {
+  await page.route('**/host/providers', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      providers: { name: string; configured: boolean; hasKey: boolean }[];
+    };
+    return route.fulfill({
+      response,
+      json: {
+        ...body,
+        providers: body.providers.map((entry) =>
+          entry.name === 'anthropic' ? { ...entry, configured: true, hasKey: true } : entry,
+        ),
+        models: [
+          sampleModel('claude-opus-5-5', {}),
+          sampleModel('claude-sonnet-5-5', {}),
+          sampleModel('claude-haiku-5-5', { images: false, contextWindowTokens: 200_000 }),
+        ],
+      },
+    });
+  });
+}
+
+test.describe('Settings › Models, connect dialogs', () => {
+  const copy = MODELS_COPY.connectDialog;
+
+  async function openConnect(page: Page) {
+    await open(page, E2E_SHOWCASE_URL);
+    await providerRow(page, 'anthropic')
+      .getByRole('button', { name: /Connect/ })
+      .click();
+    const dialog = page.getByRole('dialog', { name: copy.title('Anthropic') });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  }
+
+  test('Connect · empty: the key field, the help line and Cancel, Test and Connect', async ({
+    page,
+    checkA11y,
+  }) => {
+    const dialog = await openConnect(page);
+
+    await expect(dialog).toContainText(copy.subtitle.idle);
+    const field = dialog.getByLabel(copy.keyLabel);
+    await expect(field).toHaveAttribute('placeholder', copy.keyPlaceholder);
+    await expect(dialog).toContainText(copy.keyHelp);
+    await expect(dialog.getByRole('link', { name: copy.getKey })).toHaveAttribute(
+      'href',
+      'https://console.anthropic.com/settings/keys',
+    );
+    await expect(dialog.locator('.cinder-_required-marker')).toHaveCount(1);
+    await expect(dialog.getByRole('button', { name: copy.connect })).toBeEnabled();
+    await checkA11y('settings models, connect empty, at 1280px');
+    await captureAtEveryWidth(page, 'connect-empty');
+  });
+
+  test('Connect · testing: the masked key, a status with a spinner, a disabled Testing… and an enabled Cancel', async ({
+    page,
+    checkA11y,
+  }) => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/host/providers/*/test', async (route) => {
+      await held;
+      // A refusal, so releasing the held test never saves the key on the showcase host.
+      await route.fulfill({ json: { ok: false, status: 401 } });
+    });
+    const dialog = await openConnect(page);
+
+    await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
+    await dialog.getByRole('button', { name: copy.connect }).click();
+
+    await expect(dialog).toContainText(copy.subtitle.testing);
+    await expect(dialog).toContainText(copy.testing);
+    await expect(dialog.getByRole('button', { name: copy.connecting })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: copy.cancel })).toBeEnabled();
+    await checkA11y('settings models, connect testing, at 1280px');
+    await captureAtEveryWidth(page, 'connect-testing');
+    release();
+  });
+
+  test('Connect · invalid key: the refusal at the field with a warning glyph, and every button still enabled', async ({
+    page,
+    checkA11y,
+  }) => {
+    await mockKeyRoutes(page, { ok: false, status: 401 });
+    const dialog = await openConnect(page);
+
+    await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
+    await dialog.getByRole('button', { name: copy.connect }).click();
+
+    await expect(dialog).toContainText(copy.subtitle.failed);
+    await expect(dialog).toContainText(MODELS_COPY.keyTest.rejected('Anthropic', 401));
+    await expect(dialog.getByLabel(copy.keyLabel)).toHaveAttribute('aria-invalid', 'true');
+    for (const name of [copy.cancel, copy.test, copy.connect]) {
+      await expect(dialog.getByRole('button', { name })).toBeEnabled();
+    }
+    await checkA11y('settings models, connect invalid key, at 1280px');
+    await captureAtEveryWidth(page, 'connect-invalid-key');
+  });
+
+  test('Connect · connected: a success banner with the model count and a single Done', async ({
+    page,
+    checkA11y,
+  }) => {
+    await mockKeyRoutes(page, { ok: true, models: 3 });
+    const dialog = await openConnect(page);
+
+    await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
+    await dialog.getByRole('button', { name: copy.connect }).click();
+
+    await expect(dialog).toContainText(copy.subtitle.connected);
+    const banner = dialog.getByTestId('provider-connect-success');
+    await expect(banner).toContainText(copy.connectedTitle);
+    await expect(banner).toContainText(copy.models(3));
+    await expect(dialog.getByRole('button', { name: copy.done })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: copy.connect })).toHaveCount(0);
+    await checkA11y('settings models, connect connected, at 1280px');
+    await captureAtEveryWidth(page, 'connect-connected');
+  });
+});
+
+/**
+ * The four model agents of the sample world (Tool runner, Request human input, Model switcher and
+ * Workflow author) are scripted, so only Model switcher states a model of its own. The board names
+ * all four in the removal's question, so the capture answers their definitions as if each stated an
+ * Anthropic model, which is what makes them stop answering when the key goes.
+ */
+async function withModelAgents(page: Page) {
+  const agents = new Set([
+    'tool-runner',
+    'request-human-input',
+    'model-switcher',
+    'workflow-author',
+  ]);
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as {
+      method?: string;
+      params?: { id?: string };
+    };
+    if (body.method !== 'bureau.agents.definitions.get' || !agents.has(body.params?.id ?? '')) {
+      return route.fallback();
+    }
+    const response = await route.fetch();
+    const payload = (await response.json()) as {
+      result?: { codeDefinition?: { model: string | null } | null };
+    };
+    if (payload.result?.codeDefinition) {
+      payload.result.codeDefinition.model = 'anthropic/claude-sonnet-5-5';
+    }
+    return route.fulfill({ response, json: payload });
+  });
+}
+
+test.describe('Settings › Models, manage, replace and remove', () => {
+  async function openManage(page: Page) {
+    await withAnthropicConnected(page);
+    await open(page, E2E_SHOWCASE_URL);
+    await providerRow(page, 'anthropic')
+      .getByRole('button', { name: /Manage/ })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Anthropic' });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  }
+
+  test('Manage · a connected provider: connected, the model count, Remove key, Replace key and Done', async ({
+    page,
+    checkA11y,
+  }) => {
+    const dialog = await openManage(page);
+
+    await expect(dialog).toContainText(MODELS_COPY.manageDialog.subtitle);
+    await expect(dialog).toContainText(MODELS_COPY.manageDialog.connected);
+    await expect(dialog).toContainText(MODELS_COPY.manageDialog.models(3));
+    await expect(dialog.locator('input')).toHaveCount(0);
+    await checkA11y('settings models, manage, at 1280px');
+    await captureAtEveryWidth(page, 'manage');
+  });
+
+  test('Replace key · in progress: the new key tests while the old one stays in use', async ({
+    page,
+    checkA11y,
+  }) => {
+    const copy = MODELS_COPY.replaceDialog;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/host/providers/*/test', async (route) => {
+      await held;
+      await route.fulfill({ json: { ok: false, status: 401 } });
+    });
+    const manage = await openManage(page);
+    await manage.getByRole('button', { name: MODELS_COPY.manageDialog.replaceKey }).click();
+    const dialog = page.getByRole('dialog', { name: copy.title('Anthropic') });
+    await expect(dialog).toContainText(copy.subtitle);
+
+    await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
+    await dialog.getByRole('button', { name: copy.replace }).click();
+
+    await expect(dialog).toContainText(copy.testing);
+    await expect(dialog.getByRole('button', { name: copy.replace })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: copy.cancel })).toBeEnabled();
+    await checkA11y('settings models, replace key testing, at 1280px');
+    await captureAtEveryWidth(page, 'replace-key-testing');
+    release();
+  });
+
+  test('Remove key · confirm: a confirmation that names the model agents and a solid danger button', async ({
+    page,
+    checkA11y,
+  }) => {
+    const copy = MODELS_COPY.removeDialog;
+    await withModelAgents(page);
+    const manage = await openManage(page);
+    await manage.getByRole('button', { name: MODELS_COPY.manageDialog.removeKey }).click();
+    const dialog = page.getByRole('dialog', { name: copy.title('Anthropic') });
+    await expect(dialog).toBeVisible();
+
+    await expect(dialog.getByRole('button', { name: copy.confirm })).toHaveAttribute(
+      'data-cinder-variant',
+      'danger',
+    );
+    await expect(dialog).toContainText(
+      'Tool runner, Request human input, Model switcher and Workflow author stop answering until you add a key. Run now on their schedules is disabled too. Chats and runs stay.',
+    );
+    await expect(dialog).not.toContainText('Assistant');
+    await expect(dialog).not.toContainText('Echo');
+    await checkA11y('settings models, remove key confirm, at 1280px');
+    await captureAtEveryWidth(page, 'remove-key-confirm');
+  });
+});

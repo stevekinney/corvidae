@@ -57,6 +57,8 @@ export type InputProps = Omit<HTMLInputAttributes, 'class' | 'size'> &
     labelVisible?: boolean;
     /** Helper text rendered below the input and associated via `aria-describedby`. */
     description?: string;
+    /** Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. */
+    descriptionAction?: Snippet;
     /** Error message rendered below the input; also sets `aria-invalid` on the input. */
     error?: string;
     /** When true, disables the input, matching the native `disabled` attribute. */

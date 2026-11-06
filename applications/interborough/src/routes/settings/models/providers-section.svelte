@@ -3,7 +3,8 @@
    * The Providers part of Settings › Models (board SettingsShell, "Models · /settings/models" and
    * "Models · provider connected"): each provider that has a plugin, in the order Anthropic, OpenAI,
    * Gemini, with what its models are called under its name. A provider with no key shows only
-   * Connect; one with a key shows a Connected dot and Manage. There is no banner and no "Not
+   * Connect; one with a key shows a Connected dot and Manage, which opens the dialog that replaces or
+   * removes its key. There is no banner and no "Not
    * connected" badge: while none is connected, the description says why agents cannot answer. A
    * host that keeps its configuration in its deployment cannot save a key, and says so.
    */
@@ -12,7 +13,9 @@
   import { MODELS_COPY } from '../../../app/copy.ts';
   import type { ProvidersSnapshot } from '../../../lib/host-providers.ts';
   import ConnectDialog from './connect-dialog.svelte';
-  import DisconnectDialog from './disconnect-dialog.svelte';
+  import ManageDialog from './manage-dialog.svelte';
+  import RemoveKeyDialog from './remove-key-dialog.svelte';
+  import ReplaceKeyDialog from './replace-key-dialog.svelte';
   import { providerDisplayName, providerTagline, providersInOrder } from './format-model.ts';
 
   interface Props {
@@ -25,13 +28,19 @@
 
   const copy = MODELS_COPY.providers;
 
-  /** The provider whose Disconnect dialog is open. */
-  let disconnecting = $state<string | null>(null);
+  /** The provider whose Manage dialog is open. */
+  let managing = $state<string | null>(null);
+  /** The provider whose Replace key dialog is open. */
+  let replacing = $state<string | null>(null);
+  /** The provider whose Remove key confirmation is open. */
+  let removing = $state<string | null>(null);
 
   const locked = $derived(snapshot.lockReason !== undefined);
   const entries = $derived(providersInOrder(snapshot.providers));
   const anyConnected = $derived(entries.some((entry) => entry.hasKey));
-  const connectingStatus = $derived(snapshot.providers.find((entry) => entry.name === connecting));
+  const managedModelCount = $derived(
+    snapshot.models.filter((entry) => entry.provider === managing && !entry.off).length,
+  );
 </script>
 
 <div class="ib-providers" data-section="providers">
@@ -62,7 +71,7 @@
             size="sm"
             disabled={locked}
             aria-label={copy.manageLabel(name)}
-            onclick={() => (connecting = provider.name)}>{copy.manage}</Button
+            onclick={() => (managing = provider.name)}>{copy.manage}</Button
           >
         {:else}
           <Button
@@ -78,12 +87,15 @@
   </FormSection>
 </div>
 
-<ConnectDialog
-  bind:provider={connecting}
-  connected={connectingStatus?.hasKey === true}
-  onRemove={(provider: string) => (disconnecting = provider)}
+<ConnectDialog bind:provider={connecting} />
+<ManageDialog
+  bind:provider={managing}
+  modelCount={managedModelCount}
+  onReplace={(provider: string) => (replacing = provider)}
+  onRemove={(provider: string) => (removing = provider)}
 />
-<DisconnectDialog bind:provider={disconnecting} />
+<ReplaceKeyDialog bind:provider={replacing} />
+<RemoveKeyDialog bind:provider={removing} />
 
 <style>
   .ib-providers {

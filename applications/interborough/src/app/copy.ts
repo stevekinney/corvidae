@@ -1540,46 +1540,91 @@ export const MODELS_COPY = {
     connectLabel: (name: string): string => `Connect ${name}`,
     manageLabel: (name: string): string => `Manage ${name}`,
   },
+  /** Connect (board SettingsShell, "Connect · empty", "testing", "invalid key" and "connected"). */
   connectDialog: {
-    connectTitle: (name: string): string => `Connect ${name}`,
-    manageTitle: (name: string): string => `Manage ${name}`,
-    description: (name: string): string =>
-      `Saving a key connects ${name} and adds its models without a restart. The key is kept in a file only you can read, and it is never shown again.`,
+    title: (name: string): string => `Connect ${name}`,
+    /** The line under the title, which says where the dialog is. */
+    subtitle: {
+      idle: 'Paste an API key, then test it.',
+      testing: 'Testing the key.',
+      failed: 'The test failed.',
+      tested: 'The key works.',
+      saveFailed: 'The key could not be saved.',
+      connected: 'Connected.',
+    },
     keyLabel: 'API key',
-    keyDescription: 'Paste the key from the provider. Saving again replaces the key in use.',
+    keyPlaceholder: 'Paste your API key',
+    keyHelp: 'Saved to ~/.interborough/secrets when you connect, readable only by you.',
+    getKey: 'Where do I get one?',
     keyRequired: 'Enter the key.',
+    /** Under the field while Connect, or Test, asks the provider. */
+    testing: 'Testing the connection…',
+    test: 'Test',
     connect: 'Connect',
-    replace: 'Replace key',
-    removeKey: 'Remove key',
+    /** The primary button while it tests, disabled. */
+    connecting: 'Testing…',
     cancel: 'Cancel',
-    connectedToast: (name: string): string => `${name} connected`,
-    replacedToast: (name: string): string => `${name} key replaced`,
-    failed: 'The key could not be saved.',
+    done: 'Done',
+    /** The success banner: after Connect, and after Test on its own. */
+    connectedTitle: 'Connected',
+    testedTitle: 'The key works',
+    models: (count: number): string =>
+      count === 1 ? '1 model is available.' : `${String(count)} models are available.`,
     locked: 'This host keeps its keys in its deployment, so it cannot save one.',
     partial: 'The key was stored, but the configuration could not be written.',
+    saveFailed: 'The key could not be saved.',
   },
-  disconnectDialog: {
-    title: (name: string): string => `Disconnect ${name}`,
-    description: (name: string): string =>
-      `Disconnecting removes the saved ${name} key from this machine and takes its models out of the catalog. Connect it again with a key to bring them back.`,
-    checking: (name: string): string => `Looking for agents that use ${name} models`,
-    invalidHeading: (name: string, count: number): string =>
-      `${String(count)} ${count === 1 ? 'agent has' : 'agents have'} a ${name} model as ${count === 1 ? 'its' : 'their'} default`,
-    invalidConsequence:
-      'Without the provider, they become invalid and move to the Invalid list on the Agents page until you connect it again or give them another default model.',
-    trimmedHeading: (name: string, count: number): string =>
-      `${String(count)} ${count === 1 ? 'agent lists' : 'agents list'} ${name} models to switch to`,
-    trimmedConsequence:
-      'They stay ready and lose those models from the ones they can be switched to.',
+  /** Why a test did not pass, worded at the field. Never carries the key. */
+  keyTest: {
+    rejected: (provider: string, status: number | undefined): string =>
+      `${provider} didn’t accept this key${status === undefined ? '' : ` (${String(status)})`}. Check that you copied all of it.`,
+    unfinished: (provider: string, status: number | undefined): string =>
+      `Couldn’t finish testing the key with ${provider}${status === undefined ? '' : ` (${String(status)})`}. Check your connection and try again.`,
+    failed: 'The key could not be tested.',
+  },
+  /** Replace key (board SettingsShell, "Replace key · in progress"). */
+  replaceDialog: {
+    title: (name: string): string => `Replace the ${name === '' ? 'provider' : name} key`,
+    subtitle: 'The old key stays in use until the new one passes.',
+    keyLabel: 'New API key',
+    testing: 'Testing the new key…',
+    replace: 'Replace key',
+    cancel: 'Cancel',
+    toast: (name: string): string => `${name} key replaced`,
+  },
+  /** Manage (board SettingsShell, "Manage · a connected provider"). The saved key is never shown. */
+  manageDialog: {
+    /** The title while no provider is chosen, which a closed dialog still carries. */
+    fallbackTitle: 'Provider',
+    subtitle: 'Connected',
+    connected: 'Connected',
+    models: (count: number): string => `${String(count)} ${count === 1 ? 'model' : 'models'}`,
+    removeKey: 'Remove key',
+    replaceKey: 'Replace key',
+    done: 'Done',
+  },
+  /** Remove key (board SettingsShell, "Remove key · confirm"). */
+  removeDialog: {
+    title: (name: string): string => `Remove the ${name} key?`,
+    /** Names the agents that stop answering. Run now on their schedules is disabled with them. */
+    description: (agents: readonly string[]): string =>
+      `${nameList(agents)} ${agents.length === 1 ? 'stops' : 'stop'} answering until you add a key. Run now on ${agents.length === 1 ? 'its' : 'their'} schedules is disabled too. Chats and runs stay.`,
+    /** When no agent uses the provider's models, so nothing stops answering. */
+    descriptionNoAgents: (name: string): string =>
+      `No agent uses ${name} models, so none stops answering. Chats and runs stay.`,
+    checking: (name: string): string => `Looking for agents that use ${name} models…`,
+    agentsUnknown: (name: string): string =>
+      `The agents could not be read, so which ones use ${name} models is not known. Chats and runs stay.`,
+    trimmedNote: (agents: readonly string[], name: string): string =>
+      `${nameList(agents)} still ${agents.length === 1 ? 'answers' : 'answer'}, but ${agents.length === 1 ? 'loses' : 'lose'} ${name} models from the ones ${agents.length === 1 ? 'it' : 'they'} can be switched to.`,
     embedderNote:
       'If a memory embedder from this provider is selected, memory needs setup again until you connect it or choose another.',
-    noAgents: (name: string): string => `No agent names a ${name} model.`,
-    agentsUnknown: (name: string): string =>
-      `The agents could not be read, so which ones use ${name} models is not known.`,
-    confirm: 'Disconnect',
+    confirm: 'Remove key',
+    busy: 'Removing…',
     cancel: 'Cancel',
-    toast: (name: string): string => `${name} disconnected`,
-    failed: 'The key could not be removed.',
+    toast: (name: string): string => `${name} key removed`,
+    failedTitle: 'Couldn’t remove the key.',
+    failed: 'The key is still saved.',
     locked: 'This host keeps its keys in its deployment, so it cannot remove one.',
   },
   /** The catalog (board SettingsShell, "Models · /settings/models" and "Models · provider connected"). */

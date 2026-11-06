@@ -88,6 +88,12 @@ const schema = {
         description: 'Control(s) rendered inside the field.',
       },
       {
+        name: 'descriptionAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`.',
+      },
+      {
         name: 'errorAction',
         reason: 'function-or-snippet',
         description:
