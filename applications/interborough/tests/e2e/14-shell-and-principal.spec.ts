@@ -160,7 +160,7 @@ test.describe('the notification bell, about the person and not the engine', () =
     await expect(bell(page, 'Notifications, 2 unread')).toBeVisible();
 
     await page.goto(`/chats/${approvalThread}`);
-    const approval = page.locator('.ib-decision');
+    const approval = page.locator('[data-approval-decision]');
     await expect(approval).toBeVisible();
     await approval.getByRole('button', { name: 'Approve' }).click();
     await expect(approval).toHaveCount(0);

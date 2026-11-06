@@ -2922,6 +2922,13 @@ export const CHAT_COPY = {
   tasksTitle: 'Tasks in this chat',
   agentSessions: 'Chats with this agent',
   approvalTitle: 'Needs your approval',
+  /** The approval row under a tool call in the transcript. */
+  approval: {
+    /** What "Allow <tool> for …" ends with. */
+    rememberScope: 'the rest of this chat',
+    /** Written above Deny and Approve while Interborough cannot be reached; both name it as their description. */
+    unreachable: 'Approving is off until Interborough is reachable',
+  },
   /** The tool calls of a turn. */
   tools: {
     /** The accessible name of the rail of one turn's calls. */
@@ -2939,6 +2946,34 @@ export const CHAT_COPY = {
     interruptedChanges: 'Interrupted · may have run',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
     runFinishedNoReply: 'Run finished · no reply',
+    /**
+     * How a decided approval is worded on the rail and under the call: "Approved by you 10:33 AM",
+     * and, for one decided on a page that is not this one, "Approved by you in Reviews 10:46 AM".
+     */
+    decided: {
+      approved: 'Approved',
+      denied: 'Denied',
+      /** Who decided, when it was the chat's own person. */
+      you: 'you',
+      /** Where a decision made away from the chat was made. */
+      elsewhere: 'Reviews',
+      /** The words of the rail's result for a decided call: `place` is absent for a decision made here. */
+      line: (
+        outcome: 'Approved' | 'Denied',
+        who: string,
+        place: string | undefined,
+        time: string,
+        after: string,
+      ): string =>
+        `${outcome} by ${who}${place === undefined ? '' : ` in ${place}`} ${time}${after === '' ? '' : ` · ${after}`}`,
+      /**
+       * Said, politely, when the approval the person was looking at is decided away from the chat.
+       * `question` is what the approval asked, such as "Refund order 4471 for $42.00?", which is
+       * said as a statement: "Approved in Reviews. Refund order 4471 for $42.00.".
+       */
+      announcement: (outcome: 'Approved' | 'Denied', place: string, question: string): string =>
+        `${outcome} in ${place}. ${question.replace(/\?$/, '.')}`,
+    },
   },
   /**
    * The status line under a reply that stopped, in danger text with a Retry beside it. It is the
@@ -3177,6 +3212,22 @@ export const CHAT_COPY = {
     },
     category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
     unavailable: 'Context window unavailable',
+  },
+  /** An open chat while it is read, and when it cannot be (design rows 17c to 17e, 17j, 17y). */
+  load: {
+    /** The accessible name of the placeholders while the chat is read. */
+    loadingLabel: 'Loading this chat',
+    /** Cinder skeleton's status line once the read is taking long, with a Cancel beside it. */
+    stillLoading: 'Still loading this chat…',
+    /** The breadcrumb's last entry while the chat cannot be read, in place of its identifier. */
+    crumb: 'This chat',
+    errorTitle: 'This chat couldn’t be loaded',
+    errorDescription:
+      'Interborough didn’t send it back. Nothing was lost; the messages are stored with the chat.',
+    tryAgain: 'Try again',
+    backToChats: 'Back to chats',
+    /** What the composer's placeholder calls the agent before the list has said which it is. */
+    unnamedAgent: 'the agent',
   },
   /** What the composer says in place of its text box, and the line under it. */
   composer: {

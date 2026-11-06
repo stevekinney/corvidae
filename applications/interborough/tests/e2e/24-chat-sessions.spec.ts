@@ -333,7 +333,7 @@ test.describe('a new chat', () => {
     await send(page, 'Refund order-1001');
 
     await expect(page).toHaveURL(sessionUrl);
-    await expect(page.locator('.ib-decision')).toBeVisible();
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
     expect(await page.evaluate(() => Reflect.get(window, '__stillHere'))).toBe(true);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(0);
     await expect(

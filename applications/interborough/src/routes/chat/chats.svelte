@@ -277,6 +277,7 @@
 {#snippet newChatButton()}
   <Tooltip text={CHAT_COPY.newChat}>
     <Button
+      data-changes
       href={router.href('/chats/new')}
       variant="secondary"
       iconOnly
@@ -366,7 +367,13 @@
     >
       {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
       {#snippet action()}
-        <Button href={router.href('/chats/new')} variant="primary" size="sm" onclick={openNewChat}>
+        <Button
+          data-changes
+          href={router.href('/chats/new')}
+          variant="primary"
+          size="sm"
+          onclick={openNewChat}
+        >
           {CHAT_COPY.newChat}
         </Button>
       {/snippet}
@@ -456,7 +463,11 @@
       </div>
     {/snippet}
     {#snippet detail(row)}
-      <ChatPane sessionId={row.id} {isNew} />
+      <ChatPane
+        sessionId={row.id}
+        {isNew}
+        agent={row.agentName === '' ? undefined : agentName(row)}
+      />
     {/snippet}
     {#snippet empty()}
       {#if noChats}
@@ -478,6 +489,7 @@
           {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
           {#snippet action()}
             <Button
+              data-changes
               href={router.href('/chats/new')}
               variant="primary"
               size="sm"

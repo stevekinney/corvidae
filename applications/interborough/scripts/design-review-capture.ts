@@ -56,7 +56,8 @@ const SPECIFICATIONS = {
  * search, its not-found and forbidden pages, the restart flow (the failed dialog and the back-up
  * confirmations), Home on a fresh installation (`first-run.spec.ts`, whose own host holds no
  * provider, agent or chat), the chat list in each of its states (`chat-list.spec.ts`), and an open chat with its approval,
- * details popover and Permissions select (`chat-page.spec.ts`).
+ * details popover, Permissions select, and its loading, offline, denied and answered-in-Reviews states
+ * (`chat-page.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/showcase.spec.ts',

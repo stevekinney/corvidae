@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
-import { callBureau, listAgents } from '../lib/bureau-client.ts';
+import { listAgents } from '../lib/bureau-client.ts';
 import { getGoal, listGoals } from '../lib/bureau-goals.ts';
 import { getHook, listHooks } from '../lib/bureau-hooks.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
@@ -182,15 +182,10 @@ export function probeFor(
 ): ViewProbe | undefined {
   switch (view) {
     case 'chat':
-      // One session's page asks for that session, which settles whether it exists and may be seen.
-      if (parameters['chat'] !== undefined) {
-        const sessionId = parameters['chat'];
-        return async () => {
-          // Only whether it exists and may be seen matters here; the page reads what it shows.
-          await callBureau('bureau.contexts.get', { contextId: sessionId });
-          return { empty: false };
-        };
-      }
+      // One session's page asks for no probe: the pane reads the session itself and words its own
+      // loading, failure, forbidden and not-found states in place of the conversation, so the list of
+      // chats beside it stays live in each of them (design rows 17c, 17e, 17j and 17y).
+      if (parameters['chat'] !== undefined) return undefined;
       // A new chat needs an agent the Bureau lists: an unknown one is not found. Without `?agent=`
       // it starts with the first agent that can run, and with none the view is empty.
       if (pattern === '/chats/new') {

@@ -1508,7 +1508,7 @@ describe('ApprovalCard row layout', () => {
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
   });
 
-  test('holds Deny and Approve while the reason is given, and names it on both', async () => {
+  test('holds Deny and Approve while the reason is given, with aria-disabled, and names it on both', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
     const { getByRole, getByText } = render(ApprovalCard, {
       props: refundRow({
@@ -1520,8 +1520,13 @@ describe('ApprovalCard row layout', () => {
     const reason = getByText('Approving is off until Interborough is reachable');
     for (const name of ['Deny', 'Approve']) {
       const button = requiredInstance(getByRole('button', { name }), HTMLButtonElement);
-      expect(button.disabled).toBe(true);
+      // Off with aria-disabled, never the disabled property, so the control stays focusable and
+      // the reason is read when it is focused.
+      expect(button.disabled).toBe(false);
+      expect(button.getAttribute('aria-disabled')).toBe('true');
       expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+      button.focus();
+      expect(document.activeElement).toBe(button);
       await fireEvent.click(button);
     }
     expect(onResolve).not.toHaveBeenCalled();
@@ -1831,7 +1836,10 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         ).toBe(
           layout === 'detail'
             ? 'Approved by you in Reviews at 10:44 AM · Tool runner'
-            : 'Approved by you in Reviews at 10:44 AM',
+            : layout === 'row'
+              ? // The row writes the time after a middot, as it does for a decision made here.
+                'Approved by you in Reviews · 10:44 AM'
+              : 'Approved by you in Reviews at 10:44 AM',
         );
         expect(container.textContent).toContain("You don't need to do anything here.");
         expect(queryByRole('button', { name: 'Approve' })).toBeNull();

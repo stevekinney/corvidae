@@ -49,6 +49,8 @@
     EmptyState,
     PageHeader,
     StatusDot,
+    VisuallyHidden,
+    type ApprovalResolution,
   } from '@lostgradient/cinder';
   import {
     Chat,
@@ -95,8 +97,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
   import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
-  import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
-  import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
+  import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
@@ -107,6 +108,7 @@
   import { useMinuteClock } from '../home/home-clock.svelte.ts';
   import { modelInUse } from './agent-model.ts';
   import BranchOrigin from './branch-origin.svelte';
+  import ChatApproval from './chat-approval.svelte';
   import { branchPointIds } from './branch-points.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
   import ChatAssets from './chat-assets.svelte';
@@ -131,6 +133,7 @@
   import { ChatSessionState } from './chat-session.svelte.ts';
   import type { GrantNotLoosened } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
+  import type { DecisionContext } from './approval-decision-words.ts';
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
@@ -801,6 +804,38 @@
   }
 
   let deciding = $state(false);
+  /**
+   * The last answer this page sent: while it is on its way, and while the run it continues streams,
+   * the row says which one (Approving… or Denying…) and holds both buttons.
+   */
+  let decidingAs = $state<'approve' | 'deny' | undefined>();
+  /** The calls this page decided itself, which are not "decided elsewhere" when their approval leaves the Bureau's list. */
+  const decidedHere = new Set<string>();
+  /**
+   * Whether this page decided an approval since the thread was last read. The run it continues
+   * streams the call's result, which carries no record of who decided; reading the thread when that
+   * run stops shows the decision as it is kept (the denied row and its note), as a reload would.
+   */
+  let ownDecisionUnread = false;
+  let wasStreaming = false;
+  $effect(() => {
+    const streaming = session.streaming;
+    const stopped = wasStreaming && !streaming;
+    wasStreaming = streaming;
+    if (stopped && ownDecisionUnread) {
+      ownDecisionUnread = false;
+      void untrack(() => session.refresh()).catch(() => false);
+    }
+  });
+  /** The calls whose approval was decided on another page while this one showed it waiting (`/reviews`). */
+  let decidedAway = $state<ReadonlySet<string>>(new Set());
+  /** What a polite live region says about a decision made on another page: said once, then left. */
+  let announcement = $state('');
+  /** The words of a decided approval depend on who the person is to this chat and where it was decided. */
+  const decisionContext = $derived<DecisionContext>({
+    owner: context.data?.owner,
+    elsewhere: decidedAway,
+  });
 
   /** What a question that declares no schema takes: free text, answered in the composer. */
   const FREE_TEXT_SCHEMA = { type: 'string', title: CHAT_COPY.questionAnswerLabel } as const;
@@ -868,6 +903,7 @@
       return {
         toolCallId: result.callId,
         toolName,
+        requestedAt: reviewed?.requestedAt,
         question: approvalQuestion({
           toolName: toolName ?? 'a tool',
           arguments: call?.arguments,
@@ -1025,7 +1061,47 @@
     }),
     undefined,
   );
+  // A stream that gave up while Interborough could not be reached is joined again once it answers,
+  // so the person is not left to press Reconnect for a drop the banner already explained.
+  let wasUnreachable = false;
+  $effect(() => {
+    const unreachable = connection.unreachable;
+    const recovered = wasUnreachable && !unreachable;
+    wasUnreachable = unreachable;
+    if (recovered && untrack(() => session.disconnected)) void untrack(() => session.reconnect());
+  });
   let rereadFor = '';
+  /**
+   * Says, for the approvals that were waiting here and were decided on another page, what became of
+   * them: the row collapses to the decision (`decidedAway`) and a polite live region announces it
+   * once. Only a call whose thread now carries the Bureau's record of the decision is spoken for: an
+   * approval that was gated again, or whose outcome the Bureau could not write, was not decided.
+   */
+  function sayDecidedAway(calls: readonly string[], questions: ReadonlyMap<string, string>): void {
+    const entries = [...activity.groups.values()].flatMap((group) => group.entries);
+    const away = calls.flatMap((callId) => {
+      const entry = entries.find((candidate) => candidate.callId === callId);
+      return decidedHere.has(callId) || entry?.decision === undefined ? [] : [entry];
+    });
+    if (away.length === 0) return;
+    decidedAway = new Set([...decidedAway, ...away.map((entry) => entry.callId)]);
+    announcement = away
+      .map((entry) =>
+        CHAT_COPY.tools.decided.announcement(
+          entry.decision?.outcome === 'denied'
+            ? CHAT_COPY.tools.decided.denied
+            : CHAT_COPY.tools.decided.approved,
+          CHAT_COPY.tools.decided.elsewhere,
+          questions.get(entry.callId) ??
+            approvalQuestion({
+              toolName: entry.name,
+              arguments: entry.arguments,
+              summary: entry.decision?.asked,
+            }),
+        ),
+      )
+      .join(' ');
+  }
   const seen = new SeenReviews();
   $effect(() => {
     const reviews = pendingReviews.data;
@@ -1060,10 +1136,12 @@
       void (async () => {
         // A read that threw is as unsuccessful as one that said no: the key is cleared for both, so
         // the next poll tries again instead of skipping this set of reviews for good.
+        const questions = new Map(approvals.map((entry) => [entry.toolCallId, entry.question]));
         const read = await session.refresh().catch(() => false);
         if (read) {
           // The thread now says what is decided, so these reviews are not watched for any longer.
           seen.forget(decided);
+          sayDecidedAway(decided.calls, questions);
         } else if (rereadFor === key) {
           rereadFor = '';
         }
@@ -1073,39 +1151,29 @@
     });
   });
 
-  async function decide(toolCallId: string, decision: 'approve' | 'deny'): Promise<void> {
+  /**
+   * Sends the person's decision on one approval: Approve or Deny, with the note they left (a refusal
+   * carries it to the agent as the reason) and, on an approval, whether to allow the tool for the
+   * rest of the chat. The grant rides the same resume Approve sends, so the turn continues the same
+   * way and a refused round or a superseded approval is reported the same way (COR-1990).
+   */
+  async function resolveApproval(
+    toolCallId: string,
+    resolution: ApprovalResolution,
+  ): Promise<void> {
     deciding = true;
+    decidingAs = resolution.decision === 'deny' ? 'deny' : 'approve';
+    decidedHere.add(toolCallId);
+    ownDecisionUnread = true;
     try {
-      await session.controller.adapter.resolveToolApproval?.(toolCallId, {
-        decision,
-        remember: false,
-      });
+      await session.controller.adapter.resolveToolApproval?.(toolCallId, resolution);
     } catch {
       // The controller reported it, and the approval is still pending for another try.
+      decidedHere.delete(toolCallId);
     } finally {
       deciding = false;
       // Whether it took effect or not, the approval is not what `/reviews` last listed, so the
       // inbox and the count in the navigation read again at once and do not wait for their poll.
-      void invalidateReviewQueries(queryClient);
-    }
-  }
-
-  /**
-   * Approves the call and allows its tool for the rest of the chat. It is sent as the resume that
-   * Approve sends, with `remember`, so the turn continues the same way and a refused round or a
-   * superseded approval is reported the same way (COR-1990).
-   */
-  async function allowForChat(toolCallId: string): Promise<void> {
-    deciding = true;
-    try {
-      await session.controller.adapter.resolveToolApproval?.(toolCallId, {
-        decision: 'approve',
-        remember: true,
-      });
-    } catch {
-      // The controller reported it, and the approval is still pending for another try.
-    } finally {
-      deciding = false;
       void invalidateReviewQueries(queryClient);
     }
   }
@@ -1231,7 +1299,9 @@
     </Alert>
   {/if}
 
-  {#if session.disconnected}
+  <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
+       stream gets no banner of its own (design row 18e). -->
+  {#if session.disconnected && !connection.unreachable}
     <Alert variant="warning">
       <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
       <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
@@ -1269,6 +1339,10 @@
     </Alert>
   {/if}
 
+  <!-- A decision made on another page, said once to a screen reader; the row itself changes in place. -->
+  <VisuallyHidden role="status" aria-live="polite" data-testid="chat-decision-announcement">
+    {announcement}
+  </VisuallyHidden>
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="weft-chat-surface" onclick={openNoteLink}>
     <Chat
@@ -1409,7 +1483,7 @@
             type="button"
             size="sm"
             variant="secondary"
-            disabled={!session.canRetryTurn || connection.unreachable}
+            disabled={!session.canRetryTurn}
             onclick={() => void retryTurn()}
           >
             {CHAT_COPY.stopLine.retry}
@@ -1423,19 +1497,22 @@
           <ToolCalls
             id={`tools-${message.id}`}
             entries={group.entries}
+            decided={decisionContext}
             endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
           >
             {#snippet decision(entry)}
               {@const asked = approvalsByCall.get(entry.callId)}
-              {#if asked !== undefined}
-                <ApprovalDecision
+              {#if entry.decision !== undefined || asked !== undefined}
+                <ChatApproval
                   id={`tools-${message.id}-${entry.callId}`}
-                  question={asked.question}
-                  identifiers={asked.toolName === undefined ? [] : [asked.toolName]}
-                  deciding={deciding || session.streaming}
-                  input={argumentEntries(entry.arguments)}
-                  onDecide={(choice) => void decide(entry.callId, choice)}
-                  onAllowForChat={() => void allowForChat(entry.callId)}
+                  {entry}
+                  question={asked?.question ?? ''}
+                  source={agentSummary?.displayName ?? agent}
+                  requestedAt={asked?.requestedAt}
+                  context={decisionContext}
+                  unreachable={connection.unreachable}
+                  resolving={deciding || session.streaming ? (decidingAs ?? 'approve') : undefined}
+                  onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
                 />
               {/if}
             {/snippet}

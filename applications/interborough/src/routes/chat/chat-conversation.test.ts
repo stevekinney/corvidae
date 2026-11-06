@@ -810,7 +810,7 @@ describe('a run that waits on a tool approval', () => {
     // The approval is one flat row with the question it asks, which is the approval's own message
     // here. No run identifier and no policy string reaches the page.
     await waitFor(() =>
-      expect(container.querySelector('.ib-decision__question')?.textContent).toBe(
+      expect(container.querySelector('[data-approval-decision] h4')?.textContent).toBe(
         'Refund order-1001?',
       ),
     );
@@ -913,7 +913,7 @@ describe('a decision made somewhere else', () => {
       agentName: 'assistant',
     });
     await sendMessage(container, 'Refund it');
-    await until(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+    await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
     expect(messageReads).toBe(1);
 
     // The poll finds the review gone and the read fails; the next poll reads the thread again.
@@ -1013,7 +1013,7 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
       if (box === null) throw new Error('The composer did not render.');
       await fireEvent.input(box, { target: { value: 'Refund it' } });
       await fireEvent.keyDown(box, { key: 'Enter' });
-      await until(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+      await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
       await until(() => expect(listReads).toBe(1));
       expect(messageReads).toBe(1);
 

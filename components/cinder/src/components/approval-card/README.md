@@ -71,9 +71,9 @@ Presentational human-in-the-loop approval surface for reviewing a tool operation
 - "Add a note" is a link that opens a "Note (optional)" field. The note is sent as `reason` with Approve and with Deny.
 - Pass `rememberScope` ("the rest of this chat") to offer "Allow `label` for the rest of this chat" as a checkbox on its own line before Deny and Approve; checking it sets `remember`. Leave it out for a tool set to Always, which never offers it.
 - Deny is secondary and Approve is the only primary action. In a card narrower than 32rem, and on a touch screen, Deny and Approve are equal-width 44px targets under "Add a note".
-- `disabledReason` turns Deny and Approve off while the approval is pending and writes the reason above the actions; both buttons name it with `aria-describedby`. "Add a note" and Input stay available.
+- `disabledReason` turns Deny and Approve off while the approval is pending and writes the reason above the actions; both buttons go inert with `aria-disabled`, so they stay focusable, and name the reason with `aria-describedby`. "Add a note" and Input stay available.
 
-A decided approval stays in the transcript as a decision in neutral text: `state="denied"` with `decidedBy="you"` and `decidedAt` reads "Denied by you · 10:40 AM", with no decision buttons and no error colour. The row reads the question, the tool line, the Input summary, then the decision, so the decision is the last thing under what was asked.
+A decided approval stays in the transcript as a decision in neutral text: `state="denied"` with `decidedBy="you"` and `decidedAt` reads "Denied by you · 10:40 AM", with no decision buttons and no error colour. The row reads the question, the tool line, the Input summary, then the decision, so the decision is the last thing under what was asked. An approval decided on another page while this one was open adds `decidedIn`, and the row reads "Approved by you in Reviews · 10:46 AM": the same line, with where after who.
 
 ## The approval's own page
 

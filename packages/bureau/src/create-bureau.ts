@@ -119,6 +119,10 @@ import {
   type ToolTiming,
 } from '@lostgradient/operative';
 import {
+  approvalDecisionMetadata,
+  type ApprovalDecisionRecord,
+} from './approval-decision-metadata';
+import {
   createSkillArtifactLoader,
   SkillActivatedEvent,
   SkillDeactivatedEvent,
@@ -18750,9 +18754,26 @@ async function constructBureau<const D extends AgentDefinitions>(
   function approvalOutcomeMetadata(
     waiting: Readonly<Record<string, JSONValue>> | undefined,
     ran: ToolTiming | undefined,
+    decided: ApprovalDecisionRecord,
   ): Record<string, JSONValue> {
     const { [TOOL_TIMING_METADATA_KEY]: _asked, ...kept } = waiting ?? {};
-    return ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } };
+    return {
+      ...(ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } }),
+      // COR-2016: who decided and when, so a page that was not there can say so.
+      ...approvalDecisionMetadata(decided),
+    };
+  }
+
+  /**
+   * The sentence the tool asked with, when it wrote one of its own: a message equal to the policy's
+   * reason is the reason again, not a sentence the tool chose.
+   */
+  function askedOf(review: Extract<PendingReview, { kind: 'tool-approval' }>): string | undefined {
+    const action = review.approval.action;
+    const message = action?.type === 'approval' ? action.message : undefined;
+    return message === undefined || message.trim() === '' || message === review.approval.reason
+      ? undefined
+      : message.trim();
   }
 
   async function writeApprovalOutcomeToSession(
@@ -18765,6 +18786,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     const callId = review.approval.callId;
     const refusal = input.decision === 'reject' ? 'Tool call rejected' : 'Tool call denied';
     const message = input.reason === undefined ? refusal : `${refusal}: ${input.reason}`;
+    const decidedAtISO = runtimeServices.clock.nowISO();
+    const asked = askedOf(review);
     const outcome =
       input.decision === 'approve'
         ? (result as Parameters<typeof materializeToolResultAsync>[0])
@@ -18814,7 +18837,13 @@ async function constructBureau<const D extends AgentDefinitions>(
             return {
               ...session,
               conversationHistory: resolveToolResult(history, callId, toolResult, {
-                metadata: approvalOutcomeMetadata(waiting?.metadata, ran),
+                metadata: approvalOutcomeMetadata(waiting?.metadata, ran, {
+                  decision: input.decision,
+                  decidedBy: input.principal,
+                  decidedAt: decidedAtISO,
+                  ...(input.reason === undefined ? {} : { reason: input.reason }),
+                  ...(asked === undefined ? {} : { asked }),
+                }),
               }),
             };
           });

@@ -14,6 +14,7 @@ import type { ToolCallRailCall } from '@lostgradient/cinder';
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
+import { decidedLine, type DecisionContext } from './approval-decision-words.ts';
 import { opensTurn } from './event-notes.ts';
 
 /** One row of a conversation. */
@@ -54,6 +55,26 @@ export type ToolCallEntry = {
    * when nothing recorded says (a call that waits on a person, or one whose start is not known).
    */
   readonly durationMilliseconds?: number | undefined;
+  /**
+   * How a person decided the call's approval, when the Bureau recorded it on the call's outcome:
+   * who, when, and the note they left. Absent for a call that never asked, and for one decided
+   * before the Bureau recorded decisions.
+   */
+  readonly decision?: ApprovalDecision | undefined;
+};
+
+/** How a person decided a tool approval, as the Bureau wrote it on the call's outcome row. */
+export type ApprovalDecision = {
+  /** Approved, or refused (a rejection is a refusal that carries a reason). */
+  readonly outcome: 'approved' | 'denied';
+  /** The principal that decided, as the Bureau recorded it: the chat's owner when it was you. */
+  readonly decidedBy: string;
+  /** When it was decided, in epoch milliseconds. */
+  readonly decidedAt: number;
+  /** The note left with the decision, which the agent read as the reason for a refusal. */
+  readonly reason?: string | undefined;
+  /** The sentence the tool asked with, which the outcome replaced along with the waiting row. */
+  readonly asked?: string | undefined;
 };
 
 /** Where a `tool-result` row keeps when its call ran: Operative's `TOOL_TIMING_METADATA_KEY`. */
@@ -99,6 +120,36 @@ export function recordedTiming(
   return start === undefined || end === undefined || end < start
     ? undefined
     : { startedAt: start, endedAt: end };
+}
+
+/** Where a `tool-result` row keeps how its approval was decided: Bureau's `APPROVAL_DECISION_METADATA_KEY`. */
+export const APPROVAL_DECISION_METADATA_KEY = 'approvalDecision';
+
+/** How a person decided the approval, as a result row records it under {@link APPROVAL_DECISION_METADATA_KEY}. */
+export function recordedDecision(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): ApprovalDecision | undefined {
+  const value = metadata?.[APPROVAL_DECISION_METADATA_KEY];
+  if (typeof value !== 'object' || value === null) return undefined;
+  const decision: unknown = Reflect.get(value, 'decision');
+  const decidedBy: unknown = Reflect.get(value, 'decidedBy');
+  const decidedAt = epochOf(Reflect.get(value, 'decidedAt'));
+  const reason: unknown = Reflect.get(value, 'reason');
+  const asked: unknown = Reflect.get(value, 'asked');
+  if (
+    (decision !== 'approve' && decision !== 'deny' && decision !== 'reject') ||
+    typeof decidedBy !== 'string' ||
+    decidedAt === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    outcome: decision === 'approve' ? 'approved' : 'denied',
+    decidedBy,
+    decidedAt,
+    ...(typeof reason === 'string' && reason.trim() !== '' ? { reason } : {}),
+    ...(typeof asked === 'string' && asked.trim() !== '' ? { asked } : {}),
+  };
 }
 
 /** The rows a call's times are read from: its own row, and its result's when it has one. */
@@ -215,8 +266,10 @@ function entryOf(
   const failure = pair.result?.error?.message;
   const info = tools.get(pair.call.name);
   const durationMilliseconds = rows === undefined ? undefined : durationOf(state, rows, timing);
+  const decision = recordedDecision(rows?.result?.metadata);
   return {
     ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
+    ...(decision === undefined ? {} : { decision }),
     callId: pair.call.id,
     name: pair.call.name,
     title: toolDisplayName(pair.call.name, info?.title),
@@ -248,8 +301,17 @@ export function interruptedWords(entry: Pick<ToolCallEntry, 'tier'>): string {
     : CHAT_COPY.tools.interruptedReads;
 }
 
-/** One call as a row of the rail. */
-export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCall {
+/**
+ * One call as a row of the rail. A call whose approval a person decided says so in their words
+ * ("Approved by you 10:33 AM · $18.50 refunded", "Denied by you 10:40 AM"), which `context` words:
+ * who the person is to this chat, and which decisions were made away from it.
+ */
+export function railCall(
+  entry: ToolCallEntry,
+  nested: boolean,
+  context: DecisionContext = {},
+): ToolCallRailCall {
+  const decided = decidedLine(entry, context);
   const named = {
     id: entry.callId,
     name: entry.title ?? entry.name,
@@ -268,7 +330,12 @@ export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCal
     case 'interrupted':
       return { ...named, status: 'interrupted', result: interruptedWords(entry) };
     case 'denied':
-      return { ...named, status: 'denied', result: entry.summary || CHAT_COPY.tools.denied };
+      return {
+        ...named,
+        status: 'denied',
+        result: entry.summary || CHAT_COPY.tools.denied,
+        ...(decided === undefined ? {} : { decision: decided }),
+      };
     case 'failed':
       return {
         ...named,
@@ -276,11 +343,13 @@ export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCal
         ...(entry.summary === '' ? {} : { result: entry.summary }),
       };
     case 'done':
-      return {
-        ...named,
-        status: 'done',
-        ...(entry.summary === '' ? {} : { result: entry.summary }),
-      };
+      return decided !== undefined && entry.decision?.outcome === 'approved'
+        ? { ...named, status: 'approved', decision: decided }
+        : {
+            ...named,
+            status: 'done',
+            ...(entry.summary === '' ? {} : { result: entry.summary }),
+          };
   }
 }
 

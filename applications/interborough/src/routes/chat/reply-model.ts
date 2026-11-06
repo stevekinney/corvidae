@@ -5,6 +5,7 @@
  * no model for (a scripted agent's, or one written before the Bureau kept it) names none.
  */
 import type { AgentModelChoice } from '../../lib/bureau-client.ts';
+import { modelDisplayName } from './agent-model.ts';
 
 /**
  * Where the Bureau keeps a reply's model on its row: `REPLY_MODEL_METADATA_KEY` in Bureau's
@@ -29,8 +30,10 @@ export function replyModelOf(
 }
 
 /**
- * The name a person reads for `replyModel`: the display name the agent's models give it, or the
- * model's own name when the agent no longer lists it.
+ * The name a person reads for `replyModel`: the display name the agent's models give it when it is
+ * a label of its own, else the one `modelDisplayName` writes ("Claude Sonnet 5.5"), which is the
+ * model's own name for any model it knows no form of. The Bureau's catalog holds no label, so its
+ * `displayName` is the provider's model name, as `modelInUse` reads it too.
  */
 export function replyModelLabel(
   replyModel: ReplyModel,
@@ -40,5 +43,7 @@ export function replyModelLabel(
     (candidate) =>
       candidate.provider === replyModel.provider && candidate.model === replyModel.model,
   );
-  return choice?.displayName ?? replyModel.model;
+  return choice !== undefined && choice.displayName !== choice.model
+    ? choice.displayName
+    : modelDisplayName(replyModel.model);
 }

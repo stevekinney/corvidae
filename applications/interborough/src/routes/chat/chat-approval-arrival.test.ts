@@ -116,11 +116,16 @@ describe('a chat that opens on an approval', () => {
     });
     await waitFor(() => expect(document.activeElement === row).toBe(true));
     expect(scrolled.includes(row)).toBe(true);
-    expect(row.getAttribute('role')).toBe('group');
+    // Cinder's approval row is an article named by the question it asks.
+    expect(row.tagName).toBe('ARTICLE');
+    const titleId = row.getAttribute('aria-labelledby');
+    expect(titleId === null ? null : document.getElementById(titleId)?.textContent).toContain(
+      'Refund order-1001?',
+    );
     expect(row.getAttribute('tabindex')).toBe('-1');
     // The row is the focus, not a choice in it: Enter answers nothing.
     expect(row.contains(document.activeElement)).toBe(true);
-    expect(document.activeElement?.tagName).toBe('DIV');
+    expect(document.activeElement).toBe(row);
     expect(answers).toEqual([]);
     scroll.mockRestore();
   });
@@ -203,7 +208,7 @@ describe('a chat that opens on an approval', () => {
       return found;
     });
 
-    await quietFor(250, { message: 'the approval takes no focus' });
+    await quietFor(250);
     expect(document.activeElement === row).toBe(false);
   });
 });

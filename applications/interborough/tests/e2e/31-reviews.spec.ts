@@ -204,7 +204,7 @@ test.describe('a tool approval', () => {
     await expect(rowOf(page, review)).toBeVisible();
 
     await page.goto(`/chats/${threadId}`);
-    await page.locator('.ib-decision').getByRole('button', { name: 'Approve' }).click();
+    await page.locator('[data-approval-decision]').getByRole('button', { name: 'Approve' }).click();
     // The run goes on after the approval and reports what it did.
     await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
 
@@ -228,7 +228,7 @@ test.describe('a tool approval', () => {
     // A chat opened afterwards reads the conversation the decision wrote into.
     await page.goto(`/chats/${threadId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Refund order-1001');
-    await expect(page.locator('.ib-decision')).toHaveCount(0);
+    await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     // The refund shows as a tool call that succeeded, with its result under Details.
     const refund = page.locator('[data-cinder-tool-call-row]').filter({ hasText: 'Issue refund' });
     await expect(refund).toBeVisible();
@@ -245,7 +245,7 @@ test.describe('a tool approval', () => {
     await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     const review = await waitingReviewOf(request, threadId);
     await page.goto(`/chats/${threadId}`);
-    await expect(page.locator('.ib-decision')).toContainText('Refund order order-1001 for $42.00?');
+    await expect(page.locator('[data-approval-decision]')).toContainText('Refund order order-1001 for $42.00?');
 
     const inbox = await context.newPage();
     await inbox.goto(inboxAt(review));
@@ -253,7 +253,7 @@ test.describe('a tool approval', () => {
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
     // The page that was already open reads the decision within five seconds.
-    await expect(page.locator('.ib-decision')).toHaveCount(0);
+    await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     await expect(page.getByText('1 run is waiting on you')).toHaveCount(0);
   });
 
@@ -287,7 +287,7 @@ test.describe('a decision made in the inbox', () => {
     // can be the shared, cached one that predates the review, and must not take the call as decided.
     await page.goto('/chats/new?agent=demo:tool-runner');
     await send(page, 'Refund order 1234');
-    await expect(page.locator('.ib-decision')).toBeVisible();
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
     const threadId = await sessionOf(page);
     const review = await waitingReviewOf(request, threadId);
 
@@ -296,7 +296,7 @@ test.describe('a decision made in the inbox', () => {
     await paneOf(inbox).getByRole('button', { name: 'Approve' }).click();
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
-    await expect(page.locator('.ib-decision')).toHaveCount(0);
+    await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
   });
 
   test('settles a question in a chat that never reloaded: it is gone, the next message is a normal turn, and a second question is settled the same way', async ({

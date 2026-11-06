@@ -6,7 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { VIEW_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import {
   approveThroughMount,
   conversation,
@@ -105,7 +105,7 @@ test.describe('a tool approval', () => {
 
     await send(page, 'Refund order-1001 again');
 
-    const alert = page.locator('.ib-decision');
+    const alert = page.locator('[data-approval-decision]');
     await expect(alert).toBeVisible();
     // One flat row: the question in the call's own words, with Deny and Approve, and none of the
     // policy's string or the run's identifier anywhere in the view's text.
@@ -138,7 +138,7 @@ test.describe('a tool approval', () => {
 
     await page.goto(`/chats/${threadId}`);
 
-    const alert = page.locator('.ib-decision');
+    const alert = page.locator('[data-approval-decision]');
     await expect(alert).toBeVisible();
     await alert.getByRole('button', { name: 'Deny' }).click();
     await expect(conversation(page).getByText(NOT_ISSUED)).toHaveCount(1);
@@ -160,7 +160,7 @@ test.describe('a tool approval', () => {
     });
     await page.goto(`/chats/${threadId}`);
     await send(page, 'Refund the order');
-    const alert = page.locator('.ib-decision');
+    const alert = page.locator('[data-approval-decision]');
     await expect(alert).toBeVisible();
 
     // The run has stopped on the approval, so nothing is going to deliver this follow-up.
@@ -383,7 +383,7 @@ test('a reload while the run is going restores the transcript and continues live
   await expect(conversation(page).getByText(FIRST_REPLY)).toHaveCount(2);
 });
 
-/** The one request the view frame's probe makes for a session, answered the way the server would. */
+/** The one request the chat pane makes for a session, answered the way the server would. */
 async function answerSessionProbe(
   page: Page,
   outcome: 'loading' | 'error' | 'forbidden',
@@ -421,38 +421,46 @@ for (const width of [375, 1280] as const) {
       await checkA11y(`a session, ready, at ${width}px`);
     });
 
-    test('is not found for a session that does not exist, with the words copy.ts holds', async ({
+    test('is not found for a session that does not exist, with the words copy.ts holds, beside a live list', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/chats/no-such-session');
       const frame = page.locator('[data-view="chat"]');
-      await expect(frame).toHaveAttribute('data-state', 'not-found');
       await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
         VIEW_COPY.chat.notFound?.title ?? '',
       );
+      // Beside a list that stays live where there is room for both; a phone shows one at a time.
+      if (width > 640) await expect(frame.getByRole('link', { name: 'New chat' })).toBeVisible();
       await checkA11y(`a session, not found, at ${width}px`);
     });
 
     for (const outcome of ['loading', 'error', 'forbidden'] as const) {
-      test(`is ${outcome} when the Bureau answers that way, and passes axe`, async ({
+      test(`is ${outcome} in the conversation area when the Bureau answers that way, and passes axe`, async ({
         page,
         checkA11y,
         pageErrors,
       }) => {
         if (outcome !== 'loading') {
-          pageErrors.expect({
+          pageErrors.expectEvery({
             pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /bureau\/jsonrpc/),
-            reason: `the test answers the session probe with a ${outcome === 'error' ? 500 : 403}`,
+            reason: `the test answers the session read with a ${outcome === 'error' ? 500 : 403}`,
           });
         }
         await answerSessionProbe(page, outcome);
         await page.goto('/chats/any-session');
         const frame = page.locator('[data-view="chat"]');
-        await expect(frame).toHaveAttribute('data-state', outcome);
-        await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-          VIEW_COPY.chat[outcome].title,
-        );
+        // The chat's own states are drawn by its pane, so the frame, and the list in it, stay up.
+        await expect(frame).toHaveAttribute('data-state', 'ready');
+        if (outcome === 'loading') {
+          await expect(page.getByTestId('chat-loading')).toBeVisible();
+          await expect(page.getByRole('textbox', { name: /^Message/ })).toBeDisabled();
+        } else {
+          await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+            outcome === 'error' ? CHAT_COPY.load.errorTitle : VIEW_COPY.chat.forbidden.title,
+          );
+        }
+        if (width > 640) await expect(frame.getByRole('link', { name: 'New chat' })).toBeVisible();
         await checkA11y(`a session, ${outcome}, at ${width}px`);
       });
     }
