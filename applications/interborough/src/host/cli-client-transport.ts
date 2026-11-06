@@ -24,6 +24,14 @@ function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): 
   return Object.assign(new Error(message), properties);
 }
 
+function redactCredentials(target: CliTarget, message: string): string {
+  return Object.values(target.headers).reduce(
+    (redacted, credential) =>
+      credential === '' ? redacted : redacted.split(credential).join('[redacted]'),
+    message,
+  );
+}
+
 function assertManagementBoundary(target: CliTarget, path: string): void {
   if (
     target.remote === true &&
@@ -76,9 +84,12 @@ export async function request(
       body = text === '' ? undefined : JSON.parse(text);
     } catch {
       if (!response.ok)
-        throw makeCliFailure(text === '' ? `HTTP ${response.status}` : text, {
-          status: response.status,
-        });
+        throw makeCliFailure(
+          redactCredentials(target, text === '' ? `HTTP ${response.status}` : text),
+          {
+            status: response.status,
+          },
+        );
       throw makeCliFailure(
         'The host returned malformed JSON.',
         init?.method === 'POST' ? { exitCode: 7 } : {},
@@ -87,14 +98,17 @@ export async function request(
     if (!response.ok)
       throw makeCliFailure(
         isRecord(body) && typeof body['message'] === 'string'
-          ? body['message']
+          ? redactCredentials(target, body['message'])
           : `HTTP ${response.status}`,
         { status: response.status },
       );
     if (isRecord(body) && isRecord(body['error'])) {
       const rpcError = body['error'];
       const code = typeof rpcError['code'] === 'number' ? rpcError['code'] : undefined;
-      const message = typeof rpcError['message'] === 'string' ? rpcError['message'] : 'RPC error';
+      const message = redactCredentials(
+        target,
+        typeof rpcError['message'] === 'string' ? rpcError['message'] : 'RPC error',
+      );
       const data = isRecord(rpcError['data']) ? rpcError['data'] : undefined;
       const httpStatus = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : undefined;
       throw makeCliFailure(message, {

@@ -7,7 +7,8 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { executeCli } from './cli-client.ts';
+import { request, requestBytes, stream } from './cli-client-transport.ts';
+import { executeCli, parseCliArguments } from './cli-client.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
 
@@ -471,5 +472,66 @@ describe('CLI authenticated workspace authority', () => {
     );
     expect(mismatch.exitCode).toBe(3);
     expect(mismatch.stderr).toBe('Workspace membership required');
+  });
+
+  test('credential diagnostics preserve status while redacting active credentials', async () => {
+    const fixture = await remoteFixture();
+    await executeCli(
+      ['connection', 'add', 'remote', '--url', endpoint, '--credential-reference', 'TOKEN'],
+      fixture,
+    );
+    const raw = await executeCli(['status', '--connection', 'remote'], {
+      ...fixture,
+      environment: { TOKEN: 'alice-secret' },
+      fetch: async (input, init) => {
+        const path = new URL(input).pathname;
+        if (path === '/api/v1/principal') return fixture.fetch(input, init);
+        return new Response('reflected x-api-key=alice-secret', { status: 401 });
+      },
+    });
+    expect(raw.exitCode).toBe(3);
+    expect(raw.stderr).toBe('reflected x-api-key=[redacted]');
+    expect(raw.stderr).not.toContain('alice-secret');
+    const json = await executeCli(['status', '--connection', 'remote'], {
+      ...fixture,
+      environment: { TOKEN: 'alice-secret' },
+      fetch: async (input, init) => {
+        const path = new URL(input).pathname;
+        if (path === '/api/v1/principal') return fixture.fetch(input, init);
+        return Response.json({ message: 'reflected x-api-key=alice-secret' }, { status: 401 });
+      },
+    });
+    expect(json.exitCode).toBe(3);
+    expect(json.stderr).toBe('reflected x-api-key=[redacted]');
+    expect(json.stderr).not.toContain('alice-secret');
+  });
+
+  test('credential-bearing asset, stream, and A2A paths fail before fetch', async () => {
+    const parsedResult = parseCliArguments(['status']);
+    if ('exitCode' in parsedResult) throw new Error('status parser fixture unexpectedly failed');
+    const target = {
+      url: endpoint,
+      headers: { 'x-api-key': 'alice-secret' },
+      remote: true,
+    } as const;
+    let calls = 0;
+    const dependencies = {
+      fetch: async () => {
+        calls += 1;
+        return Response.json({});
+      },
+    };
+    await expect(
+      requestBytes(target, '/bureau/assets/asset/content', parsedResult, dependencies),
+    ).rejects.toMatchObject({ exitCode: 3 });
+    await expect(
+      stream(target, '/bureau/a2a/demo', parsedResult, dependencies),
+    ).rejects.toMatchObject({
+      exitCode: 3,
+    });
+    await expect(request(target, '/jsonrpc', parsedResult, dependencies)).rejects.toMatchObject({
+      exitCode: 3,
+    });
+    expect(calls).toBe(0);
   });
 });
