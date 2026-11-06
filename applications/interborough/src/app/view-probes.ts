@@ -225,7 +225,8 @@ export function probeFor(
     case 'audit':
       return probeAudit;
     case 'settings':
-      // Plugins reads the host's own route, and the page words its loading and failure itself.
+      // Plugins reads the host's own route, and the page words that read's loading and failure itself;
+      // the Settings frame around it still reads the Bureau's settings for the restart notice.
       if (pattern === '/settings/plugins') return undefined;
       // API reference gates on nothing: its groups read for themselves, so one failing or refused
       // engine read must not replace the others. Its registry part words its own states.
