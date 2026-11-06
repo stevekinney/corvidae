@@ -118,6 +118,54 @@ describe('Skip and Undo, for an agent run', () => {
     expect(await findByRole('button', { name: /^Skip / })).not.toBeNull();
   });
 
+  test('Undo takes back one of two skipped runs and leaves the other skipped', async () => {
+    const hour = 3_600_000;
+    const next = Math.ceil((Date.now() + hour) / hour) * hour;
+    const { findAllByRole } = open(`/schedules/${AGENT_SCHEDULE}`, {
+      schedules: [
+        scheduleFixture(AGENT_SCHEDULE, 'agentRun', {
+          description: 'Daily summary',
+          revision: 3,
+          cronExpression: '0 * * * *',
+          timeZone: 'UTC',
+          nextFireAt: next,
+          skippedOccurrences: [next, next + hour],
+        }),
+      ],
+    });
+
+    const undo = await findAllByRole('button', { name: /^Undo skipping / });
+    expect(undo).toHaveLength(2);
+    await fireEvent.click(undo[undo.length - 1] as HTMLElement);
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.unskip')).toHaveLength(1));
+    const schedule = stub?.world.schedules.find((candidate) => candidate.id === AGENT_SCHEDULE);
+    expect(schedule?.skippedOccurrences).toHaveLength(1);
+  });
+
+  test('Undo of a run that has passed is refused as stale', async () => {
+    const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`, {
+      schedules: [
+        scheduleFixture(AGENT_SCHEDULE, 'agentRun', {
+          description: 'Daily summary',
+          revision: 3,
+          cronExpression: '0 9 * * *',
+          nextFireAt: NEXT_FIRE,
+          skippedOccurrences: [NEXT_FIRE],
+        }),
+      ],
+    });
+    const undo = await findByRole('button', { name: /^Undo skipping / });
+    const schedule = stub?.world.schedules.find((candidate) => candidate.id === AGENT_SCHEDULE);
+    if (schedule === undefined) throw new Error('expected the seeded schedule');
+    schedule.nextFireAt = NEXT_FIRE + 24 * 3_600_000;
+
+    await fireEvent.click(undo);
+
+    const notice = await findByTestId('schedule-notice');
+    expect(notice.getAttribute('data-notice')).toBe('stale');
+  });
+
   test('is refused as stale when the schedule changed after the page read it, and writes nothing', async () => {
     const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
     const skip = await findByRole('button', { name: /^Skip / });
@@ -168,6 +216,22 @@ describe('Skip and Undo, for an agent run', () => {
     await fireEvent.click(skip);
 
     await findByText(SCHEDULE_COPY.skipFailed, { exact: false });
+  });
+});
+
+describe('deleting a schedule the engine owns', () => {
+  test('cancels it through the engine, and the schedule is gone', async () => {
+    const { findByRole } = open(`/schedules/${CODE_SCHEDULE}`);
+    await fireEvent.click(await findByRole('button', { name: 'More actions' }));
+    await fireEvent.click(await findByRole('menuitem', { name: 'Delete schedule' }));
+    const dialog = await findByRole('dialog');
+
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete schedule' }));
+
+    await waitFor(() => expect(stub?.callsTo('DELETE /schedules/:schedule')).toHaveLength(1));
+    expect(stub?.world.schedules.find((candidate) => candidate.id === CODE_SCHEDULE)?.status).toBe(
+      'cancelled',
+    );
   });
 });
 

@@ -443,4 +443,88 @@ describe('the open worker’s tasks', () => {
       await waitFor(() => expect(scripted?.calls.length ?? 0).toBeGreaterThan(before));
     });
   });
+
+  describe('the pieces of the task list that a first look does not reach', () => {
+    test('a run named on a task opens from its link, and a modified click is left to the browser', async () => {
+      scripted = new ScriptedFetch();
+      routeHappyPaths(scripted, { workers: [GONE] });
+      routeTasks(scripted, { failed: [failedTask('op-1', 'collect-merged-changes')], waiting: 0 });
+      router.navigate('/health/workers?worker=reports-worker', { replace: true });
+
+      const { findByRole } = renderRoute();
+      const link = await findByRole('link', { name: /release-notes|run/i });
+      expect(await fireEvent.click(link, { metaKey: true })).toBe(true);
+      expect(router.pathname).toBe('/health/workers');
+      expect(await fireEvent.click(link)).toBe(false);
+      await waitFor(() => expect(router.pathname).toContain('run-1'));
+    });
+
+    test('a read of the tasks that fails says so, and Try again reads them again', async () => {
+      scripted = new ScriptedFetch();
+      routeHappyPaths(scripted, { workers: [GONE] });
+      scripted.routeJsonRpcMethodError('weft.task.queues.tasks', 500, 'broke', 'Internal');
+      router.navigate('/health/workers?worker=reports-worker', { replace: true });
+
+      const { findByRole } = renderRoute();
+      const retry = await findByRole('button', { name: 'Try again' });
+      const before = callsTo(scripted, 'weft.task.queues.tasks').length;
+      await fireEvent.click(retry);
+      await waitFor(() =>
+        expect(callsTo(scripted, 'weft.task.queues.tasks').length).toBeGreaterThan(before),
+      );
+    });
+
+    test('waiting tasks beyond the first page are read on Load more', async () => {
+      scripted = new ScriptedFetch();
+      routeHappyPaths(scripted, { workers: [PAYMENTS] });
+      const waiting = (index: number): QueueTask => ({
+        operationId: `w-${String(index)}`,
+        status: 'waiting',
+        workflowType: 'release-notes',
+        activityName: `render-${String(index)}`,
+        attempt: 1,
+        at: Date.UTC(2026, 10, 2, 13, index),
+      });
+      scripted.routeJsonRpcMethodBy('weft.task.queues.tasks', (params) => ({
+        queue: params['queue'],
+        counts: { waiting: 4, failed: 0 },
+        items: params['cursor'] === 'next' ? [waiting(2), waiting(3)] : [waiting(0), waiting(1)],
+        nextCursor: params['cursor'] === 'next' ? null : 'next',
+      }));
+      router.navigate('/health/workers?worker=payments-worker-1', { replace: true });
+
+      const { findByRole, findByText, container } = renderRoute();
+      await findByText('render-0');
+      await fireEvent.click(await findByRole('radio', { name: /^Waiting/ }));
+      await fireEvent.click(await findByRole('button', { name: /load more/i }));
+
+      await waitFor(() => expect(container.textContent).toContain('render-3'));
+      expect(
+        callsTo(scripted, 'weft.task.queues.tasks').some((call) => call['cursor'] === 'next'),
+      ).toBe(true);
+    });
+
+    test('a worker with a long identifier offers to copy it, and says it did', async () => {
+      const written: string[] = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            written.push(text);
+          },
+        },
+      });
+      const longId = `worker-${'x'.repeat(40)}`;
+      scripted = new ScriptedFetch();
+      routeHappyPaths(scripted, { workers: [worker({ id: longId, queue: 'reports' })] });
+      routeTasks(scripted, { failed: [], waiting: 0 });
+      router.navigate(`/health/workers?worker=${longId}`, { replace: true });
+
+      const { findByRole, findByText } = renderRoute();
+      await fireEvent.click(await findByRole('button', { name: 'Copy the worker ID' }));
+
+      await waitFor(() => expect(written).toEqual([longId]));
+      expect(await findByText('Copied')).not.toBeNull();
+    });
+  });
 });

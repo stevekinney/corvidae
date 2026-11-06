@@ -361,6 +361,28 @@ describe('Workers route — a worker’s deployment', () => {
     ]);
   });
 
+  test('Resume deployment calls weft.worker.deployments.resume with the deployment’s name, with no dialog', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      workers: [worker({ id: 'wkr_billing', deploymentName: 'billing', buildId: 'build-a' })],
+      deployments: [deployment({ deploymentName: 'billing' })],
+    });
+    routeBilling(scripted);
+    scripted.routeJsonRpcMethod('weft.worker.deployments.resume', { ok: true });
+
+    resetLocation('/health/workers?worker=wkr_billing&tab=queues');
+    const { findByRole, queryByRole } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Resume deployment' }));
+
+    await waitFor(() =>
+      expect(callsTo(scripted, 'weft.worker.deployments.resume')).toEqual([
+        { deploymentName: 'billing' },
+      ]),
+    );
+    expect(queryByRole('dialog')).toBeNull();
+  });
+
   test('Promote previews the move against the routing generation before anything is applied', async () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
