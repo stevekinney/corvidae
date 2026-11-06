@@ -140,7 +140,7 @@
   }
 
   .ib-retention-field__days {
-    /* Wide enough for the days, their unit and the stepper at once. */
-    inline-size: 10rem;
+    /* Wide enough for the longest value the field accepts, or one it refuses (9,999), beside the unit and the stepper. */
+    inline-size: 12rem;
   }
 </style>

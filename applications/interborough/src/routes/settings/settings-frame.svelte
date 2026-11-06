@@ -7,11 +7,16 @@
    * happens. It also reads them again when the window regains focus, which is how it catches up
    * when the stream is down.
    *
+   * It words its own failure, so the navigation and the heading stay (design row 50m): with nothing
+   * to show, an error state replaces the section's content, and when a read fails after the
+   * settings were shown, one refresh-failed banner sits over the old values, which stay at full
+   * contrast. Never both.
+   *
    * Owner scoping does not apply: the settings are deployment-wide, and the caller holds the scopes
    * that read and change them (`bureau.settings:read`, `:write`). Whether the Bureau is failing or
    * refusing is the view frame's to say (`app/view-probes.ts`).
    */
-  import { Alert, Button, PageHeader, Skeleton } from '@lostgradient/cinder';
+  import { Alert, Banner, Button, ErrorState, PageHeader, Skeleton } from '@lostgradient/cinder';
   import { CircleCheck } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onMount, type Snippet } from 'svelte';
@@ -108,6 +113,9 @@
     undefined,
   );
 
+  /** Whether a read of the settings failed after they were shown: the old values stay, under a banner. */
+  const refreshFailed = $derived(snapshot.isRefetchError && snapshot.data !== undefined);
+
   // A refetch of a query that holds no data joins the fetch in flight, which may have read the
   // settings before the change; the reader reads again when the read it got is not known to be new
   // enough (`settings-reader.ts`).
@@ -146,6 +154,18 @@
       {...wide.current ? { description: intro } : {}}
       {...headerStatus === undefined ? {} : { actions: headerStatusLine }}
     />
+    {#if phase === 'ready' && refreshFailed}
+      <div class="weft-settings__refresh-failed">
+        <Banner
+          preset="refresh-failed"
+          title={SETTINGS_COPY.refreshFailed.title}
+          dataUpdatedAt={snapshot.dataUpdatedAt}
+          retryLabel={RETRY_LABEL}
+          onRetry={tryAgain}
+          data-testid="settings-refresh-failed"
+        />
+      </div>
+    {/if}
   </div>
 
   {#if phase === 'ready' && schema.data !== undefined && snapshot.data !== undefined}
@@ -164,11 +184,14 @@
   {:else}
     <div class="weft-settings__content">
       {#if phase === 'error'}
-        <Alert variant="danger">
-          <p class="weft-settings__alert-title">{VIEW_COPY.settings.error.title}</p>
-          <p class="weft-settings__alert-body">{VIEW_COPY.settings.error.description}</p>
-          <Button variant="secondary" size="sm" onclick={tryAgain}>{RETRY_LABEL}</Button>
-        </Alert>
+        <ErrorState
+          variant="flat"
+          title={VIEW_COPY.settings.error.title}
+          description={VIEW_COPY.settings.error.description}
+          headingLevel={2}
+          retryLabel={RETRY_LABEL}
+          onRetry={tryAgain}
+        />
       {:else if phase === 'canceled'}
         <div data-testid="settings-canceled">
           <p class="weft-settings__alert-body">{SETTINGS_COPY.general.loading.canceled}</p>
@@ -241,9 +264,8 @@
     font-size: var(--cinder-text-sm);
   }
 
-  .weft-settings__alert-title {
-    margin: 0;
-    font-weight: 600;
+  .weft-settings__refresh-failed {
+    margin-block-start: var(--cinder-space-3);
   }
 
   .weft-settings__alert-body {

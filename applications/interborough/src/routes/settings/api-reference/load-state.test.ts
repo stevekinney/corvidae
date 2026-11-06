@@ -22,9 +22,9 @@ describe('LoadState', () => {
     });
 
     expect(view.container.textContent).toContain('Couldn’t load the API reference.');
-    expect(view.container.textContent).toContain(
-      'The server answered with an error (500). Nothing you did caused it.',
-    );
+    expect(view.container.textContent).toContain('The server answered with an error (500).');
+    // The board reads the error alone, with Try again.
+    expect(view.container.textContent).not.toContain('Nothing you did caused it');
     await fireEvent.click(view.getByRole('button', { name: 'Try again' }));
     expect(retried).toBe(1);
   });
@@ -34,9 +34,7 @@ describe('LoadState', () => {
       props: { kind: 'error', onCancel: () => undefined, onRetry: () => undefined },
     });
 
-    expect(view.container.textContent).toContain(
-      'Interborough didn’t answer. Nothing you did caused it.',
-    );
+    expect(view.container.textContent).toContain('Interborough didn’t answer.');
     expect(view.container.textContent).not.toContain('(undefined)');
   });
 

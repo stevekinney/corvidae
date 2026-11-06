@@ -3,10 +3,12 @@
    * The Operations tab (board PageSettingsSections, "API reference · Operations"): a group select
    * that reads "All groups", the count of operations shown, and a table of method, path, what the
    * operation does and the scope it needs. A row opens to show an example request body and the
-   * response, in code blocks. The operations are the server's own OpenAPI description
-   * (`api-operations.ts`).
+   * response, in code blocks; its toggle sits before the method, so the four columns the board
+   * names are the whole table and the scope is never pushed out of view. The path and the summary
+   * are held to a width and wrap inside it, so no column asks for more than the table has. The
+   * operations are the server's own OpenAPI description (`api-operations.ts`).
    */
-  import { Badge, Button, CodeBlock, Select, Table, VisuallyHidden } from '@lostgradient/cinder';
+  import { Badge, Button, CodeBlock, Select, Table } from '@lostgradient/cinder';
   import { ChevronDown, ChevronRight } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { SvelteSet } from 'svelte/reactivity';
@@ -102,17 +104,40 @@
             <Table.HeaderCell>{copy.columns.path}</Table.HeaderCell>
             <Table.HeaderCell>{copy.columns.summary}</Table.HeaderCell>
             <Table.HeaderCell>{copy.columns.scope}</Table.HeaderCell>
-            <Table.HeaderCell
-              ><VisuallyHidden>{copy.columns.details}</VisuallyHidden></Table.HeaderCell
-            >
           </Table.Row>
         </Table.Header>
         <Table.Body>
           {#each shown as operation (operation.id)}
             <Table.Row data-operation={operation.id}>
-              <Table.Cell><Badge variant="neutral" monospace>{operation.method}</Badge></Table.Cell>
-              <Table.Cell><code class="ib-api-operations__path">{operation.path}</code></Table.Cell>
-              <Table.Cell>{operation.summary}</Table.Cell>
+              <Table.Cell>
+                <span class="ib-api-operations__method">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    label={copy.toggleLabel(operation.method, operation.path)}
+                    aria-expanded={open.has(operation.id)}
+                    aria-controls={detailId(operation)}
+                    onclick={() => toggle(operation.id)}
+                  >
+                    {#if open.has(operation.id)}
+                      <ChevronDown size={16} aria-hidden="true" />
+                    {:else}
+                      <ChevronRight size={16} aria-hidden="true" />
+                    {/if}
+                  </Button>
+                  <Badge variant="neutral" monospace>{operation.method}</Badge>
+                </span>
+              </Table.Cell>
+              <Table.Cell
+                ><code class="ib-api-operations__path"
+                  >{#each operation.path.split('/') as segment, index (index)}{#if index > 0}/<wbr
+                      />{/if}{segment}{/each}</code
+                ></Table.Cell
+              >
+              <Table.Cell
+                ><span class="ib-api-operations__summary">{operation.summary}</span></Table.Cell
+              >
               <Table.Cell>
                 {#if operation.scope === undefined}
                   <span class="ib-api-operations__muted">{copy.noScope}</span>
@@ -120,27 +145,10 @@
                   <code class="ib-api-operations__scope">{operation.scope}</code>
                 {/if}
               </Table.Cell>
-              <Table.Cell align="right">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  label={copy.toggleLabel(operation.method, operation.path)}
-                  aria-expanded={open.has(operation.id)}
-                  aria-controls={detailId(operation)}
-                  onclick={() => toggle(operation.id)}
-                >
-                  {#if open.has(operation.id)}
-                    <ChevronDown size={16} aria-hidden="true" />
-                  {:else}
-                    <ChevronRight size={16} aria-hidden="true" />
-                  {/if}
-                </Button>
-              </Table.Cell>
             </Table.Row>
             {#if open.has(operation.id)}
               <Table.Row>
-                <Table.Cell colspan={5}>
+                <Table.Cell colspan={4}>
                   <div class="ib-api-operations__detail" id={detailId(operation)}>
                     <section aria-label={copy.requestBody}>
                       <h3 class="ib-api-operations__heading">{copy.requestBody}</h3>
@@ -217,6 +225,24 @@
   .ib-api-operations__scope {
     font-size: var(--cinder-text-xs);
     overflow-wrap: anywhere;
+  }
+
+  /* A scrolling table is as wide as its cells' text unwrapped, so the two long columns are held to
+   * a width and wrap inside it: the whole row, scope included, is in view at the table's width. */
+  .ib-api-operations__path {
+    display: block;
+    max-inline-size: 13rem;
+  }
+
+  .ib-api-operations__summary {
+    display: block;
+    max-inline-size: 14rem;
+  }
+
+  .ib-api-operations__method {
+    display: inline-flex;
+    gap: var(--cinder-space-1);
+    align-items: center;
   }
 
   .ib-api-operations__detail {

@@ -61,11 +61,22 @@ describe('the six cards of the table', () => {
 
     expect(root.textContent).toContain('Not loaded');
     expect(root.textContent).toContain('A setting is invalid');
-    expect(root.textContent).toContain(
-      'teamKey: Team key must be 2 to 5 capital letters. You entered cor.',
-    );
+    expect(root.textContent).toContain('Team key must be 2 to 5 capital letters. You entered cor.');
+    // The field's key is a name in the plugin's code, not words a person reads.
+    expect(root.textContent).not.toContain('teamKey');
     await fireEvent.click(getByRole('button', { name: 'Fix the setting' }));
     expect(onFixSetting).toHaveBeenCalledTimes(1);
+  });
+
+  test('configuration-invalid puts the field’s name, never its key, before a message that lacks one', () => {
+    const { root } = card({
+      code: 'configuration-invalid',
+      field: 'groundingThreshold',
+      message: 'Too small: expected number to be >=0',
+    });
+
+    expect(root.textContent).toContain('Grounding threshold: Too small: expected number to be >=0');
+    expect(root.textContent).not.toContain('groundingThreshold');
   });
 
   test('reference-unresolved', () => {
@@ -233,7 +244,7 @@ describe('the cards for the codes the host added', () => {
     );
     expect(root.textContent).toContain('Not loaded');
     expect(root.textContent).toContain('A model list names a model nobody offers');
-    expect(root.textContent).toContain('models[1]: No current model of anthropic matches "sonet".');
+    expect(root.textContent).toContain('Models: No current model of anthropic matches "sonet".');
     await fireEvent.click(getByRole('button', { name: 'Fix the setting' }));
     expect(onFixSetting).toHaveBeenCalledTimes(1);
   });

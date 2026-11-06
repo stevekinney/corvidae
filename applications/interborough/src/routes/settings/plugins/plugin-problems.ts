@@ -11,6 +11,7 @@ import type { StatusDotStatus } from '@lostgradient/cinder';
 import { nameList, PLUGINS_COPY } from '../../../app/copy.ts';
 import { agentEditPath } from '../../../lib/agent-paths.ts';
 import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';
+import { fieldWords } from './plugin-configuration.ts';
 import { identifierOf } from './plugin-presentation.ts';
 
 /** What a problem's button does. */
@@ -119,6 +120,23 @@ function isAllowlistField(field: string): boolean {
   return /^models(\[\d+\])?$/.test(field);
 }
 
+/**
+ * A configuration problem's sentence, which names the field the way the form does ("Grounding
+ * threshold"), never by its key. A message that already opens with the field's name is left as the
+ * plugin wrote it; any other gets the name put in front, so the person can tell which field it is.
+ * A key is a path (`models[2]`, `search.address`), so the name is its last segment's.
+ */
+export function configurationBody(field: string, message: string): string {
+  const last =
+    field
+      .replaceAll(/\[\d+\]/g, '')
+      .split('.')
+      .pop() ?? '';
+  const label = last === '' ? '' : fieldWords(last);
+  const named = label !== '' && message.toLowerCase().startsWith(label.toLowerCase());
+  return PLUGINS_COPY.problems.configurationInvalid.body(named ? '' : label, message);
+}
+
 function configurationView(problem: PluginProblem): ProblemView {
   const words = PLUGINS_COPY.problems;
   const field = text(problem, 'field');
@@ -127,7 +145,7 @@ function configurationView(problem: PluginProblem): ProblemView {
   return {
     status: { label: set.status, dot: NOT_LOADED },
     title: set.title,
-    body: words.configurationInvalid.body(field, text(problem, 'message')),
+    body: configurationBody(field, text(problem, 'message')),
     action: { kind: 'setting', label: set.action },
   };
 }

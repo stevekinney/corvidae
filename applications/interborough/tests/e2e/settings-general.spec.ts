@@ -255,13 +255,22 @@ test.describe('Settings › General', () => {
 
     const frame = page.locator('[data-view="settings"]');
     await expect(frame).toHaveAttribute('data-state', 'error');
-    await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+    // The section's content is the error state; the navigation and the heading stay, as on Plugins.
+    await expect(frame.getByRole('heading', { level: 1 })).toHaveText('General');
+    await expect(
+      frame.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', {
+        name: 'General',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(frame.getByRole('heading', { level: 2 })).toHaveText(
       VIEW_COPY.settings.error.title,
     );
     await expect(frame.getByRole('button', { name: 'Try again' })).toBeVisible();
-    // The whole section is the error state: no rows, and no banner beside it.
+    // No rows, and no refresh banner beside it.
     await expect(settingRow(page, 'tools.wakeup')).toHaveCount(0);
     await expect(frame.getByRole('alert')).toHaveCount(1);
+    await expect(page.getByTestId('settings-refresh-failed')).toHaveCount(0);
     await captureAtBothWidths(page, 'load-failed');
   });
 

@@ -12,7 +12,7 @@ import { isRetentionWindowNode, RETENTION_WITHOUT_KEEP_FOREVER } from './retenti
 
 const windows = Object.entries(PUBLISHED_SCHEMA.properties).filter(
   ([key, node]) => key.startsWith('retention.') && isRetentionWindowNode(node),
-) as [string, SchemaNode][];
+);
 
 const takesForever = (node: SchemaNode) =>
   (node.anyOf ?? []).some((option) => option.const === 'forever');

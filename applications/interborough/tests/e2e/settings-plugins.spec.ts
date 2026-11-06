@@ -13,8 +13,9 @@ import type { Page } from '@playwright/test';
 
 import { PLUGINS_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { withSampleCatalog } from './sample-catalog.ts';
 
 const SOURCE = 'settings-plugins.spec.ts';
 const ROUTE = '/settings/plugins';
@@ -28,9 +29,9 @@ async function captureAtEveryWidth(page: Page, state: string, route = ROUTE) {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
-async function open(page: Page, plugin: string, width = 1280) {
+async function open(page: Page, plugin: string, width = 1280, origin = E2E_SHOWCASE_URL) {
   await page.setViewportSize({ width, height: 900 });
-  await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}?plugin=${plugin}`);
+  await page.goto(`${origin}${ROUTE}?plugin=${plugin}`);
   await expect(page.locator(`[data-plugin-detail="${plugin}"]`)).toBeVisible();
 }
 
@@ -199,6 +200,26 @@ test.describe('Settings › Plugins', () => {
       'readable only by you. The models appear as soon as the key passes a test.',
     );
     await captureAtEveryWidth(page, 'needs-setup');
+  });
+
+  test('a running provider plugin with its key saved: the secret reads Set with Replace, and the note about saving a missing key is gone', async ({
+    page,
+  }) => {
+    // The main host has Anthropic connected: its key is saved, and the sample catalog fills its models.
+    await withSampleCatalog(page);
+    await open(page, 'anthropic', 1280, E2E_BASE_URL);
+
+    const anthropic = detail(page, 'anthropic');
+    await expect(anthropic).not.toContainText('Needs setup');
+    const secret = anthropic.locator('[data-secret="anthropic-api-key"]');
+    await expect(secret).toContainText('anthropic-api-key');
+    await expect(secret).toContainText('Set');
+    await expect(secret).not.toContainText('Missing');
+    await expect(secret.getByRole('button', { name: 'Replace anthropic-api-key' })).toHaveText(
+      'Replace',
+    );
+    await expect(anthropic.getByTestId('plugin-secret-note')).toHaveCount(0);
+    await captureAtEveryWidth(page, 'secret-set');
   });
 
   test('loading shows skeleton rows and then a status line with Cancel, and a failure says so with Try again and Open Health', async ({

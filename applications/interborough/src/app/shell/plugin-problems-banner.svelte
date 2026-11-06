@@ -12,6 +12,7 @@
    * with something unreadable, has no banner: the Plugins page says why.
    */
   import { Banner, Button } from '@lostgradient/cinder';
+  import { TriangleAlert } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getPlugins, needAttentionCount } from '../../lib/host-plugins.ts';
@@ -65,6 +66,8 @@
     data-testid="plugins-startup-banner"
     onDismiss={() => (dismissed = true)}
   >
+    <!-- The warning glyph the board draws, as the restart notice below it draws its own. -->
+    {#snippet icon()}<TriangleAlert size={16} aria-hidden="true" />{/snippet}
     {copy.consequence(count)}
     {#snippet actions()}
       <Button variant="secondary" size="sm" href={router.href(path)} onclick={open}

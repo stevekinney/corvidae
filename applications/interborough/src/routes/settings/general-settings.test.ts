@@ -626,6 +626,62 @@ describe('where the host keeps its state, on a host of each mode', () => {
   );
 });
 
+describe('a page whose read fails', () => {
+  test('with nothing to show keeps its navigation and heading, and the error state replaces the content', async () => {
+    const view = open(servedSettings(), {
+      extra: {
+        'bureau.settings.get': () => {
+          throw new StubFault('Internal', 500, 'The server broke.');
+        },
+        'bureau.settings.schema': () => {
+          throw new StubFault('Internal', 500, 'The server broke.');
+        },
+      },
+    });
+
+    await view.findByRole('button', { name: 'Try again' });
+    expect(view.getByRole('heading', { level: 1 }).textContent).toBe('General');
+    expect(
+      within(view.container).getByRole('navigation', { name: 'Settings sections' }),
+    ).not.toBeNull();
+    expect(view.queryByRole('group', READY)).toBeNull();
+    expect(view.queryByTestId('settings-refresh-failed')).toBeNull();
+  });
+
+  test('after the settings were shown puts one banner over the old values, and Try again clears it', async () => {
+    const served = servedSettings({ revision: 3 });
+    const stream = settingsStream();
+    let failing = false;
+    const view = open(served, {
+      stream,
+      extra: {
+        'bureau.settings.get': () => {
+          if (failing) throw new StubFault('Internal', 500, 'The server broke.');
+          return settingsSnapshot(served);
+        },
+      },
+    });
+    await view.findByRole('group', READY);
+    await waitFor(() => expect(stream.opened).toEqual([undefined]));
+
+    failing = true;
+    served.revision = 4;
+    stream.push(4, ['tools.decide']);
+
+    const banner = await view.findByTestId('settings-refresh-failed');
+    expect(banner.textContent).toContain('Couldn’t refresh these settings.');
+    expect(banner.textContent).toContain('Showing what loaded as of');
+    // The old values stay, at full contrast, and there is no full error state beside the banner.
+    expect(view.getByRole('group', READY)).not.toBeNull();
+    expect(toggleOf(view.container, 'tools.decide')).not.toBeNull();
+    expect(view.container.querySelector('.cinder-error-state')).toBeNull();
+
+    failing = false;
+    await fireEvent.click(within(banner).getByRole('button', { name: 'Try again' }));
+    await waitUntil(() => view.queryByTestId('settings-refresh-failed') === null);
+  });
+});
+
 describe('a page that follows the Bureau', () => {
   test('takes in a change made elsewhere to a setting that is not being edited', async () => {
     const served = servedSettings({ revision: 3 });

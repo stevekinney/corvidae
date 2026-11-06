@@ -65,12 +65,23 @@ test('Operations lists the server’s operations with their scope, a group selec
     'Path',
     'What it does',
     'Scope',
-    'Request and response',
   ]);
   const count = page.getByTestId('api-operations-count');
   await expect(count).toHaveText(/^\d+ operations$/);
   const all = Number.parseInt((await count.textContent()) ?? '0', 10);
   expect(all).toBeGreaterThan(1);
+  // The whole row is in view at the table's width: the scope is not pushed out to a scroll, and
+  // the summary wraps whole words instead of being clipped.
+  const frame = await page.locator('.cinder-table-scroll').boundingBox();
+  const firstScope = await table.locator('tbody tr').first().locator('td').nth(3).boundingBox();
+  expect((firstScope?.x ?? 0) + (firstScope?.width ?? 0)).toBeLessThanOrEqual(
+    (frame?.x ?? 0) + (frame?.width ?? 0),
+  );
+  expect(
+    await page
+      .locator('.cinder-table-scroll')
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
   // The scope a row names is one the server's own description names.
   await expect(table.locator('[data-operation="weft.workflows.start"]')).toContainText(
     'workflows:write',
@@ -88,12 +99,14 @@ test('Operations lists the server’s operations with their scope, a group selec
   await expect(count).toHaveText(`${all} operations`);
 
   // A row opens to an example request body and the response.
+  // Starting a workflow is the operation the board opens: its request is a body, not the empty one.
   const toggle = table
-    .getByRole('button', { name: /Request and response for POST .*workflows/ })
-    .first();
+    .locator('[data-operation="weft.workflows.start"]')
+    .getByRole('button', { name: /Request and response for POST/ });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('region', { name: 'Request body' }).first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Request body' }).first()).toContainText('"type"');
   await expect(page.getByRole('region', { name: /^Response, 2\d\d$/ }).first()).toBeVisible();
   await captureAtEveryWidth(page, 'operation-open', 'Operations');
 });

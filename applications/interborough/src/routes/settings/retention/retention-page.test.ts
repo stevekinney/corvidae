@@ -228,7 +228,9 @@ describe('Settings › Data and retention', () => {
     await fireEvent.blur(days);
     await fireEvent.focusOut(days);
     await waitFor(() => expect(updates()).toHaveLength(1));
-    expect(updates()[0]?.params['patch']).toEqual({ 'retention.receipts': { olderThan: 14 * DAY } });
+    expect(updates()[0]?.params['patch']).toEqual({
+      'retention.receipts': { olderThan: 14 * DAY },
+    });
   });
 
   test('a number of days outside 1 to 3650 fails at the field and nothing is saved', async () => {

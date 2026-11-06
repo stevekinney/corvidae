@@ -1113,7 +1113,7 @@ describe('problems', () => {
       (problem) => problem.textContent ?? '',
     );
     expect(problems).toHaveLength(2);
-    expect(problems[0]).toContain('teamKey: Team key must be 2 to 5 capital letters.');
+    expect(problems[0]).toContain('Team key must be 2 to 5 capital letters.');
     expect(problems[1]).toContain('Reported as brand-new-code.');
   });
 

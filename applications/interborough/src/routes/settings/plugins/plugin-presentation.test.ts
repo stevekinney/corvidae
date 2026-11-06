@@ -352,6 +352,18 @@ describe('problemView', () => {
     expect(problemView({ code: 'configuration-invalid', field: '', message: 'bad' }).body).toBe(
       'bad',
     );
+    // A message with no name in it gets the field's, as the form words it, for a path as well as a key.
+    expect(
+      problemView({ code: 'configuration-invalid', field: 'models[2]', message: 'Not offered' })
+        .body,
+    ).toBe('Models: Not offered');
+    expect(
+      problemView({
+        code: 'configuration-invalid',
+        field: 'search.address',
+        message: 'Address must be https.',
+      }).body,
+    ).toBe('Address must be https.');
     expect(
       problemView({ code: 'configuration-invalid', field: 'models', message: 'bad' }).title,
     ).toBe('A model list names a model nobody offers');

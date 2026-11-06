@@ -409,7 +409,9 @@ const connectHost = await startConnectHost({
 // The seventh host, which only the showcase specification opens (`showcase.spec.ts`): the shape of
 // `bun run dev -- --showcase`, the sample world's seed playing its story into a home of its own and
 // leaving the host running at Monday, Nov 2, a little after 10:45 AM on its offset clock.
-const showcaseHome = join(scratch, 'showcase-home');
+// The home is a `.interborough` directory, as a person's is, so the secrets directory the Plugins page
+// names reads `~/.interborough/secrets` rather than a path into this run's scratch directory.
+const showcaseHome = join(scratch, 'showcase-home', '.interborough');
 const { host: showcaseHost } = await seedSampleWorld(showcaseHome, {
   host: { port: E2E_SHOWCASE_PORT, buildDirectory },
 });

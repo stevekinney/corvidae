@@ -16,7 +16,7 @@ import type { Page } from '@playwright/test';
 import { DATA_RETENTION_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const SOURCE = 'settings-data-and-retention.spec.ts';
 const ROUTE = '/settings/data-and-retention';
@@ -96,7 +96,9 @@ test.describe('Settings › Data and retention', () => {
     }
     await expect(page.getByText(/older than/i)).toHaveCount(0);
     // Receipts falls back to a finite window when cleared, so it cannot offer Keep forever.
-    await expect(row(page, 'retention.receipts').getByRole('radio', { name: 'Keep forever' })).toHaveCount(0);
+    await expect(
+      row(page, 'retention.receipts').getByRole('radio', { name: 'Keep forever' }),
+    ).toHaveCount(0);
 
     // Storage is one read-only row, with the alert firing and a link to Health, and no meter.
     const storage = row(page, 'storage-usage');
@@ -131,6 +133,8 @@ test.describe('Settings › Data and retention', () => {
     await days.fill('365');
     await days.blur();
     await expect(audit).toContainText('Saved just now');
+    // The whole number is readable: the field is not narrower than its value.
+    expect(await days.evaluate((input) => input.scrollWidth <= input.clientWidth)).toBe(true);
     await expect(page.getByTestId('settings-header-status')).toContainText('Saved just now');
     await captureAtEveryWidth(page, 'saved');
 
@@ -156,12 +160,53 @@ test.describe('Settings › Data and retention', () => {
 
     await expect(runs).toContainText('Enter a number from 1 to 3650. Nothing was saved.');
     await expect(days).toHaveAttribute('aria-invalid', 'true');
+    // Even the value it refuses shows whole, so the person sees what they typed.
+    expect(await days.evaluate((input) => input.scrollWidth <= input.clientWidth)).toBe(true);
     await captureAtEveryWidth(page, 'field-error');
 
     await page.reload();
     await expect(
       row(page, 'retention.runs').getByRole('radio', { name: 'Keep forever' }),
     ).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('a read that fails after the settings were shown puts one banner over the old values, which stay', async ({
+    page,
+    pageErrors,
+  }) => {
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      reason: 'the test answers the refresh of the settings with a 500 to draw the banner',
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(ROUTE);
+    const audit = row(page, 'retention.audit');
+    await expect(audit.getByRole('spinbutton')).toHaveValue('90');
+
+    // The next read of the settings fails, and the window regaining focus asks for one.
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method === 'bureau.settings.get') {
+        await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+    });
+
+    const banner = page.getByTestId('settings-refresh-failed');
+    await expect(banner).toContainText('Couldn’t refresh these settings.');
+    await expect(banner).toContainText('Showing what loaded as of');
+    await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
+    // The old values stay at full contrast, and no full error state sits beside the banner.
+    await expect(audit.getByRole('spinbutton')).toHaveValue('90');
+    await expect(page.locator('.cinder-error-state')).toHaveCount(0);
+    await captureAtEveryWidth(page, 'refresh-failed');
   });
 
   test('Clean-up is one row, "Remove expired records", with Clean up now as its own action', async ({

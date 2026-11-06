@@ -1598,8 +1598,8 @@ export const API_REFERENCE_COPY = {
     title: 'Couldn’t load the API reference.',
     description: (status: number | undefined): string =>
       status === undefined
-        ? 'Interborough didn’t answer. Nothing you did caused it.'
-        : `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+        ? 'Interborough didn’t answer.'
+        : `The server answered with an error (${String(status)}).`,
   },
   /** Said in place of a part the caller's scopes do not reach. */
   notAvailable: (what: string): string => `${what} is not available to you`,
@@ -1615,7 +1615,6 @@ export const API_REFERENCE_COPY = {
       path: 'Path',
       summary: 'What it does',
       scope: 'Scope',
-      details: 'Request and response',
     },
     /** The accessible name of the button that opens a row's request and response. */
     toggleLabel: (method: string, path: string): string =>
@@ -2203,8 +2202,9 @@ export const PLUGINS_COPY = {
     configurationInvalid: {
       status: 'Not loaded',
       title: 'A setting is invalid',
-      body: (field: string, message: string): string =>
-        field === '' ? message : `${field}: ${message}`,
+      /** `label` is the field as a person reads it ("Grounding threshold"), never its key; `message` is what the plugin said. */
+      body: (label: string, message: string): string =>
+        label === '' ? message : `${label}: ${message}`,
       action: 'Fix the setting',
     },
     /** A provider plugin's `models` allowlist names a model nobody offers: `configuration-invalid` at `models[<index>]`. */
@@ -2577,11 +2577,12 @@ export const SETTINGS_COPY = {
     description:
       'Reload to see what they are now. Reloading discards your changes, and saving them first would overwrite the change.',
   },
-  /** The settings could not be read again while the page already holds them. */
-  refreshFailed: {
-    title: 'The settings could not be refreshed',
-    description: 'What you see may be out of date. Your edits are kept.',
-  },
+  /**
+   * The settings could not be read again while the page already holds them: the banner over the old
+   * values (board PageSettingsSections, "Error · old data on screen"). Cinder's `refresh-failed`
+   * preset writes the rest: when what is shown loaded, and the way to try again.
+   */
+  refreshFailed: { title: 'Couldn’t refresh these settings.' },
   saveFailed: 'The settings were not saved',
   forbidden: 'You may read the settings but not change them.',
   hostPaths: {

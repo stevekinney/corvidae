@@ -247,7 +247,12 @@ function frame(container: HTMLElement): HTMLElement {
  * the engine's reviews (see "the Reviews view", which asserts that and the 401).
  */
 const VIEWS_THAT_CAN_FAIL = VIEW_NAMES.filter(
-  (view) => view !== 'reviews' && view !== 'health' && view !== 'home',
+  (view) =>
+    view !== 'reviews' &&
+    view !== 'health' &&
+    view !== 'home' &&
+    // A page that words its own failure shows itself, with its navigation and heading, instead.
+    VIEWS[view].pageOwnsFailure !== true,
 );
 
 // Health is left out of the probe cases below: it asks the server nothing before it shows. Its
@@ -1151,6 +1156,27 @@ describe('the Reviews view', () => {
   test('has no empty state of its own, so a page with nothing waiting says so itself', () => {
     expect(VIEWS.reviews.canBeEmpty).toBe(false);
     expect(VIEW_COPY.reviews.empty).toBeUndefined();
+  });
+});
+
+describe('the Settings sections that read the settings', () => {
+  test('show the page when the probe fails, so the section words its own failure beside its navigation', async () => {
+    stub('settings', 'error');
+    const { container, findByTestId, queryByRole } = mount('settings');
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+    expect(await findByTestId('content')).not.toBeNull();
+    // Not the frame's own error: the page is on screen and the frame's heading is not.
+    expect(queryByRole('heading', { level: 1, name: VIEW_COPY.settings.error.title })).toBeNull();
+  });
+
+  test('are still the frame’s forbidden state when the Bureau refuses the caller', async () => {
+    stub('settings', 'forbidden');
+    const { container, findByRole } = mount('settings');
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.settings.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
   });
 });
 

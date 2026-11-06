@@ -115,7 +115,7 @@
       {autosave}
       reverted={revert.isReverted(key)}
       custom={windowField}
-      controlWidth="24rem"
+      controlWidth="26rem"
       onEdit={() => revert.forget(key)}
     />
   {/if}

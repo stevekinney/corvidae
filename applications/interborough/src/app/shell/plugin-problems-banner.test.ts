@@ -56,6 +56,8 @@ describe('the plugins that did not load banner', () => {
     expect(region()?.textContent).toContain(
       'Agents and workflows that use them show as unavailable.',
     );
+    // The board draws the warning glyph, as the restart banner does.
+    expect(region()?.querySelector('.cinder-banner__icon svg')).not.toBeNull();
   });
 
   test('counts a plugin that waits for its key beside one that was skipped, the list the Plugins page opens with', async () => {
