@@ -337,7 +337,9 @@ export const CONTRACT: Record<string, ComponentContract> = {
       size: { optional: true, type_kind: 'TSUnionType', default: L('md') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
-    snippets: {},
+    snippets: {
+      descriptionAction: s0(true),
+    },
   },
 
   'list-detail': {
@@ -633,6 +635,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       name: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       value: { optional: true, type_kind: 'TSStringKeyword', default: L('on') },
       form: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      standalone: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      labelPosition: { optional: true, type_kind: 'TSUnionType', default: L('end') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},
