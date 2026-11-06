@@ -25,6 +25,7 @@ import { HostMutationError } from './host-mutation-context.ts';
  * @module provider-routes
  */
 
+import { unexpectedJsonRouteFailure } from './json-route-failure.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   ProviderConflictError,
@@ -70,7 +71,12 @@ export async function readObject(request: Request): Promise<Record<string, unkno
 }
 
 /** Run `work` and answer with its result, or with the refusal its error stands for. */
-async function respond(work: () => Promise<unknown>): Promise<Response> {
+async function respond(
+  work: () => Promise<unknown>,
+  method: string,
+  route: string,
+  log?: (message: string) => void,
+): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
@@ -129,10 +135,12 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
     }
 
     // Nothing from the failure is repeated: it may hold a path or, from a provider, a value.
-    return Response.json(
-      { error: 'failed', message: 'The provider configuration could not be changed.' },
-      { status: 500 },
-    );
+    return unexpectedJsonRouteFailure({
+      log,
+      method,
+      route,
+      message: 'The provider configuration could not be changed.',
+    });
   }
 }
 
@@ -141,47 +149,66 @@ export function providerRoutes(
   manager: ProviderManager,
   refuse: Refuse,
   authority: Pick<HostAuthority, 'mutation'>,
+  log?: (message: string) => void,
 ) {
   return {
     [HOST_PROVIDERS_ROUTE]: {
-      GET: (request: Request) => refuse(request) ?? respond(() => manager.snapshot()),
+      GET: (request: Request) =>
+        refuse(request) ?? respond(() => manager.snapshot(), 'GET', HOST_PROVIDERS_ROUTE, log),
     },
     [HOST_PROVIDER_ROUTE]: {
       PUT: (request: Bun.BunRequest<typeof HOST_PROVIDER_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          const mutation = await authority.mutation(request, body);
-          return manager.connect(
-            {
-              provider: request.params.name,
-              apiKey: body['apiKey'],
-              models: body['models'],
-            },
-            mutation,
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            const mutation = await authority.mutation(request, body);
+            return manager.connect(
+              {
+                provider: request.params.name,
+                apiKey: body['apiKey'],
+                models: body['models'],
+              },
+              mutation,
+            );
+          },
+          'PUT',
+          HOST_PROVIDER_ROUTE,
+          log,
+        ),
       DELETE: (request: Bun.BunRequest<typeof HOST_PROVIDER_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const mutation = await authority.mutation(request, await readObject(request));
-          return manager.disconnect(request.params.name, mutation);
-        }),
+        respond(
+          async () => {
+            const mutation = await authority.mutation(request, await readObject(request));
+            return manager.disconnect(request.params.name, mutation);
+          },
+          'DELETE',
+          HOST_PROVIDER_ROUTE,
+          log,
+        ),
     },
     [HOST_PROVIDERS_RELOAD_ROUTE]: {
-      POST: (request: Request) => refuse(request) ?? respond(() => manager.reload()),
+      POST: (request: Request) =>
+        refuse(request) ??
+        respond(() => manager.reload(), 'POST', HOST_PROVIDERS_RELOAD_ROUTE, log),
     },
     [HOST_CATALOG_ROUTE]: {
       PUT: (request: Request) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          return manager.editCatalog(
-            body['edits'],
-            body['base'],
-            await authority.mutation(request, body),
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            return manager.editCatalog(
+              body['edits'],
+              body['base'],
+              await authority.mutation(request, body),
+            );
+          },
+          'PUT',
+          HOST_CATALOG_ROUTE,
+          log,
+        ),
     },
   };
 }

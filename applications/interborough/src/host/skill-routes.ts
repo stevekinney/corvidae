@@ -18,6 +18,7 @@
 
 import type { HostAuthority } from './host-authority.ts';
 import { HostMutationError } from './host-mutation-context.ts';
+import { unexpectedJsonRouteFailure } from './json-route-failure.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   SkillAuditError,
@@ -57,7 +58,12 @@ async function readObject(request: Request): Promise<Record<string, unknown>> {
 }
 
 /** Run `work` and answer with its result, or with the refusal its error stands for. */
-async function respond(work: () => Promise<unknown>): Promise<Response> {
+async function respond(
+  work: () => Promise<unknown>,
+  method: string,
+  route: string,
+  log?: (message: string) => void,
+): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
@@ -111,10 +117,12 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
       );
     }
     // Nothing from the failure is repeated: it may hold a path.
-    return Response.json(
-      { error: 'failed', message: 'The skill configuration could not be changed.' },
-      { status: 500 },
-    );
+    return unexpectedJsonRouteFailure({
+      log,
+      method,
+      route,
+      message: 'The skill configuration could not be changed.',
+    });
   }
 }
 
@@ -123,21 +131,28 @@ export function skillRoutes(
   manager: SkillManager,
   refuse: Refuse,
   authority: Pick<HostAuthority, 'mutation'>,
+  log?: (message: string) => void,
 ) {
   return {
     [HOST_SKILL_TRUST_ROUTE]: {
       PUT: (request: Bun.BunRequest<typeof HOST_SKILL_TRUST_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          return manager.setTrust(
-            { source: request.params.id, trusted: body['trusted'] },
-            await authority.mutation(request, body),
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            return manager.setTrust(
+              { source: request.params.id, trusted: body['trusted'] },
+              await authority.mutation(request, body),
+            );
+          },
+          'PUT',
+          HOST_SKILL_TRUST_ROUTE,
+          log,
+        ),
     },
     [HOST_SKILLS_REFRESH_ROUTE]: {
-      POST: (request: Request) => refuse(request) ?? respond(() => manager.refresh()),
+      POST: (request: Request) =>
+        refuse(request) ?? respond(() => manager.refresh(), 'POST', HOST_SKILLS_REFRESH_ROUTE, log),
     },
   };
 }

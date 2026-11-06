@@ -1331,8 +1331,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             },
           } satisfies HostStatus),
       },
-      ...providerRoutes(providers, refuse, authority),
-      ...pluginRoutes(pluginManager, refuse, authority),
+      ...providerRoutes(providers, refuse, authority, log),
+      ...pluginRoutes(pluginManager, refuse, authority, log),
       // The nightly clean-up's standing, and "Clean up now" (COR-2009).
       ...cleanUpRoutes(nightlyCleanUp, refuse),
       // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
@@ -1343,10 +1343,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           (await bureauHandler?.(request)) ??
           new Response('The Bureau is not serving yet.', { status: 503 }),
       ),
-      ...skillRoutes(skills, refuse, authority),
-      ...toolSourceRoutes(toolSources, refuse, {
-        mutation: (request, input) => authority.mutation(request, input),
-      }),
+      ...skillRoutes(skills, refuse, authority, log),
+      ...toolSourceRoutes(
+        toolSources,
+        refuse,
+        {
+          mutation: (request, input) => authority.mutation(request, input),
+        },
+        log,
+      ),
       // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
       [HOST_STORAGE_ROUTE]: {
         GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
