@@ -213,7 +213,8 @@
     if (snapshot === undefined) return;
     void flow.run(
       drafts.pendingWrites(snapshot),
-      snapshot.plugins.some((plugin) => plugin.restartRequired),
+      // A setting that waits for a restart is restarted for too, with or without a plugin change.
+      restartKeys.length > 0 || snapshot.plugins.some((plugin) => plugin.restartRequired),
       intentFor(snapshot, turningOff),
     );
   }

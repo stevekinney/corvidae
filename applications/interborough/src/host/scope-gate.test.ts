@@ -61,6 +61,22 @@ describe('bureauScopeRefusal', () => {
     },
   );
 
+  // Every schedule-writing operation the Bureau serves (`schedules-operations.ts`); list, get and
+  // missed are its reads.
+  test.each([
+    'bureau.schedules.create',
+    'bureau.schedules.update',
+    'bureau.schedules.pause',
+    'bureau.schedules.resume',
+    'bureau.schedules.cancel',
+    'bureau.schedules.skipnext',
+    'bureau.schedules.unskip',
+    'bureau.schedules.runnow',
+  ])('refuses the schedule write %s to a session without schedules:write', async (method) => {
+    const refusal = await bureauScopeRefusal(jsonRpc(call(method)), lacking('schedules:write'));
+    expect(await refusal?.json()).toMatchObject({ error: { data: { scope: 'schedules:write' } } });
+  });
+
   test('sends a method on, unread, to a session holding its scope', async () => {
     const request = jsonRpc(call('bureau.schedules.create'));
     expect(await bureauScopeRefusal(request, lacking('hooks:write'))).toBeUndefined();

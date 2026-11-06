@@ -1,8 +1,9 @@
 /**
  * Primary COR-162 operator flow against the seeded real Weft server: open a
- * worker, then a registry entry, and read the contract verification status
- * the dashboard computes from the worker's accepted manifest and the active
- * registry snapshot.
+ * worker and read the contract verification status the dashboard computes
+ * from the worker's accepted manifest and the active registry snapshot. The
+ * registry entry's own verification panel went with the registry's page
+ * (COR-2019, board row 50y), so only the worker's is read here.
  *
  * The seeded `e2e-fleet-worker-1` (`e2e-server.ts`) advertises
  * `order-processing` with `chargeCard` and `reserveInventory` and no
@@ -13,13 +14,9 @@
  * produces, exactly as `weft worker verify` would report it. That drift is
  * the real state of the fixture, and the spec asserts it.
  *
- * The ledger-evidence workers (`ledger-evidence-seed.ts`, COR-124 and COR-281) also
- * serve `order-processing`, so a registry entry lists three drifting workers;
- * per-worker assertions are scoped to the fleet worker's own table.
  */
 import type { Locator, Page } from '@playwright/test';
 
-import { openWorkflowSources } from './api-reference-pages.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator reads a worker’s contract verification status', async ({ page, checkA11y }) => {
@@ -68,35 +65,6 @@ test('operator reads a worker’s contract verification status', async ({ page, 
   ).toBeVisible();
 
   await checkA11y('workers — contract verification');
-});
-
-async function openRegistryVerification(page: Page): Promise<Locator> {
-  await openWorkflowSources(page);
-  await page.getByRole('button', { name: /order-processing/ }).click();
-  return page.getByRole('region', { name: 'Worker contract verification' });
-}
-
-test('operator reads every serving worker’s verification from a registry entry', async ({
-  page,
-  checkA11y,
-}) => {
-  const verification = await openRegistryVerification(page);
-  await expect(verification).toBeVisible();
-  await expect(verification.getByText('Drift · 3 of 3 workers')).toBeVisible();
-  await expect(verification.getByText('checkout-worker-fleet · e2e-build-1')).toBeVisible();
-  // Both ledger-evidence workers (COR-124's and COR-281's) serve this deployment and build.
-  await expect(verification.getByText('ledger-evidence-fleet · e2e-ledger-build-1')).toHaveCount(2);
-  const fleetActivities = verification.getByRole('table', {
-    name: 'e2e-fleet-worker-1 order-processing activity verification',
-  });
-  await expect(
-    fleetActivities.getByRole('row', { name: /^sendConfirmationEmail Missing from worker/ }),
-  ).toBeVisible();
-  await expect(
-    fleetActivities.getByRole('row', { name: /^chargeCard Contract hash differs from registry/ }),
-  ).toBeVisible();
-
-  await checkA11y('system — registry contract verification');
 });
 
 /**
@@ -221,7 +189,6 @@ const SURFACES = [
       return page.getByRole('region', { name: 'Contract verification' });
     },
   },
-  { name: 'registry detail', verdict: 'Drift · 3 of 3 workers', open: openRegistryVerification },
 ] as const;
 
 for (const surface of SURFACES) {

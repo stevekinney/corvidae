@@ -152,6 +152,7 @@
   const deniedProviders = $derived(deniedProvidersOf(current));
 
   function edit(next: ModelPolicy): void {
+    if (saving) return;
     const policy = committedPolicy(stored, next);
     // Back to the stored policy is no change at all, even when the setting had no value.
     form.set(
@@ -295,6 +296,9 @@
   }
 
   const bar = $derived(changes > 0 || failure !== undefined);
+  // The controls are held while a save is sent and the settings are read again after it, because
+  // that read replaces the form: an edit made meanwhile would be dropped without a word.
+  const held = $derived(locked || saving);
 </script>
 
 <SettingsRestartNotice keys={restartKeys} {snapshot} flow={restartFlow} {revert} {saving} />
@@ -325,7 +329,7 @@
             <Checkbox
               id={checkboxId(model)}
               checked={!denied && isModelAllowed(current, model.model)}
-              disabled={locked || denied}
+              disabled={held || denied}
               onValueChange={(allowed) => edit(withModelAllowed(current, model.model, allowed))}
             />
             <ModelName
@@ -374,7 +378,7 @@
           label={copy.preferences.prefer.label}
           identifier={copy.preferences.prefer.identifier}
           description={copy.preferences.prefer.description}
-          disabled={locked}
+          disabled={held}
         >
           {#snippet control()}
             <Select
@@ -383,7 +387,7 @@
               labelVisible={false}
               value={preference}
               options={preferOptions}
-              disabled={locked}
+              disabled={held}
               onchange={(event) =>
                 edit(withPreference(current, event.currentTarget.value as PreferChoice))}
             />
@@ -396,7 +400,7 @@
           label={copy.preferences.effort.label}
           identifier={copy.preferences.effort.identifier}
           description={copy.preferences.effort.description}
-          disabled={locked}
+          disabled={held}
         >
           {#snippet control()}
             <Select
@@ -405,7 +409,7 @@
               labelVisible={false}
               value={effort}
               options={effortOptions}
-              disabled={locked}
+              disabled={held}
               onchange={(event) =>
                 edit(
                   withField(

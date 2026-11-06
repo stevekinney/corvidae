@@ -14865,7 +14865,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       let deleted = 0;
       for (const chat of oldest) {
         if (new Date(chat.updatedAt).getTime() >= cutoff) break;
-        const report = await deleteSession(chat.id);
+        // The listing is read before any chat's lease: a message sent since moves the chat inside
+        // the window, so the deletion checks again under the lease and keeps a chat that moved.
+        const report = await startSessionDeletion(chat.id, { idleBefore: cutoff });
         if (report.deleted) deleted += 1;
       }
       return deleted;
@@ -15787,11 +15789,31 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
-  async function deleteSession(
+  function deleteSession(
     id: string,
     deleteOptions?: {
       readonly incarnation?: string | undefined;
       readonly actor?: string | undefined;
+    },
+  ): Promise<ContextDeletionReport> {
+    return startSessionDeletion(id, {
+      incarnation: deleteOptions?.incarnation,
+      actor: deleteOptions?.actor,
+    });
+  }
+
+  /**
+   * {@link deleteSession}, and for a retention sweep `idleBefore`: the chat is deleted only if,
+   * read again under its thread lease, its last activity is still before that time and it has no
+   * live task, and the store delete is then fenced to the incarnation read there. A chat that was
+   * active since the sweep listed it is kept, with no tombstone, and deletes nothing.
+   */
+  async function startSessionDeletion(
+    id: string,
+    deleteOptions: {
+      readonly incarnation?: string | undefined;
+      readonly actor?: string | undefined;
+      readonly idleBefore?: number | undefined;
     },
   ): Promise<ContextDeletionReport> {
     const existing = inFlightSessionDeletions.get(id);
@@ -15801,12 +15823,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     };
     const deletion = performDeleteSession(
       id,
-      deleteOptions?.incarnation,
+      deleteOptions.incarnation,
       () => {
         releaseCoalescing?.();
         releaseCoalescing = undefined;
       },
-      deleteOptions?.actor,
+      deleteOptions.actor,
+      deleteOptions.idleBefore,
     ).finally(() => {
       releaseCoalescing?.();
       releaseCoalescing = undefined;
@@ -16282,6 +16305,19 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * Whether `session` is still past a retention cutoff: its last activity is before `idleBefore`
+   * and no task of it is live, so deleting it cancels nothing a person is waiting on.
+   */
+  async function isIdleBefore(session: AgentSession, idleBefore: number): Promise<boolean> {
+    if (Date.parse(session.updatedAt) >= idleBefore) return false;
+    const activity = await tasks.activityOf(
+      [session.id],
+      new Map([[session.id, session.incarnation]]),
+    );
+    return activity.get(session.id) === 'idle';
+  }
+
+  /**
    * COR-1986 — reads the session to delete and, when there is one to delete, records that its id
    * was deleted BEFORE anything is removed, under the thread's lease. A tombstone that cannot be
    * written refuses the delete, so nothing is removed; one that was written is never taken back,
@@ -16292,7 +16328,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function loadSessionAndTombstone(
     id: string,
     expectedIncarnation: string | undefined,
-  ): Promise<AgentSession | undefined> {
+    idleBefore: number | undefined,
+  ): Promise<AgentSession | 'active' | undefined> {
     const sessionStore = requireSessionStore();
     const lease = await acquireThreadLeaseForDeletion(id);
     try {
@@ -16301,6 +16338,15 @@ async function constructBureau<const D extends AgentDefinitions>(
       // another context, and nothing of it is cancelled or deleted here.
       if (expectedIncarnation !== undefined && session?.incarnation !== expectedIncarnation) {
         return undefined;
+      }
+      // A retention sweep's expiry is decided again here, under the lease a chat start takes
+      // before it adds a message, and before the tombstone, which is never taken back.
+      if (
+        session !== undefined &&
+        idleBefore !== undefined &&
+        !(await isIdleBefore(session, idleBefore))
+      ) {
+        return 'active';
       }
       if (session !== undefined && runtime.kv !== undefined) {
         await writeContextTombstone(runtime.kv, {
@@ -16321,14 +16367,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     expectedIncarnation: string | undefined,
     onStoreDeletionCommitted: () => void,
     actor?: string,
+    idleBefore?: number,
   ): Promise<ContextDeletionReport> {
     const sessionStore = requireSessionStore();
-    const session = await loadSessionAndTombstone(id, expectedIncarnation);
+    const loaded = await loadSessionAndTombstone(id, expectedIncarnation, idleBefore);
+    // A retention sweep's chat that was active since it was listed is kept.
+    if (loaded === 'active') return { deleted: false, tasks: [] };
+    const session = loaded;
     // A caller that named another incarnation than the stored one deletes nothing.
     if (expectedIncarnation !== undefined && session === undefined) {
       return { deleted: false, tasks: [] };
     }
     if (session) {
+      // A sweep deletes the incarnation it found idle, never one created under the id since.
+      const fencedIncarnation =
+        expectedIncarnation ?? (idleBefore === undefined ? undefined : session.incarnation);
       // COR-1934 — before anything is removed: the purge that follows the commit is owed from here,
       // and a delete that cannot record it is refused, so the chat is deleted again whole.
       const runIds = await chatRunIdsOf(session);
@@ -16443,9 +16496,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       let removedLiveRecord: boolean;
       try {
         removedLiveRecord =
-          expectedIncarnation === undefined
+          fencedIncarnation === undefined
             ? await sessionStore.delete(id)
-            : await sessionStore.delete(id, { expectedIncarnation });
+            : await sessionStore.delete(id, { expectedIncarnation: fencedIncarnation });
       } catch (error) {
         if (triedAgent !== undefined) tryAgents.hold(triedAgent);
         // The delete did not commit: the purge is not owed.

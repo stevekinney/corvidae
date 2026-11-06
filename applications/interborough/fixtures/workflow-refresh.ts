@@ -1,8 +1,9 @@
 /**
  * Conditional-refresh source fixtures (COR-166). Registers one refresh source
- * on each of three eager fixture workflows, each chosen to leave the Registry's
- * refresh panel in one state `tests/e2e/22-operate-workflow-refresh.spec.ts`
- * has to render honestly. No host registers a refresh source otherwise, because a
+ * on each of three eager fixture workflows, each chosen to leave a refresh
+ * source in one state the refresh panel (`src/routes/system/refresh-panel.svelte`)
+ * has to render honestly; no page mounts that panel since the registry's page
+ * went (COR-2019, board row 50y). No host registers a refresh source otherwise, because a
  * source is code the host supplies (`fetch`, `warm`, `validateRuntime`), not
  * something an operator can add over the wire.
  *

@@ -1,24 +1,22 @@
 /**
  * Primary WFT-115 operator flow against the seeded real Weft server: open
- * System → Registry, drill into `order-processing` (seeded with a second,
+ * `order-processing`'s History tab (seeded with a second,
  * deliberately incompatible installed revision —
  * `fixtures/workflow-revisions.ts`), see the Revisions panel distinguish
  * the active seeded revision from the installed candidate, attempt to
  * Activate the candidate, and see the incompatible outcome with every
  * bounded reason rendered as explicit text.
  */
-import { openWorkflowSources } from './api-reference-pages.ts';
 import { expect, test } from './fixtures.ts';
+
+/** `order-processing`'s History tab, where its installed revisions are listed. */
+const ORDER_PROCESSING_HISTORY = '/workflows/order-processing?tab=history';
 
 test('operator inspects installed revisions and sees a refused activation report every bounded reason', async ({
   page,
   checkA11y,
 }) => {
-  await openWorkflowSources(page);
-
-  const orderProcessingRow = page.getByRole('button', { name: /order-processing/ });
-  await expect(orderProcessingRow).toBeVisible();
-  await orderProcessingRow.click();
+  await page.goto(ORDER_PROCESSING_HISTORY);
 
   const revisionsPanel = page.getByRole('region', { name: 'Installed revisions' });
   await expect(revisionsPanel).toBeVisible();
@@ -48,7 +46,7 @@ test('operator inspects installed revisions and sees a refused activation report
   await expect(outcomeBanner.getByText(/workflow-version-incompatible/)).toBeVisible();
   await expect(outcomeBanner.getByText(/artifact-revision-mismatch/)).toBeVisible();
 
-  await checkA11y('system — registry revisions panel, refused activation');
+  await checkA11y('workflow history — revisions panel, refused activation');
 });
 
 test('the Revisions panel is usable across supported widths and themes', async ({ page }) => {
@@ -62,11 +60,7 @@ test('the Revisions panel is usable across supported widths and themes', async (
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await openWorkflowSources(page);
-
-      const orderProcessingRow = page.getByRole('button', { name: /order-processing/ });
-      await expect(orderProcessingRow).toBeVisible();
-      await orderProcessingRow.click();
+      await page.goto(ORDER_PROCESSING_HISTORY);
 
       const revisionsPanel = page.getByRole('region', { name: 'Installed revisions' });
       await expect(revisionsPanel).toBeVisible();

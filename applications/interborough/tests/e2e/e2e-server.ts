@@ -368,9 +368,9 @@ await seed(engine);
 await seedWorkflowRevisions(engine);
 
 // Two `registerSource()` revisions of `invoice-reconciliation`, neither
-// loaded (WFT-116/WFT-165) — `09-preload-dynamic-source.spec.ts` drives the
-// Workflow types → Workflow sources panel against the selectable source
-// list plus exact diagnostics/preload calls: preloading the loadable one moves
+// loaded (WFT-116/WFT-165). No page draws them since the registry's page went
+// (COR-2019, board row 50y); the dev harness reads them, and its exact
+// diagnostics/preload calls behave as follows: preloading the loadable one moves
 // it idle -> ready, and preloading the unreachable one is refused with a
 // bounded failure category. Both transitions are per-`(name, revision)` and
 // touch nothing any other spec asserts against, but they are NOT idempotent

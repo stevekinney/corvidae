@@ -855,6 +855,22 @@ describe('restarting', () => {
     ]);
   });
 
+  test('restarts for a setting that waits when no plugin does', async () => {
+    const { container } = open('linear', fixtures(), {
+      pendingSettings: ['engine.workflowClaimRenewInterval'],
+    });
+    await loaded(container, 'linear');
+    await waitFor(() => expect(bannerText(container)).toContain('Workflow claim renew interval'));
+
+    await restartNow(container);
+
+    await waitFor(() =>
+      expect(writes().map((request) => `${request.method} ${request.path}`)).toEqual([
+        'POST /host/restart',
+      ]),
+    );
+  });
+
   test('counts the reconnect attempts while the host does not answer, and not the end before it does', async () => {
     restartProbing.retryDelayMs = () => 60_000;
     const { container, getByRole } = open('demo', fixtures(), { downFor: 1 });

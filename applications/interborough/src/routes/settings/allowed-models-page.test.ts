@@ -272,6 +272,54 @@ describe('with a provider connected', () => {
   });
 });
 
+describe('while a save is under way', () => {
+  test('holds every control until the save and the settings read after it are done, so no edit is dropped', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const world = served();
+    const view = await ready(
+      open({
+        connected: true,
+        served: world,
+        extra: {
+          'bureau.settings.update': async (params) => {
+            await held;
+            world.values = {
+              ...world.values,
+              ...(params['patch'] as Record<string, unknown>),
+            };
+            world.revision += 1;
+            return { revision: world.revision, pendingRestart: [] };
+          },
+        },
+      }),
+    );
+    const opus = (await view.findByRole('checkbox', {
+      name: 'Claude Opus 5.5',
+    })) as HTMLInputElement;
+    const sonnet = view.getByRole('checkbox', { name: 'Claude Sonnet 5.5' }) as HTMLInputElement;
+    await fireEvent.click(opus);
+    await fireEvent.click(saveButton(view));
+    await waitFor(() => expect(updates()).toHaveLength(1));
+
+    // An edit while the save is sent cannot be made, rather than made and then thrown away.
+    expect(sonnet.disabled).toBe(true);
+    for (const select of view.container.querySelectorAll('select')) {
+      expect(select.disabled).toBe(true);
+    }
+    await fireEvent.click(sonnet);
+    expect(sonnet.checked).toBe(true);
+
+    release();
+    await waitFor(() => expect(sonnet.disabled).toBe(false));
+    expect(view.queryByRole('group', { name: 'Form actions' })).toBeNull();
+    expect(opus.checked).toBe(false);
+    expect(sonnet.checked).toBe(true);
+  });
+});
+
 describe('the preferences', () => {
   test('Prefer and Default effort save together with the models in one Save, and count as two changes', async () => {
     const view = await ready(open({ connected: true }));

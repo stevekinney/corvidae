@@ -7,8 +7,9 @@
  * - `DYNAMIC_SOURCE_LOADABLE_REVISION` — a real, loadable module. Registered
  *   and never loaded, so it starts `idle` with no load duration; preloading
  *   it from the console is what turns it `ready` and installs it durably.
- *   Nothing here preloads it, because that transition IS the primary
- *   operator flow `tests/e2e/09-preload-dynamic-source.spec.ts` drives.
+ *   Nothing here preloads it, because that transition is the operator's
+ *   preload flow, which no page draws since the registry's page went
+ *   (COR-2019, board row 50y).
  * - `DYNAMIC_SOURCE_FAILING_REVISION` — its loader rejects, so preloading it
  *   produces the bounded `Conflict` + `reason: 'load-failed'` refusal and
  *   leaves `state: 'failed'` with a `lastFailureCategory` behind. Weft

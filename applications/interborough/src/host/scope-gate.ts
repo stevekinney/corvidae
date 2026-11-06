@@ -56,6 +56,7 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.schedules.pause', 'schedules:write'],
   ['bureau.schedules.resume', 'schedules:write'],
   ['bureau.schedules.skipnext', 'schedules:write'],
+  ['bureau.schedules.unskip', 'schedules:write'],
   ['bureau.schedules.runnow', 'schedules:write'],
   ['bureau.schedules.cancel', 'schedules:write'],
   ['bureau.agents.definitions.create', 'agents:write'],
