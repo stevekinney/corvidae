@@ -78,6 +78,18 @@ const providersSchema = z.object({
   lockReason: z.enum(SETTING_LOCK_REASONS).optional(),
 });
 
+const keyTestSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), models: z.number().int().nonnegative() }),
+  z.object({ ok: z.literal(false), status: z.number().int().optional() }),
+]);
+
+/**
+ * What the provider answered to a key that was only tested, never saved: it accepted it (and how
+ * many models the key would add), or it refused it, with the HTTP status when it answered at all.
+ * There is never a message, because a provider's message may repeat part of the key.
+ */
+export type ProviderKeyTest = z.infer<typeof keyTestSchema>;
+
 /** One edit to the catalog, as `configuration.json` holds it. */
 export type CatalogEdit = z.infer<typeof catalogEditSchema>;
 
@@ -109,12 +121,15 @@ export class HostProviderError extends Error {
   readonly kind: HostProviderFaultKind;
   /** The field the host named, for an `invalid` answer. */
   readonly field: string | undefined;
+  /** The HTTP status of an answer the page could not read, such as a 503 for the list of models. */
+  readonly status: number | undefined;
 
-  constructor(kind: HostProviderFaultKind, message: string, field?: string) {
+  constructor(kind: HostProviderFaultKind, message: string, field?: string, status?: number) {
     super(message);
     this.name = 'HostProviderError';
     this.kind = kind;
     this.field = field;
+    this.status = status;
   }
 }
 
@@ -172,7 +187,14 @@ async function faultOf(response: Response, secret?: string): Promise<HostProvide
 /** Asks the host for its providers, the models it offers, and the catalog edits. */
 export async function getProviders(options: Options = {}): Promise<ProvidersSnapshot> {
   const response = await send(HOST_PROVIDERS_ROUTE, {}, options);
-  if (!response.ok) throw new Error(`The host answered ${response.status}.`);
+  if (!response.ok) {
+    throw new HostProviderError(
+      'failed',
+      `The host answered ${String(response.status)}.`,
+      undefined,
+      response.status,
+    );
+  }
   return providersSchema.parse(await response.json());
 }
 
@@ -194,6 +216,27 @@ export async function connectProvider(
     options,
   );
   if (!response.ok) throw await faultOf(response, apiKey);
+}
+
+/**
+ * Asks the provider whether it accepts `apiKey`, with one request of one token, and stores nothing:
+ * a key that fails here is not in use, and the key already saved keeps working. A refused key is a
+ * result (`ok: false`), not a failure. Pass `signal` to stop the request when the person cancels.
+ *
+ * @throws {HostProviderError} When the host cannot make the test; an abort is thrown as it is.
+ */
+export async function testProviderKey(
+  provider: string,
+  apiKey: string,
+  options: Options = {},
+): Promise<ProviderKeyTest> {
+  const response = await send(
+    `${HOST_PROVIDERS_ROUTE}/${encodeURIComponent(provider)}/test`,
+    jsonRequest('POST', { apiKey }),
+    options,
+  );
+  if (!response.ok) throw await faultOf(response, apiKey);
+  return keyTestSchema.parse(await response.json());
 }
 
 /**

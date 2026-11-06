@@ -138,6 +138,8 @@ describe('component *.variables.json contract', () => {
     // The kanban board is the cascade scope for its columns and cards.
     'kanban-board': ['--cinder-kanban-column-', '--cinder-kanban-card-'],
     // LogoCloud owns the cascade override surface for its composed Grid list.
+    // Banner sets the Button height tokens on its action row, so a phone's actions are 44px targets.
+    banner: ['--cinder-button-height-'],
   };
 
   test('every variable in components variables.json is owned by the declaring component', async () => {

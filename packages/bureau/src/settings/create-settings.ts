@@ -360,6 +360,7 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
       Promise.resolve({
         values: configured,
         effective: { ...dependencies.builtInDefaults, ...configured },
+        running: inForce,
         revision: revisionOf(stored),
         persisted: dependencies.persisted,
         keys: Object.fromEntries(
@@ -409,7 +410,11 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
         const invalid: string[] = [];
         const messages: string[] = [];
         for (const key of keys) {
-          const checked = parseValue(key, patch[key]);
+          // `null` clears the stored value; no setting takes `null` itself.
+          const checked =
+            patch[key] === null
+              ? { ok: true as const, value: undefined }
+              : parseValue(key, patch[key]);
           if (checked.ok) values[key] = checked.value;
           else {
             invalid.push(key);

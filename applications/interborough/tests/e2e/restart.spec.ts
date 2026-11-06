@@ -59,6 +59,8 @@ function snapshotOf(options: { readonly applied: boolean; readonly changed?: str
         contributions: [],
         enabled: waiting ? false : status !== 'disabled',
         configuration: {},
+        configurationSchema: null,
+        running: { enabled: plugin.status !== 'disabled', configuration: {} },
         secrets: [],
         restartRequired: waiting,
       };

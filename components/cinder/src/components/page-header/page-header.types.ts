@@ -60,6 +60,13 @@ export type PageHeaderProps = Omit<
    */
   createAction?: PageHeaderCreateAction;
   /**
+   * Draws the header with no rule under it and no padding around it, so its title lines up with the
+   * content beneath it. A page that lays out its own column, such as a page of settings with a
+   * section navigation beside it, uses this; a header across the top of a page keeps its rule.
+   * @default false
+   */
+  flush?: boolean;
+  /**
    * A full-page error state shows under this header. The header's primary buttons then draw as
    * secondary, so the error's "Try again" is the only primary on the page.
    * @default false
@@ -98,6 +105,13 @@ export interface PageHeaderSchemaProps {
   headingLevel?: PageHeaderHeadingLevel;
   /** Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet. */
   description?: string;
+  /**
+   * Draws the header with no rule under it and no padding around it, so its title lines up with the
+   * content beneath it. A page that lays out its own column, such as a page of settings with a
+   * section navigation beside it, uses this; a header across the top of a page keeps its rule.
+   * @default false
+   */
+  flush?: boolean;
   /**
    * A full-page error state shows under this header, so its primary buttons draw as secondary.
    * @default false

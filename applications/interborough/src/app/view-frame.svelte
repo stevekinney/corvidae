@@ -192,7 +192,10 @@
    * view's own request failed after it had shown its data.
    */
   const refreshFailed = $derived(
-    state !== 'unreachable' && probeQuery.isRefetchError && probeQuery.data !== undefined,
+    state !== 'unreachable' &&
+      definition.pageOwnsFailure !== true &&
+      probeQuery.isRefetchError &&
+      probeQuery.data !== undefined,
   );
   const stale = $derived(
     (state === 'ready' || state === 'empty') && (connection.unreachable || refreshFailed),
@@ -259,7 +262,7 @@
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >
-  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found')}
+  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && definition.pageOwnsLoading === true) || (state === 'error' && definition.pageOwnsFailure === true)}
     {#if refreshFailed && !connection.unreachable && !ownsStates}
       {@render refreshError()}
     {/if}

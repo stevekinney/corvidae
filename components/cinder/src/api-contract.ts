@@ -340,7 +340,9 @@ export const CONTRACT: Record<string, ComponentContract> = {
       size: { optional: true, type_kind: 'TSUnionType', default: L('md') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
-    snippets: {},
+    snippets: {
+      descriptionAction: s0(true),
+    },
   },
 
   'list-detail': {
@@ -351,6 +353,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       items: { optional: false, type_kind: 'TSArrayType', default: REQUIRED },
       key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
       label: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      openFirst: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       selectedKey: { optional: true, type_kind: 'TSUnionType', default: B(null) },
       onSelectedKeyChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       selectionParameter: { optional: true, type_kind: 'TSUnionType', default: L('selected') },
@@ -645,6 +648,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       name: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       value: { optional: true, type_kind: 'TSStringKeyword', default: L('on') },
       form: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      standalone: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      labelPosition: { optional: true, type_kind: 'TSUnionType', default: L('end') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},

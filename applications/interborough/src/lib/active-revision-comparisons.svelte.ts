@@ -10,7 +10,7 @@
  *
  * Every per-type query reuses `queryKeys.catalog.active(type)` verbatim —
  * the key `runs/run-engine.svelte.ts`, `workflow-revisions-panel.svelte`, and
- * `dynamic-source-panel.svelte` already share. TanStack Query therefore
+ * the other System panels already share. TanStack Query therefore
  * deduplicates concurrent fetches across those consumers, and the
  * `invalidateQueries({ queryKey: queryKeys.catalog.active(name) })` the two
  * System panels already perform on activation refreshes these badges too;

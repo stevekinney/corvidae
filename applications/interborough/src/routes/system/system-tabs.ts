@@ -1,8 +1,8 @@
 /**
  * The tabs Health carries below its overview, by their `?tab=` value, and the words that name each
  * one. The System page was split by audience: Health carries these, and Settings › API reference
- * (`routes/settings/api-reference.svelte`) carries the operations, discovery documents, scopes and
- * workflow sources as a side list of groups, not tabs.
+ * (`routes/settings/api-reference`) carries the operations, discovery documents, scopes and
+ * workflow sources as a row of its own tabs.
  */
 
 /** Every tab's `?tab=` value, with the words that name it. */

@@ -58,7 +58,7 @@ describe('page width by kind of page', () => {
     expect(openMemory?.view).toBe(detail?.view);
   });
 
-  test('the operator tables stay wide and the settings form keeps the reading width', () => {
+  test('the operator tables stay wide and every settings section has the page to itself, its navigation beside one column', () => {
     for (const pattern of [
       '/capabilities',
       '/runs',
@@ -72,11 +72,11 @@ describe('page width by kind of page', () => {
     ]) {
       expect(widthOf(pattern), pattern).toBe('full');
     }
-    expect(widthOf('/settings')).toBe('reading');
-    expect(widthOf('/settings/models')).toBe('reading');
-    expect(widthOf('/settings/model-policy')).toBe('reading');
+    expect(widthOf('/settings')).toBe('full');
+    expect(widthOf('/settings/models')).toBe('full');
+    expect(widthOf('/settings/allowed-models')).toBe('full');
     expect(widthOf('/settings/plugins')).toBe('full');
-    expect(widthOf('/settings/data-and-retention')).toBe('reading');
+    expect(widthOf('/settings/data-and-retention')).toBe('full');
     // The chat list sits beside the open chat, so every chat route is a list with its detail.
     for (const pattern of ['/chats', '/chats/new', '/chats/:chat']) {
       expect(widthOf(pattern), pattern).toBe('full');

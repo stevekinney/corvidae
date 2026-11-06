@@ -63,16 +63,33 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
       options.durableGuardrails?.checkpointSizeWarningThreshold,
     'engine.checkpointHistory': options.durableGuardrails?.checkpointHistory,
     'engine.maxNestingDepth': options.durableGuardrails?.maxNestingDepth,
+    // Bureau caps workflow runs itself when the options do not (`runtime-composition.ts`).
+    'engine.maxConcurrentRuns':
+      options.durableGuardrails?.maxConcurrentRuns ?? DEFAULT_MAX_CONCURRENT_RUNS,
     'engine.workflowClaimTtl': options.durableOwnership?.workflowClaimTtlMs,
     'engine.workflowClaimRenewInterval': options.durableOwnership?.workflowClaimRenewIntervalMs,
     durable: options.durable,
     maintenance: options.maintenance,
     'durableOwnership.ownership': options.durableOwnership?.ownership,
     workflowVersion: options.workflowVersion,
+    'a2a.enabled': A2A_DEFAULTS.enabled,
     'a2a.push.enabled': A2A_PUSH_DEFAULTS.enabled,
     'a2a.push.sweepIntervalMs': A2A_PUSH_DEFAULTS.sweepIntervalMs,
   });
 }
+
+/**
+ * {@link DurableGuardrailsConfiguration.maxConcurrentRuns}'s default: at most 4 workflow runs
+ * execute at once on one host. Agent runs, goals and schedule ticks are not counted.
+ */
+export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
+
+/**
+ * The default of `a2a.enabled`: A2A is accepted, as it was before the setting existed, so an agent
+ * that opts in is served. There is no code option to take it from: the host reads the key when it
+ * builds the handler.
+ */
+export const A2A_DEFAULTS = { enabled: true } as const;
 
 /**
  * The defaults of the `a2a.push.*` settings. There is no code option to take them from: the host
@@ -88,6 +105,7 @@ export const A2A_PUSH_DEFAULTS = { enabled: false, sweepIntervalMs: 3_600_000 } 
  * `setting-owners.test.ts` holds this list and {@link RESTART_OPTION_PATHS} to the `restart` keys.
  */
 export const HOST_RESTART_KEYS = [
+  'a2a.enabled',
   'a2a.push.enabled',
   'a2a.push.sweepIntervalMs',
 ] as const satisfies readonly SettingKey[];
@@ -100,6 +118,7 @@ export const HOST_RESTART_KEYS = [
 export const RESTART_OPTION_PATHS = {
   'engine.checkpointHistory': ['durableGuardrails', 'checkpointHistory'],
   'engine.maxNestingDepth': ['durableGuardrails', 'maxNestingDepth'],
+  'engine.maxConcurrentRuns': ['durableGuardrails', 'maxConcurrentRuns'],
   'engine.workflowClaimTtl': ['durableOwnership', 'workflowClaimTtlMs'],
   'engine.workflowClaimRenewInterval': ['durableOwnership', 'workflowClaimRenewIntervalMs'],
   'durableOwnership.ownership': ['durableOwnership', 'ownership'],
@@ -129,15 +148,31 @@ export function withRestartSettings<D extends AgentDefinitions, O extends Bureau
   return next as O;
 }
 
+/**
+ * The retention the engine runs with: `retention.runs`'s one window for every outcome, except the
+ * outcomes `engine.retention` sets itself. `forever` or no window leaves `engine.retention` as it is.
+ */
+export function engineRetentionOf(
+  values: SettingsValues,
+): NonNullable<SettingsValues['engine.retention']> {
+  const perOutcome = values['engine.retention'] ?? {};
+  const runs = values['retention.runs'];
+  if (runs === undefined || runs === 'forever') return perOutcome;
+  const window = runs.olderThan;
+  return { completed: window, failed: window, cancelled: window, timedOut: window, ...perOutcome };
+}
+
 /** The {@link EnginePatch} that sets the engine keys among `keys` to their value in `values`, if any. */
 export function enginePatchOf(
   values: SettingsValues,
   keys: readonly SettingKey[],
 ): EnginePatch | undefined {
   const patch: Record<string, unknown> = {};
-  for (const key of keys) {
+  // `retention.runs` is not an engine key, but it sets the engine's retention along with `engine.retention`.
+  const changed = keys.includes('retention.runs') ? [...keys, 'engine.retention' as const] : keys;
+  for (const key of changed) {
     if (!Object.hasOwn(ENGINE_PATCH_FIELDS, key)) continue;
-    const value = values[key];
+    const value = key === 'engine.retention' ? engineRetentionOf(values) : values[key];
     if (value !== undefined) {
       patch[ENGINE_PATCH_FIELDS[key as keyof typeof ENGINE_PATCH_FIELDS]] = value;
     }

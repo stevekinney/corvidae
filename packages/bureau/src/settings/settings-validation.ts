@@ -59,6 +59,18 @@ export const OPTION_VALIDATORS: Readonly<Partial<Record<SettingKey, (value: unkn
       value as Parameters<typeof validateAuditRetentionOption>[0],
       refuse,
     ),
+  'retention.runs': (value) =>
+    validateRetentionWindowOption(
+      value as Parameters<typeof validateRetentionWindowOption>[0],
+      'retention.runs',
+      refuse,
+    ),
+  'retention.chats': (value) =>
+    validateRetentionWindowOption(
+      value as Parameters<typeof validateRetentionWindowOption>[0],
+      'retention.chats',
+      refuse,
+    ),
   'retention.events': (value) =>
     validateRetentionWindowOption(
       value as Parameters<typeof validateRetentionWindowOption>[0],
@@ -106,6 +118,9 @@ export const SCHEMA_CHECKED_KEYS = [
   'workflowVersion',
   'engine.checkpointHistory',
   'engine.maxNestingDepth',
+  'engine.maxConcurrentRuns',
+  'a2a.enabled',
+  'a2a.agents',
   'a2a.push.enabled',
   'a2a.push.sweepIntervalMs',
 ] as const satisfies readonly SettingKey[];

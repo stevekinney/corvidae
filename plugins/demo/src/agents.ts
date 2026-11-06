@@ -55,6 +55,9 @@ export const DEMO_AGENT_NAMES = [
   'changelog-writer',
 ] as const;
 
+/** The name of one demo agent inside the plugin. */
+export type DemoAgentName = (typeof DEMO_AGENT_NAMES)[number];
+
 /** What `release-helper` answers, from its script. */
 export const RELEASE_HELPER_REPLY =
   'Here is a draft of the release notes from the pull requests merged since the last tag. This reply is scripted; no model was called.';

@@ -571,6 +571,65 @@ describe('Toggle — FormField context', () => {
   });
 });
 
+describe('Toggle — standalone and label position', () => {
+  test('a standalone Toggle in a FormField is named by its own visible label, not the field’s', async () => {
+    const { default: FormFieldToggleFixture } =
+      await import('../../test/fixtures/form-field-toggle-fixture.svelte');
+    const { container } = render(FormFieldToggleFixture, {
+      props: {
+        fieldId: 'ctx-standalone',
+        fieldLabel: 'Shared agents',
+        toggleLabel: 'Assistant',
+        standalone: true,
+      },
+    });
+    const button = requiredInstance(
+      container.querySelector('button[role="switch"]'),
+      HTMLButtonElement,
+    );
+    const label = requiredInstance(
+      container.querySelector('.cinder-toggle-field__label'),
+      HTMLElement,
+    );
+    expect(label.textContent).toContain('Assistant');
+    expect(button.getAttribute('aria-labelledby')).toBe(label.id);
+    expect(screen.getByRole('switch', { name: 'Assistant' })).toBe(button);
+  });
+
+  test('a Toggle in a FormField that is not standalone keeps the field’s label as its name', async () => {
+    const { default: FormFieldToggleFixture } =
+      await import('../../test/fixtures/form-field-toggle-fixture.svelte');
+    const { container } = render(FormFieldToggleFixture, {
+      props: { fieldId: 'ctx-owned', fieldLabel: 'Shared agents', toggleLabel: 'Assistant' },
+    });
+    expect(container.querySelector('.cinder-toggle-field__label')).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Shared agents' })).toBeTruthy();
+  });
+
+  test('labelPosition start puts the label before the switch, and end after it', () => {
+    const start = render(Toggle, {
+      props: { id: 't-start', label: 'Assistant', labelPosition: 'start' },
+    });
+    const startField = requiredInstance(
+      start.container.querySelector('.cinder-toggle-field'),
+      HTMLElement,
+    );
+    expect(startField.getAttribute('data-label-position')).toBe('start');
+    expect(startField.firstElementChild?.classList.contains('cinder-toggle-field__label')).toBe(
+      true,
+    );
+    expect(startField.lastElementChild?.getAttribute('role')).toBe('switch');
+    cleanup();
+    const end = render(Toggle, { props: { id: 't-end', label: 'Assistant' } });
+    const endField = requiredInstance(
+      end.container.querySelector('.cinder-toggle-field'),
+      HTMLElement,
+    );
+    expect(endField.getAttribute('data-label-position')).toBe('end');
+    expect(endField.firstElementChild?.getAttribute('role')).toBe('switch');
+  });
+});
+
 // happy-dom cannot measure layout, so the rendered sizes are asserted in
 // `scripts/browser-fixtures/tests/toggle-size.playwright.ts`. These cases read the stylesheet and
 // assert only the values that hold whatever mechanism draws the track inside the hit area.

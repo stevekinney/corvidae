@@ -148,20 +148,26 @@ describe('showcaseHostOptions', () => {
     expect(options.resolveProviderGenerateFor).toBeFunction();
   });
 
-  test('loads Guardrails, Ollama and Voyage beside the workspace’s plugins', () => {
+  test('shares Assistant and Tool runner over A2A, and no other built-in agent', () => {
+    expect(showcaseHostOptions().a2aAgents).toEqual(['assistant', 'tool-runner']);
+  });
+
+  test('loads the nine plugins of the sample world, in the order the Plugins page lists them', () => {
     const names = (showcaseHostOptions().plugins ?? []).map((entry) => entry.descriptor.name);
     expect(names).toEqual([
+      'inspectors',
       'anthropic',
       'openai',
       'gemini',
       'typesafe',
-      'inspectors',
-      'demo',
-      'workspace',
       'guardrails',
-      'ollama',
       'voyage',
+      'demo',
+      'ollama',
     ]);
+    expect(names).not.toContain('workspace');
+    // Interborough's own built-in plugin is not one a person adds, so the sample list leaves it out.
+    expect(showcaseHostOptions().omitBuiltInPlugin).toBe(true);
   });
 
   test('registers the goal checks as validators', () => {

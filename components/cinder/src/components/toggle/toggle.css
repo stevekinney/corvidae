@@ -15,6 +15,14 @@
     gap: var(--cinder-space-2);
   }
 
+  /* A label placed first spreads the label and the switch across the field's width, the way a list
+ * of switches reads: the name at the start, the switch at the end. */
+  .cinder-toggle-field[data-label-position='start'] {
+    display: flex;
+    inline-size: 100%;
+    justify-content: space-between;
+  }
+
   .cinder-toggle-field__label {
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);

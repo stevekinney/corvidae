@@ -114,6 +114,8 @@ export type {
   ReviewListEntry,
   ReviewListFilter,
   ReviewStatus,
+  RunConcurrencyOptions,
+  RunConcurrencySnapshot,
   ScheduleDefinition,
   ScheduleFilter,
   ScheduleMissedFire,

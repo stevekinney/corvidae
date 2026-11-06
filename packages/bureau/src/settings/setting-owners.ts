@@ -59,6 +59,7 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
     module: 'create-bureau.ts',
     keys: [
       'retention.audit',
+      'retention.chats',
       'retention.events',
       'retention.tasks',
       'retention.receipts',
@@ -68,6 +69,14 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
       'retention.hookDeliveries',
       'retention.checkpoints',
     ],
+    reads: 'literal',
+  },
+  {
+    // The one window every finished run is kept for, which fills each outcome `engine.retention`
+    // leaves unset when the engine is reconfigured.
+    name: 'run history retention',
+    module: 'settings/settings-options.ts',
+    keys: ['retention.runs'],
     reads: 'literal',
   },
   {
@@ -101,6 +110,14 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
     name: 'child delegation',
     module: 'create-bureau.ts',
     keys: ['children.delegation.defaultTimeToLiveMilliseconds'],
+    reads: 'literal',
+  },
+  {
+    // Read on every A2A request, and when the agents are listed: an agent shared or withdrawn is
+    // served or refused at once (`http/a2a-opt-in.ts`).
+    name: 'A2A opt-in',
+    module: 'http/a2a-opt-in.ts',
+    keys: ['a2a.agents'],
     reads: 'literal',
   },
   {

@@ -50,6 +50,7 @@ Free-form text input with suggestion hints.
 | `readonly` | `boolean` | no | — | When true, the input value cannot be changed by the user, matching the native `readonly` attribute. |
 | `required` | `boolean` | no | — | Marks the input as required for form validation, matching the native `required` attribute. |
 | `value` | `string` | no | — | Bindable current text value of the input. |
+| `descriptionAction` | `(opaque)` | no | — | Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onComplete` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `onValueChange` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `suggestionSource` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

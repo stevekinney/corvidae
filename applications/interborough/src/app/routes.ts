@@ -26,6 +26,11 @@ export interface RouteDefinition {
    * route with none, such as a redirect, is left out of the trail.
    */
   crumb?: string | { readonly param: string };
+  /**
+   * A last crumb for the page itself, after the trail its path makes: `/settings` is the section
+   * General of Settings, so it reads "Settings › General" although its path has one segment.
+   */
+  leafCrumb?: string;
   /** Lazily imports the route's default-exported Svelte component. */
   load: () => Promise<{ default: Component }>;
   /**
@@ -323,31 +328,33 @@ export const routes: readonly RouteDefinition[] = [
     view: 'audit',
     load: () => import('../routes/audit/index.svelte'),
   },
-  // Settings, and its sections (`settings-sections.ts`).
+  // Settings, and its sections (`settings-sections.ts`). They are full-width pages: the section
+  // navigation is a column beside one reading column, which `settings-frame.svelte` sets.
   {
     pattern: '/settings',
-    kind: 'form',
+    kind: 'editor',
     crumb: VIEW_COPY.settings.label,
+    leafCrumb: SETTINGS_SECTION_COPY.general,
     view: 'settings',
     load: () => import('../routes/settings/index.svelte'),
   },
   {
     pattern: '/settings/models',
-    kind: 'form',
+    kind: 'editor',
     crumb: SETTINGS_SECTION_COPY.models,
     view: 'settings',
     load: () => import('../routes/settings/models/index.svelte'),
   },
   {
-    pattern: '/settings/model-policy',
-    kind: 'form',
+    pattern: '/settings/allowed-models',
+    kind: 'editor',
     crumb: SETTINGS_SECTION_COPY.modelPolicy,
     view: 'settings',
-    load: () => import('../routes/settings/model-policy.svelte'),
+    load: () => import('../routes/settings/allowed-models.svelte'),
   },
   {
     pattern: '/settings/a2a',
-    kind: 'form',
+    kind: 'editor',
     crumb: SETTINGS_SECTION_COPY.a2a,
     view: 'settings',
     load: () => import('../routes/settings/a2a/index.svelte'),
@@ -361,16 +368,16 @@ export const routes: readonly RouteDefinition[] = [
   },
   {
     pattern: '/settings/data-and-retention',
-    kind: 'form',
+    kind: 'editor',
     crumb: SETTINGS_SECTION_COPY.dataAndRetention,
     view: 'settings',
-    load: () => import('../routes/settings/data-and-retention.svelte'),
+    load: () => import('../routes/settings/retention/index.svelte'),
   },
   {
     pattern: '/settings/api-reference',
     kind: 'table',
     crumb: SETTINGS_SECTION_COPY.apiReference,
     view: 'settings',
-    load: () => import('../routes/settings/api-reference.svelte'),
+    load: () => import('../routes/settings/api-reference/index.svelte'),
   },
 ];

@@ -180,14 +180,11 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/settings/models': /mmmmmmmmmm/,
   // The agent that opts in prints its name, and its card address holds it too.
   '/settings/a2a': /responsive-long-description/,
-  // Each group of the API reference prints a value only its live read gives.
-  '/settings/api-reference': /weft\.alerts\.list/,
-  '/settings/api-reference (discovery)': /\/api\/v1\/alerts/,
-  '/settings/api-reference (openrpc)': /weft\.alerts\.list/,
-  '/settings/api-reference (asyncapi)': /Channel/,
-  '/settings/api-reference (mcp)': /Test MCP session/,
-  '/settings/api-reference (scopes)': /Unlocks:/,
-  '/settings/api-reference (sources)': /order-processing/,
+  // Each tab of the API reference prints a value only its own read gives.
+  '/settings/api-reference': /\/api\//,
+  '/settings/api-reference (discovery)': /\/openapi\.json/,
+  '/settings/api-reference (scopes)': /workflows:read/,
+  '/settings/api-reference (sources)': /Where Interborough reads workflow files from/,
 };
 
 /** What was measured: how far the document and the outlet scroll sideways, and what else does not fit. */

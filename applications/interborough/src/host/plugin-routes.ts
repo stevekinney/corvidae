@@ -5,8 +5,10 @@ import { HostMutationError } from './host-mutation-context.ts';
  * The host's routes for plugins (`plugin-manager.ts`, COR-1880):
  *
  * - `GET /host/plugins` reports each plugin: Bureau's listing (status, problems, contributions),
- *   the owner's persisted `enabled` and `configuration`, whether a restart applies a change, and
- *   each declared secret with whether it is set and where it lives. It never carries a value.
+ *   the owner's persisted `enabled` and `configuration`, the configuration's JSON Schema
+ *   (`configurationSchema`, or `null` for a plugin that takes none), what the running host loaded
+ *   (`running`, which Revert writes back), whether a restart applies a change, and each declared
+ *   secret with whether it is set and where it lives. It never carries a value.
  * - `PUT /host/plugins/<name>` with `{ "enabled": true, "configuration": { ... } }` stores the
  *   owner's choices. Either field may be left out to keep what is stored, and `configuration:
  *   null` removes it.

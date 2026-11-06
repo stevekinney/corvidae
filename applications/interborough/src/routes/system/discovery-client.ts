@@ -29,9 +29,14 @@
  */
 import type { HttpClient } from '@lostgradient/weft';
 
-export type DiscoveryDocumentKind = 'openapi' | 'openrpc' | 'asyncapi' | 'mcp' | 'metrics';
+/**
+ * A document the server publishes: `api` is Interborough's own OpenAPI description
+ * (`/api/openapi.json`, `src/host/api-description.ts`); the rest are Weft's.
+ */
+export type DiscoveryDocumentKind = 'api' | 'openapi' | 'openrpc' | 'asyncapi' | 'mcp' | 'metrics';
 
 const DISCOVERY_DOCUMENT_PATH: Readonly<Record<DiscoveryDocumentKind, string>> = {
+  api: '/api/openapi.json',
   openapi: '/openapi.json',
   openrpc: '/openrpc.json',
   asyncapi: '/asyncapi.json',
@@ -42,6 +47,14 @@ const DISCOVERY_DOCUMENT_PATH: Readonly<Record<DiscoveryDocumentKind, string>> =
 /** The origin every root-stable discovery document is fetched from — the weft server's own origin, derived from `client.baseUrl`. */
 export function discoveryOrigin(client: Pick<HttpClient, 'baseUrl'>): string {
   return new URL(client.baseUrl).origin;
+}
+
+/** The address a document of `kind` is published at, on the server `client` talks to. */
+export function discoveryDocumentUrl(
+  client: Pick<HttpClient, 'baseUrl'>,
+  kind: DiscoveryDocumentKind,
+): string {
+  return `${discoveryOrigin(client)}${DISCOVERY_DOCUMENT_PATH[kind]}`;
 }
 
 /**
@@ -74,7 +87,7 @@ export async function fetchDiscoveryDocument(
   client: Pick<HttpClient, 'baseUrl' | 'headers'>,
   kind: DiscoveryDocumentKind,
 ): Promise<unknown> {
-  const url = `${discoveryOrigin(client)}${DISCOVERY_DOCUMENT_PATH[kind]}`;
+  const url = discoveryDocumentUrl(client, kind);
   const response = await fetch(url, { headers: client.headers });
   if (!response.ok) throw new DiscoveryFetchError(kind, response.status, response.statusText);
   return response.json();

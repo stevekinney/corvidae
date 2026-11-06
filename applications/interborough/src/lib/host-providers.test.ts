@@ -11,6 +11,7 @@ import {
   HostProviderError,
   reloadProviders,
   replaceCatalogEdits,
+  testProviderKey,
 } from './host-providers.ts';
 
 const KEY = 'sk-test-key-that-must-never-be-repeated';
@@ -86,6 +87,16 @@ describe('getProviders', () => {
     expect(await failureOf(getProviders({ fetch: refused.fetch }))).toBeInstanceOf(Error);
     const unreadable = recording(() => Response.json({ providers: 'none' }));
     expect(await failureOf(getProviders({ fetch: unreadable.fetch }))).toBeDefined();
+  });
+});
+
+describe('a read the host answers with an error', () => {
+  test('carries the status the page words ("didn’t come back (503)")', async () => {
+    const failing = recording(() => new Response('unavailable', { status: 503 }));
+    const error = await failureOf(getProviders({ fetch: failing.fetch }));
+    expect(error).toBeInstanceOf(HostProviderError);
+    expect((error as HostProviderError).status).toBe(503);
+    expect((error as HostProviderError).kind).toBe('failed');
   });
 });
 
@@ -227,6 +238,73 @@ describe('disconnectProvider', () => {
     expect(await failureOf(disconnectProvider('anthropic', { fetch, mutation }))).toMatchObject({
       kind: 'locked',
     });
+  });
+});
+
+describe('testProviderKey', () => {
+  test('posts the key to the provider’s test route and reads the answer', async () => {
+    const { seen, fetch } = recording(() => Response.json({ ok: true, models: 3 }));
+
+    const result = await testProviderKey('anthropic', KEY, { fetch });
+
+    expect(result).toEqual({ ok: true, models: 3 });
+    expect(seen).toEqual([
+      {
+        path: `${HOST_PROVIDERS_ROUTE}/anthropic/test`,
+        method: 'POST',
+        body: JSON.stringify({ apiKey: KEY }),
+      },
+    ]);
+  });
+
+  test('reads a refused key as an answer with its status, not as a failure', async () => {
+    const { fetch } = recording(() => Response.json({ ok: false, status: 401 }));
+
+    expect(await testProviderKey('anthropic', KEY, { fetch })).toEqual({ ok: false, status: 401 });
+  });
+
+  test('reads a test that could not finish, with no status', async () => {
+    const { fetch } = recording(() => Response.json({ ok: false }));
+
+    expect(await testProviderKey('anthropic', KEY, { fetch })).toEqual({ ok: false });
+  });
+
+  test('fails with the host’s refusal of the request, never repeating the key', async () => {
+    const { fetch } = recording(() =>
+      Response.json(
+        { error: 'invalid', field: 'apiKey', message: `Invalid apiKey ${KEY}.` },
+        { status: 400 },
+      ),
+    );
+
+    const failure = await failureOf(testProviderKey('anthropic', KEY, { fetch }));
+
+    expect(failure).toBeInstanceOf(HostProviderError);
+    expect(failure).toMatchObject({ kind: 'invalid', field: 'apiKey', message: '' });
+  });
+
+  test('fails for an answer it cannot read, and escapes the provider name', async () => {
+    const { seen, fetch } = recording(() => Response.json({ unexpected: true }));
+
+    const failure = await failureOf(testProviderKey('odd/name', KEY, { fetch }));
+
+    expect(failure).toBeDefined();
+    expect(seen[0]?.path).toBe(`${HOST_PROVIDERS_ROUTE}/odd%2Fname/test`);
+  });
+
+  test('stops when the signal does', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetch = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (init?.signal?.aborted === true) throw new DOMException('Stopped', 'AbortError');
+      return Response.json({ ok: true, models: 1 });
+    };
+
+    const failure = await failureOf(
+      testProviderKey('anthropic', KEY, { fetch, signal: controller.signal }),
+    );
+
+    expect(failure).toBeInstanceOf(DOMException);
   });
 });
 

@@ -86,6 +86,7 @@ function bureau(setup: Setup = {}): BureauStub {
             'bureau.settings.get': () => ({
               values: { modelPolicy: setup.modelPolicy },
               effective: { modelPolicy: setup.modelPolicy },
+              running: { modelPolicy: setup.modelPolicy },
               revision: 1,
               persisted: true,
               keys: {},
@@ -484,6 +485,9 @@ describe('a reload from disk', () => {
         modelPolicy: { deployment: { deniedProviders: ['anthropic'] }, policyRevision: 2 },
       },
       effective: {
+        modelPolicy: { deployment: { deniedProviders: ['anthropic'] }, policyRevision: 2 },
+      },
+      running: {
         modelPolicy: { deployment: { deniedProviders: ['anthropic'] }, policyRevision: 2 },
       },
       revision: 2,

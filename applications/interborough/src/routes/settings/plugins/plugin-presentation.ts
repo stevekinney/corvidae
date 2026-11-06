@@ -8,6 +8,8 @@ import type { StatusDotStatus } from '@lostgradient/cinder';
 
 import { nameList, PLUGINS_COPY, RESTART_COPY } from '../../../app/copy.ts';
 import type { RestartIntent } from '../../../app/restart/host-restart-flow.svelte.ts';
+import type { AgentListing } from '../../../lib/agent-definitions.ts';
+import { agentLabel } from '../../../lib/agent-label.ts';
 import type {
   PluginContribution,
   PluginProblem,
@@ -92,7 +94,8 @@ export function statusOf(plugin: PluginStanding, enabled: boolean): PluginStatus
     case 'running':
       return { label: words.running, dot: 'success' };
     case 'needs-setup':
-      return { label: words.needsSetup, dot: 'warning' };
+      // Neutral: amber is for what waits on the person, and a plugin that needs a key is not that.
+      return { label: words.needsSetup, dot: 'neutral' };
     case 'disabled':
       return { label: words.disabled, dot: 'neutral' };
     case 'skipped':
@@ -112,23 +115,88 @@ export function sourceKind(source: PluginStanding['source']): string {
   return source === 'built-in' ? words.builtIn : source === 'folder' ? words.folder : words.package;
 }
 
-/** What a plugin adds, grouped by kind in the order the host listed them. */
+/** One thing a plugin adds: its name as a person reads it, and the identifier a file names it by. */
+export type ContributionItem = { readonly id: string; readonly title: string };
+
+/** One kind of thing a plugin adds, with the heading it goes under. */
+export type ContributionGroup = {
+  readonly kind: string;
+  readonly label: string;
+  readonly items: readonly ContributionItem[];
+};
+
+/** The kinds the page lists first, in this order; any other kind follows in the host's order. */
+const LEADING_KINDS = ['tool', 'activity', 'skill'] as const;
+
+/** `fetch-page` as words, `Fetch page`: the name a contribution has when its plugin gave it no title. */
+export function humanizeName(name: string): string {
+  const words = name.replaceAll(/[-_]+/g, ' ').trim();
+  return words === '' ? name : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+/** The identifier a contribution is named by in a file: `plugin:name`, without a tool's `@version`. */
+export function identifierOf(id: string): string {
+  const at = id.lastIndexOf('@');
+  return at > 0 ? id.slice(0, at) : id;
+}
+
+/**
+ * What a plugin adds, grouped by kind: tools, activities and skills first, then the other kinds in
+ * the order the host listed them. Each item has its human name (the one the plugin gave it, else
+ * its name as words) and the identifier small beside it. `skills` are the plugin's own skills,
+ * which the host lists apart from the contributions.
+ */
 export function contributionGroups(
   plugin: PluginStanding,
-): readonly { kind: string; label: string; ids: readonly string[] }[] {
-  const groups = new Map<string, string[]>();
+  skills: readonly { readonly name: string }[] = [],
+): readonly ContributionGroup[] {
+  const groups = new Map<string, ContributionItem[]>();
+  const add = (kind: string, item: ContributionItem): void => {
+    const items = groups.get(kind);
+    if (items === undefined) groups.set(kind, [item]);
+    else items.push(item);
+  };
   for (const entry of plugin.contributions) {
-    const ids = groups.get(entry.kind);
-    if (ids === undefined) groups.set(entry.kind, [entry.id]);
-    else ids.push(entry.id);
+    const id = identifierOf(entry.id);
+    add(entry.kind, { id, title: entry.title ?? humanizeName(id.slice(id.indexOf(':') + 1)) });
   }
-  return [...groups].map(([kind, ids]) => ({
+  for (const skill of skills) {
+    const id = skill.name.includes(':') ? skill.name : `${nameOf(plugin)}:${skill.name}`;
+    add('skill', { id, title: humanizeName(id.slice(id.indexOf(':') + 1)) });
+  }
+  const kinds = [
+    ...LEADING_KINDS.filter((kind) => groups.has(kind)),
+    ...[...groups.keys()].filter((kind) => !LEADING_KINDS.some((leading) => leading === kind)),
+  ];
+  return kinds.map((kind) => ({
     kind,
     label: Object.hasOwn(PLUGINS_COPY.contributionKinds, kind)
       ? (PLUGINS_COPY.contributionKinds[kind] ?? kind)
       : kind,
-    ids,
+    items: groups.get(kind) ?? [],
   }));
+}
+
+/**
+ * The agents a disabled plugin holds back, named as a person reads them: its own agents (the
+ * identifiers that start with `<name>:`) that the catalog lists unavailable, where no available
+ * agent has the same name.
+ */
+export function heldBackAgents(
+  pluginName: string,
+  agents: readonly Pick<AgentListing, 'id' | 'name' | 'state'>[],
+): string[] {
+  const available = new Set(
+    agents.filter((agent) => agent.state === 'ready').map((agent) => agent.name),
+  );
+  return agents
+    .filter(
+      (agent) =>
+        agent.state === 'unavailable' &&
+        agent.id.startsWith(`${pluginName}:`) &&
+        !available.has(agent.name),
+    )
+    .map((agent) => agentLabel(agent.name, undefined));
 }
 
 /** The sum of what names each thing a plugin adds. */
@@ -144,18 +212,32 @@ export function referenceTotals(plugin: PluginStanding): PluginReferenceTotals {
   return { agents, schedules, waitingRuns };
 }
 
-/** The `In use` sentence: what names what the plugin adds, or why nothing does. */
-export function inUseSentence(plugin: PluginStanding): string {
+/**
+ * The `In use` sentence of a running plugin: what names what it adds, or that nothing does yet.
+ * A plugin that is not running has none, because nothing can use it.
+ */
+export function inUseSentence(plugin: PluginStanding): string | undefined {
+  if (plugin.status !== 'running') return undefined;
   const words = PLUGINS_COPY.inUse;
-  if (plugin.status === 'disabled') return words.disabled;
-  if (plugin.status === 'skipped') return words.notRunning;
+  const title = plugin.descriptor.title;
   const totals = referenceTotals(plugin);
-  const parts = [
-    totals.agents > 0 ? PLUGINS_COPY.counts.agents(totals.agents) : undefined,
-    totals.schedules > 0 ? PLUGINS_COPY.counts.schedules(totals.schedules) : undefined,
-    totals.waitingRuns > 0 ? PLUGINS_COPY.counts.waitingRuns(totals.waitingRuns) : undefined,
-  ].filter((part): part is string => part !== undefined);
-  return parts.length === 0 ? words.nothing : words.some(parts);
+  const counts = [
+    totals.agents > 0
+      ? { text: PLUGINS_COPY.counts.agents(totals.agents), one: totals.agents === 1 }
+      : undefined,
+    totals.schedules > 0
+      ? { text: PLUGINS_COPY.counts.schedules(totals.schedules), one: totals.schedules === 1 }
+      : undefined,
+    totals.waitingRuns > 0
+      ? { text: PLUGINS_COPY.counts.waitingRuns(totals.waitingRuns), one: totals.waitingRuns === 1 }
+      : undefined,
+  ].filter((part) => part !== undefined);
+  if (counts.length === 0) return words.nothing(title);
+  return words.some(
+    title,
+    counts.map((part) => part.text),
+    counts.length === 1 && counts[0]?.one === true,
+  );
 }
 
 /** One line of the disable dialog: the count, and the sentence about what it means. */
@@ -264,4 +346,29 @@ export function restartBackWords(
     title: words.title,
     text: [words.applied(intent.changes), standing].filter((part) => part !== '').join(' '),
   };
+}
+
+/**
+ * Where a secret is kept, as a person reads it: the folder of its file, written from the home
+ * folder (`~/.interborough/secrets`) when it is under the state directory, and the location as
+ * given when it is not a path at all (a remote host names an environment variable).
+ */
+export function secretsDirectory(location: string): string {
+  const slash = location.lastIndexOf('/');
+  if (slash < 0) return location;
+  const directory = location.slice(0, slash);
+  const marker = '/.interborough/';
+  const at = `${directory}/`.indexOf(marker);
+  return at < 0 ? directory : `~${`${directory}/`.slice(at, -1)}`;
+}
+
+/**
+ * The model provider a plugin contributes, or `undefined` for a plugin that is not one. A key a
+ * provider plugin holds is connected through the Models flow, which tests it before it saves it.
+ */
+export function providerOf(plugin: PluginStanding): string | undefined {
+  const provider = plugin.contributions.find((entry) => entry.kind === 'provider');
+  if (provider === undefined) return undefined;
+  const id = identifierOf(provider.id);
+  return id.slice(id.indexOf(':') + 1);
 }

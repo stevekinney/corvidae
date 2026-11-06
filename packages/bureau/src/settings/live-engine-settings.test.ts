@@ -35,13 +35,72 @@ describe('engine.* live settings', () => {
     });
   }
 
+  describe('retention.runs', () => {
+    const DAY = 86_400_000;
+
+    it('keeps every outcome the engine kept until a window is set, then sets all four', async () => {
+      await withLiveSettingsBureau(async ({ bureau, change }) => {
+        const engine = bureau.durableEngine();
+        if (engine === undefined) throw new Error('expected a durable engine');
+        const reconfigure = spyOn(engine, 'reconfigure');
+
+        await change({ 'retention.runs': { olderThan: DAY } });
+
+        expect(reconfigure.mock.calls[0]?.[0]).toEqual({
+          retention: { completed: DAY, failed: DAY, cancelled: DAY, timedOut: DAY },
+        });
+        expect(reconfigure.mock.results[0]?.value).toMatchObject({ outcome: 'applied' });
+
+        await change({ 'retention.runs': 'forever' });
+        expect(reconfigure.mock.calls[1]?.[0]).toEqual({ retention: {} });
+      });
+    });
+
+    it('yields to the window engine.retention sets for an outcome', async () => {
+      await withLiveSettingsBureau(async ({ bureau, change }) => {
+        const engine = bureau.durableEngine();
+        if (engine === undefined) throw new Error('expected a durable engine');
+        const reconfigure = spyOn(engine, 'reconfigure');
+
+        await change({ 'engine.retention': { failed: 1_000 } });
+        await change({ 'retention.runs': { olderThan: DAY } });
+
+        expect(reconfigure.mock.calls[1]?.[0]).toEqual({
+          retention: { completed: DAY, failed: 1_000, cancelled: DAY, timedOut: DAY },
+        });
+      });
+    });
+  });
+
+  it('the durable engine caps workflow runs at 4 unless the deployment says otherwise', async () => {
+    await withLiveSettingsBureau(async ({ bureau }) => {
+      expect(bureau.durableEngine()?.runConcurrency()).toEqual({
+        max: 4,
+        running: [],
+        waiting: [],
+      });
+      const { effective } = await bureau.settings.get();
+      expect(effective['engine.maxConcurrentRuns']).toBe(4);
+    });
+    await withLiveSettingsBureau(
+      async ({ bureau }) => {
+        expect(bureau.durableEngine()?.runConcurrency()?.max).toBe(2);
+        const { running } = await bureau.settings.get();
+        expect(running['engine.maxConcurrentRuns']).toBe(2);
+      },
+      { durableGuardrails: { maxConcurrentRuns: 2 } },
+    );
+  });
+
   it('a restart key is stored without reconfiguring the engine', async () => {
     await withLiveSettingsBureau(async ({ bureau, change }) => {
       const engine = bureau.durableEngine();
       if (engine === undefined) throw new Error('expected a durable engine');
       const reconfigure = spyOn(engine, 'reconfigure');
-      await change({ 'engine.maxNestingDepth': 4 });
+      await change({ 'engine.maxNestingDepth': 4, 'engine.maxConcurrentRuns': 6 });
       expect(reconfigure).not.toHaveBeenCalled();
+      // The cap the engine was built with stays until the next start.
+      expect(engine.runConcurrency()?.max).toBe(4);
     });
   });
 });

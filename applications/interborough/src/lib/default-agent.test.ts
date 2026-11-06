@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { findDefaultAgent, listAgentsWithReadiness } from './default-agent.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
+import { writePreferredAgent } from './preferred-agent.ts';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -43,6 +44,8 @@ function plugin(name: string, status: string, agents: readonly string[]) {
     })),
     enabled: true,
     configuration: {},
+    configurationSchema: null,
+    running: { enabled: true, configuration: {} },
     secrets: [],
     restartRequired: false,
   };
@@ -92,5 +95,36 @@ describe('the default agent', () => {
   test('is the first listed agent when the host does not say what its plugins are doing', async () => {
     host(['demo:assistant'], null);
     expect(await findDefaultAgent()).toBe('demo:assistant');
+  });
+
+  test('is the agent the person chose in Settings when it can run, else the first that can', async () => {
+    const store = new Map<string, string>();
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        localStorage: {
+          getItem: (key: string) => store.get(key) ?? null,
+          setItem: (key: string, value: string) => void store.set(key, value),
+          removeItem: (key: string) => void store.delete(key),
+        },
+      },
+    });
+    try {
+      host(
+        ['demo:assistant', 'demo:echo', 'blocked:agent'],
+        [
+          plugin('demo', 'running', ['demo:assistant', 'demo:echo']),
+          plugin('blocked', 'needs-setup', ['blocked:agent']),
+        ],
+      );
+      writePreferredAgent('demo:echo');
+      expect(await findDefaultAgent()).toBe('demo:echo');
+      writePreferredAgent('blocked:agent');
+      expect(await findDefaultAgent()).toBe('demo:assistant');
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(globalThis, 'window');
+      else Object.defineProperty(globalThis, 'window', original);
+    }
   });
 });
