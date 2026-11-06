@@ -186,12 +186,7 @@ const productionServer = Bun.serve({
               'data: {"type":"RUN_STARTED","threadId":"thread-sigint","runId":"run-sigint"}\n\n',
             ),
           );
-          await Bun.sleep(500);
-          try {
-            await writer.close();
-          } catch {
-            // SIGINT intentionally closes the client side of this fixture stream.
-          }
+          await writer.closed.catch(() => undefined);
         })();
         return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
       }
@@ -318,15 +313,30 @@ const sigintCall = spawnWithHangGuard(
   ],
   { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
 );
-await Bun.sleep(50);
 await waitUntil(() => compiledStreamHandshakes.includes('sigint-started'), {
   message: 'compiled chat to connect to the AG-UI stream',
   yieldTurn: () => Bun.sleep(10),
 });
-await Bun.sleep(250);
+const sigintStdoutReader = sigintCall.stdout.getReader();
+const sigintStdoutDecoder = new TextDecoder();
+let sigintStdout = '';
+let sigintRunStarted = false;
+while (!sigintRunStarted) {
+  const next = await sigintStdoutReader.read();
+  if (next.done) break;
+  sigintStdout += sigintStdoutDecoder.decode(next.value, { stream: true });
+  sigintRunStarted = sigintStdout.includes('thread-sigint') && sigintStdout.includes('run-sigint');
+}
+if (!sigintRunStarted) throw new Error('compiled chat did not parse RUN_STARTED before SIGINT');
 sigintCall.kill('SIGINT');
-const [sigintStdout, sigintStderr, sigintExitCode] = await Promise.all([
-  new Response(sigintCall.stdout).text(),
+while (true) {
+  const next = await sigintStdoutReader.read();
+  if (next.done) break;
+  sigintStdout += sigintStdoutDecoder.decode(next.value, { stream: true });
+}
+sigintStdout += sigintStdoutDecoder.decode();
+sigintStdoutReader.releaseLock();
+const [sigintStderr, sigintExitCode] = await Promise.all([
   new Response(sigintCall.stderr).text(),
   sigintCall.exited,
 ]);
