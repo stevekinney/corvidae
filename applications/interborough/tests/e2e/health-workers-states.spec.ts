@@ -11,6 +11,7 @@
 import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW_MILLISECONDS, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -21,9 +22,7 @@ const SOURCE = 'health-workers-states.spec.ts';
 const MINUTE = 60_000;
 
 /** The browser's "now": the sample world's in a capture, the real one otherwise. */
-const NOW = process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE']
-  ? SAMPLE_NOW_MILLISECONDS
-  : Date.now();
+const NOW = designReviewCaptureDirectory() ? SAMPLE_NOW_MILLISECONDS : Date.now();
 
 interface Worker {
   id: string;
