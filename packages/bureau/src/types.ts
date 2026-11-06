@@ -3783,6 +3783,13 @@ export interface DurableScheduleUpdate {
    */
   readonly sessionId?: string | null | undefined;
   /**
+   * Start a new chat that every fire continues from now on, which Bureau names itself (the
+   * schedule's first fire makes it, owned by the schedule's owner). It replaces the chat the
+   * schedule continued, if any, and is refused together with `sessionId`. Under a workspace a
+   * caller cannot name a chat that does not exist yet, so this is how a schedule is given one.
+   */
+  readonly continueChat?: boolean | undefined;
+  /**
    * The schedule's new IANA time zone (see {@link DurableScheduleDefinition.timeZone}). Left as it
    * was when omitted; an interval `spec` is always read as UTC.
    */
@@ -3807,6 +3814,12 @@ export interface DurableScheduleDefinition {
    * each fire is a fresh standalone session.
    */
   sessionId?: string;
+  /**
+   * Start a new chat that every fire continues, which Bureau names itself; the first fire makes it,
+   * owned by the schedule's owner. Refused together with `sessionId`. Under a workspace a caller
+   * cannot name a chat that does not exist yet, so this is how a schedule is given a new one.
+   */
+  continueChat?: boolean;
   /** Overlap policy when a prior fire is still running. Defaults to `'skip'`. */
   overlap?: 'skip' | 'allow';
   /**

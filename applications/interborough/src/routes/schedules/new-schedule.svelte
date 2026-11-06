@@ -84,7 +84,6 @@
     footerLineOf,
     isChatDraft,
     isDraftStarted,
-    newChatId,
     optionMatches,
     recentTypes,
     scheduleTargetOf,
@@ -427,9 +426,8 @@
         return schedule.id;
       }
       if (isChatDraft(choice)) {
-        const chatId = choice.continueChat ? newChatId() : undefined;
         const made = await abortable(
-          createAgentSchedule(agentScheduleInput(choice, chatId), { signal }),
+          createAgentSchedule(agentScheduleInput(choice), { signal }),
           signal,
         );
         return made.id;
@@ -675,6 +673,13 @@
   }
 
   // Leaving after typing asks first. A back or forward the guard refuses puts the address back.
+  /** An edit that gives a schedule another agent while it keeps continuing its chat starts a new chat. */
+  const newChatOnSave = $derived(
+    target?.kind === 'agent-run' &&
+      opened.continueChat &&
+      draft.continueChat &&
+      draft.agentName.trim() !== opened.agentName.trim(),
+  );
   const started = $derived(isDraftStarted(draft, opened));
   let discarding = $state(false);
   let destination = LIST_PATH;
@@ -876,7 +881,7 @@
           <Toggle
             id="ib-schedule-new-continue"
             label={copy.continueLabel}
-            description={copy.continueDescription}
+            description={newChatOnSave ? copy.continueNewChatDescription : copy.continueDescription}
             descriptionPlacement="below"
             checked={draft.continueChat}
             onValueChange={continueChanged}

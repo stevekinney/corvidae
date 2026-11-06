@@ -256,6 +256,71 @@ describe('an edit of the run a schedule starts (COR-2018)', () => {
     });
   });
 
+  it('refuses a new agent for a schedule whose chat belongs to another agent, and writes nothing', async () => {
+    const opened = await serveTwoAgents();
+    const task = await opened.bureau.tasks.start('writer', 'Begin the chat', {
+      principal: OWNER.alice,
+    });
+    const id = await createdBy(opened, 'alice-key', { sessionId: task.contextId });
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'editor' },
+      'alice-key',
+    );
+    expect(status(refused)).toBe(400);
+    expect(refused.error?.message).toContain('belongs to agent "writer"');
+    // Naming that chat together with another agent is the same schedule, refused the same.
+    const named = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'editor', sessionId: task.contextId },
+      'alice-key',
+    );
+    expect(status(named)).toBe(400);
+    expect(await read(opened, id)).toMatchObject({
+      agentName: 'writer',
+      continuesChat: true,
+      revision: 1,
+    });
+    // The way out is a new chat with the change, or a fresh chat every fire.
+    const renewed = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'editor', continueChat: true },
+      'alice-key',
+    );
+    expect(renewed.result).toMatchObject({ revision: 2 });
+    expect(await read(opened, id)).toMatchObject({ agentName: 'editor', continuesChat: true });
+    const fresh = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'writer', sessionId: null },
+      'alice-key',
+    );
+    expect(fresh.result).toMatchObject({ revision: 3 });
+  });
+
+  it('refuses a new chat named together with an existing one', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', continueChat: true, sessionId: 'schedule-chat-1' },
+      'alice-key',
+    );
+    expect(status(refused)).toBe(400);
+    expect(await read(opened, id)).toMatchObject({ continuesChat: false, revision: 1 });
+    const created = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      { ...NEW_SCHEDULE, continueChat: true, sessionId: 'schedule-chat-1' },
+      'alice-key',
+    );
+    expect(status(created)).toBe(400);
+  });
+
   it('keeps the agent, the text, and the session an update does not name', async () => {
     const opened = await serveTwoAgents();
     const id = await createdBy(opened, 'alice-key', { sessionId: 'digest' });
@@ -993,8 +1058,10 @@ it('workspace administrators manage shared configuration without private schedul
   }
 });
 
-it('workspace schedules cannot attach another owner or an unknown private session', async () => {
+/** A workspace Bureau whose members each own the schedules and chats they create. */
+async function openWorkspaceBureau(storage?: Storage): Promise<OpenedBureau> {
   const opened = await openBureau({
+    ...(storage === undefined ? {} : { storage }),
     agents: { writer },
     generate: answering(),
     bureauOptions: {
@@ -1022,6 +1089,11 @@ it('workspace schedules cannot attach another owner or an unknown private sessio
     },
   });
   cleanups.push(() => opened.dispose());
+  return opened;
+}
+
+it('workspace schedules cannot attach another owner or an unknown private session', async () => {
+  const opened = await openWorkspaceBureau();
   const task = await opened.bureau.tasks.start('writer', 'PRIVATE-SESSION-SENTINEL', {
     principal: 'owner-a',
   });
@@ -1039,4 +1111,77 @@ it('workspace schedules cannot attach another owner or an unknown private sessio
       principal: 'owner-a',
     }),
   ).toMatchObject({ status: 'active' });
+});
+
+it('a workspace schedule update cannot move a schedule onto another owner or an unknown chat, and writes nothing', async () => {
+  const storage = new MemoryStorage();
+  const opened = await openWorkspaceBureau(storage);
+  const task = await opened.bureau.tasks.start('writer', 'PRIVATE-SESSION-SENTINEL', {
+    principal: 'owner-a',
+  });
+  const schedule = await opened.bureau.schedules.create({
+    ...NEW_SCHEDULE,
+    principal: 'owner-b',
+  });
+  const id = schedule!.id;
+  const before = await storage.get(KEYS.schedule(id));
+  for (const sessionId of [task.contextId, 'missing-session']) {
+    expect(
+      await rejectionOf(opened.bureau.schedules.update(id, { spec: '2h', sessionId })),
+    ).toMatchObject({ code: 'NOT_FOUND', message: 'Session not found' });
+  }
+  expect(await opened.bureau.schedules.get(id)).toMatchObject({ revision: 1 });
+  expect(await storage.get(KEYS.schedule(id))).toEqual(before);
+  const own = await opened.bureau.schedules.create({ ...NEW_SCHEDULE, principal: 'owner-a' });
+  expect(
+    await opened.bureau.schedules.update(own!.id, { spec: '2h', sessionId: task.contextId }),
+  ).toBe(true);
+  expect(await opened.bureau.schedules.get(own!.id)).toMatchObject({ revision: 2 });
+});
+
+it('a workspace schedule can be given a new chat that Bureau names, which survives a restart', async () => {
+  const storage = new MemoryStorage();
+  const opened = await openWorkspaceBureau(storage);
+  const made = await opened.bureau.schedules.create({
+    ...NEW_SCHEDULE,
+    continueChat: true,
+    principal: 'owner-b',
+  });
+  const id = made!.id;
+  const storedSession = async (): Promise<string | undefined> => {
+    const record = decode((await storage.get(KEYS.schedule(id))) as Uint8Array) as {
+      input: { sessionId?: string; authorityHold?: string };
+    };
+    expect(record.input.authorityHold).toBeUndefined();
+    return record.input.sessionId;
+  };
+  const first = await storedSession();
+  if (first === undefined) throw new Error('The schedule kept no chat.');
+  expect(typeof first).toBe('string');
+  expect(await opened.bureau.schedules.get(id)).toMatchObject({ status: 'active', revision: 1 });
+  // The chat does not exist until the first fire, so a caller still cannot name an id of its own.
+  expect(
+    await rejectionOf(
+      opened.bureau.schedules.create({ ...NEW_SCHEDULE, sessionId: first, principal: 'owner-b' }),
+    ),
+  ).toMatchObject({ code: 'NOT_FOUND', message: 'Session not found' });
+  expect(
+    await rejectionOf(
+      opened.bureau.schedules.create({
+        ...NEW_SCHEDULE,
+        continueChat: true,
+        sessionId: 'schedule-chat-1',
+        principal: 'owner-b',
+      }),
+    ),
+  ).toMatchObject({ code: 'BAD_REQUEST' });
+  expect(await opened.bureau.schedules.update(id, { spec: '2h', continueChat: true })).toBe(true);
+  const second = await storedSession();
+  expect(second).not.toBe(first);
+  expect(await opened.bureau.schedules.get(id)).toMatchObject({ revision: 2 });
+  await opened.dispose();
+  const reopened = await openWorkspaceBureau(storage);
+  await reopened.bureau.maintain();
+  expect(await storedSession()).toBe(second);
+  expect(await reopened.bureau.schedules.get(id)).toMatchObject({ status: 'active' });
 });

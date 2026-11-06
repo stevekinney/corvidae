@@ -20839,6 +20839,34 @@ async function constructBureau<const D extends AgentDefinitions>(
     return sweptCount;
   }
 
+  /**
+   * Under a workspace Bureau a schedule may continue only a chat its own owner holds, so a session
+   * that is another owner's, or that does not exist, is answered as not found. Creating and
+   * updating a schedule share this check, because every fire of one that fails it is `unavailable`.
+   */
+  async function refuseScheduleSessionOfAnotherOwner(
+    sessionId: string,
+    owner: string,
+  ): Promise<void> {
+    if (workspace !== undefined && (await sessionOwner(sessionId)) !== owner) {
+      throw new BureauError('Session not found', 'NOT_FOUND');
+    }
+  }
+
+  /**
+   * Whether the owner may keep a schedule's recurring chat. A chat that is not made yet is theirs
+   * to make, as the first fire of a schedule that Bureau named a chat for does; one that exists
+   * must be theirs.
+   */
+  async function mayContinueScheduleSession(
+    sessionId: string | undefined,
+    owner: string,
+  ): Promise<boolean> {
+    if (sessionId === undefined) return true;
+    const held = await sessionOwner(sessionId);
+    return held === undefined || held === owner;
+  }
+
   async function createSchedule(
     definition: DurableScheduleDefinition,
     scheduleOptions?: CreateScheduleOptions,
@@ -20846,6 +20874,15 @@ async function constructBureau<const D extends AgentDefinitions>(
     source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     definition = structuredClone(definition);
+    // A chat Bureau names itself is unguessable and not yet made, so it is not another owner's to
+    // refuse: the schedule's first fire makes it, owned by the schedule's owner.
+    const allocatedChat = definition.continueChat === true;
+    if (allocatedChat) {
+      if (definition.sessionId !== undefined) {
+        throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
+      }
+      definition.sessionId = runtimeServices.identifiers.next('session');
+    }
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
       // A schedule's session is made by its first fire when none exists yet. Only `.` and `..` are
@@ -20860,12 +20897,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
-    if (
-      workspace !== undefined &&
-      definition.sessionId !== undefined &&
-      (await sessionOwner(definition.sessionId.trim())) !== owner
-    ) {
-      throw new BureauError('Session not found', 'NOT_FOUND');
+    if (definition.sessionId !== undefined && !allocatedChat) {
+      await refuseScheduleSessionOfAnotherOwner(definition.sessionId.trim(), owner);
     }
     const workspaceAuthority =
       workspace === undefined ? undefined : await captureRunWorkspaceAuthority(workspace, owner);
@@ -21109,8 +21142,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const usableInput =
       !isScheduledAgentRunInput(input) ||
       (authority !== undefined &&
-        (input.sessionId === undefined ||
-          (await sessionOwner(input.sessionId)) === authority.authorizingOwner) &&
+        (await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) &&
         (await mayUseAutomationInput(
           input.input,
           runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
@@ -21174,8 +21206,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         snapshot === null ||
         input === undefined ||
         authority === undefined ||
-        (input.sessionId !== undefined &&
-          (await sessionOwner(input.sessionId)) !== authority.authorizingOwner) ||
+        !(await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) ||
         !(await mayUseAutomationInput(
           input.input,
           runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
@@ -21425,10 +21456,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       );
     }
     const engine = runtime.durable.engine;
+    if (update.continueChat === true && update.sessionId !== undefined) {
+      throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
+    }
     const changesRun =
       update.agentName !== undefined ||
       update.input !== undefined ||
-      update.sessionId !== undefined;
+      update.sessionId !== undefined ||
+      update.continueChat === true;
     // The stored state is read for what an edit of the run needs (its input, the overlap and the
     // revision it was written at), and for the check that a recurring session is never combined
     // with overlapping fires.
@@ -21448,14 +21483,33 @@ async function constructBureau<const D extends AgentDefinitions>(
       throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
     }
     const nextOverlap = update.overlap ?? storedRecord?.overlap;
+    // A chat Bureau names itself is unguessable and not yet made (see `createSchedule`).
+    const allocatedChat =
+      update.continueChat === true ? runtimeServices.identifiers.next('session') : undefined;
     const nextSession =
-      update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined);
+      allocatedChat ??
+      (update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined));
     if (update.sessionId !== undefined && update.sessionId !== null) {
       const sessionId = update.sessionId.trim();
       rejectReservedIdentifier('"sessionId"', sessionId);
       if (unopenableNewSessionIdentifierReason('"sessionId"', sessionId)) {
         const held = await runtime.sessionStore?.load(sessionId);
         rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, held !== undefined);
+      }
+      // `changesRun` is true here, so the stored input was read and its principal is the owner.
+      await refuseScheduleSessionOfAnotherOwner(sessionId, ownerOrLocal(storedInput?.principal));
+    }
+    // COR-323: a fire runs as its named agent and refuses a chat another agent began, so an
+    // update that would leave the schedule's agent and its chat apart is refused now, not as an
+    // `unavailable` at every fire after it.
+    const nextAgent = update.agentName ?? storedInput?.agentName;
+    if (allocatedChat === undefined && nextSession !== undefined && nextAgent !== undefined) {
+      const held = await runtime.sessionStore?.load(nextSession);
+      if (held !== undefined && held.agentName !== nextAgent) {
+        throw new BureauError(
+          `Schedule "${scheduleId}" would run agent "${nextAgent}" in a chat that belongs to agent "${held.agentName}". Start a new chat with the change, or keep the agent.`,
+          'BAD_REQUEST',
+        );
       }
     }
     if (nextOverlap === 'allow' && nextSession !== undefined) {

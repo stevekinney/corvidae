@@ -18,7 +18,6 @@ import {
   footerLineOf,
   isDraftStarted,
   isDraftValid,
-  newChatId,
   optionMatches,
   recentTypes,
   scheduleTargetOf,
@@ -212,7 +211,7 @@ describe('isDraftStarted', () => {
 
 describe('the requests', () => {
   test('a chat is the Bureau’s, with the name as its description and the zone it was read in', () => {
-    expect(agentScheduleInput(chatDraft(), undefined)).toEqual({
+    expect(agentScheduleInput(chatDraft())).toEqual({
       agentName: 'Assistant',
       spec: '0 9 * * *',
       input: 'Summarize yesterday’s chats and open reviews.',
@@ -222,23 +221,14 @@ describe('the requests', () => {
     });
   });
 
-  test('a chat that continues one carries its chat’s identifier, and never starts a run beside itself', () => {
-    const input = agentScheduleInput(
-      chatDraft({ continueChat: true, overlap: 'allow' }),
-      'schedule-chat-1',
-    );
-    expect(input).toMatchObject({ sessionId: 'schedule-chat-1', overlap: 'skip' });
-    expect(agentScheduleInput(chatDraft({ overlap: 'allow' }), 'schedule-chat-1')).toMatchObject({
+  test('a chat that continues one asks the Bureau for the chat, never names one, and never starts a run beside itself', () => {
+    const input = agentScheduleInput(chatDraft({ continueChat: true, overlap: 'allow' }));
+    expect(input).toMatchObject({ continueChat: true, overlap: 'skip' });
+    expect(input).not.toHaveProperty('sessionId');
+    expect(agentScheduleInput(chatDraft({ overlap: 'allow' }))).toMatchObject({
       overlap: 'allow',
     });
-    expect(
-      agentScheduleInput(chatDraft({ overlap: 'allow' }), 'schedule-chat-1'),
-    ).not.toHaveProperty('sessionId');
-  });
-
-  test('makes an identifier that carries what it is for, from the random part it is given', () => {
-    expect(newChatId(() => 'abc')).toBe('schedule-chat-abc');
-    expect(newChatId()).toMatch(/^schedule-chat-[0-9a-f-]{36}$/);
+    expect(agentScheduleInput(chatDraft({ overlap: 'allow' }))).not.toHaveProperty('continueChat');
   });
 
   test('a workflow is the engine’s, with the policy selects, the input and the name', () => {

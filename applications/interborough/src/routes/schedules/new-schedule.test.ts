@@ -505,7 +505,7 @@ describe('Chat with an agent', () => {
     expect(params).not.toHaveProperty('timeZone');
   });
 
-  test('continues one chat when the switch is on: the schedule makes the chat’s identifier, and never allows an overlap', async () => {
+  test('continues one chat when the switch is on: the Bureau names the chat, and never allows an overlap', async () => {
     open();
     await fillChat();
     await fireEvent.change(field('If a run is still going'), { target: { value: 'allow' } });
@@ -519,10 +519,11 @@ describe('Chat with an agent', () => {
     await fireEvent.click(create());
 
     await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
-    expect(stub?.callsTo('bureau.schedules.create')[0]?.params).toMatchObject({
-      sessionId: expect.stringMatching(/^schedule-chat-/),
-      overlap: 'skip',
-    });
+    const params = stub?.callsTo('bureau.schedules.create')[0]?.params;
+    expect(params).toMatchObject({ continueChat: true, overlap: 'skip' });
+    // Under a workspace the Bureau refuses a chat the page made up, so the page names none.
+    expect(params).not.toHaveProperty('sessionId');
+    expect(stub?.world.scheduleContinuing).toHaveLength(1);
   });
 
   test('takes a typed agent name when the Bureau cannot list the agents', async () => {

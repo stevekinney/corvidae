@@ -487,6 +487,12 @@ const createInput = z.object({
     .max(256)
     .optional()
     .describe('A session each fire continues; without one, every fire is a fresh session.'),
+  continueChat: z
+    .boolean()
+    .optional()
+    .describe(
+      'Start a new chat that every fire continues, which the Bureau names itself and the first fire makes, owned by the caller. Refused together with `sessionId`.',
+    ),
   overlap: z
     .enum(['skip', 'allow'])
     .optional()
@@ -506,7 +512,7 @@ export const schedulesCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a schedule',
   description:
-    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session (`overlap: "allow"` is then refused), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval, where only `UTC` is accepted), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
+    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session, and `continueChat: true` starts a new chat for it that the Bureau names itself (`overlap: "allow"` is refused with either), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval, where only `UTC` is accepted), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
   destructive: true,
   tags: ['Schedules'],
   inputSchema: createInput,
@@ -546,6 +552,7 @@ export const schedulesCreateOperation = defineOperation<
         input: input.input,
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+        ...(input.continueChat === true ? { continueChat: true } : {}),
         ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
         ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
         principal: owner,
@@ -558,7 +565,7 @@ export const schedulesCreateOperation = defineOperation<
         owner,
         input.agentName,
         scheduleInputPreview(input.input),
-        input.sessionId !== undefined,
+        input.sessionId !== undefined || input.continueChat === true,
         undefined,
         principal,
       );
@@ -918,6 +925,12 @@ const updateInput = z.object({
     .describe(
       'The session each fire continues from now on, or `null` to make every fire a fresh session; left as it was when omitted. Refused with an overlap of `allow`.',
     ),
+  continueChat: z
+    .boolean()
+    .optional()
+    .describe(
+      'Start a new chat that every fire continues from now on, which the Bureau names itself and the first fire makes, replacing the schedule’s chat. Refused together with `sessionId` and with an overlap of `allow`.',
+    ),
   expectedRevision,
 });
 
@@ -963,6 +976,7 @@ export const schedulesUpdateOperation = defineOperation<
           ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
           ...(input.input === undefined ? {} : { input: input.input }),
           ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+          ...(input.continueChat === true ? { continueChat: true } : {}),
         },
         { expectedRevision: input.expectedRevision },
       );

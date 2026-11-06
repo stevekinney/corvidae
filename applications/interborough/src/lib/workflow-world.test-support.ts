@@ -283,6 +283,19 @@ export const workflowFaults = {
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
   unavailable: () => new StubFault('Unavailable', 503, 'The engine did not answer.'),
+  /**
+   * A chat a caller named that the Bureau does not hold for it: under a workspace the Bureau
+   * answers a chat that is missing and one that is another owner's the same way, so a page that
+   * makes up a chat's identifier is always refused.
+   */
+  sessionNotFound: () => new StubFault('NotFound', 404, 'No session.'),
+  /** An agent apart from the chat its schedule continues, as the Bureau's update refuses it. */
+  agentApartFromChat: () =>
+    new StubFault(
+      'InvalidParams',
+      400,
+      'The schedule would run another agent in a chat that belongs to the agent that began it. Start a new chat with the change, or keep the agent.',
+    ),
   /** An identifier the Bureau will not take for a new file, as its create answers. */
   conflict: (reason: string) =>
     new StubFault('Conflict', 409, 'That identifier is already used.', { reason }),
@@ -572,7 +585,8 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       world.schedules.push(schedule);
       world.scheduleAgents[schedule.id] = String(params['agentName']);
       world.scheduleInputs[schedule.id] = String(params['input']);
-      if (typeof params['sessionId'] === 'string') world.scheduleContinuing.push(schedule.id);
+      if (typeof params['sessionId'] === 'string') throw workflowFaults.sessionNotFound();
+      if (params['continueChat'] === true) world.scheduleContinuing.push(schedule.id);
       return bureauView(schedule);
     },
     'bureau.schedules.pause': (params) => {
@@ -644,6 +658,16 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     },
     'bureau.schedules.update': (params) => {
       const schedule = bureauGuarded(params);
+      if (typeof params['sessionId'] === 'string') throw workflowFaults.sessionNotFound();
+      if (
+        typeof params['agentName'] === 'string' &&
+        params['agentName'] !== world.scheduleAgents[schedule.id] &&
+        world.scheduleContinuing.includes(schedule.id) &&
+        params['continueChat'] !== true &&
+        params['sessionId'] !== null
+      ) {
+        throw workflowFaults.agentApartFromChat();
+      }
       const spec = String(params['spec']);
       if (/^\d+(?:ms|s|m|h|d)$/.test(spec)) {
         delete schedule.cronExpression;
@@ -658,7 +682,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
         world.scheduleAgents[schedule.id] = params['agentName'];
       }
       if (typeof params['input'] === 'string') world.scheduleInputs[schedule.id] = params['input'];
-      if (typeof params['sessionId'] === 'string') {
+      if (params['continueChat'] === true) {
         if (!world.scheduleContinuing.includes(schedule.id)) {
           world.scheduleContinuing.push(schedule.id);
         }
@@ -825,16 +849,23 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       const createdAt = params['createdAt'];
       const since =
         isRecord(createdAt) && typeof createdAt['gte'] === 'number' ? createdAt['gte'] : 0;
+      const before =
+        isRecord(createdAt) && typeof createdAt['lt'] === 'number'
+          ? createdAt['lt']
+          : Number.POSITIVE_INFINITY;
       const matching = world.runs
         .filter(
           (run) =>
             (params['type'] === undefined || run.type === params['type']) &&
             (statuses.length === 0 || statuses.includes(run.status)) &&
-            run.createdAt >= since,
+            run.createdAt >= since &&
+            run.createdAt < before,
         )
         .toSorted((left, right) => right.createdAt - left.createdAt);
+      // A page is `limit` runs from `offset`, and the total counts every match, as the engine does.
+      const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
       const limit = typeof params['limit'] === 'number' ? params['limit'] : matching.length;
-      return { items: matching.slice(0, limit), total: matching.length };
+      return { items: matching.slice(offset, offset + limit), total: matching.length };
     },
     'weft.workflows.revisions.list': (params) =>
       world.installedRevisions[String(params['name'])] ?? [],

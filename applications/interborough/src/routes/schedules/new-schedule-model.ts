@@ -240,16 +240,12 @@ export function isDraftStarted(draft: NewScheduleDraft, opened: NewScheduleDraft
   return JSON.stringify(draft) !== JSON.stringify(opened);
 }
 
-/** The id the Bureau keeps the chat of a schedule under, made when the schedule is. */
-export function newChatId(random: () => string = () => crypto.randomUUID()): string {
-  return `schedule-chat-${random()}`;
-}
-
-/** What `bureau.schedules.create` is sent for a chat. Only valid for a valid draft; `chatId` is the chat every fire continues. */
-export function agentScheduleInput(
-  draft: NewScheduleDraft,
-  chatId: string | undefined,
-): AgentScheduleInput {
+/**
+ * What `bureau.schedules.create` is sent for a chat. Only valid for a valid draft. A draft that
+ * continues one chat asks the Bureau for it rather than naming one, because the Bureau refuses, under
+ * a workspace, a chat that its owner does not hold yet.
+ */
+export function agentScheduleInput(draft: NewScheduleDraft): AgentScheduleInput {
   const timeZone = scheduleValueTimeZone(draft.cadence);
   return {
     agentName: draft.agentName.trim(),
@@ -258,7 +254,7 @@ export function agentScheduleInput(
     // A chat that is continued cannot also start another run beside itself, which the Bureau refuses.
     overlap: draft.continueChat || draft.overlap !== 'allow' ? 'skip' : 'allow',
     description: draft.name.trim(),
-    ...(draft.continueChat && chatId !== undefined ? { sessionId: chatId } : {}),
+    ...(draft.continueChat ? { continueChat: true as const } : {}),
     ...(timeZone !== undefined ? { timeZone } : {}),
   };
 }

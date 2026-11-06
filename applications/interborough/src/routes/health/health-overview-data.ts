@@ -62,11 +62,40 @@ const runPageSchema = z.object({
       updatedAt: z.number(),
     }),
   ),
+  /** How many runs match the filter in all, which one page of `items` does not hold. */
+  total: z.number(),
 });
 
-/** The runs of one page of `weft.workflows.list`, read down to what these figures use. */
-export function parseRunPage(page: unknown): RunSummary[] {
-  return runPageSchema.parse(page).items;
+/** One page of `weft.workflows.list`: the runs on it, read down to what these figures use, and how many match in all. */
+export interface RunPage {
+  readonly items: RunSummary[];
+  readonly total: number;
+}
+
+/** The most runs one page of `weft.workflows.list` is asked for. */
+export const RUN_PAGE_SIZE = 200;
+
+/** One page of `weft.workflows.list`, with the total the engine counted for the filter. */
+export function parseRunPage(page: unknown): RunPage {
+  return runPageSchema.parse(page);
+}
+
+/**
+ * Every run a filter matches, following `limit` and `offset` until the engine's total is read. The
+ * figures are counted over all of them, never over the first page as if it were the whole.
+ */
+export async function readEveryRun(
+  readPage: (page: { readonly limit: number; readonly offset: number }) => Promise<unknown>,
+): Promise<RunSummary[]> {
+  const runs = new Map<string, RunSummary>();
+  let offset = 0;
+  for (;;) {
+    const page = parseRunPage(await readPage({ limit: RUN_PAGE_SIZE, offset }));
+    // A run that began between two pages moves the later ones down, so one can be read twice.
+    for (const run of page.items) runs.set(run.id, run);
+    offset += page.items.length;
+    if (page.items.length === 0 || offset >= page.total) return [...runs.values()];
+  }
 }
 
 /** How many of `running` the engine is executing now: the ones that wait on a person are not. */

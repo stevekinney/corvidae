@@ -26,6 +26,7 @@
     type HealthCount,
     OVERVIEW_WINDOW_MS,
     parseRunPage,
+    readEveryRun,
     runningNow,
     startedSummary,
     waitingCaption,
@@ -69,9 +70,9 @@
 
   const runningRuns = createQuery(() => ({
     queryKey: ['health', 'runs', 'running'],
-    queryFn: async () =>
-      parseRunPage(
-        await client.operations['weft.workflows.list']({ status: 'running', limit: 200 }),
+    queryFn: () =>
+      readEveryRun((page) =>
+        client.operations['weft.workflows.list']({ status: 'running', ...page }),
       ),
     enabled: canReadRuns,
     // poll-reason: timer
@@ -80,11 +81,11 @@
   }));
   const startedRuns = createQuery(() => ({
     queryKey: ['health', 'runs', 'started', now],
-    queryFn: async () =>
-      parseRunPage(
-        await client.operations['weft.workflows.list']({
+    queryFn: () =>
+      readEveryRun((page) =>
+        client.operations['weft.workflows.list']({
           createdAt: { gte: now - OVERVIEW_WINDOW_MS },
-          limit: 200,
+          ...page,
         }),
       ),
     // The window moves a minute at a time and so does the key; the figures stay until the next ones arrive.
@@ -96,13 +97,14 @@
   }));
   const previousRuns = createQuery(() => ({
     queryKey: ['health', 'runs', 'previous', now],
+    // Only how many started is read, which the engine's total says whatever the page size.
     queryFn: async () =>
       parseRunPage(
         await client.operations['weft.workflows.list']({
           createdAt: { gte: now - 2 * OVERVIEW_WINDOW_MS, lt: now - OVERVIEW_WINDOW_MS },
-          limit: 200,
+          limit: 1,
         }),
-      ),
+      ).total,
     placeholderData: (previous) => previous,
     enabled: canReadRuns,
     // poll-reason: timer
@@ -162,7 +164,7 @@
   const started = $derived.by(() => {
     if (!canReadRuns || startedRuns.isError) return null;
     if (startedRuns.data === undefined) return undefined;
-    return startedSummary(startedRuns.data, waitingByRun, previousRuns.data?.length);
+    return startedSummary(startedRuns.data, waitingByRun, previousRuns.data);
   });
   const finish = $derived.by(() => {
     if (!canReadRuns || startedRuns.isError) return null;

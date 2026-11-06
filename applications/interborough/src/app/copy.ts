@@ -1474,6 +1474,9 @@ export const SCHEDULE_COPY = {
     continueLabel: 'Continue one chat',
     continueDescription:
       'Each run adds to the same chat, so the agent remembers earlier runs. Off: every run starts a new chat.',
+    /** Shown in place of the description when another agent is chosen for a schedule that keeps continuing its chat. */
+    continueNewChatDescription:
+      'Another agent cannot continue the chat the first one began, so saving starts a new chat. Earlier runs stay in the old one.',
     noAgents: {
       title: 'No agents to chat with',
       description: 'A scheduled chat runs one of your agents. Make an agent first.',

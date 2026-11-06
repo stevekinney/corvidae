@@ -198,9 +198,27 @@ describe('editing a chat', () => {
       input: 'Summarize the week.',
       expectedRevision: 3,
     });
-    expect(String(params?.['sessionId'])).toMatch(/^schedule-chat-/);
+    expect(params).toMatchObject({ continueChat: true });
+    expect(params).not.toHaveProperty('sessionId');
     expect(stub?.world.scheduleAgents[AGENT_SCHEDULE]).toBe('tool-runner');
     expect(stub?.world.scheduleInputs[AGENT_SCHEDULE]).toBe('Summarize the week.');
+    expect(stub?.world.scheduleContinuing).toEqual([AGENT_SCHEDULE]);
+    await waitFor(() => expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}`));
+  });
+
+  test('a new agent for a schedule that keeps continuing a chat starts a new chat with the change', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}/edit`, { scheduleContinuing: [AGENT_SCHEDULE] });
+    const form = await page();
+    await fireEvent.change(form.getByLabelText(/^Agent/), { target: { value: 'tool-runner' } });
+    expect(await form.findByText(/saving starts a new chat/)).toBeTruthy();
+    await fireEvent.click(form.getByRole('button', { name: SAVE }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.update')[0]?.params).toMatchObject({
+      agentName: 'tool-runner',
+      continueChat: true,
+    });
+    expect(stub?.world.scheduleAgents[AGENT_SCHEDULE]).toBe('tool-runner');
     expect(stub?.world.scheduleContinuing).toEqual([AGENT_SCHEDULE]);
     await waitFor(() => expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}`));
   });

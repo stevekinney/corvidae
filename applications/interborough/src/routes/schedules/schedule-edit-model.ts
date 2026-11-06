@@ -16,7 +16,7 @@ import type { AgentScheduleUpdate } from '../../lib/bureau-schedules.ts';
 import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
 import { AgentScheduleFormState } from './agent-schedule-form-state.svelte.ts';
 import { cadenceOf, cadenceToScheduleValue } from './cadence.ts';
-import { newChatId, workflowLabel, type NewScheduleDraft } from './new-schedule-model.ts';
+import { workflowLabel, type NewScheduleDraft } from './new-schedule-model.ts';
 import { ScheduleFormState } from './schedule-form-state.svelte.ts';
 
 /** What the page edits: the schedule as it was read, and what the Bureau says of it. */
@@ -98,13 +98,17 @@ export function agentUpdateOf(
   // A chat that continues cannot start another run beside itself, so the Bureau refuses `allow` for it.
   if (draft.continueChat) state.overlap = 'skip';
   const agentName = draft.agentName.trim();
+  const agentChanged = agentName !== opened.agentName.trim();
+  // The Bureau refuses an agent apart from the chat it continues (the chat keeps the instructions of
+  // the agent that began it), so changing the agent of a schedule that keeps continuing a chat starts
+  // a new chat with the change, and the page says so.
+  const newChat = draft.continueChat && (!opened.continueChat || agentChanged);
   return {
     ...state.toUpdate(),
-    ...(agentName !== opened.agentName.trim() ? { agentName } : {}),
+    ...(agentChanged ? { agentName } : {}),
     ...(draft.message !== opened.message ? { input: draft.message } : {}),
-    ...(draft.continueChat !== opened.continueChat
-      ? { sessionId: draft.continueChat ? newChatId() : null }
-      : {}),
+    ...(newChat ? { continueChat: true as const } : {}),
+    ...(!draft.continueChat && opened.continueChat ? { sessionId: null } : {}),
   };
 }
 

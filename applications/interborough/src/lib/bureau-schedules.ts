@@ -127,6 +127,12 @@ export type AgentScheduleInput = {
   readonly description?: string;
   /** A session each fire continues. Without one, every fire is a fresh session. */
   readonly sessionId?: string;
+  /**
+   * Every fire continues one new chat, which the Bureau names and the first fire makes as the
+   * schedule's owner. A page cannot make up the chat's identifier itself, because under a
+   * workspace the Bureau refuses a chat that is not yet its owner's.
+   */
+  readonly continueChat?: true;
   readonly overlap?: 'skip' | 'allow';
   /** The IANA zone a cron `spec` is read in. Left out for an interval, which the Bureau refuses one for. */
   readonly timeZone?: string;
@@ -147,6 +153,7 @@ export async function createAgentSchedule(
     ...(schedule.sessionId === undefined || schedule.sessionId === ''
       ? {}
       : { sessionId: schedule.sessionId }),
+    ...(schedule.continueChat === true ? { continueChat: true } : {}),
     ...(schedule.overlap === undefined ? {} : { overlap: schedule.overlap }),
     ...(schedule.timeZone === undefined ? {} : { timeZone: schedule.timeZone }),
   };
@@ -218,6 +225,12 @@ export type AgentScheduleUpdate = {
   readonly input?: string;
   /** The chat every fire continues from now on, or `null` to make each fire a fresh chat. */
   readonly sessionId?: string | null;
+  /**
+   * Every fire continues one new chat from now on, which the Bureau names, replacing the chat the
+   * schedule continued. It is how the agent of a schedule that continues a chat is changed, because
+   * the Bureau refuses an agent apart from its chat.
+   */
+  readonly continueChat?: true;
 };
 
 /** Replaces the schedule's cadence, and changes its description, overlap, zone, agent, message, and chat when they are given. */
@@ -236,6 +249,7 @@ export async function updateAgentSchedule(
     ...(update.agentName === undefined ? {} : { agentName: update.agentName }),
     ...(update.input === undefined ? {} : { input: update.input }),
     ...(update.sessionId === undefined ? {} : { sessionId: update.sessionId }),
+    ...(update.continueChat === true ? { continueChat: true } : {}),
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
   return receiptSchema.parse(await callBureau('bureau.schedules.update', params, options));

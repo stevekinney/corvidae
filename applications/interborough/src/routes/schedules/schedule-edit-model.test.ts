@@ -114,9 +114,28 @@ describe('the requests a change becomes', () => {
       agentName: 'tool-runner',
       input: 'A new message',
     });
-    expect(update.sessionId).toMatch(/^schedule-chat-/);
+    expect(update.continueChat).toBe(true);
+    // The page never makes up a chat's identifier: the Bureau names the chat it starts.
     // Nothing else is named: the schedule keeps what the person did not touch.
-    expect(Object.keys(update).toSorted()).toEqual(['agentName', 'input', 'sessionId', 'spec']);
+    expect(Object.keys(update).toSorted()).toEqual(['agentName', 'continueChat', 'input', 'spec']);
+  });
+
+  test('a new agent for a schedule that keeps continuing a chat starts a new chat with the change (74r)', () => {
+    const continuing = { ...CHAT, continuesChat: true };
+    const opened = editDraftOf(continuing);
+    expect(agentUpdateOf(continuing, { ...opened, agentName: 'tool-runner' }, opened)).toEqual({
+      spec: '0 9 * * *',
+      agentName: 'tool-runner',
+      continueChat: true,
+    });
+    // Turning the chat off with the change needs no new chat: every fire is a fresh one.
+    expect(
+      agentUpdateOf(
+        continuing,
+        { ...opened, agentName: 'tool-runner', continueChat: false },
+        opened,
+      ),
+    ).toEqual({ spec: '0 9 * * *', agentName: 'tool-runner', sessionId: null });
   });
 
   test('a chat that continues one is opened on, and turned off, by naming no chat (74r)', () => {

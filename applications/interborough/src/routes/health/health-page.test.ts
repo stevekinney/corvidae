@@ -18,14 +18,23 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import {
+  emptyWorld,
+  installWorkflowWorld,
+  runFixture,
+  type WorkflowStub,
+} from '../../lib/workflow-world.test-support.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 
 let stub: BureauStub | undefined;
+let engine: WorkflowStub | undefined;
 afterEach(() => {
   jest.useRealTimers();
   cleanup();
   stub?.restore();
   stub = undefined;
+  engine?.restore();
+  engine = undefined;
 });
 
 const AT = Date.now() - 60 * 60_000;
@@ -91,17 +100,21 @@ const AUDIT = {
 function open(
   path = '/health',
   handlers: Record<string, (params: Record<string, unknown>) => unknown> = {},
+  passThrough = false,
 ) {
-  stub = installBureauStub({
-    'bureau.health.attention': () => ATTENTION,
-    'bureau.audit.query': () => AUDIT,
-    'bureau.reviews.list': () => ({ reviews: [], nextPageToken: null }),
-    'bureau.schedules.list': () => ({ schedules: [], nextOffset: null }),
-    'bureau.contexts.get': () => {
-      throw new StubFault('NotFound', 404, 'No such chat.');
+  stub = installBureauStub(
+    {
+      'bureau.health.attention': () => ATTENTION,
+      'bureau.audit.query': () => AUDIT,
+      'bureau.reviews.list': () => ({ reviews: [], nextPageToken: null }),
+      'bureau.schedules.list': () => ({ schedules: [], nextOffset: null }),
+      'bureau.contexts.get': () => {
+        throw new StubFault('NotFound', 404, 'No such chat.');
+      },
+      ...handlers,
     },
-    ...handlers,
-  });
+    { passThrough },
+  );
   landAt(path);
   return render(RouteOutletHarness, {
     props: {
@@ -345,6 +358,54 @@ describe('the metric cards', () => {
     await waitFor(() => expect(cards.textContent).toContain('1.6 GB'));
     expect(cards.textContent).toContain('Charts fill in as Interborough runs.');
     expect(cards.querySelector('.cinder-sparkbar')).toBeNull();
+  });
+});
+
+describe('more runs than one page holds', () => {
+  /** An engine that lists 450 runs of the last day, 250 of them running, at most 200 to a page. */
+  function manyRuns(): WorkflowStub {
+    const world = emptyWorld({
+      runs: Array.from({ length: 450 }, (_, index) =>
+        runFixture(`run-${String(index)}`, 'agentRun', {
+          status: index < 250 ? 'running' : 'completed',
+          createdAt: Date.now() - 60_000 - index,
+          updatedAt: Date.now() - 60_000 - index + 8_000,
+        }),
+      ),
+    });
+    engine = installWorkflowWorld(world);
+    return engine;
+  }
+
+  test('counts Running now and Runs started over every page, and the day before from the total', async () => {
+    const runs = manyRuns();
+    runs.on('weft.workflows.aggregate', () => ({ groups: [], total: 0 }));
+    const view = open('/health', {}, true);
+    const counts = await view.findByRole('group', { name: 'Health counts' });
+    await waitFor(() =>
+      expect(counts.querySelector('.cinder-statistic__value')?.textContent).toContain('250'),
+    );
+    const started = view.container.querySelector('[data-metric="runs-started"]');
+    await waitFor(() =>
+      expect(started?.querySelector('.ib-metric-card__value')?.textContent).toBe('450'),
+    );
+    // Every run was read, in pages of 200 that follow one another, and the day before only counted.
+    const pagesOf = (matches: (params: Record<string, unknown>) => boolean) =>
+      runs
+        .callsTo('weft.workflows.list')
+        .map((call) => call.params)
+        .filter(matches)
+        .map((params) => [params['limit'], params['offset']]);
+    expect(pagesOf((params) => params['status'] === 'running')).toEqual([
+      [200, 0],
+      [200, 200],
+    ]);
+    expect(pagesOf((params) => params['status'] === undefined && params['limit'] === 200)).toEqual([
+      [200, 0],
+      [200, 200],
+      [200, 400],
+    ]);
+    expect(pagesOf((params) => params['limit'] === 1)).toEqual([[1, undefined]]);
   });
 });
 

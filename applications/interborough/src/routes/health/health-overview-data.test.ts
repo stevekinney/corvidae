@@ -8,6 +8,7 @@ import {
   finishTime,
   medianFinish,
   parseRunPage,
+  readEveryRun,
   runningNow,
   startedCaption,
   startedSummary,
@@ -128,13 +129,47 @@ describe('Needs you', () => {
 });
 
 describe('the run page', () => {
-  test('reads the runs and drops what these figures do not use', () => {
+  test('reads the runs and the total, and drops what these figures do not use', () => {
     expect(
       parseRunPage({
         items: [{ id: 'a', status: 'running', createdAt: 1, updatedAt: 2, extra: true }],
-        total: 1,
+        total: 450,
       }),
-    ).toEqual([{ id: 'a', status: 'running', createdAt: 1, updatedAt: 2 }]);
+    ).toEqual({ items: [{ id: 'a', status: 'running', createdAt: 1, updatedAt: 2 }], total: 450 });
+  });
+
+  test('reads every page of more than 200 runs, and asks for each only once', async () => {
+    const all = Array.from({ length: 450 }, (_, index) => ({
+      id: `run-${String(index)}`,
+      status: 'completed',
+      createdAt: index,
+      updatedAt: index + 1,
+    }));
+    const asked: { limit: number; offset: number }[] = [];
+    const runs = await readEveryRun(async (page) => {
+      asked.push(page);
+      return { items: all.slice(page.offset, page.offset + page.limit), total: all.length };
+    });
+    expect(runs).toHaveLength(450);
+    expect(asked).toEqual([
+      { limit: 200, offset: 0 },
+      { limit: 200, offset: 200 },
+      { limit: 200, offset: 400 },
+    ]);
+    expect(startedSummary(runs, new Map()).total).toBe(450);
+  });
+
+  test('counts a run once when it is read on two pages, and stops at an empty page', async () => {
+    const entry = (id: string): RunSummary => run(id, 'running', 1, 2);
+    const pages = [
+      { items: [entry('a'), entry('b')], total: 5 },
+      { items: [entry('b')], total: 5 },
+      { items: [], total: 5 },
+    ];
+    let read = 0;
+    const runs = await readEveryRun(async () => pages[read++] ?? { items: [], total: 5 });
+    expect(runs.map((found) => found.id)).toEqual(['a', 'b']);
+    expect(read).toBe(3);
   });
 });
 
