@@ -37,8 +37,24 @@ describe('revertPlugins', () => {
 
     const writes = host.requests.filter((request) => request.method === 'PUT');
     expect(writes.map((write) => [write.path, write.body])).toEqual([
-      ['/host/plugins/linear', { enabled: true, configuration: { teamKey: 'COR' } }],
-      ['/host/plugins/demo', { enabled: false, configuration: null }],
+      [
+        '/host/plugins/linear',
+        {
+          enabled: true,
+          configuration: { teamKey: 'COR' },
+          operationId: expect.any(String),
+          expectedRevision: expect.any(String),
+        },
+      ],
+      [
+        '/host/plugins/demo',
+        {
+          enabled: false,
+          configuration: null,
+          operationId: expect.any(String),
+          expectedRevision: expect.any(String),
+        },
+      ],
     ]);
     expect(snapshotOf(host).plugins.some((plugin) => plugin.restartRequired)).toBe(false);
   });

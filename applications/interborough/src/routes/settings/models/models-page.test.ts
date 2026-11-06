@@ -354,7 +354,7 @@ describe('the models', () => {
     await fireEvent.input(dialog.querySelector<HTMLInputElement>('input[type="password"]')!, {
       target: { value: KEY },
     });
-    host!.readStatus = 503;
+    host!.readStatusAfterWrite = 503;
     await fireEvent.click(
       within(dialog).getByRole('button', { name: MODELS_COPY.connectDialog.connect }),
     );
@@ -371,7 +371,7 @@ describe('the models', () => {
     expect(row.textContent).not.toContain('503');
     expect(container.querySelector('[data-testid="models-load-failed"]')).toBeNull();
 
-    delete host!.readStatus;
+    delete host!.readStatusAfterWrite;
     await fireEvent.click(
       within(failed).getByRole('button', { name: MODELS_COPY.models.loadFailed.retry }),
     );
@@ -837,7 +837,15 @@ describe('replacing a provider’s key', () => {
 
     await waitFor(() =>
       expect(writes().filter((request) => request.method === 'PUT')).toEqual([
-        { method: 'PUT', path: '/host/providers/anthropic', body: { apiKey: KEY } },
+        {
+          method: 'PUT',
+          path: '/host/providers/anthropic',
+          body: {
+            apiKey: KEY,
+            operationId: expect.any(String),
+            expectedRevision: expect.any(String),
+          },
+        },
       ]),
     );
     await waitFor(() =>

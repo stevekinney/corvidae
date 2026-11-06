@@ -491,7 +491,15 @@ describe('a plugin’s configuration', () => {
 
     await waitFor(() => expect(bannerText(container)).not.toBeNull());
     expect(writes()).toEqual([
-      { method: 'PUT', path: '/host/plugins/linear', body: { configuration: { teamKey: 'ENG' } } },
+      {
+        method: 'PUT',
+        path: '/host/plugins/linear',
+        body: {
+          configuration: { teamKey: 'ENG' },
+          operationId: expect.any(String),
+          expectedRevision: expect.any(String),
+        },
+      },
     ]);
     expect(banner(container)?.textContent).toContain(BANNER.title(1));
     expect(banner(container)?.textContent).toContain('Linear');
@@ -804,7 +812,15 @@ describe('restarting', () => {
 
     const back = await backBanner(container);
     expect(writes()).toEqual([
-      { method: 'PUT', path: '/host/plugins/demo', body: { enabled: true } },
+      {
+        method: 'PUT',
+        path: '/host/plugins/demo',
+        body: {
+          enabled: true,
+          operationId: expect.any(String),
+          expectedRevision: expect.any(String),
+        },
+      },
       { method: 'POST', path: '/host/restart', body: undefined },
     ]);
     // The dialog is gone; the banner says what applied and how the plugins stand now.

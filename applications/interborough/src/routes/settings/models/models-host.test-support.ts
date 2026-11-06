@@ -33,6 +33,12 @@ export type FakeHost = {
   readonly heldTests: (() => void)[];
   /** Answers every read with this status and no body while set, as a host that is failing does. */
   readStatus?: number;
+  /**
+   * Answers every read after the first write with this status and no body while set: a host that
+   * saved a key and then could not list its models. A save reads the committed revision first, so
+   * that read has to be answered.
+   */
+  readStatusAfterWrite?: number;
   readonly requests: HostRequest[];
   restore(): void;
 };
@@ -117,8 +123,13 @@ export function installFakeHost(initial: {
     const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
     host.requests.push({ method, path, body });
     if (method === 'GET') {
-      if (host.readStatus !== undefined) {
-        return Response.json({ error: 'failed', message: '' }, { status: host.readStatus });
+      const failing =
+        host.readStatus ??
+        (host.requests.some((request) => request.method === 'PUT')
+          ? host.readStatusAfterWrite
+          : undefined);
+      if (failing !== undefined) {
+        return Response.json({ error: 'failed', message: '' }, { status: failing });
       }
       return Response.json({
         configurationRevision: JSON.stringify([host.keys, host.catalog]),
