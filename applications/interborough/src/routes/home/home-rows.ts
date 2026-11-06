@@ -17,6 +17,7 @@ import { clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import { formatBytes, formatDuration } from '../../lib/format/index.ts';
 import { hookPath } from '../../lib/identifier-paths.ts';
 import { scheduleDetailPath } from '../../lib/router.svelte.ts';
+import { sessionRow } from '../chat/session-groups.ts';
 import { reviewTitle, waitingItems } from '../reviews/review-items.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 
@@ -314,26 +315,27 @@ export function chatStatusWord(
   return 'Done';
 }
 
-/** The newest chats, as rows, at most {@link RECENT_CHAT_LIMIT}. */
+/**
+ * The newest chats, as rows, at most {@link RECENT_CHAT_LIMIT}. Line two is what the chat list says
+ * (`sessionRow`): the question a chat that waits on you is asking, which is the thing to read, and
+ * otherwise the latest message, which for a chat that waits is only your own words again.
+ */
 export function recentChatRows(
   contexts: readonly ChatContext[],
+  questions: ReadonlyMap<string, string>,
   failedChats: ReadonlySet<string>,
-  fallbackTitle: string,
-  messageCount: (count: number) => string,
   now: number,
   zone: string = viewerTimeZone(),
 ): RecentChatRow[] {
   return contexts.slice(0, RECENT_CHAT_LIMIT).map((context): RecentChatRow => {
-    const updated = Date.parse(context.updatedAt);
-    const preview = context.lastMessagePreview?.trim();
+    const row = sessionRow(context, questions, failedChats);
     return {
       id: context.id,
-      title: context.title ?? fallbackTitle,
-      latest:
-        preview === undefined || preview === '' ? messageCount(context.messageCount) : preview,
+      title: row.title,
+      latest: row.snippet,
       status: chatStatusWord(context, failedChats),
-      time: Number.isNaN(updated) ? '' : rowTime(updated, now, zone),
-      timestamp: Number.isNaN(updated) ? null : updated,
+      time: row.updatedAt === null ? '' : rowTime(row.updatedAt, now, zone),
+      timestamp: row.updatedAt,
     };
   });
 }

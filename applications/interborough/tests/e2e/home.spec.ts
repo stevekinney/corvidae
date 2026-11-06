@@ -152,6 +152,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
 
   test('puts Start a chat beside both lists, with a message box, a ghost Agent select and a live Send (01k)', async ({
     page,
+    checkA11y,
   }) => {
     await openHome(page);
     const card = page.getByTestId('home-start-chat');
@@ -173,6 +174,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       state: 'something needs you',
       source: SOURCE,
     });
+    await checkA11y('Home with something waiting on you');
   });
 
   test('lists the chats last in, with a status word, the latest message and the time (01l)', async ({
@@ -183,6 +185,9 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText('Waiting on you');
     await expect(rows.nth(0)).toContainText('Please refund order 4471, it arrived damaged.');
+    // A chat that waits on you says the question it asks.
+    await expect(rows.nth(0)).toContainText('Refund order 4471 for $42.00?');
+    await expect(rows.nth(1)).toContainText('Which environment should the release go to?');
     await expect(rows.nth(0)).toContainText('10:42 AM');
     await expect(rows.nth(2)).toContainText('Done');
     await expect(rows.nth(2)).toContainText('Say hello');
@@ -247,6 +252,7 @@ test.describe('Home with nothing waiting and a provider connected', () => {
 
   test('reads zero everywhere, says nothing is waiting, and Send is live (01s, 01t, 01u, 01v)', async ({
     page,
+    checkA11y,
   }) => {
     await openHome(page);
     const counts = page.getByTestId('home-counts');
@@ -286,6 +292,7 @@ test.describe('Home with nothing waiting and a provider connected', () => {
       page.getByTestId('home-start-chat').getByRole('button', { name: 'Send' }),
     ).toBeEnabled();
     await captureForDesignReview(page, { route: '/', state: 'nothing waiting', source: SOURCE });
+    await checkA11y('Home with nothing waiting');
   });
 });
 

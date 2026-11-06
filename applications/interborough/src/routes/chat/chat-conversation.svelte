@@ -34,8 +34,8 @@
    * is chosen from the pill in the composer, the transcript's place shows a greeting, the prompts
    * the agent suggests and the other agents (`new-chat-welcome.svelte`; a prompt fills the composer
    * and sends nothing), and the first message
-   * starts the run. Home's Start a chat opens it with `?message=`, which is sent as that first
-   * message. When the run has started
+   * starts the run. Home's Start a chat hands it a message, which is sent as that first message
+   * (`new-chat-handoff.ts`). When the run has started
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
@@ -113,6 +113,7 @@
     hasExportableText,
   } from './chat-export.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
+  import { takeFirstMessage } from './new-chat-handoff.ts';
   import AgentSelect from './agent-select.svelte';
   import ComposerSettings from './composer-settings.svelte';
   import ContextMeter from './context-meter.svelte';
@@ -1073,20 +1074,10 @@
     // person to send or change. It sends nothing.
     const about = untrack(() => (isNew ? router.current.search.get('about') : null));
     if (about !== null && about.trim() !== '') void tick().then(() => fillComposer(about));
-    // Home's Start a chat opens the new chat with the message to send (`?message=`). It is sent
-    // once, as the chat's first message, and taken out of the address first, so a reload of the
-    // page does not start a second chat.
-    const first = untrack(() => (isNew ? router.current.search.get('message') : null));
-    if (first !== null && first.trim() !== '') {
-      const search = new URLSearchParams(untrack(() => router.current.search));
-      search.delete('message');
-      const rest = search.toString();
-      router.navigate(rest === '' ? '/chats/new' : `/chats/new?${rest}`, {
-        replace: true,
-        keep: true,
-      });
-      void session.send(first.trim());
-    }
+    // Home's Start a chat hands the new chat a message (`new-chat-handoff.ts`), sent once as the
+    // chat's first. It is not in the address, so no link can start a run.
+    const first = untrack(() => (isNew ? takeFirstMessage(agent) : undefined));
+    if (first !== undefined) void session.send(first);
     return () => {
       for (const remove of removals) remove();
       restart.dispose();

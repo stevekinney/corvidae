@@ -4,8 +4,9 @@
    * Assistant, which is scripted and needs no model, so Send is live with no provider connected.
    * Choosing a model agent while no provider holds a key replaces the box with the composer's one
    * blocked row ("Connect a model provider to chat", with a way to Assistant), because that is what
-   * the chat would do. Send opens New chat with the agent and the message, and the chat sends it
-   * there; with nothing typed it opens New chat with the agent alone.
+   * the chat would do. Send opens New chat with the agent and hands it the message, which the chat
+   * sends there as its first (`new-chat-handoff.ts`); with nothing typed it opens New chat with the
+   * agent alone.
    *
    * While the server does not answer, what was typed stays, the agent select is off with a note
    * saying so, and Send is held by the shell like every control that changes something.
@@ -22,6 +23,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { composerStatusOf } from '../chat/composer-state.ts';
+  import { handOffFirstMessage } from '../chat/new-chat-handoff.ts';
   import HomeCard from './home-card.svelte';
   import { useAgentList } from './home-queries.svelte.ts';
   import { newChatAddress, startingAgent } from './home-start-chat.ts';
@@ -79,7 +81,8 @@
   function send(event?: Event): void {
     event?.preventDefault();
     if (selected === undefined || connection.unreachable) return;
-    router.navigate(newChatAddress(selected, message));
+    handOffFirstMessage(selected, message);
+    router.navigate(newChatAddress(selected));
   }
 
   /** Command or Control with Enter sends from the box; Enter alone makes a new line. */

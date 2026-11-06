@@ -11,6 +11,7 @@ import { Window } from 'happy-dom';
 
 import { router } from '../../lib/router.svelte.ts';
 import { chooseOption, shownLabel } from '../chat/listbox.test-support.ts';
+import { takeFirstMessage } from '../chat/new-chat-handoff.ts';
 import HomeHarness from './home-test-harness.test-harness.svelte';
 import {
   HOME_NOW,
@@ -217,7 +218,10 @@ describe('Home', () => {
       .map((row) => row.textContent?.replaceAll(/\s+/g, ' ').trim());
     expect(rows[0]).toContain('Waiting on you');
     expect(rows[0]).toContain('Please refund order 4471, it arrived damaged.');
+    // A chat that waits on you says the question it asks.
+    expect(rows[0]).toContain('Refund order 4471 for $42.00?');
     expect(rows[0]).toContain('10:42 AM');
+    expect(rows[1]).toContain('Which environment should the release go to?');
     expect(rows[2]).toContain('Done');
     expect(rows[2]).toContain('Yesterday, 4:12 PM');
     expect(
@@ -342,7 +346,9 @@ describe('Home’s Start a chat card (01k)', () => {
     await fireEvent.click(within(card).getByRole('button', { name: 'Send' }));
     expect(router.current.route?.pattern).toBe('/chats/new');
     expect(router.search.get('agent')).toBe('assistant');
-    expect(router.search.get('message')).toBe('What did I approve yesterday?');
+    // The message is handed to the chat apart from the address, so no link can send it.
+    expect(router.search.has('message')).toBe(false);
+    expect(takeFirstMessage('assistant')).toBe('What did I approve yesterday?');
   });
 
   test('Send with nothing typed opens New chat with the agent alone', async () => {
@@ -353,6 +359,7 @@ describe('Home’s Start a chat card (01k)', () => {
     expect(router.current.route?.pattern).toBe('/chats/new');
     expect(router.search.get('agent')).toBe('assistant');
     expect(router.search.has('message')).toBe(false);
+    expect(takeFirstMessage('assistant')).toBeUndefined();
   });
 
   test('a model agent with no provider replaces the box with the blocked row, and Use Assistant switches back', async () => {

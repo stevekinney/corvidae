@@ -17,13 +17,7 @@ export function startingAgent(agents: readonly Pick<AgentSummary, 'name'>[]): st
   )?.name;
 }
 
-/**
- * The address Send opens: New chat with `agent`, and the typed `message` for New chat to send as
- * the chat's first message. A message that is only blank is not one, so New chat opens empty.
- */
-export function newChatAddress(agent: string, message: string): string {
-  const search = new URLSearchParams({ agent });
-  const text = message.trim();
-  if (text !== '') search.set('message', text);
-  return `/chats/new?${search.toString()}`;
+/** The address Send opens: New chat with `agent`. The message is handed over apart from the address (`new-chat-handoff.ts`). */
+export function newChatAddress(agent: string): string {
+  return `/chats/new?${new URLSearchParams({ agent }).toString()}`;
 }

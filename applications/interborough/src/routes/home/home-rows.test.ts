@@ -263,13 +263,19 @@ describe('missedRunCount', () => {
 });
 
 describe('recent chats', () => {
-  test('lists the newest three with a status word, the latest message and the clock time', () => {
-    const rows = recentChatRows(SAMPLE_CHATS, new Set(), 'New chat', () => '', HOME_NOW, ZONE);
+  const QUESTIONS = new Map([
+    ['chat-refund', 'Refund order 4471 for $42.00?'],
+    ['chat-release', 'Which environment should the release go to?'],
+  ]);
+
+  test('lists the newest three with a status word, what each says on line two, and the clock time', () => {
+    const rows = recentChatRows(SAMPLE_CHATS, QUESTIONS, new Set(), HOME_NOW, ZONE);
     expect(rows.map((row) => [row.status, row.title, row.latest, row.time])).toEqual([
       [
         'Waiting on you',
         'Please refund order 4471, it arrived damaged.',
-        'I found order 4471 ($42.00). I need your approval to refund it.',
+        // A chat that waits says the question it asks, not the words it last held.
+        'Refund order 4471 for $42.00?',
         '10:42 AM',
       ],
       [
@@ -282,21 +288,24 @@ describe('recent chats', () => {
     ]);
     const four = recentChatRows(
       [...SAMPLE_CHATS, contextFixture('chat-old')],
+      QUESTIONS,
       new Set(),
-      'New chat',
-      () => '',
       HOME_NOW,
       ZONE,
     );
     expect(four).toHaveLength(3);
   });
 
+  test('says a chat that waits by its latest message when no question is read for it', () => {
+    const [row] = recentChatRows(SAMPLE_CHATS, new Map(), new Set(), HOME_NOW, ZONE);
+    expect(row?.latest).toBe('I found order 4471 ($42.00). I need your approval to refund it.');
+  });
+
   test('says a chat with no title or message by its fallbacks, and one with no readable time with none', () => {
     const [row] = recentChatRows(
       [contextFixture('chat-1', { updatedAt: 'not a time', messageCount: 3 })],
+      new Map(),
       new Set(),
-      'New chat',
-      (count) => `${String(count)} messages`,
       HOME_NOW,
       ZONE,
     );

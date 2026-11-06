@@ -5,18 +5,21 @@
    * title in bold with the latest message under it, and the time it last changed at the right
    * ("10:42 AM" today, "Yesterday, 4:12 PM" before). A row opens the chat.
    *
-   * It reads the same recent runs the chat list reads, so a chat whose latest run failed says
-   * Failed here too; when that read fails the rows still show, without it.
+   * It reads what the chat list reads: the recent runs, so a chat whose latest run failed says
+   * Failed here too, and the reviews waiting, so a chat that waits on you says what it asks. When
+   * either read fails the rows still show, without it.
    */
   import { DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY, HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy.ts';
   import { listContexts } from '../../lib/bureau-client.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { pendingQuestions } from '../chat/session-groups.ts';
+  import { bureauReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import { RECENT_CHAT_LIMIT, recentChatRows } from './home-rows.ts';
@@ -30,13 +33,13 @@
     retry: false,
   }));
   const tasks = createQuery(() => ({ ...recentTasksQuery(), retry: false }));
+  const reviews = bureauReviewsQuery();
 
   const rows = $derived(
     recentChatRows(
       chats.data?.contexts ?? [],
+      pendingQuestions(reviews.data ?? []),
       chatsWithFailedRun(tasks.data?.tasks ?? []),
-      CHAT_COPY.untitled,
-      CHAT_COPY.messageCount,
       clock(),
     ),
   );

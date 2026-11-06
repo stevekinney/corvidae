@@ -19,6 +19,7 @@ import {
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { chooseOption, optionLabels } from './listbox.test-support.ts';
+import { handOffFirstMessage, takeFirstMessage } from './new-chat-handoff.ts';
 import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -262,7 +263,7 @@ describe('a new chat', () => {
     expect(runs).toEqual([]);
   });
 
-  test('sends the message of Home’s Start a chat as the first message, once, and takes it out of the address', async () => {
+  test('sends the message Home’s Start a chat handed over as the first message, once, and no address can send one', async () => {
     const bodies: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
     restore = bureau(
       {
@@ -292,7 +293,8 @@ describe('a new chat', () => {
         ]);
       },
     ).restore;
-    landAt('/chats/new?agent=assistant&message=What+did+I+approve+yesterday%3F');
+    handOffFirstMessage('assistant', 'What did I approve yesterday?');
+    landAt('/chats/new?agent=assistant');
     const { findByText } = mount({
       sessionId: 'thread-1',
       title: null,
@@ -305,8 +307,8 @@ describe('a new chat', () => {
     expect(bodies[0]?.messages.findLast((message) => message.role === 'user')?.content).toBe(
       'What did I approve yesterday?',
     );
-    // The message left the address as it was sent, so a reload does not start a second chat.
-    expect(router.current.search.has('message')).toBe(false);
+    // It was taken as it was sent, so a chat opened again sends nothing.
+    expect(takeFirstMessage('assistant')).toBeUndefined();
   });
 
   test('opens with an empty composer when no topic is named', async () => {

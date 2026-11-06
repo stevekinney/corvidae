@@ -1,6 +1,6 @@
 /**
  * What Home's Start a chat card decides before it hands off to New chat (design row 01k): it starts
- * with Assistant, and Send opens New chat with the agent and the typed message.
+ * with Assistant, and Send opens New chat with the agent.
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -19,17 +19,8 @@ describe('startingAgent', () => {
 });
 
 describe('newChatAddress', () => {
-  test('opens New chat with the agent and the message, trimmed and encoded', () => {
-    expect(newChatAddress('assistant', '  What did I approve yesterday?  ')).toBe(
-      '/chats/new?agent=assistant&message=What+did+I+approve+yesterday%3F',
-    );
-    expect(newChatAddress('demo:assistant', 'a & b')).toBe(
-      '/chats/new?agent=demo%3Aassistant&message=a+%26+b',
-    );
-  });
-
-  test('opens New chat with the agent alone when nothing is typed', () => {
-    expect(newChatAddress('assistant', '')).toBe('/chats/new?agent=assistant');
-    expect(newChatAddress('assistant', '   \n ')).toBe('/chats/new?agent=assistant');
+  test('opens New chat with the agent, and never the message', () => {
+    expect(newChatAddress('assistant')).toBe('/chats/new?agent=assistant');
+    expect(newChatAddress('demo:assistant')).toBe('/chats/new?agent=demo%3Aassistant');
   });
 });
