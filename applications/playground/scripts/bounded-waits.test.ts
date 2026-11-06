@@ -115,6 +115,33 @@ const standInsEndWithTheirOwner = await outcomeOf(async () => {
   }
 });
 
+/**
+ * A recorded PID the operating system has given to another process is neither killed nor waited on.
+ * The "recorded" process here is a `sleep` this test starts, which no stand-in's command line names.
+ */
+const reusedPidIsLeftAlone = await outcomeOf(async () => {
+  const record = await mkdtemp(join(tmpdir(), 'bounded-wait-record-'));
+  const foreign = spawnWithHangGuard(['/bin/sleep', '600'], {
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  try {
+    await Bun.write(join(record, 'reused.pid'), `${foreign.pid}\n`);
+
+    expect(recordedProcessIds(record)).toEqual([foreign.pid]);
+    expect(reapRecordedProcesses(record)).toEqual([foreign.pid]);
+    // It was seen as a process that is not a stand-in, so it was not signalled...
+    expect(foreign.exitCode).toBeNull();
+    expect(foreign.signalCode).toBeNull();
+    expect(livingProcesses([foreign.pid])).toEqual([]);
+    // ...and waiting for it to go does not wait on it.
+    await waitUntilGone([foreign.pid], HANG_GUARD_MILLISECONDS);
+  } finally {
+    foreign.kill('SIGKILL');
+    await foreign.exited;
+    await rm(record, { recursive: true, force: true });
+  }
+});
+
 describe('bounded waits', () => {
   it('stops waiting for a runner whose exit is never reported', async () => {
     // A subprocess whose `exited` never settles, as when an exit is never observed.
@@ -135,6 +162,9 @@ describe('bounded waits', () => {
 
   it('ends a stand-in test runner that never receives its proceed file', () =>
     rethrow(standInRunnerEndsAtItsWaitBudget));
+
+  it('neither kills nor waits on a recorded PID that another process now holds', () =>
+    rethrow(reusedPidIsLeftAlone));
 
   it('ends every stand-in, sleepers included, once the test that owns them is gone', () =>
     rethrow(standInsEndWithTheirOwner));

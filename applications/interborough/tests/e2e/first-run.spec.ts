@@ -41,6 +41,10 @@ async function connectAnthropic(page: Page): Promise<void> {
   const dialog = page.getByRole('dialog');
   await dialog.locator('input[type="password"]').fill(KEY);
   await dialog.getByRole('button', { name: /^Connect$/ }).click();
+  // A passing test leaves the dialog open on its "Connected." state with a single Done (design
+  // row 48m), so the dialog is closed from there, as a person does, before the page is used.
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(row).toContainText(MODELS_COPY.providers.connected);
   expect(await page.content()).not.toContain(KEY);
 }

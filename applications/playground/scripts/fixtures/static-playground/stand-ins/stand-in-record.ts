@@ -27,6 +27,15 @@ export function recordedProcessIds(record: string): number[] {
 }
 
 /**
+ * Whether `row` still names a stand-in. A recorded PID the operating system has since given to
+ * another process fails this, and is neither killed nor waited on: reaping and waiting share this
+ * one test so they cannot disagree about which processes are the stand-ins'.
+ */
+export function isStandIn(row: ProcessRow): boolean {
+  return row.args.includes('stand-in');
+}
+
+/**
  * SIGKILL each PID recorded under `record`, and the process group it leads or belongs to unless
  * that is the caller's own. A PID that no longer names a stand-in (it exited and the number was
  * reused) is left alone. Returns the PIDs it found, for `livingProcesses`.
@@ -37,7 +46,7 @@ export function reapRecordedProcesses(record: string): number[] {
   const ownGroup = table.find((row) => row.pid === process.pid)?.pgid;
   for (const pid of pids) {
     const row = table.find((candidate) => candidate.pid === pid);
-    if (row === undefined || isZombie(row) || !row.args.includes('stand-in')) continue;
+    if (row === undefined || isZombie(row) || !isStandIn(row)) continue;
     if (row.pgid !== ownGroup && row.pgid > 1) kill(-row.pgid);
     kill(pid);
   }
@@ -59,12 +68,16 @@ function kill(target: number): void {
 }
 
 /**
- * The rows among `pids` that are still running. A zombie counts as gone unless `requireReaped`,
- * the setting of the Linux `docker run --init` recipe, where a killed process must be reaped too.
+ * The rows among `pids` that are still stand-ins and running. A PID whose process is no longer a
+ * stand-in was reused and does not count. A zombie counts as gone unless `requireReaped`, the
+ * setting of the Linux `docker run --init` recipe, where a killed process must be reaped too; its
+ * command line is empty, so a zombie cannot be told from a reused PID and is counted as the
+ * stand-in it was.
  */
 export function livingProcesses(pids: readonly number[], requireReaped = false): ProcessRow[] {
-  const table = readProcessTable();
-  return table.filter((row) => pids.includes(row.pid) && (requireReaped || !isZombie(row)));
+  return readProcessTable().filter(
+    (row) => pids.includes(row.pid) && (isZombie(row) ? requireReaped : isStandIn(row)),
+  );
 }
 
 /** Wait until none of `pids` is running, naming the survivors if the bound passes. */
