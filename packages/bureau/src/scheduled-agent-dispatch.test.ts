@@ -65,6 +65,8 @@ describe('a schedule’s fire', () => {
     // the agent leaves the catalog between restarts: the fire still fails, exactly as before.
     const database = createSqliteStorageFixture();
     const worker = answering('never');
+    const shutdownDiagnostics: string[] = [];
+    let second: Bureau | undefined;
     try {
       const first = await createBureau<AgentDefinitions>({
         agents: { worker: createAgent({ generate: worker.generate }) },
@@ -80,16 +82,19 @@ describe('a schedule’s fire', () => {
       });
       await first.dispose();
 
-      const second = await createBureau<AgentDefinitions>({
+      second = await createBureau<AgentDefinitions>({
         agents: {},
         storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
+        onDiagnostic: (diagnostic) => {
+          if (diagnostic.scope === 'shutdown') shutdownDiagnostics.push(diagnostic.message);
+        },
       });
-      bureaus.push(second);
-      await second.maintain(created!.nextFireAt!);
+      const running = second;
+      await running.maintain(created!.nextFireAt!);
       const status = await pollUntil(async () => {
-        const page = await second.tasks.workflows();
+        const page = await running.tasks.workflows();
         // The fire's own run, not the schedule tick that records it came due (COR-2009).
         const fire = page?.items.find((item) => item.type === 'agentRun');
         return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
@@ -98,8 +103,10 @@ describe('a schedule’s fire', () => {
       expect(status).toBe('failed');
       expect(worker.calls()).toBe(0);
     } finally {
+      await second?.dispose();
       await database.dispose();
     }
+    expect(shutdownDiagnostics).toEqual([]);
   });
 
   it('stored under the legacy "bureau" agent name fails its fire and runs nothing', async () => {
@@ -108,11 +115,16 @@ describe('a schedule’s fire', () => {
     const databaseFixture = createSqliteStorageFixture();
     const databasePath = databaseFixture.path;
     const worker = answering('never');
+    const shutdownDiagnostics: string[] = [];
+    let second: Bureau | undefined;
     const options = {
       agents: { worker: createAgent({ generate: worker.generate }) },
       storage: databaseFixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
+      onDiagnostic: (diagnostic) => {
+        if (diagnostic.scope === 'shutdown') shutdownDiagnostics.push(diagnostic.message);
+      },
     } satisfies BureauOptions<AgentDefinitions>;
     try {
       const first = await createBureau<AgentDefinitions>(options);
@@ -135,11 +147,11 @@ describe('a schedule’s fire', () => {
       database.query('update kv set value = ? where key = ?').run(encode(stored), key);
       database.close();
 
-      const second = await createBureau<AgentDefinitions>(options);
-      bureaus.push(second);
-      await second.maintain(created!.nextFireAt!);
+      second = await createBureau<AgentDefinitions>(options);
+      const running = second;
+      await running.maintain(created!.nextFireAt!);
       const status = await pollUntil(async () => {
-        const page = await second.tasks.workflows();
+        const page = await running.tasks.workflows();
         // The fire's own run, not the schedule tick that records it came due (COR-2009).
         const fire = page?.items.find((item) => item.type === 'agentRun');
         return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
@@ -148,8 +160,10 @@ describe('a schedule’s fire', () => {
       expect(status).toBe('failed');
       expect(worker.calls()).toBe(0);
     } finally {
+      await second?.dispose();
       await databaseFixture.dispose();
     }
+    expect(shutdownDiagnostics).toEqual([]);
   });
 });
 
