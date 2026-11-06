@@ -89,7 +89,8 @@ describe('the workflow world', () => {
     const made = await call('bureau.schedules.create', { ...input, continueChat: true });
     expect(made.status).toBe(200);
     expect(stub.world.scheduleContinuing).toEqual(stub.world.schedules.map(({ id }) => id));
-    const [{ id: scheduleId }] = stub.world.schedules as [{ id: string }];
+    const scheduleId = stub.world.schedules[0]?.id ?? '';
+    expect(scheduleId).not.toBe('');
 
     const moved = await call('bureau.schedules.update', {
       scheduleId,
@@ -107,7 +108,8 @@ describe('the workflow world', () => {
       spec: '1h',
       continueChat: true,
     });
-    const [{ id: scheduleId }] = stub.world.schedules as [{ id: string }];
+    const scheduleId = stub.world.schedules[0]?.id ?? '';
+    expect(scheduleId).not.toBe('');
 
     const apart = await call('bureau.schedules.update', {
       scheduleId,
