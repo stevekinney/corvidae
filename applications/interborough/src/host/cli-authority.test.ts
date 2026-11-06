@@ -1,5 +1,6 @@
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES } from '@lostgradient/bureau';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,10 +8,16 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import {
+  BARRIER_AGENT_NAME,
+  BARRIER_FIRST_REPLY,
+  createBarrier,
+  createBarrierAgents,
+} from '../../tests/e2e/barrier-agent.ts';
 import { request, requestBytes, stream } from './cli-client-transport.ts';
 import { executeCli, parseCliArguments } from './cli-client.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
-import { startHost, type Host } from './host.ts';
+import { startHost, type Host, type HostOptions } from './host.ts';
 
 const endpoint = 'https://management.example.test';
 const tlsKey = `-----BEGIN PRIVATE KEY-----
@@ -70,7 +77,10 @@ afterEach(async () => {
   for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
-async function authenticatedHost(removed: () => boolean): Promise<Host> {
+async function authenticatedHost(
+  removed: () => boolean,
+  options: Pick<HostOptions, 'extraAgents'> = {},
+): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-cli-authority-host-'));
   homes.push(home);
   await enableDemoPlugin(home);
@@ -84,6 +94,7 @@ async function authenticatedHost(removed: () => boolean): Promise<Host> {
     environment: { INTERBOROUGH_HOME: home },
     workspaceId: actualWorkspaceId,
     port: 0,
+    ...options,
     workspaceAuthentication: {
       authentication: {
         resolveApiKeyPrincipal: async (key) =>
@@ -565,15 +576,15 @@ describe('CLI authenticated workspace authority', () => {
 
   test('admitted CLI watch is revoked before the next private frame and action', async () => {
     let revoked = false;
-    const host = await authenticatedHost(() => revoked);
-    const https = await authenticatedHttpsFixture(host);
-    const run = await host.bureau.tasks.start('demo:request-human-input', 'Ship it', {
-      principal: 'owner-alice',
+    const barrier = createBarrier();
+    const host = await authenticatedHost(() => revoked, {
+      extraAgents: { agents: createBarrierAgents(barrier) },
     });
+    const https = await authenticatedHttpsFixture(host);
     const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-authority-watch-'));
     homes.push(directory);
     const preferencesPath = join(directory, 'preferences.json');
-    const base = { preferencesPath, environment: { ALICE: 'alice' }, fetch: https.fetch };
+    const base = { preferencesPath, environment: { ALICE: 'alice' } };
     await executeCli(
       [
         'connection',
@@ -586,31 +597,72 @@ describe('CLI authenticated workspace authority', () => {
       ],
       base,
     );
-    const admittedResponse = await fetch(
-      new URL(
-        `/bureau/v1/subscriptions/bureau.tasks.events?taskId=${encodeURIComponent(run.id)}`,
-        host.url,
-      ),
-      { headers: { accept: 'text/event-stream', 'x-api-key': 'alice' } },
+    const controlRun = await host.bureau.tasks.start(BARRIER_AGENT_NAME, 'control sentinel', {
+      principal: 'owner-alice',
+    });
+    await waitUntil(() => barrier.waiting() === 1, { message: 'the control barrier admission' });
+    const controlAdmitted = Promise.withResolvers<void>();
+    const controlFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await https.fetch(input, init);
+      if (new URL(input).pathname.includes('/v1/subscriptions/')) controlAdmitted.resolve();
+      return response;
+    };
+    const controlWatch = executeCli(
+      [
+        'runs',
+        'watch',
+        '--kind',
+        'task',
+        controlRun.id,
+        '--connection',
+        'alice',
+        '--output',
+        'json',
+      ],
+      { ...base, fetch: controlFetch },
     );
-    expect(admittedResponse.ok).toBe(true);
-    const admitted = true;
+    await controlAdmitted.promise;
+    barrier.release();
+    const controlResult = await controlWatch;
+    expect(controlResult.exitCode).toBe(0);
+    expect(controlResult.stdout).toContain(BARRIER_FIRST_REPLY);
+
+    const revokedRun = await host.bureau.tasks.start(BARRIER_AGENT_NAME, 'private sentinel', {
+      principal: 'owner-alice',
+    });
+    await waitUntil(() => barrier.waiting() === 1, { message: 'the revoked barrier admission' });
+    const revokedAdmitted = Promise.withResolvers<void>();
+    const revokedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await https.fetch(input, init);
+      if (new URL(input).pathname.includes('/v1/subscriptions/')) revokedAdmitted.resolve();
+      return response;
+    };
+    const watched = executeCli(
+      [
+        'runs',
+        'watch',
+        '--kind',
+        'task',
+        revokedRun.id,
+        '--connection',
+        'alice',
+        '--output',
+        'json',
+      ],
+      { ...base, fetch: revokedFetch },
+    );
+    await revokedAdmitted.promise;
     revoked = true;
-    const watched = await executeCli(
-      ['runs', 'watch', '--kind', 'task', run.id, '--connection', 'alice'],
-      {
-        ...base,
-        fetch: async (input, init) => {
-          if (new URL(input).pathname.includes('/api/v1/principal'))
-            return https.fetch(input, init);
-          return admittedResponse;
-        },
-      },
-    );
-    expect(admitted).toBe(true);
-    expect(watched.exitCode).toBe(3);
-    expect(watched.stderr).toBe('Workspace membership required');
-    const denied = await executeCli(['chats', 'list', '--connection', 'alice'], base);
+    barrier.release();
+    const watchedResult = await watched;
+    expect(watchedResult.exitCode).toBe(1);
+    expect(watchedResult.stderr).toContain('Run event stream ended before a terminal event');
+    expect(watchedResult.stdout).not.toContain(BARRIER_FIRST_REPLY);
+    expect(watchedResult.stdout).not.toContain('private sentinel');
+    const denied = await executeCli(['chats', 'list', '--connection', 'alice'], {
+      ...base,
+      fetch: https.fetch,
+    });
     expect(denied.exitCode).toBe(3);
     expect(denied.stderr).toBe('Workspace membership required');
   });
