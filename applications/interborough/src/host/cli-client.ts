@@ -264,6 +264,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'review-id',
     'round',
     'reason',
@@ -276,6 +277,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'task-id',
     'message-id',
     'answer',
@@ -295,7 +297,17 @@ const commandOptions: Record<string, readonly string[]> = {
     'step',
     'status',
   ],
-  events: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'kind', 'cursor'],
+  events: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'workspace',
+    'kind',
+    'cursor',
+  ],
   audit: [
     'help',
     'output',
@@ -303,6 +315,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'run-id',
     'type',
     'principal',
@@ -319,6 +332,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'input',
     'input-file',
@@ -336,6 +350,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'input',
     'input-file',
@@ -356,6 +371,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'agent',
     'query',
     'content',
@@ -371,6 +387,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'media-type',
     'output-file',
@@ -383,6 +400,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'if-revision',
     'expected-revision',
@@ -397,6 +415,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'if-revision',
     'expected-revision',
@@ -410,6 +429,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'if-revision',
     'expected-revision',
@@ -557,8 +577,8 @@ function remoteUrl(raw: string): URL | undefined {
 }
 
 function authorityFrom(value: unknown): CliTarget['authority'] | undefined {
-  if (!isRecord(value) || !isRecord(value['result'])) return undefined;
-  const result = value['result'];
+  if (!isRecord(value)) return undefined;
+  const result = isRecord(value['result']) ? value['result'] : value;
   const workspace = isRecord(result['workspace']) ? result['workspace'] : undefined;
   if (
     workspace === undefined ||
@@ -615,7 +635,7 @@ async function resolveTarget(
     };
   const target: CliTarget = {
     url: raw.replace(/\/$/, ''),
-    headers: credential === undefined ? {} : { authorization: `Bearer ${credential}` },
+    headers: credential === undefined ? {} : { 'x-api-key': credential },
     ...(remote === undefined ? {} : { remote: true }),
   };
   if (remote === undefined) return target;

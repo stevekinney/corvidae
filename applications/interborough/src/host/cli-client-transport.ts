@@ -24,6 +24,21 @@ function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): 
   return Object.assign(new Error(message), properties);
 }
 
+function assertManagementBoundary(target: CliTarget, path: string): void {
+  if (
+    target.remote === true &&
+    (path === '/jsonrpc' ||
+      path.startsWith('/bureau/a2a') ||
+      (path.startsWith('/bureau/assets/') && path.endsWith('/content')))
+  )
+    throw makeCliFailure(
+      'Authenticated management credentials cannot be sent to this public route.',
+      {
+        exitCode: 3,
+      },
+    );
+}
+
 /** Send one request with the client deadline and decode JSON-RPC failures. */
 export async function request(
   target: CliTarget,
@@ -32,11 +47,7 @@ export async function request(
   dependencies: CliClientDependencies,
   init?: RequestInit,
 ): Promise<CliCommandResult> {
-  if (target.remote === true && (path === '/jsonrpc' || path.startsWith('/bureau/a2a'))) {
-    throw makeCliFailure('Authenticated management credentials cannot be sent to A2A endpoints.', {
-      exitCode: 3,
-    });
-  }
+  assertManagementBoundary(target, path);
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
@@ -106,6 +117,7 @@ export async function requestBytes(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<Response> {
+  assertManagementBoundary(target, path);
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
@@ -151,6 +163,7 @@ export async function stream(
   dependencies: CliClientDependencies,
   init: RequestInit = {},
 ): Promise<Response> {
+  assertManagementBoundary(target, path);
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
