@@ -439,5 +439,14 @@ describe('the agents a disabled plugin holds back', () => {
       'Changelog writer',
     ]);
     expect(view.container.textContent).toContain('All eight agents are listed');
+
+    // Sharing one is saved under the identifier the plugin's agent has once it is enabled.
+    const releaseHelper = within(switches).getByRole('switch', { name: 'Release helper' });
+    expect(releaseHelper.getAttribute('aria-disabled')).not.toBe('true');
+    await fireEvent.click(releaseHelper);
+    await waitUntil(() => (stub?.callsTo('bureau.settings.update').length ?? 0) === 1);
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params).toMatchObject({
+      patch: { 'a2a.agents': { 'demo:release-helper': true } },
+    });
   });
 });
