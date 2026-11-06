@@ -36,6 +36,7 @@ import {
   type PluginProblem,
   type SettingLockReason,
 } from '@lostgradient/bureau';
+import { z } from 'zod';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import { hostWriteLocks } from './locations.ts';
@@ -110,6 +111,17 @@ export type PluginStanding = PluginListing & {
   readonly enabled: boolean;
   /** The stored configuration, or `{}` when none is. */
   readonly configuration: unknown;
+  /**
+   * The configuration's schema as JSON Schema, for a client that draws its fields from it (the
+   * field titles, descriptions and bounds a plugin's Zod schema declares), or `null` when the
+   * plugin takes no configuration or its schema cannot be written as JSON Schema.
+   */
+  readonly configurationSchema: Readonly<Record<string, unknown>> | null;
+  /**
+   * What the running host loaded: whether the plugin is enabled and its configuration, `{}` when
+   * it has none. Putting these back as the stored choices undoes what waits for a restart.
+   */
+  readonly running: { readonly enabled: boolean; readonly configuration: unknown };
   /** The declared secrets. */
   readonly secrets: readonly PluginSecretStanding[];
   /** Whether the persisted choices differ from the ones this process loaded, so a restart applies them. */
@@ -274,6 +286,20 @@ function isSet(value: string | undefined): boolean {
   return value !== undefined && value !== '';
 }
 
+/**
+ * A plugin's configuration schema as JSON Schema, describing what a person types (the input side),
+ * or `null` when the plugin takes none or Zod cannot write it as one (a transform, say).
+ */
+function configurationSchemaOf(entry: BureauPluginEntry): Readonly<Record<string, unknown>> | null {
+  const schema = entry.descriptor.configuration;
+  if (schema === undefined) return null;
+  try {
+    return z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' });
+  } catch {
+    return null;
+  }
+}
+
 /** The first problem `entry`'s configuration schema finds in `given`, as a field of the request body. */
 function configurationProblem(
   entry: BureauPluginEntry,
@@ -412,6 +438,12 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       JSON.stringify(configurationIn(persisted, entry.descriptor.name)) !==
         JSON.stringify(configurationIn(loaded, entry.descriptor.name)));
 
+  /** What this process loaded for `entry`: its `enabled` and configuration, as a Revert puts them back. */
+  const runningOf = (entry: BureauPluginEntry): PluginStanding['running'] => ({
+    enabled: enabledIn(loaded, entry),
+    configuration: configurationIn(loaded, entry.descriptor.name),
+  });
+
   // Watchers by key. A listener that throws must not stop the others, so each call is isolated.
   const watchers = new Map<string, Set<() => void>>();
   const secretChanged = (key: string): void => {
@@ -490,6 +522,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     contributions: [],
     enabled: enabledIn(persisted, entry),
     configuration: configurationIn(persisted, entry.descriptor.name),
+    configurationSchema: configurationSchemaOf(entry),
+    running: runningOf(entry),
     secrets: [],
     restartRequired: restartRequired(entry),
   });
@@ -515,6 +549,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         ...plugin,
         enabled: enabledIn(persisted, entry),
         configuration: configurationIn(persisted, entry.descriptor.name),
+        configurationSchema: configurationSchemaOf(entry),
+        running: runningOf(entry),
         secrets: (entry.descriptor.secrets ?? []).map((declaration) => {
           const key = declaredKey(declaration);
           return {

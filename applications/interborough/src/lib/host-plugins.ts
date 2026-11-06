@@ -41,6 +41,8 @@ const referencesSchema = z.object({
 const contributionSchema = z.object({
   kind: z.string(),
   id: z.string(),
+  /** The contribution's name as a person reads it, such as `Search the web`; absent when it has none. */
+  title: z.string().optional(),
   references: referencesSchema,
 });
 
@@ -72,6 +74,10 @@ const pluginSchema = z.object({
   contributions: z.array(contributionSchema),
   enabled: z.boolean(),
   configuration: z.unknown(),
+  /** The configuration's JSON Schema, which the page draws its fields from; `null` for a plugin that takes none. */
+  configurationSchema: z.record(z.string(), z.unknown()).nullable(),
+  /** What the running host loaded, which a Revert puts back as the stored choices. */
+  running: z.object({ enabled: z.boolean(), configuration: z.unknown() }),
   secrets: z.array(secretSchema),
   restartRequired: z.boolean(),
 });
@@ -202,10 +208,26 @@ async function faultOf(response: Response, secret?: string): Promise<HostPluginE
   return new HostPluginError('failed', message);
 }
 
-/** Asks the host for its plugins: their standing, what they add, what names it, and their secrets. */
+/** The host answered the read of its plugins with a status that is not a success. */
+export class PluginsReadError extends Error {
+  /** The HTTP status the host answered with. */
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`The host answered ${String(status)}.`);
+    this.name = 'PluginsReadError';
+    this.status = status;
+  }
+}
+
+/**
+ * Asks the host for its plugins: their standing, what they add, what names it, and their secrets.
+ *
+ * @throws {PluginsReadError} When the host answers with a failure status.
+ */
 export async function getPlugins(options: Options = {}): Promise<PluginsSnapshot> {
   const response = await send(HOST_PLUGINS_ROUTE, {}, options);
-  if (!response.ok) throw new Error(`The host answered ${response.status}.`);
+  if (!response.ok) throw new PluginsReadError(response.status);
   return pluginsSchema.parse(await response.json());
 }
 

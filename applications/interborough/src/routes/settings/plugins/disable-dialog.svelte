@@ -8,24 +8,19 @@
 
   import { PLUGINS_COPY } from '../../../app/copy.ts';
   import type { PluginStanding } from '../../../lib/host-plugins.ts';
+  import type { PluginWrite } from './plugin-drafts.svelte.ts';
   import { disableImpacts } from './plugin-presentation.ts';
 
   interface Props {
     /** The plugin the question is about, or `null` while it is closed. */
     plugin: PluginStanding | null;
     /** The other changes the restart writes with this one. */
-    otherChanges: readonly {
-      readonly name: string;
-      readonly enabled: boolean | undefined;
-      readonly configuration: boolean;
-    }[];
-    /** Whether configuration text the page holds cannot be applied, so nothing can be written yet. */
-    invalid: boolean;
+    otherChanges: readonly PluginWrite[];
     onConfirm: (plugin: PluginStanding) => void;
     onCancel: () => void;
   }
 
-  let { plugin, otherChanges, invalid, onConfirm, onCancel }: Props = $props();
+  let { plugin, otherChanges, onConfirm, onCancel }: Props = $props();
 
   const copy = PLUGINS_COPY.disable;
   const impacts = $derived(plugin === null ? [] : disableImpacts(plugin));
@@ -54,32 +49,17 @@
             {#each otherChanges as change (change.name)}
               <li class="ib-disable__item" data-pending-change={change.name}>
                 <strong>{change.name}</strong>
-                <span
-                  >{[
-                    change.enabled === undefined
-                      ? ''
-                      : change.enabled
-                        ? copy.alsoSwitchedOn
-                        : copy.alsoSwitchedOff,
-                    change.configuration ? copy.alsoConfiguration : '',
-                  ]
-                    .filter((part) => part !== '')
-                    .join(', ')}</span
-                >
+                <span>{change.enabled ? copy.alsoSwitchedOn : copy.alsoSwitchedOff}</span>
               </li>
             {/each}
           </ul>
-        {/if}
-        {#if invalid}
-          <p class="ib-disable__note">{PLUGINS_COPY.banner.invalid}</p>
         {/if}
         <p class="ib-disable__note">{copy.reassurance}</p>
       </div>
     {/snippet}
     {#snippet footer()}
       <Button variant="secondary" onclick={onCancel}>{copy.cancel}</Button>
-      <Button data-changes variant="danger" disabled={invalid} onclick={() => onConfirm(plugin)}
-        >{copy.confirm}</Button
+      <Button data-changes variant="danger" onclick={() => onConfirm(plugin)}>{copy.confirm}</Button
       >
     {/snippet}
   </Modal>

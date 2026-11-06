@@ -631,6 +631,8 @@ describe('the chat list, a new chat, and the agents', () => {
     })),
     enabled: status !== 'disabled',
     configuration: {},
+    configurationSchema: null,
+    running: { enabled: status !== 'disabled', configuration: {} },
     secrets: [],
     restartRequired: false,
   });

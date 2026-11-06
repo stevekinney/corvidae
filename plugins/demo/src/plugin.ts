@@ -44,8 +44,7 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
     name: 'demo',
     title: 'Demo',
     version: '1.0.0',
-    description:
-      'Scripted agents, tools, validators, a goal, and a schedule that run without a model provider, for trying Interborough out.',
+    description: 'Sample tools and agents for trying Interborough.',
     enabledByDefault: false,
     secrets: [{ key: DEMO_APPROVAL_SECRET, generated: true }],
     async setup({ secrets, toolApprovalHooks }) {

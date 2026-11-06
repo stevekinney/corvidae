@@ -18,6 +18,8 @@ export type HostRequest = { method: string; path: string; body: unknown };
 /** A plugin as a test states it; everything it leaves out takes a plain default. */
 export type PluginFixture = {
   name: string;
+  /** The name as a person reads it; the identifier when a test leaves it out. */
+  title?: string;
   version?: string;
   description?: string;
   required?: boolean;
@@ -26,8 +28,10 @@ export type PluginFixture = {
   status?: PluginStanding['status'];
   enabled?: boolean;
   configuration?: unknown;
+  /** The configuration's JSON Schema, or `null` (the default) for a plugin that takes none. */
+  configurationSchema?: Record<string, unknown> | null;
   contributions?: PluginStanding['contributions'];
-  secrets?: { key: string; set: boolean }[];
+  secrets?: { key: string; set: boolean; generated?: boolean }[];
   problems?: PluginStanding['problems'];
   /** Whether the plugin applies a configuration change at once, so it never waits for a restart. */
   liveConfiguration?: boolean;
@@ -65,10 +69,12 @@ export function contribution(
   kind: string,
   id: string,
   references: { agents?: number; schedules?: number; waitingRuns?: number } = {},
+  title?: string,
 ): PluginStanding['contributions'][number] {
   return {
     kind,
     id,
+    ...(title === undefined ? {} : { title }),
     references: {
       agents: references.agents ?? 0,
       schedules: references.schedules ?? 0,
@@ -90,14 +96,14 @@ function standingOf(host: FakePluginHost, plugin: PluginFixture): PluginStanding
   const loadedConfiguration = plugin.configuration ?? {};
   const secrets = (plugin.secrets ?? []).map((secret) => ({
     key: secret.key,
-    generated: false,
+    generated: secret.generated === true,
     set: secret.set,
     location: `/home/.bungalow/secrets/${secret.key}`,
   }));
   return {
     descriptor: {
       name: plugin.name,
-      title: plugin.name,
+      title: plugin.title ?? plugin.name,
       version: plugin.version ?? '1.0.0',
       description: plugin.description ?? `The ${plugin.name} plugin.`,
       required: plugin.required === true,
@@ -110,6 +116,8 @@ function standingOf(host: FakePluginHost, plugin: PluginFixture): PluginStanding
     contributions: plugin.contributions ?? [],
     enabled: stored.enabled,
     configuration: stored.configuration,
+    configurationSchema: plugin.configurationSchema ?? null,
+    running: { enabled: loadedEnabled, configuration: loadedConfiguration },
     secrets,
     restartRequired:
       stored.enabled !== loadedEnabled ||

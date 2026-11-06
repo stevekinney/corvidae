@@ -1842,18 +1842,35 @@ export const RESTART_COPY = {
  */
 export const PLUGINS_COPY = {
   title: 'Plugins',
-  intro:
-    'What Interborough loaded at startup and what each plugin adds. Plugin code loads when Interborough starts, so most changes wait for a restart.',
-  loading: 'Loading plugins',
+  intro: 'Code that adds tools, agents and workflows. Plugins load at startup.',
+  /** The loading rule every page shares: skeleton rows after 300 ms, then a status line with a Cancel (board PageSettingsSections, "Plugins loading"). */
+  loading: {
+    label: 'Loading plugins',
+    stillLoading: 'Still loading. This is taking longer than usual.',
+    cancel: 'Cancel',
+    canceled: 'Loading was canceled.',
+    tryAgain: 'Try again',
+  },
+  /** A read that failed with nothing to show; `status` is the HTTP status the host answered, if it answered. */
   loadFailed: {
-    title: 'Plugins are unavailable',
-    description: 'The host did not answer. Check that it is running, then try again.',
+    title: 'Couldn’t load plugins.',
+    description: (status: number | undefined): string =>
+      status === undefined
+        ? 'Interborough didn’t answer. Nothing you did caused it.'
+        : `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+    openHealth: 'Open Health',
   },
   locked:
     'This host keeps its plugin choices and secrets in its deployment, so they cannot be changed here.',
   listLabel: 'Plugins',
   detailLabel: 'Plugin details',
-  count: (total: number): string => `${String(total)} ${total === 1 ? 'plugin' : 'plugins'}`,
+  /** The list's header: the word, the number of plugins beside it, and a link to how a plugin is written. */
+  listHeader: {
+    heading: 'Plugins',
+    howToAdd: 'How to add one',
+    howToAddHref:
+      'https://github.com/stevekinney/corvidae/blob/main/packages/interborough-plugin/README.md#where-a-plugin-lives',
+  },
   empty: {
     title: 'No plugins loaded',
     description:
@@ -1864,7 +1881,18 @@ export const PLUGINS_COPY = {
     description: 'Its status, what it adds and its choices show here.',
   },
   alwaysOn: 'Always on',
+  /** The switch's label tracks its state, so a disabled plugin's switch reads Disabled. */
   enabled: 'Enabled',
+  disabled: 'Disabled',
+  /** Under a disabled plugin's switch: turning it on is a restart. */
+  enableNote: 'Enabling it asks to restart, because plugins load at startup.',
+  /** What a disabled plugin holds back: the agents it ships, unavailable until it is on. */
+  holdingBack: {
+    lead: 'Holding back.',
+    body: (names: readonly string[], title: string): string =>
+      `${nameList(names)} ${names.length === 1 ? 'is' : 'are'} unavailable until ${title} is enabled.`,
+  },
+  /** A status word. Needs setup is neutral: amber is for what waits on the person (a restart, an attention). */
   status: {
     running: 'Running',
     needsSetup: 'Needs setup',
@@ -1876,22 +1904,20 @@ export const PLUGINS_COPY = {
   },
   source: { package: 'Package', folder: 'Folder', builtIn: 'Built in' },
   sourceKind: {
-    package: 'Workspace package',
+    package: 'Package plugin, loaded at startup',
     folder: 'Folder plugin, loaded at startup',
-    builtIn: 'Part of Interborough',
+    builtIn: 'Part of Interborough, loaded at startup',
   },
   sections: {
     source: 'Source',
-    kind: 'Kind',
     adds: 'What it adds',
-    nothingAdded: 'Nothing while it is not running.',
     configuration: 'Configuration',
     secrets: 'Secrets',
-    inUse: 'In use',
   },
   contributionKinds: {
     tool: 'Tools',
     activity: 'Activities',
+    skill: 'Skills',
     'trigger-kind': 'Triggers',
     validator: 'Validators',
     guardrail: 'Guardrails',
@@ -1906,22 +1932,39 @@ export const PLUGINS_COPY = {
     'event-formatter': 'Event formatters',
     'code-agent': 'Code agents',
   } as Readonly<Record<string, string>>,
+  /** The configuration form, built from the plugin's own schema. */
   configuration: {
-    label: (name: string): string => `Configuration of ${name}`,
-    description:
-      'The plugin’s own choices, as JSON. The host checks them when it starts, and a plugin that refuses them is not loaded.',
-    invalid: 'This is not valid JSON, so it cannot be applied.',
-    notAnObject: 'The configuration is an object, such as {}.',
-    rejected: (plugin: string, field: string, message: string): string =>
-      `The host rejected ${field === '' ? 'the change' : field} for ${plugin}.${message === '' ? '' : ` ${message}`}`,
+    description: 'These fields come from the plugin’s own schema.',
+    save: 'Save configuration',
+    saving: 'Saving',
+    /** Beside Save: what saving does and does not do. */
+    note: 'Applies after restart. Saving doesn’t restart.',
+    saved: 'Saved. Applies after restart.',
+    savedNow: 'Saved. It applies at once.',
+    /** The bold lead of a failed save; what follows says why. */
+    failureLead: 'Couldn’t save the configuration.',
+    failed: 'Interborough didn’t answer.',
+    rejected: (message: string): string => (message === '' ? 'The host refused it.' : message),
+    locked:
+      'This host keeps its plugin choices in its deployment, so the configuration cannot be saved here.',
+    notSet: 'Not set',
+    addTag: 'Add a value',
+    tagsLabel: (label: string): string => label,
+    json: (label: string): string => `${label}, as JSON`,
+    invalidJson: 'This is not valid JSON.',
   },
   secrets: {
     set: 'Set',
     missing: 'Missing',
-    add: 'Add',
+    add: 'Add the key',
     replace: 'Replace',
-    addLabel: (key: string): string => `Add ${key}`,
+    addLabel: (key: string): string => `Add the key for ${key}`,
     replaceLabel: (key: string): string => `Replace ${key}`,
+    /** Under a missing key: where it is saved, and what happens once it is. */
+    note: (directory: string, title: string, provider: boolean): string =>
+      provider
+        ? `Saved to ${directory}, readable only by you. The models appear as soon as the key passes a test.`
+        : `Saved to ${directory}, readable only by you. ${title} works as soon as the key is saved; no restart.`,
     dialog: {
       title: (key: string): string => `Save ${key}`,
       description: (plugin: string): string =>
@@ -1936,11 +1979,12 @@ export const PLUGINS_COPY = {
       failed: 'The secret could not be saved.',
     },
   },
+  /** The line at the foot of a running plugin: what uses it. */
   inUse: {
-    disabled: 'Nothing while it is disabled.',
-    notRunning: 'Nothing while it is not loaded.',
-    nothing: 'Nothing names what it adds yet.',
-    some: (parts: readonly string[]): string => `${parts.join(', ')} name what it adds.`,
+    lead: 'In use.',
+    nothing: (title: string): string => `Nothing uses ${title} yet.`,
+    some: (title: string, parts: readonly string[], singular: boolean): string =>
+      `${nameList(parts)} ${singular ? 'uses' : 'use'} ${title}.`,
   },
   counts: {
     agents: (count: number): string => `${String(count)} ${count === 1 ? 'agent' : 'agents'}`,
@@ -1957,7 +2001,6 @@ export const PLUGINS_COPY = {
     explanation: 'Plugin code loads when Interborough starts. Runs pick up where they stopped.',
     discard: 'Discard',
     restartNow: 'Restart now',
-    invalid: 'Fix the configuration that is not valid before restarting.',
     failed: 'The changes could not be saved, so Interborough was not restarted.',
     rejected: (plugin: string): string =>
       `${plugin} was not saved, so Interborough was not restarted. Open it to see what the host rejected.`,
@@ -1980,7 +2023,6 @@ export const PLUGINS_COPY = {
     alsoWrites: 'Restarting also saves these changes, which are waiting:',
     alsoSwitchedOn: 'switched on',
     alsoSwitchedOff: 'switched off',
-    alsoConfiguration: 'configuration edited',
     reassurance: 'Nothing is deleted. Enable it again and restart, and it works as before.',
     cancel: 'Cancel',
     confirm: 'Disable and restart',

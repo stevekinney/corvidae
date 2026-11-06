@@ -7,10 +7,11 @@ import {
   HOST_PLUGINS_ROUTE,
   HOST_RESTART_ROUTE,
   HostPluginError,
-  type HostPluginFaultKind,
+  PluginsReadError,
   restartHost,
   savePluginSecret,
   updatePlugin,
+  type HostPluginFaultKind,
 } from './host-plugins.ts';
 
 const VALUE = 'tsk-test-value-that-must-never-be-repeated';
@@ -35,11 +36,18 @@ const SNAPSHOT = {
         {
           kind: 'tool',
           id: 'linear:create-issue',
+          title: 'Create an issue',
           references: { agents: 1, schedules: 2, waitingRuns: 3 },
         },
       ],
       enabled: true,
       configuration: { teamKey: 'COR' },
+      configurationSchema: {
+        type: 'object',
+        properties: { teamKey: { type: 'string', title: 'Team key' } },
+        required: ['teamKey'],
+      },
+      running: { enabled: true, configuration: {} },
       secrets: [{ key: 'linear-api-key', generated: false, set: false, location: '/secrets/key' }],
       restartRequired: false,
     },
@@ -88,6 +96,10 @@ describe('getPlugins', () => {
       waitingRuns: 3,
     });
     expect(snapshot.plugins[0]?.problems[0]?.['code']).toBe('secret-missing');
+    // A contribution's human name, the configuration's schema and what the running host loaded.
+    expect(snapshot.plugins[0]?.contributions[0]?.title).toBe('Create an issue');
+    expect(snapshot.plugins[0]?.configurationSchema?.['required']).toEqual(['teamKey']);
+    expect(snapshot.plugins[0]?.running).toEqual({ enabled: true, configuration: {} });
     expect(snapshot.unloaded).toHaveLength(1);
     expect(snapshot.lockReason).toBeUndefined();
   });
@@ -102,7 +114,10 @@ describe('getPlugins', () => {
 
   test('fails for a refused request and for an answer it cannot read', async () => {
     const refused = recording(() => Response.json({}, { status: 500 }));
-    expect(await failureOf(getPlugins({ fetch: refused.fetch }))).toBeInstanceOf(Error);
+    const refusal = await failureOf(getPlugins({ fetch: refused.fetch }));
+    // The status the host answered with is kept, which the page puts in its own words.
+    expect(refusal).toBeInstanceOf(PluginsReadError);
+    expect((refusal as PluginsReadError).status).toBe(500);
     const unreadable = recording(() => Response.json({ plugins: 'none' }));
     expect(await failureOf(getPlugins({ fetch: unreadable.fetch }))).toBeDefined();
   });

@@ -236,6 +236,11 @@ export interface PluginContribution {
   readonly kind: PluginContributionKind;
   /** `plugin:name`, as a file names it; a tool's id carries its version, `plugin:name@version`. */
   readonly id: string;
+  /**
+   * The contribution's name as a person reads it, such as `Search the web`: a tool's
+   * `metadata.title`. Left out when the contribution has none, so a client words it from `id`.
+   */
+  readonly title?: string;
 }
 
 /**

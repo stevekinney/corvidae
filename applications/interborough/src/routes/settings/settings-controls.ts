@@ -186,7 +186,8 @@ export const MODEL_POLICY_KEY = 'modelPolicy';
  * models holds the model policy, the Decisions part of the Models page holds `decisions.*`, and
  * the A2A section holds `a2a.*`.
  */
-export type SettingsSectionId = 'general' | 'allowed-models' | 'decisions' | 'a2a' | 'retention';
+export type SettingsSectionId =
+  'general' | 'allowed-models' | 'decisions' | 'a2a' | 'retention' | 'plugins';
 
 /** The settings the Models page holds: the decision model, its fallback, and its limit per task. */
 function isDecisionKey(key: string): boolean {
@@ -209,6 +210,8 @@ export function inSection(key: string, section: SettingsSectionId): boolean {
   if (section === 'decisions') return isDecisionKey(key);
   if (section === 'a2a') return isA2aKey(key);
   if (section === 'retention') return isRetentionKey(key);
+  // Plugins edits plugins, not settings: it holds none of the keys, and only reads them for the restart notice.
+  if (section === 'plugins') return false;
   return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key) && !isRetentionKey(key);
 }
 

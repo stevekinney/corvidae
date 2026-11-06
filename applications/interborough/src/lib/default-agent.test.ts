@@ -43,6 +43,8 @@ function plugin(name: string, status: string, agents: readonly string[]) {
     })),
     enabled: true,
     configuration: {},
+    configurationSchema: null,
+    running: { enabled: true, configuration: {} },
     secrets: [],
     restartRequired: false,
   };

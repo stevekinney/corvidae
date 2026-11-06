@@ -6,9 +6,13 @@ import type { PluginStanding } from '../../../lib/host-plugins.ts';
 import {
   contributionGroups,
   disableImpacts,
+  humanizeName,
+  identifierOf,
   inUseSentence,
+  providerOf,
   referenceTotals,
   restartBackWords,
+  secretsDirectory,
   sourceKind,
   sourceWord,
   standingNames,
@@ -31,7 +35,8 @@ describe('statusOf', () => {
       label: PLUGINS_COPY.status.running,
       dot: 'success',
     });
-    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).dot).toBe('warning');
+    // Neutral: amber is for what waits on the person, and a plugin that needs a key is not that.
+    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).dot).toBe('neutral');
     expect(statusOf(standing({ name: 'a', enabled: false }), false).dot).toBe('neutral');
     expect(statusOf(standing({ name: 'a', status: 'skipped' }), true)).toEqual({
       label: PLUGINS_COPY.status.notLoaded,
@@ -72,23 +77,72 @@ describe('what a plugin adds and what names it', () => {
     ],
   });
 
-  test('groups by kind in order and keeps a kind it has no word for', () => {
+  test('groups by kind with tools, activities and skills first, and keeps a kind it has no word for', () => {
     expect(contributionGroups(plugin)).toEqual([
-      { kind: 'tool', label: 'Tools', ids: ['linear:a', 'linear:b'] },
-      { kind: 'mystery', label: 'mystery', ids: ['linear:c'] },
+      {
+        kind: 'tool',
+        label: 'Tools',
+        items: [
+          { id: 'linear:a', title: 'A' },
+          { id: 'linear:b', title: 'B' },
+        ],
+      },
+      { kind: 'mystery', label: 'mystery', items: [{ id: 'linear:c', title: 'C' }] },
+    ]);
+    const mixed = standing({
+      name: 'web-search',
+      contributions: [
+        contribution('trigger-kind', 'web-search:changed'),
+        contribution('activity', 'web-search:fetch-page'),
+        contribution('tool', 'web-search:search@1.0.0', {}, 'Search the web'),
+      ],
+    });
+    expect(
+      contributionGroups(mixed, [{ name: 'tips' }]).map((group) => [group.label, group.items]),
+    ).toEqual([
+      ['Tools', [{ id: 'web-search:search', title: 'Search the web' }]],
+      ['Activities', [{ id: 'web-search:fetch-page', title: 'Fetch page' }]],
+      ['Skills', [{ id: 'web-search:tips', title: 'Tips' }]],
+      ['Triggers', [{ id: 'web-search:changed', title: 'Changed' }]],
     ]);
   });
 
-  test('sums the references and says them', () => {
+  test('words a name as a person reads it and drops a tool’s version from its identifier', () => {
+    expect(humanizeName('fetch-page')).toBe('Fetch page');
+    expect(humanizeName('')).toBe('');
+    expect(identifierOf('web-search:search@1.2.0')).toBe('web-search:search');
+    expect(identifierOf('web-search:search')).toBe('web-search:search');
+  });
+
+  test('sums the references and says what uses a running plugin, and nothing for one that is not running', () => {
     expect(referenceTotals(plugin)).toEqual({ agents: 3, schedules: 1, waitingRuns: 4 });
-    expect(inUseSentence(plugin)).toBe('3 agents, 1 schedule, 4 waiting runs name what it adds.');
-    expect(inUseSentence(standing({ name: 'a' }))).toBe(PLUGINS_COPY.inUse.nothing);
-    expect(inUseSentence(standing({ name: 'a', enabled: false }))).toBe(
-      PLUGINS_COPY.inUse.disabled,
+    expect(inUseSentence(plugin)).toBe('3 agents, 1 schedule and 4 waiting runs use linear.');
+    expect(
+      inUseSentence(
+        standing({ name: 'a', contributions: [contribution('tool', 'a:x', { agents: 1 })] }),
+      ),
+    ).toBe('1 agent uses a.');
+    expect(inUseSentence(standing({ name: 'a' }))).toBe(PLUGINS_COPY.inUse.nothing('a'));
+    expect(inUseSentence(standing({ name: 'a', enabled: false }))).toBeUndefined();
+    expect(inUseSentence(standing({ name: 'a', status: 'skipped' }))).toBeUndefined();
+    expect(inUseSentence(standing({ name: 'a', status: 'needs-setup' }))).toBeUndefined();
+  });
+
+  test('says where a secret is kept and which model provider a plugin is', () => {
+    expect(secretsDirectory('/Users/steve/.interborough/secrets/anthropic-api-key')).toBe(
+      '~/.interborough/secrets',
     );
-    expect(inUseSentence(standing({ name: 'a', status: 'skipped' }))).toBe(
-      PLUGINS_COPY.inUse.notRunning,
-    );
+    expect(secretsDirectory('/srv/state/secrets/key')).toBe('/srv/state/secrets');
+    expect(secretsDirectory('ANTHROPIC_API_KEY')).toBe('ANTHROPIC_API_KEY');
+    expect(
+      providerOf(
+        standing({
+          name: 'anthropic',
+          contributions: [contribution('provider', 'anthropic:claude')],
+        }),
+      ),
+    ).toBe('claude');
+    expect(providerOf(standing({ name: 'linear' }))).toBeUndefined();
   });
 
   test('lists what depends on it for the disable dialog, naming only the contributions that count', () => {

@@ -43,6 +43,8 @@ function pluginWithAgent(agent: string, status: string) {
     ],
     enabled: true,
     configuration: {},
+    configurationSchema: null,
+    running: { enabled: true, configuration: {} },
     secrets: [],
     restartRequired: false,
   };

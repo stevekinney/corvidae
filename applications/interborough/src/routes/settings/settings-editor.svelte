@@ -58,6 +58,7 @@
     decisions: '/settings/models',
     a2a: '/settings/a2a',
     retention: '/settings/data-and-retention',
+    plugins: '/settings/plugins',
   };
 
   const queryClient = useQueryClient();
