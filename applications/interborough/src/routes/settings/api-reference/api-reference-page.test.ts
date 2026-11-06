@@ -183,13 +183,15 @@ describe('Settings › API reference', () => {
     expect(view.getByRole('combobox', { name: 'Group' }).textContent).toContain('All groups');
     const row = table.querySelector('[data-operation="runs.start"]');
     const cells = [...(row?.querySelectorAll('td') ?? [])];
-    expect(cells.map((cell) => cell.textContent?.trim())).toEqual([
-      'POST',
-      '/api/runs',
+    expect(cells).toHaveLength(5);
+    expect(cells[0]?.textContent?.trim()).toBe('POST');
+    expect(cells[1]?.querySelector('.ib-api-operations__path')?.textContent).toBe('/api/runs');
+    expect(cells[2]?.textContent?.trim()).toBe('Start a run');
+    expect(cells[3]?.textContent?.trim()).toBe('runs:write');
+    // On a narrow page the summary and the scope are drawn under the path instead (CSS only).
+    expect(cells[1]?.querySelector('.ib-api-operations__narrow')?.textContent).toContain(
       'Start a run',
-      'runs:write',
-      'Request and response for POST /api/runs',
-    ]);
+    );
     // The method is monospaced text, not a badge, and the chevron that opens the row is at its right.
     expect(cells[0]?.querySelector('code[data-method="POST"]')).not.toBeNull();
     expect(cells[0]?.querySelector('.cinder-badge')).toBeNull();

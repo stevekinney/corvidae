@@ -103,8 +103,11 @@
           <Table.Row>
             <Table.HeaderCell>{copy.columns.method}</Table.HeaderCell>
             <Table.HeaderCell>{copy.columns.path}</Table.HeaderCell>
-            <Table.HeaderCell>{copy.columns.summary}</Table.HeaderCell>
-            <Table.HeaderCell>{copy.columns.scope}</Table.HeaderCell>
+            <Table.HeaderCell class="ib-api-operations__wide"
+              >{copy.columns.summary}</Table.HeaderCell
+            >
+            <Table.HeaderCell class="ib-api-operations__wide">{copy.columns.scope}</Table.HeaderCell
+            >
             <Table.HeaderCell
               ><VisuallyHidden>{copy.columns.details}</VisuallyHidden></Table.HeaderCell
             >
@@ -122,12 +125,22 @@
                 ><code class="ib-api-operations__path"
                   >{#each operation.path.split('/') as segment, index (index)}{#if index > 0}/<wbr
                       />{/if}{segment}{/each}</code
-                ></Table.Cell
+                >
+                <!-- On a narrow page what it does and its scope sit under the path, and their own
+                     columns leave: four columns of wrapped words do not fit at 375px. -->
+                <span class="ib-api-operations__narrow">
+                  <span class="ib-api-operations__summary">{operation.summary}</span>
+                  {#if operation.scope === undefined}
+                    <span class="ib-api-operations__muted">{copy.noScope}</span>
+                  {:else}
+                    <code class="ib-api-operations__scope">{operation.scope}</code>
+                  {/if}
+                </span></Table.Cell
               >
-              <Table.Cell
+              <Table.Cell class="ib-api-operations__wide"
                 ><span class="ib-api-operations__summary">{operation.summary}</span></Table.Cell
               >
-              <Table.Cell>
+              <Table.Cell class="ib-api-operations__wide">
                 {#if operation.scope === undefined}
                   <span class="ib-api-operations__muted">{copy.noScope}</span>
                 {:else}
@@ -209,6 +222,26 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-inline-size: 0;
+    container-type: inline-size;
+  }
+
+  .ib-api-operations__narrow {
+    display: none;
+  }
+
+  /* Narrower than four columns of words can share, what an operation does and its scope move
+   * under its path, so the method, the path and the chevron keep their room. */
+  @container (inline-size < 36rem) {
+    .ib-api-operations :global(.ib-api-operations__wide) {
+      display: none;
+    }
+
+    .ib-api-operations__narrow {
+      display: flex;
+      flex-direction: column;
+      gap: var(--cinder-space-0-5);
+      margin-block-start: var(--cinder-space-1);
+    }
   }
 
   .ib-api-operations__toolbar {
@@ -230,10 +263,10 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* A path breaks at its slashes, and a scope is one word: neither is cut inside a segment. */
   .ib-api-operations__path,
   .ib-api-operations__scope {
     font-size: var(--cinder-text-xs);
-    overflow-wrap: anywhere;
   }
 
   /* The table never scrolls sideways: it is as wide as its column and its cells wrap, the path at

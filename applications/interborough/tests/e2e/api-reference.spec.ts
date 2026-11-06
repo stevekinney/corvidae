@@ -72,7 +72,7 @@ test('Operations lists the seven operations of Interborough’s API with their s
   await expect(count).toHaveText('7 operations');
   const rows = table.locator('tbody tr[data-operation]');
   const cells = async (index: number) => {
-    const texts = await rows.nth(index).locator('td').allTextContents();
+    const texts = await rows.nth(index).locator('td').allInnerTexts();
     return texts.slice(0, 4).map((text) => text.trim());
   };
   const expected = [
@@ -100,11 +100,13 @@ test('Operations lists the seven operations of Interborough’s API with their s
   // wraps its cells instead of scrolling sideways, and the page never scrolls sideways.
   for (const width of [1280, 768, 375] as const) {
     await page.setViewportSize({ width, height: 900 });
-    const panelBox = await page.getByTestId('api-operations').boundingBox();
-    const tableBox = await table.boundingBox();
-    expect((tableBox?.x ?? 0) + (tableBox?.width ?? 0)).toBeLessThanOrEqual(
-      (panelBox?.x ?? 0) + (panelBox?.width ?? 0) + 0.5,
-    );
+    // The Settings frame changes its layout at 640px as the viewport query answers, so the fit is
+    // read once the layout has settled.
+    await expect
+      .poll(() =>
+        table.evaluate((element) => element.scrollWidth <= element.parentElement!.clientWidth),
+      )
+      .toBe(true);
     await expect(rows.first().locator('td').last().getByRole('button')).toBeInViewport();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
