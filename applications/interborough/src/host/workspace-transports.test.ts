@@ -183,7 +183,7 @@ describe('injected workspace transport authority', () => {
     for (const path of [
       '/api/v1/principal',
       '/api/v1/workflows',
-      '/host/integrations',
+      '/host/mcp-apps',
       '/bureau/jsonrpc',
     ]) {
       const response = await request(
@@ -208,44 +208,10 @@ describe('injected workspace transport authority', () => {
     }
   });
 
-  test('members see only shared integration identity and availability', async () => {
-    const { host, members } = await authenticatedHost();
-    await host.toolSources.connect({
-      id: 'private-destination',
-      principal: 'anonymous:local',
-      source: {
-        id: 'private-destination',
-        kind: 'openapi',
-        specification: {
-          type: 'document',
-          document: { openapi: '3.0.0', info: { title: 'Private', version: '1' }, paths: {} },
-        },
-        baseUrl: 'https://private-destination.example',
-        authentication: { type: 'api-key', header: 'x-api-key', credential: 'key' },
-      },
-      credentials: { key: 'private-credential-sentinel' },
-    });
+  test('the retired integrations endpoint returns 404', async () => {
+    const { host } = await authenticatedHost();
     const response = await request(host, '/host/integrations', 'member');
-    expect(response.status).toBe(200);
-    const projection = (await response.json()) as {
-      providers: unknown[];
-      plugins: unknown[];
-      toolSources: unknown[];
-    };
-    expect(projection.toolSources).toEqual([
-      { id: 'private-destination', name: 'private-destination', available: true },
-    ]);
-    for (const row of [...projection.providers, ...projection.plugins, ...projection.toolSources]) {
-      expect(Object.keys(row as object).sort()).toEqual(['available', 'id', 'name']);
-    }
-    const text = JSON.stringify(projection);
-    expect(text).not.toContain('private-credential-sentinel');
-    expect(text).not.toContain('https://private-destination.example');
-    const memberConfiguration = await request(host, '/host/tool-sources', 'member');
-    expect(memberConfiguration.status).toBe(403);
-    members.delete('member');
-    const removedIntegration = await request(host, '/host/integrations', 'member');
-    expect(removedIntegration.status).toBe(401);
+    expect(response.status).toBe(404);
   });
 
   test('OAuth callback authority stays with the initiating administrator', async () => {
