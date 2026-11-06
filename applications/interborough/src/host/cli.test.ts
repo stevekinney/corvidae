@@ -66,6 +66,7 @@ const uploadChunks: Buffer[] = [];
 const uploadedChatBodies: Record<string, unknown>[] = [];
 const compiledStreamHandshakes: string[] = [];
 const compiledRunHandshakes: string[] = [];
+const compiledRunFirstRecord = Promise.withResolvers<void>();
 const compiledRunCancelCalls: string[] = [];
 const compiledRunRequests: Array<{ method: string; params?: Record<string, unknown> }> = [];
 const productionServer = Bun.serve({
@@ -132,7 +133,7 @@ const productionServer = Bun.serve({
       void (async () => {
         if (taskId === 'compiled-run') {
           await send('compiled-1', { kind: 'task.status', status: 'running' });
-          await Bun.sleep(200);
+          await compiledRunFirstRecord.promise;
           await send('compiled-2', { kind: 'task.status', status: 'completed' });
           await writer.close();
         } else if (taskId === 'compiled-eof') {
@@ -146,6 +147,7 @@ const productionServer = Bun.serve({
           await writer.close();
         } else {
           await send('compiled-open', { kind: 'task.status', status: 'running' });
+          await writer.close();
         }
       })();
       return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
@@ -472,7 +474,35 @@ const compiledRunStream = spawnWithHangGuard(
   { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
 );
 const compiledRunReader = compiledRunStream.stdout.getReader();
-const compiledRunFirstChunk = await compiledRunReader.read();
+const compiledRunFirstDecoder = new TextDecoder();
+let compiledRunFirstText = '';
+let compiledRunFirstRead = await compiledRunReader.read();
+for (;;) {
+  if (compiledRunFirstRead.done) break;
+  compiledRunFirstText += compiledRunFirstDecoder.decode(compiledRunFirstRead.value, {
+    stream: true,
+  });
+  const firstLine = compiledRunFirstText.split(/\r?\n/)[0];
+  if (firstLine !== undefined && firstLine !== '') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(firstLine);
+    } catch {
+      continue;
+    }
+    if (!JSON.stringify(parsed).includes('"running"'))
+      throw new Error('compiled run watch first record was not the running status');
+    compiledRunFirstRecord.resolve();
+    break;
+  }
+  compiledRunFirstRead = await compiledRunReader.read();
+}
+if (compiledRunFirstRead.done) throw new Error('compiled run watch ended before its first record');
+compiledRunFirstText += compiledRunFirstDecoder.decode();
+const compiledRunFirstChunk = {
+  done: false,
+  value: new TextEncoder().encode(compiledRunFirstText),
+};
 const compiledRunSecondChunk = await compiledRunReader.read();
 await compiledRunReader.cancel();
 const compiledRunStreamExit = await compiledRunStream.exited;
