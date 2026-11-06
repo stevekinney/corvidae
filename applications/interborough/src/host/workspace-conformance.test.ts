@@ -49,6 +49,10 @@ async function workspace(name: string, members: readonly string[]) {
   await bungalow.deploymentSecrets.write('shared-secret', `${name}-secret`);
   bungalow.close();
   await Bun.write(applicationEntry, "document.body.textContent = 'shared-panel-fixture';");
+  await Bun.write(
+    join(home, 'index.html'),
+    '<!doctype html><title>Workspace fixture shell</title>',
+  );
   const directory = new Map<string, WorkspaceMembership>(
     members.map((actorId) => [
       actorId,
@@ -74,6 +78,7 @@ async function workspace(name: string, members: readonly string[]) {
     let calls = 0;
     const host = await startHost({
       environment: { INTERBOROUGH_HOME: home },
+      buildDirectory: home,
       workspaceId,
       port: 0,
       plugins: [
@@ -446,7 +451,10 @@ test('two authenticated workspaces share definition names without sharing privat
     const response = await fetch(new URL(path, a.host.url), { headers: { accept: 'text/html' } });
     const text = await response.text();
     if (entry.key === 'GET /assets/*') expect(response.status).toBe(404);
-    else expect(response.status).toBe(200);
+    else {
+      expect(response.status).toBe(200);
+      expect(text).toContain('Workspace fixture shell');
+    }
     expect(text).not.toContain('workspace-a-private-input');
     expect(text).not.toContain('workspace-b-private-input');
     publicWitnesses.push(entry.key);
