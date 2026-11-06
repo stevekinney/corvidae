@@ -463,7 +463,7 @@ describe('the open worker’s tasks', () => {
       const script = new ScriptedFetch();
       scripted = script;
       routeHappyPaths(script, { workers: [GONE] });
-      script.routeJsonRpcMethodError('weft.task.queues.tasks', 500, 'broke', 'Internal');
+      script.routeJsonRpcMethodError('weft.task.queues.tasks', 422, 'broke', 'Unprocessable');
       router.navigate('/health/workers?worker=reports-worker', { replace: true });
 
       const { findByRole } = renderRoute();
