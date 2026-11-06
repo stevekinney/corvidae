@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { browserWorkspaceStorage } from '../../../app/workspace-lifetime.ts';
+
   /**
    * `/runs/:run`: one run, as one page with one header and one status, and no tabs. The header says
    * what ran and how the run stands, with Open chat and Cancel run beside a More menu for the rest.
@@ -106,6 +108,7 @@
 
   const follower = new TaskFollower({
     taskId: initialRunId,
+    storage: browserWorkspaceStorage(principal.principal?.workspace, 'sessionStorage'),
     isOver: () => task.data !== undefined && isTerminalState(task.data.status),
     onElement: (element) => {
       taskEvents += 1;

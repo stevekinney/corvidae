@@ -170,7 +170,9 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
 
 /** A principal that holds `scopes` and nothing else, as the page and the engine's `principal` operation both report it. */
 async function holdOnlyScopes(page: Page, scopes: readonly string[]): Promise<void> {
-  const principal = { method: 'api-key', subject: 'anonymous:local', scopes };
+  const actual = await page.request.get('/api/v1/principal');
+  const { workspace } = await actual.json();
+  const principal = { method: 'api-key', subject: 'anonymous:local', scopes, workspace };
   await page.route('**/api/v1/principal', async (route) => {
     await route.fulfill({ json: principal });
   });

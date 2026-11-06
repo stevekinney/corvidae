@@ -27,8 +27,13 @@
   import { shortcuts } from '../../lib/shortcuts.ts';
   import { armWriteGuard } from '../../lib/write-guard.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
-  import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import {
+    providePrincipalStore,
+    resolveHostPrincipal,
+    scopeGate,
+  } from '../../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
+  import { browserWorkspaceStorage } from '../workspace-lifetime.ts';
   import { CONNECTION_COPY } from '../copy.ts';
   import {
     CONNECTION_MAX_ATTEMPTS,
@@ -66,9 +71,10 @@
     client: HttpClient;
     initialPrincipal: Principal;
     onAuthExpired: (expiredClient: HttpClient) => void;
+    onIdentityMismatch: (expiredClient: HttpClient) => void;
   }
 
-  let { client, initialPrincipal, onAuthExpired }: ShellProps = $props();
+  let { client, initialPrincipal, onAuthExpired, onIdentityMismatch }: ShellProps = $props();
 
   // `client`/`initialPrincipal` are read exactly once, here, at Shell's own
   // initialization — see the module doc: these values belong to one
@@ -79,10 +85,12 @@
     client: initialClient,
     principal: resolvedPrincipal,
     onAuthExpired: authExpiredHandler,
+    onIdentityMismatch: identityMismatchHandler,
   } = untrack(() => ({
     client,
     principal: initialPrincipal,
     onAuthExpired,
+    onIdentityMismatch,
   }));
 
   provideClient(initialClient);
@@ -108,9 +116,52 @@
   );
   // Armed while the shell initializes, not in an effect, because a child that captures `fetch` when
   // it is created (a chat's run wiring) would otherwise keep the one that never refuses.
+  let identityCheckPending = false;
+  function checkIdentity(): void {
+    if (identityCheckPending) return;
+    identityCheckPending = true;
+    void resolveHostPrincipal(initialClient.headers)
+      .then(
+        (current) => {
+          if (current?.workspace === undefined) authExpiredHandler(initialClient);
+          else if (
+            current.workspace.workspaceId !== resolvedPrincipal.workspace?.workspaceId ||
+            current.workspace.actorId !== resolvedPrincipal.workspace?.actorId
+          )
+            identityMismatchHandler(initialClient);
+          return undefined;
+        },
+        () => authExpiredHandler(initialClient),
+      )
+      .finally(() => {
+        identityCheckPending = false;
+      });
+  }
+
+  $effect(() => {
+    const recheckVisible = () => {
+      if (document.visibilityState === 'visible') checkIdentity();
+    };
+    window.addEventListener('focus', recheckVisible);
+    document.addEventListener('visibilitychange', recheckVisible);
+    return () => {
+      window.removeEventListener('focus', recheckVisible);
+      document.removeEventListener('visibilitychange', recheckVisible);
+    };
+  });
+
   const disarmWriteGuard = armWriteGuard(
     () => connection.unreachable,
     [window.location.origin, new URL(initialClient.baseUrl, window.location.origin).origin],
+    globalThis,
+    () => authExpiredHandler(initialClient),
+    resolvedPrincipal.workspace === undefined
+      ? undefined
+      : {
+          identity: resolvedPrincipal.workspace,
+          onMismatch: () => identityMismatchHandler(initialClient),
+          onForbidden: checkIdentity,
+        },
   );
   onDestroy(disarmWriteGuard);
   $effect(() => {
@@ -148,7 +199,9 @@
   const theme = new ThemeStore();
   const layout = provideLayoutPreferences(new LayoutPreferences());
   const keyboard = provideKeyboardPreferences(new KeyboardPreferences());
-  const notifications = new NotificationStore();
+  const notifications = new NotificationStore({
+    storage: browserWorkspaceStorage(resolvedPrincipal.workspace, 'localStorage'),
+  });
   const engineStatus = new EngineStatusController(initialClient);
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
   // `provideFleetEventSource()` doc: shares the ONE fleet SSE connection with

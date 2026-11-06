@@ -118,6 +118,25 @@ const member = (): WorkspaceMembership => ({
 });
 
 describe('workspace membership after credential verification', () => {
+  test('refuses a browser lifetime whose expected identity no longer matches the verified member', async () => {
+    let current = member();
+    const resolve = withWorkspaceMembership(authenticate, {
+      workspaceId: 'workspace-a',
+      resolveMembership: async () => current,
+    });
+    const expected = encodeURIComponent(JSON.stringify(['workspace-a', 'user-a']));
+    const fromLifetime = () =>
+      new Request('http://localhost/v1/principal', {
+        headers: { 'x-interborough-expected-identity': expected },
+      });
+    expect(await resolve(fromLifetime())).not.toBeInstanceOf(Response);
+    current = { ...member(), actorId: 'user-b', owner: 'owner-b' };
+    const stale = await resolve(fromLifetime());
+    expect(stale).toBeInstanceOf(Response);
+    expect((stale as Response).status).toBe(409);
+    expect((stale as Response).headers.get('x-interborough-identity-mismatch')).toBe('1');
+  });
+
   test('authorizes explicit same-workspace owners and fails closed for foreign, removed, unknown, or errored owners', async () => {
     const principal = {
       ...principalFromApiKey({ subject: 'user-a', scopes: [] }),
