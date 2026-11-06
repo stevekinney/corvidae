@@ -245,10 +245,12 @@ for (const width of WIDTHS) {
     );
     // The person comes back to the tab, which reads the list again.
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
-    const banner = main.getByRole('region', { name: 'Refresh problem' });
+    // The shared unreachable preset with its countdown, under the header (row 70u).
+    const banner = main.getByRole('region', { name: 'Connection problem' });
     await expect(banner).toBeVisible();
-    await expect(banner).toContainText('Couldn’t refresh this page.');
+    await expect(banner).toContainText('Can’t reach the Interborough server.');
     await expect(banner).toContainText('Showing what loaded as of');
+    await expect(banner).toContainText(/Retrying in \d+ s \(attempt \d+ of \d+\)\./);
     await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
     // No dismiss, and the rows stay.
     await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
@@ -296,8 +298,9 @@ test('a server that stops answering over rows on screen keeps them, holds the he
   await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));
   await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
 
-  // The shell says it once, above the page, with the unreachable preset's words.
-  const banner = page.getByRole('region', { name: 'Connection problem' });
+  // The page says it once, under its header, with the unreachable preset's words; the shell leaves
+  // its own to the page.
+  const banner = main.getByRole('region', { name: 'Connection problem' });
   await expect(banner).toBeVisible();
   await expect(banner).toContainText('Can’t reach the Interborough server.');
   await expect(banner).toContainText('Showing what loaded as of');
@@ -306,7 +309,11 @@ test('a server that stops answering over rows on screen keeps them, holds the he
   await expect(banner).toContainText(/Retrying in \d+ s \(attempt \d+ of \d+\)\./);
   await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
   await captureForDesignReview(page, { route: '/schedules', state: 'stale', source: SOURCE });
-  // The page does not say it again, keeps its rows at full contrast, and holds only the "+".
+  await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(1);
+  const header = await main.locator('.cinder-page-header').boundingBox();
+  const bannerBox = await banner.boundingBox();
+  expect(bannerBox?.y ?? 0).toBeGreaterThan(header?.y ?? 0);
+  // The page keeps its rows at full contrast, and holds only the "+".
   await expect(main.getByRole('region', { name: 'Refresh problem' })).toHaveCount(0);
   await expect(main.locator('li[data-schedule]')).toHaveCount(4);
   await expect(headerCreate(page)).toHaveAttribute('aria-disabled', 'true');

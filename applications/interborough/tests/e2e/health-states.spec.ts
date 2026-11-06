@@ -13,6 +13,7 @@
 import type { Page } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -81,6 +82,90 @@ async function answerNoReviews(page: Page): Promise<void> {
   });
 }
 
+/** One record of the audit trail, as `bureau.audit.query` answers it. */
+interface AuditAnswerRecord {
+  type: string;
+  resource: string;
+  timestamp: string;
+  detail: Record<string, unknown> | null;
+}
+
+/**
+ * Answers the trail as the all-clear frame's world holds it: the server's start, and the one
+ * refund that was approved and done (order 4472), with the 1,240 events its link names (rows 76l
+ * and 76v). The sample world's other runs are the sample world's, not this frame's.
+ */
+async function answerAllClearActivity(page: Page): Promise<void> {
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    if (!(route.request().postData() ?? '').includes('"bureau.audit.query"')) {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      result: { records: AuditAnswerRecord[]; total?: number };
+    };
+    const { records } = body.result;
+    // The refund chat's first run is order 4472 (10:30 AM); its second is order 4471.
+    const starts = records
+      .filter(
+        (record) =>
+          record.type === 'run.started' &&
+          record.detail?.['sessionId'] === SAMPLE_WORLD_THREADS.refund,
+      )
+      .toSorted((left, right) => left.timestamp.localeCompare(right.timestamp));
+    const refund = starts[0]?.resource;
+    const started = records.find((record) => record.type === 'host.started');
+    body.result.records = records.filter(
+      (record) => record === started || (refund !== undefined && record.resource === refund),
+    );
+    if (body.result.total !== undefined) body.result.total = 1240;
+    await route.fulfill({ response, json: body });
+  });
+  // With 4471 left out the refund chat holds one message, which is order 4472's, so the chat is
+  // titled by it and the line names the run the way the board does.
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    if (!(route.request().postData() ?? '').includes('"bureau.contexts.get"')) {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const body = (await response.json()) as { result?: { title?: string | null } };
+    if ((route.request().postData() ?? '').includes(SAMPLE_WORLD_THREADS.refund)) {
+      if (body.result !== undefined) body.result.title = 'Refund order 4472';
+    }
+    await route.fulfill({ response, json: body });
+  });
+}
+
+/** The runs the engine lists for Health's cards: `count` done runs that each took `seconds`. */
+async function answerRunsStarted(
+  page: Page,
+  runs: { started: number; before: number; seconds: number },
+) {
+  await page.route('**/jsonrpc', async (route) => {
+    const text = route.request().postData() ?? '';
+    if (!text.includes('"weft.workflows.list"') || !text.includes('createdAt')) {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const body = (await response.json()) as { result?: { items: unknown[] }; items?: unknown[] };
+    // The window before this one has an upper bound; the window itself has only a lower one.
+    const before = /"lt"/.test(text);
+    const count = before ? runs.before : runs.started;
+    const items = Array.from({ length: count }, (_, index) => ({
+      id: `all-clear-run-${before ? 'before' : 'now'}-${String(index)}`,
+      status: 'completed',
+      createdAt: Date.UTC(2026, 10, 2, 6, 0) + index * 60_000,
+      updatedAt: Date.UTC(2026, 10, 2, 6, 0) + index * 60_000 + runs.seconds * 1000,
+    }));
+    if (body.result === undefined) body.items = items;
+    else body.result.items = items;
+    await route.fulfill({ response, json: body });
+  });
+}
+
 /** The Needs attention card's rows. */
 const attentionRows = (page: Page) =>
   page.locator('main').getByTestId('needs-attention').locator('li');
@@ -101,6 +186,9 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await answerAttention(page, () => listed([]));
     await answerNoReviews(page);
+    await answerAllClearActivity(page);
+    // 14 runs started and 11 the day before, each done in 1m 12s (row 76v).
+    await answerRunsStarted(page, { started: 14, before: 11, seconds: 72 });
     await page.goto('/health');
     const main = page.locator('main');
     const card = main.getByTestId('needs-attention');
@@ -131,7 +219,25 @@ for (const width of WIDTHS) {
 
     // 76v: Recent activity with its audit link, three cards, and Advanced collapsed at the foot.
     await expect(main.getByRole('heading', { level: 2, name: /^Recent activity/ })).toBeVisible();
-    await expect(main.getByRole('link', { name: /^Open audit log \(\d/ })).toBeVisible();
+    await expect(
+      main.getByRole('link', { name: /^Open audit log \(1,240 events\)/ }),
+    ).toBeVisible();
+    // Only what this world did: the refund that was done, and the server's start.
+    const lines = main.locator('[data-activity]');
+    await expect(lines).toHaveCount(2);
+    await expect(lines.nth(0)).toContainText('Run finished · Refund order 4472');
+    await expect(lines.nth(1)).toContainText('Server started');
+    const cards = main.getByTestId('metric-cards');
+    await expect(cards.locator('[data-metric="runs-started"]')).toContainText('14');
+    await expect(cards.locator('[data-metric="runs-started"]')).toContainText(
+      '3 more than the day before',
+    );
+    await expect(cards.locator('[data-metric="time-to-finish"]')).toContainText('1m 12s');
+    await expect(cards.locator('[data-metric="time-to-finish"]')).toContainText(
+      // The board says "Median across 14 runs" here and "3 finished runs" on the sample world's
+      // Overview; the page words it once, as "finished runs".
+      'Median across 14 finished runs',
+    );
     await expect(main.getByTestId('metric-cards').locator('h2')).toHaveText([
       'Storage use',
       'Runs started',
@@ -362,24 +468,31 @@ test('a plugin that did not load adds a row with Open Plugins, and the count is 
   checkA11y,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await answerAttention(page, (answer) =>
-    listed([
-      // The frame lists the provider, the plugin and the storage row; Daily summary is not in it.
-      ...answer.items.filter((item) => item.kind !== 'missed-runs'),
-      {
-        kind: 'plugin-not-loaded',
-        area: 'plugins',
-        at: today(9, 0),
-        plugin: 'web-search',
-        problems: ['load-failed'],
-      } as AttentionAnswer['items'][number],
-    ]),
-  );
+  await answerAttention(page, (answer) => {
+    const plugin = {
+      kind: 'plugin-not-loaded',
+      area: 'plugins',
+      at: today(9, 0),
+      plugin: 'web-search',
+      problems: ['load-failed'],
+    } as AttentionAnswer['items'][number];
+    // The frame lists the provider row, then the plugin's, then the storage row; Daily summary is
+    // not in it. The plugin is second whatever the times say, as the design draws it (row 77l).
+    const rest = answer.items.filter((item) => item.kind !== 'missed-runs');
+    const everything = listed([...rest, plugin]);
+    const [provider, ...others] = listed(rest).items;
+    if (provider === undefined) throw new Error('the sample world lists the missing provider');
+    return { ...everything, items: [provider, plugin, ...others] };
+  });
   await page.goto('/health');
 
   // 77l: the count chip reads 3, and the row names the plugin, says when it failed to start, and opens Plugins.
   await expect(attentionCount(page)).toHaveText('3');
   await expect(attentionRows(page)).toHaveCount(3);
+  // The order the design draws: the provider row, this row, then the storage row.
+  await expect(attentionRows(page).nth(0)).toContainText('No model provider connected');
+  await expect(attentionRows(page).nth(1)).toContainText('Web search didn’t load');
+  await expect(attentionRows(page).nth(2)).toContainText('Storage is over its warning level');
   const plugin = attentionRows(page).filter({ hasText: 'Web search didn’t load' });
   await expect(plugin).toHaveCount(1);
   await expect(plugin).toContainText(

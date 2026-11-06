@@ -15,8 +15,10 @@
    * nothing yet is an empty state that is the page, with no filter bar and the one primary "New
    * schedule"; filters that match nothing keep the filter bar over a "Clear filters" state; a read
    * in progress shows placeholders after 300 ms; a read that failed with nothing to show is a full
-   * error state with the header's "+" inert, and one that failed over old data is a banner above
-   * the rows. The frame still says whether the caller may see the view at all, forbidden or not.
+   * error state with the header's "+" inert, and one that failed over old data is a banner under
+   * the header (the shared unreachable preset, with its countdown, in place of the shell's, which
+   * leaves it to this page: `claimBanner`). The frame still says whether the caller may see the
+   * view at all, forbidden or not.
    */
   import {
     Banner,
@@ -32,13 +34,20 @@
     type FacetDefinition,
   } from '@lostgradient/cinder';
   import { Calendar, Plus, Search } from '@lucide/svelte';
+  import { untrack } from 'svelte';
 
   import type { ScheduleSummary } from '@lostgradient/weft';
 
   import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
 
-  import { getConnection } from '../../app/connection.svelte.ts';
+  import {
+    CONNECTION_MAX_ATTEMPTS,
+    ConnectionMonitor,
+    connectionBannerPreset,
+    getConnection,
+  } from '../../app/connection.svelte.ts';
   import { CONNECTION_COPY, RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
@@ -103,18 +112,47 @@
   }));
 
   // A read that failed with nothing to show replaces the list; one that failed over schedules
-  // already read leaves them in place under a banner. A server that gives no answer at all is the
-  // shell's to say, in its own banner above the page, which also holds the header's "+".
+  // already read leaves them in place under a banner, which counts down to the next try the way the
+  // shell's does for a server that gives no answer.
   const failedFirstLoad = $derived(listQuery.isError && listQuery.data === undefined);
-  const refreshFailed = $derived(
-    listQuery.isRefetchError && listQuery.data !== undefined && !connection.unreachable,
-  );
+  const refetchFailed = $derived(listQuery.isRefetchError && listQuery.data !== undefined);
 
   /** Reads the list again, and the frame's own probe of it, so what the frame says follows. */
   function retry(): void {
     void listQuery.refetch();
     void queryClient.refetchQueries({ queryKey: queryKeys.view('schedules', null) });
   }
+
+  // The tries after a failed refresh back off and count, as the connection's do (rows 70u, 15k).
+  const refreshTries = new ConnectionMonitor({
+    probe: async () => {
+      const result = await listQuery.refetch();
+      if (result.isError) throw result.error;
+    },
+    browserOffline: false,
+  });
+  $effect(() => {
+    if (refetchFailed) untrack(() => refreshTries.reportUnreachable());
+    else untrack(() => refreshTries.reportReachable());
+  });
+  $effect(() => () => refreshTries.dispose());
+  // The shell leaves its banner to this page while it is on screen.
+  $effect(() => connection.claimBanner());
+
+  /** Banner's Retry now: the connection's own tries again, or this read's, and the frame's probe of it. */
+  function retryNow(): void {
+    if (connection.unreachable) {
+      void connection.retryNow();
+      return;
+    }
+    void refreshTries.retryNow();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('schedules', null) });
+  }
+
+  /** The server gives no answer, or this read failed after it had shown schedules. */
+  const stale = $derived(!failedFirstLoad && (connection.unreachable || refetchFailed));
+  /** What counts the banner: the connection's own tries, or the refresh's. */
+  const tries = $derived(connection.unreachable ? connection : refreshTries);
 
   // What the Bureau knows of these schedules: which start an agent, which agent, and the workflow
   // files. Until it answers a schedule is of no known kind.
@@ -283,7 +321,7 @@
 <section class="ib-records" aria-label={SCHEDULE_COPY.title} data-page="schedules">
   <!-- While the server gives no answer the shell holds every control that changes something; this
        region is how the header's "+" (and the empty state's button) join them. -->
-  <StaleRegion stale={connection.unreachable} reason={CONNECTION_COPY.changesOff}>
+  <StaleRegion stale={stale || connection.unreachable} reason={CONNECTION_COPY.changesOff}>
     <PageHeader
       title={SCHEDULE_COPY.title}
       description={SCHEDULE_COPY.subtitle(zone)}
@@ -298,8 +336,16 @@
       }}
     />
 
-    {#if refreshFailed}
-      <Banner preset="refresh-failed" dataUpdatedAt={listQuery.dataUpdatedAt} onRetry={retry} />
+    <!-- While the host restarts, the restart dialog is the one account of it, as in the shell. -->
+    {#if stale && !restartActivity.active}
+      <Banner
+        preset={connectionBannerPreset(tries)}
+        dataUpdatedAt={connection.unreachable ? connection.lastHealthyAt : listQuery.dataUpdatedAt}
+        retryInSeconds={tries.retryInSeconds}
+        attempt={tries.browserOffline || tries.attempt === 0 ? undefined : tries.attempt}
+        maxAttempts={CONNECTION_MAX_ATTEMPTS}
+        onRetry={retryNow}
+      />
     {/if}
 
     {#if failedFirstLoad}

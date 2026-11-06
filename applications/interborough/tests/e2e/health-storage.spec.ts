@@ -15,11 +15,12 @@
  */
 import type { APIRequestContext, Page, Route } from '@playwright/test';
 
-import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { formatBytes } from '../../src/lib/format/index.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { answerStorageFrom, BOARD_KEYS, BOARD_RANGE_KEYS } from './storage-board-world.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -429,7 +430,8 @@ test.describe('Health › Storage on the sample world', () => {
 // application does not manage (`app:welcome-banner`, the board's own) is written for the cases that
 // change data, and removed after each, so the sample world is left as it was found.
 const BANNER = 'app:welcome-banner';
-const BANNER_VALUE = '{"dismissed":true,"dismissedOn":"2026-11-01T22:12:00Z"}';
+// 96 bytes, which the board's pane header says (row 80w): the text is padded with spaces, which JSON ignores.
+const BANNER_VALUE = '{"dismissed":true,"dismissedOn":"2026-11-01T22:12:00Z"}'.padEnd(96, ' ');
 const BANNER_SUMMARY =
   /^App data and memory · \d+ B · updated (today, \d{1,2}:\d{2} (AM|PM)|yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM))$/;
 
@@ -596,7 +598,7 @@ test.describe('Health › Storage writes and states', () => {
     expect((alertBox?.y ?? 0) + (alertBox?.height ?? 0)).toBeLessThanOrEqual(editorBox?.y ?? 0);
     await expect(editor).toHaveValue('{\n  "dismissed": false\n}');
     await expect(pane.getByTestId('storage-key-summary')).toHaveText(
-      new RegExp(`^App data and memory · \\d+ B · ${BANNER}$`),
+      new RegExp(`^App data and memory · 96 B · ${BANNER}$`),
     );
     // Cancel, then Save value, and Save value keeps its own label as the retry.
     await expect(pane.getByRole('button')).toHaveText(['Cancel', 'Save value']);
@@ -935,5 +937,89 @@ test.describe('Health › Storage writes and states', () => {
       await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
       await expect(main.getByTestId('storage-key')).toHaveCount(0);
     });
+  });
+});
+
+test.describe('Health › Storage with the design’s own keys', () => {
+  test('the table lists the ten sample rows in the board’s order with the first open, and its Fields are the flat list', async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await answerStorageFrom(page, BOARD_KEYS);
+    await openStorage(page);
+    const main = page.locator('main');
+
+    // 80g: the ten rows, each with its group, its size and its time in Central time.
+    expect(await firstRows(page, 10)).toEqual([
+      ['agent-session:summary-index', 'Chat sessions', '1.2 KB', 'Today, 10:44 AM'],
+      ['agent-session:415b1fd8…:messages', 'Chat sessions', '310 B', 'Today, 10:42 AM'],
+      ['app:preferences', 'App data and memory', '64 B', 'Today, 9:40 AM'],
+      ['app:goals', 'App data and memory', '410 B', 'Today, 9:00 AM'],
+      ['audit:2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
+      ['bureau-goal:seeded-goal', 'Goals', '880 B', 'Today, 9:00 AM'],
+      ['bureau-task:run-1-12b71b8b…', 'Tasks', '540 B', 'Today, 9:00 AM'],
+      ['bureau-catalog-run:run-1-12b71b8b…', 'Runs', '2.4 KB', 'Today, 9:00 AM'],
+      ['steering-log:415b1fd8…:0001', 'Chat steering', '180 B', 'Today, 10:42 AM'],
+      ['schedule:daily-summary', 'Schedules', '360 B', 'Today, 10:40 AM'],
+    ]);
+
+    // The first row is open and tinted, and the pane says what the board's does.
+    const first = main.locator('tr[data-cinder-row-id="agent-session:summary-index"]');
+    await first.click();
+    await expect(first).toHaveAttribute('aria-current', 'true');
+    const pane = main.getByTestId('storage-key');
+    await expect(pane.getByTestId('storage-key-summary')).toHaveText(
+      'Chat sessions · 1.2 KB · updated today, 10:44 AM',
+    );
+    // 80k: Fields is the flat list of label and value the board draws.
+    const value = pane.getByRole('group', { name: 'Value' });
+    await expect(value.getByRole('radio', { name: 'Fields' })).toBeChecked();
+    await expect(value).toContainText(
+      /Format version\s*3\s*Chat\s*Refund order 4471\s*Agent\s*Tool runner\s*Messages\s*14\s*Summarized\s*Today, 10:44 AM/,
+    );
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'ready',
+      source: SOURCE,
+    });
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'key selected',
+      source: SOURCE,
+    });
+    await checkA11y('health storage with the design’s keys');
+  });
+
+  test('Range lists the three audit keys between its two ends, the middle one highlighted', async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await answerStorageFrom(page, BOARD_RANGE_KEYS);
+    await openStorage(page);
+    const main = page.locator('main');
+
+    await main.getByRole('radio', { name: 'Range' }).click();
+    const range = main.getByRole('search', { name: 'Find a key' }).getByRole('group', {
+      name: 'Range',
+    });
+    await range.getByLabel('Range start').fill('audit:2026-11-01');
+    await range.getByLabel('Range end').fill('audit:2026-11-02');
+    await expect(main.locator('tbody tr[data-cinder-row-id]')).toHaveCount(3);
+    // 80q: the keys, their sizes, and their times in Central time.
+    expect(await firstRows(page, 3)).toEqual([
+      ['audit:2026-11-01T22:12:31Z', 'Audit log', '210 B', 'Sun Nov 1, 4:12 PM'],
+      ['audit:2026-11-02T15:00:02Z', 'Audit log', '224 B', 'Today, 9:00 AM'],
+      ['audit:2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
+    ]);
+    await main.locator('tbody tr[data-cinder-row-id]').nth(1).click();
+    await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'range',
+      source: SOURCE,
+    });
+    await checkA11y('health storage range with the design’s keys');
   });
 });

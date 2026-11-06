@@ -379,14 +379,16 @@ describe('a refresh that failed over rows on screen (row 70u)', () => {
 
     world.failSchedules = true;
     await queryClient().invalidateQueries({ queryKey: queryKeys.schedules.list({}) });
-    const banner = await within(container).findByRole('region', { name: 'Refresh problem' });
+    const banner = await within(container).findByRole('region', { name: 'Connection problem' });
 
-    expect(banner.textContent).toContain('Couldn’t refresh this page.');
+    // The shared unreachable preset, with its countdown and the attempt it is on (row 70u).
+    expect(banner.textContent).toContain('Can’t reach the Interborough server.');
     expect(banner.textContent).toMatch(/Showing what loaded as of .+\./);
+    expect(banner.textContent).toMatch(/Retrying in \d+ s \(attempt 1 of 8\)\./);
     expect(banner.querySelector('[aria-label*="ismiss"]')).toBeNull();
     expect(rows(container)).toHaveLength(2);
-    // The server answered, so changes are still on.
-    expect(headerCreate(container).getAttribute('aria-disabled')).toBeNull();
+    // The stale region holds the header "+", and nothing else.
+    expect(headerCreate(container).getAttribute('aria-disabled')).toBe('true');
     // The banner follows the header and comes before the filter bar.
     const header = container.querySelector('.cinder-page-header') as Element;
     const bar = toolbar(container) as Element;
@@ -396,19 +398,21 @@ describe('a refresh that failed over rows on screen (row 70u)', () => {
     world.failSchedules = false;
     await fireEvent.click(within(banner).getByRole('button', { name: 'Retry now' }));
     await waitFor(() =>
-      expect(within(container).queryByRole('region', { name: 'Refresh problem' }) === null).toBe(
+      expect(within(container).queryByRole('region', { name: 'Connection problem' }) === null).toBe(
         true,
       ),
     );
     expect(rows(container)).toHaveLength(2);
+    expect(headerCreate(container).getAttribute('aria-disabled')).toBeNull();
   });
 });
 
-describe('a server that stopped answering (row 70u, in the shell)', () => {
+describe('a server that stopped answering (row 70u)', () => {
   function unreachableMonitor(): ConnectionMonitor {
     const monitor = new ConnectionMonitor({
       probe: () => new Promise(() => {}),
       probeDelayMs: () => 3_600_000,
+      browserOffline: false,
     });
     monitor.reportUnreachable();
     return monitor;
@@ -422,7 +426,11 @@ describe('a server that stopped answering (row 70u, in the shell)', () => {
       const create = headerCreate(container);
       expect(create.getAttribute('aria-disabled')).toBe('true');
       expect(container.textContent).toContain('Off until it’s back');
-      // The shell's banner says it once; the page draws none of its own.
+      // The page says it once, under its header, with the connection's own countdown; the shell
+      // leaves its banner to the page.
+      const banner = within(container).getByRole('region', { name: 'Connection problem' });
+      expect(banner.textContent).toMatch(/Retrying in \d+ s \(attempt 1 of 8\)\./);
+      expect(monitor.bannerDrawnByPage).toBe(true);
       expect(within(container).queryByRole('region', { name: 'Refresh problem' })).toBeNull();
       // Filters and row links stay live.
       await fireEvent.click(within(container).getByRole('radio', { name: /^Paused/ }));
@@ -435,7 +443,7 @@ describe('a server that stopped answering (row 70u, in the shell)', () => {
 
   test('keeps what each schedule is and draws no second error when the Bureau fails because the server is gone', async () => {
     // The Bureau's two lists answer once, then the server goes: the overlay read again fails, and
-    // the shell's banner is the one place that says so (row 70u).
+    // the page's banner is the one place that says so (row 70u).
     const monitor = new ConnectionMonitor({
       probe: () => new Promise(() => {}),
       probeDelayMs: () => 3_600_000,

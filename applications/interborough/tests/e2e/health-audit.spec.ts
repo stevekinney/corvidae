@@ -284,6 +284,35 @@ test.describe('Health › Audit log on the sample world', () => {
     await checkA11y('health audit log at 1280px');
   });
 
+  test('a tall window holds every day under its heading, down to Thu Oct 29, with no row below the table’s own scroll', async ({
+    page,
+    checkA11y,
+  }) => {
+    // The table is as tall as the window less the page around it, and scrolls inside that, so the
+    // last day is below the fold of an ordinary window. 1500 pixels hold every day (rows 82h, 82i).
+    await page.setViewportSize({ width: 1280, height: 1500 });
+    await openAudit(page);
+    const main = page.locator('main');
+    const headings = main.locator('tbody th[colspan], tbody td[colspan]');
+    await expect(headings.nth(0)).toHaveText('Today, Nov 2 · Central time');
+    await expect(headings.nth(1)).toHaveText('Yesterday, Sun Nov 1 · Central time');
+    const oldest = headings.filter({ hasText: /^Thu Oct 29/ });
+    await expect(oldest).toHaveCount(1);
+    await oldest.scrollIntoViewIfNeeded();
+    const box = await oldest.boundingBox();
+    expect((box?.y ?? Infinity) + (box?.height ?? 0)).toBeLessThanOrEqual(1500);
+    const texts = await rows(page).evaluateAll((all) => all.map((row) => row.textContent ?? ''));
+    expect(
+      texts.some((text) => text.includes('Edited an agent') && text.includes('Tool runner')),
+    ).toBe(true);
+    await captureForDesignReview(page, {
+      route: '/health/audit',
+      state: 'ready all days',
+      source: SOURCE,
+    });
+    await checkA11y('health audit log, every day, at 1280 by 1500');
+  });
+
   test('a tool call that asks is titled by the agent and the tool’s own words, with the tool, its risk, the amount and Waiting on you', async ({
     page,
     checkA11y,

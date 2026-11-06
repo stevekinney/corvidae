@@ -282,10 +282,11 @@
   <Sidebar {client} />
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen />
-    {#if connection.unreachable && !restartActivity.active}
+    {#if connection.unreachable && !restartActivity.active && !connection.bannerDrawnByPage}
       <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet.
            The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
-           answering with its countdown, or the retries stopped. Retry now is always there. -->
+           answering with its countdown, or the retries stopped. Retry now is always there. A page
+           that draws it under its own header (`claimBanner`) leaves it to the page. -->
       <Banner
         preset={connectionBannerPreset(connection)}
         dataUpdatedAt={connection.lastHealthyAt}
