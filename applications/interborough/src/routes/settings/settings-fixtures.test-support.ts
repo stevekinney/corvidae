@@ -74,6 +74,8 @@ export type SettingsServed = {
    * starts with. An update that puts a restart key back to its running value ends its wait.
    */
   running?: Record<string, unknown>;
+  /** What is in force for a key nothing stored a value for, such as a default window. */
+  effective?: Record<string, unknown>;
 };
 
 export function servedSettings(overrides: Partial<SettingsServed> = {}): SettingsServed {
@@ -109,7 +111,7 @@ export function settingsSnapshot(served: SettingsServed) {
   return {
     values: served.values,
     // What the page reads for an unset row; a fixture's values stand in for it.
-    effective: { ...served.values },
+    effective: { ...served.values, ...served.effective },
     running: { ...(served.running ?? SETTING_VALUES) },
     revision: served.revision,
     persisted: served.persisted,

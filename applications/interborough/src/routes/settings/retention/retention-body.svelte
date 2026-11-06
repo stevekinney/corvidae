@@ -10,7 +10,8 @@
    * (`retention.events`, `.tasks` and so on) are not drawn on the board, so they follow in a section
    * of their own, which keeps Retention to its four rows. A window reads like the four, with the
    * same choice and days, so every row has one label style; a setting that is no window
-   * (`retention.checkpoints`) is drawn as the schema says.
+   * (`retention.checkpoints`) is drawn as the schema says. A window nothing stored a value for
+   * shows the one in force (`effective`), so events kept for seven days do not read as kept forever.
    */
   import { FormSection } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
@@ -93,7 +94,7 @@
       <RetentionWindowField
         id={fieldProps.id}
         name={copy.labels[key] ?? settingLabel(key)}
-        value={form.draft(key)}
+        value={form.draft(key) ?? snapshot.effective[key]}
         forever={foreverOf(key)}
         disabled={fieldProps.disabled}
         invalid={autosave.stateOf(key)?.phase === 'invalid'}

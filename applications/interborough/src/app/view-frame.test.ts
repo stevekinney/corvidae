@@ -297,6 +297,14 @@ describe('every view, in every state', () => {
     test(`${view} is loading while its probe is pending`, async () => {
       if (view === 'health' || view === 'home') return;
       restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+      if (VIEWS[view].pageOwnsLoading === true) {
+        // The page draws its own loading, so its content is on screen and the frame's words are not.
+        const { container, findByTestId, queryByRole } = mount(view);
+        expect(await findByTestId('content')).not.toBeNull();
+        expect(frame(container).dataset['state']).toBe('loading');
+        expect(queryByRole('heading', { level: 1, name: copy.loading.title })).toBeNull();
+        return;
+      }
       const { container, findByRole } = mount(view);
       expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('loading');
@@ -359,7 +367,8 @@ describe('a view that finds something to show', () => {
       stub(view, 'content');
       const { container, findByTestId } = mount(view);
       expect(await findByTestId('content')).not.toBeNull();
-      expect(frame(container).dataset['state']).toBe('ready');
+      // A page that draws its own loading is on screen before the probe answers.
+      await waitFor(() => expect(frame(container).dataset['state']).toBe('ready'));
     });
   }
 

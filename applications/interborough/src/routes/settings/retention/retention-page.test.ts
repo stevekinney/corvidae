@@ -100,6 +100,26 @@ describe('Settings › Data and retention', () => {
     expect(keys.at(-1)).toBe('clean-up');
   });
 
+  test('a window nothing stored shows the one in force, so thirty days do not read as forever', async () => {
+    const served = servedSettings({
+      effective: { 'retention.notifications': { olderThan: 30 * DAY } },
+    });
+    stub = installSettingsBureau(served, {
+      'bureau.health.attention': () => ({ items: [], count: 0, checks: [] }),
+    });
+    landAt('/settings/data-and-retention');
+    const view = render(RouteOutletHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+
+    const row = await rowReady(view, 'retention.notifications');
+    expect(choiceOf(row, 'Delete after').getAttribute('aria-checked')).toBe('true');
+    expect((within(row).getByRole('spinbutton') as HTMLInputElement).value).toBe('30');
+  });
+
   test('every row has a sentence-case name with its raw key beside it, and the Bureau’s description', async () => {
     const { view } = open();
     const expected = [
