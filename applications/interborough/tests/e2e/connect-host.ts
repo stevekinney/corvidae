@@ -98,37 +98,50 @@ function watchOutput(stream: ReadableStream<Uint8Array>): { listening: Promise<v
 
 /** Starts the servers, then the host under the supervisor, and resolves once the host is listening. */
 export async function startConnectHost(options: ConnectHostOptions): Promise<ConnectHost> {
-  const bearer = await startMcpServer(E2E_CONNECT_TOKEN);
-  const oauth: OAuthMcpServer = await startOAuthMcpServer();
-  const pets = await startPetsService();
-  const supervisor = Bun.spawn([process.execPath, '--no-install', SUPERVISOR, 'serve'], {
-    env: {
-      ...process.env,
-      INTERBOROUGH_HOME: options.home,
-      INTERBOROUGH_PORT: String(options.port),
-      INTERBOROUGH_BUILD_DIRECTORY: options.buildDirectory,
-    },
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'inherit',
-  });
-  const { listening } = watchOutput(supervisor.stdout);
-  await Promise.race([
-    listening,
-    supervisor.exited.then((code) => {
-      throw new Error(
-        `The connect host's supervisor exited with ${String(code)} before it listened.`,
-      );
-    }),
-  ]);
-  return {
-    origins: { bearerMcp: bearer.origin, oauthMcp: oauth.origin, pets: pets.origin },
-    supervisorPid: supervisor.pid,
-    stop: async () => {
-      // The supervisor forwards the signal to the host and ends once it has gone.
+  let bearer: TestServer | undefined;
+  let oauth: OAuthMcpServer | undefined;
+  let pets: TestServer | undefined;
+  let supervisor: Bun.Subprocess | undefined;
+  try {
+    bearer = await startMcpServer(E2E_CONNECT_TOKEN);
+    oauth = await startOAuthMcpServer();
+    pets = await startPetsService();
+    supervisor = Bun.spawn([process.execPath, '--no-install', SUPERVISOR, 'serve'], {
+      env: {
+        ...process.env,
+        INTERBOROUGH_HOME: options.home,
+        INTERBOROUGH_PORT: String(options.port),
+        INTERBOROUGH_BUILD_DIRECTORY: options.buildDirectory,
+      },
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'inherit',
+    });
+    const { listening } = watchOutput(supervisor.stdout);
+    await Promise.race([
+      listening,
+      supervisor.exited.then((code) => {
+        throw new Error(
+          `The connect host's supervisor exited with ${String(code)} before it listened.`,
+        );
+      }),
+    ]);
+    return {
+      origins: { bearerMcp: bearer.origin, oauthMcp: oauth.origin, pets: pets.origin },
+      supervisorPid: supervisor.pid,
+      stop: async () => {
+        // The supervisor forwards the signal to the host and ends once it has gone.
+        supervisor.kill('SIGTERM');
+        await supervisor.exited;
+        await Promise.all([bearer.stop(), oauth.stop(), pets.stop()]);
+      },
+    };
+  } catch (error) {
+    if (supervisor !== undefined) {
       supervisor.kill('SIGTERM');
-      await supervisor.exited;
-      await Promise.all([bearer.stop(), oauth.stop(), pets.stop()]);
-    },
-  };
+      await supervisor.exited.catch(() => undefined);
+    }
+    await Promise.allSettled([bearer?.stop(), oauth?.stop(), pets?.stop()]);
+    throw error;
+  }
 }

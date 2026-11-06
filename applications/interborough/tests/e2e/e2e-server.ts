@@ -36,7 +36,7 @@ import { startHost, type Host } from '../../src/host/host.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
-import { startConnectHost } from './connect-host.ts';
+import { startConnectHost, type ConnectHost } from './connect-host.ts';
 import {
   E2E_BARRIER_PORT,
   E2E_BUREAU_PORT,
@@ -452,7 +452,16 @@ const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 // Keeping the real fixture behavior while removing the serial dependency avoids making the
 // browser harness wait for five unrelated plugin boot sequences in order.
 const journeyBarrier = createBarrier();
-const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost] = await Promise.all([
+type SecondaryHost = Host | ConnectHost;
+const closeSecondaryHost = async (secondaryHost: SecondaryHost): Promise<void> => {
+  if ('close' in secondaryHost) {
+    await secondaryHost.close();
+  } else {
+    await secondaryHost.stop();
+  }
+};
+
+const secondaryResults = await Promise.allSettled([
   (async () => {
     const bureauHome = join(scratch, 'bureau-home');
     await enableDemoPlugin(bureauHome);
@@ -463,55 +472,73 @@ const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost] = await
       join(bureauWorkflowDirectory, 'e2e-digest.json'),
       `${JSON.stringify(SEEDED_WORKFLOW_FILES['e2e-digest'], null, 2)}\n`,
     );
-    const started = await startHost({
-      extraAgents: {
-        agents: {
-          [CHAT_PROOF_PARENT]: chatProofParent,
-          [CHAT_PROOF_CHILD]: chatProofReviewer,
+    let started: Host | undefined;
+    try {
+      started = await startHost({
+        extraAgents: {
+          agents: {
+            [CHAT_PROOF_PARENT]: chatProofParent,
+            [CHAT_PROOF_CHILD]: chatProofReviewer,
+          },
         },
-      },
-      environment: { INTERBOROUGH_HOME: bureauHome },
-      port: E2E_BUREAU_PORT,
-      buildDirectory,
-    });
-    await started.bureau.plugins.ready();
-    chatProofBureau = started.bureau;
-    return started;
+        environment: { INTERBOROUGH_HOME: bureauHome },
+        port: E2E_BUREAU_PORT,
+        buildDirectory,
+      });
+      await started.bureau.plugins.ready();
+      chatProofBureau = started.bureau;
+      return started;
+    } catch (error) {
+      await started?.close();
+      throw error;
+    }
   })(),
   (async () => {
     const journeyHome = join(scratch, 'journey-home');
     await bindHome(journeyHome);
     await writeProviderHome(journeyHome);
     await enableDemoPlugin(journeyHome);
-    const started = await startHost({
-      extraAgents: {
-        agents: {
-          ...createBarrierAgents(journeyBarrier),
-          ...createEchoAgents(),
-          ...createRecallAgents(),
+    let started: Host | undefined;
+    try {
+      started = await startHost({
+        extraAgents: {
+          agents: {
+            ...createBarrierAgents(journeyBarrier),
+            ...createEchoAgents(),
+            ...createRecallAgents(),
+          },
         },
-      },
-      environment: { INTERBOROUGH_HOME: journeyHome },
-      resolveProviderGenerate: createJourneyProviderResolver(
-        fakeProvider('This reply comes from the end-to-end provider stub.').resolver,
-      ),
-      port: E2E_JOURNEY_PORT,
-      buildDirectory,
-    });
-    await started.bureau.plugins.ready();
-    return started;
+        environment: { INTERBOROUGH_HOME: journeyHome },
+        resolveProviderGenerate: createJourneyProviderResolver(
+          fakeProvider('This reply comes from the end-to-end provider stub.').resolver,
+        ),
+        port: E2E_JOURNEY_PORT,
+        buildDirectory,
+      });
+      await started.bureau.plugins.ready();
+      return started;
+    } catch (error) {
+      await started?.close();
+      throw error;
+    }
   })(),
   (async () => {
     const firstRunHome = join(scratch, 'first-run-home');
     await mkdir(firstRunHome, { recursive: true });
-    const started = await startHost({
-      environment: { INTERBOROUGH_HOME: firstRunHome },
-      resolveProviderGenerate: fakeProvider('Hello from the first-run provider stub.').resolver,
-      port: E2E_FIRST_RUN_PORT,
-      buildDirectory,
-    });
-    await started.bureau.plugins.ready();
-    return started;
+    let started: Host | undefined;
+    try {
+      started = await startHost({
+        environment: { INTERBOROUGH_HOME: firstRunHome },
+        resolveProviderGenerate: fakeProvider('Hello from the first-run provider stub.').resolver,
+        port: E2E_FIRST_RUN_PORT,
+        buildDirectory,
+      });
+      await started.bureau.plugins.ready();
+      return started;
+    } catch (error) {
+      await started?.close();
+      throw error;
+    }
   })(),
   (async () => {
     const connectHome = join(scratch, 'connect-home');
@@ -530,6 +557,28 @@ const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost] = await
     return host;
   })(),
 ]);
+
+const failedSecondary = secondaryResults.find(
+  (result): result is PromiseRejectedResult => result.status === 'rejected',
+);
+if (failedSecondary !== undefined) {
+  await Promise.allSettled(
+    secondaryResults
+      .filter(
+        (result): result is PromiseFulfilledResult<SecondaryHost> => result.status === 'fulfilled',
+      )
+      .map((result) => closeSecondaryHost(result.value)),
+  );
+  throw failedSecondary.reason;
+}
+
+const [bureauResult, journeyResult, firstRunResult, connectResult, showcaseResult] =
+  secondaryResults;
+const bureauHost = bureauResult.value;
+const journeyHost = journeyResult.value;
+const firstRunHost = firstRunResult.value;
+const connectHost = connectResult.value;
+const showcaseHost = showcaseResult.value;
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
