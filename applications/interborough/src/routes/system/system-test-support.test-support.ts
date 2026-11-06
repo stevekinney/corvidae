@@ -106,20 +106,7 @@ export class ScriptedFetch {
     this.#responses.push(() => new Response(null, { status, statusText }));
   }
 
-  /** Queues a JSON-RPC 2.0 SUCCESS envelope — the shape `HttpClient.operations[...]`/`.call(...)` expects back from `POST {baseUrl}/jsonrpc` (`httpClientCatalogTransport`, `weft/src/client/http-operations.ts`). */
-  enqueueJsonRpcResult(result: unknown): void {
-    this.enqueueJson({ jsonrpc: '2.0', id: 1, result });
-  }
-
-  /** Standing route: any request whose URL contains `urlSubstring` gets `body` as JSON, regardless of call order. */
-  routeUrl(urlSubstring: string, body: unknown, init?: ResponseInit): void {
-    this.#routes.push({
-      matches: (call) => call.url.includes(urlSubstring),
-      respond: () => Response.json(body, init),
-    });
-  }
-
-  /** Standing route variant of `routeUrl` for a plain-text response (e.g. `/v1/metrics`'s Prometheus exposition), which isn't JSON-encoded. */
+  /** Standing route: any request whose URL contains `urlSubstring` gets `body` as plain text (e.g. `/v1/metrics`'s Prometheus exposition), which isn't JSON-encoded. */
   routeUrlText(urlSubstring: string, body: string, init?: ResponseInit): void {
     this.#routes.push({
       matches: (call) => call.url.includes(urlSubstring),
@@ -152,7 +139,7 @@ export class ScriptedFetch {
     });
   }
 
-  /** Standing route variant of `routeUrl` returning a fixed HTTP status with no body — for testing a fault path on a specific URL without disturbing other routed/queued responses. */
+  /** Standing route: any request whose URL contains `urlSubstring` gets a fixed HTTP status with no body — for testing a fault path on a specific URL without disturbing other routed/queued responses. */
   routeUrlStatus(urlSubstring: string, status: number, statusText = ''): void {
     this.#routes.push({
       matches: (call) => call.url.includes(urlSubstring),
@@ -160,7 +147,7 @@ export class ScriptedFetch {
     });
   }
 
-  /** Standing route: any JSON-RPC request for `method` gets `result` as a success envelope, regardless of call order — the JSON-RPC-equivalent of `routeUrl`, since every JSON-RPC call shares one URL and only the request BODY distinguishes the operation. */
+  /** Standing route: any JSON-RPC request for `method` gets `result` as a success envelope, regardless of call order — the JSON-RPC equivalent of a URL route, since every JSON-RPC call shares one URL and only the request BODY distinguishes the operation. */
   routeJsonRpcMethod(method: string, result: unknown): void {
     this.#routes.push({
       matches: (call) => {
