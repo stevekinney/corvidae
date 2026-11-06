@@ -6,10 +6,11 @@ import { createDemoPlugin, HUMAN_INPUT_SIGNAL } from '@lostgradient/plugin-demo'
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { tmpdir } from 'node:os';
 import { z } from 'zod';
+import { processEnvironment } from './environment-configuration.ts';
 import { startHost } from './host.ts';
 import { secretServiceClient } from './workspace-secret-service.test-support.ts';
 
-const environment = process.env;
+const environment = processEnvironment();
 function required(key: string): string {
   const value = environment[key];
   if (value === undefined) throw new Error(`Missing fixture input ${key}`);

@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 import { pluginsWithEnabledDemo } from './demo-plugin.test-support.ts';
+import { processEnvironment } from './environment-configuration.ts';
 import { createHostMutationContext } from './host-mutation-context.ts';
 import { startHost, type Host } from './host.ts';
 import {
@@ -290,7 +291,7 @@ const remoteConformance = await (async () => {
     const resultFile = join(secondScratch, 'replacement-result.json');
     await runRemoteReplacement(executable, {
       ...base,
-      PATH: process.env['PATH'] ?? '',
+      PATH: processEnvironment()['PATH'] ?? '',
       INTERBOROUGH_HOME: secondHome,
       TMPDIR: secondScratch,
       FIXTURE_WORKSPACE: client.workspaceId,
