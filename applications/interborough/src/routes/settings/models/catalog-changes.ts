@@ -60,6 +60,27 @@ function replacing(
   return [...edits.slice(0, position), ...kept, ...edits.slice(position + 1)];
 }
 
+/** Merges an edit over the complete row price without dropping omitted cache or tier fields. */
+function pricingWithEdit(
+  rowPricing: ProviderModel['pricing'],
+  editPricing: CatalogEdit['pricing'],
+): ProviderModel['pricing'] {
+  if (editPricing === undefined) return rowPricing;
+  const { longContext: editedLongContext, ...editedRates } = editPricing;
+  const keptLongContext = rowPricing?.longContext;
+  const longContext =
+    editedLongContext === undefined
+      ? keptLongContext
+      : editedLongContext === null
+        ? undefined
+        : { ...keptLongContext, ...editedLongContext };
+  return {
+    ...rowPricing,
+    ...editedRates,
+    ...(longContext === undefined ? {} : { longContext }),
+  };
+}
+
 /** The edits with `row` turned off, or back on. A model that is on carries no `off`. */
 export function withModelOff(
   edits: readonly CatalogEdit[],
@@ -86,6 +107,7 @@ export function withRowFields(
   const priceChanged =
     fields.inputPerMillionTokens !== row.pricing?.inputPerMillionTokens ||
     fields.outputPerMillionTokens !== row.pricing?.outputPerMillionTokens;
+  const preservedPricing = pricingWithEdit(row.pricing, existing.pricing);
   const next: CatalogEdit = {
     ...existing,
     ...(fields.contextWindowTokens !== row.contextWindowTokens ||
@@ -98,7 +120,7 @@ export function withRowFields(
     ...(priceChanged || existing.pricing !== undefined
       ? {
           pricing: {
-            ...existing.pricing,
+            ...preservedPricing,
             inputPerMillionTokens: fields.inputPerMillionTokens,
             outputPerMillionTokens: fields.outputPerMillionTokens,
             currency: existing.pricing?.currency ?? row.pricing?.currency ?? DEFAULT_CURRENCY,
@@ -176,13 +198,7 @@ export function previewRows(
       maxOutputTokens: edit.maxOutputTokens ?? row.maxOutputTokens,
       ...(edit.pricing === undefined
         ? {}
-        : {
-            pricing: {
-              inputPerMillionTokens: edit.pricing.inputPerMillionTokens,
-              outputPerMillionTokens: edit.pricing.outputPerMillionTokens,
-              currency: edit.pricing.currency,
-            },
-          }),
+        : { pricing: pricingWithEdit(row.pricing, edit.pricing) }),
     };
   });
   for (const edit of edits) {
@@ -205,13 +221,7 @@ export function previewRows(
       maxOutputTokens: edit.maxOutputTokens ?? base.maxOutputTokens,
       ...(edit.pricing === undefined
         ? {}
-        : {
-            pricing: {
-              inputPerMillionTokens: edit.pricing.inputPerMillionTokens,
-              outputPerMillionTokens: edit.pricing.outputPerMillionTokens,
-              currency: edit.pricing.currency,
-            },
-          }),
+        : { pricing: pricingWithEdit(base.pricing, edit.pricing) }),
     });
   }
   return shown;

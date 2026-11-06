@@ -519,6 +519,24 @@ describe('a catalog that changed while it was being edited', () => {
     getByRole('button', { name: MODELS_COPY.models.save }) as HTMLButtonElement;
   const haiku = (container: HTMLElement) => rowOf(container, 'anthropic/claude-haiku-4-5')!;
   const sonnetOff = { provider: 'anthropic', model: 'claude-sonnet-5', off: true };
+  const pricedSonnet = {
+    provider: 'anthropic',
+    model: 'sonnet',
+    pricing: {
+      inputPerMillionTokens: 2,
+      outputPerMillionTokens: 10,
+      currency: 'USD',
+      cacheReadPerMillionTokens: 0.2,
+      cacheWritePerMillionTokens: 2.5,
+      longContext: {
+        inputTokensAbove: 100_000,
+        inputPerMillionTokens: 5,
+        outputPerMillionTokens: 25,
+        cacheReadPerMillionTokens: 0.5,
+        cacheWritePerMillionTokens: 6.25,
+      },
+    },
+  };
 
   async function startEditing(container: HTMLElement) {
     await loaded(container);
@@ -631,6 +649,17 @@ describe('a catalog that changed while it was being edited', () => {
     await waitFor(() => expect(save(getByRole).disabled).toBe(true));
     await waitFor(() => expect(host!.catalog).toHaveLength(1));
     expect(queryByTestId('models-changed-elsewhere')?.outerHTML ?? null).toBeNull();
+  });
+
+  test('round-trips complete pricing in the save base without a false conflict', async () => {
+    const { container, getByRole } = open({ catalog: [pricedSonnet] });
+    await loaded(container);
+    await waitFor(() => expect(rowOf(container, 'anthropic/claude-sonnet-5')).not.toBeNull());
+    await fireEvent.click(within(haiku(container)).getByRole('switch'));
+    await fireEvent.click(save(getByRole));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes().at(-1)?.body).toMatchObject({ base: [pricedSonnet] });
+    expect(container.querySelector('[data-testid="models-failure"]')).toBeNull();
   });
 });
 

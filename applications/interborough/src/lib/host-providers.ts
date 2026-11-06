@@ -23,11 +23,15 @@ const pricingSchema = z.object({
   inputPerMillionTokens: z.number(),
   outputPerMillionTokens: z.number(),
   currency: z.string(),
+  cacheWritePerMillionTokens: z.number().optional(),
+  cacheReadPerMillionTokens: z.number().optional(),
   longContext: z
     .object({
       inputTokensAbove: z.number(),
       inputPerMillionTokens: z.number(),
       outputPerMillionTokens: z.number(),
+      cacheWritePerMillionTokens: z.number().optional(),
+      cacheReadPerMillionTokens: z.number().optional(),
     })
     .nullish(),
 });
@@ -57,6 +61,17 @@ const providerModelSchema = z.object({
       inputPerMillionTokens: z.number(),
       outputPerMillionTokens: z.number(),
       currency: z.string(),
+      cacheWritePerMillionTokens: z.number().optional(),
+      cacheReadPerMillionTokens: z.number().optional(),
+      longContext: z
+        .object({
+          inputTokensAbove: z.number(),
+          inputPerMillionTokens: z.number(),
+          outputPerMillionTokens: z.number(),
+          cacheWritePerMillionTokens: z.number().optional(),
+          cacheReadPerMillionTokens: z.number().optional(),
+        })
+        .optional(),
     })
     .optional(),
   off: z.boolean(),

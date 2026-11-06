@@ -313,7 +313,12 @@ function patchedPricing(
 ): BackendDescriptor['pricing'] {
   const { longContext: editedLongContext, ...rates } = edit;
   const { longContext: keptLongContext, ...kept } = row.pricing ?? {};
-  const longContext = editedLongContext === undefined ? keptLongContext : editedLongContext;
+  const longContext =
+    editedLongContext === undefined
+      ? keptLongContext
+      : editedLongContext === null
+        ? undefined
+        : { ...keptLongContext, ...editedLongContext };
   return {
     ...kept,
     ...rates,

@@ -41,6 +41,21 @@ const FIELDS = {
   inputPerMillionTokens: 3,
   outputPerMillionTokens: 15,
 };
+const CACHED_SONNET: ProviderModel = {
+  ...SONNET,
+  pricing: {
+    ...SONNET.pricing!,
+    cacheReadPerMillionTokens: 0.2,
+    cacheWritePerMillionTokens: 2.5,
+    longContext: {
+      inputTokensAbove: 100_000,
+      inputPerMillionTokens: 5,
+      outputPerMillionTokens: 25,
+      cacheReadPerMillionTokens: 0.5,
+      cacheWritePerMillionTokens: 6.25,
+    },
+  },
+};
 
 describe('withModelOff', () => {
   test('adds an edit under the model name, and leaves the argument alone', () => {
@@ -169,6 +184,23 @@ describe('withRowFields', () => {
     ];
     expect(withRowFields(edits, SONNET, FIELDS)[0]?.maxOutputTokens).toBe(64_000);
   });
+
+  test('preserves row cache rates when an ordinary price edit starts without an existing edit', () => {
+    expect(withRowFields([], CACHED_SONNET, { ...FIELDS, outputPerMillionTokens: 20 })).toEqual([
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        pricing: {
+          inputPerMillionTokens: 3,
+          outputPerMillionTokens: 20,
+          currency: 'USD',
+          cacheReadPerMillionTokens: 0.2,
+          cacheWritePerMillionTokens: 2.5,
+          longContext: CACHED_SONNET.pricing?.longContext,
+        },
+      },
+    ]);
+  });
 });
 
 describe('withAddedRow', () => {
@@ -222,6 +254,44 @@ describe('previewRows with a saved off edit', () => {
     expect(previewRows([saved], on)[0]?.off).toBe(false);
     const off = withModelOff(on, saved, true);
     expect(previewRows([saved], off)[0]?.off).toBe(true);
+  });
+});
+
+describe('previewRows with cache pricing', () => {
+  test('keeps row-owned cache rates when a legacy edit replaces only long-context prices', () => {
+    const rows = previewRows(
+      [CACHED_SONNET],
+      [
+        {
+          provider: 'anthropic',
+          model: 'sonnet',
+          pricing: {
+            inputPerMillionTokens: 4,
+            outputPerMillionTokens: 20,
+            currency: 'USD',
+            longContext: {
+              inputTokensAbove: 50_000,
+              inputPerMillionTokens: 6,
+              outputPerMillionTokens: 30,
+            },
+          },
+        },
+      ],
+    );
+    expect(rows[0]?.pricing).toEqual({
+      inputPerMillionTokens: 4,
+      outputPerMillionTokens: 20,
+      currency: 'USD',
+      cacheReadPerMillionTokens: 0.2,
+      cacheWritePerMillionTokens: 2.5,
+      longContext: {
+        inputTokensAbove: 50_000,
+        inputPerMillionTokens: 6,
+        outputPerMillionTokens: 30,
+        cacheReadPerMillionTokens: 0.5,
+        cacheWritePerMillionTokens: 6.25,
+      },
+    });
   });
 });
 

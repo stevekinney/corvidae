@@ -180,6 +180,15 @@ export type ProviderModelRow = {
     readonly inputPerMillionTokens: number;
     readonly outputPerMillionTokens: number;
     readonly currency: string;
+    readonly cacheWritePerMillionTokens?: number;
+    readonly cacheReadPerMillionTokens?: number;
+    readonly longContext?: {
+      readonly inputTokensAbove: number;
+      readonly inputPerMillionTokens: number;
+      readonly outputPerMillionTokens: number;
+      readonly cacheWritePerMillionTokens?: number;
+      readonly cacheReadPerMillionTokens?: number;
+    };
   };
   /** Whether a catalog edit turned the model off, which keeps it from agents and plans. */
   readonly off: boolean;
@@ -338,6 +347,33 @@ function modelRowOf(row: BackendDescriptor): ProviderModelRow {
             inputPerMillionTokens: row.pricing.inputPerMillionTokens,
             outputPerMillionTokens: row.pricing.outputPerMillionTokens,
             currency: row.pricing.currency,
+            ...(row.pricing.cacheWritePerMillionTokens === undefined
+              ? {}
+              : { cacheWritePerMillionTokens: row.pricing.cacheWritePerMillionTokens }),
+            ...(row.pricing.cacheReadPerMillionTokens === undefined
+              ? {}
+              : { cacheReadPerMillionTokens: row.pricing.cacheReadPerMillionTokens }),
+            ...(row.pricing.longContext === undefined
+              ? {}
+              : {
+                  longContext: {
+                    inputTokensAbove: row.pricing.longContext.inputTokensAbove,
+                    inputPerMillionTokens: row.pricing.longContext.inputPerMillionTokens,
+                    outputPerMillionTokens: row.pricing.longContext.outputPerMillionTokens,
+                    ...(row.pricing.longContext.cacheWritePerMillionTokens === undefined
+                      ? {}
+                      : {
+                          cacheWritePerMillionTokens:
+                            row.pricing.longContext.cacheWritePerMillionTokens,
+                        }),
+                    ...(row.pricing.longContext.cacheReadPerMillionTokens === undefined
+                      ? {}
+                      : {
+                          cacheReadPerMillionTokens:
+                            row.pricing.longContext.cacheReadPerMillionTokens,
+                        }),
+                  },
+                }),
           },
         }),
     off: row.availability === 'unavailable',

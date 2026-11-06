@@ -465,15 +465,27 @@ describe('catalog edits', () => {
         .toSorted(),
     );
     const haiku = snapshot.models.find((row) => row.model === 'claude-haiku-4-5');
+    const haiku55 = snapshot.models.find((row) => row.model === 'claude-haiku-5-5');
     const sonnet = snapshot.models.find((row) => row.model === 'claude-sonnet-5');
     expect(haiku?.off).toBe(true);
     expect(sonnet).toMatchObject({
       provider: 'anthropic',
       off: false,
       contextWindowTokens: 100_000,
-      pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 2, currency: 'USD' },
+      pricing: {
+        inputPerMillionTokens: 1,
+        outputPerMillionTokens: 2,
+        currency: 'USD',
+        cacheReadPerMillionTokens: 0.2,
+        cacheWritePerMillionTokens: 2.5,
+      },
     });
     expect(sonnet?.aliases).toContain('sonnet');
+    expect(haiku55?.pricing?.longContext).toMatchObject({
+      inputTokensAbove: 100_000,
+      cacheReadPerMillionTokens: 0.05,
+      cacheWritePerMillionTokens: 0.625,
+    });
     expect(JSON.stringify(snapshot)).not.toContain(KEY_A);
   });
 
@@ -502,6 +514,8 @@ describe('catalog edits', () => {
       inputTokensAbove: 50_000,
       inputPerMillionTokens: 3,
       outputPerMillionTokens: 4,
+      cacheWritePerMillionTokens: kept?.cacheWritePerMillionTokens,
+      cacheReadPerMillionTokens: kept?.cacheReadPerMillionTokens,
     };
     await host.providers.editCatalog([
       {

@@ -6,6 +6,7 @@
  */
 import {
   createModelCatalog,
+  estimateCost,
   getModelPricing,
   providerModelPricingKey,
   type BackendDescriptor,
@@ -286,6 +287,30 @@ describe('prices from the catalog', () => {
       cacheReadCostPerMillionTokens: 0.01,
       cacheWriteCostPerMillionTokens: 0.02,
     });
+  });
+
+  it('keeps tier cache rates when a legacy edit changes only long-context prices', () => {
+    const haiku = createModelCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
+    const edited = {
+      ...haiku,
+      pricing: {
+        ...haiku.pricing!,
+        longContext: {
+          inputTokensAbove: 50_000,
+          inputPerMillionTokens: 3,
+          outputPerMillionTokens: 4,
+          cacheReadPerMillionTokens: haiku.pricing!.longContext!.cacheReadPerMillionTokens,
+          cacheWritePerMillionTokens: haiku.pricing!.longContext!.cacheWritePerMillionTokens,
+        },
+      },
+    };
+    const pricing = usdPricingOfRow(edited)!;
+    const estimate = estimateCost(
+      { prompt: 0, completion: 0, cacheReadTokens: 100_000, total: 100_000 },
+      'edited-haiku',
+      { customPricing: { 'edited-haiku': pricing } },
+    );
+    expect(estimate.cacheReadCost).toBeCloseTo(0.005, 12);
   });
 
   it('prices nothing for a row with no price or a price in another currency', () => {
