@@ -175,7 +175,7 @@ export const queryKeys = {
     overlay: () => ['schedules', 'overlay'] as const,
     /** The newest fire each schedule that missed one recorded, for the bell. Under `list`, so a fleet event that changes the schedules reads it again. */
     missedFires: () => ['schedules', 'list', 'missed-fires'] as const,
-    /** The Bureau's own view of every schedule (`bureau.schedules.list`), for Home's missed-runs row. Under `list`, so a fleet event reads it again. */
+    /** The Bureau's own view of every schedule (`bureau.schedules.list`), for Home's missed-runs row and for the name of a scheduled run in Running now. Under `list`, so a fleet event reads it again. */
     bureau: () => ['schedules', 'list', 'bureau'] as const,
   },
   workers: {

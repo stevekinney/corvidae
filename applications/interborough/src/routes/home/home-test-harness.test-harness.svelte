@@ -9,12 +9,14 @@
   interface Props {
     client: HttpClient;
     scopes?: readonly AuthorizationScope[] | undefined;
+    /** The identity the first-run checklist keeps its choices under; none keeps nothing. */
+    workspace?: { readonly workspaceId: string; readonly actorId: string } | undefined;
   }
 
-  let { client, scopes }: Props = $props();
+  let { client, scopes, workspace }: Props = $props();
 </script>
 
-<DashboardTestHarness {client} {scopes}>
+<DashboardTestHarness {client} {scopes} {workspace}>
   {#snippet children()}
     <Home />
   {/snippet}

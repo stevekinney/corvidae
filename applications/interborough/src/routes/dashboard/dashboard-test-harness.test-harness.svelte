@@ -29,9 +29,11 @@
     /** Defaults to every scope granted (the optimistic-grant default). Pass a narrower list to test a denied/disabled state. */
     scopes?: readonly AuthorizationScope[] | undefined;
     onQueryClientReady?: ((queryClient: QueryClient) => void) | undefined;
+    /** The server-resolved identity the browser keeps its per-person choices under; none keeps nothing. */
+    workspace?: Principal['workspace'] | undefined;
   }
 
-  let { client, children, scopes, onQueryClientReady }: Props = $props();
+  let { client, children, scopes, onQueryClientReady, workspace }: Props = $props();
 
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -52,6 +54,7 @@
   const principal: Principal = untrack(() => ({
     scopes: scopes ?? AUTHORIZATION_SCOPES,
     unauthenticatedAccess: null,
+    ...(workspace === undefined ? {} : { workspace }),
   }));
   principalStore.setPrincipal(principal);
 

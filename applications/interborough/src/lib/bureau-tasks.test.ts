@@ -6,13 +6,14 @@ import type { Fetcher } from './bureau-client.ts';
 import {
   answerRefusalIssues,
   cancelTask,
-  countRunningTasks,
   followTaskEvents,
   getTask,
   inspectTaskStep,
   isRefusedPageToken,
+  isRunning,
   isTerminalState,
   listChildRuns,
+  listRunningTasks,
   listTasks,
   respondToTask,
   taskAnswerText,
@@ -390,7 +391,7 @@ describe('following a task', () => {
   });
 });
 
-describe('countRunningTasks', () => {
+describe('listRunningTasks', () => {
   /** A Bureau holding `tasks`, which pages them two at a time and filters by `status` as it does. */
   function holding(tasks: readonly Record<string, unknown>[]) {
     const calls: Array<Record<string, unknown>> = [];
@@ -416,7 +417,7 @@ describe('countRunningTasks', () => {
     return { calls, fetch: stub };
   }
 
-  test('counts the runs that are working or about to start, and never one waiting on a person', async () => {
+  test('lists the runs that are working or about to start, and never one waiting on a person', async () => {
     const world = holding([
       { ...TASK, id: 'a', status: 'working' },
       { ...TASK, id: 'b', status: 'submitted' },
@@ -424,7 +425,8 @@ describe('countRunningTasks', () => {
       { ...TASK, id: 'd', status: 'completed' },
       { ...TASK, id: 'e', status: 'failed' },
     ]);
-    expect(await countRunningTasks({ fetch: world.fetch })).toBe(2);
+    const running = await listRunningTasks({ fetch: world.fetch });
+    expect(running.map((task) => task.id)).toEqual(['a', 'b']);
     expect(world.calls.map((call) => call['status'])).toEqual(['working', 'submitted']);
   });
 
@@ -436,13 +438,23 @@ describe('countRunningTasks', () => {
         status: 'working',
       })),
     );
-    expect(await countRunningTasks({ fetch: world.fetch })).toBe(5);
+    expect(await listRunningTasks({ fetch: world.fetch })).toHaveLength(5);
     // Three pages of working runs, then the one empty page of submitted ones.
     expect(world.calls).toHaveLength(4);
   });
 
   test('is zero when nothing is going', async () => {
-    expect(await countRunningTasks({ fetch: holding([]).fetch })).toBe(0);
+    expect(await listRunningTasks({ fetch: holding([]).fetch })).toEqual([]);
+  });
+});
+
+describe('isRunning', () => {
+  test('is true for a task that is working or about to start, and for no other state', () => {
+    expect(
+      (['submitted', 'working', 'input-required', 'completed', 'failed', 'canceled'] as const).map(
+        (status) => isRunning({ status }),
+      ),
+    ).toEqual([true, true, false, false, false, false]);
   });
 });
 

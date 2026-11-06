@@ -7,13 +7,15 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { AttentionItem } from '../../lib/bureau-attention.ts';
-import { contextFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { contextFixture, taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {
   attentionRows,
   chatStatusWord,
+  checklistSteps,
   missedRunCount,
   needsYouRows,
   recentChatRows,
+  runningRows,
   viewerCadence,
 } from './home-rows.ts';
 import {
@@ -325,5 +327,137 @@ describe('recent chats', () => {
     expect(word({ activity: 'idle' }, true)).toBe('Failed');
     expect(word({ activity: 'idle', endReason: 'host-stopped' })).toBe('Ended');
     expect(word({ activity: 'idle' })).toBe('Done');
+  });
+});
+
+describe('runningRows', () => {
+  const daily = taskFixture({
+    id: 'run-daily',
+    contextId: 'chat-daily',
+    agentName: 'assistant',
+    actor: 'system:scheduler',
+    kind: 'schedule-fire',
+    origin: { kind: 'schedule', scheduleId: 'schedule-daily' },
+    createdAt: '2026-11-02T10:44:00-06:00',
+    updatedAt: '2026-11-02T10:45:00-06:00',
+  });
+  const context = {
+    chats: [],
+    schedules: [DAILY_SUMMARY],
+    agents: AGENTS,
+    now: HOME_NOW,
+    zone: ZONE,
+  };
+
+  test('titles a schedule’s run by the schedule and says what started it, who runs and when (01x)', () => {
+    expect(runningRows([daily], context)).toEqual([
+      {
+        key: 'run-daily',
+        title: 'Daily summary',
+        line: 'Running · Schedule · Assistant · started 10:44 AM',
+        href: '/runs/run-daily',
+      },
+    ]);
+  });
+
+  test('titles a chat’s run by the chat, and falls back to the agent, then to a plain word', () => {
+    const chatRun = taskFixture({
+      id: 'run-chat',
+      contextId: 'chat-1',
+      origin: { kind: 'chat', contextId: 'chat-1' },
+    });
+    const withChat = runningRows([chatRun], {
+      ...context,
+      chats: [contextFixture('chat-1', { title: 'Plan the launch' })],
+    });
+    expect(withChat[0]?.title).toBe('Plan the launch');
+    expect(runningRows([chatRun], context)[0]?.title).toBe('Assistant');
+    expect(runningRows([{ ...chatRun, agentName: null }], context)[0]?.title).toBe('A run');
+  });
+
+  test('waits for the schedules without losing the row: the title falls back until they arrive', () => {
+    const rows = runningRows([daily], {
+      ...context,
+      schedules: undefined,
+      chats: [contextFixture('chat-daily', { title: 'Summarize the open reviews.' })],
+    });
+    expect(rows[0]?.title).toBe('Summarize the open reviews.');
+  });
+
+  test('says a start before today by its day, and leaves out what it cannot name', () => {
+    const yesterday = { ...daily, createdAt: '2026-11-01T16:12:00-06:00', agentName: null };
+    expect(runningRows([yesterday], context)[0]?.line).toBe(
+      'Running · Schedule · started Yesterday, 4:12 PM',
+    );
+  });
+});
+
+describe('checklistSteps', () => {
+  const none = {
+    providers: [],
+    agents: [{ name: 'assistant', displayName: 'assistant', kind: 'code' as const }],
+    assistantChosen: false,
+  };
+
+  test('says what each step asks while it is open', () => {
+    expect(
+      checklistSteps({ provider: false, agent: false, chat: false }, none).map((step) => [
+        step.title,
+        step.description,
+        step.done,
+      ]),
+    ).toEqual([
+      ['Connect a provider', 'Agents need a model provider before they can answer.', false],
+      [
+        'Create an agent, or start from Assistant',
+        'Assistant works now; other agents need a provider.',
+        false,
+      ],
+      ['Say hello', 'Send a first message to see a chat run end to end.', false],
+    ]);
+  });
+
+  test('says what is true once a step is done, naming the providers and the agent', () => {
+    const steps = checklistSteps(
+      { provider: true, agent: true, chat: false },
+      {
+        providers: [
+          { name: 'anthropic', hasKey: true },
+          { name: 'openai', hasKey: true },
+          { name: 'gemini', hasKey: false },
+        ],
+        agents: [
+          { name: 'assistant', displayName: 'assistant', kind: 'code' },
+          { name: 'researcher', displayName: 'Researcher', kind: 'file' },
+        ],
+        assistantChosen: false,
+      },
+    );
+    expect(steps[0]?.description).toBe('Anthropic and OpenAI are connected.');
+    expect(steps[1]?.description).toBe('Researcher is ready to use.');
+  });
+
+  test('names Assistant once it was chosen, even beside an agent of the person’s own', () => {
+    const steps = checklistSteps(
+      { provider: false, agent: true, chat: false },
+      {
+        providers: [],
+        agents: [
+          { name: 'assistant', displayName: 'assistant', kind: 'code' },
+          { name: 'researcher', displayName: 'Researcher', kind: 'file' },
+        ],
+        assistantChosen: true,
+      },
+    );
+    expect(steps[1]?.description).toBe('Assistant is ready to use.');
+  });
+
+  test('says Anthropic is connected for a single provider', () => {
+    expect(
+      checklistSteps(
+        { provider: true, agent: false, chat: false },
+        { ...none, providers: [{ name: 'anthropic', hasKey: true }] },
+      )[0]?.description,
+    ).toBe('Anthropic is connected.');
   });
 });

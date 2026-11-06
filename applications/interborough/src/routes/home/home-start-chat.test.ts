@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { newChatAddress, startingAgent } from './home-start-chat.ts';
+import { findAssistant, newChatAddress, startingAgent } from './home-start-chat.ts';
 
 describe('startingAgent', () => {
   test('is Assistant, or a plugin’s copy of it, wherever it is listed', () => {
@@ -15,6 +15,15 @@ describe('startingAgent', () => {
   test('is the first agent when there is no Assistant, and none when there are no agents', () => {
     expect(startingAgent([{ name: 'echo' }, { name: 'tool-runner' }])).toBe('echo');
     expect(startingAgent([])).toBeUndefined();
+  });
+});
+
+describe('findAssistant', () => {
+  test('is Assistant or a plugin’s copy of it, and nothing on a host that lists none', () => {
+    expect(findAssistant([{ name: 'echo' }, { name: 'assistant' }])).toBe('assistant');
+    expect(findAssistant([{ name: 'demo:assistant' }])).toBe('demo:assistant');
+    expect(findAssistant([{ name: 'echo' }, { name: 'tool-runner' }])).toBeUndefined();
+    expect(findAssistant([])).toBeUndefined();
   });
 });
 

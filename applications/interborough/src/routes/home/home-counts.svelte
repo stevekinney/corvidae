@@ -7,7 +7,7 @@
    *
    * Each count reads on its own: one that cannot be read, or that this caller may not read, shows a
    * dash and leaves the other three alone. Running now counts the Bureau's runs that are going
-   * (`countRunningTasks`), never one parked on a review; Failed in 24 hours is made with the filter
+   * (`useRunningTasks`, the read the Running now card lists), never one parked on a review; Failed in 24 hours is made with the filter
    * Health's count uses (`routes/dashboard/health-counts.ts`), so the number agrees with its rows.
    */
   import { Statistic, StatisticGroup } from '@lostgradient/cinder';
@@ -15,8 +15,6 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy.ts';
-  import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
-  import { countRunningTasks } from '../../lib/bureau-tasks.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
@@ -24,10 +22,7 @@
   import { aggregateInputFor, failedRecentlyFilter } from '../dashboard/health-counts.ts';
   import { usePendingReviewsCount } from '../reviews/pending-reviews-count.svelte.ts';
   import { missedRunCount } from './home-rows.ts';
-  import { useAttentionItems } from './home-queries.svelte.ts';
-
-  /** How often the running count is read again while the Bureau's event feed is not live. */
-  const RUNNING_POLL_MILLISECONDS = 5_000;
+  import { useAttentionItems, useRunningTasks } from './home-queries.svelte.ts';
 
   const client: HttpClient = getClient();
   const principalStore = getPrincipalStore();
@@ -40,14 +35,7 @@
   // Running now counts the runs that are going. A run parked on a review is waiting on a person,
   // which Needs you counts, so the engine's own count of runs in the running state would say two
   // runs are running when both wait.
-  const bureauLive = useBureauEventsLive();
-  const runningQuery = createQuery(() => ({
-    queryKey: queryKeys.bureauTasks.running(),
-    queryFn: ({ signal }: { signal: AbortSignal }) => countRunningTasks({ signal }),
-    // poll-reason: fallback
-    refetchInterval: bureauLive() ? false : RUNNING_POLL_MILLISECONDS,
-    retry: false,
-  }));
+  const runningQuery = useRunningTasks();
   const failedQuery = createQuery(() => ({
     queryKey: queryKeys.workflows.aggregate('status', failedFilter),
     queryFn: async () =>
@@ -64,7 +52,7 @@
     return value ?? HOME_COPY.unavailable;
   }
 
-  const running = $derived(runningQuery.isError ? null : runningQuery.data);
+  const running = $derived(runningQuery.isError ? null : runningQuery.data?.length);
   const failed = $derived(
     !canReadRuns || failedQuery.isError
       ? null

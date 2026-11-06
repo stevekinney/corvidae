@@ -129,6 +129,8 @@ export interface HomeWorld {
   chats: readonly ChatContext[];
   /** Whether any provider holds a key. */
   providerConnected: boolean;
+  /** Whether the person made an agent of their own, one defined in a file. */
+  fileAgent: boolean;
   /** The runs the engine counts as failed in the last 24 hours. */
   failedRuns: number;
   /** Whether the caller is refused the attention feed (it lacks `bureau.diagnostics:read`). */
@@ -143,6 +145,7 @@ export function sampleHomeWorld(overrides: Partial<HomeWorld> = {}): HomeWorld {
     schedules: [DAILY_SUMMARY],
     chats: SAMPLE_CHATS,
     providerConnected: false,
+    fileAgent: false,
     failedRuns: 0,
     attentionRefused: false,
     ...overrides,
@@ -170,6 +173,7 @@ export function installHome(home: HomeWorld): InstalledHome {
       agent('assistant', 'assistant', null),
       agent('tool-runner', 'tool-runner', {}),
       agent('request-human-input', 'request-human-input', null),
+      ...(home.fileAgent ? [agent('researcher', 'Researcher', {}, 'file')] : []),
     ],
   }));
   stub.on('bureau.agents.catalog', () => ({
@@ -196,7 +200,9 @@ export function installHome(home: HomeWorld): InstalledHome {
     if (url.pathname === '/host/providers') {
       return Response.json({
         configurationRevision: 'fixture',
-        providers: home.providerConnected ? [{ name: 'anthropic', hasKey: true }] : [],
+        providers: home.providerConnected
+          ? [{ name: 'anthropic', configured: true, hasKey: true }]
+          : [],
         catalog: [],
         models: [],
       });
@@ -225,13 +231,18 @@ export function installHome(home: HomeWorld): InstalledHome {
 }
 
 /** An agent as `bureau.agents.list` shows it; `media: null` is a scripted agent that needs no model. */
-function agent(name: string, displayName: string, media: Record<string, unknown> | null) {
+function agent(
+  name: string,
+  displayName: string,
+  media: Record<string, unknown> | null,
+  kind: 'code' | 'file' = 'code',
+) {
   return {
     name,
     displayName,
     description: null,
     definitionRevision: 1,
-    kind: 'code',
+    kind,
     a2a: false,
     media: media === null ? null : { modalities: {}, mimeFamilies: [], mediaLimits: [], ...media },
   };

@@ -6,6 +6,9 @@
    * with it. They are never counted as Needs you, and the provider notice is only here: no banner
    * across the page says it again.
    *
+   * While the first-run checklist shows, its first step says the provider notice, so `omitProviderNotice`
+   * leaves that row out; the rest stay.
+   *
    * With nothing to show the card gives way to one line, "Nothing needs attention", and the link to
    * Health stays. A read that failed says so in the card's own place and never claims all is well.
    */
@@ -22,6 +25,13 @@
   import { useAgentList, useAttentionItems } from './home-queries.svelte.ts';
   import { attentionRows } from './home-rows.ts';
 
+  interface HomeNeedsAttentionProps {
+    /** Leave the "No model provider connected" row out, because the first-run checklist says it. */
+    omitProviderNotice?: boolean;
+  }
+
+  let { omitProviderNotice = false }: HomeNeedsAttentionProps = $props();
+
   const copy = HOME_COPY.attention;
   const clock = useMinuteClock();
   const items = useAttentionItems();
@@ -37,11 +47,16 @@
   }));
 
   const rows = $derived(
-    attentionRows(items.data ?? [], {
-      schedules: schedules.data,
-      agents: agents.data,
-      now: clock(),
-    }),
+    attentionRows(
+      omitProviderNotice
+        ? (items.data ?? []).filter((item) => item.kind !== 'no-provider')
+        : (items.data ?? []),
+      {
+        schedules: schedules.data,
+        agents: agents.data,
+        now: clock(),
+      },
+    ),
   );
 
   /** Opens `path` in place, and leaves a modified click to the browser. */

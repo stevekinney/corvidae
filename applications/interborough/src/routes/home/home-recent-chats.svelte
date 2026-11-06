@@ -7,31 +7,27 @@
    *
    * It reads what the chat list reads: the recent runs, so a chat whose latest run failed says
    * Failed here too, and the reviews waiting, so a chat that waits on you says what it asks. When
-   * either read fails the rows still show, without it.
+   * either read fails the rows still show, without it. Before the first message is sent the card is
+   * a compact empty state with an accent chat disc, and its link to All chats waits for a chat.
    */
-  import { DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
+  import { DataList, EmptyState, StackedListItem, StatusDot } from '@lostgradient/cinder';
+  import { MessageSquare } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy.ts';
-  import { listContexts } from '../../lib/bureau-client.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
-  import { queryKeys } from '../../lib/query.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { pendingQuestions } from '../chat/session-groups.ts';
   import { bureauReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
-  import { RECENT_CHAT_LIMIT, recentChatRows } from './home-rows.ts';
+  import { useRecentChats } from './home-queries.svelte.ts';
+  import { recentChatRows } from './home-rows.ts';
 
   const copy = HOME_COPY.recent;
   const clock = useMinuteClock();
-  const chats = createQuery(() => ({
-    queryKey: queryKeys.contexts.recent(RECENT_CHAT_LIMIT),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
-      listContexts({ origin: 'chat', limit: RECENT_CHAT_LIMIT }, { signal }),
-    retry: false,
-  }));
+  const chats = useRecentChats();
   const tasks = createQuery(() => ({ ...recentTasksQuery(), retry: false }));
   const reviews = bureauReviewsQuery();
 
@@ -60,8 +56,23 @@
   }
 </script>
 
-<HomeCard title={copy.title} link={{ label: copy.link, href: '/chats' }}>
-  {#if rows.length > 0}
+<HomeCard
+  title={copy.title}
+  link={chats.data !== undefined && rows.length === 0
+    ? undefined
+    : { label: copy.link, href: '/chats' }}
+>
+  {#if chats.data !== undefined && rows.length === 0}
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
+      title={copy.empty.title}
+      description={copy.empty.description}
+    >
+      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
+    </EmptyState>
+  {:else if rows.length > 0}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div onclick={follow}>
       <DataList items={rows} key={(row) => row.id} aria-label={copy.listLabel} statusColumn>

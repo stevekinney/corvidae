@@ -5,11 +5,14 @@
  * counts, the two reviews waiting on the person, the three system problems, the box that starts a
  * chat and the chats last in are each read as the design words them.
  *
- * Two captioned states the sample world does not hold are made by answering the Bureau's own
+ * Captioned states the sample world does not hold are made by answering the Bureau's own
  * operations with what a different world would answer (`answerBureau`), so the screen is the one
  * the real application draws, and each is captured for the design review under its own name: a
- * host with no storage rule (Needs attention has two rows), and a person with nothing to review
- * (every count reads zero, and the cards read as caught up).
+ * host with no storage rule (Needs attention has two rows), a person with nothing to review (every
+ * count reads zero, and the cards read as caught up), a run going (rows 01w and 01x), and a new
+ * installation that lists Assistant, the first-run checklist (rows 01y to 02b, 13c to 13j, 14c to
+ * 14j). The fresh installation's own host lists no Assistant, so `first-run.spec.ts` reads the
+ * checklist there as it completes and without one.
  */
 import type { Page } from '@playwright/test';
 
@@ -37,12 +40,13 @@ async function openHome(page: Page, width = 1280): Promise<void> {
  */
 async function answerBureau(
   page: Page,
-  changes: Readonly<Record<string, (result: unknown) => unknown>>,
+  changes: Readonly<Record<string, (result: unknown, params: Record<string, unknown>) => unknown>>,
 ): Promise<void> {
   await page.route('**/bureau/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       id?: unknown;
       method?: string;
+      params?: Record<string, unknown>;
     };
     const change = body.method === undefined ? undefined : changes[body.method];
     if (change === undefined) {
@@ -53,7 +57,7 @@ async function answerBureau(
     const answer = (await response.json()) as { result?: unknown };
     await route.fulfill({
       response,
-      json: { ...answer, result: change(answer.result) },
+      json: { ...answer, result: change(answer.result, body.params ?? {}) },
     });
   });
 }
@@ -293,6 +297,228 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     ).toBeEnabled();
     await captureForDesignReview(page, { route: '/', state: 'nothing waiting', source: SOURCE });
     await checkA11y('Home with nothing waiting');
+  });
+});
+
+/** What the sample world's host answers a new installation: no chat, no agent of the person's own, and no problem but the provider. */
+async function asNewInstallation(page: Page): Promise<void> {
+  await answerBureau(page, {
+    'bureau.contexts.list': (result) => ({ ...(result as object), contexts: [], nextOffset: null }),
+    'bureau.reviews.list': (result) => ({ ...(result as object), reviews: [] }),
+    'bureau.health.attention': () => ({
+      items: [{ kind: 'no-provider', at: null, provider: null }],
+      count: 1,
+      checks: [],
+    }),
+    'bureau.agents.list': (result) => ({
+      ...(result as object),
+      agents: (result as { agents: { kind: string }[] }).agents.filter(
+        (agent) => agent.kind === 'code',
+      ),
+    }),
+  });
+}
+
+/** Opens Home and waits until the page holds its first-run checklist. */
+async function openFirstRun(page: Page, width = 1280): Promise<void> {
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto('/');
+  await expect(page.getByTestId('home-first-run')).toBeVisible();
+}
+
+const checklist = (page: Page) => page.getByTestId('home-first-run');
+const stepsOf = (page: Page) => checklist(page).locator('.cinder-steps__item');
+
+test.describe('Home on a new installation that lists Assistant', () => {
+  test.beforeEach(async ({ page }) => {
+    await asNewInstallation(page);
+  });
+
+  test('is the three-step checklist under a welcome line, with Recent chats empty (01y, 01z, 02a, 02b, 13c, 13d, 13f, 13g, 13h, 13j, 14c, 14d, 14e)', async ({
+    page,
+    checkA11y,
+  }) => {
+    await openFirstRun(page);
+    await expect(page.getByTestId('home-date')).toHaveText(
+      'Welcome. Three steps to your first chat.',
+    );
+    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toHaveClass(
+      /cinder-sr-only/,
+    );
+    await expect(page.getByRole('heading', { level: 2, name: 'Get started' })).toBeVisible();
+    await expect(checklist(page)).toContainText('0 of 3 done');
+    const steps = stepsOf(page);
+    await expect(steps).toHaveCount(3);
+    await expect(steps.nth(0)).toContainText('Connect a provider');
+    await expect(steps.nth(0)).toContainText(
+      'Agents need a model provider before they can answer.',
+    );
+    await expect(steps.nth(1)).toContainText('Create an agent, or start from Assistant');
+    await expect(steps.nth(1)).toContainText('Assistant works now; other agents need a provider.');
+    await expect(steps.nth(2)).toContainText('Say hello');
+    await expect(steps.nth(2)).toContainText('Send a first message to see a chat run end to end.');
+    // Step 1's button is the only primary one; Use Assistant is the quiet link.
+    await expect(
+      checklist(page).locator('.cinder-button[data-cinder-variant="primary"]'),
+    ).toHaveText(['Connect a provider']);
+    await expect(steps.nth(1).getByRole('button', { name: 'Use Assistant' })).toHaveAttribute(
+      'data-cinder-variant',
+      'ghost-accent',
+    );
+    await expect(steps.nth(1).getByRole('link', { name: 'Create an agent' })).toHaveAttribute(
+      'data-cinder-variant',
+      'secondary',
+    );
+    // Step 3 is live with steps 1 and 2 open, and opens New chat with Assistant.
+    const start = steps.nth(2).getByRole('link', { name: 'Start a chat' });
+    await expect(start).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(start).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(start).toHaveAttribute('href', /^\/chats\/new\?agent=[^&]*assistant$/);
+    // The counts, Needs you, the composer and the provider row are not drawn, and no banner says it.
+    await expect(page.getByTestId('home-counts')).toHaveCount(0);
+    await expect(page.locator('[data-home-card="Needs you"]')).toHaveCount(0);
+    await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
+    await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
+    await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
+    await expect(page.getByText('Connect a model provider')).toHaveCount(0);
+    // Below the checklist, Recent chats is a compact empty state with a chat disc.
+    const recent = page.locator('[data-home-card="Recent chats"]');
+    await expect(recent.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
+    await expect(recent).toContainText('Your chats appear here once you send a first message.');
+    await expect(recent.locator('.cinder-empty-state-icon svg')).toBeVisible();
+    await expect(recent.getByRole('link', { name: 'All chats' })).toHaveCount(0);
+    const checklistBox = await checklist(page).boundingBox();
+    const recentBox = await recent.boundingBox();
+    expect(checklistBox!.y + checklistBox!.height).toBeLessThan(recentBox!.y);
+    expect(checklistBox!.width).toBeLessThan(recentBox!.width);
+    await captureForDesignReview(page, { route: '/', state: 'first run', source: SOURCE });
+    await checkA11y('Home on a new installation');
+    await start.click();
+    await expect(page).toHaveURL(/\/chats\/new\?agent=[^&]*assistant$/);
+  });
+
+  test('with a provider connected the checklist skips to step 2, and Use Assistant leaves one step (14e, 14j)', async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.route('**/host/providers', async (route) => {
+      const response = await route.fetch();
+      const answer = (await response.json()) as { providers?: Record<string, unknown>[] };
+      await route.fulfill({
+        response,
+        json: { ...answer, providers: [{ name: 'anthropic', configured: true, hasKey: true }] },
+      });
+    });
+    await openFirstRun(page);
+    await expect(page.getByTestId('home-date')).toHaveText('Welcome. Two steps left.');
+    await expect(checklist(page)).toContainText('1 of 3 done');
+    await expect(stepsOf(page).nth(0)).toContainText('Anthropic is connected.');
+    await expect(
+      stepsOf(page).nth(1).getByRole('link', { name: 'Create an agent' }),
+    ).toHaveAttribute('data-cinder-variant', 'primary');
+    await stepsOf(page).nth(1).getByRole('button', { name: 'Use Assistant' }).click();
+    await expect(page.getByTestId('home-date')).toHaveText('Welcome. One step left.');
+    await expect(checklist(page)).toContainText('2 of 3 done');
+    await expect(stepsOf(page).nth(1)).toContainText('Assistant is ready to use.');
+    await expect(stepsOf(page).nth(2).getByRole('link', { name: 'Start a chat' })).toHaveAttribute(
+      'data-cinder-variant',
+      'primary',
+    );
+    // The box that starts a chat is back below the provider notice, with Assistant and a live Send.
+    const composer = page.getByTestId('home-start-chat');
+    await expect(composer.getByPlaceholder('Ask an agent to do something')).toBeVisible();
+    await expect(composer.getByRole('combobox', { name: 'Agent' })).toContainText('Assistant');
+    await expect(composer.getByRole('button', { name: 'Send' })).toBeEnabled();
+    await expect(page.getByTestId('home-counts')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'first run, steps 1 and 2 done',
+      source: SOURCE,
+    });
+    await checkA11y('Home after steps 1 and 2');
+  });
+
+  test('stacks the checklist over Recent chats on a phone', async ({ page }) => {
+    await openFirstRun(page, 390);
+    await expect(stepsOf(page)).toHaveCount(3);
+    await captureForDesignReview(page, { route: '/', state: 'first run', source: SOURCE });
+  });
+});
+
+test.describe('Home with a run going', () => {
+  test('counts 1 with no dot and lists the run under Needs you (01w, 01x)', async ({
+    page,
+    checkA11y,
+  }) => {
+    // A run the Daily summary schedule started at 10:44 AM, shaped as the Bureau shapes a task:
+    // the first task the host lists, made a working one a schedule started.
+    const listed = async <Result>(method: string, params: object): Promise<Result> => {
+      const response = await page.request.post('/bureau/jsonrpc', {
+        data: { jsonrpc: '2.0', id: method, method, params },
+      });
+      return ((await response.json()) as { result: Result }).result;
+    };
+    const { schedules } = await listed<{ schedules: { id: string; description: string | null }[] }>(
+      'bureau.schedules.list',
+      {},
+    );
+    const daily = schedules.find((schedule) => schedule.description === 'Daily summary');
+    expect(daily, 'the sample world has a Daily summary schedule').toBeDefined();
+    const { tasks } = await listed<{ tasks: Record<string, unknown>[] }>('bureau.tasks.list', {
+      limit: 1,
+    });
+    const task = {
+      ...tasks[0],
+      id: 'running-daily-summary',
+      agentName: 'assistant',
+      actor: 'system:scheduler',
+      kind: 'schedule-fire',
+      origin: { kind: 'schedule', scheduleId: daily?.id },
+      status: 'working',
+      finishReason: null,
+      statusMessage: null,
+      createdAt: '2026-11-02T10:44:00-06:00',
+      updatedAt: '2026-11-02T10:45:00-06:00',
+      openWaits: [],
+    };
+    await answerBureau(page, {
+      'bureau.tasks.list': (result, params) =>
+        params['status'] === 'working'
+          ? { tasks: [task], nextPageToken: null }
+          : params['status'] === 'submitted'
+            ? { tasks: [], nextPageToken: null }
+            : result,
+      'bureau.reviews.list': (result) => ({ ...(result as object), reviews: [] }),
+      'bureau.health.attention': () => ({ items: [], count: 0, checks: [] }),
+    });
+    await openHome(page);
+    await expect(page.getByTestId('home-counts').locator('.cinder-statistic').first()).toHaveText(
+      /Running now\s*1/,
+    );
+    await expect(
+      page.getByTestId('home-counts').locator('.cinder-statistic').first(),
+    ).not.toHaveAttribute('data-cinder-attention', '');
+    const card = page.locator('[data-home-card="Running now"]');
+    await expect(card.getByRole('heading', { level: 2, name: 'Running now' })).toBeVisible();
+    const row = card.getByRole('listitem');
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText('Daily summary');
+    await expect(row).toContainText('Running · Schedule · Assistant · started 10:44 AM');
+    await expect(row.locator('.cinder-status-dot')).toHaveAttribute('data-cinder-status', 'info');
+    await expect(row.getByRole('link', { name: 'View run' })).toHaveAttribute(
+      'href',
+      '/runs/running-daily-summary',
+    );
+    await expect(card.getByRole('link', { name: 'Open Runs' })).toHaveAttribute('href', '/runs');
+    // It sits under Needs you (which shows its empty state) and above Needs attention.
+    const waiting = await needsYou(page).boundingBox();
+    const running = await card.boundingBox();
+    const attention = await page.getByTestId('attention-clear').boundingBox();
+    expect(waiting!.y + waiting!.height).toBeLessThan(running!.y);
+    expect(running!.y + running!.height).toBeLessThan(attention!.y);
+    await captureForDesignReview(page, { route: '/', state: 'running now', source: SOURCE });
+    await checkA11y('Home with a run going');
   });
 });
 

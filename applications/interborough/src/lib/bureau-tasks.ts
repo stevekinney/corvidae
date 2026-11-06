@@ -162,13 +162,23 @@ export async function listTasks(
 const RUNNING_STATES = ['working', 'submitted'] as const satisfies readonly TaskState[];
 
 /**
- * How many runs are running now (`bureau.tasks.list`): the tasks that are working or have not yet
- * started, which a person reads as running. A run parked on a review or a question is waiting on a
- * person, which is a different count, so it is not here. Every page is read, because the listing
- * has no total.
+ * Whether a task counts as running now: it is working, or it has not yet started, which a person
+ * reads as running. A run parked on a review or a question is waiting on a person, which is a
+ * different count. Home's count and its Running now card both go through this, so they cannot
+ * disagree.
  */
-export async function countRunningTasks(options?: Options): Promise<number> {
-  let total = 0;
+export function isRunning(task: Pick<TaskView, 'status'>): boolean {
+  return RUNNING_STATES.some((state) => state === task.status);
+}
+
+/**
+ * The runs that are running now (`bureau.tasks.list`): the tasks that are working or have not yet
+ * started, as {@link isRunning} says. A run parked on a review or a question is not among them.
+ * Every page is read, because the listing has no total, so the count of the result is the count of
+ * runs running.
+ */
+export async function listRunningTasks(options?: Options): Promise<TaskView[]> {
+  const running: TaskView[] = [];
   for (const status of RUNNING_STATES) {
     let pageToken: string | undefined;
     do {
@@ -176,11 +186,11 @@ export async function countRunningTasks(options?: Options): Promise<number> {
         { status, limit: 100, ...(pageToken === undefined ? {} : { pageToken }) },
         options,
       );
-      total += page.tasks.length;
+      running.push(...page.tasks.filter(isRunning));
       pageToken = page.nextPageToken ?? undefined;
     } while (pageToken !== undefined);
   }
-  return total;
+  return running;
 }
 
 /**

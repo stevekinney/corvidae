@@ -14,28 +14,21 @@
   import { ChatInput } from '@lostgradient/chat';
   import { Button, Select, Textarea } from '@lostgradient/cinder';
   import { Send } from '@lucide/svelte';
-  import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
-  import { getProviders } from '../../lib/host-providers.ts';
-  import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { composerStatusOf } from '../chat/composer-state.ts';
   import { handOffFirstMessage } from '../chat/new-chat-handoff.ts';
   import HomeCard from './home-card.svelte';
-  import { useAgentList } from './home-queries.svelte.ts';
+  import { useAgentList, useHostProviders } from './home-queries.svelte.ts';
   import { newChatAddress, startingAgent } from './home-start-chat.ts';
 
   const copy = HOME_COPY.startChat;
   const connection = getConnection();
   const agents = useAgentList();
-  const providers = createQuery(() => ({
-    queryKey: queryKeys.hostProviders(),
-    queryFn: ({ signal }: { signal: AbortSignal }) => getProviders({ signal }),
-    retry: false,
-  }));
+  const providers = useHostProviders();
 
   let message = $state('');
   /** The agent the person chose, or `undefined` while Home's own choice (Assistant) stands. */

@@ -2132,6 +2132,77 @@ export const HOME_COPY = {
     title: 'Recent chats',
     link: 'All chats',
     listLabel: 'Recent chats',
+    /** What the card says before the person has sent a first message. */
+    empty: {
+      title: 'No chats yet',
+      description: 'Your chats appear here once you send a first message.',
+    },
+  },
+  /** The Running now card, which sits under Needs you while any run is going. */
+  running: {
+    title: 'Running now',
+    link: 'Open Runs',
+    listLabel: 'Runs running now',
+    /** The button at the end of a row, which opens the run. */
+    viewRun: 'View run',
+    /** The word that leads line two, in Cinder's status table. */
+    status: 'Running',
+    /** What a run reads when no title can be found for it: its agent, else this. */
+    untitled: 'A run',
+    startedAt: (time: string): string => `started ${time}`,
+    /** What started the run, as line two says it: one word, kind first. */
+    startedBy: {
+      chat: 'Chat',
+      person: 'Person',
+      schedule: 'Schedule',
+      api: 'API',
+      agent: 'Agent',
+      'agent-run': 'Agent',
+      goal: 'Goal',
+      parent: 'Workflow',
+      system: 'Interborough',
+    },
+    /** The line under the rows when more run than Home lists. */
+    more: (count: number): string => `${String(count)} more in Runs`,
+  },
+  /**
+   * The checklist a new installation shows in place of the overview (rows 01y to 02b), until the
+   * person has had a chat. The words lead the page in place of the date line.
+   */
+  firstRun: {
+    /** The accessible name of the checklist, and its title. */
+    title: 'Get started',
+    /** The line that leads the page, from how many of the three steps are still open. */
+    lead: (stepsLeft: number): string =>
+      stepsLeft >= 3
+        ? 'Welcome. Three steps to your first chat.'
+        : stepsLeft === 2
+          ? 'Welcome. Two steps left.'
+          : 'Welcome. One step left.',
+    provider: {
+      title: 'Connect a provider',
+      description: 'Agents need a model provider before they can answer.',
+      /** What a connected step says: the providers that hold a key, by name. */
+      done: (providers: readonly string[]): string =>
+        `${nameList(providers)} ${providers.length === 1 ? 'is' : 'are'} connected.`,
+      action: 'Connect a provider',
+      href: '/settings/models',
+    },
+    agent: {
+      title: 'Create an agent, or start from Assistant',
+      description: 'Assistant works now; other agents need a provider.',
+      /** What a done step says: the agent that is ready, such as "Assistant". */
+      done: (agent: string): string => `${agent} is ready to use.`,
+      /** The quiet link that takes Assistant as the agent to start from. */
+      useAssistant: 'Use Assistant',
+      action: 'Create an agent',
+      href: '/agents/new',
+    },
+    chat: {
+      title: 'Say hello',
+      description: 'Send a first message to see a chat run end to end.',
+      action: 'Start a chat',
+    },
   },
 } as const;
 

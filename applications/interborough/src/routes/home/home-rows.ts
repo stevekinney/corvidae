@@ -8,18 +8,27 @@
  * title and last message.
  */
 import { HOME_COPY } from '../../app/copy.ts';
+import {
+  FIRST_RUN_STEPS,
+  type FirstRunProgress,
+  type FirstRunStepId,
+} from '../../app/first-run.ts';
 import { agentLabel } from '../../lib/agent-label.ts';
 import type { AttentionItem } from '../../lib/bureau-attention.ts';
 import type { AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 import type { ListedReview } from '../../lib/bureau-reviews.ts';
 import type { BureauSchedule } from '../../lib/bureau-schedules.ts';
+import type { TaskView } from '../../lib/bureau-tasks.ts';
 import { clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import { formatBytes, formatDuration } from '../../lib/format/index.ts';
 import { hookPath } from '../../lib/identifier-paths.ts';
-import { scheduleDetailPath } from '../../lib/router.svelte.ts';
+import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import { sessionRow } from '../chat/session-groups.ts';
 import { reviewTitle, waitingItems } from '../reviews/review-items.ts';
 import { describeCadence } from '../schedules/cadence.ts';
+import { providerDisplayName } from '../settings/models/format-model.ts';
+import { buildRunRows } from '../workflows/runs/run-rows.ts';
+import { findAssistant } from './home-start-chat.ts';
 
 /** The most reviews Home lists; the rest are one click away in Reviews. */
 export const NEEDS_YOU_ROW_LIMIT = 5;
@@ -338,4 +347,124 @@ export function recentChatRows(
       timestamp: row.updatedAt,
     };
   });
+}
+
+/** The most runs Home's Running now card lists; the rest are one click away in Runs. */
+export const RUNNING_ROW_LIMIT = 5;
+
+/** One run that is running now, as Home's Running now card lists it. */
+export interface RunningRow {
+  readonly key: string;
+  /** What the run is: the schedule's name, the chat's title, or the agent that runs. */
+  readonly title: string;
+  /**
+   * Line two: the status word, then what started it, which agent runs, and when it started, joined
+   * by middots ("Running · Schedule · Assistant · started 10:44 AM").
+   */
+  readonly line: string;
+  /** The run's page, which "View run" opens. */
+  readonly href: string;
+}
+
+/** What {@link runningRows} reads besides the running tasks. */
+export interface RunningContext {
+  /** The chats the caller lists, whose titles name a run a chat or a schedule's fire started. */
+  readonly chats: readonly ChatContext[];
+  /** The schedules, whose names title a run a schedule started; absent until they are read. */
+  readonly schedules: readonly Pick<BureauSchedule, 'id' | 'description'>[] | undefined;
+  readonly agents: readonly Pick<AgentSummary, 'name' | 'displayName'>[] | undefined;
+  /** The instant the card is read at, which decides whether a start time is today's. */
+  readonly now: number;
+  readonly zone?: string;
+}
+
+/**
+ * The runs running now, as rows, the most recently changed first. A row is read from what the Runs
+ * list reads (`buildRunRows`), so a run says the same thing about what started it in both places.
+ */
+export function runningRows(tasks: readonly TaskView[], context: RunningContext): RunningRow[] {
+  const copy = HOME_COPY.running;
+  const zone = context.zone ?? viewerTimeZone();
+  const schedules = new Map((context.schedules ?? []).map((schedule) => [schedule.id, schedule]));
+  return buildRunRows({ tasks, goals: [], chats: context.chats }).map((run): RunningRow => {
+    const agent = run.agentName === null ? undefined : agentLabel(run.agentName, context.agents);
+    const origin = run.origin;
+    const scheduleName =
+      origin.kind === 'schedule' && origin.scheduleId !== null
+        ? schedules.get(origin.scheduleId)?.description
+        : undefined;
+    const title =
+      [
+        scheduleName,
+        origin.kind === 'chat' || origin.kind === 'schedule' ? origin.title : undefined,
+        agent,
+      ].find((candidate) => candidate !== undefined && candidate !== null && candidate !== '') ??
+      copy.untitled;
+    const parts = [
+      origin.kind === 'none' ? undefined : copy.startedBy[origin.kind],
+      agent,
+      copy.startedAt(rowTime(run.startedAt, context.now, zone)),
+    ].filter((part): part is string => part !== undefined);
+    return {
+      key: run.id,
+      title,
+      line: `${copy.status} · ${parts.join(' · ')}`,
+      href: workflowDetailPath(run.id),
+    };
+  });
+}
+
+/** One step of Home's first-run checklist, as the card draws it. */
+export interface ChecklistStep {
+  readonly id: FirstRunStepId;
+  readonly title: string;
+  /** What the step says: what it asks while it is open, what is true once it is done. */
+  readonly description: string;
+  readonly done: boolean;
+}
+
+/** What {@link checklistSteps} reads besides which steps are done. */
+export interface ChecklistContext {
+  readonly providers: readonly { readonly name: string; readonly hasKey: boolean }[];
+  readonly agents: readonly Pick<AgentSummary, 'name' | 'displayName' | 'kind'>[] | undefined;
+  /** Whether the person chose Assistant, which is how the second step is done without an agent made. */
+  readonly assistantChosen: boolean;
+}
+
+/**
+ * The three steps in the order the card shows them, each with its words: the question while it is
+ * open, and what is now true once it is done ("Anthropic is connected.", "Assistant is ready to
+ * use.").
+ */
+export function checklistSteps(
+  progress: FirstRunProgress,
+  context: ChecklistContext,
+): ChecklistStep[] {
+  const copy = HOME_COPY.firstRun;
+  const assistant = findAssistant(context.agents ?? []) ?? 'assistant';
+  const fileAgent = context.agents?.find((agent) => agent.kind === 'file');
+  const readyAgent =
+    context.assistantChosen || fileAgent === undefined ? assistant : fileAgent.name;
+  const connected = context.providers
+    .filter((provider) => provider.hasKey)
+    .map((provider) => providerDisplayName(provider.name));
+  const words: Record<FirstRunStepId, { title: string; open: string; done: string }> = {
+    provider: {
+      title: copy.provider.title,
+      open: copy.provider.description,
+      done: copy.provider.done(connected),
+    },
+    agent: {
+      title: copy.agent.title,
+      open: copy.agent.description,
+      done: copy.agent.done(agentLabel(readyAgent, context.agents)),
+    },
+    chat: { title: copy.chat.title, open: copy.chat.description, done: copy.chat.description },
+  };
+  return FIRST_RUN_STEPS.map((id) => ({
+    id,
+    title: words[id].title,
+    description: progress[id] ? words[id].done : words[id].open,
+    done: progress[id],
+  }));
 }
