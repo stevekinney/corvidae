@@ -18,10 +18,17 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  *   the supervisor starts every host with `--no-install`.
  *
  * Each scenario runs at module scope under the hang guard, so none is on Bun's per-test clock, and
- * nothing asserts on how long anything takes.
+ * nothing asserts on how long anything takes. The supervisor lives through every step, two host
+ * starts and a chat among them, so its guard counts from the latest request or wait
+ * ({@link Supervised.request}) rather than from the spawn: on a loaded host the steps together run
+ * past the hang guard although none of them is hung.
  */
 import { openBungalow } from '@lostgradient/bungalow';
-import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import {
+  HangGuardProgress,
+  runWithHangGuard,
+  spawnWithHangGuard,
+} from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
@@ -172,12 +179,23 @@ type Supervised = {
   readonly stderr: () => string;
   /** The process ids of every host the supervisor has started, oldest first. */
   readonly pids: () => number[];
+  /**
+   * `fetch` on the host, as one step of the scenario: the supervisor's hang guard counts from the
+   * start of the request and again from its end, so it ends the supervisor only when one step
+   * makes no progress for the whole guard.
+   */
+  readonly request: (path: string, init?: RequestInit) => Promise<Response>;
+  /** Report that the scenario moved on, so the supervisor's hang guard counts from now. */
+  readonly progressed: () => void;
+  /** Everything the supervisor and its hosts have written so far, and whether it still runs. */
+  readonly report: () => string;
   readonly stop: () => Promise<void>;
 };
 
 /** Start `bun src/host/supervisor.ts serve` on `home`, with `registry` as the only registry. */
 async function supervise(home: string, buildDirectory: string, registryUrl: string) {
   const port = await freePort();
+  const progress = new HangGuardProgress();
   const child = spawnWithHangGuard([process.execPath, supervisorEntry, 'serve'], {
     cwd: packageDirectory,
     env: {
@@ -190,9 +208,14 @@ async function supervise(home: string, buildDirectory: string, registryUrl: stri
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
+    progress,
   });
   const stdout = collect(child.stdout);
   const stderr = collect(child.stderr);
+  let exited = 'the supervisor is running';
+  void child.exited.then((code) => {
+    exited = `the supervisor exited with code ${code}${child.signalCode === null ? '' : ` (${child.signalCode})`}`;
+  });
   const pids = (): number[] =>
     [...stdout().matchAll(/Started the host \(process (\d+)\)\./g)].map((match) =>
       Number(match[1]),
@@ -202,6 +225,16 @@ async function supervise(home: string, buildDirectory: string, registryUrl: stri
     stdout,
     stderr,
     pids,
+    request: async (path, init) => {
+      progress.progressed();
+      try {
+        return await fetch(new URL(path, `http://127.0.0.1:${port}/`), init);
+      } finally {
+        progress.progressed();
+      }
+    },
+    progressed: () => progress.progressed(),
+    report: () => `${exited}\nstandard output:\n${stdout()}\nstandard error:\n${stderr()}`,
     stop: async () => {
       child.kill('SIGTERM');
       await child.exited;
@@ -211,27 +244,43 @@ async function supervise(home: string, buildDirectory: string, registryUrl: stri
   return supervised;
 }
 
+/**
+ * Wait, as one step of the scenario, until `condition` holds. A wait that gives up says what the
+ * supervisor and its hosts had written by then, and whether the supervisor was still running.
+ */
+async function waitFor(
+  supervised: Supervised,
+  condition: () => boolean | Promise<boolean>,
+  message: string,
+): Promise<void> {
+  supervised.progressed();
+  try {
+    await waitUntil(condition, { message, yieldTurn: () => Bun.sleep(50) });
+  } catch (error) {
+    throw new Error(`${String(error)}\n${supervised.report()}`, { cause: error });
+  }
+  supervised.progressed();
+}
+
 async function waitForHost(supervised: Supervised): Promise<void> {
-  await waitUntil(
+  await waitFor(
+    supervised,
     async () => {
       try {
-        const response = await fetch(new URL('/host/paths', supervised.url));
+        const response = await supervised.request('/host/paths');
         return response.status === 200;
       } catch {
         return false;
       }
     },
-    {
-      message: `the host to answer on ${supervised.url.href}\n${supervised.stdout()}\n${supervised.stderr()}`,
-      yieldTurn: () => Bun.sleep(50),
-    },
+    `the host to answer on ${supervised.url.href}`,
   );
 }
 
 type Standing = { descriptor: { name: string }; status: string; enabled: boolean };
 
 async function standingOf(supervised: Supervised): Promise<Standing | undefined> {
-  const response = await fetch(new URL('/host/plugins', supervised.url));
+  const response = await supervised.request('/host/plugins');
   const body = (await response.json()) as { plugins: Standing[] };
   return body.plugins.find((plugin) => plugin.descriptor.name === PLUGIN_NAME);
 }
@@ -243,7 +292,7 @@ async function listedNames(
   key: string,
   field: string,
 ): Promise<string[]> {
-  const response = await fetch(new URL('/bureau/jsonrpc', supervised.url), {
+  const response = await supervised.request('/bureau/jsonrpc', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} }),
@@ -253,7 +302,7 @@ async function listedNames(
 }
 
 async function agentIds(supervised: Supervised): Promise<string[]> {
-  const response = await fetch(new URL('/bureau/jsonrpc', supervised.url), {
+  const response = await supervised.request('/bureau/jsonrpc', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.agents.list', params: {} }),
@@ -264,8 +313,8 @@ async function agentIds(supervised: Supervised): Promise<string[]> {
 
 /** Chat with the agent through the AG-UI mount and return the event stream. */
 async function chat(supervised: Supervised): Promise<string> {
-  const response = await fetch(
-    new URL(`/bureau/ag-ui/agents/${encodeURIComponent(AGENT_ID)}/run`, supervised.url),
+  const response = await supervised.request(
+    `/bureau/ag-ui/agents/${encodeURIComponent(AGENT_ID)}/run`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
@@ -332,12 +381,12 @@ const lifecycle = await (async () => {
     const skillsBefore = await listedNames(supervised, 'bureau.skills.list', 'skills', 'name');
     const stream = await chat(supervised);
     const markerWritten = existsSync(marker) ? await readFile(marker, 'utf8') : undefined;
-    const pluginSnapshotResponse = await fetch(new URL('/host/plugins', supervised.url));
+    const pluginSnapshotResponse = await supervised.request('/host/plugins');
     const pluginSnapshot = (await pluginSnapshotResponse.json()) as {
       configurationRevision: string | null;
     };
 
-    const disabled = await fetch(new URL(`/host/plugins/${PLUGIN_NAME}`, supervised.url), {
+    const disabled = await supervised.request(`/host/plugins/${PLUGIN_NAME}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -346,13 +395,10 @@ const lifecycle = await (async () => {
         expectedRevision: pluginSnapshot.configurationRevision,
       }),
     });
-    const restarting = await fetch(new URL(HOST_RESTART_ROUTE, supervised.url), {
+    const restarting = await supervised.request(HOST_RESTART_ROUTE, {
       method: 'POST',
     });
-    await waitUntil(() => supervised.pids().length >= 2, {
-      message: `a second host start\n${supervised.stdout()}\n${supervised.stderr()}`,
-      yieldTurn: () => Bun.sleep(50),
-    });
+    await waitFor(supervised, () => supervised.pids().length >= 2, 'a second host start');
     await waitForHost(supervised);
     const secondPid = supervised.pids().at(1);
     return {

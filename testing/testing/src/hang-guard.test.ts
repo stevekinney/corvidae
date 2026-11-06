@@ -4,9 +4,11 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
-import { quietFor } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import {
   afterAwakeTime,
+  afterAwakeTimeSinceProgress,
+  HangGuardProgress,
   runWithHangGuard,
   spawnPipedWithHangGuard,
   spawnWithHangGuard,
@@ -116,6 +118,58 @@ describe('afterAwakeTime', () => {
   });
 });
 
+/**
+ * A clock that advances one tick per reading until `stop` readings have been taken, then stands
+ * still. Every tick of a guard reads it once, so the guard can credit at most `stop - 1` ticks of
+ * `tickMilliseconds` however late a loaded host runs them: the budget is spent by readings, never
+ * by real time.
+ */
+function readingClock(tickMilliseconds: number) {
+  const clock = { readings: 0, stop: 0 };
+  const now = (): number => {
+    if (clock.readings < clock.stop) clock.readings += 1;
+    return clock.readings * tickMilliseconds;
+  };
+  return { clock, now };
+}
+
+describe('afterAwakeTimeSinceProgress', () => {
+  it('counts its budget from the latest progress, and fires once progress stops', async () => {
+    // A 100 ms budget of 5 ms ticks is spent by 20 credited ticks.
+    const { clock, now } = readingClock(5);
+    const progress = new HangGuardProgress();
+    let fired = false;
+    clock.stop = 15;
+    // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
+    afterAwakeTimeSinceProgress(100, () => (fired = true), progress, { now, tickMilliseconds: 5 });
+    // 14 ticks credited: 70 ms of the budget.
+    await waitUntil(() => clock.readings === clock.stop, { message: 'the first guard to tick' });
+    progress.progressed();
+    // Another 18 ticks after the progress: 90 ms since it, 160 ms since the call. A guard counted
+    // from the call would fire; one counted from the progress has not spent its budget.
+    clock.stop = 33;
+    await waitUntil(() => clock.readings === clock.stop, { message: 'the second guard to tick' });
+    await quietFor(50);
+    expect(fired).toBe(false);
+    // With no further progress, the budget runs out.
+    clock.stop = Number.POSITIVE_INFINITY;
+    await waitUntil(() => fired, { message: 'the guard to fire after progress stopped' });
+  });
+
+  it('ignores progress once cancelled', async () => {
+    const progress = new HangGuardProgress();
+    let fired = false;
+    // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
+    const cancel = afterAwakeTimeSinceProgress(20, () => (fired = true), progress, {
+      tickMilliseconds: 5,
+    });
+    cancel();
+    progress.progressed();
+    await quietFor(60);
+    expect(fired).toBe(false);
+  });
+});
+
 // Each process scenario runs once at module scope, off Bun's per-test clock.
 const killsAHungChild = await outcomeOf(async () => {
   // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
@@ -132,6 +186,17 @@ const usesTheKillSignal = await outcomeOf(async () => {
   });
   await child.exited;
   expect(child.signalCode).toBe('SIGKILL');
+});
+
+const killsAChildOnceItsProgressStops = await outcomeOf(async () => {
+  const progress = new HangGuardProgress();
+  // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
+  const child = spawnWithHangGuard(['sleep', '30'], { hangGuardMilliseconds: 200, progress });
+  progress.progressed();
+  expect(await child.exited).not.toBe(0);
+  expect(child.signalCode).toBe('SIGTERM');
+  // A report after the child is gone does nothing.
+  progress.progressed();
 });
 
 const leavesAFinishedChildAlone = await outcomeOf(async () => {
@@ -179,6 +244,8 @@ describe('spawnPipedWithHangGuard', () => {
 describe('spawnWithHangGuard', () => {
   it('kills a child that outlives its guard with SIGTERM', () => rethrow(killsAHungChild));
   it('kills with the given killSignal', () => rethrow(usesTheKillSignal));
+  it('with progress, still kills a child once its progress stops', () =>
+    rethrow(killsAChildOnceItsProgressStops));
 });
 
 describe('runWithHangGuard', () => {

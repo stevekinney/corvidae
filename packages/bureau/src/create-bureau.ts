@@ -408,6 +408,7 @@ import {
   subordinateTaskAdmission,
 } from './catalog-task-settlement';
 import {
+  createCatalogAssetReleaseDrain,
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
   type ReleasableConversation,
@@ -5820,15 +5821,10 @@ async function constructBureau<const D extends AgentDefinitions>(
    * (`onCatalogRunEnded`), a recovered run by the settlement hook below, and a goal attempt by the
    * goal forwarder, after the goal's session holds its rows.
    */
-  let catalogAssetReleasesClosed = false;
-  const pendingCatalogAssetReleases = new Set<Promise<void>>();
+  const catalogAssetReleases = createCatalogAssetReleaseDrain();
   /** Follows a release so `shutdown()` can wait for the ones under way before the asset service closes. */
-  const trackCatalogAssetRelease = (pending: Promise<void>): Promise<void> => {
-    pendingCatalogAssetReleases.add(pending);
-    const forget = (): void => void pendingCatalogAssetReleases.delete(pending);
-    void pending.then(forget, forget);
-    return pending;
-  };
+  const trackCatalogAssetRelease = (pending: Promise<void>): Promise<void> =>
+    catalogAssetReleases.track(pending);
   const catalogRunAssets = createCatalogRunAssetReleaser({
     assets: () => assetServiceHolder.current,
     durableEnd: catalogDurableEnd,
@@ -5841,7 +5837,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       return { status: reading.status === 'missing' ? 'missing' : 'running' };
     },
-    isClosed: () => catalogAssetReleasesClosed,
+    isClosed: () => catalogAssetReleases.isClosed(),
     diagnose,
   });
   catalogRunSettlements.subscribe(
@@ -16200,7 +16196,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       const live = await runtime.sessionStore?.load(sessionId);
       return runtime.sessionStore === undefined || live?.incarnation === incarnation;
     },
-    isClosed: () => catalogAssetReleasesClosed,
+    isClosed: () => catalogAssetReleases.isClosed(),
     onReleased: (claim) => claimedRowAssets.delete(`${claim.holderId}\u0000${claim.assetId}`),
     diagnose,
   });
@@ -21883,17 +21879,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       await sessionPersistence.drain();
       await drainSessionInputSettlements();
       // COR-1630 — a catalog run that ended releases its asset claims, shutdown or not. The
-      // aborted runs settle first, which starts their releases, then those releases are awaited,
-      // each under the same grace as the waits above, and only then are releases closed so none
-      // runs against the asset service that shuts down below. A run whose durable record still
-      // reads in flight is lost, not ended, and releases nothing (`catalog-run-asset-release.ts`).
+      // aborted runs settle first, under the grace above, which starts their releases. A release
+      // is storage work on a run that has ended, so it is awaited however long the database takes,
+      // not under that grace: a release the grace cut short wrote against the asset service and the
+      // pool after they closed below. Releases close in the step that finds none left
+      // (`createCatalogAssetReleaseDrain`). A run whose durable record still reads in flight is
+      // lost, not ended, and releases nothing (`catalog-run-asset-release.ts`).
       await awaitAbortedRunTerminals(abortedCatalogRunResults);
-      if (pendingCatalogAssetReleases.size > 0) {
-        await awaitAbortedRunTerminals([
-          Promise.allSettled(pendingCatalogAssetReleases).then(() => undefined),
-        ]);
-      }
-      catalogAssetReleasesClosed = true;
+      await catalogAssetReleases.drain();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;
@@ -23403,7 +23396,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1630 — an attempt's run lets go of its asset claims once the goal's session holds them.
     claimSessionAssets,
     releaseAssets: catalogRunAssets,
-    releasesClosed: () => catalogAssetReleasesClosed,
+    releasesClosed: () => catalogAssetReleases.isClosed(),
     // Not the memoized, audited step runs get: that records a run's cleanup
     // under a run id, and a goal's controller is not a run. An attempt's run is
     // one, but a goal prunes it at close, once its terminal checkpoint has been
