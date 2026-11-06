@@ -88,6 +88,13 @@
   const rows = $derived(queueTaskRows(tasks, queue, retrying, now));
   const failedCount = $derived(counts?.failed ?? 0);
   const waitingCount = $derived(counts?.waiting ?? 0);
+  const shownNoun = $derived(
+    tab === 'waiting' ? copy.showing : tab === 'failed' ? copy.showingFailed : copy.showingAll,
+  );
+  /** How many tasks the open tab lists in all, which one page of them does not hold. */
+  const tabTotal = $derived(
+    tab === 'waiting' ? waitingCount : tab === 'failed' ? failedCount : waitingCount + failedCount,
+  );
   const retryAllBusy = $derived(retryingCount > 0);
   const hasFailedRows = $derived(rows.some((row) => row.failed));
   const showBulk = $derived(tab === 'failed' && (failedCount > 0 || retryAllBusy));
@@ -235,15 +242,15 @@
       {/snippet}
     </DataList>
 
-    {#if tab === 'waiting' && counts !== undefined && waitingCount > rows.length}
+    {#if counts !== undefined && tabTotal > rows.length}
       <LoadMore
         variant="footer"
         {hasMore}
         loading={loadingMore}
         loadedCount={rows.length}
-        totalCount={waitingCount}
-        countNoun={copy.showing}
-        itemLabel={copy.showing}
+        totalCount={tabTotal}
+        countNoun={shownNoun}
+        itemLabel={shownNoun}
         buttonLabel={copy.loadMore}
         endOfListMessage=""
         maxRetries={0}

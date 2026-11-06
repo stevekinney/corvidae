@@ -505,6 +505,35 @@ describe('the open worker’s tasks', () => {
       ).toBe(true);
     });
 
+    test('failed tasks beyond the first page are read on Load more, whichever tab lists them', async () => {
+      scripted = new ScriptedFetch();
+      routeHappyPaths(scripted, { workers: [PAYMENTS] });
+      const pageSize = 25;
+      const failedAt = (index: number): QueueTask =>
+        failedTask(`op-${String(index)}`, `collect-${String(index + 1)}`);
+      scripted.routeJsonRpcMethodBy('weft.task.queues.tasks', (params) => ({
+        queue: params['queue'],
+        counts: { waiting: 0, failed: pageSize + 3 },
+        items:
+          params['cursor'] === 'next'
+            ? [pageSize, pageSize + 1, pageSize + 2].map(failedAt)
+            : Array.from({ length: pageSize }, (_, index) => failedAt(index)),
+        nextCursor: params['cursor'] === 'next' ? null : 'next',
+      }));
+      router.navigate('/health/workers?worker=payments-worker-1', { replace: true });
+
+      const { findByRole, findByText, queryByText, container } = renderRoute();
+      await findByText('collect-25');
+      expect(queryByText('collect-26')).toBeNull();
+      await fireEvent.click(await findByRole('button', { name: /load more/i }));
+
+      await waitFor(() => expect(container.textContent).toContain('collect-26'));
+      expect(container.textContent).toContain('collect-28');
+      expect(
+        callsTo(scripted, 'weft.task.queues.tasks').some((call) => call['cursor'] === 'next'),
+      ).toBe(true);
+    });
+
     test('a worker with a long identifier offers to copy it, and says it did', async () => {
       const written: string[] = [];
       Object.defineProperty(navigator, 'clipboard', {

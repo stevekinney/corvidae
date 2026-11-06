@@ -162,6 +162,8 @@ export const WORKER_COPY = {
     footnote:
       'Retry puts a task back on the queue. Clear removes the task and its payload; an Undo toast follows.',
     showing: 'waiting tasks',
+    showingFailed: 'failed tasks',
+    showingAll: 'tasks',
     loadMore: 'Load more',
     emptyFailed: (waiting: number): string =>
       waiting === 0 ? 'No failed tasks.' : `No failed tasks. ${String(waiting)} are still waiting.`,

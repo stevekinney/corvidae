@@ -21538,11 +21538,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(nextSession === undefined ? {} : { sessionId: nextSession }),
       };
     }
-    // The input is rebuilt from what was read, so the write is fenced to the revision that was
-    // read when the caller named none: a change made since is refused, not overwritten.
+    // Whatever was read decided what this update may do (the input it rebuilds, and whether
+    // `overlap` and a recurring chat may be combined), so the write is fenced to the revision that
+    // was read when the caller named none: a change made since is refused, not overwritten. An
+    // update of the overlap alone is fenced as well, or it could land on a chat another update gave
+    // the schedule since, which leaves the combination that is refused above.
     const expectedRevision =
       guard?.expectedRevision ??
-      (nextInput !== undefined && typeof storedRecord?.revision === 'number'
+      (bytes !== null && typeof storedRecord?.revision === 'number'
         ? storedRecord.revision
         : undefined);
     await engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
