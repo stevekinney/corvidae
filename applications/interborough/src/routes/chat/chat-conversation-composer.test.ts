@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CHAT_COPY } from '../../app/copy.ts';
+import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -36,10 +37,11 @@ const TURNS = [
 
 const provider = (hasKey: boolean) =>
   Response.json({
+    configurationRevision: null,
     providers: [{ name: 'anthropic', configured: true, hasKey }],
     catalog: [],
     models: [],
-  });
+  } satisfies ProvidersSnapshot);
 
 /** The stream the page joins: closed at once for an idle chat, held open for a run that is going. */
 function thread(running: boolean) {
