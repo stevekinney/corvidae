@@ -82,7 +82,7 @@ function getGroupData(
 }
 
 function ownsNoRail(kind: TimelineEntry['kind']): boolean {
-  return kind === 'now' || kind === 'separator' || kind === 'band';
+  return kind === 'now' || kind === 'separator' || kind === 'band' || kind === 'run';
 }
 
 function getConnectorAfter(

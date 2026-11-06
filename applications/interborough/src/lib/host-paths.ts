@@ -81,3 +81,11 @@ export function workflowFilePath(workflowDirectory: string, id: string): string 
     : workflowDirectory;
   return `${directory}/${id}.json`;
 }
+
+/**
+ * The path of one workflow's file relative to the Interborough home, which is where a person looks
+ * for it whichever machine or bucket the home is on: `workflows/release-notes.json`.
+ */
+export function workflowRelativePath(id: string): string {
+  return `workflows/${id}.json`;
+}

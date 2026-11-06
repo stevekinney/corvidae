@@ -30,8 +30,10 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Sent back', 'neutral'],
   ['Expired', 'neutral'],
   ['Failed', 'danger'],
+  ['Failed for good', 'danger'],
   ['Gave up', 'danger'],
   ["Can't load", 'danger'],
+  ["Can't find workflow", 'danger'],
   ['Not loaded', 'danger'],
   ['Canceled', 'neutral'],
   ['Stopped', 'neutral'],
@@ -88,12 +90,14 @@ describe('statusForStatusDotWord', () => {
     expect(statusForStatusDotWord('toString · x')).toBeUndefined();
   });
 
-  test('red is reserved for four words and amber for five', () => {
+  test('red is reserved for six words and amber for five', () => {
     const entries = Object.entries(statusDotWordTones);
     expect(entries.filter(([, tone]) => tone === 'danger').map(([word]) => word)).toEqual([
       'Failed',
+      'Failed for good',
       'Gave up',
       "Can't load",
+      "Can't find workflow",
       'Not loaded',
     ]);
     expect(entries.filter(([, tone]) => tone === 'warning').map(([word]) => word)).toEqual([

@@ -54,6 +54,7 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /host/status': 'deployment-operator',
   'POST /host/restart': 'deployment-operator',
   'GET /host/storage': 'deployment-operator',
+  'GET /host/storage/summary': 'deployment-operator',
   'GET /host/paths': 'deployment-operator',
   'GET /__dev/reload': 'deployment-operator',
 };

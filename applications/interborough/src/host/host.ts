@@ -112,6 +112,7 @@ import {
   type SecretProviderFactory,
 } from '@lostgradient/bungalow';
 import {
+  ANONYMOUS_LOCAL_OWNER,
   BUREAU_PLUGIN_ENTRY,
   createBureau,
   createBureauHandler,
@@ -144,7 +145,7 @@ import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lost
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
-import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
+import { HOST_STORAGE_ROUTE, HOST_STORAGE_SUMMARY_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, A2A_SUBJECT, resolveA2aExposure } from './a2a-authentication.ts';
 import { createA2APeerTools, readA2APeersConfiguration } from './a2a-peers.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
@@ -177,7 +178,7 @@ import {
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
 import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
-import { hostStorageReport } from './host-storage.ts';
+import { hostStorageReport, hostStorageSummary } from './host-storage.ts';
 import {
   bureauUpgradeServer,
   hostWebSocketHandlers,
@@ -216,6 +217,7 @@ import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
+import { storageDeletionApplied, storageDeletionOf, storageResourceOf } from './storage-audit.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
@@ -410,6 +412,12 @@ export type HostOptions = {
   ) => typeof resolveProviderGenerate;
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
+  /**
+   * The version this host runs, recorded with its `host.started` audit event so the audit log can
+   * say "Server started · Interborough 2.4.1". Left out, the event carries no version and the log
+   * names the host alone. The showcase host passes the sample world's (`showcase.ts`).
+   */
+  readonly version?: string;
   /**
    * Which runtime settings the Bureau holds to their code options (`settings.locked`, each with
    * the reason it is held), so the settings page shows them read-only and says why. A person's
@@ -766,7 +774,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }
         }
         const storage =
-          claimedRemoteStorage ?? createHostStorage({ kind: 'postgres', url: databaseUrl });
+          claimedRemoteStorage ??
+          createHostStorage({ kind: 'postgres', url: databaseUrl }, clock.now);
         claimedRemoteStorage = storage;
         await claimWorkspaceBinding(storage, prefix, workspaceId);
       },
@@ -803,7 +812,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
-    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database);
+    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now);
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
@@ -1373,6 +1382,18 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       [HOST_STORAGE_ROUTE]: {
         GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
       },
+      // How many keys storage holds under a prefix, and how large it is, for the storage page's
+      // footer and its "Storage details".
+      [HOST_STORAGE_SUMMARY_ROUTE]: {
+        GET: async (request: Request) =>
+          refuse(request) ??
+          Response.json(
+            await hostStorageSummary(
+              storage,
+              new URL(request.url).searchParams.get('prefix') ?? '',
+            ),
+          ),
+      },
       [HOST_PATHS_ROUTE]: {
         GET: async (request: Request) =>
           refuse(request) ??
@@ -1418,7 +1439,27 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           if (data !== undefined && listener.upgrade(request, { data })) return undefined;
           return new Response('WebSocket upgrade failed', { status: 500 });
         }
-        return relayRequest(request, url, key);
+        // A storage key deleted through the relay is recorded once the engine says it is gone.
+        const deletion = await storageDeletionOf(request);
+        const relayed = await relayRequest(request, url, key);
+        if (deletion !== undefined && (await storageDeletionApplied(deletion, relayed))) {
+          const actor = await authority.authenticate(request);
+          const principal =
+            actor instanceof Response
+              ? ANONYMOUS_LOCAL_OWNER
+              : (actor.principal?.subject ?? ANONYMOUS_LOCAL_OWNER);
+          for (const deleted of deletion.keys) {
+            await held.bureau?.internals.auditTrail
+              ?.record({
+                runId: storageResourceOf(deleted),
+                type: 'storage.key.deleted',
+                principal,
+                detail: null,
+              })
+              .catch(() => undefined);
+          }
+        }
+        return relayed;
       },
       websocket: hostWebSocketHandlers(bureauSockets),
     });
@@ -1444,7 +1485,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       runId: 'host',
       type: 'host.started',
       principal: HOST_ACTOR,
-      detail: {},
+      detail: options.version === undefined ? {} : { version: options.version },
     });
     bureauHandler = createBureauHandler(bureau, {
       workspace,

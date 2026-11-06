@@ -116,6 +116,35 @@ describe('PageHeader', () => {
     expect(container.querySelector('.cinder-page-header__actions')).toBeNull();
   });
 
+  test('a header whose only action is the create "+" keeps it on the title row on a phone', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Schedules', createAction: { label: 'New schedule' } },
+    });
+    expect(
+      container
+        .querySelector('.cinder-page-header')
+        ?.classList.contains('cinder-page-header--create-only'),
+    ).toBe(true);
+    expect(stylesheet).toMatch(
+      /@container cinder-page-header \(max-width: 32rem\)\s*\{\s*\.cinder-page-header--create-only \.cinder-page-header__row\s*\{\s*flex-wrap:\s*nowrap/,
+    );
+  });
+
+  test('a header with other actions beside the create "+" still drops them to their own row', () => {
+    const actions = createRawSnippet(() => ({
+      render: () => `<button>Export</button>`,
+      setup: () => {},
+    }));
+    const { container } = render(PageHeader, {
+      props: { title: 'Runs', actions, createAction: { label: 'Start run' } },
+    });
+    expect(
+      container
+        .querySelector('.cinder-page-header')
+        ?.classList.contains('cinder-page-header--create-only'),
+    ).toBe(false);
+  });
+
   test('class prop merges onto root div element', () => {
     const { container } = render(PageHeader, {
       props: { title: 'Memory', class: 'my-page-header' },

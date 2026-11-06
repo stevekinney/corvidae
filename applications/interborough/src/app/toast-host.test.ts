@@ -10,11 +10,13 @@
  * attachment cleanup and resets that module state back to `undefined`, so
  * tests stay isolated from each other without doing that by hand here.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { render } from '@testing-library/svelte';
 import { describe, expect, mock, test } from 'bun:test';
 
 import { UNKNOWN_FAULT_TREATMENT } from '../lib/faults.ts';
 import ToastHost, {
+  dismissToast,
   FAULT_TOAST_DURATION_MS,
   FAULT_TOAST_VARIANT,
   showFault,
@@ -56,6 +58,21 @@ describe('showToast — after <ToastHost> has mounted', () => {
 
     expect(typeof id).toBe('string');
     expect(id?.length ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('dismissToast', () => {
+  test('removes the toast showToast returned the id of, and leaves a gone one alone', async () => {
+    const { findByText, queryByText } = render(ToastHost);
+    const id = showToast('Cleared 2 failed tasks.', { undo: () => {} });
+    expect(await findByText('Cleared 2 failed tasks.')).not.toBeNull();
+
+    dismissToast(id ?? '');
+    dismissToast(id ?? '');
+    dismissToast('never-shown');
+
+    // The toast leaves with a short exit animation, then is gone.
+    await waitUntil(() => queryByText('Cleared 2 failed tasks.') === null);
   });
 });
 

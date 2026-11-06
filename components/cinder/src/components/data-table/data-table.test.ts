@@ -1203,6 +1203,24 @@ describe('DataTable — truncating columns', () => {
   });
 });
 
+describe('DataTable — a truncating column with a maxWidth', () => {
+  test('the widest its text grows is the column\u2019s maxWidth, and no other column is given one', () => {
+    const { container } = render(DataTable, {
+      columns: [
+        { key: 'key', label: 'Key', truncate: true, maxWidth: 288 },
+        { key: 'owner', label: 'Owner', truncate: true },
+        { key: 'size', label: 'Size', maxWidth: 80 },
+      ],
+      rows: [{ key: 'storage/a', owner: 'ops', size: '1 KB' }],
+    });
+    const cells = container.querySelectorAll<HTMLElement>('tbody td, tbody th');
+    expect(cells[0]?.style.getPropertyValue('--_cinder-table-truncate-size')).toBe('288px');
+    // Without a maxWidth the table's own limit stands, and a column that does not truncate has none to set.
+    expect(cells[1]?.style.getPropertyValue('--_cinder-table-truncate-size')).toBe('');
+    expect(cells[2]?.style.getPropertyValue('--_cinder-table-truncate-size')).toBe('');
+  });
+});
+
 describe('DataTable — cells, row messages, groups and footer', () => {
   const toolColumns = [
     { key: 'on', label: 'On', controls: 'fit' as const },
@@ -1224,6 +1242,13 @@ describe('DataTable — cells, row messages, groups and footer', () => {
     expect(container.querySelector('tbody [data-cinder-controls="fit"]')).not.toBeNull();
     expect(container.querySelector('tbody [data-cinder-monospace]')?.textContent).toContain(
       'Lookup order',
+    );
+  });
+
+  test('a monospace column is set in the regular weight, even as the row header the browser makes bold', () => {
+    const css = readFileSync(new URL('./data-table.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\[data-cinder-monospace\]\s*\{[^}]*font-family: var\(--cinder-font-mono\);[^}]*font-weight: var\(--cinder-font-normal\)/s,
     );
   });
 

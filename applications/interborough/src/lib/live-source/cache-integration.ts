@@ -116,6 +116,8 @@ export const WORKERS_REJECTIONS_KEY: QueryKey = ['workers', 'rejections'];
 export const WORKERS_DEPLOYMENTS_KEY: QueryKey = ['workers', 'deployments'];
 /** The query key of the queue list. */
 export const QUEUES_LIST_KEY: QueryKey = ['queues', 'list'];
+/** The query-key prefix of the tasks on every queue (`queryKeys.queues.tasks`). */
+export const QUEUES_TASKS_KEY_PREFIX: QueryKey = ['queues', 'tasks'];
 /** The query-key prefix of every task's detail. */
 export const TASKS_DETAIL_KEY_PREFIX: QueryKey = ['tasks', 'detail'];
 /** The query-key prefix of every task's deliveries. */
@@ -168,7 +170,12 @@ const WORKER_FLEET_KEYS: readonly QueryKey[] = [
   WORKERS_DEPLOYMENTS_KEY,
   // A queue's connected workers are the workers on it, and its in-flight count is theirs.
   QUEUES_LIST_KEY,
+  // A worker leaving can leave tasks waiting for its queue.
+  QUEUES_TASKS_KEY_PREFIX,
 ];
+
+/** What a queue's depth, a task's attempt or its failing for good changes: the queue and the tasks listed on it. */
+const QUEUE_KEYS: readonly QueryKey[] = [QUEUES_LIST_KEY, QUEUES_TASKS_KEY_PREFIX];
 
 /**
  * The kinds that change the durable work a deployment build is bound to: each build reports the
@@ -219,14 +226,14 @@ const FLEET_KIND_INVALIDATION: ReadonlyMap<string, readonly QueryKey[]> = new Ma
   ['worker:disconnected', WORKER_FLEET_KEYS],
   ['worker:registration-rejected', [WORKERS_REJECTIONS_KEY]],
   ['worker:deployment-changed', [WORKERS_DEPLOYMENTS_KEY, WORKERS_LIST_KEY]],
-  ['queue:depth-changed', [QUEUES_LIST_KEY]],
+  ['queue:depth-changed', QUEUE_KEYS],
   // A kind may move both the deployments' references and a queue's in-flight count.
   ...[...new Set([...DEPLOYMENT_REFERENCE_KINDS, ...QUEUE_LOAD_KINDS])].map(
     (kind): [string, readonly QueryKey[]] => [
       kind,
       [
         ...(DEPLOYMENT_REFERENCE_KINDS.includes(kind) ? [WORKERS_DEPLOYMENTS_KEY] : []),
-        ...(QUEUE_LOAD_KINDS.includes(kind) ? [QUEUES_LIST_KEY] : []),
+        ...(QUEUE_LOAD_KINDS.includes(kind) ? QUEUE_KEYS : []),
       ],
     ],
   ),

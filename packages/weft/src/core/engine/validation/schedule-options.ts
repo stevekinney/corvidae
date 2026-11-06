@@ -30,6 +30,8 @@ type NormalizedScheduleOptions = Required<Pick<ScheduleOptions, 'overlap' | 'bac
 };
 
 type NormalizedScheduleUpdateOptions = {
+  workflowType?: string;
+  input?: unknown;
   description?: string;
   overlap?: ScheduleOverlapPolicy;
   backfill?: boolean;
@@ -78,6 +80,7 @@ export function normalizeScheduleUpdateOptions(
   }
 
   return {
+    ...normalizeScheduleRunFields(options),
     ...(options.description !== undefined && {
       description: normalizeScheduleDescription(options.description),
     }),
@@ -121,6 +124,25 @@ function normalizeScheduleTimeZone(timeZone: unknown): string {
     );
   }
   return canonicalTimeZone(timeZone);
+}
+
+/** The workflow type and input an update moves a schedule to, when it names them. */
+function normalizeScheduleRunFields(
+  options: ScheduleUpdateOptions,
+): Pick<NormalizedScheduleUpdateOptions, 'workflowType' | 'input'> {
+  return {
+    ...(options.workflowType !== undefined && {
+      workflowType: normalizeScheduleWorkflowType(options.workflowType),
+    }),
+    ...(options.input !== undefined && { input: options.input }),
+  };
+}
+
+function normalizeScheduleWorkflowType(workflowType: unknown): string {
+  if (typeof workflowType !== 'string' || workflowType.trim() === '') {
+    throw new Error('options.workflowType must be a non-empty string when provided');
+  }
+  return workflowType;
 }
 
 function normalizeScheduleDescription(description: unknown): string {

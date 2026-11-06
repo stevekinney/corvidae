@@ -20,6 +20,11 @@ const cases = [
   { operation: 'bureau.schedules.cancel', parameters: {}, privateExecution: false },
   { operation: 'bureau.schedules.update', parameters: { spec: '2h' }, privateExecution: false },
   { operation: 'bureau.schedules.skipnext', parameters: {}, privateExecution: false },
+  {
+    operation: 'bureau.schedules.unskip',
+    parameters: { occurrence: '2030-01-01T00:00:00.000Z' },
+    privateExecution: false,
+  },
   { operation: 'bureau.schedules.runnow', parameters: {}, privateExecution: true },
   { operation: 'bureau.schedules.missed', parameters: {}, privateExecution: true },
 ] as const;

@@ -349,6 +349,32 @@
     white-space: nowrap;
   }
 
+  /* `wrapMeta`: line two carries a control, so it wraps and nothing on it is cut. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--wrap-meta
+    .cinder-stacked-list-item__meta {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  /* A third line (a phone schedule's reason and cadence): muted like line two, but it wraps, so
+     nothing on it is cut. It shares the details row, which no row uses at the same time, and
+     starts under the title; on a phone, where the status leads line two, it starts at the left
+     edge under the status. */
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__detail {
+    grid-row: details;
+    grid-column: 3 / 5;
+    min-inline-size: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-subtle);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone] .cinder-stacked-list-item__detail {
+    grid-column: 2 / 5;
+  }
+
   /* A row whose details failed to load (row 14q): line two is the message in the danger text
    * colour beside a warning glyph, and the row's own secondary "Try again" button at the end. It
    * wraps rather than truncating, because the message is the one thing the row has to say. */
@@ -424,7 +450,9 @@
   }
 
   /* On a phone the status moves to line two beside the kind and agent: "Waiting on you · Chat". */
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--no-line-two
+    )
     .cinder-stacked-list-item__status::after {
     content: '·' / '';
     margin-inline: var(--cinder-space-1-5);

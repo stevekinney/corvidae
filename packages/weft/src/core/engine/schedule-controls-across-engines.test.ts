@@ -1,5 +1,5 @@
 /**
- * COR-1829: skipping the next run and running a schedule now hold across engines that share a
+ * COR-1829: skipping a run, taking a skip back and running a schedule now hold across engines that share a
  * store, as the other writes to a schedule do (COR-1594). Engine A's write to the schedule key is
  * parked between its read and its write while engine B commits a change.
  */
@@ -32,21 +32,36 @@ import {
 afterEach(closeOpenedEngines);
 
 describe('skipping the next run while another engine changes the schedule', () => {
-  it('reads the schedule again and is refused when the other engine paused it', async () => {
+  it('reads the schedule again and is refused when the other engine cancelled it', async () => {
     const { shared, a, engineA, engineB } = await openEngines();
     const hold = a.holdScheduleWrite();
 
     const skipped = engineA.skipNextScheduleOccurrence(SCHEDULE_ID);
     const rejection = rejectionOf(skipped);
     await hold.reached;
-    await engineB.pauseSchedule(SCHEDULE_ID);
+    await engineB.cancelSchedule(SCHEDULE_ID);
     hold.release();
 
     const failure = await rejection;
     expect((failure as Error).message).toContain('has no next occurrence to skip');
     const state = await stateOf(shared);
+    expect(state.status).toBe('cancelled');
+    expect(state.skippedOccurrences).toBeUndefined();
+  });
+
+  it('reads the schedule again and skips on it when the other engine paused it', async () => {
+    const { shared, a, engineA, engineB } = await openEngines();
+    const hold = a.holdScheduleWrite();
+
+    const skipped = engineA.skipNextScheduleOccurrence(SCHEDULE_ID);
+    await hold.reached;
+    await engineB.pauseSchedule(SCHEDULE_ID);
+    hold.release();
+    await skipped;
+
+    const state = await stateOf(shared);
     expect(state.status).toBe('paused');
-    expect(state.skipUntil).toBeUndefined();
+    expect(state.skippedOccurrences).toEqual([state.nextFireAt!]);
   });
 
   it('applies to the schedule as the other engine left it when the revision was not named', async () => {
@@ -61,7 +76,7 @@ describe('skipping the next run while another engine changes the schedule', () =
 
     const state = await stateOf(shared);
     expect(state.cronExpression).toBe('*/5 * * * *');
-    expect(state.skipUntil).toBe(state.nextFireAt ?? undefined);
+    expect(state.skippedOccurrences).toEqual([state.nextFireAt!]);
     // The update's change; a skip is bookkeeping and leaves the revision alone.
     expect(state.revision).toBe(2);
   });
@@ -86,7 +101,7 @@ describe('skipping a named occurrence while another engine fires it', () => {
     expect((failure as ScheduleOccurrenceNotNextError).nextOccurrence).toBe(occurrence + MINUTE);
     const state = await stateOf(shared);
     expect(state.lastFireAt).toBe(occurrence);
-    expect(state.skipUntil).toBeUndefined();
+    expect(state.skippedOccurrences).toBeUndefined();
   });
 });
 
@@ -283,7 +298,7 @@ describe('skipping the next run while another engine fires it (tick parked, skip
     await hold.reached;
     await engineA.skipNextScheduleOccurrence(SCHEDULE_ID);
     const skipped = await stateOf(shared);
-    expect(skipped.skipUntil).toBe(first);
+    expect(skipped.skippedOccurrences).toEqual([first]);
     hold.release();
     await ticking;
     await drainEngine();
@@ -294,7 +309,7 @@ describe('skipping the next run while another engine fires it (tick parked, skip
     expect(state.currentWorkflowId).toBeUndefined();
     expect(state.lastFireAt).toBeUndefined();
     expect(state.nextFireAt).toBe(first + MINUTE);
-    expect(state.skipUntil).toBeUndefined();
+    expect(state.skippedOccurrences).toBeUndefined();
   });
 });
 
@@ -319,7 +334,7 @@ describe('skipping the next run while another engine catches up (backfill write 
     const state = await stateOf(shared);
     expect(state.lastFireAt).toBe(first + 2 * MINUTE);
     expect(state.nextFireAt).toBe(first + 3 * MINUTE);
-    expect(state.skipUntil).toBeUndefined();
+    expect(state.skippedOccurrences).toBeUndefined();
     expect(await listRunningWorkflowIds(engineA)).toHaveLength(2);
   });
 });
@@ -340,7 +355,7 @@ describe('skipping the next run while another engine counts missed fires (late w
     const state = await stateOf(shared);
     expect(state.missedFireCount).toBe(4);
     expect(state.nextFireAt).toBe(first + 4 * MINUTE);
-    expect(state.skipUntil).toBe(first + 4 * MINUTE);
+    expect(state.skippedOccurrences).toEqual([first + 4 * MINUTE]);
   });
 });
 

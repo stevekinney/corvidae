@@ -40,12 +40,33 @@ export type ToggleProps = {
    */
   description?: string;
   /**
+   * Whether `description` is drawn. Set `false` for a description that only a screen reader needs,
+   * such as the consequence of flipping a switch whose reason the page already says in words: it
+   * stays wired into `aria-describedby` and is visually hidden.
+   * @default true
+   */
+  descriptionVisible?: boolean;
+  /**
+   * Where `description` sits. `inline` is on the label's line, for a few words ("Defined in
+   * workflows/release-notes.json"). `below` stacks it under the label, with the switch beside both,
+   * for a sentence that explains what the switch does.
+   * @default "inline"
+   */
+  descriptionPlacement?: 'inline' | 'below';
+  /**
    * Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:
    * `aria-disabled`, still focusable, ignoring the press, and described by the region's reason.
    * It returns by itself when the region stops being stale.
    * @default false
    */
   mutating?: boolean;
+  /**
+   * Words that follow the visible label in the accessible name only, such as the thing the switch
+   * belongs to ("Daily summary schedule" makes the name "Active, Daily summary schedule"). The
+   * visible label stays first, so the name keeps WCAG 2.5.3 (Label in Name). The name is then the
+   * switch's `aria-label`, written as one string so every platform reads it alike.
+   */
+  nameDetail?: string;
   /**
    * Whether the label is visibly rendered. Set `false` for icon-only or
    * inline contexts — it stays the accessible name.

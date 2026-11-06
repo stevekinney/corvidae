@@ -139,7 +139,14 @@
   {/if}
 {/snippet}
 
-<div class={classNames('cinder-page-header', className)} {...rest}>
+<div
+  class={classNames(
+    'cinder-page-header',
+    createAction && !actions && 'cinder-page-header--create-only',
+    className,
+  )}
+  {...rest}
+>
   {#if breadcrumbs}
     <div class="cinder-page-header__breadcrumbs">
       {@render breadcrumbs()}

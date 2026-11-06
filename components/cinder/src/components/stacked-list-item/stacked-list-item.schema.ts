@@ -48,6 +48,11 @@ const schema = {
       description:
         'Line two as text, shown as a tooltip over line two, which ends in an ellipsis when it is long.\nSet it to the same text the `meta` (or `description`) snippet renders.',
     },
+    wrapMeta: {
+      type: 'boolean',
+      description:
+        'Lets line two wrap onto more lines instead of ending in an ellipsis, so a control in it (a "View\npayload" link after a sentence about why a task failed) is never cut off and can always be\npressed. Default `false`.',
+    },
     error: {
       type: 'string',
       description:
@@ -130,6 +135,12 @@ const schema = {
         name: 'description',
         reason: 'function-or-snippet',
         description: 'Secondary description below the title.',
+      },
+      {
+        name: 'detail',
+        reason: 'function-or-snippet',
+        description:
+          "A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is\never cut. A schedule row on a phone puts the reason it won't run first and the cadence last\non it; the cadence is the part a narrow screen can lose, so it is the last thing the line\nsays. It starts under the title, and is not drawn on a row with `details`.",
       },
       {
         name: 'details',

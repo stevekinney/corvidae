@@ -444,9 +444,9 @@ function collectMissedScheduleTicks(
  * is still the schedule's current one ends the section: the caller waits for it with the
  * serialization released and comes back through {@link resumeScheduleTimer}.
  *
- * An occurrence a person skipped after this tick planned (`skipUntil` on the state the section
- * holds, which a resumed section reads again) starts no run (COR-1829). What the tick missed is
- * written with the first write it makes, so a skipped first occurrence hands it on.
+ * An occurrence a person skipped after this tick planned (in `skippedOccurrences` on the state the
+ * section holds, which a resumed section reads again) starts no run (COR-1829). What the tick missed
+ * is written with the first write it makes, so a skipped first occurrence hands it on.
  */
 async function processScheduleTimerOccurrences(
   internals: EngineInternals,

@@ -11,6 +11,7 @@ import { HttpClientError } from '@lostgradient/weft';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
 import {
+  anyScopeReason,
   AUTHORIZATION_SCOPES,
   isForbidden,
   isUnauthorized,
@@ -325,6 +326,15 @@ describe('scopeReason', () => {
 
   test('formats zero scopes deterministically', () => {
     expect(scopeReason()).toBe('Requires ');
+  });
+});
+
+describe('anyScopeReason', () => {
+  test('says a capability is opened by any one of the scopes, joined with "or"', () => {
+    expect(anyScopeReason('system:admin')).toBe('Requires system:admin');
+    expect(anyScopeReason('system:admin', 'system:read')).toBe(
+      'Requires system:admin or system:read',
+    );
   });
 });
 

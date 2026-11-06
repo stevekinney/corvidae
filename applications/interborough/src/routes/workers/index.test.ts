@@ -33,7 +33,7 @@ import { realClient, ScriptedFetch } from './workers-route-test-support.test-sup
 
 let scripted: ScriptedFetch | undefined;
 
-const IN_PROCESS_SENTENCE = 'This server runs its work in-process';
+const EMPTY_TITLE = 'No workers connected';
 
 function happyDomAPI(): DetachedWindowAPI {
   if (!(window instanceof Window)) {
@@ -94,7 +94,7 @@ describe('Workers route — fault title mapping', () => {
     };
     try {
       const view = await renderWorkersRoute();
-      await view.findByText(IN_PROCESS_SENTENCE);
+      await view.findByText(EMPTY_TITLE);
       view.unmount();
       router.navigate('/health/workers?tab=queues');
       await act();
@@ -104,7 +104,7 @@ describe('Workers route — fault title mapping', () => {
     }
   });
 
-  test('a 401 on the Workers tab shows "Not authorized", not the internal-fault title', async () => {
+  test('a 401 on the Workers page is the failed state with the server’s own words, not the internal-fault title', async () => {
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethodError(
       'weft.workers.list',
@@ -128,8 +128,12 @@ describe('Workers route — fault title mapping', () => {
 
     const { findByText, queryByText } = await renderWorkersRoute();
 
-    expect(await findByText('Not authorized')).not.toBeNull();
-    expect(await findByText('authentication required')).not.toBeNull();
+    expect(await findByText('Couldn’t load workers')).not.toBeNull();
+    expect(
+      await findByText(
+        'The server answered with an error (401): authentication required. Workers keep running while this page is down.',
+      ),
+    ).not.toBeNull();
     // The bug this test guards against: the title must not fall back to the
     // `internal` treatment's title for a fault that classified as something
     // else.
@@ -137,6 +141,7 @@ describe('Workers route — fault title mapping', () => {
   });
 
   test('a 401 on the Task queues tab shows "Not authorized", not the internal-fault title', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethod('weft.workers.list', { items: [], deployments: [] });
     scripted.routeJsonRpcMethodError(

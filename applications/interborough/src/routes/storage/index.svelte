@@ -8,19 +8,17 @@
    */
   import { untrack } from 'svelte';
 
-  import { EmptyState, PageHeader } from '@lostgradient/cinder';
+  import { EmptyState } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
 
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { STORAGE_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
-  import { getHostPaths } from '../../lib/host-paths.ts';
-  import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, scopeReason } from '../../lib/scopes.svelte.ts';
+  import HealthFrame from '../health/health-frame.svelte';
   import { storageQueryKeys } from './queries.ts';
-  import StorageBackend from './storage-backend.svelte';
   import StorageExplorer from './storage-explorer.svelte';
+  import StorageWarning from './storage-warning.svelte';
 
   const client = getClient();
   const principalStore = getPrincipalStore();
@@ -45,40 +43,30 @@
     }),
     undefined,
   );
-
-  // Where the host keeps its state, for the line under the title. A host that cannot say leaves the line bare.
-  const pathsQuery = createQuery(
-    () => ({
-      queryKey: queryKeys.hostPaths(),
-      queryFn: ({ signal }) => getHostPaths({ signal }),
-      enabled: untrack(() => hasStorageAdmin),
-      retry: false,
-    }),
-    undefined,
-  );
 </script>
 
-<div class="weft-storage-route">
-  <PageHeader title={STORAGE_COPY.title} description={STORAGE_COPY.description} />
-  {#if hasStorageAdmin}
-    <StorageBackend
-      paths={pathsQuery.data}
-      capabilities={capabilitiesQuery.data}
-      loading={capabilitiesQuery.isPending}
-      error={capabilitiesQuery.error}
-      onRetry={() => void capabilitiesQuery.refetch()}
-    />
-  {/if}
+<HealthFrame active="storage">
+  <div class="weft-storage-route">
+    {#if !hasStorageAdmin}
+      <EmptyState
+        kind="first-use"
+        title="Storage access requires storage:admin"
+        description={scopeReason('storage:admin')}
+      >
+        {#snippet icon()}<Lock aria-hidden="true" size={22} />{/snippet}
+      </EmptyState>
+    {:else}
+      <StorageWarning />
+      <StorageExplorer {client} conditionalBatch={capabilitiesQuery.data?.conditionalBatch} />
+    {/if}
+  </div>
+</HealthFrame>
 
-  {#if !hasStorageAdmin}
-    <EmptyState
-      kind="first-use"
-      title="Storage access requires storage:admin"
-      description={scopeReason('storage:admin')}
-    >
-      {#snippet icon()}<Lock aria-hidden="true" size={22} />{/snippet}
-    </EmptyState>
-  {:else}
-    <StorageExplorer {client} conditionalBatch={capabilitiesQuery.data?.conditionalBatch} />
-  {/if}
-</div>
+<style>
+  .weft-storage-route {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-4);
+    min-width: 0;
+  }
+</style>

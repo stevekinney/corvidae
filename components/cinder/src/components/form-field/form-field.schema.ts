@@ -99,6 +99,12 @@ const schema = {
         description:
           'Rendered beside the control on the same row, such as a Try again button after a failed test. The control takes the room the trailing content leaves.',
       },
+      {
+        name: 'warningAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the warning inside the same paragraph, such as a link to fix what it says ("Connect a provider").',
+      },
     ],
   },
 } satisfies ComponentSchema;

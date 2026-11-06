@@ -71,6 +71,11 @@ export class ConnectionMonitor {
    * own then; `retryNow()` starts the count again.
    */
   stopped = $state(false);
+  /**
+   * Whether the page on screen draws the connection banner itself, under its own header, so the
+   * shell leaves it out (a list page that keeps its heading in every state, such as Schedules).
+   */
+  bannerDrawnByPage = $state(false);
 
   readonly #probe: () => Promise<unknown>;
   readonly #onRecovered: (() => void) | undefined;
@@ -166,6 +171,17 @@ export class ConnectionMonitor {
     };
   }
 
+  /**
+   * Says the page on screen draws the connection banner itself, and gives back the call that takes
+   * the claim away when the page goes. Call it from an effect, so the claim ends with the page.
+   */
+  claimBanner(): () => void {
+    this.bannerDrawnByPage = true;
+    return () => {
+      this.bannerDrawnByPage = false;
+    };
+  }
+
   #scheduleProbe(): void {
     if (this.#disposed || this.#timer !== undefined) return;
     if (this.attempt >= CONNECTION_MAX_ATTEMPTS) {
@@ -221,11 +237,32 @@ export class ConnectionMonitor {
 
 const CONNECTION_CONTEXT_KEY = Symbol('interborough-connection');
 
+/** What a page reads of the connection: whether it holds, what the banner counts, and the way back. */
+export type Connection = Pick<
+  ConnectionMonitor,
+  | 'unreachable'
+  | 'lastHealthyAt'
+  | 'browserOffline'
+  | 'stopped'
+  | 'attempt'
+  | 'retryInSeconds'
+  | 'bannerDrawnByPage'
+  | 'claimBanner'
+  | 'retryNow'
+>;
+
 /** A monitor that never reports a problem, for a view rendered without a shell (a test harness). */
 const REACHABLE = {
   unreachable: false,
   lastHealthyAt: 0,
-} as const satisfies Pick<ConnectionMonitor, 'unreachable' | 'lastHealthyAt'>;
+  browserOffline: false,
+  stopped: false,
+  attempt: 0,
+  retryInSeconds: undefined,
+  bannerDrawnByPage: false,
+  claimBanner: () => () => {},
+  retryNow: async () => {},
+} as const satisfies Connection;
 
 /** Provides the shell's monitor to everything below it. */
 export function provideConnection(monitor: ConnectionMonitor): ConnectionMonitor {
@@ -234,6 +271,6 @@ export function provideConnection(monitor: ConnectionMonitor): ConnectionMonitor
 }
 
 /** Reads the shell's monitor, or a monitor that reports no problem when there is no shell. */
-export function getConnection(): Pick<ConnectionMonitor, 'unreachable' | 'lastHealthyAt'> {
+export function getConnection(): Connection {
   return getContext<ConnectionMonitor | undefined>(CONNECTION_CONTEXT_KEY) ?? REACHABLE;
 }

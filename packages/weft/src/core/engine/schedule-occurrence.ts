@@ -107,9 +107,44 @@ export function findFiringScheduleOccurrence(state: CadenceSource, fromAt: numbe
 }
 
 /**
- * Whether a person asked to skip the occurrence at `at` ({@link ScheduleState.skipUntil}): that one
- * occurrence, and no other, so a skip never takes an earlier occurrence a tick is still owed.
+ * Whether a person asked to skip the occurrence at `at` ({@link ScheduleState.skippedOccurrences}):
+ * that occurrence exactly, so a skip never takes an earlier occurrence a tick is still owed.
  */
-export function isSkippedOccurrence(state: Pick<ScheduleState, 'skipUntil'>, at: number): boolean {
-  return state.skipUntil === at;
+export function isSkippedOccurrence(
+  state: Pick<ScheduleState, 'skippedOccurrences'>,
+  at: number,
+): boolean {
+  return state.skippedOccurrences?.includes(at) === true;
+}
+
+/**
+ * Whether `at` is an instant the schedule's cadence starts a run at: a tick of the cadence (a cron
+ * time read in its zone, or a point on an interval's grid) that is not the end of a daylight-saving
+ * gap that starts nothing.
+ */
+export function isFiringScheduleOccurrence(state: CadenceSource, at: number): boolean {
+  if (!Number.isSafeInteger(at) || at < 1) return false;
+  if (getNextScheduleOccurrence(state, at - 1) !== at) return false;
+  return findFiringScheduleOccurrence(state, at) === at;
+}
+
+/**
+ * `state` skipping exactly `occurrences`, kept ascending and without repeats, or without the field
+ * when there are none ({@link ScheduleState.skippedOccurrences} is absent when nothing is skipped).
+ */
+export function withSkippedOccurrences(
+  state: ScheduleState,
+  occurrences: Iterable<number>,
+): ScheduleState {
+  const { skippedOccurrences: _replaced, ...rest } = state;
+  const sorted = [...new Set(occurrences)].toSorted((left, right) => left - right);
+  return sorted.length === 0 ? rest : { ...rest, skippedOccurrences: sorted };
+}
+
+/** `state` without the skipped occurrences before `from`, which the schedule has moved past. */
+export function withSkipsFrom(state: ScheduleState, from: number): ScheduleState {
+  return withSkippedOccurrences(
+    state,
+    (state.skippedOccurrences ?? []).filter((at) => at >= from),
+  );
 }

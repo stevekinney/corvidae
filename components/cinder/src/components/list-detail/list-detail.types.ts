@@ -118,6 +118,13 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   pushBelow?: number;
   /**
+   * Width in pixels of the component below which, down to `pushBelow`, the two panes are shown one
+   * above the other, the detail under the list, instead of side by side. The default `0` never
+   * stacks them: the panes sit side by side until `pushBelow` and show one at a time under it.
+   * @default 0
+   */
+  stackBelow?: number;
+  /**
    * Removes the detail pane's inner padding, for a detail view that lays out its own header, body
    * and footer edge to edge (an open chat, a table, a code frame). In the stacked layout the open
    * detail also fills the height the component is given, so what it docks at its bottom edge, such as
@@ -130,6 +137,12 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    * @default 280
    */
   defaultListWidth?: number;
+  /**
+   * Widest width in pixels the divider can give the list pane, and the most a remembered or default
+   * width can be. Raise it for a list that is a table, whose columns need more than a list of rows.
+   * @default 560
+   */
+  maximumListWidth?: number;
   /**
    * Label of the Back button shown above the detail below `pushBelow`.
    * @default 'Back'

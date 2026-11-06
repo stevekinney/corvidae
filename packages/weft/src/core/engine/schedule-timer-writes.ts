@@ -9,7 +9,7 @@
 import type { BatchOperation } from '@lostgradient/storage';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
-import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
+import { getNextScheduleOccurrence, withSkippedOccurrences } from './schedule-occurrence.ts';
 import {
   type LoadedScheduleState,
   loadScheduleState,
@@ -56,7 +56,7 @@ export function advanceScheduleTimerProgress(
  * Whether the schedule is still as this tick left it: active, at the `revision` the tick holds,
  * with the `nextFireAt` and `lastFireAt` it holds (COR-1925: another tick that fired the occurrence
  * a backfill is catching up on moves `lastFireAt` before it moves `nextFireAt`). Another process's pause, update or cancel moves the revision,
- * and another process's timer tick moves `nextFireAt`. A run now, a skip next and a clearing of
+ * and another process's timer tick moves `nextFireAt`. A run now, a skip or unskip and a clearing of
  * the current run move neither: what they recorded is carried into the tick's write
  * ({@link carryConcurrentRecords}).
  */
@@ -110,8 +110,8 @@ export async function persistScheduleTimerState(
 
 /**
  * `ours`, the state the tick decided from `base`, with what another process recorded on the same
- * cadence meanwhile (`theirs`) carried in (COR-1829): the slot, queue, overlap count and skip that a
- * run now, a skip next, or the end of a run change without moving the cadence. Each field takes
+ * cadence meanwhile (`theirs`) carried in (COR-1829): the slot, queue, overlap count and skips that
+ * a run now, a skip or its undoing, or the end of a run change without moving the cadence. Each field takes
  * whichever side changed it from `base`; when both did:
  *
  * - A run they recorded stays the current run: it is never written over, and a run this tick
@@ -119,8 +119,9 @@ export async function persistScheduleTimerState(
  *   ended) takes the run this tick started.
  * - The queue keeps their entries, without the ones this tick started, followed by the ones it added.
  * - The overlap counts add up.
- * - A skip they recorded for an occurrence this tick has already passed without honoring is
- *   dropped (COR-1985): it named that occurrence, which was not skipped, and carrying it onto the
+ * - The skipped occurrences merge: what they skipped or took back since `base` is applied to ours
+ *   (COR-2018). A skip they recorded for an occurrence this tick has already passed without honoring
+ *   is dropped (COR-1985): it named that occurrence, which was not skipped, and carrying it onto the
  *   next one would skip a run nobody chose.
  */
 export function carryConcurrentRecords(
@@ -128,24 +129,22 @@ export function carryConcurrentRecords(
   base: ScheduleState,
   theirs: ScheduleState,
 ): ScheduleState {
-  const { currentWorkflowId: _current, lastSkippedAt: _skipped, skipUntil: _skip, ...rest } = ours;
+  const { currentWorkflowId: _current, lastSkippedAt: _skipped, ...rest } = ours;
   const currentWorkflowId = carriedCurrentRun(ours, base, theirs);
   const lastSkippedAt =
     ours.lastSkippedAt === base.lastSkippedAt
       ? theirs.lastSkippedAt
       : Math.max(ours.lastSkippedAt ?? 0, theirs.lastSkippedAt ?? 0);
-  const skipUntil =
-    theirs.skipUntil === base.skipUntil
-      ? ours.skipUntil
-      : carriedSkip(ours, base, theirs.skipUntil);
-  return {
-    ...rest,
-    ...(currentWorkflowId !== undefined && { currentWorkflowId }),
-    queuedRuns: carriedQueue(ours, base, theirs),
-    skippedCount: theirs.skippedCount + ours.skippedCount - base.skippedCount,
-    ...(lastSkippedAt !== undefined && { lastSkippedAt }),
-    ...(skipUntil !== undefined && { skipUntil }),
-  };
+  return withSkippedOccurrences(
+    {
+      ...rest,
+      ...(currentWorkflowId !== undefined && { currentWorkflowId }),
+      queuedRuns: carriedQueue(ours, base, theirs),
+      skippedCount: theirs.skippedCount + ours.skippedCount - base.skippedCount,
+      ...(lastSkippedAt !== undefined && { lastSkippedAt }),
+    },
+    carriedSkips(ours, base, theirs),
+  );
 }
 
 function carriedCurrentRun(
@@ -183,27 +182,25 @@ function carriedQueue(
 }
 
 /**
- * The skip another process recorded, as this tick's write carries it. The tick planned without it,
- * so an occurrence at or before it that the tick has already accounted for (fired it: `lastFireAt`;
- * or moved past it: `nextFireAt`) was not skipped. The skip named that occurrence, so it is dropped
+ * The skipped occurrences this tick's write carries: ours, with the skips another process added
+ * since `base` and without the ones it took back. The tick planned without what they added, so an
+ * added occurrence at or before one the tick has already accounted for (fired it: `lastFireAt`; or
+ * moved past it: `nextFireAt`) was not skipped. The skip named that occurrence, so it is dropped
  * rather than moved onto the next one (COR-1985): a person who chose to skip one run did not choose
  * to skip the one after it.
  */
-function carriedSkip(
-  ours: ScheduleState,
-  base: ScheduleState,
-  skipUntil: number | undefined,
-): number | undefined {
-  if (skipUntil === undefined) return undefined;
-  if (
-    ours.nextFireAt !== null &&
-    ours.nextFireAt !== base.nextFireAt &&
-    skipUntil < ours.nextFireAt
-  ) {
-    return undefined;
-  }
-  if (ours.lastFireAt !== undefined && skipUntil <= ours.lastFireAt) return undefined;
-  return skipUntil;
+function carriedSkips(ours: ScheduleState, base: ScheduleState, theirs: ScheduleState): number[] {
+  const baseSkips = new Set(base.skippedOccurrences);
+  const theirSkips = new Set(theirs.skippedOccurrences);
+  const added = [...theirSkips].filter((at) => !baseSkips.has(at));
+  const takenBack = new Set([...baseSkips].filter((at) => !theirSkips.has(at)));
+  const passed = (at: number): boolean =>
+    (ours.nextFireAt !== null && ours.nextFireAt !== base.nextFireAt && at < ours.nextFireAt) ||
+    (ours.lastFireAt !== undefined && at <= ours.lastFireAt);
+  return [
+    ...(ours.skippedOccurrences ?? []).filter((at) => !takenBack.has(at)),
+    ...added.filter((at) => !passed(at)),
+  ];
 }
 
 /**

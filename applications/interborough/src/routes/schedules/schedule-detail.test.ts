@@ -11,6 +11,7 @@ import { HttpClient } from '@lostgradient/weft';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
+import { router } from '../../lib/router.svelte.ts';
 import ScheduleDetailHarness from './schedule-detail-test-harness.test-harness.svelte';
 
 /**
@@ -89,7 +90,7 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, getByTestId, getByText } = render(ScheduleDetailHarness, {
+      const { getByRole, getByTestId, queryByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
@@ -98,33 +99,36 @@ describe('ScheduleDetail', () => {
         expect(getByRole('heading', { level: 1, name: 'Nightly rollup' })).not.toBeNull(),
       );
       expect(document.body.textContent).not.toContain('nightly-rollup');
-      // What it starts, and the cadence in words with its zone, in one sentence beside its status.
-      const status = getByTestId('schedule-status-line');
-      expect(status.textContent).toContain('inventory-sync-sweep');
-      expect(status.textContent).toContain('every day at 02:00');
-      expect(status.textContent).toContain('in America/Los Angeles');
-      expect(status.querySelector('[data-status-word]')?.getAttribute('data-status-word')).toBe(
-        'Scheduled',
+      // What it runs and when, in one sentence: the workflow linked, and the cadence in words.
+      const sentence = getByTestId('schedule-status-line');
+      expect(sentence.textContent).toContain('Runs Inventory sync sweep');
+      expect(sentence.textContent).toContain('every day at');
+      expect(sentence.querySelector('a')?.getAttribute('href')).toBe(
+        '/workflows/inventory-sync-sweep',
       );
-      // The details: the workflow, the zone, the overlap line (its consequence in the title), and
-      // the rule for the worker that runs it.
-      const rail = getByTestId('schedule-rail');
-      expect(within(rail).getByText('Workflow')).not.toBeNull();
-      expect(getByTestId('schedule-rail-zone').textContent).toBe('America/Los Angeles');
-      expect(getByTestId('schedule-overlap').textContent).toContain(
-        'Queues a fire if the previous run is still going',
-      );
+      // The one status word is beside the name, in the heading row.
+      expect(
+        document
+          .querySelector('.cinder-page-header [data-status-word]')
+          ?.getAttribute('data-status-word'),
+      ).toBe('Active');
+      // The details card: what runs, when (in the form's words), and how it behaves; no callout.
+      const card = within(getByTestId('schedule-details'));
+      expect(card.getByText('What runs')).not.toBeNull();
+      expect(card.getByText('Every day')).not.toBeNull();
+      expect(card.getByText('Pacific time')).not.toBeNull();
+      expect(getByTestId('schedule-overlap').textContent).toContain('Queue this one');
       expect(getByTestId('schedule-overlap').getAttribute('title')).toMatch(
         /Queue can grow unbounded during outages/,
       );
-      expect(within(rail).getByText('Skips the fires it missed')).not.toBeNull();
-      expect(getByText('Worker version for scheduled runs')).not.toBeNull();
+      expect(card.getByText('Don’t catch up on missed runs')).not.toBeNull();
+      expect(queryByText('Worker version for scheduled runs')).toBeNull();
     } finally {
       await server.stop();
     }
   });
 
-  test('lists the next runs in the schedule’s own zone, with the zone named', async () => {
+  test('lists the next three runs in the viewer’s zone, farthest first, under a note that names the zone', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -141,12 +145,17 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'la-morning' },
       });
 
-      const list = await waitFor(() => getByTestId('schedule-next-fires'));
-      const times = Array.from(list.querySelectorAll('time'));
-      expect(times).toHaveLength(5);
-      // Every run is 09:00 on the Los Angeles clock, whatever zone this machine is in, and says so.
-      for (const time of times) expect(time.textContent).toMatch(/9:00\s?AM P[SD]T/);
-      expect(getByTestId('schedule-zone').textContent).toContain('America/Los Angeles');
+      const list = await waitFor(() => getByTestId('schedule-runs'));
+      const times = Array.from(list.querySelectorAll('li[data-cinder-tone="pending"] time'));
+      expect(times).toHaveLength(3);
+      for (const time of times) expect(time.textContent).toMatch(/\d{1,2}:\d{2}\s?[AP]M/);
+      // Farthest first, so the nearest sits against the Now marker.
+      const stamps = times.map((time) => Date.parse(time.getAttribute('datetime') ?? ''));
+      expect(stamps).toEqual(stamps.toSorted((first, second) => second - first));
+      // The note under Runs says which zone the page reads times in, the viewer's.
+      expect(getByTestId('schedule-zone').textContent).toContain(
+        'Upcoming above, past below · times in',
+      );
     } finally {
       await server.stop();
     }
@@ -177,7 +186,7 @@ describe('ScheduleDetail', () => {
     }
   });
 
-  test('the actions menu copies the identifier, which no page shows', async () => {
+  test('the actions menu holds one item, a danger Delete schedule, and no identifier is on the page', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -187,58 +196,18 @@ describe('ScheduleDetail', () => {
       input: { warehouseId: 'wh-main' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    const written: string[] = [];
-    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: (text: string) => (written.push(text), Promise.resolve()) },
-    });
 
     try {
-      const { getByRole } = render(ScheduleDetailHarness, {
+      const { getByRole, getAllByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
       await fireEvent.click(await waitFor(() => getByRole('button', { name: 'More actions' })));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy ID' })));
-
-      await waitFor(() => expect(written).toEqual(['nightly-rollup']));
+      await waitFor(() => expect(getAllByRole('menuitem')).toHaveLength(1));
+      const item = getByRole('menuitem', { name: 'Delete schedule' });
+      expect(item.getAttribute('data-cinder-variant') ?? item.className).toContain('danger');
+      expect(document.body.textContent).not.toContain('nightly-rollup');
     } finally {
-      if (original) Object.defineProperty(navigator, 'clipboard', original);
-      else Reflect.deleteProperty(navigator, 'clipboard');
-      await server.stop();
-    }
-  });
-
-  test('the actions menu copies the identifier, which no page shows', async () => {
-    const server = await startLiveSourceTestServer();
-    await server.engine.schedule({
-      workflow: 'inventory-sync-sweep',
-      id: 'nightly-rollup',
-      description: 'Nightly rollup',
-      cron: '0 2 * * *',
-      input: { warehouseId: 'wh-main' },
-    });
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    const written: string[] = [];
-    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: (text: string) => (written.push(text), Promise.resolve()) },
-    });
-
-    try {
-      const { getByRole } = render(ScheduleDetailHarness, {
-        props: { client, id: 'nightly-rollup' },
-      });
-
-      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'More actions' })));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy ID' })));
-
-      await waitFor(() => expect(written).toEqual(['nightly-rollup']));
-    } finally {
-      if (original) Object.defineProperty(navigator, 'clipboard', original);
-      else Reflect.deleteProperty(navigator, 'clipboard');
       await server.stop();
     }
   });
@@ -267,15 +236,24 @@ describe('ScheduleDetail', () => {
     try {
       // Each mount reads the rows the engine persisted, as a page reload does.
       for (let mount = 0; mount < 2; mount += 1) {
-        const { findByTestId, findAllByTestId, unmount } = render(ScheduleDetailHarness, {
+        const { findAllByText, findByRole, findByText, unmount } = render(ScheduleDetailHarness, {
           props: { client, id: 'missed-probe' },
         });
 
-        const count = await findByTestId('schedule-missed-count');
-        expect(count.textContent).toContain('3 missed');
-        const rows = await findAllByTestId('schedule-missed-row');
+        // The missed runs are the one status word of the heading, and once each among the past runs.
+        await waitFor(() =>
+          expect(
+            document
+              .querySelector('.cinder-page-header [data-status-word]')
+              ?.getAttribute('data-status-word'),
+          ).toBe('Missed runs · 3'),
+        );
+        // They are one band below Now, and open to each miss.
+        const band = await findByText(/^Missed \d+ times since /);
+        expect(band).not.toBeNull();
+        await fireEvent.click(await findByRole('button', { name: /Show each/ }));
+        const rows = await findAllByText(/^Missed · /);
         expect(rows.length).toBeGreaterThan(0);
-        expect(rows[0]?.textContent).toBe('Missed');
         unmount();
       }
     } finally {
@@ -295,12 +273,13 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText } = render(ScheduleDetailHarness, {
+      const { getByText, queryByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
-      await waitFor(() => expect(getByText('No runs yet')).not.toBeNull());
-      expect(getByText('Nothing is running')).not.toBeNull();
+      await waitFor(() => expect(getByText('No runs yet.')).not.toBeNull());
+      // A run that is going is said only while there is one.
+      expect(queryByText('Running now')).toBeNull();
     } finally {
       await server.stop();
     }
@@ -333,9 +312,9 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'queue-probe' },
       });
 
-      const rail = await waitFor(() => getByTestId('schedule-rail'));
+      const card = await waitFor(() => getByTestId('schedule-details'));
       const queue = await waitFor(() => {
-        const found = rail.querySelector('.ib-schedule__queue');
+        const found = card.querySelector('.ib-schedule-card__queue');
         expect(found).not.toBeNull();
         return found;
       });
@@ -400,15 +379,17 @@ describe('ScheduleDetail', () => {
     }, 'history-probe has a completed run');
 
     try {
-      const { getByRole } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'history-probe' },
       });
 
-      const table = await waitFor(() => getByRole('table', { name: /Runs this schedule started/ }));
-      const done = await waitFor(() => within(table).getAllByText('Done')[0]);
-      const link = done?.closest('tr')?.querySelector('a');
+      const list = await waitFor(() => getByTestId('schedule-runs'));
+      const done = await waitFor(() => within(list).getAllByText('Done')[0]);
+      const link = done?.closest('li[data-cinder-kind="run"]')?.querySelector('a');
       expect(link?.getAttribute('href')).toMatch(/^\/runs\//);
-      const hrefs = Array.from(table.querySelectorAll('tbody a'), (a) => a.getAttribute('href'));
+      const hrefs = Array.from(list.querySelectorAll('li[data-cinder-kind="run"] a'), (a) =>
+        a.getAttribute('href'),
+      );
       expect(new Set(hrefs).size).toBe(hrefs.length);
     } finally {
       await server.stop();
@@ -421,7 +402,7 @@ describe('ScheduleDetail', () => {
       workflow: 'inventory-sync-sweep',
       id: 'weekday-probe',
       description: 'Weekday probe',
-      cron: '0 9 * * 1-5',
+      cron: '*/7 9 * * 1-5',
       input: { warehouseId: 'wh-main' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
@@ -432,14 +413,14 @@ describe('ScheduleDetail', () => {
       });
 
       const sentence = await waitFor(() => getByTestId('schedule-status-line'));
-      expect(sentence.textContent).toContain('on cron 0 9 * * 1-5');
+      expect(sentence.textContent).toContain('on cron */7 9 * * 1-5');
       expect(
         Array.from(sentence.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
-      ).toContain('0 9 * * 1-5');
-      const rail = getByTestId('schedule-rail');
+      ).toContain('*/7 9 * * 1-5');
+      const card = getByTestId('schedule-details');
       expect(
-        Array.from(rail.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
-      ).toContain('0 9 * * 1-5');
+        Array.from(card.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
+      ).toContain('*/7 9 * * 1-5');
     } finally {
       await server.stop();
     }
@@ -472,16 +453,16 @@ describe('ScheduleDetail', () => {
     }, 'cancelled-probe has a cancelled run');
 
     try {
-      const { getByRole } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'cancelled-probe' },
       });
 
-      const table = await waitFor(() => getByRole('table', { name: /Runs this schedule started/ }));
+      const list = await waitFor(() => getByTestId('schedule-runs'));
       await waitFor(() =>
         expect(
-          within(table)
+          within(list)
             .getAllByText('Canceled')
-            .some((word) => word.closest('[data-status-word]') !== null),
+            .some((word) => word.closest('li[data-cinder-kind="run"]') !== null),
         ).toBe(true),
       );
     } finally {
@@ -507,14 +488,14 @@ describe('ScheduleDetail', () => {
     }, 'failing-probe has a failed run');
 
     try {
-      const { getByRole } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'failing-probe' },
       });
 
-      const table = await waitFor(() => getByRole('table', { name: /Runs this schedule started/ }));
-      await waitFor(() => expect(within(table).getAllByText('Failed').length).toBeGreaterThan(0));
-      const link = within(table).getAllByRole('link')[0];
-      if (link === undefined) throw new Error('expected a run link');
+      const list = await waitFor(() => getByTestId('schedule-runs'));
+      await waitFor(() => expect(within(list).getAllByText('Failed').length).toBeGreaterThan(0));
+      const link = list.querySelector<HTMLAnchorElement>('li[data-cinder-kind="run"] a');
+      if (link === null) throw new Error('expected a run link');
       await fireEvent.click(link);
       expect(window.location.pathname).toMatch(/^\/runs\//);
     } finally {
@@ -522,7 +503,7 @@ describe('ScheduleDetail', () => {
     }
   });
 
-  test('a paused schedule has no next runs and says so with a done empty state', async () => {
+  test('a paused schedule has no upcoming runs and says so', async () => {
     const server = await startLiveSourceTestServer();
     const handle = await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -535,19 +516,21 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText, queryByTestId } = render(ScheduleDetailHarness, {
+      const { getByText, queryByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'weekly-digest' },
       });
 
-      await waitFor(() => expect(getByText('Nothing is coming up')).not.toBeNull());
-      expect(queryByTestId('schedule-next-fires')).toBeNull();
-      expect(getByText(/This schedule is Paused/)).not.toBeNull();
+      await waitFor(() =>
+        expect(getByText('No upcoming runs while the schedule is paused.')).not.toBeNull(),
+      );
+      // Nothing is coming, so there is no Now marker to split the upcoming from the past.
+      expect(queryByText('Now')).toBeNull();
     } finally {
       await server.stop();
     }
   });
 
-  test('Skip the next one skips exactly that run, marks it, and takes the button away', async () => {
+  test('Skip on a later run skips exactly that run, crosses its time out, offers Undo in its place, and Undo takes the skip back', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -560,32 +543,51 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, getByTestId, queryByRole } = render(ScheduleDetailHarness, {
+      const { getAllByRole, getByRole, getByTestId, queryByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'skip-probe' },
       });
+      const struck = () =>
+        Array.from(
+          getByTestId('schedule-runs').querySelectorAll('li[data-cinder-tone="pending"] time'),
+          (time) => time.hasAttribute('data-cinder-struck'),
+        );
 
-      await fireEvent.click(
-        await waitFor(() => getByRole('button', { name: 'Skip the next one' })),
-      );
+      // Every upcoming run offers Skip; the middle one is the run after the next.
+      const skips = await waitFor(() => {
+        const found = getAllByRole('button', { name: /^Skip / });
+        expect(found).toHaveLength(3);
+        return found;
+      });
+      await fireEvent.click(skips[1]!);
 
       await waitFor(async () => {
         const schedule = await client.getSchedule('skip-probe');
-        expect(schedule?.skipUntil).toBeDefined();
+        expect(schedule?.skippedOccurrences).toHaveLength(1);
+        expect(schedule?.skippedOccurrences?.[0]).toBeGreaterThan(schedule?.nextFireAt ?? 0);
       });
-      const list = getByTestId('schedule-next-fires');
-      await waitFor(() =>
-        expect(
-          Array.from(list.querySelectorAll('li'), (item) => item.getAttribute('data-skipped')),
-        ).toEqual(['true', 'false', 'false', 'false', 'false']),
-      );
+      await waitFor(() => expect(struck()).toEqual([false, true, false]));
+      const list = getByTestId('schedule-runs');
       expect(within(list).getByText('Skipped')).not.toBeNull();
-      expect(queryByRole('button', { name: 'Skip the next one' })).toBeNull();
+      expect(getAllByRole('button', { name: /^Skip / })).toHaveLength(2);
+      const undo = getByRole('button', { name: /^Undo skipping / });
+      // Undo sits on the row only: the page raises no toast beside it.
+      expect(queryByRole('status', { name: /skipped/i })).toBeNull();
+
+      await fireEvent.click(undo);
+
+      await waitFor(async () => {
+        const schedule = await client.getSchedule('skip-probe');
+        expect(schedule?.skippedOccurrences).toBeUndefined();
+      });
+      await waitFor(() => expect(struck()).toEqual([false, false, false]));
+      expect(queryByRole('button', { name: /^Undo skipping / })).toBeNull();
+      expect(getAllByRole('button', { name: /^Skip / })).toHaveLength(3);
     } finally {
       await server.stop();
     }
   });
 
-  test('Skip the next one is refused, and says the schedule changed, when it moved on after the page read it', async () => {
+  test('Skip is refused, and says the schedule changed, when it moved on after the page read it', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -597,18 +599,18 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, findByTestId } = render(ScheduleDetailHarness, {
+      const { getAllByRole, findByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'stale-probe' },
       });
-      const skip = await waitFor(() => getByRole('button', { name: 'Skip the next one' }));
+      const skip = await waitFor(() => getAllByRole('button', { name: /^Skip / }).at(-1));
       // Another caller changes the cadence after the page read the schedule.
       await client.updateSchedule('stale-probe', { cron: '0 10 * * *' });
-      await fireEvent.click(skip);
+      await fireEvent.click(skip!);
 
       const notice = await findByTestId('schedule-notice');
       expect(notice.getAttribute('data-notice')).toBe('stale');
       const after = await client.getSchedule('stale-probe');
-      expect(after?.skipUntil).toBeUndefined();
+      expect(after?.skippedOccurrences).toBeUndefined();
     } finally {
       await server.stop();
     }
@@ -626,15 +628,15 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, findByTestId } = render(ScheduleDetailHarness, {
+      const { getByRole, findByText, findByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'run-now-probe' },
       });
 
       await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Run now' })));
 
-      const result = await findByTestId('schedule-run-now');
-      expect(result.getAttribute('data-outcome')).toBe('started');
-      expect(result.querySelector('a')?.getAttribute('href')).toMatch(/^\/runs\//);
+      // A toast says so, with a link to the run, and the run is one the engine started.
+      await findByText('Started Run now probe.');
+      expect(await findByRole('button', { name: 'Open run' })).not.toBeNull();
       const runs = await client.list({ scheduleId: 'run-now-probe', limit: 5 });
       expect(runs.items).toHaveLength(1);
     } finally {
@@ -655,14 +657,13 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, findByTestId } = render(ScheduleDetailHarness, {
+      const { getByRole, findByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'paused-run-now' },
       });
 
       await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Run now' })));
 
-      const started = await findByTestId('schedule-run-now');
-      expect(started.getAttribute('data-outcome')).toBe('started');
+      await findByText('Started Paused run now.');
     } finally {
       await server.stop();
     }
@@ -680,21 +681,27 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, getByTestId } = render(ScheduleDetailHarness, {
+      const { getByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
-      const toggle = await waitFor(() => getByRole('switch', { name: 'On' }));
+      const toggle = await waitFor(() =>
+        getByRole('switch', { name: 'Active, Nightly rollup schedule' }),
+      );
       expect(toggle.getAttribute('aria-checked')).toBe('true');
       expect(toggle.hasAttribute('data-changes')).toBe(true);
       await fireEvent.click(toggle);
       await waitFor(() =>
-        expect(getByRole('switch', { name: 'On' }).getAttribute('aria-checked')).toBe('false'),
+        expect(
+          getByRole('switch', { name: 'Active, Nightly rollup schedule' }).getAttribute(
+            'aria-checked',
+          ),
+        ).toBe('false'),
       );
       await waitFor(() => {
         expect(
-          getByTestId('schedule-status-line')
-            .querySelector('[data-status-word]')
+          document
+            .querySelector('.cinder-page-header [data-status-word]')
             ?.getAttribute('data-status-word'),
         ).toBe('Paused');
       });
@@ -702,19 +709,26 @@ describe('ScheduleDetail', () => {
       // The switch is held while the write settles, so it is pressed again once it is free.
       await waitFor(() =>
         expect(
-          requireElement(getByRole('switch', { name: 'On' }), HTMLButtonElement).disabled,
+          requireElement(
+            getByRole('switch', { name: 'Active, Nightly rollup schedule' }),
+            HTMLButtonElement,
+          ).disabled,
         ).toBe(false),
       );
-      await fireEvent.click(getByRole('switch', { name: 'On' }));
+      await fireEvent.click(getByRole('switch', { name: 'Active, Nightly rollup schedule' }));
       await waitFor(() =>
-        expect(getByRole('switch', { name: 'On' }).getAttribute('aria-checked')).toBe('true'),
+        expect(
+          getByRole('switch', { name: 'Active, Nightly rollup schedule' }).getAttribute(
+            'aria-checked',
+          ),
+        ).toBe('true'),
       );
     } finally {
       await server.stop();
     }
   });
 
-  test('the switch, Run now and Cancel are disabled when schedules:write is missing', async () => {
+  test('the switch, Run now and Delete schedule are disabled when schedules:write is missing', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -735,17 +749,20 @@ describe('ScheduleDetail', () => {
           requireElement(getByRole('button', { name: 'Run now' }), HTMLButtonElement).disabled,
         ).toBe(true);
       });
-      expect(requireElement(getByRole('switch', { name: 'On' }), HTMLButtonElement).disabled).toBe(
-        true,
-      );
+      expect(
+        requireElement(
+          getByRole('switch', { name: 'Active, Nightly rollup schedule' }),
+          HTMLButtonElement,
+        ).disabled,
+      ).toBe(true);
       // Skipping is a write too, so the button is not offered at all.
-      expect(queryByRole('button', { name: 'Skip the next one' })).toBeNull();
+      expect(queryByRole('button', { name: /^Skip / })).toBeNull();
     } finally {
       await server.stop();
     }
   });
 
-  test('cancelling requires confirming the dialog', async () => {
+  test('deleting asks first, names the schedule, and leaves for the list once it is done', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -757,23 +774,28 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole, getByTestId } = render(ScheduleDetailHarness, {
+      const { getByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
       await fireEvent.click(await waitFor(() => getByRole('button', { name: 'More actions' })));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Cancel/ })));
-
-      const dialog = await waitFor(() => getByRole('dialog'));
-      await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel schedule' }));
-
-      await waitFor(() =>
-        expect(
-          getByTestId('schedule-status-line')
-            .querySelector('[data-status-word]')
-            ?.getAttribute('data-status-word'),
-        ).toBe('Canceled'),
+      await fireEvent.click(
+        await waitFor(() => getByRole('menuitem', { name: 'Delete schedule' })),
       );
+
+      const dialog = await waitFor(() => getByRole('dialog', { name: 'Delete Nightly rollup?' }));
+      expect(dialog.textContent).toContain(
+        'It stops running and its upcoming runs are removed. Past runs stay on Runs. This can’t be undone.',
+      );
+      // Cancel is the dialog's secondary button, and Delete schedule is the destructive one.
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).not.toBeNull();
+      await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete schedule' }));
+
+      await waitFor(async () => {
+        const deleted = await client.getSchedule('nightly-rollup');
+        expect(deleted?.status).toBe('cancelled');
+      });
+      await waitFor(() => expect(router.pathname).toBe('/schedules'));
     } finally {
       await server.stop();
     }

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { fireEvent, render } from '@testing-library/svelte';
 
+import { router } from '../../lib/router.svelte.ts';
+
 import DiagnosticsView from './diagnostics-view.svelte';
 import type { StandardTaskDiagnosticItem, TaskDiagnosticsSummary } from './worker-catalog-types.ts';
 
@@ -243,5 +245,34 @@ describe('DiagnosticsView — grouped kinds', () => {
     });
 
     expect(getByText('No diagnostics for this worker')).not.toBeNull();
+  });
+});
+
+describe('DiagnosticsView — links in the evidence', () => {
+  test('a run and a worker open in the app on a plain click', async () => {
+    const { getByRole } = render(DiagnosticsView, {
+      props: {
+        items: [
+          item({
+            kind: 'stale-inflight',
+            workflowId: 'wf_abcdefghijklmnop',
+            operationId: 'op_one',
+            workerId: 'worker-7',
+            evidence: ['heartbeat missed for 90s'],
+          }),
+        ],
+        summary: { ...EMPTY_SUMMARY, staleInflight: 1 },
+        now: NOW,
+      },
+    });
+
+    expect(
+      await fireEvent.click(getByRole('link', { name: /open workflow wf_abcdefghijklmnop$/ })),
+    ).toBe(false);
+    expect(router.pathname).toBe('/runs/wf_abcdefghijklmnop');
+
+    expect(await fireEvent.click(getByRole('link', { name: /^Worker worker-7/ }))).toBe(false);
+    expect(router.pathname).toBe('/health/workers');
+    expect(window.location.search).toContain('worker=worker-7');
   });
 });

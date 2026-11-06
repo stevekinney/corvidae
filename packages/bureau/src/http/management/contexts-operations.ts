@@ -159,7 +159,13 @@ export const contextsDeleteOperation = defineOperation<
     }
     let report;
     try {
-      report = await host.contexts.delete(contextId, { incarnation: session.incarnation });
+      report = await host.contexts.delete(contextId, {
+        incarnation: session.incarnation,
+        // The log says who deleted the chat; a caller that names no owner leaves it unsaid.
+        ...(ownerOfPrincipal(principal) === undefined
+          ? {}
+          : { actor: ownerOfPrincipal(principal)! }),
+      });
     } catch (error) {
       // Admission closed while the delete waited for the thread's lease (COR-1986): the lifecycle
       // read above passed, and nothing was applied, as for a Bureau that was already closing.

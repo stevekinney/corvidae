@@ -12,7 +12,7 @@
    * @avoidWhen Communicating that a view has no data at all — use empty-state.
    * @related spinner, empty-state, progress
    */
-  export type { SkeletonProps, SkeletonVariant } from './skeleton.types.ts';
+  export type { SkeletonProps, SkeletonStatusMarker, SkeletonVariant } from './skeleton.types.ts';
 </script>
 
 <script lang="ts">
@@ -29,6 +29,9 @@
     lines = 1,
     variant = 'row',
     rows = 3,
+    statusMarker = 'bar',
+    statusColumn = true,
+    framed = true,
     dayBand = false,
     label,
     delay = 0,
@@ -84,11 +87,15 @@
     const whole = Math.trunc(Number(lines));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 1;
   });
-  const shape = $derived(variant === 'card' ? 'card' : variant === 'list' ? 'list' : 'row');
+  const shape = $derived(
+    variant === 'card' ? 'card' : variant === 'list' ? 'list' : variant === 'form' ? 'form' : 'row',
+  );
   const rowCount = $derived.by(() => {
     const whole = Math.trunc(Number(rows));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 3;
   });
+  /** How many fields a form placeholder draws: `rows`, which defaults to 3 for a list, is 2 here unless it was set. */
+  const formRows = $derived(rowCount);
   const grouped = $derived(lineCount > 1 || shape !== 'row' || stillLoadingThreshold !== undefined);
 
   const style = $derived(
@@ -127,16 +134,26 @@
       <VisuallyHidden role="status">{visible ? label : ''}</VisuallyHidden>
     {/if}
     {#if visible}
-      <div class="cinder-skeleton-list" aria-hidden="true">
+      <div
+        class="cinder-skeleton-list"
+        data-cinder-framed={framed ? undefined : 'false'}
+        aria-hidden="true"
+      >
         {#if dayBand}
           <div class="cinder-skeleton-day-band">
             <div class="cinder-skeleton cinder-skeleton-day-bar"></div>
           </div>
         {/if}
         {#each { length: rowCount } as _, index (index)}
-          <div class="cinder-skeleton-row">
+          <div
+            class="cinder-skeleton-row"
+            data-cinder-status-column={statusColumn ? undefined : 'none'}
+          >
             <div class="cinder-skeleton-row-status">
-              <div class="cinder-skeleton cinder-skeleton-status-bar"></div>
+              <div
+                class="cinder-skeleton cinder-skeleton-status-bar"
+                data-cinder-marker={statusMarker === 'dot' ? 'dot' : undefined}
+              ></div>
             </div>
             <div class="cinder-skeleton-row-text">
               <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
@@ -161,7 +178,13 @@
         {#if shape === 'card'}
           <div class="cinder-skeleton cinder-skeleton-heading"></div>
         {/if}
-        {#each { length: lineCount } as _, index (index)}
+        {#if shape === 'form'}
+          {#each { length: formRows } as _, index (index)}
+            <div class="cinder-skeleton cinder-skeleton-field-label"></div>
+            <div class="cinder-skeleton cinder-skeleton-field-control"></div>
+          {/each}
+        {/if}
+        {#each { length: shape === 'form' ? 0 : lineCount } as _, index (index)}
           <div
             class="cinder-skeleton"
             data-cinder-last={index === lineCount - 1 && lineCount > 1 && width === undefined

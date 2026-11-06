@@ -366,6 +366,16 @@
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
               "description": "Short visible text beside the label that describes the switch, such as the file that defines\nit (\"Defined in workflows/release-notes.json\"). It is wired into `aria-describedby`."
             },
+            "descriptionPlacement": {
+              "type": "string",
+              "description": "Where `description` sits. `inline` is on the label's line, for a few words (\"Defined in\nworkflows/release-notes.json\"). `below` stacks it under the label, with the switch beside both,\nfor a sentence that explains what the switch does.",
+              "enum": ["inline", "below"],
+              "default": "inline"
+            },
+            "descriptionVisible": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Whether `description` is drawn. Set `false` for a description that only a screen reader needs,\nsuch as the consequence of flipping a switch whose reason the page already says in words: it\nstays wired into `aria-describedby` and is visually hidden."
+            },
             "disabled": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Prevents interaction when true. Sets `disabled` attribute."
@@ -377,6 +387,10 @@
             "mutating": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, ignoring the press, and described by the region's reason.\nIt returns by itself when the region stops being stale."
+            },
+            "nameDetail": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Words that follow the visible label in the accessible name only, such as the thing the switch\nbelongs to (\"Daily summary schedule\" makes the name \"Active, Daily summary schedule\"). The\nvisible label stays first, so the name keeps WCAG 2.5.3 (Label in Name). The name is then the\nswitch's `aria-label`, written as one string so every platform reads it alike."
             },
             "readonly": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",

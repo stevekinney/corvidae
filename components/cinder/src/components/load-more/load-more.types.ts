@@ -1,3 +1,6 @@
+/** Where a LoadMore footer sits: centered on its own, or spread across the foot of a framed list. */
+export type LoadMoreVariant = 'centered' | 'footer';
+
 export type LoadMoreProps = {
   /** Called when the next page should be loaded. Caller flips `loading` and `hasMore`. */
   onLoadMore?: () => void | Promise<void>;
@@ -26,6 +29,11 @@ export type LoadMoreProps = {
   /** How many items exist in all; pairs with `loadedCount`. */
   totalCount?: number;
   /**
+   * What the count counts, said after it: "waiting tasks" gives "Showing 3 of 12 waiting tasks".
+   * Without it the footer reads "Showing 3 of 12".
+   */
+  countNoun?: string;
+  /**
    * What the list holds, in the plural, for the failure message: "runs" gives "Couldn’t load more
    * runs." @default "items"
    */
@@ -36,6 +44,22 @@ export type LoadMoreProps = {
    * are set.
    */
   errorMessage?: string;
+  /**
+   * Opens in the failed state: the footer says "Couldn’t load more {itemLabel}." with the count and
+   * offers the retry button, as if the last load had rejected. For a list whose own trigger (a
+   * table that loads as its end scrolls into view) made the request and it failed, so the footer
+   * can take over with the same retry any keyboard user can press. Pressing the button clears it,
+   * and a rejection sets it again.
+   * @default false
+   */
+  failed?: boolean;
+  /**
+   * Where the footer sits. `'centered'` puts the count, the message and the button in one centered
+   * row. `'footer'` is for the foot of a framed table or list: the count or message at the start
+   * and the button at the end, and a failure in the warning tone with its first sentence in bold.
+   * @default 'centered'
+   */
+  variant?: LoadMoreVariant;
   /** Politely announced when the end of the list is reached. @default "End of list" */
   endOfListMessage?: string;
   /** Maximum consecutive sentinel-triggered requests before auto-loading pauses. @default 5 */

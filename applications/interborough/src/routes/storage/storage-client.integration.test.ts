@@ -18,6 +18,7 @@ import {
   storageBatch,
   storageConditionalBatch,
   storageDelete,
+  storageEntry,
   storageGet,
   storagePut,
   storageScan,
@@ -138,6 +139,22 @@ describe('storage-client (integration, real server)', () => {
       expect(
         new TextDecoder().decode((await storageGet(connection, 'app:cas:key')) ?? new Uint8Array()),
       ).toBe('after');
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('entry reads exactly one key with its write time, and is null for a key that is not stored', async () => {
+    const server = await startLiveSourceTestServer();
+    try {
+      const connection = connectionFor(server);
+      await storagePut(connection, 'app:entry', new TextEncoder().encode('one'));
+      await storagePut(connection, 'app:entry-longer', new TextEncoder().encode('two'));
+
+      const entry = await storageEntry(connection, 'app:entry');
+      expect(entry?.key).toBe('app:entry');
+      expect(new TextDecoder().decode(entry?.value)).toBe('one');
+      expect(await storageEntry(connection, 'app:entr')).toBeNull();
     } finally {
       await server.stop();
     }

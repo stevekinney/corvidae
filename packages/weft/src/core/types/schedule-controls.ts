@@ -76,6 +76,12 @@ export type ScheduleTriggerResult =
   | { outcome: 'skipped'; blockingWorkflowId?: string };
 
 /**
+ * How many occurrences a schedule keeps skipped at once ({@link ScheduleMetadata.skippedOccurrences}).
+ * Skipping one more rejects until one has passed or been taken back.
+ */
+export const SCHEDULE_SKIPPED_OCCURRENCE_LIMIT = 100;
+
+/**
  * Options for {@link Engine.skipNextScheduleOccurrence} (COR-1985).
  *
  * @example
@@ -96,14 +102,42 @@ export type ScheduleTriggerResult =
  */
 export type ScheduleSkipOptions = Pick<ScheduleTransitionOptions, 'expectedRevision'> & {
   /**
-   * The occurrence, as milliseconds since the epoch, that the caller means to skip. A skip names
-   * the schedule's next run, which can change between the moment a person reads it and the moment
-   * the skip is written: a fire in between would otherwise make the skip take a different run than
-   * the one chosen. The occurrence is compared inside the schedule's guarded write with the next
-   * real run (the one {@link ScheduleSummary.skipUntil} reports once skipped), and when it is
-   * neither that run nor the one already skipped, the call rejects with
+   * The occurrence, as milliseconds since the epoch, that the caller means to skip: any upcoming
+   * run, the next or one after it. It must be an instant the cadence starts a run at, no earlier
+   * than the schedule's next real run (for a paused schedule, the first run after now, the one a
+   * resume would start from). A fire moves neither `revision` nor `status`, so the run a person
+   * chose can start between their read and this write; the occurrence is compared inside the
+   * schedule's guarded write, and when it is not an upcoming run the call rejects with
    * {@link ScheduleOccurrenceNotNextError} and writes nothing. Omitted, the skip takes whichever
    * run is next.
    */
   occurrence?: number;
+};
+
+/**
+ * Options for {@link Engine.unskipScheduleOccurrence}: the skipped occurrence to take back, and the
+ * revision the caller read.
+ *
+ * @example
+ * ```ts
+ * import { Engine, workflow, type ScheduleUnskipOptions } from '@lostgradient/weft';
+ *
+ * const engine = new Engine();
+ * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'ok'; }));
+ * await engine.schedule('report', null, '0 9 * * *', { id: 'daily-report' });
+ * await engine.skipNextScheduleOccurrence('daily-report');
+ * const [occurrence = 0] = (await engine.getSchedule('daily-report'))?.skippedOccurrences ?? [];
+ * const options: ScheduleUnskipOptions = { occurrence };
+ * await engine.unskipScheduleOccurrence('daily-report', options);
+ * engine[Symbol.dispose]();
+ * ```
+ */
+export type ScheduleUnskipOptions = Pick<ScheduleTransitionOptions, 'expectedRevision'> & {
+  /**
+   * The skipped occurrence to run after all, as milliseconds since the epoch: one of
+   * {@link ScheduleMetadata.skippedOccurrences}. One that has already passed cannot be taken back
+   * and rejects with {@link ScheduleOccurrenceNotNextError}; one that is upcoming and not skipped
+   * changes nothing.
+   */
+  occurrence: number;
 };

@@ -7,7 +7,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * A schedule belongs to the principal that created it. A caller reads and changes its own
  * schedules without any scope; `bureau.schedules:read` grants every owner's to `list`, `get`, and
  * `missed`, and `bureau.schedules:write` grants `pause`, `resume`, `cancel`, `update`, `skipnext`,
- * and `runnow`, and neither implies the other. A schedule the caller may not see, or change, is answered exactly as a
+ * `unskip`, and `runnow`, and neither implies the other. A schedule the caller may not see, or change, is answered exactly as a
  * missing one. The schedule of a workflow file belongs to the deployment's owner of record and to
  * its file: it is read here like any schedule, and a write to it is refused as if it did not
  * exist, because `bureau.workflows.*` is the only way to change it. `create` makes a schedule the
@@ -74,10 +74,12 @@ export type BureauSchedulesOperationHost = BureauOwnershipHost &
       | 'cancel'
       | 'update'
       | 'skipNext'
+      | 'unskip'
       | 'runNow'
       | 'missed'
       | 'agentName'
       | 'inputPreview'
+      | 'continuesChat'
       | 'blocker'
     > & {
       /** The owner of record of a schedule, or `undefined` when it is not a Bureau schedule. */
@@ -105,6 +107,8 @@ const scheduleViewSchema = z.object({
   agentName: z.string().nullable(),
   /** The start of the text each fire sends, at most 500 characters; `null` when the schedule sends none. */
   inputPreview: z.string().nullable(),
+  /** Whether every fire continues one chat; `false` when each fire is a fresh one, and for a workflow file's schedule. The chat's own id is never served. */
+  continuesChat: z.boolean(),
   workflowType: z.string(),
   description: z.string().nullable(),
   /** Set for a cron schedule, `null` for an interval one. */
@@ -118,11 +122,12 @@ const scheduleViewSchema = z.object({
   revision: z.number().int(),
   nextFireAt: z.string().nullable(),
   /**
-   * The fire a person asked to skip (`bureau.schedules.skipnext`), or `null` when none is. It is the
-   * next fire that would start a run, which is not always `nextFireAt`: in a time zone `nextFireAt`
-   * can be the end of a daylight-saving gap that starts nothing.
+   * The upcoming fires a person asked to skip (`bureau.schedules.skipnext`), as ISO 8601 instants,
+   * soonest first; empty when none is. Each is a fire that would start a run, which the next is not
+   * always at `nextFireAt`: in a time zone `nextFireAt` can be the end of a daylight-saving gap that
+   * starts nothing. `bureau.schedules.unskip` takes one back.
    */
-  skipUntil: z.string().nullable(),
+  skippedOccurrences: z.array(z.string()),
   lastFireAt: z.string().nullable(),
   missedFireCount: z.number().int().nullable(),
   skippedCount: z.number().int().nullable(),
@@ -163,6 +168,7 @@ function viewOf(
   owner: string,
   agentName: string | undefined,
   inputPreview: string | undefined,
+  continuesChat: boolean | undefined,
   blocker: WorkflowScheduleBlocker | undefined,
   principal: Principal,
 ): z.infer<typeof scheduleViewSchema> {
@@ -175,6 +181,7 @@ function viewOf(
     owner,
     agentName: agentName ?? null,
     inputPreview: redactPrivateProjection ? null : (inputPreview ?? null),
+    continuesChat: redactPrivateProjection ? false : (continuesChat ?? false),
     workflowType: summary.workflowType,
     description: summary.description ?? null,
     cronExpression: summary.cronExpression ?? null,
@@ -184,7 +191,7 @@ function viewOf(
     overlap: summary.overlap,
     revision: summary.revision,
     nextFireAt: iso(summary.nextFireAt),
-    skipUntil: iso(summary.skipUntil),
+    skippedOccurrences: (summary.skippedOccurrences ?? []).map((at) => iso(at)!),
     lastFireAt: redactPrivateProjection ? null : iso(summary.lastFireAt),
     missedFireCount: redactPrivateProjection ? null : summary.missedFireCount,
     skippedCount: redactPrivateProjection ? null : summary.skippedCount,
@@ -295,6 +302,13 @@ function faultOf(error: unknown, scheduleId: string): never {
         data: { reason: 'schedule-not-active' },
       } satisfies OperationFault;
     }
+    if (message.includes('occurrences, the most it keeps')) {
+      throw {
+        code: 'Conflict',
+        message: error.message,
+        data: { reason: 'too-many-skips' },
+      } satisfies OperationFault;
+    }
     // Weft words a zone it refuses with the option's name, and that message also says `must be` or
     // `interval`, so the zone is told apart first.
     if (message.includes('options.timezone')) {
@@ -400,6 +414,7 @@ export const schedulesListOperation = defineOperation<
             owner,
             await host.schedules.agentName(summary.id),
             await host.schedules.inputPreview(summary.id),
+            await host.schedules.continuesChat(summary.id),
             await host.schedules.blocker(summary.id),
             principal,
           );
@@ -450,6 +465,7 @@ export const schedulesGetOperation = defineOperation<
       owner,
       await host.schedules.agentName(input.scheduleId),
       await host.schedules.inputPreview(input.scheduleId),
+      await host.schedules.continuesChat(input.scheduleId),
       await host.schedules.blocker(input.scheduleId),
       principal,
     );
@@ -471,6 +487,12 @@ const createInput = z.object({
     .max(256)
     .optional()
     .describe('A session each fire continues; without one, every fire is a fresh session.'),
+  continueChat: z
+    .boolean()
+    .optional()
+    .describe(
+      'Start a new chat that every fire continues, which the Bureau names itself and the first fire makes, owned by the caller. Refused together with `sessionId`.',
+    ),
   overlap: z
     .enum(['skip', 'allow'])
     .optional()
@@ -490,7 +512,7 @@ export const schedulesCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a schedule',
   description:
-    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session (`overlap: "allow"` is then refused), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval, where only `UTC` is accepted), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
+    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session, and `continueChat: true` starts a new chat for it that the Bureau names itself (`overlap: "allow"` is refused with either), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval, where only `UTC` is accepted), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
   destructive: true,
   tags: ['Schedules'],
   inputSchema: createInput,
@@ -530,6 +552,7 @@ export const schedulesCreateOperation = defineOperation<
         input: input.input,
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+        ...(input.continueChat === true ? { continueChat: true } : {}),
         ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
         ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
         principal: owner,
@@ -542,6 +565,7 @@ export const schedulesCreateOperation = defineOperation<
         owner,
         input.agentName,
         scheduleInputPreview(input.input),
+        input.sessionId !== undefined || input.continueChat === true,
         undefined,
         principal,
       );
@@ -625,12 +649,24 @@ export const schedulesCancelOperation = defineGuardedWrite(
   (schedules, id, guard) => schedules.cancel(id, guard),
 );
 
+/** An ISO 8601 `occurrence` as milliseconds since the epoch, or `InvalidParams` before 1970. */
+function occurrenceOf(occurrence: string): number {
+  const at = Date.parse(occurrence);
+  if (!Number.isSafeInteger(at) || at < 0) {
+    throw invalidParams(
+      'occurrence',
+      '`occurrence` must be an ISO 8601 instant on or after 1970-01-01T00:00:00Z',
+    );
+  }
+  return at;
+}
+
 const skipNextInput = guardedInput.extend({
   occurrence: z.iso
     .datetime({ offset: true })
     .optional()
     .describe(
-      'The fire the caller means to skip, as an ISO 8601 instant: the view’s `skipUntil` or `nextFireAt` the caller read. When it is neither the schedule’s next fire that starts a task nor the fire already skipped, the call is a `Conflict` with `data.reason` `occurrence-not-next` and nothing is written. Left out, whichever fire is next is skipped.',
+      'The fire the caller means to skip, as an ISO 8601 instant: the view’s `nextFireAt` the caller read, or any upcoming fire after it. When it is not an upcoming fire that starts a task (a fire passed it, or the cadence starts none then), the call is a `Conflict` with `data.reason` `occurrence-not-next` and nothing is written. Left out, whichever fire is next is skipped.',
     ),
 });
 
@@ -642,8 +678,8 @@ export const schedulesSkipNextOperation = defineOperation<
   name: 'bureau.schedules.skipnext',
   authorize: authorizeWorkspaceOperation('bureau.schedules.skipnext'),
   mcpExposable: false,
-  summary: 'Skip the next fire of a schedule',
-  description: `Skips the next fire of an active schedule: the next fire that would start a task starts none, and the one after it runs as usual. That fire is the view’s \`skipUntil\` until the schedule moves past it; it is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. The skip leaves the schedule’s \`revision\` as it is, skipping again before that fire has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip. A fire moves neither the \`revision\` nor the \`status\`, so the fire a caller read can start before the skip is written: pass \`occurrence\`, the fire to skip as an ISO 8601 instant, and the skip is a \`Conflict\` (\`data.reason\` \`occurrence-not-next\`) when that is not the schedule’s next fire, or the one already skipped, as the write lands. An \`occurrence\` that is not an ISO 8601 instant, or is before 1970, is \`InvalidParams\`. A paused or cancelled schedule has no next fire and is a \`Conflict\` (\`data.reason\` \`schedule-not-active\`). ${STALE_NOTE}`,
+  summary: 'Skip an upcoming fire of a schedule',
+  description: `Skips one upcoming fire of a schedule: \`occurrence\`, the next fire or any after it, starts no task, and the fires around it run as usual; left out, the next fire is skipped. Skipped fires are the view’s \`skippedOccurrences\` until the schedule moves past them, and \`bureau.schedules.unskip\` takes one back. The next fire is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. The skip leaves the schedule’s \`revision\` as it is, and skipping a fire already skipped changes nothing. A paused schedule’s fires can be skipped, counted from the first after now, and the pause keeps the skips for when it resumes; a cancel ends them, and a new cadence ends those that are no longer its fires. A fire moves neither the \`revision\` nor the \`status\`, so the fire a caller read can start before the skip is written: the skip is a \`Conflict\` (\`data.reason\` \`occurrence-not-next\`) when \`occurrence\` is not an upcoming fire as the write lands. An \`occurrence\` that is not an ISO 8601 instant, or is before 1970, is \`InvalidParams\`. A cancelled schedule has no fire to skip and is a \`Conflict\` (\`data.reason\` \`schedule-not-active\`), and so is a schedule that already skips 100 fires (\`data.reason\` \`too-many-skips\`). ${STALE_NOTE}`,
   destructive: true,
   tags: ['Schedules'],
   inputSchema: skipNextInput,
@@ -661,19 +697,61 @@ export const schedulesSkipNextOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
-    const occurrence = input.occurrence === undefined ? undefined : Date.parse(input.occurrence);
-    if (occurrence !== undefined && (!Number.isSafeInteger(occurrence) || occurrence < 0)) {
-      throw invalidParams(
-        'occurrence',
-        '`occurrence` must be an ISO 8601 instant on or after 1970-01-01T00:00:00Z',
-      );
-    }
+    const occurrence = input.occurrence === undefined ? undefined : occurrenceOf(input.occurrence);
     try {
       const done = await host.schedules.skipNext(
         input.scheduleId,
         { expectedRevision: input.expectedRevision },
         occurrence,
       );
+      if (done === undefined) throw unsupported();
+    } catch (error) {
+      return faultOf(error, input.scheduleId);
+    }
+    return receiptOf(host, input.scheduleId);
+  },
+});
+
+const unskipInput = guardedInput.extend({
+  occurrence: z.iso
+    .datetime({ offset: true })
+    .describe(
+      'The skipped fire to run after all, as an ISO 8601 instant: one of the view’s `skippedOccurrences`.',
+    ),
+});
+
+export const schedulesUnskipOperation = defineOperation<
+  typeof unskipInput,
+  typeof receiptSchema,
+  BureauSchedulesOperationHost
+>({
+  name: 'bureau.schedules.unskip',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.unskip'),
+  mcpExposable: false,
+  summary: 'Take back the skip of an upcoming fire of a schedule',
+  description: `Takes back the skip of one upcoming fire of a schedule: \`occurrence\`, one of the view’s \`skippedOccurrences\`, starts a task after all. Like a skip it leaves the schedule’s \`revision\` as it is, and an upcoming fire that is not skipped changes nothing. A fire that has already passed cannot be taken back and is a \`Conflict\` (\`data.reason\` \`occurrence-not-next\`), and a cancelled schedule is a \`Conflict\` (\`data.reason\` \`schedule-not-active\`). An \`occurrence\` that is not an ISO 8601 instant, or is before 1970, is \`InvalidParams\`. ${STALE_NOTE}`,
+  destructive: true,
+  tags: ['Schedules'],
+  inputSchema: unskipInput,
+  outputSchema: receiptSchema,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'Conflict',
+    'StaleRevision',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
+    const occurrence = occurrenceOf(input.occurrence);
+    try {
+      const done = await host.schedules.unskip(input.scheduleId, occurrence, {
+        expectedRevision: input.expectedRevision,
+      });
       if (done === undefined) throw unsupported();
     } catch (error) {
       return faultOf(error, input.scheduleId);
@@ -824,6 +902,35 @@ const updateInput = z.object({
       'The schedule’s new overlap policy: `skip` or `allow` (refused for a schedule with a recurring session); left as it was when omitted.',
     ),
   timeZone: timeZoneField.optional(),
+  agentName: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe('The catalog agent each fire runs from now on; left as it was when omitted.'),
+  input: z
+    .string()
+    .min(1)
+    .max(100_000)
+    .optional()
+    .describe(
+      'The text each fire sends from now on, replacing the schedule’s text; an input that carries media keeps it. Left as it was when omitted.',
+    ),
+  sessionId: z
+    .string()
+    .min(1)
+    .max(256)
+    .nullable()
+    .optional()
+    .describe(
+      'The session each fire continues from now on, or `null` to make every fire a fresh session; left as it was when omitted. Refused with an overlap of `allow`.',
+    ),
+  continueChat: z
+    .boolean()
+    .optional()
+    .describe(
+      'Start a new chat that every fire continues from now on, which the Bureau names itself and the first fire makes, replacing the schedule’s chat. Refused together with `sessionId` and with an overlap of `allow`.',
+    ),
   expectedRevision,
 });
 
@@ -835,8 +942,9 @@ export const schedulesUpdateOperation = defineOperation<
   name: 'bureau.schedules.update',
   authorize: authorizeWorkspaceOperation('bureau.schedules.update'),
   mcpExposable: false,
-  summary: 'Change a schedule’s cadence, description, overlap policy, or time zone',
-  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). Its agent, input, owner, and session are not changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
+  summary:
+    'Change a schedule’s cadence, description, overlap policy, time zone, agent, text, or session',
+  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). It also changes the run each fire starts when it is named: \`agentName\` (a catalog agent; one that is not there is \`NotFound\`), \`input\` (the text each fire sends), and \`sessionId\` (the session each fire continues, or \`null\` for a fresh one each time). What is left out is kept, the owner is never changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
   destructive: true,
   tags: ['Schedules'],
   inputSchema: updateInput,
@@ -849,6 +957,14 @@ export const schedulesUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
     assertKnownTimeZone(input.timeZone);
+    // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
+    if (
+      input.agentName !== undefined &&
+      (!host.agentVisibility.mayName(principal, input.agentName) ||
+        !host.schedules.hasAgent(input.agentName))
+    ) {
+      throw resourceNotFound('agent', input.agentName);
+    }
     try {
       const done = await host.schedules.update(
         input.scheduleId,
@@ -857,6 +973,10 @@ export const schedulesUpdateOperation = defineOperation<
           ...(input.description === undefined ? {} : { description: input.description }),
           ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
           ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+          ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
+          ...(input.input === undefined ? {} : { input: input.input }),
+          ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+          ...(input.continueChat === true ? { continueChat: true } : {}),
         },
         { expectedRevision: input.expectedRevision },
       );
@@ -878,6 +998,7 @@ export const bureauSchedulesOperations = [
   schedulesCancelOperation,
   schedulesUpdateOperation,
   schedulesSkipNextOperation,
+  schedulesUnskipOperation,
   schedulesRunNowOperation,
   schedulesMissedOperation,
 ] as const;

@@ -7,6 +7,7 @@ import {
   mapScheduleErrorToFault,
   validateScheduleInputCadence,
   validateScheduleMutableOptions,
+  validateScheduleWorkflowType,
 } from './schedule-faults.ts';
 import {
   extractSharedScheduleRestFields,
@@ -19,6 +20,18 @@ import {
 // for JSON-RPC); we keep the min-length guard.
 const updateScheduleInput = z.object({
   scheduleId: z.string().min(1).describe('Id of the schedule to update.'),
+  workflowType: z
+    .unknown()
+    .optional()
+    .describe(
+      'The workflow type each fire starts from now on; a non-empty string. Omitted, the schedule keeps its workflow type. A pinned schedule re-captures its pin against the new type.',
+    ),
+  input: z
+    .unknown()
+    .optional()
+    .describe(
+      'The input each fire starts the workflow with from now on, replacing the stored input whole. Omitted, the schedule keeps its input.',
+    ),
   cronExpression: z
     .unknown()
     .optional()
@@ -76,8 +89,8 @@ export const updateScheduleOperation = defineOperation({
   description:
     'Update an existing recurring schedule by `id`, replacing its recurrence specification and ' +
     'optionally changing description, overlap, backfill, jitter, or the IANA `timeZone` of a cron ' +
-    'schedule. Omitted options retain their ' +
-    'persisted values; schedule id, workflow type, and input remain unchanged. Returns null on ' +
+    'schedule, and the `workflowType` and `input` each fire starts with. Omitted options retain their ' +
+    'persisted values; the schedule id never changes. Returns null on ' +
     'success. Faults with NotFound when no schedule with the given id exists and InvalidParams ' +
     'for malformed fields or an unknown time zone.',
   destructive: false,
@@ -96,6 +109,9 @@ export const updateScheduleOperation = defineOperation({
     // Validate the cadence here so REST and JSON-RPC share one error path.
     const spec = validateScheduleInputCadence(input);
     const options = validateScheduleMutableOptions(input);
+    const workflowType = validateScheduleWorkflowType(input.workflowType);
+    if (workflowType !== undefined) options.workflowType = workflowType;
+    if (input.input !== undefined) options.input = input.input;
 
     try {
       await typedEngine.updateSchedule(input.scheduleId, spec, options);
@@ -113,6 +129,8 @@ export const updateScheduleRestBinding: UnknownRestBinding = {
   operationName: 'weft.schedules.update',
   inputSources: {
     scheduleId: { kind: 'path', pathParam: 'id' },
+    workflowType: { kind: 'body-field', bodyField: 'workflowType' },
+    input: { kind: 'body-field', bodyField: 'input' },
     cronExpression: { kind: 'body-field', bodyField: 'cronExpression' },
     every: { kind: 'body-field', bodyField: 'every' },
     description: { kind: 'body-field', bodyField: 'description' },
@@ -126,6 +144,8 @@ export const updateScheduleRestBinding: UnknownRestBinding = {
     const record = await parseScheduleRestBodyRequestRecord(request, context);
     return {
       scheduleId: pathParams['id'] ?? '',
+      workflowType: record['workflowType'],
+      input: record['input'],
       ...extractSharedScheduleRestFields(record),
     };
   },

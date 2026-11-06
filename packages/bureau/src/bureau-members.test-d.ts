@@ -140,7 +140,7 @@ export type ReviewsMembers = AssertNever<
   Exclude<keyof BureauReviews, 'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf'>
 >;
 
-// `schedules` includes revision-checked future authority reassignment.
+// `schedules` includes the fifteen operations and revision-checked future authority reassignment.
 export type SchedulesMembers = AssertNever<
   Exclude<
     keyof BureauSchedules,
@@ -153,10 +153,12 @@ export type SchedulesMembers = AssertNever<
     | 'cancel'
     | 'update'
     | 'skipNext'
+    | 'unskip'
     | 'runNow'
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'continuesChat'
     | 'blocker'
     | 'events'
     | 'subscribeEvents'

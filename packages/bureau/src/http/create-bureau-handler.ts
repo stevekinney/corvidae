@@ -328,10 +328,12 @@ export type BureauHandlerSource = Pick<
     | 'cancel'
     | 'update'
     | 'skipNext'
+    | 'unskip'
     | 'runNow'
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'continuesChat'
     | 'blocker'
   >;
 } & {
@@ -1324,11 +1326,13 @@ export function buildBureauHandlerHost(
       cancel: bureau.schedules.cancel,
       update: bureau.schedules.update,
       skipNext: bureau.schedules.skipNext,
+      unskip: bureau.schedules.unskip,
       runNow: bureau.schedules.runNow,
       missed: bureau.schedules.missed,
       owner: (scheduleId) => bureau.ownerOf({ kind: 'schedule', id: scheduleId }),
       agentName: bureau.schedules.agentName,
       inputPreview: bureau.schedules.inputPreview,
+      continuesChat: bureau.schedules.continuesChat,
       blocker: bureau.schedules.blocker,
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },

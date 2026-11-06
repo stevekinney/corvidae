@@ -16,7 +16,8 @@
  *   plugin that only waits for a secret (`needs-setup`) is not on the list.
  *
  * A host adds what only it can see through {@link BureauOptions.attention}, such as `no-provider`
- * when no model provider is connected.
+ * when no model provider is connected, and `worker-disconnected` for a remote worker that stopped
+ * answering while work waited for its queue.
  *
  * @module attention-feed
  */
@@ -39,6 +40,7 @@ export const ATTENTION_AREAS = [
   'providers',
   'hooks',
   'plugins',
+  'workers',
   'runs',
 ] as const;
 
@@ -137,13 +139,39 @@ export interface ProviderAttentionItem {
   readonly provider: string | null;
 }
 
+/**
+ * A remote worker that stopped answering, so the queue it served has nobody running it. Only a
+ * host that keeps a record of the workers it has seen can report it, through
+ * {@link BureauOptions.attention}: the Bureau's own engine holds no memory of a worker once it is
+ * gone.
+ */
+export interface WorkerAttentionItem {
+  /** Discriminant. */
+  readonly kind: 'worker-disconnected';
+  /** Always `workers`. */
+  readonly area: 'workers';
+  /** When the worker was last heard from, in epoch milliseconds. */
+  readonly at: number;
+  /** The worker's identifier, such as `reports-worker`. */
+  readonly workerId: string;
+  /** The worker's name as a person reads it (`Reports worker`), or `null` when it has none. */
+  readonly workerName: string | null;
+  /** The task queue the worker served. */
+  readonly queue: string;
+  /** How many tasks wait on that queue. */
+  readonly waiting: number;
+  /** How many tasks on that queue failed for good. */
+  readonly failedForGood: number;
+}
+
 /** One problem that needs attention. */
 export type BureauAttentionItem =
   | AlertAttentionItem
   | MissedRunsAttentionItem
   | HookAttentionItem
   | PluginAttentionItem
-  | ProviderAttentionItem;
+  | ProviderAttentionItem
+  | WorkerAttentionItem;
 
 /** How many problems one area has; only areas with at least one are listed. */
 export interface AttentionCheck {

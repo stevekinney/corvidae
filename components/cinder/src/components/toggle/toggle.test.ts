@@ -602,3 +602,77 @@ describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
     expect(coarse.match(/2\.75rem/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('Toggle description placement', () => {
+  test('stacks a description under the label, with the switch beside both, when it is `below`', () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'continue',
+        label: 'Continue one chat',
+        description: 'Each run adds to the same chat.',
+        descriptionPlacement: 'below',
+      },
+    });
+    const field = container.querySelector('.cinder-toggle-field');
+    expect(field?.getAttribute('data-cinder-description')).toBe('below');
+    const text = container.querySelector('.cinder-toggle-field__text');
+    expect(text?.children[0]?.textContent?.trim()).toBe('Continue one chat');
+    expect(text?.children[1]?.textContent).toBe('Each run adds to the same chat.');
+    const toggle = container.querySelector('button[role="switch"]');
+    expect(toggle?.getAttribute('aria-describedby')).toBe(text?.children[1]?.id);
+    expect(field?.firstElementChild).toBe(toggle);
+  });
+
+  test('keeps the description on the label’s line by default', () => {
+    const { container } = render(Toggle, {
+      props: { id: 'file', label: 'Active', description: 'Defined in release-notes.json' },
+    });
+    expect(container.querySelector('.cinder-toggle-field__text')).toBeNull();
+    expect(
+      container.querySelector('.cinder-toggle-field')?.hasAttribute('data-cinder-description'),
+    ).toBe(false);
+  });
+});
+
+describe('Toggle name detail and hidden description', () => {
+  test('nameDetail follows the visible label in the accessible name, which starts with the visible label', () => {
+    const { container } = render(Toggle, {
+      props: { id: 'active', label: 'Active', nameDetail: 'Daily summary schedule' },
+    });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+    const label = requiredInstance(container.querySelector('#active-label'), HTMLElement);
+
+    expect(control.getAttribute('aria-label')).toBe('Active, Daily summary schedule');
+    expect(control.hasAttribute('aria-labelledby')).toBe(false);
+    // Only the visible label is drawn: the detail is for the name.
+    expect(label.textContent?.trim()).toBe('Active');
+  });
+
+  test('without nameDetail the visible label names the switch', () => {
+    const { container } = render(Toggle, { props: { id: 'plain', label: 'Active' } });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+
+    expect(control.getAttribute('aria-labelledby')).toBe('plain-label');
+    expect(control.hasAttribute('aria-label')).toBe(false);
+  });
+
+  test('descriptionVisible false keeps the description in aria-describedby and hides it', () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'paused',
+        label: 'Active',
+        description: 'Resuming would schedule runs that will not start.',
+        descriptionVisible: false,
+      },
+    });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+    const description = requiredInstance(
+      container.querySelector('#paused-description'),
+      HTMLElement,
+    );
+
+    expect(control.getAttribute('aria-describedby')).toBe('paused-description');
+    expect(description.classList.contains('cinder-sr-only')).toBe(true);
+    expect(description.classList.contains('cinder-toggle-field__description')).toBe(false);
+  });
+});

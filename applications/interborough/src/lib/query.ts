@@ -147,11 +147,15 @@ export const queryKeys = {
     /** The event kinds a hook can listen to (`bureau.events.catalog`). */
     events: () => ['hooks', 'events'] as const,
   },
-  /** The audit trail, narrowed by a search (`bureau.audit.query`). */
+  /** The audit log, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
-    /** The first page of the whole trail, read for the types the Type select offers. */
-    types: () => ['audit', 'types'] as const,
+    /** How many events a filter matches, read once beside the first page. */
+    total: (filter: AuditFilter) => ['audit', 'total', filter] as const,
+    /** Whether the log holds any event at all, asked once a filtered read finds none. */
+    anyEvent: () => ['audit', 'any-event'] as const,
+    /** The schedules' names, which the events of a schedule are worded with. */
+    schedules: () => ['audit', 'schedules'] as const,
   },
   /** The Bureau's runtime settings: their values (`bureau.settings.get`) and their schema (`bureau.settings.schema`). */
   settings: {
@@ -173,6 +177,17 @@ export const queryKeys = {
     overlay: () => ['schedules', 'overlay'] as const,
     /** The newest fire each schedule that missed one recorded, for the bell. Under `list`, so a fleet event that changes the schedules reads it again. */
     missedFires: () => ['schedules', 'list', 'missed-fires'] as const,
+    /** What the schedule rows read besides the schedules: the engine's workflow types, the agents, and what needs attention. Under `list`, so a fleet event that changes the schedules reads it again. */
+    rowContext: () => ['schedules', 'list', 'row-context'] as const,
+    /** The agents each workflow ran in its last saved version, for the rows of workflows that cannot load. Under `list` for the same reason. */
+    workflowAgents: (workflowTypes: readonly string[]) =>
+      ['schedules', 'list', 'workflow-agents', workflowTypes] as const,
+    /** Which of the agents the rows name need a model, read from each agent's definition. Under `list` for the same reason. */
+    modelAgents: (agentIds: readonly string[]) =>
+      ['schedules', 'list', 'model-agents', agentIds] as const,
+    /** Whether the agent the new schedule page has chosen needs a model while no provider is connected. */
+    providerBlocked: (agentName: string) =>
+      ['schedules', 'new', 'provider-blocked', agentName] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,
@@ -184,6 +199,8 @@ export const queryKeys = {
   },
   queues: {
     list: () => ['queues', 'list'] as const,
+    /** The waiting and failed-for-good tasks of one queue, for one tab of the Workers page. */
+    tasks: (queue: string, tab: string) => ['queues', 'tasks', queue, tab] as const,
   },
   diagnostics: () => ['diagnostics'] as const,
   /** `weft.alerts.list`: the alert rules firing now, read by the Alerts tab and the Health line. */
@@ -224,6 +241,8 @@ export const queryKeys = {
     count: () => ['bureau-attention', 'count'] as const,
     /** The rules that are firing, for the notification bell. */
     alerts: () => ['bureau-attention', 'alerts'] as const,
+    /** The whole list and its checks, for the Health page. */
+    list: () => ['bureau-attention', 'list'] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {
@@ -257,6 +276,9 @@ export const queryKeys = {
   a2aCard: (agent: string) => ['a2a', 'card', agent] as const,
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
   hostStorage: () => ['host', 'storage'] as const,
+  /** How many keys storage holds under a prefix, and its size (`/host/storage/summary`). */
+  hostStorageSummaries: () => ['host', 'storage', 'summary'] as const,
+  hostStorageSummary: (prefix: string) => ['host', 'storage', 'summary', prefix] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */
   hostProviders: () => ['host', 'providers'] as const,
   /** The agents that name a model of one provider, read before the provider is disconnected. */

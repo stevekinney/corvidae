@@ -193,6 +193,13 @@ export type SourceDiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'
   /** Whether old and new line-number gutters are rendered. */
   lineNumbers?: boolean;
   /**
+   * Whether each file's header (its path) and each hunk's header (its line ranges) are drawn. Turn
+   * them off for a change to one thing that has no file, such as an agent's instructions, where the
+   * rows alone are the diff.
+   * @default true
+   */
+  headers?: boolean;
+  /**
    * Rendered when the patch is empty or contains no displayable diff rows.
    * Falls back to a default "No patch lines to display." message — matching
    * the `empty` snippet the chart/command families expose.

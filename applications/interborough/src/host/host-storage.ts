@@ -8,7 +8,9 @@
  */
 import { BUREAU_RESERVED_KEY_PREFIXES, SHARED_KEY_FAMILIES_OF_A_CHAT } from '@lostgradient/bureau';
 
-import type { HostStorage } from '../lib/host-storage.ts';
+import { storageCount, type Storage } from '@lostgradient/storage';
+
+import type { HostStorage, HostStorageSummary } from '../lib/host-storage.ts';
 
 /**
  * Every key prefix the application manages beyond Weft's own: the Bureau's families, then the ones
@@ -24,4 +26,20 @@ export const MANAGED_KEY_PREFIXES: readonly string[] = [
 /** The report `/host/storage` serves: every key prefix the Bureau and the stores it shares write. */
 export function hostStorageReport(): HostStorage {
   return { bureauKeyPrefixes: [...MANAGED_KEY_PREFIXES] };
+}
+
+/**
+ * The report `/host/storage/summary` serves: how many keys of `storage` start with `prefix`, and the
+ * size of the storage when its backend knows it (`Storage.sizeBytes`; a backend that cannot says
+ * `null`, never zero).
+ */
+export async function hostStorageSummary(
+  storage: Storage,
+  prefix: string,
+): Promise<HostStorageSummary> {
+  const [keyCount, sizeBytes] = await Promise.all([
+    storageCount(storage, prefix),
+    storage.sizeBytes?.() ?? Promise.resolve(null),
+  ]);
+  return { keyCount, sizeBytes };
 }

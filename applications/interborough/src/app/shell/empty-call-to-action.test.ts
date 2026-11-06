@@ -77,7 +77,9 @@ const FLOWS = [
     view: 'schedules',
     path: '/schedules',
     creating: '/schedules/new',
-    label: 'Create a schedule',
+    // The schedules page draws its own empty state, whose action is a button in the state (and the
+    // header's "+" has the same name), so it has a test of its own below.
+    label: null,
     heading: { role: 'heading', name: 'New schedule' },
   },
 ] as const;
@@ -130,6 +132,23 @@ describe('an empty view’s call to action', () => {
       });
     });
   }
+
+  test('of the empty schedules view is the state’s primary New schedule, which opens the creation flow', async () => {
+    stubEmptyEngine();
+    landAt('/schedules');
+    const { container, findByRole } = mount();
+
+    await findByRole('heading', { level: 2, name: VIEW_COPY.schedules.empty?.title ?? '' });
+    const action = container.querySelector<HTMLElement>(
+      '.cinder-empty-state button[data-cinder-variant="primary"]',
+    );
+    expect(action?.textContent?.trim()).toBe(VIEW_COPY.schedules.empty?.action?.label);
+    await fireEvent.click(action as HTMLElement);
+
+    expect(await findByRole('heading', { name: 'New schedule' })).not.toBeNull();
+    const frame = container.querySelector('.weft-view[data-view="schedules"]');
+    expect(frame?.getAttribute('data-state')).toBe('ready');
+  });
 
   test('is the empty state’s own link, from the copy', () => {
     expect(VIEW_COPY.runs.empty?.action).toEqual({ label: 'Start a chat', href: '/chats/new' });

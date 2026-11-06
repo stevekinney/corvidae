@@ -112,6 +112,23 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
   emptyLabel?: string;
   /** The file name Download JSON saves a payload over `maxBytes` as. Defaults to "payload.json". */
   downloadFilename?: string;
+  /**
+   * Draws the payload without its card, for a pane that already is one: no border, no divider under
+   * the header, and no count or Copy button, since the pane carries its own Copy. The Fields view is
+   * always one label and value per row with a quiet rule between rows, never the inline or grid
+   * layouts, so a person reads a record as a list. The Fields / JSON switch sits at the end of the
+   * header row, across from the label.
+   * @default false
+   */
+  bare?: boolean;
+  /**
+   * Shows a string `value` as it is, as text in a code block under the label, whatever it holds:
+   * the Fields / JSON switch is not drawn, nothing is parsed and no invalid-JSON notice appears.
+   * Use it for a value that is not JSON, or one too long to lay out as fields, and say so beside
+   * it. A value that is not a string is shown as usual.
+   * @default false
+   */
+  plain?: boolean;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };
@@ -197,6 +214,23 @@ export type PayloadInspectorSchemaProps = {
   emptyLabel?: string;
   /** The file name Download JSON saves a payload over `maxBytes` as. Defaults to "payload.json". */
   downloadFilename?: string;
+  /**
+   * Draws the payload without its card, for a pane that already is one: no border, no divider under
+   * the header, and no count or Copy button, since the pane carries its own Copy. The Fields view is
+   * always one label and value per row with a quiet rule between rows, never the inline or grid
+   * layouts, so a person reads a record as a list. The Fields / JSON switch sits at the end of the
+   * header row, across from the label.
+   * @default false
+   */
+  bare?: boolean;
+  /**
+   * Shows a string `value` as it is, as text in a code block under the label, whatever it holds:
+   * the Fields / JSON switch is not drawn, nothing is parsed and no invalid-JSON notice appears.
+   * Use it for a value that is not JSON, or one too long to lay out as fields, and say so beside
+   * it. A value that is not a string is shown as usual.
+   * @default false
+   */
+  plain?: boolean;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };

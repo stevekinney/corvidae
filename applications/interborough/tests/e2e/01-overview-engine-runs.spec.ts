@@ -1,9 +1,9 @@
 /**
- * The Overview's status counts open the engine's own run list. A count is the engine's
- * (`weft.workflows.aggregate`), so its link goes to the engine's list (`weft.workflows.list`)
- * narrowed to that status, in the engine's own word, and the list holds as many runs as the count
- * said. The failed workflows are seeded by `fixtures/workflows.ts` (`payment-failing` and the
- * failure-category set) when the host starts; nothing here writes one.
+ * The Overview's Failed in 24 hours count is the engine's (`weft.workflows.aggregate`), and the
+ * engine's own run list (`/health/runs`, `weft.workflows.list`) narrowed to the same filter holds
+ * as many runs as the count said, in the engine's own word for each status. The failed workflows
+ * are seeded by `fixtures/workflows.ts` (`payment-failing` and the failure-category set) when the
+ * host starts; nothing here writes one.
  *
  * Read-only, so it can run anywhere in the order; `05-bulk-retry-confirm.spec.ts` retries every
  * failed workflow and must stay after it.
@@ -15,26 +15,28 @@ const VIEWPORTS = [
   { width: 1280, height: 800 },
 ] as const;
 
+/** The window "Failed in 24 hours" counts over, cut on a whole minute as the page cuts it. */
+function failedListAddress(now: number): string {
+  const since = Math.floor((now - 24 * 60 * 60 * 1000) / 60_000) * 60_000;
+  return `/health/runs?status=failed&status=timed-out&updated_at_gte=${String(since)}`;
+}
+
 for (const viewport of VIEWPORTS) {
-  test(`Overview Failed in 24h count opens the recently failed engine workflows at ${String(viewport.width)}px`, async ({
+  test(`Overview Failed in 24 hours count matches the recently failed engine workflows at ${String(viewport.width)}px`, async ({
     page,
     checkA11y,
   }) => {
     await page.setViewportSize(viewport);
     await page.goto('/health');
 
-    const failedCount = page.getByRole('link', { name: /^Failed in 24h\s+\d+$/ });
-    await expect(failedCount).toBeVisible();
+    const counts = page.getByRole('group', { name: 'Health counts' });
+    const failed = counts.locator('[data-count="failed"]');
+    await expect(failed).toContainText('Failed in 24 hours');
+    await expect(failed.locator('.cinder-statistic__value')).toHaveText(/^[1-9]\d*$/);
     await checkA11y(`engine overview at ${String(viewport.width)}px`);
-    const countText = (await failedCount.textContent()) ?? '';
-    const counted = Number(/(\d+)\s*$/.exec(countText)?.[1]);
-    expect(counted).toBeGreaterThan(0);
+    const counted = Number(await failed.locator('.cinder-statistic__value').textContent());
 
-    await failedCount.click();
-
-    await expect(page).toHaveURL(
-      /\/health\/runs\?status=failed&status=timed-out&updated_at_gte=\d+$/,
-    );
+    await page.goto(failedListAddress(Date.now()));
     await expect(page.getByRole('heading', { level: 1, name: 'Workflow runs' })).toBeVisible();
     // Across types: a count spans every workflow type the engine holds.
     await expect(page.getByRole('row', { name: /payment-failing/ }).first()).toBeVisible();
@@ -47,27 +49,32 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test('Overview shows the health line, four counts, and a window of at most six activity lines', async ({
+test('Overview shows its four counts, Needs attention, Recent activity and the metric cards, and Advanced stays collapsed', async ({
   page,
   checkA11y,
 }) => {
   await page.goto('/health');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-  const counts = page.getByRole('navigation', { name: 'Health counts' });
-  await expect(counts.getByRole('link')).toHaveCount(4);
-  for (const label of ['Working now', 'Needs you', 'Failed in 24h', 'Schedules']) {
-    await expect(
-      counts.getByRole('link', { name: new RegExp(`^${label}\\s+(\\d+|—)$`) }),
-    ).toBeVisible();
+  const counts = page.getByRole('group', { name: 'Health counts' });
+  for (const label of [
+    'Running now',
+    'Needs you',
+    'Failed in 24 hours',
+    'Missed schedule runs (7 days)',
+  ]) {
+    await expect(counts.locator('.cinder-statistic__label', { hasText: label })).toBeVisible();
   }
-
-  // A fixed window: the seeded engine has far more events than six, and the window never grows.
-  const activity = page.getByRole('region', { name: 'Recent activity' });
+  await expect(page.getByTestId('needs-attention')).toBeVisible();
+  const activity = page.getByRole('region', { name: /Recent activity/ });
   await expect(activity).toBeVisible();
-  expect(await activity.locator('.weft-activity-feed__row').count()).toBeLessThanOrEqual(6);
+  expect(await activity.locator('[data-activity]').count()).toBeLessThanOrEqual(9);
+  await expect(page.getByTestId('metric-cards')).toBeVisible();
+  await expect(
+    page.getByTestId('advanced-diagnostics').locator('button[aria-expanded]'),
+  ).toHaveAttribute('aria-expanded', 'false');
 
-  await activity.getByRole('link', { name: 'Open the audit log' }).click();
+  await activity.getByRole('link', { name: /^Open audit log/ }).click();
   await expect(page).toHaveURL(/\/health\/audit$/);
   await checkA11y('engine overview');
 });

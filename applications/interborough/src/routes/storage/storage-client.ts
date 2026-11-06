@@ -31,6 +31,8 @@ export type StorageConnection = Pick<HttpClient, 'baseUrl' | 'headers'>;
 export interface StorageScanEntry {
   readonly key: string;
   readonly value: Uint8Array;
+  /** When the key was last written, in epoch milliseconds; `null` for a backend that records none. */
+  readonly updatedAt: number | null;
 }
 
 export interface StorageScanOptions {
@@ -172,16 +174,31 @@ async function throwStorageError(response: Response): Promise<never> {
 export async function storageGet(
   connection: StorageConnection,
   key: string,
+  signal?: AbortSignal,
 ): Promise<Uint8Array | null> {
   const response = await fetch(storageUrl(connection, `/${encodeKeyForPath(key)}`), {
     method: 'GET',
     headers: storageHeaders(connection),
+    ...(signal === undefined ? {} : { signal }),
   });
 
   if (response.status === 404) return null;
   if (!response.ok) return throwStorageError(response);
 
   return new Uint8Array(await response.arrayBuffer());
+}
+
+/**
+ * One key with when it was last written, read in a single scan of exactly that key, so the time
+ * always belongs to the value beside it. `null` when the key is not stored.
+ */
+export async function storageEntry(
+  connection: StorageConnection,
+  key: string,
+  signal?: AbortSignal,
+): Promise<StorageScanEntry | null> {
+  const { entries } = await storageScan(connection, { prefix: key, lte: key, limit: 1 }, signal);
+  return entries.find((entry) => entry.key === key) ?? null;
 }
 
 /** `PUT /v1/storage/:key`. */
@@ -241,7 +258,11 @@ function parseNdjsonScanEntries(text: string): StorageScanEntry[] {
     if (!isRecord(row) || typeof row['key'] !== 'string' || typeof row['value'] !== 'string') {
       throw new Error('Malformed storage scan row');
     }
-    entries.push({ key: row['key'], value: decodeBase64ToBytes(row['value']) });
+    entries.push({
+      key: row['key'],
+      value: decodeBase64ToBytes(row['value']),
+      updatedAt: typeof row['updatedAt'] === 'number' ? row['updatedAt'] : null,
+    });
   }
   return entries;
 }

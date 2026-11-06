@@ -36,6 +36,8 @@ const fileSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   owner: z.string(),
   hash: z.string().nullable(),
+  /** The name a person reads, when the file gives one; an invalid file has none. */
+  title: z.string().nullable().optional(),
   /** What the workflow is for, in a sentence, when the file says. */
   description: z.string().nullable(),
   agent: z.string().nullable(),
@@ -47,6 +49,8 @@ const fileSchema = z.object({
   version: z.string().nullable(),
   /** The trigger as written (`kind`, and `spec` or `name`), for a file that loaded. */
   trigger: z.record(z.string(), z.unknown()).nullable(),
+  /** The steps as written, for a file that loaded; each agent step names the agent it runs in `input.agent`. */
+  steps: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
   problem: problemSchema.nullable(),
 });
 
@@ -206,6 +210,31 @@ export async function listWorkflowRevisions(
 ): Promise<readonly WorkflowRevision[]> {
   return revisionsSchema.parse(await callBureau('bureau.workflows.revisions', { id }, options))
     .revisions;
+}
+
+const historySchema = z.object({
+  revisions: z.array(
+    z.object({
+      current: z.boolean(),
+      steps: z.array(z.record(z.string(), z.unknown())),
+    }),
+  ),
+});
+
+/**
+ * The steps of the newest version the Bureau saved of a workflow's file, as `bureau.workflows.history`
+ * lists them. Unlike {@link listWorkflowRevisions} it holds a version that never ran, and it still
+ * answers for a workflow whose file cannot load or was deleted, so a schedule row can say which
+ * agent such a workflow ran. `undefined` when the workflow has no saved version.
+ */
+export async function getLatestSavedSteps(
+  id: string,
+  options?: Options,
+): Promise<readonly Readonly<Record<string, unknown>>[] | undefined> {
+  const { revisions } = historySchema.parse(
+    await callBureau('bureau.workflows.history', { id }, options),
+  );
+  return revisions[0]?.steps;
 }
 
 /** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */

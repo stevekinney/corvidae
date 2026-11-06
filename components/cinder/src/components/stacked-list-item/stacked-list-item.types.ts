@@ -112,11 +112,24 @@ type StackedListItemBase = ForwardedLiAttributes & {
    */
   metaTooltip?: string;
   /**
+   * Lets line two wrap onto more lines instead of ending in an ellipsis, so a control in it (a "View
+   * payload" link after a sentence about why a task failed) is never cut off and can always be
+   * pressed. Default `false`.
+   */
+  wrapMeta?: boolean;
+  /**
    * Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts
    * under the title (not under the status) and ends in an ellipsis rather than wrapping. A line
    * that must carry a control (an error with its own "Try again") may put one in.
    */
   meta?: Snippet;
+  /**
+   * A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is
+   * ever cut. A schedule row on a phone puts the reason it won't run first and the cadence last
+   * on it; the cadence is the part a narrow screen can lose, so it is the last thing the line
+   * says. It starts under the title, and is not drawn on a row with `details`.
+   */
+  detail?: Snippet;
   /**
    * A row whose own details failed to load: line two says this message beside a warning glyph, in
    * the danger text colour, in place of `meta`, and the rest of the list stays live (there is no

@@ -66,6 +66,8 @@
     parse,
     label,
     view = $bindable('fields'),
+    bare = false,
+    plain = false,
     linkFor,
     redact,
     formatValue,
@@ -157,13 +159,15 @@
     typeof shown === 'object' && shown !== null && !(shown instanceof Date),
   );
 
-  type Mode = 'failed' | 'none' | 'unserializable' | 'oversize' | 'invalid' | 'streaming' | 'ready';
+  type Mode =
+    'failed' | 'none' | 'unserializable' | 'oversize' | 'invalid' | 'streaming' | 'text' | 'ready';
 
   // The card is in exactly one of these states, and each one decides the header and the body, so
   // the order below is the precedence.
   const mode = $derived.by((): Mode => {
     if (failed) return 'failed';
     if (isEmpty) return 'none';
+    if (plain && typeof value === 'string' && !streaming) return 'text';
     if (arriving) return 'streaming';
     if (!parseResult.ok) return 'invalid';
     if (unserializable) return 'unserializable';
@@ -174,21 +178,24 @@
   // Copy writes what the card shows. A string payload copies as it came, unless a secret in it was
   // hidden, in which case the hidden copy is written instead so Copy never holds the stored value.
   const copyText = $derived.by((): string => {
-    if (mode === 'invalid') return typeof value === 'string' ? value : '';
+    if (mode === 'invalid' || mode === 'text') return typeof value === 'string' ? value : '';
     if (mode !== 'ready' && mode !== 'oversize') return '';
     if (typeof value === 'string' && !containsSecret(shown)) return value;
     return serialized === undefined ? '' : (JSON.stringify(shown, null, 2) ?? '');
   });
 
-  const copyLabel = $derived(mode === 'invalid' ? 'Copy text' : `Copy ${label ?? 'payload'}`);
-  const showCopy = $derived(mode !== 'none' && mode !== 'unserializable');
+  const copyLabel = $derived(
+    mode === 'invalid' || mode === 'text' ? 'Copy text' : `Copy ${label ?? 'payload'}`,
+  );
+  const showCopy = $derived(!bare && mode !== 'none' && mode !== 'unserializable');
   const copyDisabled = $derived(mode === 'failed' || mode === 'streaming');
   const showSwitch = $derived(mode === 'ready' || mode === 'streaming' || mode === 'invalid');
 
   const countText = $derived.by((): string | undefined => {
+    if (bare) return undefined;
     if (mode === 'ready') return headerCount(shown, { bytes });
     if (mode === 'streaming') return headerCount(shown, { streaming: true });
-    if (mode === 'invalid') return 'Text';
+    if (mode === 'invalid' || mode === 'text') return 'Text';
     if (mode === 'oversize' && bytes !== undefined) return formatBytes(bytes);
     return undefined;
   });
@@ -207,7 +214,7 @@
       (partial === undefined || (partial.entries.length === 0 && partial.pendingKey === undefined)),
   );
 
-  const rootLayout = $derived.by(() => {
+  const chosenLayout = $derived.by(() => {
     if (
       typeof shown !== 'object' ||
       shown === null ||
@@ -227,6 +234,9 @@
       { streaming: arriving },
     );
   });
+
+  // A bare payload is read as a list: one label and value per row, whatever few or many there are.
+  const rootLayout = $derived(bare ? ('rows' as const) : chosenLayout);
 
   // The JSON view of a payload still arriving is the text so far, with a hidden value written as
   // bullets, so what has not arrived whole is shown as received.
@@ -266,6 +276,7 @@
   role="group"
   aria-label={label ?? 'Payload'}
   data-cinder-state={mode}
+  data-cinder-bare={bare || undefined}
   class={classNames('cinder-payload-inspector', className)}
 >
   {#if mode === 'none'}
@@ -289,30 +300,32 @@
           <Segment value="json">JSON</Segment>
         </SegmentedControl>
       {/if}
-      <div class="cinder-payload-inspector__header-actions">
-        {#if countText !== undefined}
-          <span class="cinder-payload-inspector__size">{countText}</span>
-        {/if}
-        {#if truncated}
-          <Badge variant="warning" size="xs">Truncated</Badge>
-        {/if}
-        {#if showCopy}
-          <CopyButton
-            value={copyText}
-            label={copyLabel}
-            copiedLabel="Copied"
-            title={copyLabel}
-            confirmDuration={2000}
-            disabled={copyDisabled}
-            iconOnly
-          >
-            {#snippet confirmation()}
-              <Check class="cinder-icon-sm" aria-hidden="true" />
-              <span class="cinder-payload-inspector__copied">Copied</span>
-            {/snippet}
-          </CopyButton>
-        {/if}
-      </div>
+      {#if !bare}
+        <div class="cinder-payload-inspector__header-actions">
+          {#if countText !== undefined}
+            <span class="cinder-payload-inspector__size">{countText}</span>
+          {/if}
+          {#if truncated}
+            <Badge variant="warning" size="xs">Truncated</Badge>
+          {/if}
+          {#if showCopy}
+            <CopyButton
+              value={copyText}
+              label={copyLabel}
+              copiedLabel="Copied"
+              title={copyLabel}
+              confirmDuration={2000}
+              disabled={copyDisabled}
+              iconOnly
+            >
+              {#snippet confirmation()}
+                <Check class="cinder-icon-sm" aria-hidden="true" />
+                <span class="cinder-payload-inspector__copied">Copied</span>
+              {/snippet}
+            </CopyButton>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <div class="cinder-payload-inspector__panel">
@@ -340,6 +353,8 @@
             Download JSON
           </Button>
         </div>
+      {:else if mode === 'text'}
+        <CodeBlock code={typeof value === 'string' ? value : ''} wrap />
       {:else if mode === 'invalid'}
         <p class="cinder-payload-inspector__warning">
           <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />

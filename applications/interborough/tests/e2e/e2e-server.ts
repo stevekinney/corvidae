@@ -31,7 +31,7 @@ import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
-import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
+import { bindHome, enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
@@ -79,7 +79,8 @@ await buildApplication({ outdir: buildDirectory });
 // `anthropic` provider with a fixture key in its secrets, and the provider path runs against a fake
 // client that answers with a fixed reply. No model is called and no real key is read.
 const home = join(scratch, 'home');
-await mkdir(home, { recursive: true });
+// A home that is written to before its host starts is given its deployment identity first.
+await bindHome(home);
 // Two models, so a spec can change an agent's model and save it.
 await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
 // Executable skills in two sources, one trusted and one not (`skills-support.ts`).
@@ -481,7 +482,7 @@ chatProofBureau = bureauHost.bureau;
 // leaves behind changes what the journey counts. Its provider resolver scripts the one agent the
 // journey defines in the editor, and answers every other with the stub the main host uses.
 const journeyHome = join(scratch, 'journey-home');
-await mkdir(journeyHome, { recursive: true });
+await bindHome(journeyHome);
 await writeProviderHome(journeyHome);
 await enableDemoPlugin(journeyHome);
 const journeyBarrier = createBarrier();
@@ -526,7 +527,7 @@ const connectHost = await startConnectHost({
   port: E2E_CONNECT_PORT,
 });
 
-// The seventh host, which only the showcase specification opens (`showcase.spec.ts`): the shape of
+// The seventh host, which only the showcase specification opens (`00-showcase.spec.ts`): the shape of
 // `bun run dev -- --showcase`, the sample world's seed playing its story into a home of its own and
 // leaving the host running at Monday, Nov 2, a little after 10:45 AM on its offset clock.
 const showcaseHome = join(scratch, 'showcase-home');

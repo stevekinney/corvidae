@@ -25,6 +25,8 @@ const viewSchema = z.object({
   owner: z.string(),
   agentName: z.string().nullable(),
   inputPreview: z.string().nullable(),
+  /** Whether every fire continues one chat; the chat's own id is never served. A Bureau that does not say reads as `false`. */
+  continuesChat: z.boolean().default(false),
   workflowType: z.string(),
   description: z.string().nullable(),
   cronExpression: z.string().nullable(),
@@ -35,13 +37,29 @@ const viewSchema = z.object({
   /** The IANA zone a cron cadence is read in; `UTC` for an interval and for a schedule made without one. */
   timeZone: z.string(),
   nextFireAt: z.string().nullable(),
-  /** The fire a person asked to skip, or `null` when none is. */
-  skipUntil: z.string().nullable(),
+  /** The upcoming fires a person asked to skip, as ISO 8601 instants, soonest first. */
+  skippedOccurrences: z.array(z.string()),
   lastFireAt: z.string().nullable(),
   missedFireCount: z.number().int().nullable(),
   skippedCount: z.number().int().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * Why the schedule will not start, or `null` when nothing blocks it: a workflow file's schedule
+   * whose file stopped parsing is kept from the file's last good version and starts nothing until
+   * the file parses again. `status` then reads as the schedule holds it (`active` when it was
+   * active, although the engine holds it paused).
+   */
+  blocker: z
+    .object({
+      kind: z.literal('workflow-cannot-load'),
+      /** The workflow whose file cannot load. */
+      workflow: z.string(),
+      /** What is wrong with the file. */
+      message: z.string(),
+    })
+    .nullable()
+    .default(null),
 });
 
 /** One schedule as `bureau.schedules.list`, `get`, and `create` show it. */
@@ -109,6 +127,12 @@ export type AgentScheduleInput = {
   readonly description?: string;
   /** A session each fire continues. Without one, every fire is a fresh session. */
   readonly sessionId?: string;
+  /**
+   * Every fire continues one new chat, which the Bureau names and the first fire makes as the
+   * schedule's owner. A page cannot make up the chat's identifier itself, because under a
+   * workspace the Bureau refuses a chat that is not yet its owner's.
+   */
+  readonly continueChat?: true;
   readonly overlap?: 'skip' | 'allow';
   /** The IANA zone a cron `spec` is read in. Left out for an interval, which the Bureau refuses one for. */
   readonly timeZone?: string;
@@ -129,6 +153,7 @@ export async function createAgentSchedule(
     ...(schedule.sessionId === undefined || schedule.sessionId === ''
       ? {}
       : { sessionId: schedule.sessionId }),
+    ...(schedule.continueChat === true ? { continueChat: true } : {}),
     ...(schedule.overlap === undefined ? {} : { overlap: schedule.overlap }),
     ...(schedule.timeZone === undefined ? {} : { timeZone: schedule.timeZone }),
   };
@@ -184,16 +209,31 @@ export function cancelAgentSchedule(
   return guardedWrite('bureau.schedules.cancel', scheduleId, expectedRevision, options);
 }
 
-/** What an update changes: the cadence always, and the description, overlap, and zone when they are given. */
+/**
+ * What an update changes: the cadence always, and the description, overlap, zone, agent, message,
+ * and chat when they are given. A field that is left out is kept as the schedule has it.
+ */
 export type AgentScheduleUpdate = {
   readonly spec: string;
   readonly description?: string;
   readonly overlap?: 'skip' | 'allow';
   /** The IANA zone a cron `spec` is read in. Left out, the Bureau keeps the schedule's zone. */
   readonly timeZone?: string;
+  /** The catalog agent each fire runs from now on. */
+  readonly agentName?: string;
+  /** The text each fire sends from now on, which replaces the schedule's text whole. */
+  readonly input?: string;
+  /** The chat every fire continues from now on, or `null` to make each fire a fresh chat. */
+  readonly sessionId?: string | null;
+  /**
+   * Every fire continues one new chat from now on, which the Bureau names, replacing the chat the
+   * schedule continued. It is how the agent of a schedule that continues a chat is changed, because
+   * the Bureau refuses an agent apart from its chat.
+   */
+  readonly continueChat?: true;
 };
 
-/** Replaces the schedule's cadence, and changes its description, overlap, and zone when they are given. */
+/** Replaces the schedule's cadence, and changes its description, overlap, zone, agent, message, and chat when they are given. */
 export async function updateAgentSchedule(
   scheduleId: string,
   update: AgentScheduleUpdate,
@@ -206,16 +246,20 @@ export async function updateAgentSchedule(
     ...(update.description === undefined ? {} : { description: update.description }),
     ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
     ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
+    ...(update.agentName === undefined ? {} : { agentName: update.agentName }),
+    ...(update.input === undefined ? {} : { input: update.input }),
+    ...(update.sessionId === undefined ? {} : { sessionId: update.sessionId }),
+    ...(update.continueChat === true ? { continueChat: true } : {}),
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
   return receiptSchema.parse(await callBureau('bureau.schedules.update', params, options));
 }
 
 /**
- * Skips the fire the caller read (`bureau.schedules.skipnext`), guarded by the revision the caller
- * read. A fire moves neither the revision nor the status, so the call also names the fire
- * (`occurrence`, in milliseconds since the epoch, sent as the ISO 8601 instant the Bureau takes):
- * when that is no longer the schedule's next fire the Bureau answers a `Conflict` whose
+ * Skips the fire the caller read (`bureau.schedules.skipnext`), the next or a later one, guarded by
+ * the revision the caller read. A fire moves neither the revision nor the status, so the call also
+ * names the fire (`occurrence`, in milliseconds since the epoch, sent as the ISO 8601 instant the
+ * Bureau takes): when that is no longer an upcoming fire the Bureau answers a `Conflict` whose
  * `data.reason` is `occurrence-not-next` ({@link isOccurrenceNotNext}) and writes nothing.
  */
 export async function skipNextAgentSchedule(
@@ -232,7 +276,27 @@ export async function skipNextAgentSchedule(
   return receiptSchema.parse(await callBureau('bureau.schedules.skipnext', params, options));
 }
 
-/** Whether `error` is the Bureau's answer to a skip that named a fire that is no longer the next one. */
+/**
+ * Takes back the skip of the fire the caller read (`bureau.schedules.unskip`), guarded by the
+ * revision the caller read, so it starts a task after all. A fire that has passed since is a
+ * `Conflict` whose `data.reason` is `occurrence-not-next` ({@link isOccurrenceNotNext}), and
+ * nothing is written.
+ */
+export async function unskipAgentSchedule(
+  scheduleId: string,
+  expectedRevision: number | undefined,
+  occurrence: number,
+  options?: Options,
+): Promise<BureauScheduleReceipt> {
+  const params = {
+    scheduleId,
+    occurrence: new Date(occurrence).toISOString(),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+  };
+  return receiptSchema.parse(await callBureau('bureau.schedules.unskip', params, options));
+}
+
+/** Whether `error` is the Bureau's answer to a skip or an unskip that named a fire that is no longer upcoming. */
 export function isOccurrenceNotNext(error: unknown): boolean {
   return (
     error instanceof HttpClientError &&

@@ -39,6 +39,7 @@ export const INTERACTIVE_OPERATION_NAMES: ReadonlyArray<string> = [
   'weft.schedules.pause',
   'weft.schedules.resume',
   'weft.schedules.skipnext',
+  'weft.schedules.unskip',
   'weft.schedules.runnow',
   'weft.schedules.missed',
   // Reviews

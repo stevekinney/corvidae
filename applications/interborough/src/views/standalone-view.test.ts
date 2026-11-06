@@ -93,14 +93,14 @@ function toastRegions(container: HTMLElement): number {
   return container.querySelectorAll('.cinder-toast-region').length;
 }
 
-/** Each view with the title its route renders once it has mounted. */
+/** Each view with the title its route renders once it has mounted (Workers and Storage are tabs of Health, which heads them). */
 const views: readonly (readonly [string, Component, string])[] = [
   ['DashboardView', DashboardView, 'Health'],
   ['WorkflowsView', WorkflowsView, 'Runs'],
   ['ReviewsView', ReviewsView, 'Reviews'],
-  ['WorkersView', WorkersView, 'Workers'],
+  ['WorkersView', WorkersView, 'Health'],
   ['SchedulesView', SchedulesView, 'Schedules'],
-  ['StorageView', StorageView, 'Storage'],
+  ['StorageView', StorageView, 'Health'],
 ];
 
 describe('a view rendered outside the application shell', () => {

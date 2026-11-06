@@ -46,6 +46,10 @@
           "nested": {
             "type": "boolean",
             "description": "Whether the `children` snippet draws content under this call's row, such as the approval that\na `waiting` call is waiting on, or the approved one under a call that has been decided."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Keeps this call on the rail wherever it falls, folded or not, as a failed or waiting call is.\nFor a finished call whose result the person still has to act on, such as an inline panel."
           }
         },
         "additionalProperties": false,

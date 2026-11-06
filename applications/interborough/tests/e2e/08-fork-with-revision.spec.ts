@@ -10,8 +10,8 @@
  * → submit → a REAL rejected `WorkflowRevisionUnavailableError` Conflict
  * renders the picker's own framing (mirrors `07-activate-workflow-revision.
  * spec.ts`'s real-refusal pattern, not a mocked one). A separate schedule
- * created via the wizard with `revisionPolicy: 'pinned'` shows "Pinned
- * (rev X)" on its own detail page.
+ * made on the new schedule page (which has no revision policy of its own, so it follows the
+ * active revision) opens on its own detail page.
  *
  * Explicitly does NOT attempt: a successful (non-Conflict) explicit-
  * revision fork, or a live "persisted revision differs from active" detail
@@ -26,7 +26,6 @@
  * refuses, so no new workflow or catalog mutation survives it) and one new
  * schedule — safe anywhere in the run order relative to the other flows.
  */
-import { SCHEDULE_COPY } from '../../src/app/copy.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 test('operator inspects revision bindings, attempts a rejected explicit-revision fork, and pins a schedule', async ({
@@ -92,23 +91,21 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await expect(conflictBanner.getByText(/Pick a different revision/)).toBeVisible();
   await checkA11y('workflow detail — checkpoints, Fork panel (rejected revision conflict)');
 
-  // Second half: a pinned schedule shows "Pinned (rev X)" on its own detail
-  // page (WFT-117's schedule create/edit surface).
+  // Second half: a schedule made on the new schedule page follows the active revision (its form
+  // has no revision policy of its own), and its detail page opens.
   await page.goto('/schedules/new');
-  await page.getByRole('combobox', { name: /^Workflow/ }).fill('order');
-  await page.getByRole('option', { name: /Order Processing/ }).click();
-
-  await page
-    .getByRole('group', { name: SCHEDULE_COPY.create.revisionLabel })
-    .getByRole('radio', { name: 'Pinned' })
-    .click();
-
+  await page.getByRole('combobox', { name: /^Workflow/ }).click();
+  await page.getByRole('option', { name: /Order processing/ }).click();
+  // Create waits for the workflow's input fields, which the page draws before it asks.
+  await expect(page.getByTestId('new-schedule-input')).toBeVisible();
+  // Another flow of this run made a schedule named for the workflow, and a name is one schedule's.
+  await page.getByLabel(/^Name/).fill('Order processing for the revision flow');
   await page.getByRole('button', { name: 'Create schedule' }).click();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
-  // The detail rail shows the revision policy the schedule was created with.
-  await expect(page.getByTestId('schedule-rail').getByText(/^Pinned \(/)).toBeVisible();
-  await checkA11y('schedule detail — pinned revision policy shown');
+  // The new schedule page has no revision policy of its own, so the schedule follows the active revision.
+  await expect(page.getByTestId('schedule-details')).toBeVisible();
+  await checkA11y('schedule detail — a schedule made on the new schedule page');
 });
 
 test('the revision surfaces are usable across supported widths and themes', async ({ page }) => {

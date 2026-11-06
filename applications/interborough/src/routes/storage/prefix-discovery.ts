@@ -17,7 +17,7 @@ import { storageScan, type StorageConnection, type StorageScanOptions } from './
 export const MAXIMUM_STEPS = 200;
 
 /** The smallest key above every key that starts with `prefix`. */
-function endOfGroup(prefix: string): string {
+export function endOfGroup(prefix: string): string {
   const last = prefix.at(-1);
   if (last === undefined) return prefix;
   return `${prefix.slice(0, -1)}${String.fromCodePoint(last.codePointAt(0)! + 1)}`;

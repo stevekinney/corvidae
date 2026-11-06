@@ -15,7 +15,7 @@
  * call with a fixed reply and whose key is a fixture, so no real provider key is ever used or read;
  * a built-in agent's step that a model override sends to that provider answers from the agent's
  * script instead ({@link showcaseProviderResolver}).
- * The end-to-end showcase specification (`tests/e2e/showcase.spec.ts`) opens a host seeded the same
+ * The end-to-end showcase specification (`tests/e2e/00-showcase.spec.ts`) opens a host seeded the same
  * way.
  *
  * @module showcase
@@ -149,6 +149,9 @@ export const showcaseHookFetch: typeof fetch = Object.assign(
   { preconnect: fetch.preconnect },
 );
 
+/** The version the sample world's host reports in its audit log ("Interborough 2.4.1", decisions.md row 82h). */
+export const SHOWCASE_VERSION = '2.4.1';
+
 /** The showcase's storage warning level: the threshold of its `storage.size` alert rule, 1 GB. */
 export const SHOWCASE_STORAGE_WARNING_BYTES = 1024 ** 3;
 
@@ -182,6 +185,7 @@ export function showcaseHostOptions(
   | 'hookFetch'
   | 'alerts'
   | 'storageSizeReportIntervalMilliseconds'
+  | 'version'
 > {
   const scripts = showcaseAgentScripts(pacing);
   return {
@@ -195,5 +199,6 @@ export function showcaseHostOptions(
     // engine's own report of the real database's few megabytes would resolve the alert a minute
     // later, so it is off.
     storageSizeReportIntervalMilliseconds: 0,
+    version: SHOWCASE_VERSION,
   };
 }
