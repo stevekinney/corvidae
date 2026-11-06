@@ -709,6 +709,43 @@ describe('PayloadInspector', () => {
       expect(readCss()).toMatch(/__warning\s*\{[^}]*color:\s*var\(--cinder-status-warning-text\)/s);
     });
 
+    test('plain shows a string as text under the label, with no switch, no parsing and no notice', () => {
+      const text = '{ "orderId": 4471, "amount": }';
+      const { container, queryAllByRole, getByRole } = renderInspector({
+        value: text,
+        label: 'Value · text, 2.1 MB',
+        bare: true,
+        plain: true,
+      });
+
+      expect(getByRole('group', { name: 'Value · text, 2.1 MB' })).toBeTruthy();
+      expect(container.querySelector('.cinder-payload-inspector__label')?.textContent).toBe(
+        'Value · text, 2.1 MB',
+      );
+      expect(queryAllByRole('radio')).toHaveLength(0);
+      expect(container.querySelector('.cinder-payload-inspector__warning')).toBeNull();
+      expect(container.querySelector('.cinder-code-block')?.textContent).toContain(
+        '"orderId": 4471',
+      );
+      expect(
+        container.querySelector('[data-cinder-state]')?.getAttribute('data-cinder-state'),
+      ).toBe('text');
+    });
+
+    test('plain shows JSON text as text too, never as fields', () => {
+      const { container, queryAllByRole } = renderInspector({
+        value: '{"orderId":4471}',
+        plain: true,
+      });
+
+      expect(queryAllByRole('radio')).toHaveLength(0);
+      expect(container.querySelector('.cinder-payload-inspector__fields')).toBeNull();
+      expect(container.querySelector('.cinder-code-block')?.textContent).toContain(
+        '{"orderId":4471}',
+      );
+      expect(container.querySelector('.cinder-payload-inspector__size')?.textContent).toBe('Text');
+    });
+
     test('copies the original text, and the button reads "Copy text"', async () => {
       const writeText = mock(async () => undefined);
       const original = navigator.clipboard;

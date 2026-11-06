@@ -14,6 +14,11 @@
    * taking longer than usual and offers Cancel. What the pane then shows, sizes, copies and fences a
    * write on is what the read returned.
    *
+   * While the editor is open the key is read again every few seconds. When the application wrote it
+   * in the meantime, a warning says so and when, and nothing is overwritten silently: the person
+   * discards the edit, saves over the newer value after a confirmation, or loads the new value into
+   * the editor.
+   *
    * The write functions refuse a managed key too, so a control that appears by mistake still cannot
    * change one.
    */
@@ -23,20 +28,26 @@
     ConfirmDialog,
     CopyButton,
     Dropdown,
+    formatTimeOfDay,
     Skeleton,
     Textarea,
     VisuallyHidden,
   } from '@lostgradient/cinder';
   import { Copy, Ellipsis, Lock, Pencil, Trash2 } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { getContext } from 'svelte';
 
   import { STORAGE_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { formatBytes } from '../../lib/format/index.ts';
-  import { isJson, textOf } from './key-value.ts';
-  import { storageQueryKeys } from './queries.ts';
+  import { isJson, sameBytes, textOf } from './key-value.ts';
+  import {
+    DEFAULT_WATCH_INTERVAL_MILLISECONDS,
+    STORAGE_WATCH_INTERVAL,
+    storageQueryKeys,
+  } from './queries.ts';
   import {
     assertWritable as assertKeyWritable,
     managedPrefix,
@@ -45,6 +56,7 @@
   import {
     storageConditionalBatch,
     storageDelete,
+    storageEntry,
     storageGet,
     storagePut,
     type StorageConnection,
@@ -78,6 +90,9 @@
 
   const copy = STORAGE_COPY.detail;
   const queryClient = useQueryClient();
+  const watchInterval =
+    getContext<number | false | undefined>(STORAGE_WATCH_INTERVAL) ??
+    DEFAULT_WATCH_INTERVAL_MILLISECONDS;
 
   const managed = $derived(
     bureauPrefixes === undefined ? undefined : managedPrefix(entry.key, bureauPrefixes),
@@ -122,7 +137,41 @@
    * cannot move the other's fence.
    */
   let editFence = $state<Uint8Array | undefined>(undefined);
+  /** When the editor was opened, or last loaded the newer value, so a read from before it is never taken for news. */
+  let editStartedAt = $state(0);
+  let confirmSaveOver = $state(false);
   let deleteFence = $state<Uint8Array | undefined>(undefined);
+
+  // While the editor is open the key is read again, to see whether the application wrote it.
+  const watchQuery = createQuery(
+    () => ({
+      queryKey: storageQueryKeys.watch(entry.key),
+      queryFn: ({ signal }) => storageEntry(client, entry.key, signal),
+      enabled: editing,
+      refetchInterval: watchInterval,
+      refetchOnWindowFocus: watchInterval !== false,
+      retry: false,
+      gcTime: 0,
+    }),
+    undefined,
+  );
+  // What the key holds now when it is not what the editor opened on: read after the editor opened,
+  // and different. A key that was removed is not news here; saving it finds that out.
+  const newer = $derived(
+    editing &&
+      editFence !== undefined &&
+      watchQuery.data !== undefined &&
+      watchQuery.data !== null &&
+      watchQuery.dataUpdatedAt >= editStartedAt &&
+      !sameBytes(watchQuery.data.value, editFence)
+      ? watchQuery.data
+      : undefined,
+  );
+  const newerTime = $derived(
+    newer?.updatedAt === undefined || newer.updatedAt === null
+      ? null
+      : formatTimeOfDay(newer.updatedAt),
+  );
 
   const draftInvalid = $derived(editing && text !== undefined && isJson(text) && !isJson(draft));
 
@@ -130,8 +179,30 @@
     if (stored === undefined) return;
     draft = text ?? '';
     editFence = stored;
+    editStartedAt = Date.now();
     saveMutation.reset();
     editing = true;
+  }
+
+  /** Leaves the editor and shows what the key holds now. */
+  async function discardEdit(): Promise<void> {
+    stopEditing();
+    await refresh();
+  }
+
+  /** Puts what the application wrote into the editor, in place of the edit, to be edited again. */
+  async function showNewValue(): Promise<void> {
+    if (newer === undefined) return;
+    const next = textOf(newer.value);
+    if (next === undefined) {
+      await discardEdit();
+      return;
+    }
+    draft = next;
+    editFence = newer.value;
+    editStartedAt = Date.now();
+    saveMutation.reset();
+    await refresh();
   }
 
   function stopEditing(): void {
@@ -241,9 +312,9 @@
     undefined,
   );
 
-  // After a save that failed the pane's line folds the key into itself, as the failed-save frame
-  // draws it, so the line above the alert is the only thing above it.
-  const saveFailed = $derived(editing && saveMutation.isError);
+  // After a save that failed, or a rewrite, the pane's line folds the key into itself, as the
+  // failed-save and rewritten frames draw it, so the line above the alert is the only thing above it.
+  const saveFailed = $derived(editing && (saveMutation.isError || newer !== undefined));
   const size = $derived(stored === undefined ? undefined : formatBytes(stored.byteLength));
   const group = $derived(keyGroupName(entry.key, STORAGE_COPY.noGroup));
   // The editor is as tall as what it holds, between three lines and sixteen.
@@ -361,7 +432,23 @@
     {/if}
   {:else if editing}
     <div class="ib-storage-key__edit">
-      {#if saveMutation.isError}
+      {#if newer !== undefined}
+        <Alert variant="warning">
+          <p class="ib-storage-key__alert-line" data-testid="storage-rewritten">
+            <strong>{copy.rewritten.lead}</strong>
+            <span>{copy.rewritten.detail(newerTime)}</span>
+          </p>
+          {#snippet actions()}
+            <Button variant="secondary" onclick={discardEdit}>{copy.rewritten.discard}</Button>
+            <Button
+              variant="secondary"
+              loading={saveMutation.isPending}
+              onclick={() => (confirmSaveOver = true)}>{copy.rewritten.saveOver}</Button
+            >
+            <Button variant="primary" onclick={showNewValue}>{copy.rewritten.showNew}</Button>
+          {/snippet}
+        </Alert>
+      {:else if saveMutation.isError}
         <Alert variant="danger">
           <p class="ib-storage-key__alert-line" data-testid="storage-save-failed">
             <strong>{copy.saveFailed.lead}</strong>
@@ -379,16 +466,18 @@
         {...saveFailed ? { 'aria-label': copy.editLabel } : { label: copy.editLabel }}
         {...draftInvalid ? { error: copy.notJson } : {}}
       />
-      <div class="ib-storage-key__actions ib-storage-key__actions--end">
-        <Button variant="secondary" onclick={stopEditing}>{copy.cancel}</Button>
-        <Button
-          data-changes
-          variant="primary"
-          disabled={draftInvalid || draft === text}
-          loading={saveMutation.isPending}
-          onclick={() => (confirmSave = true)}>{copy.save}</Button
-        >
-      </div>
+      {#if newer === undefined}
+        <div class="ib-storage-key__actions ib-storage-key__actions--end">
+          <Button variant="secondary" onclick={stopEditing}>{copy.cancel}</Button>
+          <Button
+            data-changes
+            variant="primary"
+            disabled={draftInvalid || draft === text}
+            loading={saveMutation.isPending}
+            onclick={() => (confirmSave = true)}>{copy.save}</Button
+          >
+        </div>
+      {/if}
     </div>
   {:else if text === undefined}
     <StorageValueDisplay value={stored} label={copy.valueLabel} />
@@ -408,6 +497,22 @@
   onConfirm={() => {
     if (editFence !== undefined) {
       saveMutation.mutate({ key: entry.key, value: draft, expected: editFence });
+    }
+  }}
+/>
+
+<ConfirmDialog
+  bind:open={confirmSaveOver}
+  title={STORAGE_COPY.confirmSaveOver.title}
+  description={STORAGE_COPY.confirmSaveOver.description(
+    entry.key,
+    newerTime,
+    conditionalBatch === false,
+  )}
+  confirmLabel={STORAGE_COPY.confirmSaveOver.confirm}
+  onConfirm={() => {
+    if (newer !== undefined) {
+      saveMutation.mutate({ key: entry.key, value: draft, expected: newer.value });
     }
   }}
 />

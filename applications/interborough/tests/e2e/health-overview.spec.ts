@@ -117,6 +117,24 @@ test.describe('the sample world', () => {
       await expect(main.getByRole('region', { name: /reach the Interborough server/ })).toHaveCount(
         0,
       );
+      // 77m: the showcase host has plugins that only wait for a key (OpenAI, Gemini, TypeSafe),
+      // and none of them adds a row: the provider row already covers a provider without a key.
+      await expect(attention).not.toContainText(/OpenAI|Gemini|TypeSafe|didn’t load/i);
+      // 76k: most recent first (provider 10:45 AM, storage 9:05 AM, then Daily summary), and the
+      // sidebar's Health dot is amber while the list is not empty. System problems are never
+      // counted as Needs you, so Reviews keeps its 2. The sidebar is a drawer on a phone.
+      if (width >= 1024) {
+        const health = page
+          .getByRole('navigation')
+          .getByRole('link', { name: 'Health, 3 need attention' });
+        await expect(health.locator('.cinder-status-dot')).toHaveAttribute(
+          'data-cinder-status',
+          'warning',
+        );
+        await expect(
+          page.getByRole('navigation').getByRole('link', { name: 'Reviews, 2 need you' }),
+        ).toBeVisible();
+      }
 
       // 76l, 76m: Recent activity, newest first, the time at the right.
       await expect(main.getByRole('heading', { level: 2, name: /^Recent activity/ })).toContainText(
@@ -192,6 +210,7 @@ test.describe('the sample world', () => {
     await expect(advanced.locator('[data-section="checks"]')).toContainText(
       '3 need attention · Storage, Schedules, Providers',
     );
+    await expect(advanced.locator('[data-section="checks"]')).not.toContainText('Plugins');
     await expect(advanced.getByText('Open checks ›')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/health',

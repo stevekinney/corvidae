@@ -15,6 +15,18 @@ export const storageQueryKeys = {
   allValues: () => ['storage', 'value'] as const,
   /** The value of one key, which the pane reads when a row is opened. */
   value: (key: string) => ['storage', 'value', key] as const,
+  /** The key the editor is open on, read again while it is open to see whether the app rewrote it. */
+  watch: (key: string) => ['storage', 'watch', key] as const,
   /** The pages of the key table for one set of scan bounds (`scanBounds`), written as text. */
   keys: (bounds: string) => ['storage', 'keys', bounds] as const,
 };
+
+/**
+ * The Svelte context key for how often the open editor reads its key again, in milliseconds, or
+ * `false` for never. The pane reads {@link DEFAULT_WATCH_INTERVAL_MILLISECONDS} when nothing provides one;
+ * a test provides its own so a poll never lands between two of its steps.
+ */
+export const STORAGE_WATCH_INTERVAL = Symbol('storage-watch-interval');
+
+/** How often the open editor reads its key again unless a context says otherwise. */
+export const DEFAULT_WATCH_INTERVAL_MILLISECONDS = 3000;

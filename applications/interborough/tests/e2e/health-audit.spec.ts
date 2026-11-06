@@ -214,6 +214,26 @@ test.describe('Health › Audit log on the sample world', () => {
       all.map((row) => row.querySelector('td, th')?.textContent?.trim() ?? ''),
     );
     expect(today.slice(0, 5)).toEqual(['10:45 AM', '10:42 AM', '10:42 AM', '10:33 AM', '10:33 AM']);
+    // 82j: the rest of the timeline holds: order 4472 asked at 10:30 before it was approved and
+    // refunded, and the server started at 9:00 AM and logged the Daily summary runs it missed.
+    expect(await cellsOf(page, 6)).toEqual([
+      '10:30 AM',
+      'Tool runner',
+      'Asked to refund order 4472',
+      'Issue refund · order 4472',
+    ]);
+    expect(await cellsOf(page, 9)).toEqual([
+      '9:00 AM',
+      'Interborough',
+      'Noticed 4 missed runs',
+      'Daily summary',
+    ]);
+    expect(await cellsOf(page, 10)).toEqual([
+      '9:00 AM',
+      'Interborough',
+      'Server started',
+      'Interborough',
+    ]);
     // 82i: yesterday's rows follow under a heading of their own.
     expect(headings[1]).toBe('Yesterday, Sun Nov 1 · Central time');
     const texts = await rows(page).evaluateAll((all) => all.map((row) => row.textContent ?? ''));

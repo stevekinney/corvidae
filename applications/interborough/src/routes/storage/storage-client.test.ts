@@ -13,6 +13,7 @@ import { installFetchImplementation } from '../../lib/live-source/fetch.test-sup
 import {
   storageConditionalBatch,
   storageDelete,
+  storageEntry,
   storageGet,
   storagePut,
   storageScan,
@@ -220,6 +221,31 @@ describe('storageScan write times', () => {
       ['b', null],
       ['c', null],
     ]);
+  });
+});
+
+describe('storageEntry', () => {
+  test('scans exactly one key and returns it with its write time, not a neighbour that starts the same', async () => {
+    scripted = new ScriptedFetch();
+    scripted.respondWith(
+      new Response(JSON.stringify({ key: 'app:a', value: 'AQ==', updatedAt: 1_793_637_900_000 })),
+    );
+
+    const entry = await storageEntry(connection, 'app:a');
+
+    const url = new URL(scripted.calls[0]?.url ?? '');
+    expect(url.searchParams.get('prefix')).toBe('app:a');
+    expect(url.searchParams.get('lte')).toBe('app:a');
+    expect(url.searchParams.get('limit')).toBe('1');
+    expect(entry?.updatedAt).toBe(1_793_637_900_000);
+    expect(entry?.value).toEqual(new Uint8Array([1]));
+  });
+
+  test('is null when the key is not stored, even if a longer key answers the scan', async () => {
+    scripted = new ScriptedFetch();
+    scripted.respondWith(new Response(JSON.stringify({ key: 'app:ab', value: 'AQ==' })));
+
+    expect(await storageEntry(connection, 'app:a')).toBeNull();
   });
 });
 

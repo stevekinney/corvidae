@@ -13,9 +13,10 @@
  * values. The times the host wrote follow the clock of the capture, since the host stamps each key
  * with the sample world's clock.
  */
-import type { Page, Route } from '@playwright/test';
+import type { APIRequestContext, Page, Route } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { formatBytes } from '../../src/lib/format/index.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -424,6 +425,12 @@ const BANNER_SUMMARY =
 /** The address of one key's value, which the pane reads when a row is opened. */
 const valueAddress = (key: string): string => `/v1/storage/${encodeURIComponent(key)}`;
 
+/** What the host holds under `key`, as text. */
+async function storedText(request: APIRequestContext, key: string): Promise<string> {
+  const response = await request.get(valueAddress(key));
+  return response.text();
+}
+
 /**
  * Holds every request `matches` accepts, and `release` lets them all through. The rest are
  * answered as the host does.
@@ -591,6 +598,107 @@ test.describe('Health › Storage writes and states', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
     await expect(pane.getByTestId('storage-save-failed')).toHaveCount(0);
     await expect(pane.getByRole('textbox', { name: 'Value' })).toHaveCount(0);
+  });
+
+  test('the app rewrites the key while it is edited: a warning with three ways on, the draft kept, and nothing overwritten', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    const pane = await openBanner(page);
+    await pane.getByRole('button', { name: 'Edit' }).click();
+    const editor = pane.getByRole('textbox', { name: 'Value' });
+    await editor.fill('{\n  "dismissed": false\n}');
+
+    // The app writes the key while the editor is open.
+    const theirs = '{"dismissed":true,"dismissedOn":"2026-11-02T16:45:00Z"}';
+    await request.put(valueAddress(BANNER), { data: theirs });
+
+    // 80x: a warning-tone alert with a bold lead and when the app wrote, over the editor.
+    const alert = pane.getByTestId('storage-rewritten');
+    await expect(alert).toHaveText(
+      /^This key changed while you were editing\. The app wrote a new value at \d{1,2}:\d{2} (AM|PM)\.$/,
+    );
+    await expect(alert.locator('strong')).toHaveText('This key changed while you were editing.');
+    const banner = page.locator('main .cinder-alert[data-cinder-variant="warning"]');
+    await expect(banner).toHaveCount(1);
+    // Discard my edit and Save over it are secondary, Show new value is the primary, left to right.
+    const buttons = banner.getByRole('button');
+    await expect(buttons).toHaveText(['Discard my edit', 'Save over it…', 'Show new value']);
+    await expect(buttons.nth(0)).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(buttons.nth(1)).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(buttons.nth(2)).toHaveAttribute('data-cinder-variant', 'primary');
+    // The draft stays in the editor, under the alert, and the editor's own buttons give way.
+    await expect(editor).toHaveValue('{\n  "dismissed": false\n}');
+    await expect(pane.getByRole('button', { name: 'Save value' })).toHaveCount(0);
+    await expect(pane.getByTestId('storage-key-summary')).toHaveText(
+      new RegExp(`^App data and memory · \\d+ B · ${BANNER}$`),
+    );
+    expect(await storedText(request, BANNER)).toBe(theirs);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'rewritten-while-editing',
+      source: SOURCE,
+    });
+    await checkA11y('health storage, a key rewritten while it is edited');
+
+    // Save over it asks first, because it replaces the app's newer value.
+    await buttons.nth(1).click();
+    const dialog = page.getByRole('dialog', { name: 'Overwrite the app’s newer value?' });
+    await expect(dialog.getByRole('button', { name: 'Save over it' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+    expect(await storedText(request, BANNER)).toBe(theirs);
+
+    // Show new value puts what the app wrote in the editor to edit again.
+    await buttons.nth(2).click();
+    await expect(alert).toHaveCount(0);
+    await expect(editor).toHaveValue(theirs);
+  });
+
+  test('a value too large to lay out is text under its size: the first 64 KB, no switch, and Copy value copies all of it', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    const key = 'log:server';
+    const line = '2026-11-02 09:00:02 server started\n';
+    // The REST write takes at most 1 MiB, so the live host holds the largest value it can be handed;
+    // the board's 2.1 MB log reads the same way (component tests cover that size).
+    const log = line.repeat(Math.floor(1_000_000 / line.length));
+    const size = formatBytes(new TextEncoder().encode(log).byteLength);
+    const written = await request.put(valueAddress(key), { data: log });
+    expect(written.ok()).toBe(true);
+    try {
+      await openStorage(page);
+      const main = page.locator('main');
+      await main.getByPlaceholder('Keys starting with').fill(key);
+      await main.locator(`tr[data-cinder-row-id="${key}"]`).click();
+      const pane = main.getByTestId('storage-key');
+
+      // 81b: the heading names the kind and the size, the text is the start of the value, and a note says why.
+      await expect(pane.getByTestId('storage-key-summary')).toHaveText(
+        new RegExp(` · ${size} · updated `),
+      );
+      await expect(pane.getByText(`Value · text, ${size}`)).toBeVisible();
+      await expect(pane.getByRole('radio')).toHaveCount(0);
+      await expect(pane.getByTestId('storage-text-note')).toHaveText(
+        `Showing the first 64 KB. Copy value copies all ${size}. This value isn’t JSON, so there is no Fields or JSON switch.`,
+      );
+      await expect(pane.getByRole('button', { name: 'Copy key' })).toBeVisible();
+      await expect(pane.getByRole('button', { name: 'Copy value' })).toBeVisible();
+      const drawn = (await pane.locator('.cinder-code-block').textContent()) ?? '';
+      expect(drawn.length).toBeLessThanOrEqual(64 * 1024 + 64);
+      expect(drawn).toContain('2026-11-02 09:00:02 server started');
+      await captureForDesignReview(page, {
+        route: '/health/storage',
+        state: 'large-text-value',
+        source: SOURCE,
+      });
+      await checkA11y('health storage, a value shown as text');
+    } finally {
+      await request.delete(valueAddress(key));
+    }
   });
 
   test('nothing selected: the pane says what to do, the table keeps no row highlighted', async ({

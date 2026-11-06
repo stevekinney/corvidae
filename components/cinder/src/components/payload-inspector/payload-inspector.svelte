@@ -67,6 +67,7 @@
     label,
     view = $bindable('fields'),
     bare = false,
+    plain = false,
     linkFor,
     redact,
     formatValue,
@@ -158,13 +159,15 @@
     typeof shown === 'object' && shown !== null && !(shown instanceof Date),
   );
 
-  type Mode = 'failed' | 'none' | 'unserializable' | 'oversize' | 'invalid' | 'streaming' | 'ready';
+  type Mode =
+    'failed' | 'none' | 'unserializable' | 'oversize' | 'invalid' | 'streaming' | 'text' | 'ready';
 
   // The card is in exactly one of these states, and each one decides the header and the body, so
   // the order below is the precedence.
   const mode = $derived.by((): Mode => {
     if (failed) return 'failed';
     if (isEmpty) return 'none';
+    if (plain && typeof value === 'string' && !streaming) return 'text';
     if (arriving) return 'streaming';
     if (!parseResult.ok) return 'invalid';
     if (unserializable) return 'unserializable';
@@ -175,13 +178,15 @@
   // Copy writes what the card shows. A string payload copies as it came, unless a secret in it was
   // hidden, in which case the hidden copy is written instead so Copy never holds the stored value.
   const copyText = $derived.by((): string => {
-    if (mode === 'invalid') return typeof value === 'string' ? value : '';
+    if (mode === 'invalid' || mode === 'text') return typeof value === 'string' ? value : '';
     if (mode !== 'ready' && mode !== 'oversize') return '';
     if (typeof value === 'string' && !containsSecret(shown)) return value;
     return serialized === undefined ? '' : (JSON.stringify(shown, null, 2) ?? '');
   });
 
-  const copyLabel = $derived(mode === 'invalid' ? 'Copy text' : `Copy ${label ?? 'payload'}`);
+  const copyLabel = $derived(
+    mode === 'invalid' || mode === 'text' ? 'Copy text' : `Copy ${label ?? 'payload'}`,
+  );
   const showCopy = $derived(!bare && mode !== 'none' && mode !== 'unserializable');
   const copyDisabled = $derived(mode === 'failed' || mode === 'streaming');
   const showSwitch = $derived(mode === 'ready' || mode === 'streaming' || mode === 'invalid');
@@ -190,7 +195,7 @@
     if (bare) return undefined;
     if (mode === 'ready') return headerCount(shown, { bytes });
     if (mode === 'streaming') return headerCount(shown, { streaming: true });
-    if (mode === 'invalid') return 'Text';
+    if (mode === 'invalid' || mode === 'text') return 'Text';
     if (mode === 'oversize' && bytes !== undefined) return formatBytes(bytes);
     return undefined;
   });
@@ -348,6 +353,8 @@
             Download JSON
           </Button>
         </div>
+      {:else if mode === 'text'}
+        <CodeBlock code={typeof value === 'string' ? value : ''} wrap />
       {:else if mode === 'invalid'}
         <p class="cinder-payload-inspector__warning">
           <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />

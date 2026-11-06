@@ -188,6 +188,19 @@ export async function storageGet(
   return new Uint8Array(await response.arrayBuffer());
 }
 
+/**
+ * One key with when it was last written, read in a single scan of exactly that key, so the time
+ * always belongs to the value beside it. `null` when the key is not stored.
+ */
+export async function storageEntry(
+  connection: StorageConnection,
+  key: string,
+  signal?: AbortSignal,
+): Promise<StorageScanEntry | null> {
+  const { entries } = await storageScan(connection, { prefix: key, lte: key, limit: 1 }, signal);
+  return entries.find((entry) => entry.key === key) ?? null;
+}
+
 /** `PUT /v1/storage/:key`. */
 export async function storagePut(
   connection: StorageConnection,

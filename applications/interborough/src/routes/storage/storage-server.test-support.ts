@@ -31,6 +31,8 @@ export interface StorageServerControl {
   valueStatus: number | undefined;
   /** Never answers a read of one key's value, so the pane stays loading until the read is cancelled. */
   holdValues: boolean;
+  /** When each key was last written, in epoch milliseconds, as a scan reports it. A key with no entry reports none. */
+  writtenAt: Map<string, number>;
 }
 
 /** The capabilities `weft.storage.capabilities` answers with. */
@@ -100,6 +102,7 @@ export function serveStorage(options: StorageServerOptions): {
     pageStatus: undefined,
     valueStatus: undefined,
     holdValues: false,
+    writtenAt: new Map(),
   };
   const store = new Map<string, Uint8Array>(
     Object.entries(options.keys).map(([key, value]) => [key, bytesOf(value)]),
@@ -170,7 +173,11 @@ export function serveStorage(options: StorageServerOptions): {
         )
         .slice(0, limit)
         .map(([key, value]) =>
-          JSON.stringify({ key, value: Buffer.from(value).toString('base64') }),
+          JSON.stringify({
+            key,
+            value: Buffer.from(value).toString('base64'),
+            ...(control.writtenAt.has(key) ? { updatedAt: control.writtenAt.get(key) } : {}),
+          }),
         );
       return new Response(rows.length > 0 ? `${rows.join('\n')}\n` : '', {
         headers: { 'Content-Type': 'application/x-ndjson' },

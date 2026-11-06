@@ -5037,6 +5037,32 @@ export const STORAGE_COPY = {
       noAnswer: 'Interborough didn’t answer.',
       kept: 'Your edit is still here.',
     },
+    /**
+     * The heading over a value shown as text, which says what it is and how big: "Value · text, 2.1 MB".
+     */
+    textValueLabel: (size: string): string => `Value · text, ${size}`,
+    /**
+     * The note under a value shown as text. Each part is said only when it is true: that only the
+     * start is shown (and Copy value still copies it all), and why there is no Fields or JSON switch.
+     */
+    textNote: {
+      shownStart: (shown: string, size: string): string =>
+        `Showing the first ${shown}. Copy value copies all ${size}.`,
+      notJson: 'This value isn’t JSON, so there is no Fields or JSON switch.',
+      tooLarge: 'This value is too large for the Fields and JSON switch.',
+    },
+    /**
+     * The warning over the editor when the key was written while it was open: a bold lead, then who
+     * wrote it and when. The time is left out when the storage records none.
+     */
+    rewritten: {
+      lead: 'This key changed while you were editing.',
+      detail: (time: string | null): string =>
+        time === null ? 'The app wrote a new value.' : `The app wrote a new value at ${time}.`,
+      discard: 'Discard my edit',
+      saveOver: 'Save over it…',
+      showNew: 'Show new value',
+    },
     capabilityUnknown:
       'The storage has not said whether it can check that a value is unchanged, so nothing was written. Try again in a moment.',
     changedUnderYou:
@@ -5050,6 +5076,13 @@ export const STORAGE_COPY = {
     description: (key: string, unchecked = false): string =>
       `This replaces the value of ${key}.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
     confirm: 'Save',
+  },
+  /** The confirmation of Save over it, which replaces the value the application wrote while the editor was open. */
+  confirmSaveOver: {
+    title: 'Overwrite the app’s newer value?',
+    description: (key: string, time: string | null, unchecked = false): string =>
+      `${key} was written${time === null ? '' : ` at ${time}`} while you were editing. Saving replaces that value with yours. This can’t be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Save over it',
   },
   confirmDelete: {
     title: 'Delete this key?',

@@ -283,6 +283,14 @@ test('a hook whose last delivery failed adds a row second, after the provider', 
   // 77a, 77b: a count of 4 in neutral, the hook second (most recent first), its own button.
   await expect(attentionCount(page)).toHaveText('4');
   await expect(attentionRows(page)).toHaveCount(4);
+  // The list is ordered once, most recent first: provider 10:45 AM, the hook 10:42 AM, storage
+  // 9:05 AM, then Daily summary; the sidebar's Health dot stays amber.
+  await expect(attentionRows(page).nth(0)).toContainText('No model provider connected');
+  await expect(attentionRows(page).nth(2)).toContainText('Storage is over its warning level');
+  await expect(attentionRows(page).nth(3)).toContainText('Daily summary missed 4 runs');
+  await expect(
+    sidebarRow(page, 'Health, 4 need attention').locator('.cinder-status-dot'),
+  ).toHaveAttribute('data-cinder-status', 'warning');
   const hook = attentionRows(page).nth(1);
   await expect(hook).toContainText(
     'Notify Slack when a review is waiting’s last delivery failed · 410 Gone',
@@ -324,7 +332,11 @@ test('a hook that gave up counts like one whose last delivery failed, and sits l
   );
   await page.goto('/health');
 
-  // 77c, 77d: the provider, storage, Daily summary, then the hook, with the same button.
+  // 77c, 77d: the provider, storage, Daily summary, then the hook, with the same button, and the
+  // sidebar's Health dot amber.
+  await expect(
+    sidebarRow(page, 'Health, 4 need attention').locator('.cinder-status-dot'),
+  ).toHaveAttribute('data-cinder-status', 'warning');
   await expect(attentionCount(page)).toHaveText('4');
   await expect(attentionRows(page)).toHaveCount(4);
   await expect(attentionRows(page).nth(0)).toContainText('No model provider connected');

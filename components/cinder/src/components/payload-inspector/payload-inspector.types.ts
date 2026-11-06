@@ -121,6 +121,14 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
    * @default false
    */
   bare?: boolean;
+  /**
+   * Shows a string `value` as it is, as text in a code block under the label, whatever it holds:
+   * the Fields / JSON switch is not drawn, nothing is parsed and no invalid-JSON notice appears.
+   * Use it for a value that is not JSON, or one too long to lay out as fields, and say so beside
+   * it. A value that is not a string is shown as usual.
+   * @default false
+   */
+  plain?: boolean;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };
@@ -215,6 +223,14 @@ export type PayloadInspectorSchemaProps = {
    * @default false
    */
   bare?: boolean;
+  /**
+   * Shows a string `value` as it is, as text in a code block under the label, whatever it holds:
+   * the Fields / JSON switch is not drawn, nothing is parsed and no invalid-JSON notice appears.
+   * Use it for a value that is not JSON, or one too long to lay out as fields, and say so beside
+   * it. A value that is not a string is shown as usual.
+   * @default false
+   */
+  plain?: boolean;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };

@@ -613,28 +613,36 @@ test('a worker whose drain has finished reads Stopped, with Forget as its only a
   checkA11y,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await answerFleet(
-    page,
-    newFleet({
-      workers: [
-        {
-          id: 'search-worker',
-          name: 'Search worker',
-          queue: 'search',
-          inFlight: 0,
-          health: 'drained',
-          heardMinutesAgo: 0.07,
-          drainFinishedTasks: 2,
-          drainedMinutesAgo: 0.07,
-        },
-      ],
-    }),
-  );
+  const fleet = newFleet({
+    workers: [
+      {
+        id: 'search-worker',
+        name: 'Search worker',
+        queue: 'search',
+        inFlight: 0,
+        health: 'drained',
+        heardMinutesAgo: 0.07,
+        drainFinishedTasks: 2,
+        drainedMinutesAgo: 0.07,
+      },
+    ],
+  });
+  await answerFleet(page, fleet);
   await page.goto('/health/workers?worker=search-worker');
 
-  // 79h, 79i.
-  await expect(rows(page).first()).toContainText('Stopped');
-  await expect(rows(page).first()).toContainText('Drained · finished its 2 tasks');
+  // 79h, 79i: the row reads Stopped, with a neutral dot (never Disconnected's amber), the worker's
+  // name, the seconds since it finished and line two's sentence about its tasks.
+  const stopped = rows(page).first();
+  await expect(stopped).toContainText('Stopped');
+  await expect(stopped).toContainText('Search worker');
+  // The seconds follow the clock of the run; a capture pins it at 4 s.
+  await expect(stopped).toContainText(/\b\d+ s ago\b/);
+  await expect(stopped).toContainText('Drained · finished its 2 tasks');
+  await expect(stopped).not.toContainText('Disconnected');
+  await expect(stopped.locator('.cinder-status-dot').first()).toHaveAttribute(
+    'data-cinder-status',
+    'neutral',
+  );
   await expect(detail(page).getByTestId('worker-status-line')).toHaveText(
     'It finished its 2 tasks and stopped. Nothing is waiting on it.',
   );
@@ -646,6 +654,11 @@ test('a worker whose drain has finished reads Stopped, with Forget as its only a
     source: SOURCE,
   });
   await checkA11y('workers—a stopped worker');
+
+  // 79h: it leaves the list the next time the page loads without it, not while the page is open.
+  fleet.workers = [];
+  await page.reload();
+  await expect(rows(page)).toHaveCount(0);
 });
 
 test('below the push width one pane shows at a time, with a Back button', async ({

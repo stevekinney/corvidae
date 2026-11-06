@@ -3,6 +3,7 @@
  * starts-with and range controls, the selected key's pane, per-key Edit and Delete with a
  * confirmation, the lock on a key the application manages, and the storage line with its popover.
  */
+import { formatTimeOfDay } from '@lostgradient/cinder';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
 import { focusManager } from '@tanstack/svelte-query';
@@ -43,10 +44,15 @@ const KEYS = {
 async function open(
   options: Partial<Parameters<typeof serveStorage>[0]> = {},
   scopes?: readonly string[],
+  watchInterval?: number,
 ) {
   server = serveStorage({ keys: KEYS, bureauPrefixes: BUREAU, ...options });
   const view = render(StorageRouteHarness, {
-    props: { client: client(), ...(scopes === undefined ? {} : { scopes }) },
+    props: {
+      client: client(),
+      ...(scopes === undefined ? {} : { scopes }),
+      ...(watchInterval === undefined ? {} : { watchInterval }),
+    },
   } as never);
   return view;
 }
@@ -379,14 +385,41 @@ describe('the selected key', () => {
     expect(pane.queryByText('Theme')).toBeNull();
   });
 
-  test('shows a value that is not a JSON object as it is, and as a quoted string in the JSON view', async () => {
+  test('shows a value that is not JSON as text under its size, with no switch and a note saying why', async () => {
     const view = await open();
     const pane = within(await select(view, 'app:notes'));
     await waitFor(() => expect(pane.getByText('plain text note')).not.toBeNull());
 
-    await fireEvent.click(pane.getByRole('radio', { name: STORAGE_COPY.detail.jsonSwitch }));
+    expect(pane.getByText('Value · text, 15 B')).not.toBeNull();
+    expect(pane.queryByRole('radio', { name: STORAGE_COPY.detail.jsonSwitch })).toBeNull();
+    expect(pane.getByTestId('storage-text-note').textContent).toBe(
+      'This value isn’t JSON, so there is no Fields or JSON switch.',
+    );
+  });
 
-    await waitFor(() => expect(pane.getByText('"plain text note"')).not.toBeNull());
+  test('shows a very large value as its first 64 KB, and Copy value still copies all of it', async () => {
+    const line = '2026-11-02 09:00:02 server started\n';
+    const log = line.repeat(70_000);
+    const view = await open({ keys: { ...KEYS, 'log:server': log } });
+    const pane = within(await select(view, 'log:server'));
+    await pane.findByText('Value · text, 2.3 MB');
+
+    expect(pane.getByTestId('storage-text-note').textContent).toBe(
+      'Showing the first 64 KB. Copy value copies all 2.3 MB. This value isn’t JSON, so there is no Fields or JSON switch.',
+    );
+    expect(pane.queryByRole('radio', { name: STORAGE_COPY.detail.jsonSwitch })).toBeNull();
+    const written: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          written.push(text);
+        },
+      },
+    });
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.copyValue }));
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(written[0]).toBe(log);
   });
 
   test('says a binary value is not text, and offers no Edit', async () => {
@@ -482,6 +515,140 @@ async function startEditing(view: View, key: string) {
   await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.edit }));
   return pane;
 }
+
+/** The wall-clock time the sample key was rewritten at. */
+const REWRITTEN_AT = Date.UTC(2026, 10, 2, 16, 45);
+
+/** Opens `app:notes` in the editor with a poll every 25 ms, types `mine`, and has the application rewrite it. */
+async function rewriteWhileEditing(options: { readonly time: boolean } = { time: true }) {
+  const view = await open({}, undefined, 25);
+  const pane = await startEditing(view, 'app:notes');
+  await fireEvent.input(pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }), {
+    target: { value: 'mine' },
+  });
+  if (options.time) server?.control.writtenAt.set('app:notes', REWRITTEN_AT);
+  server?.store.set('app:notes', new TextEncoder().encode('theirs'));
+  const alert = await pane.findByTestId('storage-rewritten');
+  return { view, pane, alert };
+}
+
+describe('Rewritten while editing', () => {
+  test('warns that the key changed and when, keeps the draft, and offers three ways on', async () => {
+    const { pane, alert } = await rewriteWhileEditing();
+
+    expect(alert.querySelector('strong')?.textContent).toBe(STORAGE_COPY.detail.rewritten.lead);
+    expect(alert.textContent).toContain(
+      `The app wrote a new value at ${formatTimeOfDay(REWRITTEN_AT)}.`,
+    );
+    expect(
+      alert.closest('[role="alert"], [data-cinder-variant="warning"], .cinder-alert'),
+    ).not.toBeNull();
+    const buttons = [...(alert.closest('.cinder-alert')?.querySelectorAll('button') ?? [])];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Discard my edit',
+      'Save over it…',
+      'Show new value',
+    ]);
+    expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
+      'secondary',
+      'secondary',
+      'primary',
+    ]);
+    // The draft is still there, the editor's own buttons give way to these, and the line above folds the key in.
+    expect(
+      (pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('mine');
+    expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.save })).toBeNull();
+    expect(pane.getByTestId('storage-key-summary').textContent?.trim()).toMatch(
+      /^App data and memory · \d+ B · app:notes$/,
+    );
+    // Nothing is overwritten silently.
+    expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('theirs');
+    expect(conditionalBatchOf(server)).toBeUndefined();
+  });
+
+  test('says only that the app wrote a new value when the storage records no write time', async () => {
+    const { alert } = await rewriteWhileEditing({ time: false });
+
+    expect(alert.textContent).toContain('The app wrote a new value.');
+    expect(alert.textContent).not.toContain(' at ');
+  });
+
+  test('Discard my edit closes the editor and shows the new value', async () => {
+    const { pane } = await rewriteWhileEditing();
+
+    await fireEvent.click(
+      pane.getByRole('button', { name: STORAGE_COPY.detail.rewritten.discard }),
+    );
+
+    await waitUntil(() => pane.queryByRole('textbox') === null);
+    expect(pane.queryByRole('textbox')).toBeNull();
+    await pane.findByText('theirs');
+    expect(pane.queryByTestId('storage-rewritten')).toBeNull();
+    expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('theirs');
+  });
+
+  test('Save over it asks first, then writes the draft over the newer value, fenced on that value', async () => {
+    const { view, pane } = await rewriteWhileEditing();
+
+    await fireEvent.click(
+      pane.getByRole('button', { name: STORAGE_COPY.detail.rewritten.saveOver }),
+    );
+    const dialog = await view.findByRole('dialog');
+    expect(dialog.textContent).toContain(STORAGE_COPY.confirmSaveOver.title);
+    expect(dialog.textContent).toContain(`was written at ${formatTimeOfDay(REWRITTEN_AT)}`);
+    expect(conditionalBatchOf(server)).toBeUndefined();
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSaveOver.confirm }),
+    );
+
+    await waitFor(() => expect(conditionalBatchOf(server)).toBeDefined());
+    expect(conditionalBatchOf(server)).toEqual({
+      conditions: [{ key: 'app:notes', expected: 'theirs' }],
+      operations: [{ type: 'put', key: 'app:notes', value: 'mine' }],
+    });
+    expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('mine');
+  });
+
+  test('Show new value puts the new value in the editor, and a save after it is fenced on that value', async () => {
+    const { view, pane } = await rewriteWhileEditing();
+
+    await fireEvent.click(
+      pane.getByRole('button', { name: STORAGE_COPY.detail.rewritten.showNew }),
+    );
+
+    await waitUntil(() => pane.queryByTestId('storage-rewritten') === null);
+    const editor = pane.getByRole('textbox', {
+      name: STORAGE_COPY.detail.editLabel,
+    }) as HTMLTextAreaElement;
+    expect(editor.value).toBe('theirs');
+    await fireEvent.input(editor, { target: { value: 'theirs, and more' } });
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
+    const dialog = await view.findByRole('dialog');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
+    );
+
+    await waitFor(() => expect(conditionalBatchOf(server)).toBeDefined());
+    expect(conditionalBatchOf(server)?.conditions).toEqual([
+      { key: 'app:notes', expected: 'theirs' },
+    ]);
+    expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('theirs, and more');
+  });
+
+  test('says nothing while the key still holds what the editor opened on', async () => {
+    const view = await open({}, undefined, 25);
+    const pane = await startEditing(view, 'app:notes');
+    const reads = () =>
+      server?.calls.filter((call) => call.method === 'GET' && call.url.includes('lte=app%3Anotes'))
+        .length ?? 0;
+    await waitUntil(() => reads() >= 3);
+
+    expect(pane.queryByTestId('storage-rewritten')).toBeNull();
+    expect(pane.getByRole('button', { name: STORAGE_COPY.detail.save })).not.toBeNull();
+  });
+});
 
 describe('Edit', () => {
   test('saves only after the confirmation, and only if the key still holds what was read', async () => {
