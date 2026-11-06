@@ -81,7 +81,7 @@ export function serveStorage(options: StorageServerOptions): {
     if (url.pathname === '/host/storage') {
       return options.bureauPrefixes === null
         ? new Response('no', { status: 500 })
-        : Response.json({ bureauKeyPrefixes: options.bureauPrefixes ?? [] });
+        : Response.json({ bureauKeyPrefixes: options.bureauPrefixes ?? [], sizeBytes: null });
     }
     if (url.pathname === '/host/paths') {
       return Response.json(

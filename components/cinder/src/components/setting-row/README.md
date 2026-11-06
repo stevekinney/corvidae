@@ -48,6 +48,7 @@ A setting saves when the person leaves its field and shows what happened on its 
 | `statusLabel` | `string` | no | — | Replaces the words of the status line, such as "Saved 2 minutes ago" for `saved`. The glyph and tone still follow `status`. |
 | `warning` | `string` | no | — | Advisory message. `FormField` renders this text itself, as a sibling of the control, not through context—a custom `control` that reads `FormField` context sees only the derived `warningId` (and the composed `describedBy`) to associate with, never the message string itself. |
 | `control` | `(opaque)` | yes | — | The setting's control, rendered with `FormField` context applied. Not expressible in JSON Schema; see the component types for the signature. |
+| `descriptionAction` | `(opaque)` | no | — | Rendered after the description inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Open Health". Shown only with `description`. Not expressible in JSON Schema; see the component types for the signature. |
 | `disclosure` | `(opaque)` | no | — | Optional disclosure content rendered beneath the row. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetry` | `(opaque)` | no | — | Called by the quiet Retry beside the error, for a save that did not go through ("Couldn't save. Your value is still in the field. Retry"). Leave it unset for an invalid value, where retrying changes nothing and the person fixes the field instead. Not expressible in JSON Schema; see the component types for the signature. |
 

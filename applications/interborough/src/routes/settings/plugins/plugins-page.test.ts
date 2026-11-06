@@ -1266,9 +1266,10 @@ describe('after a startup with problems', () => {
       expect(container.querySelector('[data-plugin-detail="web-search"]')).not.toBeNull(),
     );
     await waitFor(() =>
-      expect(container.ownerDocument.activeElement).toBe(
-        fieldOf(container, 'teamKey').querySelector('input'),
-      ),
+      expect(
+        container.ownerDocument.activeElement ===
+          fieldOf(container, 'teamKey').querySelector('input'),
+      ).toBe(true),
     );
   });
 

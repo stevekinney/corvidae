@@ -1160,7 +1160,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
         // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
         [HOST_STORAGE_ROUTE]: {
-          GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
+          GET: async (request: Request) =>
+            refuse(request) ?? Response.json(await hostStorageReport(storage)),
         },
         [HOST_PATHS_ROUTE]: {
           GET: async (request: Request) =>

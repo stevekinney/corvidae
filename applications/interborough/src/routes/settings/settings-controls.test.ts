@@ -57,6 +57,8 @@ describe('the controls', () => {
       'decisions.maximumPerTask': 'number',
       'context.summarizerModel': 'choice',
       'retention.audit': 'form',
+      'retention.runs': 'form',
+      'retention.chats': 'form',
       'retention.events': 'form',
       'retention.tasks': 'form',
       'retention.receipts': 'form',

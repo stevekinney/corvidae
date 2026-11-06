@@ -1,138 +1,199 @@
 /**
- * Settings › API reference as a person meets it: one page with a side list of four groups, not a
- * tab strip, and each group filled from what the running server answers. The seeded server has
- * registered `order-processing`, serves its OpenAPI, OpenRPC and AsyncAPI documents, and treats the
- * one local caller as holding every scope. A failed read must be an error in its group, never an
- * empty one, so the last test fails a discovery document and reads the group's alert.
+ * Settings › API reference (board PageSettingsSections, "API reference · /settings/api-reference",
+ * "API reference · Discovery documents", "Your scopes", "Workflow sources" and "API reference loading
+ * and failing to load"): one tabs row of four tabs, each filled from what the running server answers.
+ * The seeded server serves its OpenAPI description and treats the one local caller as holding every
+ * scope; the showcase host holds the sample world's workflow files. A failed read must be an error in
+ * its tab, never an empty one.
+ *
+ * Each captioned state is captured for the design review (`design-review-capture.ts`) at the three
+ * widths Settings is drawn at.
  */
+import type { Page } from '@playwright/test';
+
+import { API_REFERENCE_COPY } from '../../src/app/copy.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
+import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
-const GROUPS = ['Operations', 'Discovery documents', 'Your scopes', 'Workflow sources'] as const;
+const SOURCE = 'api-reference.spec.ts';
+const ROUTE = '/settings/api-reference';
+const TABS = ['Operations', 'Discovery documents', 'Your scopes', 'Workflow sources'] as const;
 
-test('lists the four groups in a side list and has no tab strip', async ({ page }) => {
-  await page.goto('/settings/api-reference');
+async function captureAtEveryWidth(page: Page, state: string, tab?: string) {
+  for (const width of [1280, 768, 375] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await captureForDesignReview(page, {
+      route: ROUTE,
+      state,
+      source: SOURCE,
+      ...(tab === undefined ? {} : { tab }),
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
 
-  const list = page.getByRole('navigation', { name: 'API reference groups' });
-  await expect(list.getByRole('link')).toHaveText([...GROUPS]);
-  await expect(list.getByRole('link', { name: 'Operations' })).toHaveAttribute(
-    'aria-current',
-    'page',
+test('one tabs row holds the four tabs, and the page has no key management', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.goto(ROUTE);
+
+  await expect(page.getByRole('heading', { level: 1, name: 'API reference' })).toBeVisible();
+  await expect(page.getByText(API_REFERENCE_COPY.intro)).toBeVisible();
+  const tabs = page.getByRole('tablist', { name: 'API reference' });
+  await expect(tabs.getByRole('tab')).toHaveText([...TABS]);
+  await expect(tabs.getByRole('tab', { name: 'Operations' })).toHaveAttribute(
+    'aria-selected',
+    'true',
   );
-  await expect(page.getByRole('tablist')).toHaveCount(0);
-  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'API reference groups' })).toHaveCount(0);
+  await expect(page.getByText(/API key/i)).toHaveCount(0);
+  await checkA11y('settings api reference');
+  await captureAtEveryWidth(page, 'operations', 'Operations');
 });
 
-test('Operations lists the server’s operations from its discovery documents', async ({ page }) => {
-  await page.goto('/settings/api-reference?group=operations');
-  const panel = page.locator('[data-group-panel="operations"]');
-  await expect(panel.getByRole('table', { name: 'Operation catalog' })).toBeVisible();
-  await expect(panel.getByRole('rowheader', { name: 'weft.alerts.list' })).toBeVisible();
-  await expect(panel.getByRole('alert')).toHaveCount(0);
-
-  // A search that matches nothing is a filtered empty state with a way back, not a sentence.
-  await panel.getByRole('searchbox', { name: 'Search operations' }).fill('no-such-operation-name');
-  const empty = panel.getByRole('group', { name: 'No operations match' });
-  await expect(empty).toBeVisible();
-  await empty.getByRole('button', { name: 'Show all operations' }).click();
-  await expect(panel.getByRole('rowheader', { name: 'weft.alerts.list' })).toBeVisible();
-});
-
-test('Discovery documents shows each document the server serves', async ({ page }) => {
-  await page.goto('/settings/api-reference');
-  await page
-    .getByRole('navigation', { name: 'API reference groups' })
-    .getByRole('link', { name: 'Discovery documents' })
-    .click();
-  await expect(page).toHaveURL(/group=discovery/);
-
-  const panel = page.locator('[data-group-panel="discovery"]');
-  await expect(panel.getByRole('table', { name: 'OpenAPI operations' })).toBeVisible();
-
-  await panel.getByRole('radio', { name: 'OpenRPC' }).click();
-  await expect(page).toHaveURL(/document=openrpc/);
-  await expect(panel.getByRole('table', { name: 'OpenRPC methods' })).toBeVisible();
-
-  await panel.getByRole('radio', { name: 'AsyncAPI' }).click();
-  await expect(page).toHaveURL(/document=asyncapi/);
-  await expect(panel.getByRole('table', { name: 'AsyncAPI channels' })).toBeVisible();
-  await expect(panel.getByRole('alert')).toHaveCount(0);
-});
-
-test('Your scopes names the caller and the scopes it holds', async ({ page }) => {
-  await page.goto('/settings/api-reference?group=scopes');
-  const panel = page.locator('[data-group-panel="scopes"]');
-  await expect(panel.getByTestId('principal-subject')).toHaveText('anonymous:local');
-  await expect(panel.getByText('Granted scopes')).toBeVisible();
-  await expect(panel.getByText('system:read', { exact: true })).toBeVisible();
-});
-
-test('Workflow sources lists the registered workflow types and the dynamic sources', async ({
+test('Operations lists the server’s operations with their scope, a group select and a count, and a row opens to its request and response', async ({
   page,
 }) => {
-  await page.goto('/settings/api-reference?group=sources');
-  const panel = page.locator('[data-group-panel="sources"]');
-  await expect(panel.getByRole('button', { name: /order-processing/ })).toBeVisible();
-  await expect(panel.getByRole('region', { name: 'Workflow sources', exact: true })).toBeVisible();
-  await expect(panel.getByRole('region', { name: 'Registered source list' })).toBeVisible();
+  await page.goto(`${ROUTE}?group=operations`);
+
+  const table = page.getByRole('table', { name: 'Operations' });
+  await expect(table).toBeVisible();
+  await expect(table.getByRole('columnheader')).toHaveText([
+    'Method',
+    'Path',
+    'What it does',
+    'Scope',
+    'Request and response',
+  ]);
+  const count = page.getByTestId('api-operations-count');
+  await expect(count).toHaveText(/^\d+ operations$/);
+  const all = Number.parseInt((await count.textContent()) ?? '0', 10);
+  expect(all).toBeGreaterThan(1);
+  // The scope a row names is one the server's own description names.
+  await expect(table.locator('[data-operation="weft.workflows.start"]')).toContainText(
+    'workflows:write',
+  );
+
+  // A group narrows the table and the count.
+  const group = page.getByRole('combobox', { name: 'Group' });
+  await expect(group).toContainText('All groups');
+  const options = await group.locator('option').allTextContents();
+  const narrower = options.find((option) => option !== 'All groups');
+  expect(narrower).toBeDefined();
+  await group.selectOption({ label: narrower! });
+  await expect(count).not.toHaveText(`${all} operations`);
+  await group.selectOption({ label: 'All groups' });
+  await expect(count).toHaveText(`${all} operations`);
+
+  // A row opens to an example request body and the response.
+  const toggle = table
+    .getByRole('button', { name: /Request and response for POST .*workflows/ })
+    .first();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('region', { name: 'Request body' }).first()).toBeVisible();
+  await expect(page.getByRole('region', { name: /^Response, 2\d\d$/ }).first()).toBeVisible();
+  await captureAtEveryWidth(page, 'operation-open', 'Operations');
 });
 
-test('a discovery document that fails is an error in its group, and the side list stays', async ({
+test('Discovery documents lists the three documents, each with its address and a Copy button named for it', async ({
+  page,
+}) => {
+  await page.goto(ROUTE);
+  await page.getByRole('tab', { name: 'Discovery documents' }).click();
+  await expect(page).toHaveURL(/group=discovery/);
+
+  const panel = page.getByTestId('api-discovery');
+  for (const [title, description] of [
+    ['OpenAPI description', 'Every operation, for generating a client.'],
+    ['Agent card', 'How other agents discover yours (A2A).'],
+    ['Tool server', 'The same tools, over MCP.'],
+  ] as const) {
+    await expect(panel).toContainText(title);
+    await expect(panel).toContainText(description);
+    await expect(panel.getByRole('button', { name: `Copy ${title}` })).toBeVisible();
+  }
+  await expect(panel.locator('[data-document="openapi"] code')).toHaveText(/\/openapi\.json$/);
+  await expect(panel.locator('[data-document="agent-card"] code')).toHaveText(/agent-card\.json$/);
+  await expect(panel.locator('[data-document="tools"] code')).toHaveText(/\/mcp$/);
+  await captureAtEveryWidth(page, 'discovery-documents', 'Discovery documents');
+});
+
+test('Your scopes opens with the single-user sentence and lists the scopes this session holds', async ({
+  page,
+}) => {
+  await page.goto(`${ROUTE}?group=scopes`);
+
+  const panel = page.getByTestId('api-scopes');
+  await expect(panel).toContainText(API_REFERENCE_COPY.scopes.intro);
+  await expect(panel.locator('li code', { hasText: /^workflows:read$/ })).toBeVisible();
+  await expect(
+    panel.locator('li code', { hasText: /^settings|^system:read$/ }).first(),
+  ).toBeVisible();
+  await captureAtEveryWidth(page, 'your-scopes', 'Your scopes');
+});
+
+test('Workflow sources lists the workflow files read-only, with no Open file', async ({ page }) => {
+  await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}?group=sources`);
+
+  const panel = page.getByTestId('api-sources');
+  await expect(panel).toContainText(API_REFERENCE_COPY.sources.intro);
+  await expect(panel.locator('[data-workflow-file="order-refund"]')).toContainText(
+    'workflows/order-refund.json',
+  );
+  await expect(panel.locator('[data-workflow-file="order-refund"]')).toContainText(
+    '1 workflow · Order refund',
+  );
+  await expect(panel.locator('[data-workflow-file="release-notes"]')).toContainText(
+    '1 workflow · Release notes, 1 schedule',
+  );
+  await expect(panel.locator('[data-workflow-file="triage-inbox"]')).toContainText(
+    '1 workflow · Triage inbox',
+  );
+  await expect(panel.getByRole('button', { name: /open file/i })).toHaveCount(0);
+  await captureAtEveryWidth(page, 'workflow-sources', 'Workflow sources');
+});
+
+test('loading shows skeleton rows with the tab row live, then a status line with Cancel, and a failure says so with Try again', async ({
   page,
   pageErrors,
 }) => {
   pageErrors.expect({
     pattern: loggedFailedResponse(500, /openapi\.json/),
-    reason: 'The test answers the OpenAPI document with a 500 to read the error the group shows.',
+    reason: 'The test answers the OpenAPI description with an error to draw the failed state.',
   });
-  await page.route('**/openapi.json', (route) => route.fulfill({ status: 500, body: 'nope' }));
-  await page.goto('/settings/api-reference?group=operations');
-  const panel = page.locator('[data-group-panel="operations"]');
-  await expect(panel.getByRole('alert')).toBeVisible();
-  await expect(panel.getByRole('table')).toHaveCount(0);
-  await expect(
-    page
-      .getByRole('navigation', { name: 'API reference groups' })
-      .getByRole('link', { name: 'Workflow sources' }),
-  ).toBeVisible();
-});
-
-test('a registry the caller cannot read leaves the other groups showing', async ({ page }) => {
-  await page.route('**/jsonrpc', async (route) => {
-    const request = route.request().postDataJSON() as { id?: unknown; method?: unknown } | null;
-    if (request?.method !== 'weft.system.registry') {
-      await route.continue();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: request.id ?? null,
-        error: {
-          code: -32003,
-          message: 'Forbidden',
-          data: { httpStatus: 403, weftCode: 'Forbidden' },
-        },
-      }),
-    });
+  await page.clock.install();
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/openapi.json', async (route) => {
+    await held;
+    return route.fulfill({ status: 500, body: 'nope' });
   });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
 
-  await page.goto('/settings/api-reference?group=sources');
-  // The registry part reads its own fault, in its own group.
-  const sources = page.locator('[data-group-panel="sources"]');
-  await expect(sources.getByText('Not authorized')).toBeVisible();
+  // The tab row and the heading are real while the rows are placeholders.
+  await expect(page.getByRole('heading', { level: 1, name: 'API reference' })).toBeVisible();
+  await expect(page.getByRole('tablist', { name: 'API reference' })).toBeVisible();
+  await page.clock.runFor(400);
+  await expect(page.locator('.cinder-skeleton-group')).toBeVisible();
+  await captureAtEveryWidth(page, 'loading');
+  await page.clock.runFor(10_000);
+  await expect(page.getByText(API_REFERENCE_COPY.loading.stillLoading)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
+  await captureAtEveryWidth(page, 'still-loading');
 
-  // The page was not replaced: the side list and the other groups still read.
-  const list = page.getByRole('navigation', { name: 'API reference groups' });
-  await expect(list.getByRole('link')).toHaveText([...GROUPS]);
-  await list.getByRole('link', { name: 'Your scopes' }).click();
-  const scopes = page.locator('[data-group-panel="scopes"]');
-  await expect(scopes.getByTestId('principal-subject')).toHaveText('anonymous:local');
-  await list.getByRole('link', { name: 'Operations' }).click();
-  await expect(
-    page
-      .locator('[data-group-panel="operations"]')
-      .getByRole('table', { name: 'Operation catalog' }),
-  ).toBeVisible();
+  release?.();
+  const failed = page.getByTestId('api-reference-load-failed');
+  await expect(failed).toContainText('Couldn’t load the API reference.');
+  await expect(failed).toContainText('The server answered with an error (500).');
+  await expect(failed.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await expect(page.getByRole('tablist', { name: 'API reference' })).toBeVisible();
+  await captureAtEveryWidth(page, 'load-failed');
+
+  // Another tab reads for itself, so this one failing does not empty it.
+  await page.getByRole('tab', { name: 'Discovery documents' }).click();
+  await expect(page.getByTestId('api-discovery')).toBeVisible();
 });

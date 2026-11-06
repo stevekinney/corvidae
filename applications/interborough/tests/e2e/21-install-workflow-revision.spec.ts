@@ -14,6 +14,7 @@ import {
   buildConsoleInstallableManifest,
   ORDER_PROCESSING_CONSOLE_INSTALLED_REVISION,
 } from '../../fixtures/workflow-revisions.ts';
+import { openWorkflowSources } from './api-reference-pages.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator installs a revision manifest and reads the installed revision', async ({
@@ -22,7 +23,7 @@ test('operator installs a revision manifest and reads the installed revision', a
 }) => {
   const manifest = await buildConsoleInstallableManifest();
 
-  await page.goto('/settings/api-reference?group=sources');
+  await openWorkflowSources(page);
   await page.getByRole('button', { name: /order-processing/ }).click();
 
   const revisionsPanel = page.getByRole('region', { name: 'Installed revisions' });

@@ -53,6 +53,8 @@ export type SettingRowProps = {
   retryLabel?: string;
   /** Guidance text describing the setting. */
   description?: string;
+  /** Rendered after the description inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Open Health". Shown only with `description`. */
+  descriptionAction?: Snippet;
   /**
    * Advisory message. `FormField` renders this text itself, as a sibling
    * of the control, not through context—a custom `control` that reads

@@ -28,6 +28,7 @@
     label,
     identifier,
     description,
+    descriptionAction,
     warning,
     error,
     status,
@@ -98,6 +99,7 @@
     {id}
     {label}
     {description}
+    {descriptionAction}
     {warning}
     {error}
     errorAction={onRetry ? retryAction : undefined}

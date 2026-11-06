@@ -1,9 +1,9 @@
 /**
- * The four groups of Settings › API reference, in the order the side list names them, and the
- * address of each. The open group is the `group` search parameter, so a group is linked to, and
+ * The four groups of Settings › API reference, in the order the tabs name them, and the
+ * address of each. The open group is the `group` search parameter, so a tab is linked to, and
  * survives a reload. An unknown value opens the first group.
  */
-import { API_REFERENCE_COPY } from '../../app/copy.ts';
+import { API_REFERENCE_COPY } from '../../../app/copy.ts';
 
 /** Every group's search-parameter value. */
 export const API_REFERENCE_GROUPS = ['operations', 'discovery', 'scopes', 'sources'] as const;
@@ -17,7 +17,7 @@ export const API_REFERENCE_PATH = '/settings/api-reference';
 /** The group an address with no (or an unknown) `group` opens. */
 export const DEFAULT_API_REFERENCE_GROUP: ApiReferenceGroup = 'operations';
 
-/** The words that name a group in the side list. */
+/** The words that name a group on its tab. */
 export function groupLabel(group: ApiReferenceGroup): string {
   return API_REFERENCE_COPY.groups[group];
 }

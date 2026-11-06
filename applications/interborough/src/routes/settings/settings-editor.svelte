@@ -59,6 +59,7 @@
     a2a: '/settings/a2a',
     retention: '/settings/data-and-retention',
     plugins: '/settings/plugins',
+    'api-reference': '/settings/api-reference',
   };
 
   const queryClient = useQueryClient();

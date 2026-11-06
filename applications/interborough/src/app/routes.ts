@@ -370,13 +370,13 @@ export const routes: readonly RouteDefinition[] = [
     kind: 'editor',
     crumb: SETTINGS_SECTION_COPY.dataAndRetention,
     view: 'settings',
-    load: () => import('../routes/settings/data-and-retention.svelte'),
+    load: () => import('../routes/settings/retention/index.svelte'),
   },
   {
     pattern: '/settings/api-reference',
     kind: 'table',
     crumb: SETTINGS_SECTION_COPY.apiReference,
     view: 'settings',
-    load: () => import('../routes/settings/api-reference.svelte'),
+    load: () => import('../routes/settings/api-reference/index.svelte'),
   },
 ];

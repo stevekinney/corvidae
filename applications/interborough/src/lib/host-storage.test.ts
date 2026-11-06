@@ -10,11 +10,15 @@ describe('getHostStorage', () => {
     const storage = await getHostStorage({
       fetch: async (input) => {
         seen.push(urlOf(input));
-        return Response.json({ bureauKeyPrefixes: ['settings', 'skill:'] });
+        return Response.json({
+          bureauKeyPrefixes: ['settings', 'skill:'],
+          sizeBytes: 1_717_986_918,
+        });
       },
     });
     expect(seen).toEqual([HOST_STORAGE_ROUTE]);
     expect(storage.bureauKeyPrefixes).toEqual(['settings', 'skill:']);
+    expect(storage.sizeBytes).toBe(1_717_986_918);
   });
 
   test('hands the abort signal to the request', async () => {
@@ -24,7 +28,7 @@ describe('getHostStorage', () => {
       signal: controller.signal,
       fetch: async (_input, init) => {
         received = init?.signal;
-        return Response.json({ bureauKeyPrefixes: [] });
+        return Response.json({ bureauKeyPrefixes: [], sizeBytes: null });
       },
     });
     expect(received).toBe(controller.signal);

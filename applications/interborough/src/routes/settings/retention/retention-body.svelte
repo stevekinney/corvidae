@@ -1,0 +1,151 @@
+<script lang="ts">
+  /**
+   * The body of Settings › Data and retention (board PageSettingsSections, "Data and retention";
+   * rows 50d to 50g): the restart notice every section shares, a Retention section of four rows
+   * (audit records, run history, chats and memory), each a choice between Keep forever and
+   * Delete after and a number of days, and a Storage section with the one read-only "Space used"
+   * row. Each row saves as it is left and says so on its own row, and the heading says "Saved just
+   * now" once any has. The other retention windows the Bureau has (`retention.events`, `.tasks`
+   * and so on) are not drawn on the board, so they follow the four rows, each as the schema says.
+   */
+  import { FormSection } from '@lostgradient/cinder';
+  import { useQueryClient } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
+
+  import { DATA_RETENTION_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
+  import type { SettingsSchema, SettingsSnapshot } from '../../../lib/bureau-settings.ts';
+  import SettingField from '../setting-field.svelte';
+  import { inSection } from '../settings-controls.ts';
+  import { SettingsSession } from '../settings-session.svelte.ts';
+  import SettingsRestartNotice from '../settings-restart-notice.svelte';
+  import RetentionWindowField from './retention-window-field.svelte';
+  import {
+    isRetentionRowKey,
+    RETENTION_ROW_KEYS,
+    retentionProblemWith,
+  } from './retention-window.ts';
+  import StorageUsageRow from './storage-usage-row.svelte';
+
+  interface Props {
+    schema: SettingsSchema;
+    snapshot: SettingsSnapshot;
+    /** Puts a status at the right of the page heading, or takes it away. */
+    setHeaderStatus: (status: string | undefined) => void;
+  }
+
+  let { schema, snapshot, setHeaderStatus }: Props = $props();
+
+  const copy = DATA_RETENTION_COPY;
+  const queryClient = useQueryClient();
+
+  // The schema never changes while the page is open (the frame reads it once), so it is taken as it is now.
+  const session = new SettingsSession({
+    schema: untrack(() => schema),
+    snapshot: () => snapshot,
+    queryClient,
+    // The days a window may name are the page's to check: the schema only says it is a duration.
+    extraCheck: (key, value) => (isRetentionRowKey(key) ? retentionProblemWith(value) : undefined),
+  });
+  const { form, autosave, revert, restartFlow } = session;
+
+  $effect(() => {
+    setHeaderStatus(autosave.anySaved ? copy.saved : undefined);
+  });
+
+  /** The rows the page draws, in its order, for the keys this Bureau has. */
+  const rows = $derived(RETENTION_ROW_KEYS.filter((key) => schema[key] !== undefined));
+
+  /** The retention windows the board draws no row for, which follow the four. */
+  const extraKeys = $derived(
+    Object.keys(schema).filter(
+      (key) =>
+        inSection(key, 'retention') && !(RETENTION_ROW_KEYS as readonly string[]).includes(key),
+    ),
+  );
+
+  /** Whether a window has a `'forever'` to store: every retention key that takes `'forever'` in its schema. */
+  function foreverOf(key: string): 'forever' | undefined {
+    const options = schema[key]?.anyOf ?? [];
+    return options.some((option) => option.const === 'forever') ? 'forever' : undefined;
+  }
+
+  function change(key: string, next: unknown): void {
+    autosave.clear(key);
+    revert.forget(key);
+    form.set(key, next);
+  }
+</script>
+
+<SettingsRestartNotice
+  keys={session.restartKeys}
+  {snapshot}
+  flow={restartFlow}
+  {revert}
+  saving={autosave.busy}
+/>
+
+<div class="ib-retention" role="group" aria-label={SETTINGS_COPY.formLabel}>
+  <FormSection grouped heading={copy.retention.heading}>
+    {#each rows as key (key)}
+      {@const node = schema[key]}
+      {@const control = session.controls.get(key)}
+      {#if node !== undefined && control !== undefined}
+        {#snippet windowField(fieldProps: { id: string; disabled: boolean })}
+          <RetentionWindowField
+            id={fieldProps.id}
+            name={copy.labels[key] ?? key}
+            value={form.draft(key)}
+            forever={foreverOf(key)}
+            disabled={fieldProps.disabled}
+            invalid={autosave.stateOf(key)?.phase === 'invalid'}
+            onChange={(next) => change(key, next)}
+            onLeave={() => void autosave.commit(key)}
+          />
+        {/snippet}
+        <SettingField
+          name={key}
+          {node}
+          {control}
+          {form}
+          keyState={session.stateOf(key)}
+          {autosave}
+          reverted={revert.isReverted(key)}
+          custom={windowField}
+          controlWidth="19rem"
+          onEdit={() => revert.forget(key)}
+        />
+      {/if}
+    {/each}
+    {#each extraKeys as key (key)}
+      {@const node = schema[key]}
+      {@const control = session.controls.get(key)}
+      {#if node !== undefined && control !== undefined}
+        <SettingField
+          name={key}
+          {node}
+          {control}
+          {form}
+          keyState={session.stateOf(key)}
+          {autosave}
+          reverted={revert.isReverted(key)}
+          onEdit={() => revert.forget(key)}
+        />
+      {/if}
+    {/each}
+  </FormSection>
+
+  <FormSection grouped heading={copy.storage.heading}>
+    <StorageUsageRow />
+  </FormSection>
+</div>
+
+<style>
+  .ib-retention {
+    grid-area: content;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-8);
+    max-inline-size: 46rem;
+    min-inline-size: 0;
+  }
+</style>

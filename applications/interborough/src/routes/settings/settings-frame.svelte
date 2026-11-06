@@ -12,6 +12,7 @@
    * refusing is the view frame's to say (`app/view-probes.ts`).
    */
   import { Alert, Button, PageHeader, Skeleton } from '@lostgradient/cinder';
+  import { CircleCheck } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onMount, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -46,9 +47,18 @@
     /**
      * Replaces the batch editor. It draws straight into the page's grid, so it places what it draws
      * in the grid areas `banner` (a sticky notice over the whole page) and `content` (the reading
-     * column); a section that saves each setting as it is left uses it.
+     * column); a section that saves each setting as it is left uses it. `setHeaderStatus` puts a
+     * status at the right of the heading ("Saved just now"), or takes it away when given nothing.
      */
-    body?: Snippet<[{ schema: SettingsSchema; snapshot: SettingsSnapshot }]>;
+    body?: Snippet<
+      [
+        {
+          schema: SettingsSchema;
+          snapshot: SettingsSnapshot;
+          setHeaderStatus: (status: string | undefined) => void;
+        },
+      ]
+    >;
   }
 
   let { section, title, intro, page, before, after, body }: Props = $props();
@@ -58,6 +68,8 @@
   const queryClient = useQueryClient();
   /** Whether the person gave up on a read that took longer than usual. */
   let canceled = $state(false);
+  /** The status a section put at the right of the heading, if any. */
+  let headerStatus = $state<string | undefined>(undefined);
 
   /** What the page is showing: the settings, a failed read, a read given up on, or the placeholders. */
   const phase = $derived.by(() => {
@@ -126,6 +138,13 @@
   });
 </script>
 
+{#snippet headerStatusLine()}
+  <span class="weft-settings__status" role="status" data-testid="settings-header-status">
+    <CircleCheck size={14} aria-hidden="true" />
+    {headerStatus}
+  </span>
+{/snippet}
+
 <section class="weft-settings" aria-label={title} data-page={page}>
   <div class="weft-settings__nav"><SettingsSectionNav /></div>
   <div class="weft-settings__title-area">
@@ -133,6 +152,7 @@
       flush
       title={wide.current ? title : SETTINGS_COPY.general.narrowTitle}
       {...wide.current ? { description: intro } : {}}
+      {...headerStatus === undefined ? {} : { actions: headerStatusLine }}
     />
   </div>
 
@@ -144,7 +164,11 @@
         </Alert>
       </div>
     {/if}
-    {@render body({ schema: schema.data, snapshot: snapshot.data })}
+    {@render body({
+      schema: schema.data,
+      snapshot: snapshot.data,
+      setHeaderStatus: (status) => (headerStatus = status),
+    })}
   {:else}
     <div class="weft-settings__content">
       {@render before?.()}
@@ -230,6 +254,14 @@
     gap: var(--cinder-space-4);
     max-inline-size: 46rem;
     min-inline-size: 0;
+  }
+
+  .weft-settings__status {
+    display: inline-flex;
+    gap: var(--cinder-space-1);
+    align-items: center;
+    color: var(--cinder-status-success-text);
+    font-size: var(--cinder-text-sm);
   }
 
   .weft-settings__alert-title {

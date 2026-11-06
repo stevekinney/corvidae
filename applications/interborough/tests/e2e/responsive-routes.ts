@@ -168,13 +168,8 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     '/chats/:chat (approval waiting)': `/chats/${encodeURIComponent(seed.reviewChat)}`,
     '/reviews (review open)': `/reviews?review=${encodeURIComponent(seed.review)}`,
     '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(seed.decidedReview)}`,
-    // Each group of the API reference beside the first, which is the route's own address, and each
-    // discovery document, whose tables and diagrams are wider than the groups' first view.
+    // Each tab of the API reference beside the first, which is the route's own address.
     '/settings/api-reference (discovery)': '/settings/api-reference?group=discovery',
-    '/settings/api-reference (openrpc)': '/settings/api-reference?group=discovery&document=openrpc',
-    '/settings/api-reference (asyncapi)':
-      '/settings/api-reference?group=discovery&document=asyncapi',
-    '/settings/api-reference (mcp)': '/settings/api-reference?group=discovery&document=mcp',
     '/settings/api-reference (scopes)': '/settings/api-reference?group=scopes',
     '/settings/api-reference (sources)': '/settings/api-reference?group=sources',
   };

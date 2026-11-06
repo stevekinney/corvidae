@@ -7,13 +7,14 @@
  * Activate the candidate, and see the incompatible outcome with every
  * bounded reason rendered as explicit text.
  */
+import { openWorkflowSources } from './api-reference-pages.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator inspects installed revisions and sees a refused activation report every bounded reason', async ({
   page,
   checkA11y,
 }) => {
-  await page.goto('/settings/api-reference?group=sources');
+  await openWorkflowSources(page);
 
   const orderProcessingRow = page.getByRole('button', { name: /order-processing/ });
   await expect(orderProcessingRow).toBeVisible();
@@ -61,7 +62,7 @@ test('the Revisions panel is usable across supported widths and themes', async (
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto('/settings/api-reference?group=sources');
+      await openWorkflowSources(page);
 
       const orderProcessingRow = page.getByRole('button', { name: /order-processing/ });
       await expect(orderProcessingRow).toBeVisible();

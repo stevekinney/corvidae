@@ -110,7 +110,10 @@ describe('/host/storage', () => {
     const host = await start();
     const response = await fetch(new URL('/host/storage', host.url));
     expect(response.status).toBe(200);
-    const report = (await response.json()) as { bureauKeyPrefixes: string[] };
+    const report = (await response.json()) as {
+      bureauKeyPrefixes: string[];
+      sizeBytes: number | null;
+    };
     expect(report.bureauKeyPrefixes).toEqual([...MANAGED_KEY_PREFIXES]);
     for (const prefix of BUREAU_RESERVED_KEY_PREFIXES) {
       expect(report.bureauKeyPrefixes).toContain(prefix);
@@ -119,6 +122,8 @@ describe('/host/storage', () => {
       expect(report.bureauKeyPrefixes).toContain(family.prefix);
     }
     expect(report.bureauKeyPrefixes.length).toBeGreaterThan(0);
+    // The host's own SQLite file has a size, which Settings › Data and retention shows.
+    expect(report.sizeBytes).toBeGreaterThan(0);
   });
 });
 

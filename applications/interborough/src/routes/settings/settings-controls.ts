@@ -14,7 +14,7 @@
  * while it is on. Only a node nothing else reads (an array or a bare `null`) falls to the JSON
  * editor, which can edit any value.
  */
-import { A2A_COPY } from '../../app/copy.ts';
+import { A2A_COPY, DATA_RETENTION_COPY } from '../../app/copy.ts';
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
 /** What a select of catalog rows offers: the models the catalog lists, or the decision models a host registers. */
@@ -187,7 +187,7 @@ export const MODEL_POLICY_KEY = 'modelPolicy';
  * the A2A section holds `a2a.*`.
  */
 export type SettingsSectionId =
-  'general' | 'allowed-models' | 'decisions' | 'a2a' | 'retention' | 'plugins';
+  'general' | 'allowed-models' | 'decisions' | 'a2a' | 'retention' | 'plugins' | 'api-reference';
 
 /** The settings the Models page holds: the decision model, its fallback, and its limit per task. */
 function isDecisionKey(key: string): boolean {
@@ -211,7 +211,7 @@ export function inSection(key: string, section: SettingsSectionId): boolean {
   if (section === 'a2a') return isA2aKey(key);
   if (section === 'retention') return isRetentionKey(key);
   // Plugins edits plugins, not settings: it holds none of the keys, and only reads them for the restart notice.
-  if (section === 'plugins') return false;
+  if (section === 'plugins' || section === 'api-reference') return false;
   return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key) && !isRetentionKey(key);
 }
 
@@ -246,6 +246,7 @@ const SETTING_LABELS: Readonly<Record<string, string>> = {
   'a2a.enabled': A2A_COPY.enabled.label,
   'a2a.agents': A2A_COPY.agents.label,
   'a2a.push.enabled': A2A_COPY.pushNotifications.label,
+  ...DATA_RETENTION_COPY.labels,
 };
 
 /**

@@ -29,6 +29,8 @@ export const SETTING_VALUES: Record<string, unknown> = {
   'decisions.fallbackModel': 'anthropic/claude-haiku-5-5',
   'decisions.maximumPerTask': 20,
   'retention.audit': 'forever',
+  'retention.runs': 'forever',
+  'retention.chats': 'forever',
   'retention.events': { olderThan: 86_400_000 },
   'retention.tasks': 'forever',
   'retention.receipts': { olderThan: 604_800_000 },
@@ -125,6 +127,7 @@ export function installSettingsBureau(
   extra: Record<string, (params: Record<string, unknown>) => unknown> = {},
   stream?: SettingsStream,
   hostMode?: 'local' | 'remote',
+  hostStorageSizeBytes?: number | null,
 ): BureauStub {
   return installBureauStub(
     {
@@ -168,6 +171,7 @@ export function installSettingsBureau(
         ? {}
         : { subscriptions: { 'bureau.settings.events': stream.handler } }),
       ...(hostMode === undefined ? {} : { hostMode }),
+      ...(hostStorageSizeBytes === undefined ? {} : { hostStorageSizeBytes }),
     },
   );
 }

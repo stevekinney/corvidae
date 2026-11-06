@@ -19,6 +19,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 
+import { openWorkflowSources } from './api-reference-pages.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator reads a worker’s contract verification status', async ({ page, checkA11y }) => {
@@ -70,7 +71,7 @@ test('operator reads a worker’s contract verification status', async ({ page, 
 });
 
 async function openRegistryVerification(page: Page): Promise<Locator> {
-  await page.goto('/settings/api-reference?group=sources');
+  await openWorkflowSources(page);
   await page.getByRole('button', { name: /order-processing/ }).click();
   return page.getByRole('region', { name: 'Worker contract verification' });
 }

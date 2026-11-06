@@ -19,10 +19,11 @@ import {
   REFRESH_INCOMPATIBLE_WORKFLOW,
 } from '../../fixtures/workflow-refresh.ts';
 
+import { openWorkflowSources } from './api-reference-pages.ts';
 import { expect, test } from './fixtures.ts';
 
 async function openRefreshPanel(page: Page, workflow: string) {
-  await page.goto('/settings/api-reference?group=sources');
+  await openWorkflowSources(page);
   await page.getByRole('button', { name: new RegExp(workflow) }).click();
   const panel = page.getByRole('region', { name: 'Conditional refresh' });
   await expect(panel).toBeVisible();

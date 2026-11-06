@@ -63,6 +63,11 @@ export class SettingsAutosave {
     return [...this.#states.values()].some((state) => state.phase === 'saving');
   }
 
+  /** Whether any setting's save has finished and says so, which a page header words as "Saved just now". */
+  get anySaved(): boolean {
+    return [...this.#states.values()].some((state) => state.phase === 'saved');
+  }
+
   /**
    * The field of `key` was left (or a switch or select changed): checks the value and, when it
    * holds, saves it. A key that is not changed saves nothing.
@@ -132,7 +137,8 @@ export class SettingsAutosave {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const sent = form.draft(key);
-        await update({ [key]: sent }, form.revision);
+        // A key put back to unset has no value to send; `null` is how the Bureau is told to clear it.
+        await update({ [key]: sent === undefined ? null : sent }, form.revision);
         const fresh = await read();
         // A value typed while the save was in flight is the field's, not the one that was sent.
         const unchanged = sameValue(form.draft(key), sent);

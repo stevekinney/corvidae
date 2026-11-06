@@ -1420,6 +1420,44 @@ const COUNT_WORDS = [
 ] as const;
 
 /**
+ * The words of Settings › Data and retention: how long each kind of record is kept, and how much
+ * space the records take (board PageSettingsSections, "Data and retention"; rows 50d to 50g).
+ */
+export const DATA_RETENTION_COPY = {
+  title: 'Data and retention',
+  intro: 'How long Interborough keeps what it records. Settings save as you leave a field.',
+  /** The status at the right of the heading once any row has saved. */
+  saved: 'Saved just now',
+  /** The names of the four retention rows; the raw key sits small beside each. */
+  labels: {
+    'retention.audit': 'Audit records',
+    'retention.runs': 'Run history',
+    'retention.chats': 'Chats',
+    'retention.memory': 'Memory',
+  } as Readonly<Record<string, string>>,
+  retention: {
+    heading: 'Retention',
+    keepForever: 'Keep forever',
+    deleteAfter: 'Delete after',
+    days: 'days',
+    /** The accessible name of a row's choice between keeping and deleting. */
+    choiceLabel: (name: string): string => `${name}: how long to keep`,
+    /** The accessible name of a row's days field. */
+    daysLabel: (name: string): string => `${name}: days before deleting`,
+    daysProblem: 'Enter a number from 1 to 3650.',
+  },
+  storage: {
+    heading: 'Storage',
+    label: 'Space used',
+    description: 'What Interborough’s records take up on this machine.',
+    firingDescription: 'Health lists this under Needs attention.',
+    openHealth: 'Open Health',
+    overWarning: (size: string): string => `Storage is over its warning level · ${size}`,
+    notReported: 'Not reported yet',
+  },
+} as const;
+
+/**
  * The words of Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with
  * Accept A2A calls off"): the switch that accepts remote calls, the address of the agent card, the
  * agents that answer, push notifications, and the calls that were made. The rows save as they are
@@ -1485,48 +1523,94 @@ export const A2A_COPY = {
 } as const;
 
 /**
- * The words of Settings › API reference: the side list that names the four groups, and the states
- * of the groups that have none of their own (`routes/settings/api-reference.svelte`).
+ * The words of Settings › API reference: the tabs that name the four groups, what each tab says,
+ * and the states a tab with nothing to show is in (`routes/settings/api-reference`).
  */
 export const API_REFERENCE_COPY = {
-  groupsLabel: 'API reference groups',
+  title: 'API reference',
+  intro: 'What other programs can do with Interborough, and what this session may do.',
+  /** The tab row's accessible name. */
+  tabsLabel: 'API reference',
   groups: {
     operations: 'Operations',
     discovery: 'Discovery documents',
     scopes: 'Your scopes',
     sources: 'Workflow sources',
   },
+  /** The loading rule every page shares (board PageSettingsSections, "API reference loading"). */
+  loading: {
+    label: 'Loading the API reference',
+    stillLoading: 'Still loading. This is taking longer than usual.',
+    canceled: 'Loading was canceled.',
+    tryAgain: 'Try again',
+    diagnostics: 'Loading the diagnostics',
+    refreshSources: 'Loading the refresh sources',
+  },
+  /** A read that failed with nothing to show; `status` is the HTTP status the server answered, if it answered. */
+  loadFailed: {
+    title: 'Couldn’t load the API reference.',
+    description: (status: number | undefined): string =>
+      status === undefined
+        ? 'Interborough didn’t answer. Nothing you did caused it.'
+        : `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+  },
   /** Said in place of a part the caller's scopes do not reach. */
   notAvailable: (what: string): string => `${what} is not available to you`,
   requiresScope: (scope: string, action: string): string => `Requires ${scope} to ${action}.`,
-  loading: {
-    operations: 'Loading the operation catalog',
-    discovery: 'Loading the discovery document',
-    diagnostics: 'Loading the diagnostics',
-    refreshSources: 'Loading the refresh sources',
-    mcp: 'Loading the MCP discovery document',
-  },
   operations: {
-    searchLabel: 'Search operations',
-    searchPlaceholder: 'Search operations…',
-    noMatchTitle: 'No operations match',
-    noMatchDescription: (search: string) => `No operation matches "${search}".`,
-    clearSearch: 'Show all operations',
+    groupLabel: 'Group',
+    allGroups: 'All groups',
+    count: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'operation' : 'operations'}`,
+    caption: 'Operations',
+    columns: {
+      method: 'Method',
+      path: 'Path',
+      summary: 'What it does',
+      scope: 'Scope',
+      details: 'Request and response',
+    },
+    /** The accessible name of the button that opens a row's request and response. */
+    toggleLabel: (method: string, path: string): string =>
+      `Request and response for ${method} ${path}`,
+    requestBody: 'Request body',
+    noRequestBody: 'No request body.',
+    response: (status: string): string => `Response, ${status}`,
+    noResponseBody: 'No response body.',
+    noScope: 'Any caller',
+    empty: 'The server lists no operations.',
   },
   discovery: {
-    documentLabel: 'Discovery document',
-    rawJson: 'Raw JSON',
-    emptyTitle: 'This document lists nothing',
-    emptyDescription: 'The server returned the document with no entries to show.',
-    scopeNote:
-      "These documents don't list the scope each operation needs yet. Your scopes shows what each granted scope unlocks.",
+    documents: {
+      openapi: {
+        title: 'OpenAPI description',
+        description: 'Every operation, for generating a client.',
+      },
+      agentCard: {
+        title: 'Agent card',
+        description: 'How other agents discover yours (A2A).',
+      },
+      tools: { title: 'Tool server', description: 'The same tools, over MCP.' },
+    },
+    copy: (title: string): string => `Copy ${title}`,
+    copied: (title: string): string => `Copied ${title}`,
   },
-  mcp: {
-    unavailableTitle: "MCP discovery isn't available",
-    unavailableDescription:
-      "This server has no public origin or trusted hosts configured, so it can't safely give out absolute discovery addresses. Set one in the server's configuration to turn it on.",
+  scopes: {
+    intro:
+      'This session can do the following. Interborough is single-user for now, so these are the scopes of the person at the keyboard, including everything this page’s own boards do: create schedules, edit agents and hooks, and change settings.',
+    listLabel: 'Scopes this session holds',
+    none: 'This session holds no scopes.',
   },
   sources: {
+    intro:
+      'Where Interborough reads workflow files from. Edit a workflow in its file; changes load on the next start or reload.',
+    listLabel: 'Workflow files',
+    workflows: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
+    schedules: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
+    empty: 'No workflow files yet. Add one to the workflows folder and it loads on the next start.',
+    registryHeading: 'Registered workflow types and dynamic sources',
     noRegistryTitle: 'No workflow types are registered',
     noRegistryDescription:
       'No eagerly registered workflow or activity definitions appear in this server. Dynamic sources never appear here; they are listed above.',

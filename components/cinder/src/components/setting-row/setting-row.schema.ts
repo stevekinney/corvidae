@@ -101,6 +101,12 @@ const schema = {
         description: "The setting's control, rendered with `FormField` context applied.",
       },
       {
+        name: 'descriptionAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the description inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Open Health". Shown only with `description`.',
+      },
+      {
         name: 'disclosure',
         reason: 'function-or-snippet',
         description: 'Optional disclosure content rendered beneath the row.',

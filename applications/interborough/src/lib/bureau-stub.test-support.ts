@@ -153,6 +153,8 @@ export function installBureauStub(
     readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
     /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
     readonly hostMode?: 'local' | 'remote';
+    /** The size `/host/storage` reports (`null` for a backend that cannot say). Left out, the route answers `Not found`. */
+    readonly hostStorageSizeBytes?: number | null;
     readonly passThrough?: boolean;
     /** Answers the subscriptions it names, by operation name; any other one is `Not found`. */
     readonly subscriptions?: Readonly<Record<string, StubSubscriptionHandler>>;
@@ -179,6 +181,9 @@ export function installBureauStub(
           ? stubRemoteHostPaths()
           : stubHostPaths(directory, STUB_WORKFLOW_DIRECTORY),
       );
+    }
+    if (url.pathname === '/host/storage' && options.hostStorageSizeBytes !== undefined) {
+      return Response.json({ bureauKeyPrefixes: [], sizeBytes: options.hostStorageSizeBytes });
     }
     if (url.pathname === '/host/providers' && options.hostProviders !== undefined) {
       return Response.json({
