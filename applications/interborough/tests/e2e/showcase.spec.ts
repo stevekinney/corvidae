@@ -144,10 +144,12 @@ for (const width of [375, 1280] as const) {
     await goOffline(context, pageErrors);
     await page.evaluate(() => window.dispatchEvent(new Event('offline')));
     const banner = await expectOfflineBanner(page, `new chat at ${width}px offline`);
-    // The typed text stays, Send is off, and the reason sits beside it.
-    await expect(composer).toHaveValue('What did I approve yesterday?');
-    await expect(page.getByText('Off until it’s back')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    // COR-2014 row 17b replaces the composer with the blocked row while the host is unreachable.
+    await expect(page.getByRole('group', { name: 'Composer unavailable' })).toContainText(
+      'Sending is off until Interborough is reachable',
+    );
+    await expect(composer).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     // The top bar and the navigation stay live, because navigation still works for loaded pages.
     await expect(page.getByRole('button', { name: 'Search everything' })).toBeEnabled();
     if (width < 1024) {
