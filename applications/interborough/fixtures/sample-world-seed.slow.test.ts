@@ -138,6 +138,14 @@ describe('the sample world, part A', () => {
     });
     expectAt(release?.createdAt, SAMPLE_WORLD_TIMES.releaseAsked);
 
+    // The refund chat runs at Medium effort and asks on changes, which its details popover shows
+    // (ChatPage frame b).
+    const refundDetail = await call<{ effort: string | null; permissionMode: string }>(
+      'bureau.contexts.get',
+      { contextId: SAMPLE_WORLD_CHATS.refund.threadId },
+    );
+    expect(refundDetail).toMatchObject({ effort: 'medium', permissionMode: 'on-changes' });
+
     // Each message you sent is stamped at its moment, as the run that answered it is.
     const session = await world.host.bureau.contexts.get(SAMPLE_WORLD_CHATS.refund.threadId);
     const history = session?.conversationHistory;

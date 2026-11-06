@@ -62,6 +62,8 @@
 
   /** A breadcrumb link opens its page without leaving the application. */
   function onTrailClick(event: MouseEvent): void {
+    // A link inside the entry's popover (a chat's agent) has already opened its page.
+    if (event.defaultPrevented) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }

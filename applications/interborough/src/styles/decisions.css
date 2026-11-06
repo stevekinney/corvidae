@@ -12,6 +12,12 @@
   background: var(--cinder-surface-inset);
 }
 
+/* The row takes focus by script when a chat opens on it; the quiet ring wraps the whole row. */
+.ib-decision:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+}
+
 .ib-decision__row {
   display: flex;
   flex-wrap: wrap;

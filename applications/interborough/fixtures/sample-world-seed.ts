@@ -430,6 +430,13 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
     round: refund4472.round ?? 0,
   });
   await waitForIdle(host, refund.threadId);
+  // The refund chat runs at Medium effort, which its details popover and composer say (ChatPage).
+  await bureauCall(host, 'bureau.contexts.steer', {
+    contextId: refund.threadId,
+    commandId: `sample-world-effort-${refund.threadId}`,
+    expectedRevision: 0,
+    effort: 'medium',
+  });
 
   runtime.setTime(SAMPLE_WORLD_TIMES.refund4471Started);
   await sendChatMessage(host, refund.agent, refund.threadId, refund.second);

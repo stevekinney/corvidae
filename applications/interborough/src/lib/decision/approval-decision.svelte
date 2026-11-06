@@ -5,7 +5,9 @@
    * request, so the row repeats nothing of it. It is the one decision control of the chat and of a
    * run's page, so both ask the same way. A host that can grant the tool for the rest of the chat
    * (`onAllowForChat`) adds that choice as a third button; the reviews inbox decides in its own
-   * pane (`routes/reviews/approval-pane.svelte`), which also takes a note to the agent.
+   * pane (`routes/reviews/approval-pane.svelte`), which also takes a note to the agent. The row is
+   * focusable by script alone (`tabindex="-1"`): the chat page focuses it on opening, which reads the
+   * question and leaves every choice to the person.
    */
   import { Button } from '@lostgradient/cinder';
   import { ShieldQuestion, SquareTerminal } from '@lucide/svelte';
@@ -44,13 +46,22 @@
   let inputOpen = $state(false);
 </script>
 
-<div class="ib-decision" data-kind="approval">
+<!-- The row is a group named by its question, and takes focus by script (never by Tab) so a page that
+     opens on a pending approval can bring the person to it without answering it. -->
+<div
+  class="ib-decision"
+  data-kind="approval"
+  data-approval-decision
+  role="group"
+  aria-labelledby={`${id}-question`}
+  tabindex="-1"
+>
   <div class="ib-decision__row">
     <span class="ib-decision__mark" aria-hidden="true"><ShieldQuestion size={16} /></span>
     <p class="ib-decision__question" id={`${id}-question`}>
       <IdentifierText text={question} {identifiers} />
     </p>
-    <div class="ib-decision__actions" role="group" aria-labelledby={`${id}-question`}>
+    <div class="ib-decision__actions">
       {#if input.length > 0}
         <Button
           variant="ghost"

@@ -62,6 +62,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import { usePageDetails, usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
@@ -83,6 +84,7 @@
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
   import { getAgentCatalog, getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { getProviders } from '../../lib/host-providers.ts';
@@ -102,6 +104,8 @@
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import { downloadText } from '../audit/audit-export.ts';
+  import { useMinuteClock } from '../home/home-clock.svelte.ts';
+  import { modelInUse } from './agent-model.ts';
   import BranchOrigin from './branch-origin.svelte';
   import { branchPointIds } from './branch-points.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
@@ -112,6 +116,7 @@
     chatMarkdown,
     hasExportableText,
   } from './chat-export.ts';
+  import ChatDetails from './chat-details.svelte';
   import ChatMoreMenu from './chat-more-menu.svelte';
   import { takeFirstMessage } from './new-chat-handoff.ts';
   import AgentSelect from './agent-select.svelte';
@@ -251,6 +256,28 @@
   // same identifier, with every row it had, so the composer is closed.
   const gone = $derived(context.isError && wireCodeOf(context.error) === 'NotFound');
   const displayTitle = $derived(context.data?.title ?? title ?? CHAT_COPY.untitled);
+  const clock = useMinuteClock();
+  /** The model that wrote the chat's latest reply, which names the chat's model when nothing else does. */
+  const lastReplyModel = $derived.by(() => {
+    const { ids, messages } = session.conversation;
+    for (let index = ids.length - 1; index >= 0; index -= 1) {
+      const row = messages[ids[index] ?? ''];
+      const recorded = row?.role === 'assistant' ? replyModelOf(row.metadata) : undefined;
+      if (recorded !== undefined) return recorded;
+    }
+    return undefined;
+  });
+  /** A Bureau timestamp as epoch milliseconds, or `null` when it cannot be read. */
+  function epochOf(timestamp: string): number | null {
+    const milliseconds = Date.parse(timestamp);
+    return Number.isNaN(milliseconds) ? null : milliseconds;
+  }
+  // The last breadcrumb names the chat and opens its details (`chat-details.svelte`). A new chat has
+  // no session to name yet, and a chat that is gone has no details to give.
+  const crumbPath = $derived(chatSessionPath(sessionId));
+  const hasCrumb = $derived(!choosing && !gone);
+  usePageLabel(() => ({ path: crumbPath, label: hasCrumb ? displayTitle : undefined }));
+  usePageDetails(() => ({ path: crumbPath, content: hasCrumb ? detailsPopover : undefined }));
 
   /** Reads the session again, for the settings' controls, and says whether it could. */
   async function reloadContext(): Promise<boolean> {
@@ -557,6 +584,45 @@
       return;
     event.preventDefault();
     router.navigate(agentPath(name));
+  }
+
+  let route = $state<HTMLElement | undefined>();
+  /** The frames to wait for the approval's row to be drawn before giving up on bringing the person to it. */
+  const ARRIVAL_FRAMES = 20;
+  /**
+   * Whether the chat has opened on a run it joined and the page has not yet seen whether that run is
+   * waiting on an approval. The approvals arrive with the run's own events, after the join.
+   */
+  let arriving = $state(false);
+
+  // Opening a chat that is waiting on an approval brings the person to it (board ChatPage frame a):
+  // the row scrolls into view and takes focus, which reads its question, and nothing is answered.
+  // It happens once, as the chat opens: an approval that arrives while the person is in the
+  // conversation never takes their focus, so the question is settled when the joined run stops.
+  $effect(() => {
+    if (!arriving) return;
+    if (session.approvals.length > 0) {
+      untrack(() => {
+        arriving = false;
+        void focusApproval();
+      });
+    } else if (!session.streaming && !session.attaching) {
+      untrack(() => (arriving = false));
+    }
+  });
+
+  /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
+  async function focusApproval(): Promise<void> {
+    for (let frame = 0; frame < ARRIVAL_FRAMES; frame += 1) {
+      await tick();
+      const row = route?.querySelector<HTMLElement>('[data-approval-decision]');
+      if (row !== null && row !== undefined) {
+        row.scrollIntoView?.({ block: 'center' });
+        row.focus({ preventScroll: true });
+        return;
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
   }
 
   function chooseAgent(value: string): void {
@@ -1069,7 +1135,7 @@
       }),
     );
     // A new chat has no thread yet, so there is nothing to attach to or to read back.
-    if (!untrack(() => isNew)) void session.attach();
+    if (!untrack(() => isNew)) void session.attach().then((joined) => (arriving = joined));
     // "New chat about <topic>" in the palette (`?about=`) opens with the topic in the box, for the
     // person to send or change. It sends nothing.
     const about = untrack(() => (isNew ? router.current.search.get('about') : null));
@@ -1087,14 +1153,31 @@
 </script>
 
 {#snippet details()}
-  <a
-    class="weft-chat-header__agent"
-    href={router.href(agentPath(agent))}
-    onclick={(event) => openAgent(event, agent)}><code class="ib-identifier">{agent}</code></a
-  >
   {#if context.data?.parentContextId}
     <BranchOrigin parentId={context.data.parentContextId} />
   {/if}
+{/snippet}
+
+<!-- The popover the last breadcrumb opens. The top bar renders it, so it holds only what the page
+     read; the session's own facts are left out until the session has been read. -->
+{#snippet detailsPopover()}
+  <ChatDetails
+    {sessionId}
+    {agent}
+    agentLabel={agentLabel(agent, agents.data)}
+    agentHref={router.href(agentPath(agent))}
+    onOpenAgent={(event) => openAgent(event, agent)}
+    startedAt={context.data === undefined ? null : epochOf(context.data.createdAt)}
+    lastActiveAt={context.data === undefined ? null : epochOf(context.data.updatedAt)}
+    now={clock()}
+    asRun={context.data === undefined
+      ? undefined
+      : {
+          model: modelInUse(context.data.model, models.data, lastReplyModel),
+          effort: context.data.effort,
+          permissionMode: context.data.permissionMode,
+        }}
+  />
 {/snippet}
 
 {#snippet headerStatus()}
@@ -1117,7 +1200,12 @@
   />
 {/snippet}
 
-<section class="weft-chat-route" aria-label={CHAT_COPY.regionLabel} data-session={sessionId}>
+<section
+  class="weft-chat-route"
+  aria-label={CHAT_COPY.regionLabel}
+  data-session={sessionId}
+  bind:this={route}
+>
   {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
   {#if choosing}
     <PageHeader data-testid="chat-header" title={markdownTitle} headingLevel={1} />
@@ -1126,7 +1214,7 @@
       data-testid="chat-header"
       title={markdownTitle}
       headingLevel={1}
-      description={details}
+      {...context.data?.parentContextId ? { description: details } : {}}
       actions={headerActions}
       status={headerStatus}
       statusPlacement="inline"

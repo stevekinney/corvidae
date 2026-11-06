@@ -5,6 +5,7 @@
  * page on screen supplies a better label, such as the agent's name, with {@link usePageLabel}.
  */
 import type { BreadcrumbItem } from '@lostgradient/cinder';
+import type { Snippet } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
 
 import { matchRoute } from '../lib/router.svelte.ts';
@@ -13,17 +14,22 @@ import { routes, type RouteDefinition } from './routes.ts';
 /** The labels pages supply, by the path they label. */
 const pageLabels = new SvelteMap<string, string>();
 
+/** The details popovers pages supply for their own crumb, by the path they belong to. */
+const pageDetails = new SvelteMap<string, Snippet>();
+
 /**
  * The trail for `pathname`: one item for each leading part of the path whose first matching route
  * has a crumb, each linking to its own path except the last, which is the page itself. With
  * `leaf` false there is no page to end the trail, as on an address no route owns, so every item
- * links: the not-found page adds its own "Not found" after them.
+ * links: the not-found page adds its own "Not found" after them. A page that supplied details for
+ * its own path (`usePageDetails`) has them on its entry as the popover that entry opens.
  */
 export function breadcrumbTrail(
   pathname: string,
   labels: ReadonlyMap<string, string> = pageLabels,
   table: readonly RouteDefinition[] = routes,
   leaf = true,
+  details: ReadonlyMap<string, Snippet> = pageDetails,
 ): BreadcrumbItem[] {
   const segments = pathname.split('/').filter((segment) => segment.length > 0);
   const items: { label: string; path: string }[] = [];
@@ -41,11 +47,11 @@ export function breadcrumbTrail(
           : undefined);
     if (label !== undefined) items.push({ label, path });
   }
-  return items.map((item, index) =>
-    leaf && index === items.length - 1
-      ? { label: item.label }
-      : { label: item.label, href: item.path },
-  );
+  return items.map((item, index) => {
+    if (!leaf || index !== items.length - 1) return { label: item.label, href: item.path };
+    const popover = details.get(item.path);
+    return popover === undefined ? { label: item.label } : { label: item.label, popover };
+  });
 }
 
 /**
@@ -60,6 +66,23 @@ export function usePageLabel(read: () => { path: string; label: string | undefin
     pageLabels.set(path, label);
     return () => {
       if (pageLabels.get(path) === label) pageLabels.delete(path);
+    };
+  });
+}
+
+/**
+ * Supplies the popover the page's own breadcrumb entry opens (an open chat's details) while the
+ * calling component is mounted. The snippet is read reactively, and `undefined` leaves the entry
+ * a plain label. Only the last entry of a trail is a button, so it shows while the page it belongs
+ * to is the one on screen.
+ */
+export function usePageDetails(read: () => { path: string; content: Snippet | undefined }): void {
+  $effect(() => {
+    const { path, content } = read();
+    if (content === undefined) return undefined;
+    pageDetails.set(path, content);
+    return () => {
+      if (pageDetails.get(path) === content) pageDetails.delete(path);
     };
   });
 }

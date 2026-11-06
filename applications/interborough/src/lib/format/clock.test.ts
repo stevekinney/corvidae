@@ -8,6 +8,7 @@ import {
   calendarDay,
   clockTime,
   dateLine,
+  dayAndTime,
   rowTime,
   timesShowIn,
   viewerTimeZone,
@@ -60,6 +61,19 @@ describe('clockTime and rowTime', () => {
       'Thu, Oct 29, 4:12 PM',
     );
     expect(rowTime(NOW + 60_000, NOW, ZONE)).toBe('10:47 AM');
+  });
+});
+
+describe('dayAndTime', () => {
+  test('names today as well as the clock, and otherwise reads as a row does', () => {
+    expect(dayAndTime(Date.parse('2026-11-02T10:30:00-06:00'), NOW, ZONE)).toBe('Today, 10:30 AM');
+    expect(dayAndTime(Date.parse('2026-11-01T16:12:00-06:00'), NOW, ZONE)).toBe(
+      'Yesterday, 4:12 PM',
+    );
+    expect(dayAndTime(Date.parse('2026-10-29T11:05:00-05:00'), NOW, ZONE)).toBe(
+      'Thu, Oct 29, 11:05 AM',
+    );
+    expect(dayAndTime(NOW + 60_000, NOW, ZONE)).toBe('Today, 10:47 AM');
   });
 });
 

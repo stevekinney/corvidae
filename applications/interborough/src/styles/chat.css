@@ -10,10 +10,47 @@
   min-height: 0;
 }
 
-.weft-chat-header__agent {
-  color: var(--cinder-text-muted);
-  text-decoration: none;
+/* The details popover of an open chat (the last breadcrumb): the session, its agent, when it
+ * started, and an "As run" group of what it ran with. */
+.weft-chat-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  /* Wide enough that the terms sit beside their values: Cinder's list stacks them under 28rem. */
+  min-inline-size: min(32rem, calc(100vw - 4rem));
   font-size: var(--cinder-text-sm);
+}
+
+.weft-chat-details__identifier {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cinder-space-1);
+  overflow-wrap: anywhere;
+}
+
+.weft-chat-details__agent {
+  color: var(--cinder-accent-text);
+  text-decoration: none;
+}
+
+.weft-chat-details__small {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
+}
+
+.weft-chat-details__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  padding-block-start: var(--cinder-space-3);
+  border-block-start: 1px solid var(--cinder-border-muted);
+}
+
+.weft-chat-details__heading {
+  margin: 0;
+  padding-inline: var(--cinder-space-3);
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
 }
 
 /* The composer's context meter: a short bar and its percentage, on the control row beside Send. */

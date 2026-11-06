@@ -55,7 +55,8 @@ const SPECIFICATIONS = {
  * on the sample world, the shell's chrome in each form it takes and each width it is drawn at, its
  * search, its not-found and forbidden pages, the restart flow (the failed dialog and the back-up
  * confirmations), Home on a fresh installation (`first-run.spec.ts`, whose own host holds no
- * provider, agent or chat), and the chat list in each of its states (`chat-list.spec.ts`).
+ * provider, agent or chat), the chat list in each of its states (`chat-list.spec.ts`), and an open chat with its approval,
+ * details popover and Permissions select (`chat-page.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/showcase.spec.ts',
@@ -65,6 +66,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/restart.spec.ts',
   'tests/e2e/first-run.spec.ts',
   'tests/e2e/chat-list.spec.ts',
+  'tests/e2e/chat-page.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

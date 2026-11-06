@@ -130,3 +130,14 @@ export function rowTime(at: number, now: number, zone: string = viewerTimeZone()
   }).format(at);
   return `${day}, ${clockTime(at, zone)}`;
 }
+
+/**
+ * When something began, for a line that names the day as well as the clock: "Today, 10:30 AM",
+ * "Yesterday, 4:12 PM", and "Thu, Oct 29, 11:05 AM" for anything older. It is {@link rowTime} with
+ * the day said for today too, since a line of details has no row around it to say "today".
+ */
+export function dayAndTime(at: number, now: number, zone: string = viewerTimeZone()): string {
+  return dayNumber(now, zone) - dayNumber(at, zone) <= 0
+    ? `Today, ${clockTime(at, zone)}`
+    : rowTime(at, now, zone);
+}

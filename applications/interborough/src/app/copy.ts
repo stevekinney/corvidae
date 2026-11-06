@@ -3241,6 +3241,25 @@ export const CHAT_COPY = {
     ended: 'Ended',
     done: 'Done',
   },
+  /**
+   * The details popover the last breadcrumb opens (board ChatPage frame b): the session, its agent,
+   * when it started, and what the chat ran with.
+   */
+  details: {
+    /** The popover's accessible name, before the chat's title. */
+    label: 'Chat details',
+    sessionId: 'Session ID',
+    copySessionId: 'Copy session ID',
+    agent: 'Agent',
+    started: 'Started',
+    /** What follows when the chat started, naming the last time it changed. */
+    lastActive: (when: string): string => `last active ${when}`,
+    /** The group of what the chat ran with. */
+    asRun: 'As run',
+    model: 'Model',
+    effort: 'Effort',
+    permissions: 'Permissions',
+  },
   branch: {
     /** The visible words of the action on a message, which is named `action` for assistive technology. */
     short: 'Branch',

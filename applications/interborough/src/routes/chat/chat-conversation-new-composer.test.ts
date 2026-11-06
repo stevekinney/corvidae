@@ -11,7 +11,7 @@ import { CHAT_COPY } from '../../app/copy.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { chooseOption, optionLabels } from './listbox.test-support.ts';
+import { chooseOption, optionDescriptions, optionLabels } from './listbox.test-support.ts';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -164,6 +164,24 @@ describe('a new chat with a model agent and a provider', () => {
     // The avatar spells the agent's identifier.
     expect(agent.querySelector('.ib-agent-select__avatar')?.textContent?.trim()).toBe('TR');
     expect(editor(container)?.placeholder).toBe('Message Tool runner…');
+  });
+
+  test('says under each Permissions option what it does, in the words an open chat uses (17g)', async () => {
+    serve();
+    landAt('/chats/new?agent=tool-runner');
+    const { container } = mount();
+    await waitFor(() =>
+      expect(footer(container).querySelector('#weft-chat-permission')).not.toBeNull(),
+    );
+
+    const lines = await optionDescriptions(container, 'weft-chat-permission');
+    expect(lines).toEqual(CHAT_COPY.settings.permissionOptions.map((option) => option.description));
+    // Allow all skips the asks that On changes would raise for this chat only: a tool set to
+    // Always still asks, and a Blocked tool still refuses.
+    expect(lines).toContain(
+      'Skips the On changes asks for this chat. Tools set to Always still ask; Blocked tools stay blocked.',
+    );
+    expect(lines).toContain('Tools set to On changes ask before they run.');
   });
 
   test('draws the formatting row, which the composer shows only while it has focus', async () => {

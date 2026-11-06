@@ -525,7 +525,7 @@ describe('an existing session', () => {
     expect(container.querySelector('.chat-empty')).toBeNull();
   });
 
-  test('shows its title and its agent once, and no agent chooser', async () => {
+  test('shows its title once, with no agent line under it and no agent chooser', async () => {
     const served = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
       if (url.includes('/threads/')) {
@@ -544,35 +544,8 @@ describe('an existing session', () => {
 
     const heading = await findByRole('heading', { level: 1 });
     expect(heading.textContent).toBe('Plan the week');
-    expect(container.querySelectorAll('.weft-chat-header__agent')).toHaveLength(1);
+    expect(container.querySelector('[data-testid="chat-header"] a[href^="/agents/"]')).toBeNull();
     expect(queryByRole('combobox', { name: 'Agent' })).toBeNull();
-  });
-
-  test('names its agent as a link to the agent’s page, which a modified click leaves to the browser', async () => {
-    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
-      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
-      if (url.includes('/threads/')) {
-        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
-      }
-      return undefined;
-    }).restore;
-    landAt('/chats/session-1');
-    const { container } = mount({
-      sessionId: 'session-1',
-      title: 'Plan the week',
-      agentName: 'assistant',
-    });
-
-    const link = await waitFor(() => {
-      const found = container.querySelector<HTMLAnchorElement>('a.weft-chat-header__agent');
-      if (found === null) throw new Error('The agent link did not render.');
-      return found;
-    });
-    expect(link.getAttribute('href')).toBe('/agents/assistant');
-    expect(await fireEvent.click(link, { button: 0, ctrlKey: true })).toBe(true);
-    expect(router.pathname).toBe('/chats/session-1');
-    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/agents/assistant');
   });
 
   test('reads its title once when it opens and once more when its run is over, and never in a loop', async () => {
