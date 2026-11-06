@@ -21,6 +21,7 @@ const WIDTHS = [375, 1280] as const;
 const SEEDED_DESCRIPTION = 'Daily summary';
 const SEEDED_CRON = '0 9 * * *';
 const SEEDED_INPUT = 'Summarize what happened yesterday.';
+const EDITED_INPUT = 'Summarize the week, and name what is blocked.';
 
 /** The seeded schedule's id: the Bureau mints it, and the row says only its description. */
 async function seededScheduleId(request: APIRequestContext): Promise<string> {
@@ -58,7 +59,7 @@ async function restoreSeeded(request: APIRequestContext, id: string): Promise<vo
       jsonrpc: '2.0',
       id: 3,
       method: 'bureau.schedules.update',
-      params: { scheduleId: id, spec: SEEDED_CRON },
+      params: { scheduleId: id, spec: SEEDED_CRON, input: SEEDED_INPUT },
     },
   });
 }
@@ -197,23 +198,39 @@ test.describe('the seeded agent run', () => {
         editor.getByRole('heading', { level: 1, name: `Edit ${SEEDED_DESCRIPTION}` }),
       ).toBeVisible();
 
-      // The form that makes a schedule, opened on this one: the workflow and what the chat sends
-      // are shown and fixed, and the name, the cadence and the policies are edited.
+      // The form that makes a schedule, opened on this one: the workflow, the agent and the message
+      // are editable now (decision 74r), as are the name, the cadence and the policies.
       await expect(editor.getByLabel(/^Name/)).toHaveValue(SEEDED_DESCRIPTION);
       await expect(editor.getByLabel('If a run is still going')).toHaveValue('skip');
-      await expect(editor.getByRole('combobox', { name: /^Workflow/ })).toBeDisabled();
-      await expect(editor.getByLabel(/^Message/)).toBeDisabled();
+      await expect(editor.getByRole('combobox', { name: /^Workflow/ })).toBeEnabled();
+      await expect(editor.getByLabel(/^Agent/)).toBeEnabled();
+      await expect(editor.getByLabel(/^Message/)).toBeEnabled();
+      await expect(editor.getByLabel(/^Message/)).toHaveValue(SEEDED_INPUT);
       await checkA11y('schedules — editing an agent run');
 
-      // From a cron cadence to an interval of two hours, whose first fire is two hours away.
+      // From a cron cadence to an interval of two hours, whose first fire is two hours away, and a
+      // new message: Save sends both, and the Bureau keeps the message.
       await editor.getByLabel('Repeats', { exact: true }).selectOption('interval');
       await editor.getByRole('spinbutton', { name: 'Every' }).fill('2');
       await editor.getByLabel('Unit').selectOption('hours');
+      await editor.getByLabel(/^Message/).fill(EDITED_INPUT);
+      const sent = page.waitForRequest((candidate) => {
+        const body = candidate.postData() ?? '';
+        return (
+          candidate.url().endsWith('/bureau/jsonrpc') && body.includes('bureau.schedules.update')
+        );
+      });
       await editor.getByRole('button', { name: 'Save changes' }).click();
+      const updateRequest = await sent;
+      const update = JSON.parse(updateRequest.postData() ?? '{}') as {
+        params: Record<string, unknown>;
+      };
+      expect(update.params).toMatchObject({ scheduleId: id, input: EDITED_INPUT });
       await expect(page).toHaveURL(new RegExp(`/schedules/${id}$`));
 
       await expect.poll(async () => nextFireAt(request, id)).not.toBe(before);
       await expect(nextFire).toContainText('every 2 hours');
+      await expect(page.getByTestId('schedule-input')).toContainText(EDITED_INPUT);
       // The sentence names the new cadence in place of the daily one, so the page says so.
       await expect(nextFire).not.toHaveText(shownBefore);
       await checkA11y('schedule detail — the edited cadence');

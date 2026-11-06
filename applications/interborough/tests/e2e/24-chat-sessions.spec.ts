@@ -110,10 +110,13 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
         VIEW_COPY.chat.empty?.title ?? '',
       );
       await expect(newChatAction(page)).toBeVisible();
-      // The welcome names the agents a chat can start with, each identifier in monospace.
+      // The welcome names the agents a chat can start with, each identifier in monospace: the two
+      // the host's chat proof adds (`e2e-server.ts`, listed before a plugin's), then the demo plugin's.
       const agents = page.getByTestId('welcome-agents');
       await expect(agents).toContainText('Agents:');
       await expect(agents.locator('code.ib-identifier')).toHaveText([
+        'e2e:chat-proof-parent',
+        'e2e:workflow-reviewer',
         'demo:assistant',
         'demo:tool-runner',
         'demo:request-human-input',
@@ -134,6 +137,11 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     await page.goto('/chats');
     await newChatAction(page).click();
     await expect(page).toHaveURL(/\/chats\/new$/);
+    // The host's default agent is the first it lists, which here is the chat proof's parent
+    // (`e2e-server.ts`); this case needs the assistant's scripted reply.
+    await page.getByRole('combobox', { name: 'Agent' }).click();
+    await page.getByRole('option', { name: /^assistant/i }).click();
+    await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)assistant$/);
 
     await send(page, chatTitle);
 
@@ -405,10 +413,13 @@ test.describe('a new chat', () => {
 
     await send(page, 'A first message that is refused');
 
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    // The message is kept and marked Not sent; its Retry is in the details the red icon opens (the
+    // transcript presentation of B06), not a button on the row.
+    await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)assistant$/);
     refuse = false;
-    await page.getByRole('button', { name: 'Retry' }).click();
+    await page.getByRole('button', { name: 'Not sent: details' }).click();
+    await page.getByRole('button', { name: 'Retry', exact: true }).click();
     await expect(page).toHaveURL(sessionUrl);
     await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
   });

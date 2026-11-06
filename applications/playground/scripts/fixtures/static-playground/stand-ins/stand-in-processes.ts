@@ -1,13 +1,25 @@
 /**
  * Shared pieces of the gate's stand-in children. A sleeper is a `sh` loop that records its PID and
- * never exits on its own, so a lifecycle case can prove the runner, not the sleeper, ended it.
+ * never exits while its test is alive, so a lifecycle case can prove the runner, not the sleeper,
+ * ended it.
+ *
+ * A stand-in must never outlive its test, however the test ends. A test passes `--owner-pid <pid>`
+ * (its own PID) down to every stand-in, and each stand-in, sleeper included, exits once that
+ * process is gone: a test process killed by the hang guard, an out-of-memory kill or a run
+ * cancelled from outside never reaches its `finally`, and a stand-in with no owner would run for
+ * ever with no parent. A sleeper also exits when its PID record is removed, which is what the
+ * test's own cleanup does last.
  */
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SLEEPER = 'echo $$ > "$1"; while :; do sleep 1; done';
+// `$1` is the PID record and `$2` the owner's PID (this shell's own when no owner was named).
+// A record that cannot be written, because the test already removed its directory, ends the
+// sleeper at once instead of leaving a loop nothing can find by PID.
+const SLEEPER =
+  'echo $$ > "$1" || exit 1; while [ -e "$1" ] && kill -0 "${2:-$$}" 2>/dev/null; do sleep 1; done';
 const STUBBORN_SLEEPER = `trap '' TERM; ${SLEEPER}`;
 
 /**
@@ -23,7 +35,14 @@ export function startSleeper(
   ignoreTermination = false,
 ): void {
   const script = ignoreTermination ? STUBBORN_SLEEPER : SLEEPER;
-  const command = ['/bin/sh', '-c', script, 'stand-in-sleeper', join(record, `${label}.pid`)];
+  const command = [
+    '/bin/sh',
+    '-c',
+    script,
+    'stand-in-sleeper',
+    join(record, `${label}.pid`),
+    argumentValue('--owner-pid') ?? '',
+  ];
   if (marker !== '') command.push(`--profile=${marker}`);
   const sleeper = Bun.spawn(command, { stdio: ['ignore', 'ignore', 'ignore'], detached });
   sleeper.unref();
@@ -55,4 +74,24 @@ export async function waitForFile(path: string, milliseconds = waitMilliseconds(
 export function argumentValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
   return index === -1 ? undefined : process.argv[index + 1];
+}
+
+/**
+ * Exit this stand-in once the process named by `--owner-pid` is gone. Without the argument it
+ * does nothing, so a stand-in started by hand keeps running until it is stopped.
+ */
+export function exitWhenOwnerIsGone(pollMilliseconds = 500): void {
+  const owner = Number(argumentValue('--owner-pid'));
+  if (!Number.isInteger(owner) || owner <= 0) return;
+  const timer = setInterval(() => {
+    try {
+      process.kill(owner, 0);
+    } catch {
+      // ESRCH is an owner that exited. EPERM is one this user cannot signal, which for a test's
+      // own process is a zombie: macOS answers a zombie that way. Either way the test is over.
+      process.stderr.write(`stand-in owner ${owner} is gone; exiting\n`);
+      process.exit(1);
+    }
+  }, pollMilliseconds);
+  timer.unref();
 }
