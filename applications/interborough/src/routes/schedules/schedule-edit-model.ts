@@ -4,11 +4,11 @@
  * from the schedule, and the request a change becomes. No DOM, so each rule is tested on its own.
  *
  * The Bureau and the engine write a schedule's cadence, name (its description) and overlap policy,
- * and for the engine its catch-up choice. The workflow, and for a chat the agent, the message and
- * whether it continues one chat, are fixed when the schedule is made, so the page shows them and
- * does not send them. Each request names only what changed, through the same draft classes the
- * page used before the form was shared, so a cadence the builder rounds (`30s`) is not rounded by
- * an edit of the name.
+ * and for the engine its catch-up choice. A chat's agent, message and whether it continues one chat
+ * are written by the Bureau as well, so the page edits them and sends each one that changed. The
+ * workflow of a schedule the engine writes is fixed here, so the page shows it and does not send it.
+ * Each request names only what changed, through the same draft classes the page used before the
+ * form was shared, so a cadence the builder rounds (`30s`) is not rounded by an edit of the name.
  */
 import type { ScheduleSpec, ScheduleSummary, ScheduleUpdateOptions } from '@lostgradient/weft';
 
@@ -16,7 +16,7 @@ import type { AgentScheduleUpdate } from '../../lib/bureau-schedules.ts';
 import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
 import { AgentScheduleFormState } from './agent-schedule-form-state.svelte.ts';
 import { cadenceOf, cadenceToScheduleValue } from './cadence.ts';
-import { workflowLabel, type NewScheduleDraft } from './new-schedule-model.ts';
+import { newChatId, workflowLabel, type NewScheduleDraft } from './new-schedule-model.ts';
 import { ScheduleFormState } from './schedule-form-state.svelte.ts';
 
 /** What the page edits: the schedule as it was read, and what the Bureau says of it. */
@@ -28,7 +28,21 @@ export type EditTarget = {
   readonly agentName: string | null;
   /** The start of the message a chat sends, or `null` when the Bureau does not say. */
   readonly message: string | null;
+  /** Whether every run of a chat continues one chat, which the Bureau says without naming the chat. */
+  readonly continuesChat?: boolean;
 };
+
+/**
+ * Whether the message the Bureau showed is only the start of the message: it serves at most 500
+ * characters and ends a cut message in `…`. Saving what the field holds would replace the whole
+ * message with the start, so the page leaves such a message as it is.
+ */
+export function messageIsCut(message: string | null): boolean {
+  return message !== null && message.endsWith('…') && Array.from(message).length >= PREVIEW_LENGTH;
+}
+
+/** How many characters the Bureau's preview of a message holds at most. */
+const PREVIEW_LENGTH = 500;
 
 /** What the schedule is called: its description, or its workflow's words when it has none. */
 export function editNameOf(
@@ -45,7 +59,7 @@ export function editDraftOf(target: EditTarget): NewScheduleDraft {
     workflowType: target.kind === 'agent-run' ? AGENT_RUN_TYPE : schedule.workflowType,
     agentName: target.agentName ?? '',
     message: target.message ?? '',
-    continueChat: false,
+    continueChat: target.kind === 'agent-run' && target.continuesChat === true,
     name: editNameOf(schedule),
     cadence: cadenceToScheduleValue(schedule),
     overlap: schedule.overlap,
@@ -81,7 +95,17 @@ export function agentUpdateOf(
   if (cadenceChanged(draft, opened)) state.setCadence(draft.cadence);
   state.description = descriptionOf(target, draft);
   state.overlap = draft.overlap === 'allow' ? 'allow' : 'skip';
-  return state.toUpdate();
+  // A chat that continues cannot start another run beside itself, so the Bureau refuses `allow` for it.
+  if (draft.continueChat) state.overlap = 'skip';
+  const agentName = draft.agentName.trim();
+  return {
+    ...state.toUpdate(),
+    ...(agentName !== opened.agentName.trim() ? { agentName } : {}),
+    ...(draft.message !== opened.message ? { input: draft.message } : {}),
+    ...(draft.continueChat !== opened.continueChat
+      ? { sessionId: draft.continueChat ? newChatId() : null }
+      : {}),
+  };
 }
 
 /** What the engine is sent for a schedule it writes: the cadence, and the options that changed. */

@@ -19109,11 +19109,14 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         type: 'session.deleted',
       });
       expect(deletedRecords).toHaveLength(1);
-      // COR-718: the deletion record also carries the owner the session had.
+      // COR-718: the deletion record also carries the owner the session had, and (COR-2018) the
+      // title and message count it had, which the body no longer holds once it is deleted.
       expect(deletedRecords[0]?.detail).toEqual({
         sessionId: run.contextId,
         incarnation,
         owner: 'anonymous:local',
+        title: 'A session about to be deleted',
+        messageCount: 2,
       });
 
       // Deleting an id that was never a live session dispatches nothing —

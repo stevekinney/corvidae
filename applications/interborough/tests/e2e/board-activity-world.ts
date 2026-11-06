@@ -2,14 +2,14 @@
  * The audit trail the Health design draws (`Health`, `PageAuditLog`; rows 76m, 82h and 82i), read
  * in place of the sample world's own for the frames that show it. The sample world's trail is what
  * the host really wrote: every run of every chat, the hook edits, the workflow edits, a server
- * start for each day of the story (78 events). The boards list a chosen few of them, with a
- * deleted chat the sample world never holds, so a frame that reads the board's rows takes the
- * trail the host answers and keeps only those events, with the deleted chat added. The page that
- * words them, groups them by day and lists them is the real one, and so is every other read.
+ * start for each day of the story (79 events, the deleted chat's among them). The boards list a
+ * chosen few of them, so a frame that reads the board's rows takes the trail the host answers and
+ * keeps only those events. The page that words them, groups them by day and lists them is the
+ * real one, and so is every other read.
  *
- * The deleted chat is the one record the host cannot write: the Bureau records that a chat was
- * deleted and not what it was called or how long it was, so the title and the message count the
- * board shows are carried by the record this file adds.
+ * The deleted chat is a real deletion: the seed saves "Scratch test" with its twelve messages and
+ * deletes it as the local caller, and the Bureau writes the record, with the title and the message
+ * count the chat had, which the log's row shows.
  */
 import type { Page } from '@playwright/test';
 
@@ -48,6 +48,7 @@ const AUDIT_EVENTS: ReadonlySet<string> = new Set([
   'schedule.missed@2026-11-02T15:00',
   'host.started@2026-11-02T15:00',
   'agent.updated@2026-10-29T16:38',
+  'session.deleted@2026-11-01T22:12',
 ]);
 
 /** The events Recent activity's design draws besides the runs of the three chats it names. */
@@ -56,17 +57,8 @@ const ACTIVITY_EVENTS: ReadonlySet<string> = new Set([
   'schedule.missed@2026-11-02T15:00',
   'host.started@2026-11-02T15:00',
   'schedule.fired@2026-10-29T09:00',
+  'session.deleted@2026-11-01T22:12',
 ]);
-
-/** The chat deleted yesterday at 4:12 PM, as its audit record would carry it if the Bureau kept them. */
-const DELETED_CHAT: AuditAnswerRecord = {
-  sequence: 40,
-  timestamp: '2026-11-01T22:12:08.000Z',
-  type: 'session.deleted',
-  resource: 'session:sample-chat-scratch-test',
-  principal: 'anonymous:local',
-  detail: { sessionId: 'sample-chat-scratch-test', title: 'Scratch test', messageCount: 12 },
-};
 
 /** Answers every read of the audit trail with `choose` applied to the records the host answers. */
 async function answerAuditRecords(
@@ -99,7 +91,7 @@ function newestFirst(records: readonly AuditAnswerRecord[]): readonly AuditAnswe
 /** The Audit log as its design draws it: today's nine rows, yesterday's deleted chat, Tool runner's edit on Oct 29. */
 export async function answerAuditAsDesigned(page: Page): Promise<void> {
   await answerAuditRecords(page, (records) =>
-    newestFirst([...records.filter((record) => AUDIT_EVENTS.has(eventOf(record))), DELETED_CHAT]),
+    newestFirst(records.filter((record) => AUDIT_EVENTS.has(eventOf(record)))),
   );
 }
 
@@ -122,11 +114,8 @@ export async function answerRecentActivityAsDesigned(page: Page): Promise<void> 
         )
         .map((record) => record.resource),
     );
-    return newestFirst([
-      ...records.filter(
-        (record) => runs.has(record.resource) || ACTIVITY_EVENTS.has(eventOf(record)),
-      ),
-      DELETED_CHAT,
-    ]);
+    return newestFirst(
+      records.filter((record) => runs.has(record.resource) || ACTIVITY_EVENTS.has(eventOf(record))),
+    );
   });
 }

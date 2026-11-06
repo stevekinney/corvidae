@@ -204,6 +204,13 @@ export type ScheduleUpdateOptions = Pick<
   'description' | 'overlap' | 'backfill' | 'jitter' | 'timeZone' | 'revisionPolicy'
 > & {
   /**
+   * The workflow type each fire starts from now on; omitted, it is kept. A pinned schedule
+   * re-captures its pin against the new type. The type need not be registered yet, as at creation.
+   */
+  workflowType?: string;
+  /** The input each fire starts the workflow with from now on, replacing it whole; omitted, it is kept. */
+  input?: unknown;
+  /**
    * Apply the update only if the schedule's {@link ScheduleMetadata.revision} is still this
    * value. The comparison is made inside the schedule's serialized write, and the write is
    * conditioned on the exact bytes it read, so of two concurrent changes carrying the same

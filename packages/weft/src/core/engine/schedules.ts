@@ -11,13 +11,12 @@ import type {
   ScheduleUpdateOptions,
   WorkflowState,
 } from '../types.ts';
-import type { Engine } from './index.ts';
 import type { EngineInternals } from './internals.ts';
 import type { StartTransientState } from './lifecycle/start-transient-state.ts';
 import {
   buildPinnedRevisionWriteOptions,
   resolveScheduleCreationRevision,
-  resolveScheduleRevisionForPin,
+  updatedRevisionFields,
 } from './pinned-schedule-revision.ts';
 import { withoutSkip } from './schedule-controls.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
@@ -440,28 +439,13 @@ export async function updateSchedule(
       const anchor = keepsIntervalGrid ? state.createdAt : now;
       const anchorFields =
         normalizedSpec.kind === 'interval' && !keepsIntervalGrid ? { createdAt: now } : {};
-      // Omitting `revisionPolicy` preserves the schedule's current policy AND
-      // its captured pin unchanged. Passing `'pinned'` — even when already
-      // pinned — always RE-resolves and re-captures against the revision
-      // active RIGHT NOW; it is never a no-op. Passing `'active-at-fire'`
-      // clears any previously captured pin.
-      let pinnedRevision: string | undefined;
-      let revisionFields: Pick<ScheduleState, 'revisionPolicy' | 'pinnedRevision'>;
-      if (normalizedOptions.revisionPolicy === undefined) {
-        revisionFields = {
-          revisionPolicy: state.revisionPolicy,
-          ...(state.pinnedRevision !== undefined && { pinnedRevision: state.pinnedRevision }),
-        };
-      } else if (normalizedOptions.revisionPolicy === 'pinned') {
-        pinnedRevision = await resolveScheduleRevisionForPin(
-          internals.engine as unknown as Engine,
-          internals,
-          state.workflowType,
-        );
-        revisionFields = { revisionPolicy: 'pinned', pinnedRevision };
-      } else {
-        revisionFields = { revisionPolicy: 'active-at-fire' };
-      }
+      const workflowType = normalizedOptions.workflowType ?? state.workflowType;
+      const { revisionFields, pinnedRevision } = await updatedRevisionFields(
+        internals,
+        state,
+        workflowType,
+        normalizedOptions.revisionPolicy,
+      );
       const updatedState: ScheduleState = {
         ...stateWithoutCadenceOrPin,
         ...normalizedOptions,
@@ -481,7 +465,7 @@ export async function updateSchedule(
         replaceTimerFrom: state,
         ...withReadConditions(
           readConditions,
-          await buildPinnedRevisionWriteOptions(internals, state.workflowType, pinnedRevision),
+          await buildPinnedRevisionWriteOptions(internals, workflowType, pinnedRevision),
         ),
       });
     },

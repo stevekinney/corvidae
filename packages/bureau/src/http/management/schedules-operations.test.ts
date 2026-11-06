@@ -6,7 +6,8 @@
 import { join } from 'node:path';
 
 import { createAgent } from '@lostgradient/operative';
-import { handleRequest, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { decode, handleRequest, KEYS, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
@@ -183,6 +184,201 @@ describe('each schedule operation, as the owner', () => {
     expect(status(recurring)).toBe(400);
     const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
     expect(listed.result!['schedules']).toEqual([]);
+  });
+});
+
+describe('an edit of the run a schedule starts (COR-2018)', () => {
+  const editor = createAgent({
+    name: 'editor',
+    generate: async () => ({ content: 'ok', toolCalls: [] }),
+  });
+
+  async function serveTwoAgents(storage?: Storage): Promise<OpenedBureau> {
+    const opened = await openBureau({
+      ...(storage === undefined ? {} : { storage }),
+      agents: { writer, editor },
+      a2aAgents: ['writer', 'editor'],
+      generate: answering(),
+    });
+    cleanups.push(() => opened.dispose());
+    return opened;
+  }
+
+  /** The view of a schedule, as its owner reads it. */
+  const read = async (opened: OpenedBureau, id: string) => {
+    const body = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+    return body.result;
+  };
+
+  it('changes the agent, the text, and the session, and the view says so without serving the session', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    expect(await read(opened, id)).toMatchObject({ continuesChat: false });
+
+    const updated = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      {
+        scheduleId: id,
+        spec: '2h',
+        agentName: 'editor',
+        input: 'A new message',
+        sessionId: 'schedule-chat-1',
+        expectedRevision: 1,
+      },
+      'alice-key',
+    );
+    expect(updated.result).toEqual({ id, status: 'active', revision: 2 });
+    const view = await read(opened, id);
+    expect(view).toMatchObject({
+      agentName: 'editor',
+      inputPreview: 'A new message',
+      continuesChat: true,
+      owner: OWNER.alice,
+    });
+    expect(JSON.stringify(view)).not.toContain('schedule-chat-1');
+
+    const fresh = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', sessionId: null },
+      'alice-key',
+    );
+    expect(fresh.result).toMatchObject({ revision: 3 });
+    expect(await read(opened, id)).toMatchObject({
+      agentName: 'editor',
+      inputPreview: 'A new message',
+      continuesChat: false,
+    });
+  });
+
+  it('keeps the agent, the text, and the session an update does not name', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key', { sessionId: 'digest' });
+    await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '3h', description: 'renamed' },
+      'alice-key',
+    );
+    expect(await read(opened, id)).toMatchObject({
+      agentName: 'writer',
+      inputPreview: 'PROMPT-SENTINEL-7c1d',
+      continuesChat: true,
+      description: 'renamed',
+    });
+  });
+
+  it('keeps the media an input carries when its text is replaced', async () => {
+    const storage = new MemoryStorage();
+    const opened = await serveTwoAgents(storage);
+    const made = await opened.bureau.schedules.create({
+      agentName: 'writer',
+      spec: '1h',
+      input: [
+        { type: 'text', text: 'look at this' },
+        { type: 'image', source: { kind: 'remote-url', url: 'https://example.invalid/a.png' } },
+      ],
+      principal: OWNER.alice,
+    });
+    const id = made!.id;
+    const updated = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '1h', input: 'and now this' },
+      'alice-key',
+    );
+    expect(updated.error).toBeUndefined();
+    expect(await read(opened, id)).toMatchObject({ inputPreview: 'and now this' });
+    const stored = decode((await storage.get(KEYS.schedule(id))) as Uint8Array) as {
+      input: { input: unknown };
+    };
+    expect(stored.input.input).toEqual([
+      { type: 'text', text: 'and now this' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.invalid/a.png' } },
+    ]);
+  });
+
+  it('answers an agent that is not in the catalog as NotFound and writes nothing', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'nobody' },
+      'alice-key',
+    );
+    expect(status(refused)).toBe(404);
+    expect(await read(opened, id)).toMatchObject({ agentName: 'writer', revision: 1 });
+  });
+
+  it('refuses a recurring session on a schedule that allows overlap, in either order, and writes nothing', async () => {
+    const opened = await serveTwoAgents();
+    const overlapping = await createdBy(opened, 'alice-key', { overlap: 'allow' });
+    const session = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: overlapping, spec: '2h', sessionId: 'digest' },
+      'alice-key',
+    );
+    expect(status(session)).toBe(400);
+    const both = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: overlapping, spec: '2h', sessionId: 'digest', overlap: 'allow' },
+      'alice-key',
+    );
+    expect(status(both)).toBe(400);
+    const recurring = await createdBy(opened, 'alice-key', { sessionId: 'digest' });
+    const allow = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: recurring, spec: '2h', overlap: 'allow' },
+      'alice-key',
+    );
+    expect(status(allow)).toBe(400);
+    // Moving to a fresh session and to overlap together is allowed.
+    const together = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: recurring, spec: '2h', overlap: 'allow', sessionId: null },
+      'alice-key',
+    );
+    expect(together.error).toBeUndefined();
+    expect(await read(opened, overlapping)).toMatchObject({ revision: 1 });
+  });
+
+  it('refuses an edit of the run made against a revision that has moved on, writing nothing', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    await rpc(opened.handler, 'bureau.schedules.pause', { scheduleId: id }, 'alice-key');
+    const stale = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', input: 'too late', expectedRevision: 1 },
+      'alice-key',
+    );
+    expect(status(stale)).toBe(409);
+    expect(stale.error?.data).toMatchObject({ currentRevision: 2, expectedRevision: 1 });
+    expect(await read(opened, id)).toMatchObject({
+      inputPreview: 'PROMPT-SENTINEL-7c1d',
+      revision: 2,
+    });
+  });
+
+  it('answers an edit of a schedule that is not the caller’s as NotFound, naming nothing of the edit', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', input: 'mine now' },
+      'bob-key',
+    );
+    expect(status(refused)).toBe(404);
+    expect(await read(opened, id)).toMatchObject({
+      inputPreview: 'PROMPT-SENTINEL-7c1d',
+    });
   });
 });
 

@@ -108,6 +108,7 @@ import {
   humanInputSchemaOf,
   sessionOwnerOf,
   type ScheduleTick,
+  summarizeSession,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -1639,6 +1640,16 @@ function rejectReservedIdentifier(kind: string, id: string): void {
 function rejectUnopenableNewSessionIdentifier(kind: string, id: string, exists: boolean): void {
   const reason = exists ? undefined : unopenableNewSessionIdentifierReason(kind, id);
   if (reason !== undefined) toBadRequest(reason);
+}
+
+/**
+ * A schedule's stored input with its text replaced by `text` (COR-2018). A text input is replaced
+ * whole; an input of parts keeps its media, after the new text, so an edit of the message never
+ * drops an attachment the schedule sends.
+ */
+function replaceInputText(stored: SessionInputPayload, text: string): SessionInputPayload {
+  if (typeof stored === 'string') return text;
+  return [{ type: 'text', text }, ...stored.filter((part) => part.type !== 'text')];
 }
 
 /** The text of the last user row in `rows`, or `''` when there is none. */
@@ -12277,6 +12288,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     return scheduleInputPreview(stored.input);
   }
 
+  /** Whether every fire of an agent schedule continues one session; only the boolean leaves here. */
+  async function getScheduleContinuesChat(scheduleId: string): Promise<boolean | undefined> {
+    const stored = await readScheduledAgentInput(scheduleId);
+    if (stored === undefined) return undefined;
+    return stored.sessionId !== undefined;
+  }
+
   async function sessionOwner(sessionId: string): Promise<string | undefined> {
     const session = await runtime.sessionStore?.load(sessionId);
     return session === undefined ? undefined : resolveSessionOwner(session.metadata);
@@ -15540,17 +15558,25 @@ async function constructBureau<const D extends AgentDefinitions>(
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
   async function deleteSession(
     id: string,
-    deleteOptions?: { readonly incarnation?: string | undefined },
+    deleteOptions?: {
+      readonly incarnation?: string | undefined;
+      readonly actor?: string | undefined;
+    },
   ): Promise<ContextDeletionReport> {
     const existing = inFlightSessionDeletions.get(id);
     if (existing) return existing;
     let releaseCoalescing: (() => void) | undefined = () => {
       inFlightSessionDeletions.delete(id);
     };
-    const deletion = performDeleteSession(id, deleteOptions?.incarnation, () => {
-      releaseCoalescing?.();
-      releaseCoalescing = undefined;
-    }).finally(() => {
+    const deletion = performDeleteSession(
+      id,
+      deleteOptions?.incarnation,
+      () => {
+        releaseCoalescing?.();
+        releaseCoalescing = undefined;
+      },
+      deleteOptions?.actor,
+    ).finally(() => {
       releaseCoalescing?.();
       releaseCoalescing = undefined;
     });
@@ -15588,22 +15614,67 @@ async function constructBureau<const D extends AgentDefinitions>(
       (error as { code?: unknown }).code === 'ERR_ENCODING_INVALID_ENCODED_DATA'
     );
   }
-  const sessionDeletionOwners = new Map<string, string>();
+  /**
+   * What the record kept before a deletion holds (COR-2018): the owner, which the audit entry
+   * carries as `detail.owner`, and the chat's title and message count, which it carries so the log
+   * can say which chat was deleted. The value is stored as JSON; a record written before the
+   * summary was kept is the owner alone, as plain text, and reads as no summary.
+   */
+  type SessionDeletionRecord = {
+    readonly owner: string | undefined;
+    /** Who asked for the deletion, when somebody did: an expiry has no actor. */
+    readonly actor: string | undefined;
+    readonly summary: { readonly title: string | null; readonly messageCount: number } | undefined;
+  };
+  const sessionDeletionOwners = new Map<string, SessionDeletionRecord>();
+
+  function serializeSessionDeletionRecord(record: SessionDeletionRecord): string {
+    return JSON.stringify({
+      owner: record.owner ?? null,
+      actor: record.actor ?? null,
+      title: record.summary?.title ?? null,
+      messageCount: record.summary?.messageCount ?? null,
+    });
+  }
+
+  function parseSessionDeletionRecord(stored: string): SessionDeletionRecord {
+    if (!stored.startsWith('{')) return { owner: stored, actor: undefined, summary: undefined };
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      if (typeof parsed !== 'object' || parsed === null) {
+        return { owner: undefined, actor: undefined, summary: undefined };
+      }
+      const { owner, actor, title, messageCount } = parsed as Record<string, unknown>;
+      return {
+        owner: typeof owner === 'string' ? owner : undefined,
+        actor: typeof actor === 'string' ? actor : undefined,
+        summary:
+          typeof messageCount === 'number'
+            ? { title: typeof title === 'string' ? title : null, messageCount }
+            : undefined,
+      };
+    } catch {
+      return { owner: undefined, actor: undefined, summary: undefined };
+    }
+  }
 
   function sessionDeletionOwnerKey(sessionId: string, incarnation: string): string {
     return `${SESSION_DELETION_OWNER_PREFIX}${encodeURIComponent(sessionId)}:${incarnation}`;
   }
 
-  async function recordSessionDeletionOwner(session: AgentSession): Promise<void> {
+  async function recordSessionDeletionOwner(session: AgentSession, actor?: string): Promise<void> {
     const kvStore = runtime.kv;
     if (!auditTrailInstance || !kvStore) return;
-    const owner = resolveSessionOwner(session.metadata);
     // A malformed owner names no one, so the entry is left without one.
-    if (owner === undefined) return;
+    const owner = resolveSessionOwner(session.metadata);
+    // The title and the count are what the chat was while it existed (COR-2018): the body is gone
+    // by the time the entry is written, so they travel with the record the owner does.
+    const { title, messageCount } = summarizeSession(session);
+    const record: SessionDeletionRecord = { owner, actor, summary: { title, messageCount } };
     const key = sessionDeletionOwnerKey(session.id, session.incarnation);
-    sessionDeletionOwners.set(key, owner);
+    sessionDeletionOwners.set(key, record);
     try {
-      await kvStore.set(key, owner);
+      await kvStore.set(key, serializeSessionDeletionRecord(record));
     } catch (error: unknown) {
       // The deletion does not go ahead without its owner: once the session is gone,
       // nothing can supply the owner its audit entry needs, in this process or any
@@ -15626,8 +15697,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    *   task of the incarnation keeps its status and cleanup and loses its history. This runs
    *   before the removal commits, so a failure leaves the context in place and a retry finds it.
    */
-  async function prepareSessionsForRemoval(sessions: readonly AgentSession[]): Promise<void> {
-    for (const session of sessions) await recordSessionDeletionOwner(session);
+  async function prepareSessionsForRemoval(
+    sessions: readonly AgentSession[],
+    actor?: string,
+  ): Promise<void> {
+    for (const session of sessions) await recordSessionDeletionOwner(session, actor);
     for (const session of sessions) await tasks.clearHistory(session.id, session.incarnation);
   }
 
@@ -15647,8 +15721,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     const key = sessionDeletionOwnerKey(sessionId, incarnation);
     if (sessionDeletionOwners.has(key)) return true;
     try {
-      const owner = await kvStore.get(key);
-      if (owner !== null) sessionDeletionOwners.set(key, owner);
+      const stored = await kvStore.get(key);
+      if (stored !== null) sessionDeletionOwners.set(key, parseSessionDeletionRecord(stored));
       return true;
     } catch (error: unknown) {
       // A record that is present but not valid text is a definite miss, like one that
@@ -16014,6 +16088,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     id: string,
     expectedIncarnation: string | undefined,
     onStoreDeletionCommitted: () => void,
+    actor?: string,
   ): Promise<ContextDeletionReport> {
     const sessionStore = requireSessionStore();
     const session = await loadSessionAndTombstone(id, expectedIncarnation);
@@ -16033,7 +16108,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         memoryPlacements: chatMemoryPlacementsOf(session, runIds),
       };
       await chatContentPurge.record(deletedChat);
-      await prepareSessionsForRemoval([session]);
+      await prepareSessionsForRemoval([session], actor);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
           status: 'revoked',
@@ -20836,29 +20911,79 @@ async function constructBureau<const D extends AgentDefinitions>(
         'BAD_REQUEST',
       );
     }
-    if (update.overlap === 'allow') {
-      // A recurring session is sequential: overlapping fires would interleave its turns, which is
-      // why creating such a schedule refuses `allow` too.
-      const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
-      const stored: unknown = bytes ? decode(bytes) : undefined;
-      const input =
-        typeof stored === 'object' && stored !== null
-          ? (stored as { input?: unknown }).input
-          : undefined;
-      if (isScheduledAgentRunInput(input) && input.sessionId !== undefined) {
-        throw new BureauError(
-          "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
-          'BAD_REQUEST',
-        );
+    const engine = runtime.durable.engine;
+    const changesRun =
+      update.agentName !== undefined ||
+      update.input !== undefined ||
+      update.sessionId !== undefined;
+    // The stored state is read for what an edit of the run needs (its input, the overlap and the
+    // revision it was written at), and for the check that a recurring session is never combined
+    // with overlapping fires.
+    const bytes =
+      changesRun || update.overlap === 'allow'
+        ? await engine.storage.get(KEYS.schedule(scheduleId))
+        : null;
+    const stored: unknown = bytes ? decode(bytes) : undefined;
+    const storedRecord =
+      typeof stored === 'object' && stored !== null
+        ? (stored as { input?: unknown; overlap?: unknown; revision?: unknown })
+        : undefined;
+    const storedInput = isScheduledAgentRunInput(storedRecord?.input)
+      ? storedRecord.input
+      : undefined;
+    if (changesRun && storedInput === undefined) {
+      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+    }
+    const nextOverlap = update.overlap ?? storedRecord?.overlap;
+    const nextSession =
+      update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined);
+    if (update.sessionId !== undefined && update.sessionId !== null) {
+      const sessionId = update.sessionId.trim();
+      rejectReservedIdentifier('"sessionId"', sessionId);
+      if (unopenableNewSessionIdentifierReason('"sessionId"', sessionId)) {
+        const held = await runtime.sessionStore?.load(sessionId);
+        rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, held !== undefined);
       }
     }
-    await runtime.durable.engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
+    if (nextOverlap === 'allow' && nextSession !== undefined) {
+      // A recurring session is sequential: overlapping fires would interleave its turns, which is
+      // why creating such a schedule refuses `allow` too.
+      throw new BureauError(
+        "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
+        'BAD_REQUEST',
+      );
+    }
+    if (update.agentName !== undefined && agentCatalog.find(update.agentName) === undefined) {
+      throw new UnknownScheduleAgentError(update.agentName);
+    }
+    if (update.input !== undefined && update.input.trim() === '') {
+      throw new BureauError('"input" must be a non-empty string', 'BAD_REQUEST');
+    }
+    let nextInput: ScheduledAgentRunInput | undefined;
+    if (changesRun && storedInput !== undefined) {
+      const { sessionId: _kept, ...rest } = storedInput;
+      nextInput = {
+        ...rest,
+        ...(update.agentName === undefined ? {} : { agentName: update.agentName }),
+        ...(update.input === undefined
+          ? {}
+          : { input: replaceInputText(storedInput.input, update.input) }),
+        ...(nextSession === undefined ? {} : { sessionId: nextSession }),
+      };
+    }
+    // The input is rebuilt from what was read, so the write is fenced to the revision that was
+    // read when the caller named none: a change made since is refused, not overwritten.
+    const expectedRevision =
+      guard?.expectedRevision ??
+      (nextInput !== undefined && typeof storedRecord?.revision === 'number'
+        ? storedRecord.revision
+        : undefined);
+    await engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
       ...(update.description === undefined ? {} : { description: update.description }),
       ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
       ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
-      ...(guard?.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: guard.expectedRevision }),
+      ...(nextInput === undefined ? {} : { input: nextInput }),
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
     return true;
   }
@@ -22768,6 +22893,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     missed: listScheduleMissed,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
+    continuesChat: getScheduleContinuesChat,
     blocker: getScheduleBlocker,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
@@ -23084,7 +23210,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         initialSequence: auditTrailInitialSequence,
         eventTimestamp,
         sessionDeletionOwner: (sessionId, incarnation) =>
-          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation)),
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.owner,
+        sessionDeletionActor: (sessionId, incarnation) =>
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.actor,
+        sessionDeletionSummary: (sessionId, incarnation) =>
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.summary,
       },
       runtimeServices,
     );

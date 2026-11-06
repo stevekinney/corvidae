@@ -77,6 +77,7 @@ export type BureauSchedulesOperationHost = BureauOwnershipHost &
       | 'missed'
       | 'agentName'
       | 'inputPreview'
+      | 'continuesChat'
       | 'blocker'
     > & {
       /** The owner of record of a schedule, or `undefined` when it is not a Bureau schedule. */
@@ -104,6 +105,8 @@ const scheduleViewSchema = z.object({
   agentName: z.string().nullable(),
   /** The start of the text each fire sends, at most 500 characters; `null` when the schedule sends none. */
   inputPreview: z.string().nullable(),
+  /** Whether every fire continues one chat; `false` when each fire is a fresh one, and for a workflow file's schedule. The chat's own id is never served. */
+  continuesChat: z.boolean(),
   workflowType: z.string(),
   description: z.string().nullable(),
   /** Set for a cron schedule, `null` for an interval one. */
@@ -163,6 +166,7 @@ function viewOf(
   owner: string,
   agentName: string | undefined,
   inputPreview: string | undefined,
+  continuesChat: boolean | undefined,
   blocker: WorkflowScheduleBlocker | undefined,
 ): z.infer<typeof scheduleViewSchema> {
   return {
@@ -170,6 +174,7 @@ function viewOf(
     owner,
     agentName: agentName ?? null,
     inputPreview: inputPreview ?? null,
+    continuesChat: continuesChat ?? false,
     workflowType: summary.workflowType,
     description: summary.description ?? null,
     cronExpression: summary.cronExpression ?? null,
@@ -389,6 +394,7 @@ export const schedulesListOperation = defineOperation<
             owner,
             await host.schedules.agentName(summary.id),
             await host.schedules.inputPreview(summary.id),
+            await host.schedules.continuesChat(summary.id),
             await host.schedules.blocker(summary.id),
           );
           if (input.status === undefined || view.status === input.status) visible.push(view);
@@ -437,6 +443,7 @@ export const schedulesGetOperation = defineOperation<
       owner,
       await host.schedules.agentName(input.scheduleId),
       await host.schedules.inputPreview(input.scheduleId),
+      await host.schedules.continuesChat(input.scheduleId),
       await host.schedules.blocker(input.scheduleId),
     );
   },
@@ -522,7 +529,14 @@ export const schedulesCreateOperation = defineOperation<
       if (summary === undefined) throw unsupported();
       // The preview comes from the request's own text, never a second read of storage: a read that
       // failed after the schedule was made would hide the schedule from a retry (COR-411).
-      return viewOf(summary, owner, input.agentName, scheduleInputPreview(input.input), undefined);
+      return viewOf(
+        summary,
+        owner,
+        input.agentName,
+        scheduleInputPreview(input.input),
+        input.sessionId !== undefined,
+        undefined,
+      );
     } catch (error) {
       return faultOf(error, input.agentName);
     }
@@ -851,6 +865,29 @@ const updateInput = z.object({
       'The schedule’s new overlap policy: `skip` or `allow` (refused for a schedule with a recurring session); left as it was when omitted.',
     ),
   timeZone: timeZoneField.optional(),
+  agentName: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe('The catalog agent each fire runs from now on; left as it was when omitted.'),
+  input: z
+    .string()
+    .min(1)
+    .max(100_000)
+    .optional()
+    .describe(
+      'The text each fire sends from now on, replacing the schedule’s text; an input that carries media keeps it. Left as it was when omitted.',
+    ),
+  sessionId: z
+    .string()
+    .min(1)
+    .max(256)
+    .nullable()
+    .optional()
+    .describe(
+      'The session each fire continues from now on, or `null` to make every fire a fresh session; left as it was when omitted. Refused with an overlap of `allow`.',
+    ),
   expectedRevision,
 });
 
@@ -861,8 +898,9 @@ export const schedulesUpdateOperation = defineOperation<
 >({
   name: 'bureau.schedules.update',
   mcpExposable: false,
-  summary: 'Change a schedule’s cadence, description, overlap policy, or time zone',
-  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). Its agent, input, owner, and session are not changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
+  summary:
+    'Change a schedule’s cadence, description, overlap policy, time zone, agent, text, or session',
+  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). It also changes the run each fire starts when it is named: \`agentName\` (a catalog agent; one that is not there is \`NotFound\`), \`input\` (the text each fire sends), and \`sessionId\` (the session each fire continues, or \`null\` for a fresh one each time). What is left out is kept, the owner is never changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
   destructive: true,
   tags: ['Schedules'],
   inputSchema: updateInput,
@@ -875,6 +913,14 @@ export const schedulesUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
     assertKnownTimeZone(input.timeZone);
+    // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
+    if (
+      input.agentName !== undefined &&
+      (!host.agentVisibility.mayName(principal, input.agentName) ||
+        !host.schedules.hasAgent(input.agentName))
+    ) {
+      throw resourceNotFound('agent', input.agentName);
+    }
     try {
       const done = await host.schedules.update(
         input.scheduleId,
@@ -883,6 +929,9 @@ export const schedulesUpdateOperation = defineOperation<
           ...(input.description === undefined ? {} : { description: input.description }),
           ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
           ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+          ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
+          ...(input.input === undefined ? {} : { input: input.input }),
+          ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
         },
         { expectedRevision: input.expectedRevision },
       );

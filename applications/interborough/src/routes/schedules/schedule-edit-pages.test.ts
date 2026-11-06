@@ -133,10 +133,11 @@ describe('editing a chat', () => {
     );
     expect((form.getByLabelText(/^Name/) as HTMLInputElement).value).toBe('Daily summary');
     expect(form.getByLabelText('Repeats')).not.toBeNull();
-    // What a schedule is made with is shown and not edited.
-    expect(form.getByRole('combobox', { name: /^Workflow/ })).toBeDisabled();
-    expect(form.getByLabelText(/^Agent/)).toBeDisabled();
-    expect(form.getByLabelText(/^Message/)).toBeDisabled();
+    // The board draws live fields: Workflow, Agent, Message and Continue one chat all take edits.
+    expect(form.getByRole('combobox', { name: /^Workflow/ })).not.toBeDisabled();
+    expect(form.getByLabelText(/^Agent/)).not.toBeDisabled();
+    expect(form.getByLabelText(/^Message/)).not.toBeDisabled();
+    expect(form.getByRole('switch', { name: /Continue one chat/ })).not.toBeDisabled();
     // The footer says what Save does, beside Cancel and Save changes.
     expect(form.getByTestId('new-schedule-summary').textContent).toBe(
       'Saves changes to Daily summary.',
@@ -175,6 +176,89 @@ describe('editing a chat', () => {
     // The engine's own update is not used for it, and the page goes back to the schedule.
     expect(stub?.callsTo('PATCH /schedules/:schedule')).toEqual([]);
     await waitFor(() => expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}`));
+  });
+
+  test('saves the agent, the message and the chat it now continues with the Bureau, and the next edit sees them (74r)', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
+    const form = await page();
+
+    await fireEvent.change(form.getByLabelText(/^Agent/), { target: { value: 'tool-runner' } });
+    await fireEvent.input(form.getByLabelText(/^Message/), {
+      target: { value: 'Summarize the week.' },
+    });
+    await fireEvent.click(form.getByRole('switch', { name: /Continue one chat/ }));
+    await fireEvent.click(form.getByRole('button', { name: SAVE }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
+    const params = stub?.callsTo('bureau.schedules.update')[0]?.params;
+    expect(params).toMatchObject({
+      scheduleId: AGENT_SCHEDULE,
+      spec: '0 9 * * *',
+      agentName: 'tool-runner',
+      input: 'Summarize the week.',
+      expectedRevision: 3,
+    });
+    expect(String(params?.['sessionId'])).toMatch(/^schedule-chat-/);
+    expect(stub?.world.scheduleAgents[AGENT_SCHEDULE]).toBe('tool-runner');
+    expect(stub?.world.scheduleInputs[AGENT_SCHEDULE]).toBe('Summarize the week.');
+    expect(stub?.world.scheduleContinuing).toEqual([AGENT_SCHEDULE]);
+    await waitFor(() => expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}`));
+  });
+
+  test('a chat that continues one opens with the toggle on, and turns it off by sending no chat', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}/edit`, { scheduleContinuing: [AGENT_SCHEDULE] });
+    const form = await page();
+
+    expect(
+      form.getByRole('switch', { name: /Continue one chat/ }).getAttribute('aria-checked'),
+    ).toBe('true');
+    await fireEvent.click(form.getByRole('switch', { name: /Continue one chat/ }));
+    await fireEvent.click(form.getByRole('button', { name: SAVE }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.update')[0]?.params).toEqual({
+      scheduleId: AGENT_SCHEDULE,
+      spec: '0 9 * * *',
+      sessionId: null,
+      expectedRevision: 3,
+    });
+    expect(stub?.world.scheduleContinuing).toEqual([]);
+  });
+
+  test('an emptied message is said at the field and nothing is written', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
+    const form = await page();
+
+    await fireEvent.input(form.getByLabelText(/^Message/), { target: { value: '' } });
+    await fireEvent.click(form.getByRole('button', { name: SAVE }));
+
+    await waitFor(() =>
+      expect(form.getByLabelText(/^Message/).getAttribute('aria-invalid')).toBe('true'),
+    );
+    expect(stub?.callsTo('bureau.schedules.update')).toEqual([]);
+  });
+
+  test('a message the Bureau showed only the start of is left as it is, so a save never shortens it', async () => {
+    const cut = `${'a'.repeat(499)}…`;
+    open(`/schedules/${AGENT_SCHEDULE}/edit`, { scheduleInputs: { [AGENT_SCHEDULE]: cut } });
+    const form = await page();
+
+    expect(form.getByLabelText(/^Message/)).toBeDisabled();
+    await fireEvent.click(form.getByRole('button', { name: SAVE }));
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.update')[0]?.params).not.toHaveProperty('input');
+  });
+
+  test('the Workflow field offers the chat alone, because a chat cannot be moved to the engine’s workflows', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
+    const form = await page();
+
+    await fireEvent.click(form.getByRole('combobox', { name: /^Workflow/ }));
+    const listbox = requireElement(document.querySelector('[role="listbox"]'), HTMLElement);
+    const options = [...listbox.querySelectorAll('[role="option"]')];
+    expect(options.map((option) => option.getAttribute('aria-label'))).toEqual([
+      expect.stringContaining('Chat with an agent'),
+    ]);
   });
 
   test('sends only the cadence when nothing else changed', async () => {

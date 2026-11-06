@@ -880,6 +880,11 @@ describe('identifiers grant nothing', () => {
               // two-owner proof for memory is `memory-operations.test.ts`.
               ...(operation.name.startsWith('bureau.memory.') ? MEMORY_PARAMETERS : {}),
               ...CONTEXT_COMMAND_PARAMETERS,
+              // An update's `sessionId` is the chat to assign, not a resource it reads, so probing it
+              // still names the schedule, which is bob's.
+              ...(operation.name === 'bureau.schedules.update'
+                ? { scheduleId: bobScheduleId }
+                : {}),
               [parameter]: requested,
               decision: 'approve',
               input: { id: 'input-1', payload: 'hello' },

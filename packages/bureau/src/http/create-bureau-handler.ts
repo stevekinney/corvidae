@@ -310,6 +310,7 @@ export type BureauHandlerSource = Pick<
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'continuesChat'
     | 'blocker'
   >;
 } & {
@@ -1293,6 +1294,7 @@ export function buildBureauHandlerHost(
       owner: (scheduleId) => bureau.ownerOf({ kind: 'schedule', id: scheduleId }),
       agentName: bureau.schedules.agentName,
       inputPreview: bureau.schedules.inputPreview,
+      continuesChat: bureau.schedules.continuesChat,
       blocker: bureau.schedules.blocker,
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },

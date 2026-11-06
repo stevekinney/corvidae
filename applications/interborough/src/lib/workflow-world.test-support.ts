@@ -332,6 +332,8 @@ export type World = {
   scheduleAgents: Record<string, string>;
   /** The text each Bureau schedule sends its agent, by schedule id. */
   scheduleInputs: Record<string, string>;
+  /** The Bureau schedules whose every fire continues one chat, by schedule id. */
+  scheduleContinuing: string[];
   /** The fires each Bureau schedule missed, by schedule id, as `bureau.schedules.missed` lists them. */
   missedFires: Record<string, { occurrence: number; reason: 'late' | 'dst-gap'; count: number }[]>;
   /** What `bureau.agents.list` answers. */
@@ -373,6 +375,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     failSchedules: false,
     scheduleAgents: {},
     scheduleInputs: {},
+    scheduleContinuing: [],
     missedFires: {},
     agents: [],
     contexts: [],
@@ -461,6 +464,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     owner: 'anonymous:local',
     agentName: world.scheduleAgents[schedule.id] ?? null,
     inputPreview: world.scheduleInputs[schedule.id] ?? null,
+    continuesChat: world.scheduleContinuing.includes(schedule.id),
     workflowType: schedule.workflowType,
     description: schedule.description ?? null,
     cronExpression: schedule.cronExpression ?? null,
@@ -567,6 +571,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       world.schedules.push(schedule);
       world.scheduleAgents[schedule.id] = String(params['agentName']);
       world.scheduleInputs[schedule.id] = String(params['input']);
+      if (typeof params['sessionId'] === 'string') world.scheduleContinuing.push(schedule.id);
       return bureauView(schedule);
     },
     'bureau.schedules.pause': (params) => {
@@ -648,6 +653,17 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       }
       if (typeof params['description'] === 'string') schedule.description = params['description'];
       if (typeof params['overlap'] === 'string') schedule.overlap = params['overlap'];
+      if (typeof params['agentName'] === 'string') {
+        world.scheduleAgents[schedule.id] = params['agentName'];
+      }
+      if (typeof params['input'] === 'string') world.scheduleInputs[schedule.id] = params['input'];
+      if (typeof params['sessionId'] === 'string') {
+        if (!world.scheduleContinuing.includes(schedule.id)) {
+          world.scheduleContinuing.push(schedule.id);
+        }
+      } else if (params['sessionId'] === null) {
+        world.scheduleContinuing = world.scheduleContinuing.filter((id) => id !== schedule.id);
+      }
       touch(schedule);
       return receipt(schedule);
     },

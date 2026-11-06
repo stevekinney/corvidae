@@ -117,6 +117,51 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     }
   });
 
+  it('carries the chat’s title and message count it recorded before the delete, and reads a record that holds only an owner as one with no summary (COR-2018)', async () => {
+    const storage = new MemoryStorage();
+    const blocked = { value: false };
+    const { bureau: first, base } = await openBlockedBureau(storage, blocked);
+    await settled(first, 'api-key:alice', 'summarized');
+    await settled(first, 'api-key:alice', 'legacy');
+    blocked.value = true;
+    await first.contexts.delete('summarized').catch(() => undefined);
+    await first.contexts.delete('legacy').catch(() => undefined);
+    await first.dispose().catch(() => undefined);
+    // A record written before the summary was kept holds the owner alone, as plain text.
+    const sideKeys = await base.list(SIDE_RECORD_PREFIX);
+    const legacyKey = sideKeys.find((key) => key.includes('legacy'));
+    await base.set(legacyKey!, 'api-key:alice');
+
+    const second = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
+      storage: storage,
+      durable: false,
+    });
+    try {
+      await second.maintain();
+      await waitForCondition(
+        async () =>
+          (await deletionCount(second, 'summarized')) === 1 &&
+          (await deletionCount(second, 'legacy')) === 1,
+        'the replayed deletions never reached the audit trail',
+      );
+      const [summarized] = await deletionEntries(second, 'summarized');
+      expect(summarized?.detail).toMatchObject({
+        owner: 'api-key:alice',
+        title: 'hello',
+        messageCount: 2,
+      });
+      const [legacy] = await deletionEntries(second, 'legacy');
+      expect(legacy?.detail).toMatchObject({ owner: 'api-key:alice' });
+      expect(legacy?.detail).not.toHaveProperty('title');
+      expect(legacy?.detail).not.toHaveProperty('messageCount');
+    } finally {
+      await second.dispose();
+    }
+  });
+
   it('keeps each undrained deletion of one id under the owner of its own incarnation', async () => {
     const storage = new MemoryStorage();
     const blocked = { value: false };

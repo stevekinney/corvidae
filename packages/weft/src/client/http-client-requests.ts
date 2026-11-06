@@ -500,6 +500,8 @@ export function updateScheduleRequest(
   options?: ScheduleUpdateOptions,
 ): Promise<void> {
   const body = scheduleSpecToWireFields(newSpec);
+  setIfDefined(body, 'workflowType', options?.workflowType);
+  setIfDefined(body, 'input', options?.input);
   setIfDefined(body, 'description', options?.description);
   setIfDefined(body, 'overlap', options?.overlap);
   setIfDefined(body, 'backfill', options?.backfill);

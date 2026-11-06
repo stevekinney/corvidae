@@ -120,6 +120,17 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   'version',
 ];
 
+/**
+ * Fields that leave the Bureau for one event type only (COR-2018), because for any other they would
+ * name nothing or carry content: a deleted chat's record keeps the chat's title (at most 80
+ * characters, which the session summary cuts it to) and how many messages it held, so the log can
+ * still say which chat was deleted once the chat is gone. Every other event's `title` or
+ * `messageCount` is dropped as before.
+ */
+const EVENT_DETAIL_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
+  'session.deleted': ['title', 'messageCount'],
+};
+
 /** A scalar the projection keeps: a string cut to the limit, a number, or a boolean. */
 function scalarOf(value: unknown): string | number | boolean | undefined {
   if (typeof value === 'string') return value.slice(0, DETAIL_VALUE_LIMIT);
@@ -152,7 +163,7 @@ function reviewDetailOf(review: unknown): Record<string, unknown> {
   };
 }
 
-function detailOf(detail: unknown): AuditQueryRecord['detail'] {
+function detailOf(detail: unknown, type: string): AuditQueryRecord['detail'] {
   if (typeof detail !== 'object' || detail === null) return null;
   // The record's own fields win over what is lifted from its `review`.
   const source = {
@@ -160,7 +171,10 @@ function detailOf(detail: unknown): AuditQueryRecord['detail'] {
     ...Object.fromEntries(Object.entries(detail).filter(([, value]) => value !== undefined)),
   };
   const projected: Record<string, string | number | boolean> = {};
-  for (const key of DETAIL_ALLOWLIST) {
+  const allowed = Object.hasOwn(EVENT_DETAIL_ALLOWLIST, type)
+    ? [...DETAIL_ALLOWLIST, ...EVENT_DETAIL_ALLOWLIST[type]!]
+    : DETAIL_ALLOWLIST;
+  for (const key of allowed) {
     const value = Object.hasOwn(source, key) ? scalarOf(source[key]) : undefined;
     if (value !== undefined) projected[key] = value;
   }
@@ -174,7 +188,7 @@ function viewOf(record: AuditRecord): AuditQueryRecord {
     type: record.type,
     resource: record.runId,
     principal: record.principal ?? null,
-    detail: detailOf(record.detail),
+    detail: detailOf(record.detail, record.type),
   };
 }
 

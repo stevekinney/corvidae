@@ -2232,10 +2232,11 @@ export interface BureauSchedules {
   cancel(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
 
   /**
-   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), by wrapping
-   * Weft's `updateSchedule`. Weft replaces the cadence wholesale, so `update.spec` is required, in
-   * the same grammar as {@link DurableScheduleDefinition.spec}. The schedule's input, agent, owner
-   * and session are not changed. Resolves `true`, or `undefined` when no durable engine is
+   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), and the agent,
+   * text, and session each fire runs (COR-2018), by wrapping Weft's `updateSchedule`. Weft replaces
+   * the cadence wholesale, so `update.spec` is required, in the same grammar as
+   * {@link DurableScheduleDefinition.spec}. The schedule's owner is never changed, and the agent,
+   * text, and session are only when `update` names them. Resolves `true`, or `undefined` when no durable engine is
    * composed. A schedule that does not exist, and a workflow file's schedule (which belongs to its
    * file), reject with `NOT_FOUND`; an overlap Bureau does not offer, or `'allow'` on a schedule
    * with a recurring session, rejects with `BAD_REQUEST`. `guard` as for
@@ -2328,6 +2329,15 @@ export interface BureauSchedules {
    * {@link Bureau.ownerOf} first.
    */
   inputPreview(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * Whether every fire of an agent schedule continues one session (COR-2018): `true` when the
+   * schedule's stored input names a session, `false` when each fire is a fresh one. Only that
+   * boolean leaves here, never the session's id. `undefined` when there is no such schedule, when
+   * it is a workflow file's, or when no durable engine is composed. It does not check who may see
+   * the schedule, so a caller answers to {@link Bureau.ownerOf} first.
+   */
+  continuesChat(scheduleId: string): Promise<boolean | undefined>;
 
   /**
    * COR-2009 — why a workflow file's schedule won't start: its file is there but stopped parsing,
@@ -2437,7 +2447,15 @@ export interface BureauContexts {
    */
   delete(
     id: string,
-    options?: { readonly incarnation?: string | undefined },
+    options?: {
+      readonly incarnation?: string | undefined;
+      /**
+       * Who asked for the deletion (COR-2018): an owner identifier, which the deletion's audit entry
+       * carries as its `principal`, so the log can say who deleted the chat. Left out, the entry
+       * names no actor, as one for a chat the store expired does not.
+       */
+      readonly actor?: string | undefined;
+    },
   ): Promise<ContextDeletionReport>;
 
   /**
@@ -3685,12 +3703,31 @@ export interface ScheduleRevisionGuard {
   readonly expectedRevision?: number | undefined;
 }
 
-/** What {@link BureauSchedules.update} changes. Omitted `description` and `overlap` keep their values. */
+/**
+ * What {@link BureauSchedules.update} changes. Omitted `description`, `overlap`, `agentName`,
+ * `input`, and `sessionId` keep their values.
+ */
 export interface DurableScheduleUpdate {
   /** The schedule's new cadence: a cron expression or a Weft duration shorthand, as at creation. */
   readonly spec: string;
   readonly description?: string | undefined;
   readonly overlap?: 'skip' | 'allow' | undefined;
+  /**
+   * The catalog agent each fire runs from now on. An agent that is not in the catalog rejects with
+   * {@link UnknownScheduleAgentError} and changes nothing, as at creation.
+   */
+  readonly agentName?: string | undefined;
+  /**
+   * The text each fire sends from now on. It replaces the text of the stored input: an input that
+   * also carries media keeps its media parts, after the new text.
+   */
+  readonly input?: string | undefined;
+  /**
+   * The session each fire continues from now on, or `null` to make every fire a fresh session
+   * again. A session on a schedule whose overlap is `'allow'` rejects with `BAD_REQUEST`, as at
+   * creation.
+   */
+  readonly sessionId?: string | null | undefined;
   /**
    * The schedule's new IANA time zone (see {@link DurableScheduleDefinition.timeZone}). Left as it
    * was when omitted; an interval `spec` is always read as UTC.

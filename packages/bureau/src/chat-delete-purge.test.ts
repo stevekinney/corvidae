@@ -220,7 +220,11 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
       expect(await bureau.contexts.get('chat-1')).toBeUndefined();
       // No answer or input text of the chat anywhere in the store, audit included.
       expect(holding(after, ANSWER)).toEqual([]);
-      expect(holding(after, INPUT)).toEqual([]);
+      // The chat's first message is its title, which the deletion's own audit entry keeps
+      // (COR-2018, an owner decision); nothing else of the chat holds it.
+      expect(holding(after, INPUT).map((key) => key.replace(/^audit:v1:\d+:\d+:/, ''))).toEqual([
+        'session:chat-1',
+      ]);
       // Of the chat's run only audit entries, the task record and engine ids and counters stay.
       const run = new RegExp(`${targetRunId}(?!\\d)`);
       const runKeys = [...after.keys()].filter((key) => run.test(key));
@@ -365,7 +369,11 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
       const after = await scan(fixture);
       expect(await bureau.contexts.get('live-chat')).toBeUndefined();
       expect(holding(after, ANSWER)).toEqual([]);
-      expect(holding(after, INPUT)).toEqual([]);
+      // The chat's first message is its title, which the deletion's own audit entry keeps
+      // (COR-2018, an owner decision); nothing else of the chat holds it.
+      expect(holding(after, INPUT).map((key) => key.replace(/^audit:v1:\d+:\d+:/, ''))).toEqual([
+        'session:live-chat',
+      ]);
       const run = new RegExp(`${live.id}(?!\\d)`);
       expect(
         [...after.keys()].filter(

@@ -44,6 +44,15 @@ export function validateScheduleMutableOptions(
   };
 }
 
+/** The workflow type an update moves a schedule to: a non-empty string, or `undefined` when omitted. */
+export function validateScheduleWorkflowType(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw invalidParamsFault('Field "workflowType" must be a non-empty string');
+  }
+  return value;
+}
+
 function validateScheduleDescription(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') {

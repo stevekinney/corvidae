@@ -36,6 +36,8 @@ export type SchedulesDependencies = {
   readonly agentName: BureauSchedules['agentName'];
   /** {@link BureauSchedules.inputPreview}. */
   readonly inputPreview: BureauSchedules['inputPreview'];
+  /** {@link BureauSchedules.continuesChat}. */
+  readonly continuesChat: BureauSchedules['continuesChat'];
   /** {@link BureauSchedules.blocker}. */
   readonly blocker: BureauSchedules['blocker'];
   /** The Bureau's durable event history read, which {@link BureauSchedules.events} narrows to the schedule owner. */
@@ -63,6 +65,7 @@ export function createSchedules(dependencies: SchedulesDependencies): BureauSche
     missed: dependencies.missed,
     agentName: dependencies.agentName,
     inputPreview: dependencies.inputPreview,
+    continuesChat: dependencies.continuesChat,
     blocker: dependencies.blocker,
     events: (scheduleId, options) =>
       dependencies.eventHistory({ kind: 'schedule', id: scheduleId }, options),

@@ -24,6 +24,8 @@ const viewSchema = z.object({
   owner: z.string(),
   agentName: z.string().nullable(),
   inputPreview: z.string().nullable(),
+  /** Whether every fire continues one chat; the chat's own id is never served. A Bureau that does not say reads as `false`. */
+  continuesChat: z.boolean().default(false),
   workflowType: z.string(),
   description: z.string().nullable(),
   cronExpression: z.string().nullable(),
@@ -199,16 +201,25 @@ export function cancelAgentSchedule(
   return guardedWrite('bureau.schedules.cancel', scheduleId, expectedRevision, options);
 }
 
-/** What an update changes: the cadence always, and the description, overlap, and zone when they are given. */
+/**
+ * What an update changes: the cadence always, and the description, overlap, zone, agent, message,
+ * and chat when they are given. A field that is left out is kept as the schedule has it.
+ */
 export type AgentScheduleUpdate = {
   readonly spec: string;
   readonly description?: string;
   readonly overlap?: 'skip' | 'allow';
   /** The IANA zone a cron `spec` is read in. Left out, the Bureau keeps the schedule's zone. */
   readonly timeZone?: string;
+  /** The catalog agent each fire runs from now on. */
+  readonly agentName?: string;
+  /** The text each fire sends from now on, which replaces the schedule's text whole. */
+  readonly input?: string;
+  /** The chat every fire continues from now on, or `null` to make each fire a fresh chat. */
+  readonly sessionId?: string | null;
 };
 
-/** Replaces the schedule's cadence, and changes its description, overlap, and zone when they are given. */
+/** Replaces the schedule's cadence, and changes its description, overlap, zone, agent, message, and chat when they are given. */
 export async function updateAgentSchedule(
   scheduleId: string,
   update: AgentScheduleUpdate,
@@ -221,6 +232,9 @@ export async function updateAgentSchedule(
     ...(update.description === undefined ? {} : { description: update.description }),
     ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
     ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
+    ...(update.agentName === undefined ? {} : { agentName: update.agentName }),
+    ...(update.input === undefined ? {} : { input: update.input }),
+    ...(update.sessionId === undefined ? {} : { sessionId: update.sessionId }),
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
   return receiptSchema.parse(await callBureau('bureau.schedules.update', params, options));

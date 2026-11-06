@@ -93,11 +93,13 @@ export type SchedulesOperationTypes = {
       readonly cronExpression?: unknown;
       readonly description?: unknown;
       readonly every?: unknown;
+      readonly input?: unknown;
       readonly jitter?: unknown;
       readonly overlap?: unknown;
       readonly revisionPolicy?: unknown;
       readonly scheduleId: string;
       readonly timeZone?: unknown;
+      readonly workflowType?: unknown;
     };
     readonly output: null;
     readonly faults: 'Conflict' | 'InvalidParams' | 'NotFound';

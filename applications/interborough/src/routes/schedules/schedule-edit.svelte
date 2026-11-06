@@ -65,6 +65,8 @@
       kind: owner.kind,
       agentName: owner.kind === 'agent-run' ? owner.agentName : null,
       message: owner.kind === 'agent-run' ? (overlay.data?.inputs?.get(schedule.id) ?? null) : null,
+      continuesChat:
+        owner.kind === 'agent-run' && overlay.data?.continuing?.has(schedule.id) === true,
     };
   });
 

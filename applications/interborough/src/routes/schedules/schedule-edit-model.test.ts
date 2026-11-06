@@ -13,6 +13,7 @@ import {
   editNameOf,
   endsSkippedRun,
   engineUpdateOf,
+  messageIsCut,
   type EditTarget,
 } from './schedule-edit-model.ts';
 
@@ -99,6 +100,47 @@ describe('the requests a change becomes', () => {
       editDraftOf(CHAT),
     );
     expect(update).toEqual({ spec: '0 9 * * *', description: 'Morning', overlap: 'allow' });
+  });
+
+  test('a chat sends the agent, the message and the chat it now continues, each only when it changed (74r)', () => {
+    const opened = editDraftOf(CHAT);
+    const update = agentUpdateOf(
+      CHAT,
+      draftOf(CHAT, { agentName: ' tool-runner ', message: 'A new message', continueChat: true }),
+      opened,
+    );
+    expect(update).toMatchObject({
+      spec: '0 9 * * *',
+      agentName: 'tool-runner',
+      input: 'A new message',
+    });
+    expect(update.sessionId).toMatch(/^schedule-chat-/);
+    // Nothing else is named: the schedule keeps what the person did not touch.
+    expect(Object.keys(update).toSorted()).toEqual(['agentName', 'input', 'sessionId', 'spec']);
+  });
+
+  test('a chat that continues one is opened on, and turned off, by naming no chat (74r)', () => {
+    const continuing = { ...CHAT, continuesChat: true };
+    const opened = editDraftOf(continuing);
+    expect(opened.continueChat).toBe(true);
+    expect(agentUpdateOf(continuing, { ...opened }, opened)).toEqual({ spec: '0 9 * * *' });
+    expect(agentUpdateOf(continuing, { ...opened, continueChat: false }, opened)).toEqual({
+      spec: '0 9 * * *',
+      sessionId: null,
+    });
+  });
+
+  test('a chat that continues one is never sent an overlap of allow, which the Bureau refuses for it', () => {
+    const opened = editDraftOf(CHAT);
+    const update = agentUpdateOf(CHAT, { ...opened, continueChat: true, overlap: 'allow' }, opened);
+    expect(update).not.toHaveProperty('overlap');
+  });
+
+  test('a message the Bureau showed only the start of is known by its cut', () => {
+    expect(messageIsCut('Summarize.')).toBe(false);
+    expect(messageIsCut(null)).toBe(false);
+    expect(messageIsCut(`${'a'.repeat(499)}…`)).toBe(true);
+    expect(messageIsCut('a'.repeat(500))).toBe(false);
   });
 
   test('a name left as the one the schedule was shown by is not sent as a description', () => {

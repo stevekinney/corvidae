@@ -24,10 +24,13 @@
    *
    * The same form edits a schedule (`/schedules/:id/edit`; rows 74r, 74t, 75p, 75q) when it is
    * given one: it opens filled in, with focus on Repeats, and its footer says what Save does. The
-   * workflow, and for a chat the agent, the message and whether it continues one chat, are fixed
-   * when a schedule is made, so they are shown and not sent; the one exception is a schedule whose
-   * workflow was deleted, whose Workflow field keeps the old name, marked, and says so. Save stays
-   * enabled there and moves focus to that field.
+   * chat's agent, message and whether it continues one chat are live, and Save sends each one that
+   * changed (the Workflow field offers the chat alone, which is what the Bureau writes). A message
+   * the Bureau showed only the start of stays as it is, because saving would shorten it. The
+   * workflow of a schedule the engine writes is fixed when the schedule is made, so it is shown
+   * and not sent; the one exception is a schedule whose workflow was deleted, whose Workflow
+   * field keeps the old name, marked, and says so. Save stays enabled there and moves focus to
+   * that field.
    */
   import {
     Alert,
@@ -51,6 +54,7 @@
   import { tick, untrack } from 'svelte';
 
   import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
@@ -101,6 +105,7 @@
     cadenceChanged,
     endsSkippedRun,
     engineUpdateOf,
+    messageIsCut,
     type EditTarget,
   } from './schedule-edit-model.ts';
   import {
@@ -140,6 +145,14 @@
   const errors = $derived(draftErrors(draft));
   /** Whether the schedule is a chat. An edit keeps the kind it was made as, whatever the Workflow field is moved to. */
   const chat = $derived(target === undefined ? isChatDraft(draft) : target.kind === 'agent-run');
+  /**
+   * Whether the edited chat's message is left as it is: the Bureau shows only the start of a long
+   * message, and none of one made of media alone, so saving what the field holds would replace the
+   * whole message with less of it.
+   */
+  const messageHeld = $derived(
+    target !== undefined && chat && (target.message === null || messageIsCut(target.message)),
+  );
   /** Zone the next runs are shown in: the viewer's, as the Schedules list names it. */
   const zone = formatTimeZoneLabel(new Date(), { style: 'long' });
 
@@ -202,7 +215,12 @@
   const goneChosen = $derived(deleted && draft.workflowType === target?.schedule.workflowType);
   /** The picker's rows, with the edited schedule's own workflow in them even when the list leaves it out. */
   const fieldOptions = $derived.by(() => {
-    if (target === undefined || target.kind === 'agent-run') return options;
+    if (target === undefined) return options;
+    // A chat is the Bureau's and stays one: the other workflows are the engine's, which a chat
+    // cannot be moved to, so the field offers the chat alone.
+    if (target.kind === 'agent-run') {
+      return options.filter((option) => option.value === AGENT_RUN_TYPE);
+    }
     const type = target.schedule.workflowType;
     if (deleted) {
       return [
@@ -471,7 +489,7 @@
   const shown = $derived({
     workflowType: attempted ? errors.workflowType : undefined,
     agentName: attempted ? errors.agentName : undefined,
-    message: draft.message === '' && !attempted ? undefined : errors.message,
+    message: messageHeld || (draft.message === '' && !attempted) ? undefined : errors.message,
     name: attempted || nameEdited ? errors.name : undefined,
   });
 
@@ -572,7 +590,8 @@
 
   /**
    * Save's ask. The workflow is fixed, so nothing the page asks about it can be wrong except a
-   * workflow that is gone, which Save refuses with focus on the Workflow field and its message.
+   * workflow that is gone, which Save refuses with focus on the Workflow field and its message. A
+   * chat's agent and message are checked as when a chat is made.
    */
   async function saveEdit(editing: EditTarget): Promise<void> {
     const choice = $state.snapshot(draft);
@@ -583,6 +602,14 @@
     if (editing.kind === 'code' && choice.workflowType !== editing.schedule.workflowType) {
       moved = true;
       return;
+    }
+    if (editing.kind === 'agent-run') {
+      // A chat's agent and message are written now, so a problem with either is said where it is.
+      const problems = draftErrors(choice);
+      if (problems.agentName !== undefined || (problems.message !== undefined && !messageHeld)) {
+        await focusFirstProblem();
+        return;
+      }
     }
     await proceed(undefined, choice);
   }
@@ -753,7 +780,7 @@
         options={fieldOptions}
         filter={optionMatches}
         bind:value={draft.workflowType}
-        disabled={target !== undefined && !deleted}
+        disabled={target !== undefined && !deleted && !chat}
         loading={listLoading}
         loadingLabel={copy.workflowLoading}
         stillLoadingAfter={STILL_LOADING_MS}
@@ -804,7 +831,7 @@
               id="ib-schedule-new-agent"
               label={SCHEDULE_COPY.form.agentLabel}
               required
-              error={target === undefined ? (shown.agentName ?? '') : ''}
+              error={shown.agentName ?? ''}
               {...blocked ? { warning: copy.needsProvider } : {}}
               warningAction={blocked ? connectProvider : undefined}
             >
@@ -812,7 +839,6 @@
                 id="ib-schedule-new-agent"
                 bind:value={draft.agentName}
                 required
-                disabled={target !== undefined}
                 options={[
                   { value: '', label: SCHEDULE_COPY.form.agentPlaceholder, disabled: true },
                   ...(draft.agentName !== '' && !agentNames.includes(draft.agentName)
@@ -834,7 +860,6 @@
               description={SCHEDULE_COPY.form.agentFreeTextDescription}
               bind:value={draft.agentName}
               error={shown.agentName ?? ''}
-              disabled={target !== undefined}
               required
             />
           {/if}
@@ -844,9 +869,9 @@
             description={copy.messageDescription}
             rows={3}
             required
-            disabled={target !== undefined}
+            disabled={messageHeld}
             bind:value={draft.message}
-            error={target === undefined ? (shown.message ?? '') : ''}
+            error={shown.message ?? ''}
           />
           <Toggle
             id="ib-schedule-new-continue"
@@ -854,7 +879,6 @@
             description={copy.continueDescription}
             descriptionPlacement="below"
             checked={draft.continueChat}
-            disabled={target !== undefined}
             onValueChange={continueChanged}
           />
         {/if}

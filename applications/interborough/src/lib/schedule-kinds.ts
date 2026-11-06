@@ -45,6 +45,8 @@ export type ScheduleOverlay = {
   readonly agents: ReadonlyMap<string, string> | undefined;
   /** The start of the text each Bureau schedule sends its agent, by schedule id. */
   readonly inputs: ReadonlyMap<string, string> | undefined;
+  /** The Bureau schedules whose every fire continues one chat, by schedule id; the chat's own id is never served. */
+  readonly continuing?: ReadonlySet<string> | undefined;
   /**
    * The status of each Bureau schedule as the Bureau reads it, by schedule id. It differs from the
    * engine's for a schedule held because its workflow's file cannot load: the engine holds it
@@ -91,6 +93,7 @@ export async function loadScheduleOverlay(
   const definitions = engine?.[0];
   const agents = new Map<string, string>();
   const inputs = new Map<string, string>();
+  const continuing = new Set<string>();
   const statuses = new Map<string, 'active' | 'paused' | 'cancelled'>();
   const blockers = new Map<string, { workflow: string; message: string }>();
   const fileSchedules = new Map<string, string>();
@@ -107,12 +110,14 @@ export async function loadScheduleOverlay(
       else {
         agents.set(schedule.id, schedule.agentName);
         if (schedule.inputPreview !== null) inputs.set(schedule.id, schedule.inputPreview);
+        if (schedule.continuesChat) continuing.add(schedule.id);
       }
     }
   }
   return {
     agents: schedules.status === 'fulfilled' ? agents : undefined,
     inputs: schedules.status === 'fulfilled' ? inputs : undefined,
+    continuing: schedules.status === 'fulfilled' ? continuing : undefined,
     statuses: schedules.status === 'fulfilled' ? statuses : undefined,
     blockers: schedules.status === 'fulfilled' ? blockers : undefined,
     fileSchedules: schedules.status === 'fulfilled' ? fileSchedules : undefined,
