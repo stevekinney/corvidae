@@ -187,6 +187,10 @@ export const apiFault = z.strictObject({
     .array(z.strictObject({ path: z.string(), message: z.string() }))
     .optional()
     .describe('Where the request is wrong, for `invalid`.'),
+  requestId: z
+    .string()
+    .optional()
+    .describe('The identifier the host logged an unexpected failure under, for `failed`.'),
 });
 
 /** The body of a refusal. */

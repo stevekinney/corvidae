@@ -50,6 +50,7 @@ import {
   scheduleListQuery,
   type ApiFault,
 } from './api-contract.ts';
+import { unexpectedJsonRouteFailure } from './json-route-failure.ts';
 
 /** Who a request acts as, and the scopes of Interborough's API it holds. */
 export interface ApiPrincipal {
@@ -155,6 +156,8 @@ export interface ApiRouteDependencies {
   readonly timeline: (runId: string) => Promise<readonly ApiTimelineEntry[]>;
   /** Who a request acts as. */
   readonly principal: (request: Request) => ApiPrincipal;
+  /** Where an unexpected failure is logged, under the request identifier its answer carries. */
+  readonly log?: ((message: string) => void) | undefined;
   /**
    * Starts the turn that answers a message sent to a chat, under the same admission Chat's own send
    * path takes (the chat's thread lease, then whether a run is live on it): it throws a
@@ -240,7 +243,12 @@ async function bodyOf(request: Request): Promise<unknown> {
 }
 
 /** The answer an error from the Bureau stands for. The message never repeats a value it was given. */
-function answerFor(error: unknown): Response {
+function answerFor(
+  error: unknown,
+  method: string,
+  route: string,
+  log: ((message: string) => void) | undefined,
+): Response {
   if (error instanceof Refusal) return refuseWith(error.status, error.fault);
   if (error instanceof WorkflowInputInvalidError) {
     return refuseWith(400, {
@@ -267,7 +275,8 @@ function answerFor(error: unknown): Response {
         return refuseWith(503, { error: 'unavailable', message: 'The Bureau cannot do that now.' });
     }
   }
-  return refuseWith(500, { error: 'failed', message: 'The operation failed.' });
+  // Nothing from the failure is repeated: it carries a request identifier the host log quotes.
+  return unexpectedJsonRouteFailure({ log, method, route, message: 'The operation failed.' });
 }
 
 function iso(milliseconds: number): string {
@@ -493,7 +502,7 @@ export function apiRoutes(dependencies: ApiRouteDependencies, refuse: Refuse) {
           const answer = await operation.run(request, request.params, principal);
           return Response.json(answer.body, { status: answer.status });
         } catch (error) {
-          return answerFor(error);
+          return answerFor(error, method, path, dependencies.log);
         }
       };
     }
@@ -503,12 +512,21 @@ export function apiRoutes(dependencies: ApiRouteDependencies, refuse: Refuse) {
     GET: async (request) => {
       const refusal = refuse(request);
       if (refusal !== undefined) return refusal;
-      const principal = dependencies.principal(request);
-      const session: HostSession = {
-        subject: principal.subject,
-        scopes: API_SCOPES.filter((scope) => principal.scopes.has(scope)),
-      };
-      return Response.json(session);
+      try {
+        const principal = dependencies.principal(request);
+        const session: HostSession = {
+          subject: principal.subject,
+          scopes: API_SCOPES.filter((scope) => principal.scopes.has(scope)),
+        };
+        return Response.json(session);
+      } catch {
+        return unexpectedJsonRouteFailure({
+          log: dependencies.log,
+          method: 'GET',
+          route: HOST_SESSION_ROUTE,
+          message: 'The session could not be read.',
+        });
+      }
     },
   };
   return routes;

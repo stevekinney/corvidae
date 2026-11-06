@@ -1372,8 +1372,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             },
           } satisfies HostStatus),
       },
-      ...providerRoutes(providers, refuseSettingsWrites, authority),
-      ...pluginRoutes(pluginManager, refuseSettingsWrites, authority),
+      ...providerRoutes(providers, refuseSettingsWrites, authority, log),
+      ...pluginRoutes(pluginManager, refuseSettingsWrites, authority, log),
       // The nightly clean-up's standing, and "Clean up now" (COR-2009).
       ...cleanUpRoutes(nightlyCleanUp, refuse),
       // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
@@ -1385,10 +1385,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           (await bureauHandler?.(request)) ??
           new Response('The Bureau is not serving yet.', { status: 503 }),
       ),
-      ...skillRoutes(skills, refuse, authority),
-      ...toolSourceRoutes(toolSources, refuse, {
-        mutation: (request, input) => authority.mutation(request, input),
-      }),
+      ...skillRoutes(skills, refuse, authority, log),
+      ...toolSourceRoutes(
+        toolSources,
+        refuse,
+        {
+          mutation: (request, input) => authority.mutation(request, input),
+        },
+        log,
+      ),
       // Interborough's own API over the Bureau (COR-2019), checked against the session's scopes.
       // Interborough is single-user for now, so every request is the local person, who holds
       // every scope. Weft's engine operations under `/api/v1` are relayed below, as before.
@@ -1397,6 +1402,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           bureau,
           timeline: (runId) => engine.getTimeline(runId),
           principal: apiPrincipal,
+          log,
           // A message sent through the API takes the admission Chat's own send takes.
           startTurn: (input) => startIdleTurn(bureau, input),
         },

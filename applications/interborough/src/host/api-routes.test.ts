@@ -502,3 +502,82 @@ describe('the request guard', () => {
     expect(recorded.calls).toEqual([]);
   });
 });
+
+describe('unexpected failures', () => {
+  function serveFailing(log: (message: string) => void) {
+    const recorded: Recorded = { calls: [] };
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      routes: apiRoutes(
+        {
+          bureau: fakeBureau(recorded, {
+            workflows: {
+              listRuns: async () => {
+                throw new Error('secret /private/runs.json');
+              },
+            } as never,
+          }),
+          timeline: async () => [],
+          startTurn: async () => ({ id: 'task-2-b81e' }),
+          principal: () => localApiPrincipal('anonymous:local'),
+          log,
+        },
+        () => undefined,
+      ),
+      fetch: () => new Response('Not found', { status: 404 }),
+    });
+    servers.push(server);
+    return server;
+  }
+
+  test('an API failure carries the request identifier the host logged, and nothing of the error', async () => {
+    const lines: string[] = [];
+    const server = serveFailing((line) => lines.push(line));
+    const response = await fetch(new URL('/api/runs', server.url));
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { requestId: string };
+    expect(body).toEqual({
+      error: 'failed',
+      message: 'The operation failed.',
+      requestId: expect.any(String),
+    });
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toEqual({
+      event: 'host.json.failure',
+      requestId: body.requestId,
+      method: 'GET',
+      route: '/api/runs',
+    });
+    expect(lines[0]).not.toContain('secret');
+    expect(lines[0]).not.toContain('/private');
+  });
+
+  test('a session read that throws is correlated the same way', async () => {
+    const lines: string[] = [];
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      routes: apiRoutes(
+        {
+          bureau: fakeBureau({ calls: [] }),
+          timeline: async () => [],
+          startTurn: async () => ({ id: 'task-2-b81e' }),
+          principal: () => {
+            throw new Error('secret /private/session.json');
+          },
+          log: (line) => lines.push(line),
+        },
+        () => undefined,
+      ),
+      fetch: () => new Response('Not found', { status: 404 }),
+    });
+    servers.push(server);
+    const response = await fetch(new URL('/host/session', server.url));
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { requestId: string; message: string };
+    expect(body.message).toBe('The session could not be read.');
+    expect(JSON.parse(lines[0]!)).toMatchObject({ requestId: body.requestId, method: 'GET' });
+    expect(lines[0]).not.toContain('secret');
+  });
+});

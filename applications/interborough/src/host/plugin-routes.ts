@@ -24,6 +24,7 @@ import { HostMutationError } from './host-mutation-context.ts';
  * @module plugin-routes
  */
 
+import { unexpectedJsonRouteFailure } from './json-route-failure.ts';
 import type { PluginManager } from './plugin-manager.ts';
 import { PluginInputError, PluginNotFoundError, PluginWriteLockedError } from './plugin-manager.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
@@ -50,7 +51,12 @@ export function decoded(parameter: string): string {
 }
 
 /** Run `work` and answer with its result, or with the refusal its error stands for. */
-async function respond(work: () => Promise<unknown>): Promise<Response> {
+async function respond(
+  work: () => Promise<unknown>,
+  method: string,
+  route: string,
+  log?: (message: string) => void,
+): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
@@ -102,10 +108,12 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
       );
     }
     // Nothing from the failure is repeated: it may hold a path or a value.
-    return Response.json(
-      { error: 'failed', message: 'The plugin settings could not be changed.' },
-      { status: 500 },
-    );
+    return unexpectedJsonRouteFailure({
+      log,
+      method,
+      route,
+      message: 'The plugin settings could not be changed.',
+    });
   }
 }
 
@@ -114,41 +122,53 @@ export function pluginRoutes(
   manager: PluginManager,
   refuse: Refuse,
   authority: Pick<HostAuthority, 'mutation'>,
+  log?: (message: string) => void,
 ) {
   return {
     [HOST_PLUGINS_ROUTE]: {
-      GET: (request: Request) => refuse(request) ?? respond(() => manager.snapshot()),
+      GET: (request: Request) =>
+        refuse(request) ?? respond(() => manager.snapshot(), 'GET', HOST_PLUGINS_ROUTE, log),
     },
     [HOST_PLUGIN_ROUTE]: {
       PUT: (request: Bun.BunRequest<typeof HOST_PLUGIN_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          const mutation = await authority.mutation(request, body);
-          return manager.update(
-            decoded(request.params.name),
-            {
-              enabled: body['enabled'],
-              ...(Object.hasOwn(body, 'configuration')
-                ? { configuration: body['configuration'] }
-                : {}),
-            },
-            mutation,
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            const mutation = await authority.mutation(request, body);
+            return manager.update(
+              decoded(request.params.name),
+              {
+                enabled: body['enabled'],
+                ...(Object.hasOwn(body, 'configuration')
+                  ? { configuration: body['configuration'] }
+                  : {}),
+              },
+              mutation,
+            );
+          },
+          'PUT',
+          HOST_PLUGIN_ROUTE,
+          log,
+        ),
     },
     [HOST_PLUGIN_SECRET_ROUTE]: {
       PUT: (request: Bun.BunRequest<typeof HOST_PLUGIN_SECRET_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          return manager.saveSecret(
-            decoded(request.params.name),
-            decoded(request.params.key),
-            body['value'],
-            await authority.mutation(request, body),
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            return manager.saveSecret(
+              decoded(request.params.name),
+              decoded(request.params.key),
+              body['value'],
+              await authority.mutation(request, body),
+            );
+          },
+          'PUT',
+          HOST_PLUGIN_SECRET_ROUTE,
+          log,
+        ),
     },
   };
 }
