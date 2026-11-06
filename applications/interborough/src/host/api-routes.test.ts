@@ -536,7 +536,7 @@ describe('unexpected failures', () => {
     const server = serveFailing((line) => lines.push(line));
     const response = await fetch(new URL('/api/runs', server.url));
     expect(response.status).toBe(500);
-    const body = (await response.json()) as { requestId: string };
+    const body = (await response.json()) as { requestId: string; error: string; message: string };
     expect(body).toEqual({
       error: 'failed',
       message: 'The operation failed.',

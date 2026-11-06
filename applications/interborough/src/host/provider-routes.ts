@@ -198,13 +198,18 @@ export function providerRoutes(
     [HOST_PROVIDER_TEST_ROUTE]: {
       POST: (request: Bun.BunRequest<typeof HOST_PROVIDER_TEST_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          return manager.testKey(
-            { provider: request.params.name, apiKey: body['apiKey'] },
-            request.signal,
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            return manager.testKey(
+              { provider: request.params.name, apiKey: body['apiKey'] },
+              request.signal,
+            );
+          },
+          'POST',
+          HOST_PROVIDER_TEST_ROUTE,
+          log,
+        ),
     },
     [HOST_PROVIDERS_RELOAD_ROUTE]: {
       POST: (request: Request) =>
