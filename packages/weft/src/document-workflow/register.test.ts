@@ -18,7 +18,7 @@ import { WorkflowDocumentValidationError, type DocumentWorkflowHost } from './do
 import { registerWorkflowDocuments } from './register.ts';
 
 const handlerCalls: string[] = [];
-const traces: { input: unknown; trigger: unknown; previous: unknown }[] = [];
+const traces: { input: unknown; trigger: unknown; previous: unknown; signal: unknown }[] = [];
 const identities: { workflowId: string; step: number }[] = [];
 let hangIdentify = false;
 
@@ -39,8 +39,8 @@ const host: DocumentWorkflowHost = {
       identities.push({ workflowId, step });
       return hangIdentify ? new Promise(() => undefined) : { workflowId, step };
     },
-    trace: ({ input, trigger, previous }) => {
-      traces.push({ input, trigger, previous });
+    trace: ({ input, trigger, previous, signal }) => {
+      traces.push({ input, trigger, previous, signal });
       return input;
     },
   },
@@ -157,18 +157,22 @@ describe('registerWorkflowDocuments()', () => {
       previous: null,
     });
     await runA.signal('approve', { by: 'owner' });
-    expect(await runA.result()).toBe('"done":{"by":"owner"}');
+    expect(await runA.result()).toBe(
+      '"done":{"greeting":"hello","trigger":{"fire":1},"previous":null}',
+    );
   });
 
-  it('hands each step the prior activity output, the signal payload, null after a sleep, and null first', async () => {
+  it('preserves activity output across waits and delivers the signal payload once', async () => {
     traces.length = 0;
     const document = createDocument('previous-values', [
+      { kind: 'sleep', duration: 1 },
       { kind: 'activity', handler: 'trace', input: 'a' },
       { kind: 'activity', handler: 'trace', input: 'b' },
       { kind: 'await-signal', signal: 'go' },
       { kind: 'activity', handler: 'trace', input: 'c' },
       { kind: 'sleep', duration: 1 },
       { kind: 'activity', handler: 'trace', input: 'd' },
+      { kind: 'sleep', duration: 1 },
     ]);
     // `Engine.create` starts the scheduler that fires the sleep; `new Engine` does not.
     await using engine = await Engine.create({ storage: new MemoryStorage() });
@@ -179,10 +183,10 @@ describe('registerWorkflowDocuments()', () => {
 
     expect(await run.result()).toBe('d');
     expect(traces).toEqual([
-      { input: 'a', trigger: 'fire', previous: null },
-      { input: 'b', trigger: 'fire', previous: 'a' },
-      { input: 'c', trigger: 'fire', previous: { payload: true } },
-      { input: 'd', trigger: 'fire', previous: null },
+      { input: 'a', trigger: 'fire', previous: null, signal: undefined },
+      { input: 'b', trigger: 'fire', previous: 'a', signal: undefined },
+      { input: 'c', trigger: 'fire', previous: 'b', signal: { payload: true } },
+      { input: 'd', trigger: 'fire', previous: 'c', signal: undefined },
     ]);
   });
 
@@ -649,7 +653,7 @@ describe('restarting after a crash', () => {
     await registerWorkflowDocuments(restarted, host, { active: [document] });
     const [handle] = await restarted.recoverAll();
 
-    expect(await handle!.result()).toBe('"after":null');
+    expect(await handle!.result()).toBe('"after":"\\"before\\":null"');
   });
 });
 
