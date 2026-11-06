@@ -26,8 +26,20 @@ export interface HostRouteInventoryEntry {
 const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /api/v1/principal': 'private-owned',
   'GET /host/integrations': 'member-shared-read',
+  // Interborough's own API (COR-2019) answers as the local person, so it is a deployment operation:
+  // a workspace member is refused before the handler, whose scopes are checked there too.
+  'GET /api/runs': 'deployment-operator',
+  'POST /api/runs': 'deployment-operator',
+  'GET /api/runs/:run': 'deployment-operator',
+  'POST /api/chats/:chat/messages': 'deployment-operator',
+  'GET /api/agents': 'deployment-operator',
+  'GET /api/schedules': 'deployment-operator',
+  'POST /api/reviews/:review/decision': 'deployment-operator',
+  'GET /api/openapi.json': 'deployment-operator',
+  'GET /host/session': 'deployment-operator',
   'GET /host/providers': 'administrator-shared',
   'PUT /host/providers/:name': 'administrator-shared',
+  'POST /host/providers/:name/test': 'administrator-shared',
   'DELETE /host/providers/:name': 'administrator-shared',
   'POST /host/providers/reload': 'administrator-shared',
   'PUT /host/catalog': 'administrator-shared',
