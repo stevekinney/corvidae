@@ -106,7 +106,7 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
     bearer = await startMcpServer(E2E_CONNECT_TOKEN);
     oauth = await startOAuthMcpServer();
     pets = await startPetsService();
-    supervisor = Bun.spawn([process.execPath, '--no-install', SUPERVISOR, 'serve'], {
+    const startedSupervisor = Bun.spawn([process.execPath, '--no-install', SUPERVISOR, 'serve'], {
       env: {
         ...process.env,
         INTERBOROUGH_HOME: options.home,
@@ -117,23 +117,37 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       stdout: 'pipe',
       stderr: 'inherit',
     });
-    const { listening } = watchOutput(supervisor.stdout);
+    supervisor = startedSupervisor;
+    if (startedSupervisor.stdout === null || typeof startedSupervisor.stdout === 'number') {
+      throw new Error("The connect host's supervisor did not expose stdout.");
+    }
+    const { listening } = watchOutput(startedSupervisor.stdout);
     await Promise.race([
       listening,
-      supervisor.exited.then((code) => {
+      startedSupervisor.exited.then((code) => {
         throw new Error(
           `The connect host's supervisor exited with ${String(code)} before it listened.`,
         );
       }),
     ]);
+    if (bearer === undefined || oauth === undefined || pets === undefined) {
+      throw new Error("The connect host's servers did not start.");
+    }
+    const runningBearer = bearer;
+    const runningOauth = oauth;
+    const runningPets = pets;
     return {
-      origins: { bearerMcp: bearer.origin, oauthMcp: oauth.origin, pets: pets.origin },
-      supervisorPid: supervisor.pid,
+      origins: {
+        bearerMcp: runningBearer.origin,
+        oauthMcp: runningOauth.origin,
+        pets: runningPets.origin,
+      },
+      supervisorPid: startedSupervisor.pid,
       stop: async () => {
         // The supervisor forwards the signal to the host and ends once it has gone.
-        supervisor.kill('SIGTERM');
-        await supervisor.exited;
-        await Promise.all([bearer.stop(), oauth.stop(), pets.stop()]);
+        startedSupervisor.kill('SIGTERM');
+        await startedSupervisor.exited;
+        await Promise.all([runningBearer.stop(), runningOauth.stop(), runningPets.stop()]);
       },
     };
   } catch (error) {
