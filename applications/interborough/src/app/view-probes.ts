@@ -165,12 +165,6 @@ async function probeWorkflowType(
   return { empty: false };
 }
 
-/** The engine answering is all the pages that read it need settled before they show. */
-async function probeEngineRegistry(client: HttpClient): Promise<ViewProbeResult> {
-  await client.operations['weft.system.registry']({});
-  return { empty: false };
-}
-
 /**
  * The probe for a view, or `undefined` when the view needs none because the route itself says
  * what it is showing: one run's detail page handles a run that is missing in its own words.
@@ -232,18 +226,7 @@ export function probeFor(
       // API reference gates on nothing: its groups read for themselves, so one failing or refused
       // engine read must not replace the others. Its registry part words its own states.
       if (pattern === '/settings/api-reference') return undefined;
-      // The sections that moved out of the System page read the engine, not the Bureau's settings;
-      // General, Models, Allowed models, A2A and Data and retention read the settings.
-      if (
-        pattern !== undefined &&
-        pattern !== '/settings' &&
-        pattern !== '/settings/models' &&
-        pattern !== '/settings/allowed-models' &&
-        pattern !== '/settings/a2a' &&
-        pattern !== '/settings/data-and-retention'
-      ) {
-        return probeEngineRegistry;
-      }
+      // Every other section reads the settings.
       // The settings always have something to show: every key is listed, with a value or without.
       // Asking for them settles whether the caller may read them and whether the Bureau answers.
       return async () => {

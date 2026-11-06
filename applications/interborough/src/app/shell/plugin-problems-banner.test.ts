@@ -6,6 +6,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { router } from '../../lib/router.svelte.ts';
 import {
   installFakePluginHost,
   type FakePluginHost,
@@ -107,6 +108,19 @@ describe('the plugins that did not load banner', () => {
 
     await waitFor(() => expect(host?.requests.length).toBeGreaterThan(0));
     expect(view.container.querySelector('[data-testid="plugins-startup-banner"]')).toBeNull();
+  });
+
+  test('opens the Plugins page on a plain click, and leaves a modified click to the browser', async () => {
+    router.navigate('/runs', { replace: true });
+    const { region, getByRole } = mount([SKIPPED]);
+    await waitFor(() => expect(region()).not.toBeNull());
+    const link = getByRole('link', { name: 'Open Plugins' });
+
+    await fireEvent.click(link, { ctrlKey: true });
+    expect(router.pathname).toBe('/runs');
+
+    await fireEvent.click(link);
+    expect(router.pathname).toBe('/settings/plugins');
   });
 
   test('links to Settings › Plugins', async () => {
