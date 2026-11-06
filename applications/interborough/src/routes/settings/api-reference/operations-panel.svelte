@@ -181,6 +181,8 @@
                           code={operation.request}
                           language="json"
                           highlighter={codeHighlighter}
+                          languageLabelVisible={false}
+                          wrap
                         />
                       {/if}
                     </section>
@@ -195,6 +197,8 @@
                           code={operation.response}
                           language="json"
                           highlighter={codeHighlighter}
+                          languageLabelVisible={false}
+                          wrap
                         />
                       {/if}
                     </section>
