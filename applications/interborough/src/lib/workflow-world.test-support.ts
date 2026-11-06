@@ -568,6 +568,8 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       return { schedules: world.schedules.filter(bureauKnows).map(bureauView), nextOffset: null };
     },
     'bureau.schedules.create': (params) => {
+      // Refused before anything is written, as the Bureau refuses a chat that is not its caller's.
+      if (typeof params['sessionId'] === 'string') throw workflowFaults.sessionNotFound();
       counter += 1;
       const spec = String(params['spec']);
       const schedule = scheduleFixture(`schedule-created-${String(counter)}`, 'agentRun', {
@@ -585,7 +587,6 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       world.schedules.push(schedule);
       world.scheduleAgents[schedule.id] = String(params['agentName']);
       world.scheduleInputs[schedule.id] = String(params['input']);
-      if (typeof params['sessionId'] === 'string') throw workflowFaults.sessionNotFound();
       if (params['continueChat'] === true) world.scheduleContinuing.push(schedule.id);
       return bureauView(schedule);
     },
