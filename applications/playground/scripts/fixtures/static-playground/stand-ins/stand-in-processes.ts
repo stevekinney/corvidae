@@ -86,9 +86,9 @@ export function exitWhenOwnerIsGone(pollMilliseconds = 500): void {
   const timer = setInterval(() => {
     try {
       process.kill(owner, 0);
-    } catch (error) {
-      // EPERM means the owner exists but is not ours to signal, which is still alive.
-      if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+    } catch {
+      // ESRCH is an owner that exited. EPERM is one this user cannot signal, which for a test's
+      // own process is a zombie: macOS answers a zombie that way. Either way the test is over.
       process.stderr.write(`stand-in owner ${owner} is gone; exiting\n`);
       process.exit(1);
     }
