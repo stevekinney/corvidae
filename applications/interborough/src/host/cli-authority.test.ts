@@ -600,12 +600,16 @@ describe('CLI authenticated workspace authority', () => {
       ['runs', 'watch', '--kind', 'task', run.id, '--connection', 'alice'],
       {
         ...base,
-        fetch: async () => admittedResponse,
+        fetch: async (input, init) => {
+          if (new URL(input).pathname.includes('/api/v1/principal'))
+            return https.fetch(input, init);
+          return admittedResponse;
+        },
       },
     );
     expect(admitted).toBe(true);
-    expect(watched.exitCode).toBe(1);
-    expect(watched.stderr).not.toBe('');
+    expect(watched.exitCode).toBe(3);
+    expect(watched.stderr).toBe('Workspace membership required');
     const denied = await executeCli(['chats', 'list', '--connection', 'alice'], base);
     expect(denied.exitCode).toBe(3);
     expect(denied.stderr).toBe('Workspace membership required');
