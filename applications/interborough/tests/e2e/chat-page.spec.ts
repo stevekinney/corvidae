@@ -413,13 +413,36 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await answerOperation(page, 'bureau.reviews.list', (route) =>
       route.fulfill({ json: { jsonrpc: '2.0', id: 1, result: { reviews: [] } } }),
     );
-    // The chat's runs: none going until the Bureau starts the run that continues the chat.
+    // The chat's runs: none going until the Bureau starts the run that continues the chat. Once it
+    // has, the chat is running wherever the Bureau says what it is doing (`activity`).
     let continuing = false;
     await page.route('**/bureau/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;
-        params?: { contextId?: string };
+        params?: { contextId?: string; id?: string; activity?: string };
       };
+      if (continuing && body.method === 'bureau.contexts.list') {
+        const response = await route.fetch();
+        const page = (await response.json()) as {
+          result: { contexts: Array<{ id: string; activity: string }> };
+        };
+        const running = page.result.contexts
+          .filter(
+            (context) =>
+              context.id !== SAMPLE_WORLD_THREADS.refund ||
+              body.params?.activity !== 'awaiting-input',
+          )
+          .map((context) =>
+            context.id === SAMPLE_WORLD_THREADS.refund
+              ? { ...context, activity: 'running' }
+              : context,
+          );
+        await route.fulfill({
+          response,
+          json: { ...page, result: { ...page.result, contexts: running } },
+        });
+        return;
+      }
       if (
         body.method !== 'bureau.tasks.list' ||
         body.params?.contextId !== SAMPLE_WORLD_THREADS.refund ||
@@ -547,7 +570,9 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     const composer = page.getByRole('form', { name: 'Chat message composer' });
     await expect(composer.getByRole('button', { name: 'Stop generating' })).toBeVisible();
     await expect(composer.getByRole('button', { name: 'Send message' })).toHaveCount(0);
-    await expect(conversationArea(page).getByText('A message now steers the run.')).toBeVisible();
+    await expect(conversationArea(page).locator('.chat-input-status')).toHaveText(
+      'A message now steers the run.',
+    );
     await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
     // The decision stays as it was, and is not told again.
     await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
