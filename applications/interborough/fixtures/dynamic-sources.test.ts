@@ -1,12 +1,10 @@
 /**
  * Contract tests for `fixtures/dynamic-sources.ts` (WFT-116), run against a
- * REAL `Engine` rather than a double. The dev harness and
- * `tests/e2e/09-preload-dynamic-source.spec.ts` both assume this fixture
+ * REAL `Engine` rather than a double. The end-to-end host assumes this fixture
  * produces three specific engine states — `idle` before any load, `ready`
  * after a successful preload, and `failed` with a bounded failure category
- * after a rejected one. If any of that stops being true, the e2e suite
- * fails with a confusing UI assertion; these tests fail with the actual
- * reason instead.
+ * after a rejected one. These tests fail with the actual reason when any of
+ * that stops being true.
  *
  * The first test is also what keeps `DYNAMIC_SOURCE_LOADABLE_REVISION` from
  * going stale: a revision is a content identity, so editing

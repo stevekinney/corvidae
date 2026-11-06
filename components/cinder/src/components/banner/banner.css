@@ -102,6 +102,27 @@
     }
   }
 
+  /* A phone: every action is a 44px target, as a coarse pointer makes it (the button reads its
+   * height from the token, so the token is what changes), and a banner that stacks them gives each
+   * its own full line, so the buttons are as wide as the words. */
+  @media (max-width: 39.99rem) {
+    .cinder-banner__actions {
+      --cinder-button-height-xs: var(--cinder-touch-target-min);
+      --cinder-button-height-sm: var(--cinder-touch-target-min);
+      --cinder-button-height-md: var(--cinder-touch-target-min);
+    }
+
+    .cinder-banner__actions[data-cinder-stacked='true'] {
+      flex-direction: column;
+      align-items: stretch;
+      inline-size: 100%;
+    }
+
+    .cinder-banner__actions[data-cinder-stacked='true'] > :is(button, a) {
+      justify-content: center;
+    }
+  }
+
   /* ----------------------------------------
  * Sticky
  * ---------------------------------------- */

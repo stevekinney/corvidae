@@ -76,6 +76,7 @@
     empty,
     listEmpty,
     header,
+    openFirst = false,
     selectedKey = $bindable(null),
     onSelectedKeyChange,
     selectionParameter = 'selected',
@@ -219,6 +220,15 @@
       }
     }
     if (location.read(parameter) !== current) location.write(parameter, current);
+  });
+
+  // With `openFirst`, an empty selection beside a list becomes the first item, once the width is
+  // known to be wide. It follows the effect above, so a key the URL names has been read by then.
+  $effect(() => {
+    if (!openFirst || narrow || rootWidth === 0 || selectedKey !== null) return;
+    const first = keys[0];
+    if (first === undefined) return;
+    untrack(() => setSelection(first));
   });
 
   function rowElements(): HTMLElement[] {

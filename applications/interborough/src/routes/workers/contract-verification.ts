@@ -275,47 +275,6 @@ export function verifyWorkerContracts(
   };
 }
 
-export type WorkerWorkflowVerification = Readonly<{
-  workerId: string;
-  deploymentName: string;
-  buildId: string;
-  verification: WorkflowVerification;
-}>;
-
-export type RegistryWorkflowVerification = Readonly<{
-  workflow: string;
-  /** One entry per connected worker that advertises this workflow, by worker identifier. */
-  workers: readonly WorkerWorkflowVerification[];
-  /** Connected workers with an accepted manifest that do not advertise this workflow. */
-  workersNotAdvertising: number;
-}>;
-
-/** Compares every connected worker that advertises `workflow` with the registry's active revision of it. */
-export function verifyRegistryWorkflow(
-  workflow: string,
-  diagnostics: readonly WorkerManifestDiagnostics[],
-  snapshot: RegistrySnapshotSource,
-  hashes: RegistryActivityHashes,
-): RegistryWorkflowVerification {
-  const expected = activeManifestsByName(snapshot).get(workflow);
-  const expectedHashes = hashes.get(workflow);
-  const workers = diagnostics
-    .flatMap((entry): WorkerWorkflowVerification[] => {
-      const actual = ownEntry(entry.deploymentVersion.workflows, workflow);
-      if (actual === undefined) return [];
-      return [
-        {
-          workerId: entry.instance.workerId,
-          deploymentName: entry.deploymentVersion.deploymentName,
-          buildId: entry.deploymentVersion.buildId,
-          verification: verifyWorkflow(workflow, actual, expected, expectedHashes),
-        },
-      ];
-    })
-    .toSorted((left, right) => compareCodepoint(left.workerId, right.workerId));
-  return { workflow, workers, workersNotAdvertising: diagnostics.length - workers.length };
-}
-
 // ---------------------------------------------------------------------------
 // Copyable CLI commands
 // ---------------------------------------------------------------------------

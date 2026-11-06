@@ -29,6 +29,7 @@ import {
 import { GOAL_WORKFLOW_TYPE } from './goal-workflow-ports';
 import { createHumanWaitMarkerSink } from './human-wait-park-marker';
 import {
+  isRunEngineWorkflowType,
   RUN_ENGINE_WORKFLOW_TYPE,
   RUN_ENGINE_WORKFLOW_TYPES,
   type RunEngineWorkflowType,
@@ -249,6 +250,15 @@ export interface CreateRunEngineOptions {
    */
   maxNestingDepth?: number | undefined;
 
+  /**
+   * The most workflow runs this engine executes at the same time: Weft's `runConcurrency` cap,
+   * counting only the host's own workflow types, never the types `createRunEngine` registers itself
+   * (agent runs, goals, schedule ticks, heartbeats), so an agent a workflow step starts never waits
+   * behind the workflow that is waiting on it. A start past the cap is kept and its first turn
+   * waits until a counted run ends. Omit for no cap.
+   */
+  maxConcurrentRuns?: number | undefined;
+
   /** Admission cap on a single checkpoint payload (`PayloadSizeExceededError`). */
   payloadSize?: PayloadSizePolicy | undefined;
 
@@ -378,8 +388,8 @@ export interface RunEngine {
  * still fire.
  *
  * History/checkpoint guardrails ({@link CreateRunEngineOptions.history},
- * `checkpointSizeWarningThreshold`, `checkpointHistory`, `maxNestingDepth`, `payloadSize`) are
- * threaded into the engine; a `history.maxEvents` breach surfaces as a
+ * `checkpointSizeWarningThreshold`, `checkpointHistory`, `maxNestingDepth`, `payloadSize`) and
+ * {@link CreateRunEngineOptions.maxConcurrentRuns} are threaded into the engine; a `history.maxEvents` breach surfaces as a
  * `timed-out` terminal with `terminationReason: 'history-circuit-breaker'`, which
  * the active-run adapter classifies as `error` (not a deadline timeout).
  *
@@ -485,6 +495,14 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
       ? { checkpointHistory: options.checkpointHistory }
       : {}),
     ...(options.maxNestingDepth !== undefined ? { maxNestingDepth: options.maxNestingDepth } : {}),
+    ...(options.maxConcurrentRuns !== undefined
+      ? {
+          runConcurrency: {
+            max: options.maxConcurrentRuns,
+            counts: (workflowType: string) => !isRunEngineWorkflowType(workflowType),
+          },
+        }
+      : {}),
     ...(options.payloadSize ? { payloadSize: options.payloadSize } : {}),
     workflows,
     activities: {

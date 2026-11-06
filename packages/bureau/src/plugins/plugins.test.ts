@@ -47,6 +47,36 @@ function toolNamed(name: string) {
 }
 
 describe('plugin composition', () => {
+  it('lists a tool contribution under the title its metadata gives it, and none for a tool without one', async () => {
+    const titled = createTool({
+      name: 'search',
+      description: 'The search tool',
+      input: z.object({}),
+      metadata: { title: 'Search the web' },
+      execute: async () => 'search',
+    });
+    const bureau = await start({
+      plugins: [
+        entry(
+          definePlugin({
+            name: 'titled',
+            version: '1.0.0',
+            description: 'Adds a tool with a title and one without.',
+            setup: () => ({ tools: [titled, toolNamed('plain')] }),
+          }),
+        ),
+      ],
+      models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
+    });
+
+    const [listed] = await listedPlugins(bureau);
+    expect(listed?.contributions.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: 'titled:search@1.0.0', title: 'Search the web' },
+      { id: 'titled:plain@1.0.0', title: undefined },
+    ]);
+    expect(listed?.contributions[1]).not.toHaveProperty('title');
+  });
+
   it('skips a plugin whose configuration is invalid, with the field and message, and still starts', async () => {
     const setups: string[] = [];
     const strict = definePlugin({

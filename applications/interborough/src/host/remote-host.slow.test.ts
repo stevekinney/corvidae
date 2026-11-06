@@ -125,6 +125,23 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     },
   );
 
+  // Board SettingsShell, "Locked settings · remote mode": the deployment sizes the run cap.
+  test('locks engine.maxConcurrentRuns for the deployment, and refuses to store a new cap', async () => {
+    const host = await start();
+
+    const snapshot = await host.bureau.settings.get();
+    expect(snapshot.keys['engine.maxConcurrentRuns']).toMatchObject({
+      locked: true,
+      lockReason: 'deployment',
+    });
+    expect(snapshot.effective['engine.maxConcurrentRuns']).toBe(4);
+    const refused = await host.bureau.settings.update(
+      { 'engine.maxConcurrentRuns': 8 },
+      { expectedRevision: snapshot.revision },
+    );
+    expect(refused).toMatchObject({ outcome: 'rejected', reason: 'locked' });
+  });
+
   test('keeps the locks its caller asked for beside its own', async () => {
     const host = await start({ settings: { locked: { workflowVersion: 'deployment' } } });
 

@@ -1,44 +1,61 @@
 <script lang="ts">
   /**
-   * The question before a plugin is turned off: Interborough restarts to unload it, so the dialog
-   * lists what depends on it now, from the counts the host reports for each thing the plugin adds
-   * (`disableImpacts`). Confirming writes the choice and restarts in one step; Cancel changes nothing.
+   * The question before a plugin is turned off (board PageSettingsSections, "Disabling a plugin"):
+   * a Cinder confirm dialog. Interborough restarts to unload the plugin, so it lists what depends on
+   * it now, from the counts the host reports for each thing the plugin adds (`disableImpacts`), or
+   * says that nothing does. Confirming writes the choice and restarts in one step through the shared
+   * restart flow; Cancel changes nothing.
    */
-  import { Button, Modal } from '@lostgradient/cinder';
+  import { ConfirmDialog } from '@lostgradient/cinder';
 
   import { PLUGINS_COPY } from '../../../app/copy.ts';
   import type { PluginStanding } from '../../../lib/host-plugins.ts';
+  import PendingWritesList from './pending-writes-list.svelte';
+  import type { PluginWrite } from './plugin-drafts.svelte.ts';
   import { disableImpacts } from './plugin-presentation.ts';
 
   interface Props {
     /** The plugin the question is about, or `null` while it is closed. */
     plugin: PluginStanding | null;
     /** The other changes the restart writes with this one. */
-    otherChanges: readonly {
-      readonly name: string;
-      readonly enabled: boolean | undefined;
-      readonly configuration: boolean;
-    }[];
-    /** Whether configuration text the page holds cannot be applied, so nothing can be written yet. */
-    invalid: boolean;
+    otherChanges: readonly PluginWrite[];
     onConfirm: (plugin: PluginStanding) => void;
     onCancel: () => void;
   }
 
-  let { plugin, otherChanges, invalid, onConfirm, onCancel }: Props = $props();
+  let { plugin, otherChanges, onConfirm, onCancel }: Props = $props();
 
   const copy = PLUGINS_COPY.disable;
-  const impacts = $derived(plugin === null ? [] : disableImpacts(plugin));
+  // The plugin stays named while the dialog leaves, after the page has let go of it.
+  let last = $state<PluginStanding | null>(null);
+  $effect(() => {
+    if (plugin !== null) last = plugin;
+  });
+  const shown = $derived(plugin ?? last);
+  const impacts = $derived(shown === null ? [] : disableImpacts(shown));
+
+  function confirm(): void {
+    if (plugin !== null) onConfirm(plugin);
+  }
 </script>
 
-{#if plugin !== null}
-  <Modal open title={copy.title(plugin.descriptor.name)} onDismiss={onCancel}>
-    {#snippet children()}
+{#if shown !== null}
+  <ConfirmDialog
+    open={plugin !== null}
+    title={copy.title(shown.descriptor.title)}
+    description={copy.intro}
+    cancelLabel={copy.cancel}
+    confirmLabel={copy.confirm}
+    onConfirm={confirm}
+    {onCancel}
+  >
+    {#snippet options()}
       <div class="ib-disable">
         {#if impacts.length === 0}
-          <p class="ib-disable__lead">{copy.nothing}</p>
+          <p class="ib-disable__lead" data-testid="plugin-disable-nothing">
+            <strong>{copy.nothingLead}</strong>{copy.nothing(shown.descriptor.title)}
+          </p>
         {:else}
-          <p class="ib-disable__lead">{copy.intro}</p>
           <ul class="ib-disable__list">
             {#each impacts as impact (impact.key)}
               <li class="ib-disable__item" data-impact={impact.key}>
@@ -48,41 +65,11 @@
             {/each}
           </ul>
         {/if}
-        {#if otherChanges.length > 0}
-          <p class="ib-disable__lead">{copy.alsoWrites}</p>
-          <ul class="ib-disable__list">
-            {#each otherChanges as change (change.name)}
-              <li class="ib-disable__item" data-pending-change={change.name}>
-                <strong>{change.name}</strong>
-                <span
-                  >{[
-                    change.enabled === undefined
-                      ? ''
-                      : change.enabled
-                        ? copy.alsoSwitchedOn
-                        : copy.alsoSwitchedOff,
-                    change.configuration ? copy.alsoConfiguration : '',
-                  ]
-                    .filter((part) => part !== '')
-                    .join(', ')}</span
-                >
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        {#if invalid}
-          <p class="ib-disable__note">{PLUGINS_COPY.banner.invalid}</p>
-        {/if}
+        <PendingWritesList changes={otherChanges} />
         <p class="ib-disable__note">{copy.reassurance}</p>
       </div>
     {/snippet}
-    {#snippet footer()}
-      <Button variant="secondary" onclick={onCancel}>{copy.cancel}</Button>
-      <Button data-changes variant="danger" disabled={invalid} onclick={() => onConfirm(plugin)}
-        >{copy.confirm}</Button
-      >
-    {/snippet}
-  </Modal>
+  </ConfirmDialog>
 {/if}
 
 <style>

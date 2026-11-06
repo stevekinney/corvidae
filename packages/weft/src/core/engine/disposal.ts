@@ -6,6 +6,7 @@ import { disposeEngineCleanupInterval } from './engine-runtime-helpers.ts';
 import { EngineDisposedError } from './errors.ts';
 import { disposeQueuedInlineWorkflowStarts } from './inline-launch-queue.ts';
 import type { EngineInternals } from './internals.ts';
+import { clearRunSlots } from './run-concurrency.ts';
 import { rejectAllSleepTimerAcknowledgements } from './sleep-timer-acknowledgements.ts';
 import { releaseAllPendingTerminalSettlements } from './terminal-settlement-pending.ts';
 
@@ -218,6 +219,7 @@ export function disposeEngine(
   internals.activityRegistriesByWorkflow.clear();
   internals.workflowDefinitionsByName.clear();
   internals.workflowTypeByWorkflowId.clear();
+  clearRunSlots(internals);
   internals.broadcastChannel?.close();
   internals.broadcastChannel = null;
 }

@@ -184,6 +184,22 @@ describe('Banner snippets', () => {
     expect(actions?.textContent).toContain('Renew now');
   });
 
+  test('stackActions marks the actions region so a phone stacks the buttons full width', () => {
+    const { container } = render(Banner, {
+      props: { children: emptySnippet, actions: textSnippet('Restart now'), stackActions: true },
+    });
+    expect(
+      container.querySelector('.cinder-banner__actions')?.getAttribute('data-cinder-stacked'),
+    ).toBe('true');
+    cleanup();
+    const plain = render(Banner, {
+      props: { children: emptySnippet, actions: textSnippet('Restart now') },
+    });
+    expect(
+      plain.container.querySelector('.cinder-banner__actions')?.hasAttribute('data-cinder-stacked'),
+    ).toBe(false);
+  });
+
   test('.cinder-banner__actions is absent when actions prop is omitted', () => {
     const { container } = render(Banner, {
       props: { children: emptySnippet },

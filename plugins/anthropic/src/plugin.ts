@@ -23,7 +23,7 @@ export default definePlugin({
   name: 'anthropic',
   title: 'Anthropic',
   version: '0.1.0',
-  description: 'Anthropic Claude models for agents.',
+  description: 'Claude models for your agents.',
   configuration: anthropicConfiguration,
   secrets: [ANTHROPIC_API_KEY_SECRET],
   setup: () => ({ providers: [anthropicProvider] }),

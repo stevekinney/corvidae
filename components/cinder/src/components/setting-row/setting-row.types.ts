@@ -9,8 +9,10 @@ import type { FormFieldManaged } from '../form-field/form-field.types.ts';
  * - `restart`: the static property of a setting that only applies after a restart, before it is
  *   changed ("Applies after restart", with a restart glyph).
  * - `saved-restart`: saved but not yet in effect ("Saved, waiting for a restart", with an amber dot).
+ * - `reverted`: a saved change that waited for a restart was put back to the value in effect
+ *   ("Reverted · in effect now", muted, with no glyph).
  */
-export type SettingRowStatus = 'saving' | 'saved' | 'restart' | 'saved-restart';
+export type SettingRowStatus = 'saving' | 'saved' | 'restart' | 'saved-restart' | 'reverted';
 
 export type SettingRowProps = {
   /**
@@ -30,10 +32,10 @@ export type SettingRowProps = {
    */
   identifier?: string;
   /**
-   * Where the setting's own save has got to: `saving`, `saved`, `restart` or `saved-restart`. It
-   * draws a status line under the description, in a polite live region that is always mounted, so
-   * a change from Saving to Saved is announced. Leave it unset for a setting at rest. Pair it with
-   * `error` for the failures: an invalid value or a save that did not go through.
+   * Where the setting's own save has got to: `saving`, `saved`, `restart`, `saved-restart` or
+   * `reverted`. It draws a status line under the description, in a polite live region that is
+   * always mounted, so a change from Saving to Saved is announced. Leave it unset for a setting at
+   * rest. Pair it with `error` for the failures: an invalid value or a save that did not go through.
    */
   status?: SettingRowStatus;
   /** Replaces the words of the status line, such as "Saved 2 minutes ago" for `saved`. The glyph and tone still follow `status`. */
@@ -51,6 +53,8 @@ export type SettingRowProps = {
   retryLabel?: string;
   /** Guidance text describing the setting. */
   description?: string;
+  /** Rendered after the description inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Open Health". Shown only with `description`. */
+  descriptionAction?: Snippet;
   /**
    * Advisory message. `FormField` renders this text itself, as a sibling
    * of the control, not through context—a custom `control` that reads
@@ -94,6 +98,13 @@ export type SettingRowProps = {
    * configuration."). The control stays the page's to make read-only.
    */
   managed?: FormFieldManaged;
+  /**
+   * The width of the column the control sits in, as a CSS length (`"25rem"`). Leave it unset for the
+   * default of `15rem`, which fits a switch, a short field or a select; give a control that needs
+   * more room, such as the address of a feed or a list of switches, its own. Below the container
+   * width where the row stacks, the control takes the row's width whatever this says.
+   */
+  controlWidth?: string;
   /** The setting's control, rendered with `FormField` context applied. */
   control: Snippet;
   /** Optional disclosure content rendered beneath the row. */

@@ -74,3 +74,26 @@ describe('a request body that is not JSON', () => {
     expect(await response.json()).toEqual({ jsonrpc: '2.0', id: 1, result: { answered: true } });
   });
 });
+
+describe('routeJsonRpcDeferred', () => {
+  test('holds a matching request in flight, then answers it with a success envelope once the result settles', async () => {
+    scripted = new ScriptedFetch();
+    let settle: (value: unknown) => void = () => {};
+    scripted.routeJsonRpcDeferred(
+      'weft.system.metrics',
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+
+    const response = await fetch('http://weft.test/api/jsonrpc', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'weft.system.metrics', params: {} }),
+    });
+    const body = response.text();
+
+    settle({ ready: true });
+
+    expect(JSON.parse(await body)).toEqual({ jsonrpc: '2.0', id: 1, result: { ready: true } });
+  });
+});

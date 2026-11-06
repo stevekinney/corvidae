@@ -265,3 +265,85 @@ describe('the push settings', () => {
     expect(accepted.body.result).toMatchObject({ taskId: finished.id, url: pushParams.url });
   });
 });
+
+describe('the Accept A2A calls setting (COR-2019)', () => {
+  test('is on by default, and serves an agent that opted in', async () => {
+    const host = await startAt(await makeHome({ 'researcher.md': agentFile('Researcher', true) }));
+
+    const settings = await host.bureau.settings.get();
+
+    expect(settings.values['a2a.enabled']).toBe(true);
+    expect(settings.keys['a2a.enabled']).toMatchObject({ apply: 'restart', locked: false });
+    expect(await cardStatus(host, 'researcher')).toBe(200);
+  });
+
+  test('answers no remote call once it is off and the host has restarted, and not before', async () => {
+    const home = await makeHome({ 'researcher.md': agentFile('Researcher', true) });
+    const first = await startAt(home);
+    const { revision } = await first.bureau.settings.get();
+
+    await first.bureau.settings.update({ 'a2a.enabled': false }, { expectedRevision: revision });
+
+    // Stored, but this process booted with it on.
+    expect(await cardStatus(first, 'researcher')).toBe(200);
+    await closeHost(first);
+    const second = await startAt(home);
+    expect(await cardStatus(second, 'researcher')).toBe(404);
+    const call = await rpc(second, 'researcher', 'SendMessage', { message: message('Hello') });
+    expect(call.status).toBe(404);
+    const directory = await fetch(new URL('/bureau/a2a/.well-known/agent-card.json', second.url));
+    expect(directory.status).toBe(404);
+  });
+
+  test('builds no push delivery while it is off, even with push notifications on', async () => {
+    const home = await makeHome({ 'researcher.md': agentFile('Researcher', true) });
+    const first = await startAt(home);
+    const { revision } = await first.bureau.settings.get();
+    await first.bureau.settings.update(
+      { 'a2a.enabled': false, 'a2a.push.enabled': true },
+      { expectedRevision: revision },
+    );
+    await closeHost(first);
+
+    const second = await startAt(home);
+
+    expect(await cardStatus(second, 'researcher')).toBe(404);
+  });
+});
+
+describe('the Shared agents setting (COR-2019)', () => {
+  test('withdraws an agent its own file shares at once, with no restart', async () => {
+    const host = await startAt(await makeHome({ 'researcher.md': agentFile('Researcher', true) }));
+    const { revision } = await host.bureau.settings.get();
+
+    await host.bureau.settings.update(
+      { 'a2a.agents': { researcher: false } },
+      { expectedRevision: revision },
+    );
+
+    await waitUntil(async () => (await cardStatus(host, 'researcher')) === 404, {
+      message: 'the withdrawn agent to be refused',
+    });
+    const listed = await host.bureau.settings.get();
+    expect(listed.values['a2a.agents']).toEqual({ researcher: false });
+    expect(listed.keys['a2a.agents']).toMatchObject({ apply: 'live', pendingRestart: false });
+  });
+
+  test('is listed at the directory with each agent’s own card, at the address /host/paths reports', async () => {
+    const host = await startAt(await makeHome({ 'researcher.md': agentFile('Researcher', true) }));
+
+    const pathsResponse = await fetch(new URL('/host/paths', host.url));
+    const paths: Json = await pathsResponse.json();
+    const response = await fetch(new URL('/bureau/a2a/.well-known/agent-card.json', host.url));
+    const directory: Json = await response.json();
+
+    expect(paths.a2aDirectoryUrl).toBe(
+      `http://127.0.0.1:${host.url.port}/bureau/a2a/.well-known/agent-card.json`,
+    );
+    expect(response.status).toBe(200);
+    expect(directory.agents.map((entry: Json) => entry.name)).toEqual(['researcher']);
+    expect(directory.agents[0].cardUrl).toBe(
+      `http://127.0.0.1:${host.url.port}/bureau/a2a/researcher/.well-known/agent-card.json`,
+    );
+  });
+});

@@ -42,6 +42,7 @@
     actions,
     createAction,
     error = false,
+    flush = false,
     status,
     statusPlacement = 'below',
     titleText,
@@ -145,6 +146,7 @@
     createAction && !actions && 'cinder-page-header--create-only',
     className,
   )}
+  data-cinder-flush={flush ? 'true' : undefined}
   {...rest}
 >
   {#if breadcrumbs}

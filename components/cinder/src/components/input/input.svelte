@@ -33,6 +33,7 @@
     label,
     labelVisible = true,
     description,
+    descriptionAction,
     error,
     disabled,
     required,
@@ -222,6 +223,7 @@
     label={context.labelId ? undefined : label}
     {labelVisible}
     {description}
+    {descriptionAction}
     {error}
     required={resolvedRequired}
     disabled={resolvedDisabled}
@@ -248,6 +250,7 @@
     {label}
     {labelVisible}
     {description}
+    {descriptionAction}
     {error}
     required={required ?? false}
     disabled={disabled ?? false}

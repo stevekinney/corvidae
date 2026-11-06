@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * Revisions panel (WFT-115) — mounted below the schema panels on the
-   * Registry → workflow definition detail view (`registry-detail.svelte`).
+   * Revisions panel (WFT-115) — mounted on the workflow's page
+   * (`../workflow-definitions/workflow-detail.svelte`).
    * Lists every durably installed revision of one workflow name
    * (`weft.workflows.revisions.list`) against the currently active pointer
    * (`weft.workflows.active.get`), and lets an operator with `workflows:admin`
@@ -176,7 +176,6 @@
   function invalidateAfterActivation(): void {
     void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.revisions(workflowName) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.active(workflowName) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.refresh(workflowName) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.registry() });
   }
 

@@ -39,6 +39,41 @@ function idsIn(container: Element): string[] {
   return Array.from(container.querySelectorAll('[id]'), (element) => element.id);
 }
 
+describe('Input description action', () => {
+  test('is drawn after the helper text inside the described paragraph', () => {
+    const { container } = render(Input, {
+      props: {
+        id: 'api-key',
+        value: '',
+        label: 'API key',
+        description: 'Saved to your machine.',
+        descriptionAction: textSnippet('Where do I get one?'),
+      },
+    });
+
+    const description = container.querySelector('p.cinder-form-field__description');
+    const input = container.querySelector('input');
+
+    expect(description?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Saved to your machine. Where do I get one?',
+    );
+    expect(input?.getAttribute('aria-describedby')).toContain(description?.id ?? 'missing');
+  });
+
+  test('is not drawn without a description', () => {
+    const { container } = render(Input, {
+      props: {
+        id: 'api-key',
+        value: '',
+        label: 'API key',
+        descriptionAction: textSnippet('Where do I get one?'),
+      },
+    });
+
+    expect(container.textContent).not.toContain('Where do I get one?');
+  });
+});
+
 describe('Input rendering', () => {
   test('keeps leading addons close to the input value', async () => {
     const css = await Bun.file(new URL('./input.css', import.meta.url)).text();

@@ -148,6 +148,8 @@ type Standing = {
   readonly problems: readonly { readonly code: string }[];
   readonly enabled: boolean;
   readonly configuration: unknown;
+  readonly configurationSchema: Record<string, unknown> | null;
+  readonly running: { readonly enabled: boolean; readonly configuration: unknown };
   readonly restartRequired: boolean;
   readonly secrets: readonly {
     readonly key: string;
@@ -315,6 +317,39 @@ describe('GET /host/plugins', () => {
       secrets: [{ key: KEYED_SECRET, generated: false, set: false }],
     });
     expect(keyed?.problems).toEqual([expect.objectContaining({ code: 'secret-missing' })]);
+  });
+
+  test("carries each plugin's configuration schema as JSON Schema, or null when it takes none", async () => {
+    const host = await startAt(await scratch());
+    const plugins = await standings(host);
+
+    expect(plugins['limited']?.configurationSchema).toMatchObject({
+      type: 'object',
+      properties: { limit: { type: 'number' } },
+    });
+    expect(plugins['quiet']?.configurationSchema).toBeNull();
+  });
+
+  test('reports what the running host loaded, which a change that waits for a restart does not move', async () => {
+    const host = await startAt(await scratch());
+    const before = await standings(host);
+    expect(before['limited']?.running).toEqual({ enabled: true, configuration: {} });
+
+    expect(
+      await statusOf(put(host, '/host/plugins/limited', { configuration: { limit: 9 } })),
+    ).toBe(200);
+    expect(await statusOf(put(host, '/host/plugins/quiet', { enabled: true }))).toBe(200);
+
+    const plugins = await standings(host);
+    expect(plugins['limited']).toMatchObject({
+      configuration: { limit: 9 },
+      running: { enabled: true, configuration: {} },
+      restartRequired: true,
+    });
+    expect(plugins['quiet']).toMatchObject({
+      enabled: true,
+      running: { enabled: false, configuration: {} },
+    });
   });
 
   test('wires the embedders a plugin contributes into governed memory', async () => {

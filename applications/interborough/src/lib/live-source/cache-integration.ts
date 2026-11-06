@@ -34,7 +34,7 @@
  * fleet feed observing the same event; writing it through two independent
  * paths risks visible duplicates the tail's own positional dedup can't see.
  * Fleet frames instead invalidate the detail, review, worker, schedule and
- * update-history queries they affect, and the worker, realm, lease, registry and dynamic-source
+ * update-history queries they affect, and the worker, realm, lease and registry
  * views the engine's state events name (`FLEET_KIND_INVALIDATION`), reusing the exact same key shapes plan
  * §4's mutation invalidation already uses, so live-event invalidation and
  * client-initiated-mutation invalidation stay one convention. The workflow
@@ -128,10 +128,6 @@ export const REGISTRY_KEY_PREFIX: QueryKey = ['registry'];
 export const REALMS_KEY: QueryKey = ['realms'];
 /** The query key of the system lease. */
 export const SYSTEM_LEASE_KEY: QueryKey = ['system', 'lease'];
-/** The query-key prefix of the catalog's sources. */
-export const CATALOG_SOURCES_KEY_PREFIX: QueryKey = ['catalog', 'sources'];
-/** The query-key prefix of the catalog's diagnostics. */
-export const CATALOG_DIAGNOSTICS_KEY_PREFIX: QueryKey = ['catalog', 'diagnostics'];
 
 /** Matches `updateHistoryQueryKey(id)` (`../../routes/workflows/detail/updates/updates-data.ts`) — a literal here for the same reason every other key in this module is, with a test that keeps the two equal. */
 export function workflowUpdatesKey(workflowId: string): QueryKey {
@@ -207,11 +203,6 @@ const QUEUE_LOAD_KINDS: readonly string[] = [
   'task:dead-lettered',
 ];
 
-const CATALOG_SOURCE_FLEET_KEYS: readonly QueryKey[] = [
-  CATALOG_SOURCES_KEY_PREFIX,
-  CATALOG_DIAGNOSTICS_KEY_PREFIX,
-];
-
 /**
  * The entries one fleet kind makes stale, for the kinds that name no run and so map to a list or a
  * panel instead of a workflow (a schedule's own are `applyScheduleFleetFrame`'s, a review's are
@@ -240,15 +231,6 @@ const FLEET_KIND_INVALIDATION: ReadonlyMap<string, readonly QueryKey[]> = new Ma
   ['workflow:definition-registered', [REGISTRY_KEY_PREFIX]],
   ['realm:state-changed', [REALMS_KEY]],
   ['lease:health-changed', [SYSTEM_LEASE_KEY]],
-  ['workflow-source:load-started', CATALOG_SOURCE_FLEET_KEYS],
-  ['workflow-source:load-ready', CATALOG_SOURCE_FLEET_KEYS],
-  ['workflow-source:load-failed', CATALOG_SOURCE_FLEET_KEYS],
-  ['workflow-source:load-cancelled', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-installed', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-activated', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:activation-rejected', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-draining', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-removed', CATALOG_SOURCE_FLEET_KEYS],
 ]);
 
 // ---------------------------------------------------------------------------
@@ -449,7 +431,6 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
     TASKS_DELIVERIES_KEY_PREFIX,
     REALMS_KEY,
     SYSTEM_LEASE_KEY,
-    ...CATALOG_SOURCE_FLEET_KEYS,
   ]) {
     void queryClient.invalidateQueries({ queryKey });
   }
@@ -458,7 +439,7 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
 
 /**
  * Applies one `FleetEventSource` frame: invalidates the detail, finalizer, update-history, review,
- * worker, realm, lease, registry, dynamic-source and schedule queries it affects. The shell calls it for every frame, so none of it waits for a
+ * worker, realm, lease, registry and schedule queries it affects. The shell calls it for every frame, so none of it waits for a
  * page to be open on the workflow. The workflow list and aggregate are not invalidated here (see
  * {@link invalidateFleetDrivenQueries}). Never writes into the events append cache — see module doc.
  */

@@ -50,6 +50,13 @@ export async function writeProviderHome(
  */
 export const STUB_PROVIDER_FAILURE_MARKER = 'simulate a provider failure';
 
+/**
+ * The words that make the stub provider refuse an API key with a 401, as a provider does for a key
+ * it does not know, so the dialogs that test a key can be driven to their failure. A key carrying
+ * them is refused whatever else it says; every other key is accepted.
+ */
+export const STUB_PROVIDER_REJECTED_KEY_MARKER = 'rejected-key';
+
 /** The provider path whose client answers every request with `reply`, and the requests it saw. */
 export function fakeProvider(reply: string) {
   const handed: ProviderConfiguration[] = [];
@@ -71,6 +78,30 @@ export function fakeProvider(reply: string) {
         };
       },
     },
+    // The same reply in the shapes the other two providers' clients answer in, so a key tested
+    // against OpenAI or Gemini reaches a client too.
+    chat: {
+      completions: {
+        create: async () => ({
+          choices: [{ message: { content: reply }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 3, completion_tokens: 5, total_tokens: 8 },
+        }),
+      },
+    },
+    models: {
+      generateContent: async () => ({
+        candidates: [{ content: { parts: [{ text: reply }] } }],
+        usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 5, totalTokenCount: 8 },
+      }),
+    },
+  };
+  const refuse = async (): Promise<never> => {
+    throw Object.assign(new Error('invalid x-api-key'), { status: 401 });
+  };
+  const refusingClient = {
+    messages: { create: refuse },
+    chat: { completions: { create: refuse } },
+    models: { generateContent: refuse },
   };
   const resolver: NonNullable<HostOptions['resolveProviderGenerate']> = (
     definitions,
@@ -79,9 +110,12 @@ export function fakeProvider(reply: string) {
     streaming,
   ) => {
     handed.push(provider);
+    const refused = String(Reflect.get(provider, 'apiKey')).includes(
+      STUB_PROVIDER_REJECTED_KEY_MARKER,
+    );
     return resolveProviderGenerate(
       definitions,
-      Object.assign({}, provider, { client }),
+      Object.assign({}, provider, { client: refused ? refusingClient : client }),
       streamEventTarget,
       streaming,
     );

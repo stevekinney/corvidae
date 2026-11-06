@@ -407,6 +407,36 @@ describe('ListDetail', () => {
     expect(getByRole('button', { name: 'Back' })).toBeTruthy();
   });
 
+  test('openFirst opens the first item beside the list once the width is known to be wide', async () => {
+    const location = memoryLocation();
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: location, openFirst: true },
+    });
+    await measure(container, 1000);
+    await tick();
+
+    expect(detailText(container)).toBe('Alpha chat detail');
+    expect(location.write).toHaveBeenLastCalledWith('selected', 'alpha');
+  });
+
+  test('openFirst leaves an item the address names open, and opens nothing when stacked', async () => {
+    const named = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation('beta'), openFirst: true },
+    });
+    await measure(named.container, 1000);
+    await tick();
+    expect(detailText(named.container)).toBe('Beta chat detail');
+    named.unmount();
+
+    const stacked = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), openFirst: true },
+    });
+    await measure(stacked.container, 400);
+    await tick();
+    expect(stacked.queryByRole('region', { name: 'Details' })).toBeNull();
+    expect(stacked.getByRole('region', { name: 'Chats' })).toBeTruthy();
+  });
+
   test('pushBelow and backLabel are configurable', async () => {
     const { container, getByRole } = render(ListDetailFixture, {
       props: {

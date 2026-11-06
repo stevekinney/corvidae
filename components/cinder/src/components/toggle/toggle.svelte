@@ -39,6 +39,8 @@
     mutating = false,
     nameDetail,
     labelVisible = true,
+    standalone = false,
+    labelPosition = 'end',
     name,
     value = 'on',
     form,
@@ -50,7 +52,10 @@
   // a submit form should use Checkbox instead (see the module docstring). It
   // does, however, inherit `disabled` from a wrapping FormField so a disabled
   // field group greys out the switch alongside its peers.
-  const context = getFormFieldContext();
+  // A standalone switch is its own field: it is named and labelled by its own label even inside a
+  // `<FormField>`, so it is one of several switches in a field rather than the field's one control.
+  const fieldContext = getFormFieldContext();
+  const context = $derived(standalone ? undefined : fieldContext);
   const generatedId = $props.id();
   const resolvedDisabled = $derived(disabled ?? context?.disabled ?? false);
 
@@ -132,6 +137,19 @@
   {/if}
 {/snippet}
 
+{#snippet fieldLabel()}
+  <span
+    id={labelId}
+    class="cinder-toggle-field__label"
+    role="presentation"
+    data-hidden={!labelVisible || undefined}
+    data-disabled={resolvedDisabled || staleInert || undefined}
+    onclick={toggle}
+  >
+    {label}
+  </span>
+{/snippet}
+
 {#if context}
   {#if label && !context.labelId}
     <span class="cinder-toggle-field">
@@ -168,18 +186,14 @@
     </span>
   </span>
 {:else}
-  <span class="cinder-toggle-field">
-    {@render control()}
-    <span
-      id={labelId}
-      class="cinder-toggle-field__label"
-      role="presentation"
-      data-hidden={!labelVisible || undefined}
-      data-disabled={resolvedDisabled || staleInert || undefined}
-      onclick={toggle}
-    >
-      {label}
-    </span>
+  <span class="cinder-toggle-field" data-label-position={labelPosition}>
+    {#if labelPosition === 'start'}
+      {@render fieldLabel()}
+      {@render control()}
+    {:else}
+      {@render control()}
+      {@render fieldLabel()}
+    {/if}
     {@render descriptionText()}
   </span>
 {/if}

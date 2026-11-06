@@ -1,6 +1,6 @@
 /**
- * COR-1464 operator flow against the seeded real Weft server: open System →
- * Registry, drill into `order-processing`, paste a revision manifest into the
+ * COR-1464 operator flow against the seeded real Weft server: open
+ * `order-processing`'s History tab, paste a revision manifest into the
  * install control, install it, see it join the revisions list, and open its
  * detail (`weft.workflows.revisions.get`). A manifest the server refuses
  * shows the operation's fault and adds nothing.
@@ -22,8 +22,7 @@ test('operator installs a revision manifest and reads the installed revision', a
 }) => {
   const manifest = await buildConsoleInstallableManifest();
 
-  await page.goto('/settings/api-reference?group=sources');
-  await page.getByRole('button', { name: /order-processing/ }).click();
+  await page.goto('/workflows/order-processing?tab=history');
 
   const revisionsPanel = page.getByRole('region', { name: 'Installed revisions' });
   await expect(revisionsPanel).toBeVisible();
@@ -60,5 +59,5 @@ test('operator installs a revision manifest and reads the installed revision', a
   await expect(detail).toBeVisible();
   await expect(detail.getByText(manifest.contractHash)).toBeVisible();
 
-  await checkA11y('system — registry revisions panel, installed revision detail');
+  await checkA11y('workflow history — revisions panel, installed revision detail');
 });

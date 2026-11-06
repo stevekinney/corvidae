@@ -16,6 +16,11 @@
       "description": "What the loading region announces, politely, once the placeholder appears: \"Loading memories\".",
       "default": "Loading"
     },
+    "openFirst": {
+      "type": "boolean",
+      "description": "Opens the first item when none is open and the panes sit side by side, so the detail beside the\nlist is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while\nthe component shows one pane at a time (below `pushBelow`): there the list is where it starts.",
+      "default": false
+    },
     "selectedKey": {
       "anyOf": [
         {

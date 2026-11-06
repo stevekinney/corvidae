@@ -885,6 +885,8 @@ describe('engine lifecycle coverage helpers', () => {
     const dispatchEvent = mock(() => {});
     const checkpoint = createCheckpoint('workflow-begin-worker');
     const internals = {
+      // No `runConcurrency`: the launch takes no slot.
+      options: {},
       inlineStrategy: null,
       pendingNestingDepth: 2,
       strategy: { startWorkflow: startWorkflowStrategy },
@@ -924,6 +926,8 @@ describe('engine lifecycle coverage helpers', () => {
   it('starts workflow execution with zero-depth and nested metadata', () => {
     const startWorkflowStrategy = mock(() => {});
     const internals = {
+      // No `runConcurrency`: the launch takes no slot.
+      options: {},
       strategy: { startWorkflow: startWorkflowStrategy },
       workflowHeaders: new Map<string, Map<string, string>>(),
       workflowNestingDepths: new Map<string, number>(),
@@ -1064,6 +1068,8 @@ describe('engine lifecycle coverage helpers', () => {
     const startWorkflowStrategy = mock(() => {});
     const dispatchEvent = mock(() => {});
     const internals = {
+      // No `runConcurrency`: the launch takes no slot.
+      options: {},
       storage: new MemoryStorage(),
       checkpoints: new Map<string, Checkpoint>(),
       inlineStrategy: null,

@@ -146,7 +146,14 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   }
   if (call !== undefined && call.method === 'bureau.settings.get') {
     // The settings are never empty: the probe only asks whether the Bureau answers them.
-    const result = { values: {}, effective: {}, revision: 0, persisted: true, keys: {} };
+    const result = {
+      values: {},
+      effective: {},
+      running: {},
+      revision: 0,
+      persisted: true,
+      keys: {},
+    };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   if (call !== undefined && call.method === 'bureau.goals.list') {
@@ -241,7 +248,12 @@ function frame(container: HTMLElement): HTMLElement {
  */
 const VIEWS_THAT_CAN_FAIL = VIEW_NAMES.filter(
   (view) =>
-    view !== 'reviews' && view !== 'health' && view !== 'home' && VIEWS[view].ownsStates !== true,
+    view !== 'reviews' &&
+    view !== 'health' &&
+    view !== 'home' &&
+    VIEWS[view].ownsStates !== true &&
+    // A page that words its own failure shows itself, with its navigation and heading, instead.
+    VIEWS[view].pageOwnsFailure !== true,
 );
 
 /** The views that draw their own loading, empty and failed states under their own header. */
@@ -294,6 +306,14 @@ describe('every view, in every state', () => {
     test(`${view} is loading while its probe is pending`, async () => {
       if (view === 'health' || view === 'home' || VIEWS[view].ownsStates) return;
       restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+      if (VIEWS[view].pageOwnsLoading === true) {
+        // The page draws its own loading, so its content is on screen and the frame's words are not.
+        const { container, findByTestId, queryByRole } = mount(view);
+        expect(await findByTestId('content')).not.toBeNull();
+        expect(frame(container).dataset['state']).toBe('loading');
+        expect(queryByRole('heading', { level: 1, name: copy.loading.title })).toBeNull();
+        return;
+      }
       const { container, findByRole } = mount(view);
       expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('loading');
@@ -356,7 +376,7 @@ describe('a view that finds something to show', () => {
       stub(view, 'content');
       const { container, findByTestId } = mount(view);
       expect(await findByTestId('content')).not.toBeNull();
-      // A view that owns its states renders its page before its probe has answered.
+      // A page that draws its own loading, or a view that owns its states, is on screen before the probe answers.
       await waitFor(() => expect(frame(container).dataset['state']).toBe('ready'));
     });
   }
@@ -668,6 +688,8 @@ describe('the chat list, a new chat, and the agents', () => {
     })),
     enabled: status !== 'disabled',
     configuration: {},
+    configurationSchema: null,
+    running: { enabled: status !== 'disabled', configuration: {} },
     secrets: [],
     restartRequired: false,
   });
@@ -1177,6 +1199,27 @@ describe('the Reviews view', () => {
   test('has no empty state of its own, so a page with nothing waiting says so itself', () => {
     expect(VIEWS.reviews.canBeEmpty).toBe(false);
     expect(VIEW_COPY.reviews.empty).toBeUndefined();
+  });
+});
+
+describe('the Settings sections that read the settings', () => {
+  test('show the page when the probe fails, so the section words its own failure beside its navigation', async () => {
+    stub('settings', 'error');
+    const { container, findByTestId, queryByRole } = mount('settings');
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+    expect(await findByTestId('content')).not.toBeNull();
+    // Not the frame's own error: the page is on screen and the frame's heading is not.
+    expect(queryByRole('heading', { level: 1, name: VIEW_COPY.settings.error.title })).toBeNull();
+  });
+
+  test('are still the frame’s forbidden state when the Bureau refuses the caller', async () => {
+    stub('settings', 'forbidden');
+    const { container, findByRole } = mount('settings');
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.settings.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
   });
 });
 

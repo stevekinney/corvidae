@@ -2,7 +2,8 @@
   /**
    * The banner every page shows after a startup where a plugin did not load: how many did not, what
    * that means for agents and workflows, and a link to Settings › Plugins. The count is the plugins
-   * the host lists `skipped` plus the folders it could not load a plugin from (`didNotLoadCount`).
+   * with something to fix once any did not load, plus the folders the host could not load a plugin from
+   * (`needAttentionCount`), which is the list the Plugins page opens with.
    *
    * It is dismissible until the next startup. The host does not report a start of its own, so the
    * client's only sign of one is the connection: a restart makes the host unreachable, and the
@@ -11,9 +12,10 @@
    * with something unreadable, has no banner: the Plugins page says why.
    */
   import { Banner, Button } from '@lostgradient/cinder';
+  import { TriangleAlert } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { getPlugins, didNotLoadCount } from '../../lib/host-plugins.ts';
+  import { getPlugins, needAttentionCount } from '../../lib/host-plugins.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { PLUGINS_COPY } from '../copy.ts';
@@ -45,7 +47,7 @@
     if (unreachable) dismissed = false;
   });
 
-  const count = $derived(plugins.data === undefined ? 0 : didNotLoadCount(plugins.data));
+  const count = $derived(plugins.data === undefined ? 0 : needAttentionCount(plugins.data));
 
   function open(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -59,11 +61,14 @@
 {#if count > 0 && !dismissed}
   <Banner
     variant="warning"
+    title={copy.message(count)}
     aria-label={copy.label}
     data-testid="plugins-startup-banner"
     onDismiss={() => (dismissed = true)}
   >
-    {copy.message(count)}
+    <!-- The warning glyph the board draws, as the restart notice below it draws its own. -->
+    {#snippet icon()}<TriangleAlert size={16} aria-hidden="true" />{/snippet}
+    {copy.consequence(count)}
     {#snippet actions()}
       <Button variant="secondary" size="sm" href={router.href(path)} onclick={open}
         >{copy.action}</Button

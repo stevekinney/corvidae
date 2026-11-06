@@ -6,6 +6,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { router } from '../../lib/router.svelte.ts';
 import {
   installFakePluginHost,
   type FakePluginHost,
@@ -51,7 +52,29 @@ describe('the plugins that did not load banner', () => {
 
     await waitFor(() => expect(region()).not.toBeNull());
     expect(region()?.textContent).toContain(
-      '3 plugins didn’t load at startup. Agents and workflows that use them show as unavailable.',
+      '3 plugins need attention after a startup with problems',
+    );
+    expect(region()?.textContent).toContain(
+      'Agents and workflows that use them show as unavailable.',
+    );
+    // The board draws the warning glyph, as the restart banner does.
+    expect(region()?.querySelector('.cinder-banner__icon svg')).not.toBeNull();
+  });
+
+  test('counts a plugin that waits for its key beside one that was skipped, the list the Plugins page opens with', async () => {
+    const { region } = mount([
+      { name: 'anthropic' },
+      {
+        name: 'gemini',
+        status: 'needs-setup',
+        problems: [{ code: 'secret-missing', key: 'gemini-api-key' }],
+      },
+      SKIPPED,
+    ]);
+
+    await waitFor(() => expect(region()).not.toBeNull());
+    expect(region()?.textContent).toContain(
+      '2 plugins need attention after a startup with problems',
     );
   });
 
@@ -60,7 +83,10 @@ describe('the plugins that did not load banner', () => {
 
     await waitFor(() => expect(region()).not.toBeNull());
     expect(region()?.textContent).toContain(
-      '1 plugin didn’t load at startup. Agents and workflows that use it show as unavailable.',
+      '1 plugin needs attention after a startup with problems',
+    );
+    expect(region()?.textContent).toContain(
+      'Agents and workflows that use it show as unavailable.',
     );
   });
 
@@ -82,6 +108,19 @@ describe('the plugins that did not load banner', () => {
 
     await waitFor(() => expect(host?.requests.length).toBeGreaterThan(0));
     expect(view.container.querySelector('[data-testid="plugins-startup-banner"]')).toBeNull();
+  });
+
+  test('opens the Plugins page on a plain click, and leaves a modified click to the browser', async () => {
+    router.navigate('/runs', { replace: true });
+    const { region, getByRole } = mount([SKIPPED]);
+    await waitFor(() => expect(region()).not.toBeNull());
+    const link = getByRole('link', { name: 'Open Plugins' });
+
+    await fireEvent.click(link, { ctrlKey: true });
+    expect(router.pathname).toBe('/runs');
+
+    await fireEvent.click(link);
+    expect(router.pathname).toBe('/settings/plugins');
   });
 
   test('links to Settings › Plugins', async () => {

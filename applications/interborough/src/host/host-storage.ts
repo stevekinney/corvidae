@@ -23,9 +23,18 @@ export const MANAGED_KEY_PREFIXES: readonly string[] = [
   ]),
 ];
 
-/** The report `/host/storage` serves: every key prefix the Bureau and the stores it shares write. */
-export function hostStorageReport(): HostStorage {
-  return { bureauKeyPrefixes: [...MANAGED_KEY_PREFIXES] };
+/**
+ * The report `/host/storage` serves: every key prefix the Bureau and the stores it shares write,
+ * and how many bytes the storage holds (`null` for a backend that cannot say, or one that fails).
+ */
+export async function hostStorageReport(storage: Pick<Storage, 'sizeBytes'>): Promise<HostStorage> {
+  let sizeBytes: number | null = null;
+  try {
+    sizeBytes = (await storage.sizeBytes?.()) ?? null;
+  } catch {
+    sizeBytes = null;
+  }
+  return { bureauKeyPrefixes: [...MANAGED_KEY_PREFIXES], sizeBytes };
 }
 
 /**

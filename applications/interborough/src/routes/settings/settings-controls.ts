@@ -14,6 +14,7 @@
  * while it is on. Only a node nothing else reads (an array or a bare `null`) falls to the JSON
  * editor, which can edit any value.
  */
+import { A2A_COPY, DATA_RETENTION_COPY } from '../../app/copy.ts';
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
 /** What a select of catalog rows offers: the models the catalog lists, or the decision models a host registers. */
@@ -145,7 +146,7 @@ export const SETTING_GROUPS = [
   { id: 'children', label: 'Children' },
   { id: 'engine', label: 'Workflows' },
   { id: 'durability', label: 'Durability' },
-  { id: 'a2a', label: 'Push notifications' },
+  { id: 'a2a', label: 'Agent2Agent' },
 ] as const;
 
 /** The keys whose first segment is not their group: the ones that fix how the deployment is built. */
@@ -156,15 +157,37 @@ const DURABILITY_KEYS: ReadonlySet<string> = new Set([
   'workflowVersion',
 ]);
 
-/** The one setting the Model policy section holds, and so the General section does not. */
+/**
+ * The settings that hold a duration in milliseconds, with the unit the page shows it in and whether
+ * the person may change that unit. A claim lasting seconds is always counted in seconds, so its unit
+ * is text in the field; a sweep that runs hourly lets the person pick.
+ */
+export const DURATION_SETTINGS: Readonly<
+  Record<string, { readonly unit: 'ms' | 's' | 'min' | 'h'; readonly selectable: boolean }>
+> = {
+  'engine.workflowClaimTtl': { unit: 's', selectable: false },
+  'engine.workflowClaimRenewInterval': { unit: 's', selectable: false },
+  'engine.schedulerPollIntervalMs': { unit: 's', selectable: true },
+  'engine.retentionSweepInterval': { unit: 'h', selectable: true },
+  'children.delegation.defaultTimeToLiveMilliseconds': { unit: 'min', selectable: true },
+  'a2a.push.sweepIntervalMs': { unit: 'h', selectable: true },
+};
+
+/** The word after a number field's value, for the settings that count something (`4 runs`). */
+export const SETTING_UNITS: Readonly<Record<string, string>> = {
+  'engine.maxConcurrentRuns': 'runs',
+};
+
+/** The one setting the Allowed models section holds, and so the General section does not. */
 export const MODEL_POLICY_KEY = 'modelPolicy';
 
 /**
- * The sections of Settings that edit settings: General holds every key but the three below, Model
- * policy holds the model policy, the Decisions part of the Models page holds `decisions.*`, and
+ * The sections of Settings that edit settings: General holds every key but the three below, Allowed
+ * models holds the model policy, the Decisions part of the Models page holds `decisions.*`, and
  * the A2A section holds `a2a.*`.
  */
-export type SettingsSectionId = 'general' | 'model-policy' | 'decisions' | 'a2a';
+export type SettingsSectionId =
+  'general' | 'allowed-models' | 'decisions' | 'a2a' | 'retention' | 'plugins' | 'api-reference';
 
 /** The settings the Models page holds: the decision model, its fallback, and its limit per task. */
 function isDecisionKey(key: string): boolean {
@@ -176,12 +199,20 @@ function isA2aKey(key: string): boolean {
   return key.startsWith('a2a.');
 }
 
+/** The settings the Data and retention section holds: how long each kind of record is kept. */
+function isRetentionKey(key: string): boolean {
+  return key.startsWith('retention.');
+}
+
 /** Whether the section `section` edits the key `key`. */
 export function inSection(key: string, section: SettingsSectionId): boolean {
-  if (section === 'model-policy') return key === MODEL_POLICY_KEY;
+  if (section === 'allowed-models') return key === MODEL_POLICY_KEY;
   if (section === 'decisions') return isDecisionKey(key);
   if (section === 'a2a') return isA2aKey(key);
-  return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key);
+  if (section === 'retention') return isRetentionKey(key);
+  // Plugins edits plugins, not settings: it holds none of the keys, and only reads them for the restart notice.
+  if (section === 'plugins' || section === 'api-reference') return false;
+  return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key) && !isRetentionKey(key);
 }
 
 /**
@@ -208,10 +239,22 @@ export function groupsOf(keys: readonly string[]): readonly string[] {
 }
 
 /**
+ * The settings whose name is not the last part of their key put into words: the A2A switches are
+ * named for what they do, so the restart notice and the rows say the same thing.
+ */
+const SETTING_LABELS: Readonly<Record<string, string>> = {
+  'a2a.enabled': A2A_COPY.enabled.label,
+  'a2a.agents': A2A_COPY.agents.label,
+  'a2a.push.enabled': A2A_COPY.pushNotifications.label,
+  ...DATA_RETENTION_COPY.labels,
+};
+
+/**
  * A setting's name as a person reads it: the last part of its key, split into words and in
  * sentence case, so `engine.workflowClaimRenewInterval` is "Workflow claim renew interval".
  */
 export function settingLabel(key: string): string {
+  if (Object.hasOwn(SETTING_LABELS, key)) return SETTING_LABELS[key] ?? key;
   const last = key.split('.').at(-1) ?? key;
   const words = last
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')

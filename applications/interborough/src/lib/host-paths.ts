@@ -46,6 +46,11 @@ const hostPathsSchema = z.object({
    * or in remote mode the environment variable's name. Never the key itself.
    */
   providers: z.array(z.object({ name: z.string().min(1), secretFile: z.string().min(1) })),
+  /**
+   * The address of the A2A directory card, the one a person gives a caller so it can find out which
+   * agents are on offer. It names the public origin when the operator set one.
+   */
+  a2aDirectoryUrl: z.string().min(1),
 });
 
 /**

@@ -53,6 +53,12 @@ const snapshotSchema = z.object({
    * no one value (no model policy, no summarizer) is absent here too.
    */
   effective: z.record(z.string(), z.unknown()),
+  /**
+   * Each key's value as the host runs it now: a `restart` key's booted value, which a saved change
+   * waits to replace. Revert writes it back (`null` where it is absent, which clears the stored
+   * value). A key nothing set at boot is absent.
+   */
+  running: z.record(z.string(), z.unknown()),
   revision: z.number().int().nonnegative(),
   /** Whether the record outlives the process. */
   persisted: z.boolean(),

@@ -15,8 +15,8 @@
       "description": "The raw key behind the label, drawn small and monospaced beside it (\"engine.maxConcurrentRuns\").\nIt sits outside the `<label>`, so it never becomes part of the control's accessible name."
     },
     "status": {
-      "enum": ["saving", "saved", "restart", "saved-restart"],
-      "description": "Where the setting's own save has got to: `saving`, `saved`, `restart` or `saved-restart`. It\ndraws a status line under the description, in a polite live region that is always mounted, so\na change from Saving to Saved is announced. Leave it unset for a setting at rest. Pair it with\n`error` for the failures: an invalid value or a save that did not go through."
+      "enum": ["saving", "saved", "restart", "saved-restart", "reverted"],
+      "description": "Where the setting's own save has got to: `saving`, `saved`, `restart`, `saved-restart` or\n`reverted`. It draws a status line under the description, in a polite live region that is\nalways mounted, so a change from Saving to Saved is announced. Leave it unset for a setting at\nrest. Pair it with `error` for the failures: an invalid value or a save that did not go through."
     },
     "statusLabel": {
       "type": "string",
@@ -68,6 +68,10 @@
       "additionalProperties": false,
       "description": "Renders a managed-policy line with a lock glyph; pair with `PolicyLock`. Give it a `message`\nfor a locked setting (\"Locked by your deployment (remote mode). Change it in the deployment's\nconfiguration.\"). The control stays the page's to make read-only."
     },
+    "controlWidth": {
+      "type": "string",
+      "description": "The width of the column the control sits in, as a CSS length (`\"25rem\"`). Leave it unset for the\ndefault of `15rem`, which fits a switch, a short field or a select; give a control that needs\nmore room, such as the address of a feed or a list of switches, its own. Below the container\nwidth where the row stacks, the control takes the row's width whatever this says."
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged with the component's root class."
@@ -82,6 +86,11 @@
         "reason": "function-or-snippet",
         "required": true,
         "description": "The setting's control, rendered with `FormField` context applied."
+      },
+      {
+        "name": "descriptionAction",
+        "reason": "function-or-snippet",
+        "description": "Rendered after the description inside the same paragraph, so it joins `aria-describedby`: a quiet link such as \"Open Health\". Shown only with `description`."
       },
       {
         "name": "disclosure",

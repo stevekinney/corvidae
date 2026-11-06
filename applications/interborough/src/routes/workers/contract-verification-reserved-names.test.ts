@@ -12,11 +12,7 @@ import {
   registrySnapshot,
   workerManifest,
 } from './contract-verification.test-support.ts';
-import {
-  registryActivityContractHashes,
-  verifyRegistryWorkflow,
-  verifyWorkerContracts,
-} from './contract-verification.ts';
+import { registryActivityContractHashes, verifyWorkerContracts } from './contract-verification.ts';
 
 const RESERVED_NAMES = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'] as const;
 
@@ -76,19 +72,6 @@ describe('reserved workflow and activity names', () => {
 
       expect(result.notAdvertised).toEqual([name]);
       expect(result.workflows).toEqual([]);
-    });
-
-    test(`verifyRegistryWorkflow(${name}) never treats an inherited member as a worker workflow`, async () => {
-      const registry = reservedRegistry(name);
-      const result = verifyRegistryWorkflow(
-        name,
-        [workerManifest({ checkout: matchingCheckout() })],
-        registry,
-        await registryActivityContractHashes(registry),
-      );
-
-      expect(result.workers).toEqual([]);
-      expect(result.workersNotAdvertising).toBe(1);
     });
 
     test(`a worker that serves workflow and activity ${name} verifies against the registry`, async () => {

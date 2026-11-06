@@ -1,8 +1,9 @@
 /**
- * Which storage keys the application manages. The Bureau's key prefixes are only known to the host
- * (the browser cannot import the Bureau), so the host serves them at `/host/storage`; the storage
+ * What the host knows about its storage. The Bureau's key prefixes are only known to the host (the
+ * browser cannot import the Bureau), so the host serves them at `/host/storage`; the storage
  * explorer joins them with Weft's own (`WEFT_RESERVED_KEY_PREFIXES`) and refuses to edit or delete a
- * key under either.
+ * key under either. It also serves how much space the storage uses, which Settings › Data and
+ * retention shows when no alert rule is watching it.
  */
 import { z } from 'zod';
 
@@ -14,9 +15,11 @@ export const HOST_STORAGE_ROUTE = '/host/storage';
 const hostStorageSchema = z.object({
   /** Every storage key prefix the Bureau writes. A key that starts with one is the application's. */
   bureauKeyPrefixes: z.array(z.string().min(1)),
+  /** The bytes the storage holds now, or `null` when the backend cannot say. */
+  sizeBytes: z.number().nonnegative().nullable(),
 });
 
-/** The key prefixes the host reports as the Bureau's. */
+/** The key prefixes the host reports as the Bureau's, and the size of its storage. */
 export type HostStorage = z.infer<typeof hostStorageSchema>;
 
 /** The route the host answers with {@link HostStorageSummary}, for the keys under `?prefix=`. */
@@ -32,7 +35,7 @@ const hostStorageSummarySchema = z.object({
 /** How many keys storage holds under a prefix, and how large it is, as the host reports them. */
 export type HostStorageSummary = z.infer<typeof hostStorageSummarySchema>;
 
-/** Asks the host which key prefixes the Bureau writes. */
+/** Asks the host which key prefixes the Bureau writes and how large its storage is. */
 export async function getHostStorage(options?: {
   readonly signal?: AbortSignal;
   readonly fetch?: Fetcher;

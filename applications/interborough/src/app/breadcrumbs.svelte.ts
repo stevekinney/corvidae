@@ -41,6 +41,10 @@ export function breadcrumbTrail(
           : undefined);
     if (label !== undefined) items.push({ label, path });
   }
+  const own = table.find((route) => route.pattern === matchRoute(pathname, table)?.pattern);
+  if (own?.leafCrumb !== undefined && items.at(-1)?.path === pathname) {
+    items.push({ label: own.leafCrumb, path: pathname });
+  }
   return items.map((item, index) =>
     leaf && index === items.length - 1
       ? { label: item.label }

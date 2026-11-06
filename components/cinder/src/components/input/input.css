@@ -75,6 +75,9 @@
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-control-radius);
     appearance: none;
+    /* A value wider than the field ends in an ellipsis instead of being cut mid-word, so a long
+       address in a read-only field reads as shortened, not as complete. */
+    text-overflow: ellipsis;
 
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),

@@ -26,4 +26,25 @@ describe('SettingRow', () => {
     });
     expect(container.querySelector('.cinder-setting-row')).not.toBeNull();
   });
+
+  test('draws a description action after the description, inside the described paragraph', () => {
+    const { container } = render(SettingRow, {
+      props: {
+        id: 'space-used',
+        label: 'Space used',
+        description: 'Health lists this under Needs attention.',
+        descriptionAction: createRawSnippet(() => ({
+          render: () => '<a href="/health">Open Health</a>',
+        })),
+        control: createRawSnippet(() => ({
+          render: () => '<span id="space-used">1.6 GB</span>',
+        })),
+      },
+    });
+    const description = container.querySelector('p.cinder-form-field__description');
+    expect(description?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Health lists this under Needs attention. Open Health',
+    );
+    expect(description?.querySelector('a')?.getAttribute('href')).toBe('/health');
+  });
 });

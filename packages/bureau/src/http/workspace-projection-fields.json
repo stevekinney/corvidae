@@ -1799,6 +1799,9 @@
     "$.keys.*.pendingRestart",
     "$.persisted",
     "$.revision",
+    "$.running",
+    "$.running.*",
+    "$.running.*.*",
     "$.values",
     "$.values.*",
     "$.values.*.*"

@@ -6,6 +6,7 @@ import { asyncActivityWorkflowPrefix } from '../async-activity-records.ts';
 import { releaseLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { clearPendingAtomicWorkflowCommitSideEffects } from '../checkpoint-side-effects.ts';
 import type { EngineInternals } from '../internals.ts';
+import { releaseRunSlot } from '../run-concurrency.ts';
 import { settleSleepTimerAcknowledgements } from '../sleep-timer-acknowledgements.ts';
 import { parseTerminalCleanupTimerId, workflowFeedListenerKey } from '../state-utilities.ts';
 import { forgetBranchActivityReceipts } from '../timeline-coordinator-detail.ts';
@@ -222,6 +223,7 @@ export function cleanupWaiters(
   internals.workflowHeaders.delete(workflowId);
   internals.workflowServices.delete(workflowId);
   internals.workflowTypeByWorkflowId.delete(workflowId);
+  releaseRunSlot(internals, workflowId);
 }
 
 /**
@@ -251,6 +253,8 @@ export function evictSuspendedWorkflowWaiters(
   evictSleepResolversWithoutResolving(internals, workflowId);
   evictConditionWaitersWithoutResolving(internals, workflowId);
   cleanupReviewEscalations(internals, workflowId, callbacks);
+  // A suspended run is not executing, so it gives its `runConcurrency` slot back.
+  releaseRunSlot(internals, workflowId);
 }
 
 /**

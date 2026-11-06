@@ -68,6 +68,7 @@ describe('the backend report', () => {
         workflows: { kind: 's3', bucket: 'state', prefix: 'prod/workflows/' },
       },
       [{ name: 'anthropic', secretKey: 'anthropic-api-key' }],
+      'https://agents.example.com/bureau/a2a/.well-known/agent-card.json',
     );
     expect(report).toEqual({
       mode: 'remote',
@@ -79,6 +80,7 @@ describe('the backend report', () => {
       providers: [
         { name: 'anthropic', secretFile: 'workspace:locations-fixture/anthropic-api-key' },
       ],
+      a2aDirectoryUrl: 'https://agents.example.com/bureau/a2a/.well-known/agent-card.json',
     });
     const text = JSON.stringify(report);
     for (const secret of ['app-user', 's3cret', 'p%40ss', 'sslmode']) {
@@ -103,6 +105,7 @@ describe('the backend report', () => {
           workflows: { kind: 'directory', path: '/home/workflows' },
         },
         [],
+        'http://127.0.0.1:4310/bureau/a2a/.well-known/agent-card.json',
       ),
     ).toMatchObject({
       mode: 'local',

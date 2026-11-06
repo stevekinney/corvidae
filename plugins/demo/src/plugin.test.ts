@@ -27,13 +27,17 @@ async function start(
     readonly enabled?: boolean;
     readonly secret?: string;
     readonly seedOnStart?: boolean;
+    readonly agents?: readonly (typeof DEMO_AGENT_NAMES)[number][];
   } = {},
 ) {
   const bureau = await createBureau<AgentDefinitions>({
     agents: {},
     plugins: [
       {
-        descriptor: createDemoPlugin({ seedOnStart: options.seedOnStart ?? false }),
+        descriptor: createDemoPlugin({
+          seedOnStart: options.seedOnStart ?? false,
+          ...(options.agents === undefined ? {} : { agents: options.agents }),
+        }),
         source: 'package',
         location: '@lostgradient/plugin-demo',
       },
@@ -51,6 +55,18 @@ async function start(
 }
 
 describe('the demo plugin', () => {
+  test('provides only the agents it is given, so a disabled Demo holds back exactly those', async () => {
+    const bureau = await start({
+      enabled: false,
+      agents: ['release-helper', 'changelog-writer'],
+    });
+    const listed = bureau.agents.list().filter(({ id }) => id.startsWith('demo:'));
+    expect(listed.map(({ id }) => id).toSorted()).toEqual([
+      'demo:changelog-writer',
+      'demo:release-helper',
+    ]);
+  });
+
   test('is off until the owner turns it on, and then lists its agents unavailable and runs none (COR-2009)', async () => {
     const bureau = await start({ enabled: false });
     const listing = await demoListing(bureau);

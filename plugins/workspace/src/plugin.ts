@@ -48,6 +48,7 @@ function toolDescription(action: string, root: WorkspaceRoot): string {
 /** The disabled-by-default plugin that contributes tools for configured workspace roots. */
 export default definePlugin({
   name: 'workspace',
+  title: 'Workspace',
   version: '1.0.0',
   description: 'Read-only file tools for explicitly configured workspace roots.',
   enabledByDefault: false,

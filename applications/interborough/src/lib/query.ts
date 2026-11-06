@@ -272,10 +272,14 @@ export const queryKeys = {
   principal: () => ['principal'] as const,
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
-  /** One agent's public A2A Agent Card (`/bureau/a2a/<agent>/.well-known/agent-card.json`). */
-  a2aCard: (agent: string) => ['a2a', 'card', agent] as const,
+  /** Who this session is and the scopes of Interborough's API it holds (`/host/session`). */
+  hostSession: () => ['host', 'session'] as const,
+  /** The remote A2A calls the audit trail kept, newest first (`bureau.audit.query`, type `a2a.call`). */
+  a2aCalls: () => ['a2a', 'calls'] as const,
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
   hostStorage: () => ['host', 'storage'] as const,
+  /** When the host cleans up, and how the last clean-up went (`/host/clean-up`). */
+  hostCleanUp: () => ['host', 'clean-up'] as const,
   /** How many keys storage holds under a prefix, and its size (`/host/storage/summary`). */
   hostStorageSummaries: () => ['host', 'storage', 'summary'] as const,
   hostStorageSummary: (prefix: string) => ['host', 'storage', 'summary', prefix] as const,
@@ -291,25 +295,12 @@ export const queryKeys = {
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
   /** `weft.system.lease` (COR-124), read only by the Health page's Health tab. */
   systemLease: () => ['system', 'lease'] as const,
-  /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
+  /** The `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {
     revisions: (name: string) => ['catalog', 'revisions', name] as const,
     /** `weft.workflows.revisions.get` (COR-1464) — extends `revisions(name)`, so invalidating the list invalidates every open detail too. */
     revision: (name: string, revision: string) => ['catalog', 'revisions', name, revision] as const,
     active: (name: string) => ['catalog', 'active', name] as const,
-    /** `weft.workflows.refresh.diagnostics` (COR-166) — one workflow's refresh source. */
-    refresh: (name: string) => ['catalog', 'refresh', name] as const,
-    sources: (pagination: { readonly limit: number; readonly offset: number }) =>
-      ['catalog', 'sources', pagination] as const,
-    /**
-     * `weft.catalog.diagnostics` (WFT-116) — per-`(name, revision)`, since
-     * that operation answers for one exact key. The `name` segment sits
-     * before `revision` so a mutation touching one workflow can invalidate
-     * every revision's diagnostics at once with the
-     * `['catalog', 'diagnostics', name]` prefix.
-     */
-    diagnostics: (name: string, revision: string) =>
-      ['catalog', 'diagnostics', name, revision] as const,
   },
 } as const;
 
@@ -372,7 +363,6 @@ const LIST_QUERY_KEY_PREFIXES: readonly QueryKey[] = [
   ['workflows', 'list'],
   ['schedules', 'list'],
   ['reviews', 'list'],
-  ['catalog', 'sources'],
 ];
 
 const MAX_QUERY_RETRIES = 3;

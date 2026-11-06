@@ -187,6 +187,43 @@ export class SettingsForm {
     this.#reset();
   }
 
+  /**
+   * Takes a newer snapshot without starting over: the keys in `saved` and every key that is not
+   * being edited take what the snapshot holds, and a key being edited keeps its draft. A page that
+   * saves one key as it is left uses it, so a change to one row never throws away another's. A key
+   * in `keep` keeps its draft whatever it is compared with, for a value typed while its save was out.
+   */
+  rebase(
+    snapshot: SettingsSnapshot,
+    saved: readonly string[] = [],
+    keep: readonly string[] = [],
+  ): void {
+    const editing = new Set([...this.dirtyKeys.filter((key) => !saved.includes(key)), ...keep]);
+    const changedForm = [...this.#controls].some(
+      ([key, control]) =>
+        holdsForm(control) &&
+        !editing.has(key) &&
+        !sameValue(this.#baseline[key], snapshot.values[key]),
+    );
+    this.revision = snapshot.revision;
+    this.#baseline = snapshot.values;
+    for (const [key, control] of this.#controls) {
+      if (editing.has(key)) continue;
+      const value = snapshot.values[key];
+      this.#drafts.set(key, value);
+      this.#parseErrors.delete(key);
+      this.#formProblems.delete(key);
+      this.#checking.delete(key);
+      this.#uncommitted.delete(key);
+      if (isRecord(value) && (holdsForm(control) || control.kind === 'switch-json')) {
+        this.#lastObjects.set(key, value);
+      }
+      if (holdsJson(control)) this.#texts.set(key, textOf(control, value));
+    }
+    // A `SchemaForm` only seeds from its value, so one whose setting changed under it is made again.
+    if (changedForm) this.generation += 1;
+  }
+
   #reset(): void {
     this.#drafts.clear();
     this.#texts.clear();
@@ -348,6 +385,17 @@ export class SettingsForm {
       this.#uncommitted.size === 0 &&
       this.#pendingEntries.size === 0 &&
       dirty.every((key) => this.error(key) === undefined)
+    );
+  }
+
+  /** Whether one key's change can be sent: it is dirty and has no problem, no check of it is running, and it holds no text that is not yet a value. */
+  canSaveKey(key: string): boolean {
+    return (
+      this.isDirty(key) &&
+      !this.#checking.has(key) &&
+      !this.#uncommitted.has(key) &&
+      this.#pendingEntries.size === 0 &&
+      this.error(key) === undefined
     );
   }
 

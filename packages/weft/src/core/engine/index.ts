@@ -72,6 +72,7 @@ import {
   type RetentionOverview,
   type ReviewListEntry,
   type ReviewListFilter,
+  type RunConcurrencySnapshot,
   type ScheduleDefinition,
   type ScheduleFilter,
   type ScheduleMissedFire,
@@ -307,6 +308,7 @@ import {
   listReviews as listReviewsFromInternals,
   submitReview as submitReviewFromInternals,
 } from './reviews.ts';
+import { runConcurrencySnapshot } from './run-concurrency.ts';
 import {
   skipNextScheduleOccurrence as skipNextScheduleOccurrenceFromInternals,
   triggerSchedule as triggerScheduleFromInternals,
@@ -2280,6 +2282,14 @@ export class Engine<
    */
   async flushInlineLaunches(): Promise<void> {
     await flushQueuedInlineWorkflowStartsForEngine(this);
+  }
+  /**
+   * The `runConcurrency` cap, the ids of the counted runs this engine is executing, and the ids of
+   * the counted starts whose first turn waits for one of them to end, oldest first. `null` when the
+   * engine was built without `runConcurrency`.
+   */
+  runConcurrency(): RunConcurrencySnapshot | null {
+    return runConcurrencySnapshot(getInternals(this));
   }
   async purge(filter?: ListFilter): Promise<PurgeResult> {
     return purgeWorkflows(getInternals(this), filter, (workflowId) =>

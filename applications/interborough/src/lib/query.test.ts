@@ -118,20 +118,6 @@ describe('queryKeys — plan §4 list, verbatim', () => {
   test('principal', () => {
     expect(queryKeys.principal()).toEqual(['principal']);
   });
-
-  test('catalog source list and exact diagnostics keys', () => {
-    expect(queryKeys.catalog.sources({ limit: 10, offset: 20 })).toEqual([
-      'catalog',
-      'sources',
-      { limit: 10, offset: 20 },
-    ]);
-    expect(queryKeys.catalog.diagnostics('invoice-reconciliation', 'line\r\nrevision')).toEqual([
-      'catalog',
-      'diagnostics',
-      'invoice-reconciliation',
-      'line\r\nrevision',
-    ]);
-  });
 });
 
 /** Pulls the configured `queries.retry` predicate out, typed as a callable — `RetryValue` also allows `boolean | number`, which this factory never uses. */
@@ -185,7 +171,6 @@ describe('createQueryClient — keepPreviousData on paginated/filtered lists onl
     expect(client.getQueryDefaults(['workflows', 'list']).placeholderData).toBe(keepPreviousData);
     expect(client.getQueryDefaults(['schedules', 'list']).placeholderData).toBe(keepPreviousData);
     expect(client.getQueryDefaults(['reviews', 'list']).placeholderData).toBe(keepPreviousData);
-    expect(client.getQueryDefaults(['catalog', 'sources']).placeholderData).toBe(keepPreviousData);
   });
 
   test('unparameterized single-resource keys are left alone', () => {

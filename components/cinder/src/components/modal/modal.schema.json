@@ -42,6 +42,10 @@
       "type": "string",
       "description": "Text rendered as the modal's visible heading and used as its accessible label."
     },
+    "description": {
+      "type": "string",
+      "description": "A line under the title that says what the dialog is for or what state it is in, such as\n\"Paste an API key, then test it.\" Drawn muted in the header and wired to `aria-describedby`\nunless `describedById` names something else. Keep it to one short sentence."
+    },
     "aria-label": {
       "type": "string",
       "description": "Not used in the default chrome — the visible title supplies the accessible name instead."

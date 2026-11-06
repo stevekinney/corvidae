@@ -126,6 +126,12 @@ export type HostPathsReport = {
   readonly locked: HostWriteLocks;
   /** Each provider and where its API key lives (a file's path, or an environment variable's name), never the key. */
   readonly providers: readonly { readonly name: string; readonly secretFile: string }[];
+  /**
+   * The address of the A2A directory card, which lists the agents the host shares: under the
+   * public origin when the operator set one (COR-1904), else the host's own. The browser cannot
+   * know the public origin, so the host says.
+   */
+  readonly a2aDirectoryUrl: string;
 };
 
 /**
@@ -144,6 +150,7 @@ export function hostPathsReport(
   >,
   content: { readonly agents: ContentLocation; readonly workflows: ContentLocation },
   providers: readonly { readonly name: string; readonly secretKey: string }[],
+  a2aDirectoryUrl: string,
 ): HostPathsReport {
   return {
     mode: bungalow.mode,
@@ -156,6 +163,7 @@ export function hostPathsReport(
       name,
       secretFile: `workspace:${bungalow.workspaceId}/${secretKey}`,
     })),
+    a2aDirectoryUrl,
   };
 }
 
