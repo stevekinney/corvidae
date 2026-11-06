@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { readFirstJsonlRecord } from './cli-jsonl.test-support.ts';
 import { HOST_RESTART_ROUTE, RESTART_EXIT_CODE } from './restart.ts';
 
 const directory = mkdtempSync(join(tmpdir(), 'interborough-cli-'));
@@ -147,7 +148,7 @@ const productionServer = Bun.serve({
           await writer.close();
         } else {
           await send('compiled-open', { kind: 'task.status', status: 'running' });
-          await writer.close();
+          await writer.closed.catch(() => undefined);
         }
       })();
       return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
@@ -229,7 +230,6 @@ const productionServer = Bun.serve({
           await send({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
         } else {
           await send({ type: 'RUN_STARTED', threadId: 'thread-sigint', runId: 'run-sigint' });
-          await Bun.sleep(500);
         }
         try {
           await writer.close();
@@ -474,34 +474,19 @@ const compiledRunStream = spawnWithHangGuard(
   { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
 );
 const compiledRunReader = compiledRunStream.stdout.getReader();
-const compiledRunFirstDecoder = new TextDecoder();
-let compiledRunFirstText = '';
-let compiledRunFirstRead = await compiledRunReader.read();
-for (;;) {
-  if (compiledRunFirstRead.done) break;
-  compiledRunFirstText += compiledRunFirstDecoder.decode(compiledRunFirstRead.value, {
-    stream: true,
-  });
-  const firstLine = compiledRunFirstText.split(/\r?\n/)[0];
-  if (firstLine !== undefined && firstLine !== '') {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(firstLine);
-    } catch {
-      continue;
-    }
-    if (!JSON.stringify(parsed).includes('"running"'))
-      throw new Error('compiled run watch first record was not the running status');
-    compiledRunFirstRecord.resolve();
-    break;
-  }
-  compiledRunFirstRead = await compiledRunReader.read();
-}
-if (compiledRunFirstRead.done) throw new Error('compiled run watch ended before its first record');
-compiledRunFirstText += compiledRunFirstDecoder.decode();
+const compiledRunFirst = await readFirstJsonlRecord(compiledRunReader, (record) => {
+  if (typeof record !== 'object' || record === null) return false;
+  const value = record as { id?: unknown; event?: { kind?: unknown; status?: unknown } };
+  return (
+    value.id === 'task:compiled-run' &&
+    value.event?.kind === 'task.status' &&
+    value.event.status === 'running'
+  );
+});
+compiledRunFirstRecord.resolve();
 const compiledRunFirstChunk = {
   done: false,
-  value: new TextEncoder().encode(compiledRunFirstText),
+  value: new TextEncoder().encode(`${compiledRunFirst.text}\n`),
 };
 const compiledRunSecondChunk = await compiledRunReader.read();
 await compiledRunReader.cancel();
