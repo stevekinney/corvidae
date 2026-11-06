@@ -6,13 +6,21 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
+import { Engine } from '../../core/engine.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
+import { createOperationRegistry } from '../operation-catalog.ts';
 import {
   deadLetteredFixture,
   leasedFixture,
   putLedgerRecord,
   queuedFixture,
 } from './get-task-diagnostics.test-support.ts';
-import { collectQueueTasks, listQueueTasksOperation } from './list-queue-tasks.ts';
+import {
+  collectQueueTasks,
+  listQueueTasksOperation,
+  listQueueTasksRestBinding,
+  type ListQueueTasksOutput,
+} from './list-queue-tasks.ts';
 
 async function seed(): Promise<MemoryStorage> {
   const storage = new MemoryStorage();
@@ -130,5 +138,50 @@ describe('weft.task.queues.tasks', () => {
       kind: 'scoped',
       scopes: { kind: 'anyOf', scopes: ['system:read'] },
     });
+  });
+});
+
+describe('GET /v1/task-queues/:queue/tasks', () => {
+  async function ask(query: string): Promise<Response> {
+    const storage = await seed();
+    const engine = new Engine({ storage });
+    try {
+      return await handleRequest(
+        new Request(`http://localhost/v1/task-queues/reports/tasks${query}`),
+        engine,
+        {
+          operationRegistry: createOperationRegistry([listQueueTasksOperation]),
+          restBindings: [listQueueTasksRestBinding],
+        },
+      );
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  }
+
+  it('reads status, limit and cursor from the query and the queue from the path', async () => {
+    const response = await ask('?status=waiting&limit=1');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ListQueueTasksOutput;
+    expect(body.queue).toBe('reports');
+    expect(body.items.map((task) => task.operationId)).toEqual(['w-1']);
+    expect(body.nextCursor).not.toBeNull();
+  });
+
+  it('answers with the defaults when the query names nothing', async () => {
+    const body = (await (await ask('?limit=')).json()) as ListQueueTasksOutput;
+    expect(body.counts).toEqual({ waiting: 3, failed: 2 });
+  });
+
+  it('orders tasks that arrived together by operation id', async () => {
+    const storage = new MemoryStorage();
+    for (const operationId of ['t-b', 't-c', 't-a']) {
+      await putLedgerRecord(
+        storage,
+        queuedFixture({ operationId, queue: 'reports', firstQueuedAt: 100 }),
+      );
+    }
+    const result = await collectQueueTasks(storage, { ...input, status: 'waiting' });
+    expect(result.items.map((task) => task.operationId)).toEqual(['t-a', 't-b', 't-c']);
   });
 });

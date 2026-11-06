@@ -1037,5 +1037,11 @@ describe('a schedule control before the workflow catalog is ready', () => {
 
     expect(result.outcome).toBe('started');
     expect(isoOf(await skipOf(engine, 'daily'))).toBe('2026-01-01T09:00:00.000Z');
+
+    registerWorkflow(engine, 'last', async function* () {
+      return 'done';
+    });
+    await engine.unskipScheduleOccurrence('daily', { occurrence: at('2026-01-01T09:00:00.000Z') });
+    expect(await skipOf(engine, 'daily')).toBeUndefined();
   });
 });

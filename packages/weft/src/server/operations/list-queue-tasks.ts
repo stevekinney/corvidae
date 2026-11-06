@@ -91,11 +91,8 @@ function compareKeyed(left: Keyed, right: Keyed): number {
   return (
     left.rank - right.rank ||
     left.task.at - right.task.at ||
-    (left.task.operationId < right.task.operationId
-      ? -1
-      : left.task.operationId > right.task.operationId
-        ? 1
-        : 0)
+    Number(left.task.operationId > right.task.operationId) -
+      Number(left.task.operationId < right.task.operationId)
   );
 }
 
