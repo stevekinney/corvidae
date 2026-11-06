@@ -219,6 +219,7 @@ describe('a workflow review step', () => {
     // The step after the review was handed the answer.
     expect(harness.calls.at(-1)).toMatchObject({ agent: 'editor' });
     expect(harness.calls.at(-1)?.message).toContain('"note": "Ship it"');
+    expect(harness.calls.at(-1)?.message).toContain('"content": "Release 2.4"');
     expect(await harness.bureau.reviews.get(review.id)).toMatchObject({
       id: review.id,
       status: 'approved',

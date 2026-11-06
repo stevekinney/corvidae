@@ -154,8 +154,9 @@ export async function buildDocumentWorkflowDefinition(
           break;
       }
     }
-    checkSchema('output', previous);
-    return previous;
+    const output = document.steps.at(-1)?.kind === 'await-signal' ? pendingSignal : previous;
+    checkSchema('output', output);
+    return output;
   };
 
   const builder = workflow({
