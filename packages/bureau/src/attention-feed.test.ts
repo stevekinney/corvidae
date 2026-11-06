@@ -17,6 +17,7 @@ import {
 } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from './http/workspace-conformance-ledger.test-support.ts';
 
 import {
   readAttention,
@@ -492,6 +493,7 @@ describe('bureau.health.attention', () => {
   });
 });
 
+const witnesses = workspaceConformanceLedger('../attention-feed.test.ts');
 it('workspace attention six-actor projections hide private hook alerts and recompute counts', async () => {
   const opened = await openWorkspacePrivacyBureau({
     bureauOptions: {
@@ -508,8 +510,19 @@ it('workspace attention six-actor projections hide private hook alerts and recom
     },
   });
   try {
+    const sentinel = 'PRIVATE-ATTENTION-NEIGHBOR-4e7a';
+    const task = await opened.bureau.tasks.start('default', sentinel, {
+      principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+    });
+    const owner = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.get', {
+      contextId: task.contextId,
+    });
+    expect(owner.text).toContain(sentinel);
+    witnesses.confirmPrivateSource('bureau.health.attention', owner);
     for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
       const response = await workspacePrivacyCall(opened, actor, 'bureau.health.attention', {});
+      expect(response.text).not.toContain(sentinel);
+      witnesses.observeWire('bureau.health.attention', actor, response);
       if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
       else if (actor === 'administrator') {
         expect(response.body?.error).toBeUndefined();
@@ -575,4 +588,8 @@ it('trusted local deployment operators retain full attention while local members
       await opened.dispose();
     }
   }
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

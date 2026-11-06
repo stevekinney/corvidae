@@ -1,14 +1,17 @@
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
+  Engine,
   createOperationHandler,
   createOperationHandlerAuthenticator,
   principalFromApiKey,
   principalFromJwtClaims,
+  workflow,
   type OperationHandlerAuthenticate,
   type WorkspaceIdentity,
 } from '@lostgradient/weft';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { z } from 'zod';
 
 import {
@@ -26,7 +29,7 @@ import {
   projectReview,
 } from './bureau-reviews-operations.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
-import { createBureauHandler } from './create-bureau-handler.ts';
+import { buildBureauHandlerHost, createBureauHandler } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
@@ -35,11 +38,13 @@ import { withWorkspaceMembership } from './workspace-principal.ts';
 import {
   WORKSPACE_PRIVACY_ACTORS,
   openWorkspacePrivacyBureau,
+  openWorkspaceApproval,
   workspacePrivacyCall,
   type WorkspacePrivacyActor,
 } from './workspace-privacy-fixtures.test-support.ts';
 
 const silent = () => undefined;
+const witnesses = workspaceConformanceLedger('bureau-reviews-operations.test.ts');
 const API_KEY = 'reviews-test-key';
 const credentials = { 'X-API-Key': API_KEY };
 /** One caller, `tester`, who owns what the stubbed reviews' run belongs to. */
@@ -1038,6 +1043,80 @@ describe('the reviews operations against a real Bureau', () => {
 });
 
 describe('workspace privacy for reviews', () => {
+  it('returns approval feedback only to the owner', async () => {
+    const { opened, review } = await openWorkspaceApproval();
+    try {
+      const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
+      for (const actor of [
+        ...actors.filter((candidate) => candidate !== 'owner'),
+        'owner',
+      ] as WorkspacePrivacyActor[]) {
+        const response = await workspacePrivacyCall(opened, actor, 'bureau.reviews.resolve', {
+          id: review.id,
+          decision: 'reject',
+          reason: 'PRIVATE-APPROVAL-FEEDBACK-31ac',
+        });
+        witnesses.observePrivateProjection('bureau.reviews.resolve', actor, response);
+        if (actor === 'owner') expect(response.text).toContain('PRIVATE-APPROVAL-FEEDBACK-31ac');
+        else if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
+        else expect(response.body?.error?.data?.httpStatus).toBe(404);
+      }
+    } finally {
+      await opened.dispose();
+    }
+  });
+  it('excludes engine review artifacts from every workspace actor while a non-workspace control sees them', async () => {
+    const opened = await openWorkspacePrivacyBureau();
+    try {
+      const engine = buildBureauHandlerHost(opened.bureau, []).reviews.durableEngine?.();
+      if (!(engine instanceof Engine)) throw new Error('Expected the real durable engine');
+      const reviewWorkflow = workflow({ name: 'workspace-engine-review-fixture' }).execute(
+        async function* (context) {
+          return yield* context.review({
+            artifact: { text: 'PRIVATE-ENGINE-ARTIFACT-598a' },
+            reviewType: 'content',
+            reviewers: ['alice'],
+          });
+        },
+      );
+      const register: unknown = Reflect.get(engine, 'register');
+      if (typeof register !== 'function') throw new Error('Expected engine workflow registration');
+      Reflect.apply(register, engine, [reviewWorkflow]);
+      await engine.start('workspace-engine-review-fixture', null);
+      await waitForCondition(async () => {
+        const reviews = await engine.listReviews();
+        return reviews.length > 0;
+      }, 'engine review is parked');
+      const engineReviews = await engine.listReviews();
+      const engineReview = engineReviews[0]!;
+      const control = createOperationHandler({
+        operations: bureauReviewsOperations,
+        host: buildBureauHandlerHost(opened.bureau, []),
+        authenticate: createOperationHandlerAuthenticator(
+          {
+            resolveApiKeyPrincipal: async (key) =>
+              key === API_KEY
+                ? principalFromApiKey({ subject: 'control', scopes: ['reviews:read'] })
+                : null,
+            auditSink: silent,
+          },
+          { additionalScopes: BUREAU_SCOPES },
+        ),
+      });
+      const controlResult = await call(control, 'bureau.reviews.list', {});
+      expect(JSON.stringify(controlResult)).toContain('PRIVATE-ENGINE-ARTIFACT-598a');
+      for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+        const result = await workspacePrivacyCall(opened, actor, 'bureau.reviews.list', {});
+        expect(result.text).not.toContain(engineReview.reviewId);
+        expect(result.text).not.toContain('PRIVATE-ENGINE-ARTIFACT-598a');
+        if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
+        else expect(result.body?.error).toBeUndefined();
+      }
+    } finally {
+      await opened.dispose();
+    }
+  });
+
   it('keeps list, get, and resolve owner-scoped for all six actor outcomes', async () => {
     const opened = await openWorkspacePrivacyBureau({
       agents: {
@@ -1078,18 +1157,25 @@ describe('workspace privacy for reviews', () => {
         const denied = actor === 'foreign' || actor === 'removed';
         const expectedStatus = denied ? 403 : actor === 'owner' ? 200 : 404;
         const list = await workspacePrivacyCall(opened, actor, 'bureau.reviews.list', {});
+        witnesses.observeCollection('bureau.reviews.list', actor, list, review.id);
         expect(list.status, `${actor} list`).toBe(denied ? 403 : 200);
         const ids = ((list.body?.result?.['reviews'] ?? []) as Array<{ id: string }>).map(
           (entry) => entry.id,
         );
         expect(ids, actor).toEqual(actor === 'owner' ? [review.id] : []);
+        if (actor === 'owner') expect(list.text).toContain('REVIEW-SENTINEL');
+        else expect(list.text).not.toContain('REVIEW-SENTINEL');
         for (const method of ['bureau.reviews.get', 'bureau.reviews.resolve'] as const) {
           const response = await workspacePrivacyCall(opened, actor, method, {
             id: review.id,
             ...(method.endsWith('resolve') ? { decision: 'deny' } : {}),
           });
+          witnesses.observeWire(method, actor, response);
           expect(response.status, `${actor} ${method}`).toBe(denied ? 403 : 200);
-          if (actor === 'owner') expect(response.body?.error).toBeUndefined();
+          if (actor === 'owner') {
+            expect(response.body?.error).toBeUndefined();
+            if (method === 'bureau.reviews.get') expect(response.text).toContain('REVIEW-SENTINEL');
+          }
           if (expectedStatus === 404) {
             expect(response.body?.error?.data?.httpStatus, `${actor} ${method}`).toBe(404);
             const unknown = await workspacePrivacyCall(opened, actor, method, {
@@ -1257,4 +1343,8 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
       await bureau.dispose();
     }
   });
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

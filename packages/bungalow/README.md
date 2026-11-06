@@ -53,6 +53,16 @@ A secret is written to a temporary file that is `0600` from its first byte, sync
 
 Remote mode keeps the home in Postgres, an S3-compatible bucket, and environment variables, so that two instances can share it. Every variable is read from the `environment` passed to `openBungalow` (the process environment by default), and an empty value counts as unset. `<NAME>` is the application name uppercased with `-` turned into `_`, as for `<NAME>_HOME`: `INTERBOROUGH` for Interborough.
 
+| Capability | Local | Remote |
+| --- | --- | --- |
+| Database and content locations | SQLite and directories | PostgreSQL and S3-compatible storage |
+| Coordination | Exclusive local home lock | Shared-storage coordination supplied by the application |
+| Configuration publication | Revision-checked local writes | Read-only unless trusted composition enables revision-checked writes |
+| Managed secret provider | Writable local files | Read-only environment values unless a writable provider is injected |
+| Home and logs | Persistent local home and log directory | No local home or log directory; use an external log sink or process output |
+
+Remote application processes may use temporary scratch files and packaged assets, but recovery must not depend on scratch surviving a replacement. Bootstrap credentials and encryption keys are deployment inputs. Bungalow supplies the provider interface and local and environment providers; it does not include a production cloud-secret vendor adapter.
+
 | Variable | Meaning |
 | --- | --- |
 | `<NAME>_DATABASE_URL` | The Postgres URL, handed out as `database`. Required in remote mode. |

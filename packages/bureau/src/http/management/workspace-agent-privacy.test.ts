@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, test } from 'bun:test';
+import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 import { DEFINITION, disposeServed, serve } from './agent-definitions-fixtures.test-support.ts';
 import { createBureauHandler } from '../create-bureau-handler.ts';
 import { agentFileDirectory } from '../../sources/agent-file-directory.ts';
@@ -16,6 +17,7 @@ import {
 } from '../workspace-privacy-fixtures.test-support.ts';
 
 afterEach(disposeServed);
+const witnesses = workspaceConformanceLedger('management/workspace-agent-privacy.test.ts');
 const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
 const cases = [
   ['bureau.agents.list', false],
@@ -80,6 +82,11 @@ for (const [operation, administrative] of cases) {
       () => served.bureau.tasks.detail(privateTask.id)?.status === 'completed',
       'private file-agent run completes',
     );
+    const ownerContext = await workspacePrivacyCall(fixture, 'owner', 'bureau.contexts.get', {
+      contextId: privateTask.contextId,
+    });
+    expect(ownerContext.text).toContain('PRIVATE-AGENT-RUN-837d');
+    witnesses.confirmPrivateSource(operation, ownerContext);
     const input =
       operation === 'bureau.agents.list' ||
       operation === 'bureau.agents.catalog' ||
@@ -115,6 +122,7 @@ for (const [operation, administrative] of cases) {
       'administrator',
     ] as WorkspacePrivacyActor[]) {
       const result = await workspacePrivacyCall(fixture, actor, operation, input);
+      witnesses.observeWire(operation, actor, result);
       if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
       else if (administrative && actor !== 'administrator')
         expect(result.body?.error?.data?.httpStatus).toBe(403);
@@ -167,6 +175,7 @@ test('bureau.agents.definitions.duplicate checks all six actors on a real plugin
         'bureau.agents.definitions.duplicate',
         { id: 'fixture:triager' },
       );
+      witnesses.observeWire('bureau.agents.definitions.duplicate', actor, result);
       if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
       else if (actor === 'administrator') {
         expect(result.body?.error).toBeUndefined();
@@ -177,4 +186,8 @@ test('bureau.agents.definitions.duplicate checks all six actors on a real plugin
     await disposeServed();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

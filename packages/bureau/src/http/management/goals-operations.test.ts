@@ -4,6 +4,7 @@
  * what a goal's view leaves out.
  */
 import { afterEach, describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
 import {
@@ -350,7 +351,50 @@ describe('a goal that another principal owns', () => {
   });
 });
 
+const witnesses = workspaceConformanceLedger('management/goals-operations.test.ts');
 describe('workspace privacy for goals', () => {
+  it('keeps a private cancellation reason in the owners goal projections', async () => {
+    const opened = await openWorkspacePrivacyBureau({
+      agents: { worker: workerAgent(hangUntilAborted) },
+      a2aAgents: ['worker'],
+      generate: hangUntilAborted,
+      validators: [createCheckValidator()],
+    });
+    cleanups.push(() => opened.dispose());
+    const input = { ...NEW_GOAL, idempotencyKey: 'private-goal-projection' };
+    const created = await workspacePrivacyCall(opened, 'owner', 'bureau.goals.create', input);
+    const goal = created.body?.result?.['goal'] as { goalRunId?: string } | undefined;
+    if (goal?.goalRunId === undefined) throw new Error('Expected a private goal');
+    const sentinel = 'PRIVATE-GOAL-CANCELLATION-4f2a';
+    const canceled = await workspacePrivacyCall(opened, 'owner', 'bureau.goals.cancel', {
+      goalRunId: goal.goalRunId,
+      reason: sentinel,
+    });
+    expect(canceled.body?.error).toBeUndefined();
+    for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+      for (const operation of [
+        'bureau.goals.get',
+        'bureau.goals.list',
+        'bureau.goals.create',
+      ] as const) {
+        const parameters =
+          operation === 'bureau.goals.get'
+            ? { goalRunId: goal.goalRunId }
+            : operation === 'bureau.goals.create'
+              ? input
+              : {};
+        const result = await workspacePrivacyCall(opened, actor, operation, parameters);
+        witnesses.observePrivateProjection(operation, actor, result);
+        if (actor === 'owner') expect(result.text).toContain(sentinel);
+        else {
+          expect(result.text).not.toContain(sentinel);
+          if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
+          else if (operation === 'bureau.goals.get')
+            expect(result.body?.error?.data?.httpStatus).toBe(404);
+        }
+      }
+    }
+  });
   it('keeps every private goal operation owner-scoped despite legacy scopes', async () => {
     const opened = await openWorkspacePrivacyBureau({
       agents: { worker: workerAgent(hangUntilAborted) },
@@ -388,6 +432,7 @@ describe('workspace privacy for goals', () => {
         ['bureau.goals.cancel', { goalRunId: aliceGoal, reason: 'workspace-test' }],
       ] as const) {
         const response = await workspacePrivacyCall(opened, actor, method, input);
+        witnesses.observeWire(method, actor, response);
         expect(response.status, `${actor} ${method}`).toBe(denied ? 403 : 200);
         if (actor === 'owner') expect(response.body?.error).toBeUndefined();
         if (expectedStatus === 404) {
@@ -402,6 +447,7 @@ describe('workspace privacy for goals', () => {
         }
       }
       const listed = await workspacePrivacyCall(opened, actor, 'bureau.goals.list', {});
+      witnesses.observeCollection('bureau.goals.list', actor, listed, aliceGoal);
       expect(listed.status, `${actor} list`).toBe(denied ? 403 : 200);
       const ids = ((listed.body?.result?.['goals'] ?? []) as Array<{ goalRunId: string }>).map(
         (goal) => goal.goalRunId,
@@ -424,6 +470,13 @@ describe('workspace privacy for goals', () => {
         ...NEW_GOAL,
         idempotencyKey: `workspace-create-${actor}`,
       });
+      const goal = result.body?.result?.['goal'] as { owner?: unknown } | undefined;
+      witnesses.observeCreated(
+        'bureau.goals.create',
+        actor,
+        result,
+        goal?.owner === WORKSPACE_PRIVACY_ACTORS[actor].owner,
+      );
       if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
       else {
         expect(result.body?.error).toBeUndefined();
@@ -481,4 +534,8 @@ describe('the controller of a goal that was created', () => {
       controller: { status: 'start-failed', reason: 'engine down' },
     });
   });
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

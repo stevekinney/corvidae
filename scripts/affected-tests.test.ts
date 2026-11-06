@@ -694,6 +694,19 @@ describe('narrowing `bun test` arguments', () => {
     ).toEqual(['./b.slow.test.ts']);
   });
 
+  test('Interborough remote conformance is discovered by its slow lane', async () => {
+    const directory = join(root, 'applications/interborough');
+    const file = 'src/host/remote-persistence-conformance.slow.test.ts';
+    expect(existsSync(join(directory, file))).toBe(true);
+    const manifest = (await Bun.file(join(directory, 'package.json')).json()) as {
+      scripts: Record<string, string>;
+    };
+    expect(manifest.scripts['test:slow']).toBe(
+      'bun ../../scripts/bun-test-selected.ts .slow.test.ts',
+    );
+    expect(narrowBunTestArguments(['.slow.test.ts'], [file], directory)).toEqual([`./${file}`]);
+  });
+
   test('a whole-workspace selection leaves the arguments as they are', () => {
     expect(narrowBunTestArguments(['src'], 'all', root)).toEqual(['src']);
   });

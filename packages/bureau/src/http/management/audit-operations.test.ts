@@ -13,6 +13,7 @@ import {
 import type { GenerateContext } from '@lostgradient/operative';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 import { z } from 'zod';
 
 import { waitForCondition } from '../../test';
@@ -599,6 +600,7 @@ describe('a Bureau that keeps no audit trail', () => {
   });
 });
 
+const witnesses = workspaceConformanceLedger('management/audit-operations.test.ts');
 it('workspace audit keeps execution records private and shares only redacted configuration metadata', async () => {
   const opened = await openWorkspacePrivacyBureau({
     generate: answering('PRIVATE-AUDIT-ANSWER-b2ed'),
@@ -607,6 +609,10 @@ it('workspace audit keeps execution records private and shares only redacted con
   const task = await opened.bureau.tasks.start('default', 'PRIVATE-AUDIT-INPUT-b2ed', {
     principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
   });
+  const ownerContext = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.get', {
+    contextId: task.contextId,
+  });
+  expect(ownerContext.text).toContain('PRIVATE-AUDIT-INPUT-b2ed');
   await waitForCondition(async () => {
     const records = await opened.bureau.internals.auditTrail?.query({
       runId: task.id,
@@ -626,6 +632,17 @@ it('workspace audit keeps execution records private and shares only redacted con
   });
   for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
     const result = await workspacePrivacyCall(opened, actor, 'bureau.audit.query', {});
+    const jsonl = await workspacePrivacyCall(opened, actor, 'bureau.audit.query', {
+      format: 'jsonl',
+    });
+    if (actor === 'owner') expect(jsonl.text).toContain(task.id);
+    else {
+      expect(jsonl.text).not.toContain(task.id);
+      if (actor === 'foreign' || actor === 'removed') expect(jsonl.status).toBe(403);
+      else if (actor === 'administrator') expect(jsonl.text).toContain('agent.updated');
+    }
+    expect(jsonl.text).not.toContain('PRIVATE-');
+    witnesses.observeAudit('bureau.audit.query', actor, result, task.id);
     if (actor === 'foreign' || actor === 'removed') {
       expect(result.status).toBe(403);
       continue;
@@ -646,4 +663,8 @@ it('workspace audit keeps execution records private and shares only redacted con
     }
     expect(result.text).not.toContain('PRIVATE-');
   }
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

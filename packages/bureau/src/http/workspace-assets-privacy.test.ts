@@ -5,6 +5,10 @@ import {
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
 import { WORKSPACE_MOUNT_CONFORMANCE } from './workspace-conformance.test-support.ts';
+import {
+  workspaceConformanceLedger,
+  workspaceMountLedger,
+} from './workspace-conformance-ledger.test-support.ts';
 import { expect, test } from 'bun:test';
 import { base64Of, pngBytes } from '../testing/asset-fixtures.test-support.ts';
 import { as, openBureau } from './management/management-fixtures.test-support.ts';
@@ -17,6 +21,8 @@ import {
 } from './workspace-privacy-fixtures.test-support.ts';
 
 const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
+const witnesses = workspaceConformanceLedger('workspace-assets-privacy.test.ts');
+const mountWitnesses = workspaceMountLedger('workspace-assets-privacy.test.ts');
 const bytes = pngBytes(4, 3, 64);
 const uploadCases = ['append', 'complete', 'abort'] as const;
 
@@ -30,7 +36,11 @@ for (const action of uploadCases) {
           opened,
           'owner',
           'bureau.assets.uploads.create',
-          { declaredByteLength: bytes.byteLength, declaredMediaType: 'image/png' },
+          {
+            declaredByteLength: bytes.byteLength,
+            declaredMediaType:
+              action === 'append' ? 'application/x-private-media-92f4' : 'image/png',
+          },
         );
         expect(created.body?.error).toBeUndefined();
         const uploadId = created.body?.result?.['uploadId'];
@@ -51,9 +61,17 @@ for (const action of uploadCases) {
           `bureau.assets.uploads.${action}`,
           parameters,
         );
+        if (action === 'abort')
+          witnesses.observeScalar(`bureau.assets.uploads.${action}`, actor, result, 'aborted');
+        else witnesses.observeWire(`bureau.assets.uploads.${action}`, actor, result);
+        if (action === 'append')
+          witnesses.observePrivateProjection('bureau.assets.uploads.append', actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
-        else if (actor === 'owner') expect(result.body?.error).toBeUndefined();
-        else {
+        else if (actor === 'owner') {
+          expect(result.body?.error).toBeUndefined();
+          if (action === 'complete')
+            expect(result.body?.result).toMatchObject({ fileName: null, rejection: null });
+        } else {
           if (action === 'abort') expect(result.body?.result?.['aborted']).toBe(false);
           else expect(result.body?.error?.data?.httpStatus).toBe(404);
           const unknown = await workspacePrivacyCall(
@@ -89,15 +107,30 @@ test('bureau.assets.uploads.create admits only current members and assigns their
     for (const actor of actors) {
       const result = await workspacePrivacyCall(opened, actor, 'bureau.assets.uploads.create', {
         declaredByteLength: bytes.byteLength,
+        declaredMediaType: 'application/x-private-media-92f4',
       });
-      if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
-      else {
+      witnesses.observePrivateProjection('bureau.assets.uploads.create', actor, result);
+      if (actor === 'foreign' || actor === 'removed') {
+        expect(result.status).toBe(403);
+        witnesses.observeCreated('bureau.assets.uploads.create', actor, result, false);
+      } else {
         expect(result.body?.error).toBeUndefined();
         const appended = await workspacePrivacyCall(opened, actor, 'bureau.assets.uploads.append', {
           uploadId: result.body?.result?.['uploadId'],
           chunk: base64Of(bytes),
         });
         expect(appended.body?.error).toBeUndefined();
+        const other = actor === 'peer' ? 'owner' : 'peer';
+        const denied = await workspacePrivacyCall(opened, other, 'bureau.assets.uploads.append', {
+          uploadId: result.body?.result?.['uploadId'],
+          chunk: base64Of(bytes),
+        });
+        witnesses.observeCreated(
+          'bureau.assets.uploads.create',
+          actor,
+          result,
+          appended.body?.error === undefined && denied.body?.error?.data?.httpStatus === 404,
+        );
       }
     }
   } finally {
@@ -109,7 +142,11 @@ test('asset metadata and HTTP bytes honor only the owner and explicit current-me
   const opened = await openWorkspacePrivacyBureau();
   try {
     const admission = await opened.bureau.assets!.admit(
-      { source: { kind: 'inline', bytes }, readers: [WORKSPACE_PRIVACY_ACTORS.grantee.owner] },
+      {
+        source: { kind: 'inline', bytes },
+        fileName: 'PRIVATE-ASSET-NAME-92f4.png',
+        readers: [WORKSPACE_PRIVACY_ACTORS.grantee.owner],
+      },
       { id: WORKSPACE_PRIVACY_ACTORS.owner.owner },
     );
     await admission.work.result();
@@ -123,16 +160,28 @@ test('asset metadata and HTTP bytes honor only the owner and explicit current-me
       const metadata = await workspacePrivacyCall(opened, actor, 'bureau.assets.get', {
         assetId: admission.assetId,
       });
+      witnesses.observeWire('bureau.assets.get', actor, metadata);
+      witnesses.observePrivateIdentifier('bureau.assets.get', actor, metadata, admission.assetId);
+      if (actor !== 'owner' && actor !== 'grantee')
+        expect(metadata.text).not.toContain('PRIVATE-ASSET-NAME-92f4.png');
       const response = await content(actor, admission.assetId);
+      await mountWitnesses.observeHttp(
+        WORKSPACE_MOUNT_CONFORMANCE.assets.key,
+        actor,
+        response,
+        bytes,
+      );
       if (actor === 'foreign' || actor === 'removed') {
         expect(metadata.status).toBe(403);
         expect(response.status).toBe(403);
       } else if (actor === 'owner' || actor === 'grantee') {
         expect(metadata.body?.error).toBeUndefined();
         expect(metadata.text).toContain(admission.assetId);
+        expect(metadata.text).toContain('PRIVATE-ASSET-NAME-92f4.png');
         expect(response.status).toBe(200);
         expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array(bytes));
       } else {
+        expect(metadata.text).not.toContain('PRIVATE-ASSET-NAME-92f4.png');
         expect(metadata.body?.error?.data?.httpStatus).toBe(404);
         const unknown = await workspacePrivacyCall(opened, actor, 'bureau.assets.get', {
           assetId: 'unknown-asset',
@@ -214,4 +263,9 @@ test('a service cannot spend a persisted cross-owner asset grant over HTTP or ru
   } finally {
     await opened.dispose();
   }
+});
+
+test('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
+  mountWitnesses.verify();
 });

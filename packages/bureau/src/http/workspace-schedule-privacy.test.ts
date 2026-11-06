@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import {
   openWorkspacePrivacyBureau,
   workspacePrivacyCall,
@@ -7,6 +8,8 @@ import {
 } from './workspace-privacy-fixtures.test-support.ts';
 
 const sentinel = 'PRIVATE-SCHEDULE-INPUT-9b34';
+const neighbor = 'PRIVATE-SCHEDULE-NEIGHBOR-7c44';
+const witnesses = workspaceConformanceLedger('workspace-schedule-privacy.test.ts');
 const definition = { agentName: 'default', spec: '1h', input: sentinel };
 const cases = [
   { operation: 'bureau.schedules.create', parameters: definition, privateExecution: false },
@@ -28,6 +31,14 @@ for (const row of cases) {
       generate: async () => ({ content: 'private schedule output', toolCalls: [] }),
     });
     try {
+      const task = await opened.bureau.tasks.start('default', neighbor, {
+        principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+      });
+      const owner = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.get', {
+        contextId: task.contextId,
+      });
+      expect(owner.text).toContain(neighbor);
+      if (!row.privateExecution) witnesses.confirmPrivateSource(row.operation, owner);
       for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
         const seed = await opened.bureau.schedules.create({
           ...definition,
@@ -41,6 +52,8 @@ for (const row of cases) {
             ? row.parameters
             : { ...row.parameters, scheduleId: seed.id };
         const result = await workspacePrivacyCall(opened, actor, row.operation, input);
+        expect(result.text).not.toContain(neighbor);
+        witnesses.observeWire(row.operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
         else if (actor === (row.privateExecution ? 'owner' : 'administrator')) {
           expect(result.body?.error).toBeUndefined();
@@ -53,6 +66,16 @@ for (const row of cases) {
               missedFireCount: null,
               skippedCount: null,
             });
+          if (row.operation === 'bureau.schedules.list') {
+            const schedules = result.body?.result?.['schedules'] as Array<Record<string, unknown>>;
+            const listed = schedules.find((entry) => entry['id'] === seed.id);
+            expect(listed).toMatchObject({
+              inputPreview: null,
+              lastFireAt: null,
+              missedFireCount: null,
+              skippedCount: null,
+            });
+          }
         } else if (row.privateExecution) {
           expect(result.body?.error?.data?.httpStatus).toBe(404);
           const missing = await workspacePrivacyCall(opened, actor, row.operation, {
@@ -69,3 +92,7 @@ for (const row of cases) {
     }
   });
 }
+
+test('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
+});

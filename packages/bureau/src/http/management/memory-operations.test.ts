@@ -31,6 +31,7 @@ import {
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
@@ -1618,6 +1619,7 @@ describe('the Memory tab’s contract (COR-2009)', () => {
   });
 });
 
+const witnesses = workspaceConformanceLedger('management/memory-operations.test.ts');
 const WORKSPACE_MEMORY_CASES = [
   ['bureau.memory.list', { agentId: 'assistant' }, 'collection'],
   [
@@ -1635,7 +1637,7 @@ const WORKSPACE_MEMORY_CASES = [
   ['bureau.memory.forget', { agentId: 'assistant' }, 'private-id'],
   [
     'bureau.memory.correct',
-    { agentId: 'assistant', content: 'MEMORY-WORKSPACE-CORRECTED' },
+    { agentId: 'assistant', content: 'MEMORY-WORKSPACE-SENTINEL-corrected' },
     'private-id',
   ],
   [
@@ -1672,9 +1674,47 @@ for (const [operation, parameters, kind] of WORKSPACE_MEMORY_CASES) {
         'owner',
       ] as WorkspacePrivacyActor[]) {
         const response = await workspacePrivacyCall(opened, actor, operation, input);
+        if (operation === 'bureau.memory.forget')
+          witnesses.observePrivateIdentifier(operation, actor, response, id);
+        if (kind === 'private-id') witnesses.observeWire(operation, actor, response);
+        else if (kind === 'collection') witnesses.observeCollection(operation, actor, response, id);
+        else {
+          const memory = response.body?.result?.['memory'] as { id?: unknown } | undefined;
+          if (actor === 'foreign' || actor === 'removed')
+            witnesses.observeCreated(operation, actor, response, false);
+          else {
+            const own = await workspacePrivacyCall(opened, actor, 'bureau.memory.get', {
+              agentId: 'assistant',
+              id: memory?.id,
+            });
+            const other = actor === 'peer' ? 'owner' : 'peer';
+            const denied = await workspacePrivacyCall(opened, other, 'bureau.memory.get', {
+              agentId: 'assistant',
+              id: memory?.id,
+            });
+            witnesses.observeCreated(
+              operation,
+              actor,
+              response,
+              typeof memory?.id === 'string' &&
+                own.body?.error === undefined &&
+                denied.body?.error?.data?.httpStatus === 404,
+            );
+          }
+        }
         if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
         else if (actor === 'owner' || kind === 'create' || kind === 'collection') {
           expect(response.body?.error).toBeUndefined();
+          if (
+            actor === 'owner' &&
+            [
+              'bureau.memory.list',
+              'bureau.memory.search',
+              'bureau.memory.get',
+              'bureau.memory.export',
+            ].includes(operation)
+          )
+            expect(response.text).toContain('MEMORY-WORKSPACE-SENTINEL');
           if (kind === 'collection' && actor !== 'owner')
             expect(response.text).not.toContain('MEMORY-WORKSPACE-SENTINEL');
         } else {
@@ -1787,4 +1827,8 @@ describe('memoryExportFileName', () => {
     expect(memoryExportFileName('tool-runner')).toBe('tool-runner-memories.json');
     expect(memoryExportFileName('demo:release-helper')).toBe('demo-release-helper-memories.json');
   });
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

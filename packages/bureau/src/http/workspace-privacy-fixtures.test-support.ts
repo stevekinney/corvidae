@@ -1,4 +1,7 @@
 import { principalFromApiKey, type AuthConfig } from '@lostgradient/weft';
+import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { z } from 'zod';
+import { waitForCondition } from '../test';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import type { WorkspaceMembershipOptions } from './workspace-principal.ts';
 import {
@@ -74,6 +77,52 @@ export function openWorkspacePrivacyBureau(
   });
 }
 
+/** Park a real owned tool approval for the feedback-projection tests. */
+export async function openWorkspaceApproval() {
+  const toolbox = createToolbox(
+    [
+      createTool({
+        name: 'fixture-approval',
+        version: '1.0.0',
+        description: 'Approval fixture',
+        input: z.object({ value: z.string() }),
+        execute: async ({ value }) => ({ value }),
+      }),
+    ],
+    {
+      approvalSecret: 'workspace-test-approval-secret',
+      policy: {
+        beforeExecute: () => ({
+          allow: false,
+          status: 'needs_approval',
+          reason: 'Approval required',
+          action: { message: 'Approve' },
+        }),
+      },
+    },
+  ) as unknown as Toolbox;
+  const opened = await openWorkspacePrivacyBureau({
+    toolbox,
+    stopAtApproval: true,
+    generate: async () => ({
+      content: '',
+      toolCalls: [
+        { id: 'private-approval-call', name: 'fixture-approval', arguments: { value: 'private' } },
+      ],
+    }),
+  });
+  const task = await opened.bureau.tasks.start('default', 'approval', {
+    principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+  });
+  await waitForCondition(
+    () => opened.bureau.reviews.list().some((entry) => entry.runId === task.id),
+    'approval is parked',
+  );
+  const review = opened.bureau.reviews.list().find((entry) => entry.runId === task.id);
+  if (review === undefined) throw new Error('Expected a parked approval');
+  return { opened, task, review };
+}
+
 /** Authentication refusal is HTTP; an admitted JSON-RPC request carries its own fault encoding. */
 export async function workspacePrivacyCall(
   opened: Pick<OpenedBureau, 'handler'>,
@@ -95,7 +144,14 @@ export async function workspacePrivacyCall(
         error?: { code: number; message?: string; data?: { httpStatus?: number } };
       })
     : undefined;
-  return { status: response.status, body, text };
+  return {
+    status: response.status,
+    body,
+    text,
+    actor,
+    operation: method,
+    transport: 'jsonRpcHttp' as const,
+  };
 }
 
 /** Input and outcome inventory consumed by the authenticated resource-read tests. */

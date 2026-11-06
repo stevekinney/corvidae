@@ -13,6 +13,7 @@ import {
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 
 import { projectBureauEvent, PUBLISHED_BUREAU_EVENT_KINDS } from '../../bureau-event-feed.ts';
 import type { NotificationCreatedEvent } from '../../events.ts';
@@ -391,6 +392,7 @@ describe('bureau.notifications.markread and dismiss', () => {
   });
 });
 
+const witnesses = workspaceConformanceLedger('management/notifications-operations.test.ts');
 describe('workspace privacy for notifications', () => {
   for (const operation of [
     'bureau.notifications.list',
@@ -413,12 +415,16 @@ describe('workspace privacy for notifications', () => {
           operation,
           operation.endsWith('list') ? {} : { ids: [id] },
         );
+        if (operation.endsWith('list')) witnesses.observeCollection(operation, actor, result, id);
+        else witnesses.observeScalar(operation, actor, result, 'updated');
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
         else {
           expect(result.body?.error).toBeUndefined();
           if (operation.endsWith('list')) {
-            if (actor === 'owner') expect(result.text).toContain(id);
-            else {
+            if (actor === 'owner') {
+              expect(result.text).toContain(id);
+              expect(result.text).toContain('PRIVATE-NOTIFICATION-SENTINEL');
+            } else {
               expect(result.body?.result?.['notifications']).toEqual([]);
               expect(result.text).not.toContain('PRIVATE-NOTIFICATION-SENTINEL');
             }
@@ -436,4 +442,8 @@ describe('workspace privacy for notifications', () => {
       }
     });
   }
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

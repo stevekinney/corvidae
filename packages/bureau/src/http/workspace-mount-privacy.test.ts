@@ -1,4 +1,5 @@
 import { WORKSPACE_MOUNT_CONFORMANCE } from './workspace-conformance.test-support.ts';
+import { workspaceMountLedger } from './workspace-conformance-ledger.test-support.ts';
 import { expect, test } from 'bun:test';
 import { waitForCondition } from '../test';
 import { as } from './management/management-fixtures.test-support.ts';
@@ -12,6 +13,7 @@ import {
 
 const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
 const sentinel = WORKSPACE_MOUNT_CONFORMANCE.agUi.sentinel;
+const witnesses = workspaceMountLedger('workspace-mount-privacy.test.ts');
 
 for (const kind of ['run', 'thread'] as const) {
   test(`AG-UI ${kind} attachment protects replayed answer bytes across six actors`, async () => {
@@ -46,16 +48,30 @@ for (const kind of ['run', 'thread'] as const) {
         'owner',
       ] as WorkspacePrivacyActor[]) {
         const response = await opened.handler(request(id, actor));
-        if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
-        else if (actor === 'owner') {
+        if (actor === 'foreign' || actor === 'removed') {
+          await witnesses.observeAgUi(WORKSPACE_MOUNT_CONFORMANCE.agUi.key, actor, response, []);
+          expect(response.status).toBe(403);
+        } else if (actor === 'owner') {
           expect(response.status).toBe(200);
           const reading = readAgUiStream(response);
           release();
           const frames = await reading;
+          await witnesses.observeAgUi(
+            WORKSPACE_MOUNT_CONFORMANCE.agUi.key,
+            actor,
+            response,
+            frames,
+          );
           expect(JSON.stringify(frames)).toContain(sentinel);
         } else {
           expect(response.status).toBe(200);
           const deniedFrames = await readAgUiStream(response);
+          await witnesses.observeAgUi(
+            WORKSPACE_MOUNT_CONFORMANCE.agUi.key,
+            actor,
+            response,
+            deniedFrames,
+          );
           const unknown = await opened.handler(request('unknown-resource', actor));
           const missingFrames = await readAgUiStream(unknown);
           const errors = (frames: typeof deniedFrames, identifier: string) =>
@@ -115,6 +131,7 @@ test('A2A task reads and lists protect private task content across six actors', 
     for (const actor of actors) {
       const result = await call(actor, 'GetTask', { id: taskId });
       const listed = await call(actor, 'ListTasks', {});
+      witnesses.observeA2a(WORKSPACE_MOUNT_CONFORMANCE.a2a.key, actor, result);
       if (actor === 'foreign' || actor === 'removed') {
         expect(result.status).toBe(403);
         expect(listed.status).toBe(403);
@@ -136,4 +153,8 @@ test('A2A task reads and lists protect private task content across six actors', 
   } finally {
     await opened.dispose();
   }
+});
+
+test('the mounted protocols have six executed actor witnesses', () => {
+  witnesses.verify();
 });

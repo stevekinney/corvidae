@@ -1,4 +1,5 @@
 import { WORKSPACE_MOUNT_CONFORMANCE } from './workspace-conformance.test-support.ts';
+import { workspaceMountLedger } from './workspace-conformance-ledger.test-support.ts';
 import {
   openWorkspacePrivacyBureau,
   WORKSPACE_PRIVACY_ACTORS,
@@ -227,16 +228,24 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
   });
 });
 
+const witnesses = workspaceMountLedger('mcp-mount.test.ts');
 it('workspace MCP reads, lists, and event pages preserve the six-actor private boundary', async () => {
   const opened = await openWorkspacePrivacyBureau({
     durableHistory: true,
     handlerOptions: { mcp: {} },
+    generate: async () => {
+      throw new Error(WORKSPACE_MOUNT_CONFORMANCE.mcp.sentinel);
+    },
   });
   cleanups.push(() => opened.dispose());
   const sentinel = WORKSPACE_MOUNT_CONFORMANCE.mcp.sentinel;
   const task = await opened.bureau.tasks.start('default', sentinel, {
     principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
   });
+  await waitForCondition(async () => {
+    const recorded = await opened.bureau.tasks.get(task.id);
+    return recorded?.status === 'failed';
+  }, 'MCP task fails');
   for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
     if (actor === 'foreign' || actor === 'removed') {
       const response = await opened.handler(
@@ -259,6 +268,7 @@ it('workspace MCP reads, lists, and event pages preserve the six-actor private b
         }),
       );
       expect(response.status).toBe(403);
+      await witnesses.observeMcp(WORKSPACE_MOUNT_CONFORMANCE.mcp.key, actor, { response });
       continue;
     }
     const client = await connect(opened.handler, WORKSPACE_PRIVACY_ACTORS[actor].key, {
@@ -266,9 +276,13 @@ it('workspace MCP reads, lists, and event pages preserve the six-actor private b
     });
     for (const name of ['bureau.tasks.get', 'bureau.tasks.events']) {
       const result = await client.callTool({ name, arguments: { taskId: task.id } });
+      if (name === 'bureau.tasks.get')
+        await witnesses.observeMcp(WORKSPACE_MOUNT_CONFORMANCE.mcp.key, actor, { result });
       if (actor === 'owner') {
         expect(result.isError).toBeFalsy();
         expect(JSON.stringify(result.structuredContent)).toContain(task.id);
+        if (name === 'bureau.tasks.get')
+          expect(JSON.stringify(result.structuredContent)).toContain(sentinel);
       } else {
         expect(result.isError).toBe(true);
         expect(result.structuredContent).toMatchObject({ code: 'NotFound' });
@@ -283,4 +297,8 @@ it('workspace MCP reads, lists, and event pages preserve the six-actor private b
     expect(listed.isError).toBeFalsy();
     if (actor !== 'owner') expect(listed.structuredContent).toMatchObject({ tasks: [] });
   }
+});
+
+it('the MCP mount has six executed actor witnesses', () => {
+  witnesses.verify();
 });
