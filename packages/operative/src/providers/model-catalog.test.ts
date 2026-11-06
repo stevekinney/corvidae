@@ -268,6 +268,8 @@ describe('createModelCatalog: Haiku 5.5 carries its long-context tier', () => {
       inputTokensAbove: 100_000,
       inputPerMillionTokens: 0.5,
       outputPerMillionTokens: 2.5,
+      cacheWritePerMillionTokens: 0.625,
+      cacheReadPerMillionTokens: 0.05,
     });
     expect(
       rows.find((row) => row.model === 'claude-haiku-4-5')?.pricing?.longContext,
@@ -296,12 +298,28 @@ describe('createModelCatalog: pricing is derived from defaultPricingTable, never
         inputPerMillionTokens: priced.promptCostPerMillionTokens,
         outputPerMillionTokens: priced.completionCostPerMillionTokens,
         currency: 'USD',
+        ...(priced.cacheReadCostPerMillionTokens === undefined
+          ? {}
+          : { cacheReadPerMillionTokens: priced.cacheReadCostPerMillionTokens }),
+        ...(priced.cacheWriteCostPerMillionTokens === undefined
+          ? {}
+          : { cacheWritePerMillionTokens: priced.cacheWriteCostPerMillionTokens }),
         ...(priced.longContext
           ? {
               longContext: {
                 inputTokensAbove: priced.longContext.inputTokensAbove,
                 inputPerMillionTokens: priced.longContext.promptCostPerMillionTokens,
                 outputPerMillionTokens: priced.longContext.completionCostPerMillionTokens,
+                ...(priced.longContext.cacheReadCostPerMillionTokens === undefined
+                  ? {}
+                  : {
+                      cacheReadPerMillionTokens: priced.longContext.cacheReadCostPerMillionTokens,
+                    }),
+                ...(priced.longContext.cacheWriteCostPerMillionTokens === undefined
+                  ? {}
+                  : {
+                      cacheWritePerMillionTokens: priced.longContext.cacheWriteCostPerMillionTokens,
+                    }),
               },
             }
           : {}),

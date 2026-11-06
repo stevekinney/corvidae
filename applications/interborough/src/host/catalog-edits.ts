@@ -34,6 +34,10 @@ export type CatalogPricing = {
   readonly outputPerMillionTokens: number;
   /** The currency both prices are in, such as `USD`. */
   readonly currency: string;
+  /** The price of a million tokens written to the prompt cache. */
+  readonly cacheWritePerMillionTokens?: number;
+  /** The price of a million tokens served from the prompt cache. */
+  readonly cacheReadPerMillionTokens?: number;
   /**
    * The rates for a request whose input is long. Left out, the row keeps the rates it has, so a
    * price edit never drops them; an object replaces them; `null` removes them.
@@ -49,6 +53,10 @@ export type CatalogLongContextPricing = {
   readonly inputPerMillionTokens: number;
   /** The price of a million output tokens at that size. */
   readonly outputPerMillionTokens: number;
+  /** The price of a million tokens written to the prompt cache at that size. */
+  readonly cacheWritePerMillionTokens?: number;
+  /** The price of a million tokens served from the prompt cache at that size. */
+  readonly cacheReadPerMillionTokens?: number;
 };
 
 /** One edit to the catalog. `provider` and `model` identify the row; every other field is optional. */
@@ -82,12 +90,16 @@ const PRICING_FIELDS = [
   'inputPerMillionTokens',
   'outputPerMillionTokens',
   'currency',
+  'cacheWritePerMillionTokens',
+  'cacheReadPerMillionTokens',
   'longContext',
 ] as const;
 const LONG_CONTEXT_FIELDS = [
   'inputTokensAbove',
   'inputPerMillionTokens',
   'outputPerMillionTokens',
+  'cacheWritePerMillionTokens',
+  'cacheReadPerMillionTokens',
 ] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -139,6 +151,24 @@ function parseLongContext(value: unknown, path: string, field: string): CatalogL
       path,
       `${field}.outputPerMillionTokens`,
     ),
+    ...(value['cacheWritePerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheWritePerMillionTokens: nonNegativeNumber(
+            value['cacheWritePerMillionTokens'],
+            path,
+            `${field}.cacheWritePerMillionTokens`,
+          ),
+        }),
+    ...(value['cacheReadPerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheReadPerMillionTokens: nonNegativeNumber(
+            value['cacheReadPerMillionTokens'],
+            path,
+            `${field}.cacheReadPerMillionTokens`,
+          ),
+        }),
   };
 }
 
@@ -161,6 +191,24 @@ function parsePricing(value: unknown, path: string, field: string): CatalogPrici
       `${field}.outputPerMillionTokens`,
     ),
     currency: nonEmptyText(value['currency'], path, `${field}.currency`),
+    ...(value['cacheWritePerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheWritePerMillionTokens: nonNegativeNumber(
+            value['cacheWritePerMillionTokens'],
+            path,
+            `${field}.cacheWritePerMillionTokens`,
+          ),
+        }),
+    ...(value['cacheReadPerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheReadPerMillionTokens: nonNegativeNumber(
+            value['cacheReadPerMillionTokens'],
+            path,
+            `${field}.cacheReadPerMillionTokens`,
+          ),
+        }),
     ...(value['longContext'] === undefined
       ? {}
       : {
