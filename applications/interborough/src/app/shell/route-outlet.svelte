@@ -10,7 +10,9 @@
   import type { Component } from 'svelte';
 
   import { ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { useQueryClient } from '@tanstack/svelte-query';
 
+  import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
   import { clearChunkReloadGuard, reloadOnceForMissingChunk } from './chunk-reload.ts';
@@ -24,6 +26,7 @@
   let notFound = $state(false);
   /** Set when the matched route's code could not be fetched. */
   let loadFailed = $state(false);
+  const queryClient = useQueryClient();
 
   // The key the mounted component was loaded for. A navigation that leaves it as it was (a change
   // to the query string, or a page that asked to be kept, `router.navigate`'s `keep`) is not a
@@ -49,6 +52,9 @@
     loadFailed = false;
     loading = true;
     let cancelled = false;
+    // Start the agent list while the route chunk is loading. The page and its view probe use the
+    // same key, so TanStack shares this request without tying it to route teardown.
+    if (definition.view === 'agents') void queryClient.prefetchQuery(agentsListQuery());
     if (definition.redirect !== undefined) {
       // The route renders nothing: it names where to go, and a failure to say lands on the
       // chat list, which shows what is wrong in its own words.

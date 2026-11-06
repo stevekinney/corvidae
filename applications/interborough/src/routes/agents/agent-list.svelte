@@ -50,7 +50,8 @@
     agentPath,
     pluginOfAgent,
   } from '../../lib/agent-paths.ts';
-  import { listAgents, listAllContexts } from '../../lib/bureau-client.ts';
+  import { listAllContexts } from '../../lib/bureau-client.ts';
+  import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -62,10 +63,7 @@
     newChatPath,
   } from './agent-presentation.ts';
 
-  const agents = createQuery(
-    () => ({ queryKey: queryKeys.agents.list(), queryFn: ({ signal }) => listAgents({ signal }) }),
-    undefined,
-  );
+  const agents = createQuery(agentsListQuery);
 
   const chats = createQuery(
     () => ({

@@ -2,6 +2,7 @@ import type { HttpClient } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
+import { agentsListQuery } from '../lib/agent-queries.ts';
 import { AUDIT_EVENT_TYPES } from '../lib/audit-event-types.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
@@ -213,8 +214,10 @@ export function probeFor(
         return { empty: page.contexts.length === 0 };
       };
     case 'agents':
-      return async () => {
-        const agents = await listAgents();
+      return async (_client, queryClient) => {
+        // A completed route prefetch may be stale after another host changes membership. Keep
+        // concurrent probe/page reads deduplicated, but make this existence observation current.
+        const agents = await queryClient.fetchQuery({ ...agentsListQuery(), staleTime: 0 });
         const agent = parameters['agent'];
         if (agent === undefined) return { empty: agents.length === 0 };
         if (!agents.some((entry) => entry.name === agent)) throw notFound('agent');
