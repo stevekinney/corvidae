@@ -533,6 +533,35 @@ describe('CLI authenticated workspace authority', () => {
     expect(json.exitCode).toBe(3);
     expect(json.stderr).toBe('reflected x-api-key=[redacted]');
     expect(json.stderr).not.toContain('alice-secret');
+
+    await executeCli(
+      [
+        'connection',
+        'add',
+        'local',
+        '--url',
+        'http://127.0.0.1:43123',
+        '--credential-reference',
+        'TOKEN',
+      ],
+      fixture,
+    );
+    const localRaw = await executeCli(['status', '--connection', 'local'], {
+      ...fixture,
+      environment: { TOKEN: 'alice-secret' },
+      fetch: async () => new Response('reflected alice-secret', { status: 401 }),
+    });
+    expect(localRaw.exitCode).toBe(3);
+    expect(localRaw.stderr).toBe('reflected [redacted]');
+    expect(localRaw.stderr).not.toContain('alice-secret');
+    const localJson = await executeCli(['status', '--connection', 'local'], {
+      ...fixture,
+      environment: { TOKEN: 'alice-secret' },
+      fetch: async () => Response.json({ message: 'reflected alice-secret' }, { status: 401 }),
+    });
+    expect(localJson.exitCode).toBe(3);
+    expect(localJson.stderr).toBe('reflected [redacted]');
+    expect(localJson.stderr).not.toContain('alice-secret');
   });
 
   // spawn-free: executeCli uses the injected in-process client and does not spawn a child.

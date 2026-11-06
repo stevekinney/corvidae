@@ -25,9 +25,14 @@ function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): 
 }
 
 function redactCredentials(target: CliTarget, message: string): string {
-  return Object.values(target.headers).reduce(
-    (redacted, credential) =>
-      credential === '' ? redacted : redacted.split(credential).join('[redacted]'),
+  const candidates = Object.entries(target.headers).flatMap(([name, value]) => {
+    if (value === '') return [];
+    const authorization =
+      name.toLowerCase() === 'authorization' ? value.match(/^\S+\s+(.+)$/)?.[1] : undefined;
+    return authorization === undefined ? [value] : [value, authorization];
+  });
+  return candidates.reduce(
+    (redacted, credential) => redacted.split(credential).join('[redacted]'),
     message,
   );
 }
