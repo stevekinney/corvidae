@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { subscribeRequest } from './management/management-fixtures.test-support.ts';
 import {
   openWorkspacePrivacyBureau,
@@ -9,6 +10,7 @@ import {
 
 // These are valid wire inputs. Every workspace user, including an administrator, must be
 // refused before deployment state or a diagnostic count can be returned or changed.
+const witnesses = workspaceConformanceLedger('workspace-deployment-privacy.test.ts');
 const cases = [
   { operation: 'bureau.diagnostics.get', input: {} },
   { operation: 'bureau.workflows.internal.get', input: { id: 'agent-run' } },
@@ -46,6 +48,7 @@ for (const row of cases) {
     try {
       for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
         const result = await workspacePrivacyCall(opened, actor, row.operation, row.input);
+        witnesses.observeWire(row.operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
         else expect(result.body?.error?.data?.httpStatus).toBe(403);
         expect(result.text).not.toContain('PRIVATE-DEPLOYMENT-QUESTION');
@@ -67,9 +70,14 @@ test('bureau.events refuses the deployment-wide event feed to every workspace us
           WORKSPACE_PRIVACY_ACTORS[actor].key,
         ),
       );
+      await witnesses.observeStream('bureau.events', actor, response);
       expect(response.status).toBe(403);
     }
   } finally {
     await opened.dispose();
   }
+});
+
+test('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

@@ -18,3 +18,8 @@ export {
   type HookRecord,
   type HookStore,
 } from './seed-stores.ts';
+export {
+  WORKSPACE_CONFORMANCE_GROUPS,
+  WORKSPACE_EXPECTED_OUTCOMES,
+  WORKSPACE_MOUNT_CONFORMANCE,
+} from '../http/workspace-conformance.test-support.ts';

@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { waitForCondition } from '../test';
 import {
   openWorkspacePrivacyBureau,
@@ -8,10 +9,13 @@ import {
 } from './workspace-privacy-fixtures.test-support.ts';
 
 const sentinel = 'PRIVATE-CONTEXT-HISTORY-b0ca';
+const witnesses = workspaceConformanceLedger('workspace-context-privacy.test.ts');
 const cases = [
   { operation: 'bureau.contexts.window', input: {} },
-  { operation: 'bureau.contexts.rename', input: { title: 'renamed by caller' } },
+  { operation: 'bureau.contexts.rename', input: { title: sentinel } },
   { operation: 'bureau.contexts.delete', input: {} },
+  { operation: 'bureau.contexts.retract', input: { inputId: 'private-input' } },
+  { operation: 'bureau.contexts.forgetgrants', input: { tools: ['private-tool'] } },
   {
     operation: 'bureau.contexts.input',
     input: { input: { id: 'private-input', payload: 'new input' } },
@@ -29,7 +33,7 @@ const cases = [
 for (const row of cases) {
   test(`${row.operation} preserves context privacy for all six actors`, async () => {
     const opened = await openWorkspacePrivacyBureau(
-      row.operation === 'bureau.contexts.input'
+      row.operation === 'bureau.contexts.input' || row.operation === 'bureau.contexts.retract'
         ? {}
         : { generate: async () => ({ content: sentinel, toolCalls: [] }) },
     );
@@ -39,21 +43,49 @@ for (const row of cases) {
         const task = await opened.bureau.tasks.start('default', sentinel, {
           principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
         });
-        if (row.operation !== 'bureau.contexts.input')
+        if (
+          row.operation !== 'bureau.contexts.input' &&
+          row.operation !== 'bureau.contexts.retract'
+        )
           await waitForCondition(
             () => opened.bureau.tasks.detail(task.id)?.status === 'completed',
             'context task finishes',
           );
+        if (row.operation === 'bureau.contexts.retract') {
+          const queued = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.input', {
+            contextId: task.contextId,
+            input: { id: `private-input-${actor}`, payload: sentinel },
+          });
+          expect(queued.body?.error).toBeUndefined();
+        }
+        if (row.operation === 'bureau.contexts.forgetgrants')
+          await opened.bureau.internals.sessionStore!.update(task.contextId, (session) =>
+            session === undefined
+              ? undefined
+              : { ...session, metadata: { ...session.metadata, approvalGrants: ['private-tool'] } },
+          );
         const result = await workspacePrivacyCall(opened, actor, row.operation, {
           ...row.input,
+          ...(row.operation === 'bureau.contexts.retract'
+            ? { inputId: `private-input-${actor}` }
+            : {}),
           contextId: task.contextId,
         });
+        witnesses.observeWire(row.operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
-        else if (actor === 'owner') expect(result.body?.error).toBeUndefined();
-        else {
+        else if (actor === 'owner') {
+          expect(result.body?.error).toBeUndefined();
+          if (row.operation === 'bureau.contexts.retract')
+            expect(result.body?.result?.['outcome']).toBe('retracted');
+          if (row.operation === 'bureau.contexts.forgetgrants')
+            expect(result.body?.result?.['forgotten']).toEqual(['private-tool']);
+        } else {
           expect(result.body?.error?.data?.httpStatus).toBe(404);
           const missing = await workspacePrivacyCall(opened, actor, row.operation, {
             ...row.input,
+            ...(row.operation === 'bureau.contexts.retract'
+              ? { inputId: `private-input-${actor}` }
+              : {}),
             contextId: 'unknown-context',
           });
           expect(JSON.stringify(result.body?.error).replaceAll(task.contextId, '<id>')).toBe(
@@ -64,6 +96,10 @@ for (const row of cases) {
             contextId: task.contextId,
           });
           expect(retained.body?.error).toBeUndefined();
+          if (row.operation === 'bureau.contexts.forgetgrants') {
+            const session = await opened.bureau.contexts.get(task.contextId);
+            expect(session?.metadata['approvalGrants']).toEqual(['private-tool']);
+          }
         }
       }
     } finally {
@@ -71,3 +107,7 @@ for (const row of cases) {
     }
   });
 }
+
+test('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
+});

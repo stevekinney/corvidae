@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
+import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { waitForCondition } from '../test';
 import { readFrames, subscribeRequest } from './management/management-fixtures.test-support.ts';
 import {
   openWorkspacePrivacyBureau,
+  openWorkspaceApproval,
   workspacePrivacyCall,
   WORKSPACE_PRIVACY_ACTORS,
   type WorkspacePrivacyActor,
@@ -10,6 +12,65 @@ import {
 
 const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
 const sentinel = 'PRIVATE-TASK-ANSWER-e5b2';
+const witnesses = workspaceConformanceLedger('workspace-task-privacy.test.ts');
+
+test('task approval feedback is returned only to the owner', async () => {
+  const { opened, task } = await openWorkspaceApproval();
+  try {
+    for (const actor of [
+      ...actors.filter((candidate) => candidate !== 'owner'),
+      'owner',
+    ] as WorkspacePrivacyActor[]) {
+      const response = await workspacePrivacyCall(opened, actor, 'bureau.tasks.respond', {
+        taskId: task.id,
+        messageId: `feedback-${actor}`,
+        decision: 'reject',
+        reason: 'PRIVATE-APPROVAL-FEEDBACK-31ac',
+      });
+      witnesses.observePrivateProjection('bureau.tasks.respond', actor, response);
+      if (actor === 'owner') expect(response.text).toContain('PRIVATE-APPROVAL-FEEDBACK-31ac');
+      else if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
+      else expect(response.body?.error?.data?.httpStatus).toBe(404);
+    }
+  } finally {
+    await opened.dispose();
+  }
+});
+
+test('task metadata containing a private failure remains owner-scoped', async () => {
+  const privateError = 'PRIVATE-TASK-ERROR-a02f';
+  const opened = await openWorkspacePrivacyBureau({
+    generate: async () => {
+      throw new Error(privateError);
+    },
+  });
+  try {
+    const task = await opened.bureau.tasks.start('default', 'private input', {
+      principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+    });
+    await waitForCondition(async () => {
+      const recorded = await opened.bureau.tasks.get(task.id);
+      return recorded?.status === 'failed';
+    }, 'task fails');
+    for (const actor of actors) {
+      for (const operation of ['bureau.tasks.cancel', 'bureau.tasks.inspect'] as const) {
+        const input = { taskId: task.id };
+        const response = await workspacePrivacyCall(opened, actor, operation, input);
+        witnesses.observePrivateProjection(operation, actor, response);
+        if (actor === 'owner') {
+          expect(response.body?.error).toBeUndefined();
+          expect(response.text).toContain(privateError);
+        } else {
+          expect(response.text).not.toContain(privateError);
+          if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
+          else expect(response.body?.error?.data?.httpStatus).toBe(404);
+        }
+      }
+    }
+  } finally {
+    await opened.dispose();
+  }
+});
 
 for (const operation of ['bureau.tasks.inspect', 'bureau.tasks.cancel'] as const) {
   test(`${operation} checks actual task ownership for all six actors`, async () => {
@@ -20,9 +81,13 @@ for (const operation of ['bureau.tasks.inspect', 'bureau.tasks.cancel'] as const
           principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
         });
         const result = await workspacePrivacyCall(opened, actor, operation, { taskId: task.id });
+        witnesses.observeWire(operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
-        else if (actor === 'owner') expect(result.body?.error).toBeUndefined();
-        else {
+        else if (actor === 'owner') {
+          expect(result.body?.error).toBeUndefined();
+          // Inspection deliberately projects no prompt, transcript, tool result, or checkpoint.
+          if (operation === 'bureau.tasks.inspect') expect(result.text).not.toContain(sentinel);
+        } else {
           expect(result.body?.error?.data?.httpStatus).toBe(404);
           const missing = await workspacePrivacyCall(opened, actor, operation, {
             taskId: 'unknown-task',
@@ -57,11 +122,25 @@ test('bureau.tasks.events SSE yields private answer bytes only to its owner acro
       const response = await opened.handler(
         subscribeRequest('bureau.tasks.events', { taskId: task.id }, key),
       );
+      await witnesses.observeStream('bureau.tasks.events', actor, response);
       if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
       else if (actor === 'owner') {
         expect(response.status).toBe(200);
         const frames = await readFrames(response);
+        witnesses.observeEventFrames('bureau.tasks.events', actor, frames);
         expect(JSON.stringify(frames)).toContain(sentinel);
+        expect(
+          frames.some((frame) => {
+            const data = frame.data;
+            if (typeof data !== 'object' || data === null) return false;
+            const artifact = Reflect.get(data, 'artifact');
+            return (
+              typeof artifact === 'object' &&
+              artifact !== null &&
+              Reflect.get(artifact, 'text') === sentinel
+            );
+          }),
+        ).toBe(true);
       } else {
         expect(response.status).toBe(404);
         const missing = await opened.handler(
@@ -108,6 +187,7 @@ test('bureau.tasks.respond admits the owner answer and hides the wait from all o
     ] as WorkspacePrivacyActor[]) {
       const input = { taskId: task.id, messageId: `answer-${actor}`, answer: 'owner answer' };
       const result = await workspacePrivacyCall(opened, actor, 'bureau.tasks.respond', input);
+      witnesses.observeWire('bureau.tasks.respond', actor, result);
       if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
       else if (actor === 'owner') expect(result.body?.error).toBeUndefined();
       else {
@@ -128,7 +208,13 @@ test('bureau.tasks.respond admits the owner answer and hides the wait from all o
 });
 
 test('operative.runs.events exposes an owned feed only to its owner across six actors', async () => {
-  const opened = await openWorkspacePrivacyBureau();
+  const release = Promise.withResolvers<void>();
+  const opened = await openWorkspacePrivacyBureau({
+    generate: async () => {
+      await release.promise;
+      throw new Error(sentinel);
+    },
+  });
   try {
     const task = await opened.bureau.tasks.start('default', sentinel, {
       principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
@@ -137,18 +223,24 @@ test('operative.runs.events exposes an owned feed only to its owner across six a
       () => opened.bureau.internals.runEventFeeds.get(task.id) !== undefined,
       'run feed exists',
     );
-    for (const actor of actors) {
+    for (const actor of [
+      ...actors.filter((candidate) => candidate !== 'owner'),
+      'owner',
+    ] as WorkspacePrivacyActor[]) {
       const key = WORKSPACE_PRIVACY_ACTORS[actor].key;
       const response = await opened.handler(
         subscribeRequest('operative.runs.events', { runId: task.id }, key),
       );
+      await witnesses.observeStream('operative.runs.events', actor, response);
       if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
       else if (actor === 'owner') {
         expect(response.status).toBe(200);
+        release.resolve();
         const frames = await readFrames(response, {
-          stop: (seen) => seen.some((frame) => frame.event === 'run.started'),
+          stop: (seen) => JSON.stringify(seen).includes(sentinel),
         });
-        expect(JSON.stringify(frames)).toContain(task.id);
+        witnesses.observeEventFrames('operative.runs.events', actor, frames);
+        expect(JSON.stringify(frames)).toContain(sentinel);
       } else {
         expect(response.status).toBe(404);
         const unknown = await opened.handler(
@@ -163,6 +255,11 @@ test('operative.runs.events exposes an owned feed only to its owner across six a
       }
     }
   } finally {
+    release.resolve();
     await opened.dispose();
   }
+});
+
+test('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

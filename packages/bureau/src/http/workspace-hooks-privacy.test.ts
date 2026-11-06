@@ -1,6 +1,8 @@
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { expect, test } from 'bun:test';
+import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { createReceiver, SIGNING_SECRET } from '../hooks/hooks.test-support.ts';
+import { HOOK_SIGNATURE_HEADER } from '../hooks/hook-signature.ts';
 import {
   openWorkspacePrivacyBureau,
   workspacePrivacyCall,
@@ -9,6 +11,8 @@ import {
 } from './workspace-privacy-fixtures.test-support.ts';
 
 const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
+const witnesses = workspaceConformanceLedger('workspace-hooks-privacy.test.ts');
+const neighbor = 'PRIVATE-HOOK-NEIGHBOR-a44b';
 const definition = {
   url: 'https://receiver.example/hook',
   events: ['definitions.changed'],
@@ -36,6 +40,14 @@ for (const row of cases) {
       },
     });
     try {
+      const task = await opened.bureau.tasks.start('default', neighbor, {
+        principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+      });
+      const owner = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.get', {
+        contextId: task.contextId,
+      });
+      expect(owner.text).toContain(neighbor);
+      if (!row.deploymentOnly) witnesses.confirmPrivateSource(row.operation, owner);
       const seed = await workspacePrivacyCall(
         opened,
         'administrator',
@@ -50,10 +62,18 @@ for (const row of cases) {
             ? row.parameters
             : { ...row.parameters, hookId };
         const result = await workspacePrivacyCall(opened, actor, row.operation, parameters);
+        expect(result.text).not.toContain(neighbor);
+        witnesses.observeWire(row.operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
         else if (actor === 'administrator' && !row.deploymentOnly) {
           expect(result.body?.error).toBeUndefined();
           expect(result.text).not.toContain(SIGNING_SECRET);
+          if (row.operation === 'bureau.hooks.test') {
+            const signature = receiver.calls.at(-1)?.headers.get(HOOK_SIGNATURE_HEADER);
+            expect(signature).toBeTruthy();
+            expect(result.text).not.toContain(signature!);
+            expect(result.text.toLowerCase()).not.toContain(HOOK_SIGNATURE_HEADER.toLowerCase());
+          }
           if (row.operation === 'bureau.hooks.list')
             expect(result.text).toContain('"lastDelivery":null');
         } else expect(result.body?.error?.data?.httpStatus).toBe(403);
@@ -63,3 +83,7 @@ for (const row of cases) {
     }
   });
 }
+
+test('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
+});

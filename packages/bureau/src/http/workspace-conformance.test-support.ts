@@ -110,7 +110,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
   {
     testFile: '../attention-feed.test.ts',
     inputFixture: 'Private hook alert beside shared provider and plugin notices',
-    sentinel: 'PRIVATE-HOOK-ATTENTION-b5fe',
+    sentinel: 'PRIVATE-ATTENTION-NEIGHBOR-4e7a',
     operations: [['bureau.health.attention', 'administrator']],
   },
   {
@@ -164,7 +164,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
   {
     testFile: 'management/goals-operations.test.ts',
     inputFixture: 'Running owned goal and independently created caller goals',
-    sentinel: 'workspace-alice-goal',
+    sentinel: 'INSTRUCTIONS-SENTINEL-5e0c',
     operations: [
       ['bureau.goals.list', 'owner-collection'],
       ['bureau.goals.get', 'owner'],
@@ -185,7 +185,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
   {
     testFile: 'workspace-schedule-privacy.test.ts',
     inputFixture: 'Independent private-input schedule per actor',
-    sentinel: 'PRIVATE-SCHEDULE-INPUT-9b34',
+    sentinel: 'PRIVATE-SCHEDULE-NEIGHBOR-7c44',
     operations: [
       ['bureau.schedules.list', 'administrator'],
       ['bureau.schedules.get', 'administrator'],
@@ -245,7 +245,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
   {
     testFile: 'workspace-assets-privacy.test.ts',
     inputFixture: 'Independent PNG upload or admitted PNG with current-member reader',
-    sentinel: 'PNG bytes compared exactly',
+    sentinel: 'PRIVATE-ASSET-NAME-92f4.png',
     operations: [
       ['bureau.assets.get', 'reader-grant'],
       ['bureau.assets.uploads.create', 'caller-create'],
@@ -257,13 +257,13 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
   {
     testFile: 'management/audit-operations.test.ts',
     inputFixture: 'Private execution trail plus secret-bearing shared configuration record',
-    sentinel: 'PRIVATE-',
+    sentinel: 'PRIVATE-AUDIT-INPUT-b2ed',
     operations: [['bureau.audit.query', 'audit']],
   },
   {
     testFile: 'workspace-settings-privacy.test.ts',
     inputFixture: 'Real settings state and emitted configuration change',
-    sentinel: 'schema-only: settings values and revisions contain no execution payload',
+    sentinel: 'PRIVATE-SETTINGS-NEIGHBOR-a81c',
     operations: [
       ['bureau.settings.get', 'administrator'],
       ['bureau.settings.schema', 'administrator'],
@@ -298,7 +298,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
   {
     testFile: 'workspace-hooks-privacy.test.ts',
     inputFixture: 'Shared metadata webhook with private signing secret',
-    sentinel: 'SIGNING_SECRET fixture value',
+    sentinel: 'PRIVATE-HOOK-NEIGHBOR-a44b',
     operations: [
       ['bureau.hooks.create', 'administrator'],
       ['bureau.hooks.update', 'administrator'],

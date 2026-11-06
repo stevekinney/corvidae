@@ -87,50 +87,11 @@ export async function secretService() {
   });
   function client(index = 0): SecretHome {
     const home = homes[index] as Bungalow;
-    const workspaceId = home.workspaceId;
-    async function call<Result>(method: string, ...arguments_: unknown[]): Promise<Result> {
-      const response = await fetch(server.url, {
-        method: 'POST',
-        headers: { authorization: workspaceId, 'content-type': 'application/json' },
-        body: JSON.stringify({ method, arguments: arguments_ }),
-      });
-      const result = (await response.json()) as {
-        value: Result;
-        code?: SecretProviderError['code'];
-      };
-      if (!response.ok)
-        throw new SecretProviderError(
-          result.code ?? 'unavailable',
-          'The fixture provider refused the operation.',
-        );
-      return result.value;
-    }
-    const provider: SecretProvider = {
-      workspaceId,
-      capabilities: { read: true, prepare: true, transitions: true },
-      readLegacy: (key) => call('readLegacy', key),
-      readVersion: (reference) => {
-        const parsed = parseSecretReference(reference, workspaceId);
-        return call('readVersion', parsed.serialized);
-      },
-      prepare: (input) => call('prepare', input),
-      getOperation: (id) => call('getOperation', id),
-      listOperations: () => call('listOperations'),
-      transitionOperation: (id, transition) => call('transitionOperation', id, transition),
-      reclaim: (reference) =>
-        call('reclaim', parseSecretReference(reference, workspaceId).serialized),
-    };
-    return {
-      workspaceId,
-      secretProvider: provider,
-      configurationLocation: 'fixture-service',
-      configurationWriteCapability: 'writable',
-      readConfiguration: () => call('readConfiguration'),
-      writeConfiguration: (text, condition) => call('writeConfiguration', text, condition),
-    };
+    return secretServiceClient(server.url, home.workspaceId);
   }
   return {
     client,
+    endpoint: server.url,
     valueReads: () => valueReads,
     configurationWrites: () => configurationWrites,
     loseNextAcknowledgement: () => {
@@ -140,5 +101,49 @@ export async function secretService() {
       await server.stop(true);
       for (const home of homes) home.close();
     },
+  };
+}
+
+/** Reconnect an independent fixture process to the external secret service. */
+export function secretServiceClient(endpoint: URL, workspaceId: string): SecretHome {
+  async function call<Result>(method: string, ...arguments_: unknown[]): Promise<Result> {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { authorization: workspaceId, 'content-type': 'application/json' },
+      body: JSON.stringify({ method, arguments: arguments_ }),
+    });
+    const result = (await response.json()) as {
+      value: Result;
+      code?: SecretProviderError['code'];
+    };
+    if (!response.ok)
+      throw new SecretProviderError(
+        result.code ?? 'unavailable',
+        'The fixture provider refused the operation.',
+      );
+    return result.value;
+  }
+  const provider: SecretProvider = {
+    workspaceId,
+    capabilities: { read: true, prepare: true, transitions: true },
+    readLegacy: (key) => call('readLegacy', key),
+    readVersion: (reference) => {
+      const parsed = parseSecretReference(reference, workspaceId);
+      return call('readVersion', parsed.serialized);
+    },
+    prepare: (input) => call('prepare', input),
+    getOperation: (id) => call('getOperation', id),
+    listOperations: () => call('listOperations'),
+    transitionOperation: (id, transition) => call('transitionOperation', id, transition),
+    reclaim: (reference) =>
+      call('reclaim', parseSecretReference(reference, workspaceId).serialized),
+  };
+  return {
+    workspaceId,
+    secretProvider: provider,
+    configurationLocation: 'fixture-service',
+    configurationWriteCapability: 'writable',
+    readConfiguration: () => call('readConfiguration'),
+    writeConfiguration: (text, condition) => call('writeConfiguration', text, condition),
   };
 }

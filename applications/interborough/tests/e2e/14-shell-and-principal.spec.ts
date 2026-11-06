@@ -538,3 +538,96 @@ test('clears the shell when a current host request rejects its credentials', asy
   await expect(page.locator('[data-view="boot"][data-state="error"]')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Search everything/ })).toHaveCount(0);
 });
+
+test('replaces the booted workspace before releasing an old chat listing', async ({
+  page,
+  request,
+  pageErrors,
+}) => {
+  const principalResponse = await request.get('/api/v1/principal');
+  const original = (await principalResponse.json()) as {
+    workspace: { workspaceId: string; actorId: string };
+    [key: string]: unknown;
+  };
+  let nextWorkspace = false;
+  const oldListing = Promise.withResolvers<void>();
+  const releaseOldListing = Promise.withResolvers<void>();
+  const oldSettled = Promise.withResolvers<string>();
+  pageErrors.expect({
+    pattern: loggedFailedResponse(409, /\/host\/fixture-lifetime-change/),
+    reason: 'the fixture signals that the workspace identity changed',
+  });
+  // The server is a local fixture; identity selection here is entirely test-owned.
+  await page.route('**/*', async (route) => {
+    const headers = { ...route.request().headers() };
+    delete headers['x-interborough-expected-identity'];
+    await route.fallback({ headers });
+  });
+  await page.route('**/api/v1/principal', async (route) => {
+    const principal = nextWorkspace
+      ? { ...original, workspace: { ...original.workspace, workspaceId: 'fixture-workspace-b' } }
+      : original;
+    await route.fulfill({ json: principal });
+  });
+  await page.route('**/host/fixture-lifetime-change', async (route) => {
+    await route.fulfill({ status: 409, headers: { 'x-interborough-identity-mismatch': '1' } });
+  });
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { id?: unknown; method?: string };
+    if (body.method !== 'bureau.contexts.list') {
+      await route.fallback();
+      return;
+    }
+    const old = !nextWorkspace;
+    if (old) {
+      oldListing.resolve();
+      await releaseOldListing.promise;
+    }
+    const title = old ? 'workspace-a-private-sentinel' : 'workspace-b-private-sentinel';
+    const response = route.fulfill({
+      json: {
+        jsonrpc: '2.0',
+        id: body.id,
+        result: {
+          contexts: [
+            {
+              id: 'same-chat-id',
+              owner: null,
+              agentName: 'assistant',
+              title,
+              lastMessagePreview: title,
+              parentContextId: null,
+              forkedFromMessageId: null,
+              messageCount: 1,
+              createdAt: '2026-10-23T14:00:00.000Z',
+              updatedAt: '2026-10-23T14:00:00.000Z',
+              activity: 'idle',
+            },
+          ],
+          nextOffset: null,
+        },
+      },
+    });
+    if (old) {
+      // The old lifetime may already have aborted this request.
+      await response.then(
+        () => oldSettled.resolve('delivered'),
+        (error: unknown) => oldSettled.resolve(String(error)),
+      );
+    } else await response;
+  });
+  try {
+    await page.goto('/chats');
+    await oldListing.promise;
+    nextWorkspace = true;
+    await page.evaluate(() => fetch('/host/fixture-lifetime-change'));
+    await expect(page.getByText('workspace-b-private-sentinel').first()).toBeVisible();
+    releaseOldListing.resolve();
+    const outcome = await oldSettled.promise;
+    expect(outcome).toMatch(/delivered|closed|aborted|canceled/i);
+    await expect(page.getByText('workspace-a-private-sentinel')).toHaveCount(0);
+    await expect(page.getByText('workspace-b-private-sentinel').first()).toBeVisible();
+  } finally {
+    releaseOldListing.resolve();
+  }
+});

@@ -48,6 +48,18 @@ The only module that reads the environment is `src/host/environment-configuratio
 
 By default the state is a directory on one machine. Set two variables and it is a PostgreSQL database and an S3-compatible bucket instead, so several hosts can run on the same state at once. A rolling deploy is the case this is for: the old release and the new one are both up for a while, they share one deployment, and a run the old release parked is finished by the new one. Remote mode is chosen only by the variables below, which the host reads from its environment (through Bungalow, `@lostgradient/bungalow`). An empty variable counts as unset, and `INTERBOROUGH_HOME` is not read in remote mode. Setting exactly one of the two selecting variables is an error that names the other.
 
+| Capability | Local home | Remote services |
+| --- | --- | --- |
+| Database and definitions | SQLite and files in the home | PostgreSQL and S3-compatible objects |
+| Concurrent hosts | One host holds the home lock | Hosts coordinate through shared storage; no local lock is used |
+| Configuration changes | Revision-checked writes | Read-only by default; trusted composition can enable revision-checked writes |
+| Managed secrets | Writable local provider | Read-only environment provider by default; writes require an injected writable provider and writable configuration |
+| Logs and scratch | The home may hold local logs | Use stdout, stderr, or an external sink; durable state must not depend on host scratch or home files |
+
+Workspace membership and capabilities are supplied by trusted host composition. Definitions and integration availability are shared within a workspace; chats, memory, run inputs and results, reviews, and their assets remain private to their owner unless an explicit same-workspace grant applies. Administrators manage shared configuration without gaining access to another member's private content. Removing a member prevents new privileged work and pauses that member's schedules; an administrator can reassign automation without inheriting private context. Authority is checked again when work dispatches and before private stream frames leave the host.
+
+These primitives are groundwork, not a hosted service. They do not provide organizations, invitations, billing, identity-provider integration, tenant provisioning, public-listener security, arbitrary plugin isolation, or safe pooling of multiple workspaces in one database. Deployment operators and trusted in-process plugins remain inside the trust boundary; plugins can exercise the access their host grants them.
+
 | Variable | What it is |
 | --- | --- |
 | `INTERBOROUGH_DATABASE_URL` | The Postgres connection URL. Selects remote mode, with `INTERBOROUGH_BUCKET`. It carries the password, so keep it out of logs and commands. |
