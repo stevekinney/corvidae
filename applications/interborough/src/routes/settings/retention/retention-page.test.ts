@@ -29,9 +29,11 @@ type Open = {
   locked?: readonly string[];
   alerts?: readonly object[];
   sizeBytes?: number | null;
+  /** Answers `/host/clean-up`. Left out, the host does not say. */
+  cleanUp?: (method: 'GET' | 'POST') => Response | Promise<Response>;
 };
 
-function open({ values, locked, alerts = [], sizeBytes }: Open = {}) {
+function open({ values, locked, alerts = [], sizeBytes, cleanUp }: Open = {}) {
   const served = servedSettings({
     values: { ...servedSettings().values, ...values },
     ...(locked === undefined ? {} : { locked: new Set(locked) }),
@@ -42,6 +44,7 @@ function open({ values, locked, alerts = [], sizeBytes }: Open = {}) {
     undefined,
     undefined,
     sizeBytes,
+    cleanUp,
   );
   landAt('/settings/data-and-retention');
   return {
@@ -83,7 +86,7 @@ describe('Settings › Data and retention', () => {
       .getAllByRole('heading', { level: 2 })
       .map((heading) => heading.textContent);
     expect(headings.slice(0, 1)).toEqual(['Retention']);
-    expect(headings.at(-1)).toBe('Storage');
+    expect(headings.slice(-2)).toEqual(['Storage', 'Clean-up']);
     const keys = [...group.querySelectorAll<HTMLElement>('[data-setting]')].map(
       (entry) => entry.dataset['setting'],
     );
@@ -93,7 +96,8 @@ describe('Settings › Data and retention', () => {
       'retention.chats',
       'retention.memory',
     ]);
-    expect(keys.at(-1)).toBe('storage-usage');
+    expect(keys.at(-2)).toBe('storage-usage');
+    expect(keys.at(-1)).toBe('clean-up');
   });
 
   test('every row has a sentence-case name with its raw key beside it, and the Bureau’s description', async () => {
@@ -271,6 +275,148 @@ describe('Settings › Data and retention › Storage', () => {
 
     await waitFor(() =>
       expect(within(row).getByTestId('storage-size').textContent).toBe('Not reported yet'),
+    );
+  });
+});
+
+describe('Settings › Data and retention › Clean-up', () => {
+  const STANDING = {
+    schedule: { hour: 3, minute: 0, timeZone: 'America/Chicago' },
+    last: null,
+    skipped: null,
+    nextAt: new Date(Date.now() + DAY).toISOString(),
+  };
+  const RUN = {
+    at: new Date().toISOString(),
+    trigger: 'manual',
+    removed: 31,
+    byKind: {
+      audit: 31,
+      reviews: 0,
+      memories: 0,
+      logs: 0,
+      notifications: 0,
+      hookDeliveries: 0,
+      chats: 0,
+    },
+    failed: [],
+  };
+
+  /** A host that reports `standing` and answers a clean-up with `run`, counting the clean-ups. */
+  function host(standing: object = STANDING, run: () => Response = () => Response.json(RUN)) {
+    const cleanedUp: string[] = [];
+    return {
+      cleanedUp,
+      answer: (method: 'GET' | 'POST'): Response => {
+        if (method === 'GET') return Response.json(standing);
+        cleanedUp.push(method);
+        return run();
+      },
+    };
+  }
+
+  const buttonOf = (row: HTMLElement) => within(row).getByRole('button', { name: 'Clean up now' });
+
+  test('is a section of its own with one row, whose action is a button on the row and not on the page', async () => {
+    const { view } = open({ cleanUp: host().answer });
+    const row = await rowReady(view, 'clean-up');
+
+    const headings = within(view.container)
+      .getAllByRole('heading', { level: 2 })
+      .map((heading) => heading.textContent);
+    expect(headings.at(-1)).toBe('Clean-up');
+    expect(row.textContent).toContain('Remove expired records');
+    await waitFor(() =>
+      expect(row.textContent).toContain(
+        'Interborough does this every night at 3:00 AM Central time.',
+      ),
+    );
+    expect(buttonOf(row)).not.toBeNull();
+    // Nothing on the page, outside the row, is a Clean up now.
+    expect(within(view.container).getAllByRole('button', { name: 'Clean up now' })).toHaveLength(1);
+  });
+
+  test('says the last clean-up and the night the host was off for', async () => {
+    const { view } = open({
+      cleanUp: host({
+        ...STANDING,
+        last: { ...RUN, at: new Date(Date.now() - 3 * DAY).toISOString(), trigger: 'nightly' },
+        skipped: { at: new Date().toISOString() },
+      }).answer,
+    });
+    const row = await rowReady(view, 'clean-up');
+
+    await waitFor(() => expect(row.textContent).toContain('Last cleaned up'));
+    expect(row.textContent).toContain('Skipped');
+    expect(row.textContent).toContain('while Interborough was off.');
+  });
+
+  test('Clean up now reports on its own row what was removed, and the button stays', async () => {
+    const served = host();
+    const { view } = open({ cleanUp: served.answer });
+    const row = await rowReady(view, 'clean-up');
+    await waitFor(() => expect(row.textContent).toContain('every night at 3:00 AM'));
+
+    await fireEvent.click(buttonOf(row));
+
+    await waitFor(() =>
+      expect(row.textContent).toContain('Cleaned up just now. Removed 31 records.'),
+    );
+    expect(served.cleanedUp).toEqual(['POST']);
+    // The description is the schedule alone now; the result carries the rest.
+    expect(row.textContent).toContain(
+      'Interborough does this every night at 3:00 AM Central time.',
+    );
+    expect(row.textContent).not.toContain('Last cleaned up');
+    expect(buttonOf(row).hasAttribute('disabled')).toBe(false);
+    // It does not write a setting.
+    expect(updates()).toEqual([]);
+  });
+
+  test('can be pressed again, and reports the new result', async () => {
+    const counts = [31, 2];
+    const served = host(STANDING, () => Response.json({ ...RUN, removed: counts.shift() ?? 0 }));
+    const { view } = open({ cleanUp: served.answer });
+    const row = await rowReady(view, 'clean-up');
+
+    await fireEvent.click(buttonOf(row));
+    await waitFor(() => expect(row.textContent).toContain('Removed 31 records.'));
+    await fireEvent.click(buttonOf(row));
+    await waitFor(() => expect(row.textContent).toContain('Removed 2 records.'));
+    expect(served.cleanedUp).toHaveLength(2);
+  });
+
+  test('a clean-up the host refuses says so on the row, with a way to try again', async () => {
+    let refuse = true;
+    const served = host(STANDING, () =>
+      refuse ? new Response('No', { status: 500 }) : Response.json(RUN),
+    );
+    const { view } = open({ cleanUp: served.answer });
+    const row = await rowReady(view, 'clean-up');
+
+    await fireEvent.click(buttonOf(row));
+    await waitFor(() =>
+      expect(row.textContent).toContain('Couldn’t clean up. Nothing was removed.'),
+    );
+
+    refuse = false;
+    await fireEvent.click(within(row).getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(row.textContent).toContain('Cleaned up just now. Removed 31 records.'),
+    );
+  });
+
+  test('a clean-up that could not remove one kind says which', async () => {
+    const served = host(STANDING, () => Response.json({ ...RUN, removed: 4, failed: ['chats'] }));
+    const { view } = open({ cleanUp: served.answer });
+    const row = await rowReady(view, 'clean-up');
+
+    await fireEvent.click(buttonOf(row));
+
+    await waitFor(() =>
+      expect(row.textContent).toContain(
+        'Cleaned up just now, but chats could not be removed. Removed 4 records.',
+      ),
     );
   });
 });

@@ -1273,6 +1273,19 @@ describe('after a startup with problems', () => {
     );
   });
 
+  test('Add the key for a provider opens the Connect dialog for that provider, the one Models › Connect opens', async () => {
+    const { container } = open('web-search', startup());
+    await loaded(container, 'web-search');
+    const cards = [...attention(container)!.querySelectorAll<HTMLElement>('[data-plugin-problem]')];
+
+    await fireEvent.click(within(cards[0]!).getByRole('button', { name: 'Add the key' }));
+
+    const dialog = await bodyOf(container).findByRole('dialog');
+    // The provider is Gemini here, as it is when Connect is pressed on the Models page.
+    expect(dialog.textContent).toContain('Connect Gemini');
+    expect(dialog.querySelector('[data-testid="provider-connect-form"]')).not.toBeNull();
+  });
+
   test('draws no list while every plugin loaded, whatever else is wrong with them', async () => {
     const { container } = open('gemini', [startup()[0]!]);
     await loaded(container, 'gemini');

@@ -155,6 +155,11 @@ export function installBureauStub(
     readonly hostMode?: 'local' | 'remote';
     /** The size `/host/storage` reports (`null` for a backend that cannot say). Left out, the route answers `Not found`. */
     readonly hostStorageSizeBytes?: number | null;
+    /**
+     * Answers `/host/clean-up`: `GET` is the standing and `POST` is "Clean up now". Left out, the route
+     * answers `Not found`, as a host that does not clean up would.
+     */
+    readonly hostCleanUp?: (method: 'GET' | 'POST') => Response | Promise<Response>;
     readonly passThrough?: boolean;
     /** Answers the subscriptions it names, by operation name; any other one is `Not found`. */
     readonly subscriptions?: Readonly<Record<string, StubSubscriptionHandler>>;
@@ -184,6 +189,9 @@ export function installBureauStub(
     }
     if (url.pathname === '/host/storage' && options.hostStorageSizeBytes !== undefined) {
       return Response.json({ bureauKeyPrefixes: [], sizeBytes: options.hostStorageSizeBytes });
+    }
+    if (url.pathname === '/host/clean-up' && options.hostCleanUp !== undefined) {
+      return options.hostCleanUp(init?.method === 'POST' ? 'POST' : 'GET');
     }
     if (url.pathname === '/host/providers' && options.hostProviders !== undefined) {
       return Response.json({

@@ -1455,6 +1455,40 @@ export const DATA_RETENTION_COPY = {
     overWarning: (size: string): string => `Storage is over its warning level · ${size}`,
     notReported: 'Not reported yet',
   },
+  /** The Clean-up section: the nightly removal of expired records, and "Clean up now" (rows 50h and 50j). */
+  cleanUp: {
+    heading: 'Clean-up',
+    label: 'Remove expired records',
+    action: 'Clean up now',
+    /** The row's description: when it happens each night, in the host's zone. */
+    schedule: (time: string, zone: string): string =>
+      `Interborough does this every night at ${time} ${zone}.`,
+    /** When it last ran, said after the schedule; `when` already names the day ("Sun Nov 1, 3:00 AM"). */
+    last: (when: string): string => `Last cleaned up ${when}.`,
+    /** A night it did not run, said after the schedule; `day` is "today" or a day and time. */
+    skipped: (day: string): string => `Skipped ${day} while Interborough was off.`,
+    working: 'Cleaning up…',
+    /** What a clean-up that finished says on the row, with how many records it removed. */
+    done: (removed: number): string =>
+      removed === 0
+        ? 'Cleaned up just now. Nothing was past its retention window.'
+        : `Cleaned up just now. Removed ${String(removed)} ${removed === 1 ? 'record' : 'records'}.`,
+    /** A clean-up that finished but could not remove some kinds of record; `kinds` names them. */
+    partial: (removed: number, kinds: string): string =>
+      `Cleaned up just now, but ${kinds} could not be removed. Removed ${String(removed)} ${removed === 1 ? 'record' : 'records'}.`,
+    failed: 'Couldn’t clean up. Nothing was removed.',
+    retry: 'Try again',
+    /** The kinds of record a clean-up removes, as a sentence names them. */
+    kinds: {
+      audit: 'audit records',
+      reviews: 'reviews',
+      memories: 'memories',
+      logs: 'logs',
+      notifications: 'notifications',
+      hookDeliveries: 'hook deliveries',
+      chats: 'chats',
+    } as Readonly<Record<string, string>>,
+  },
 } as const;
 
 /**
@@ -1511,8 +1545,16 @@ export const A2A_COPY = {
       description:
         'When another agent or tool calls yours, each call appears here with who made it and which agent answered.',
     },
-    tableLabel: 'Recent remote calls',
-    columns: { when: 'When', caller: 'Caller', agent: 'Agent' },
+    /** Who made a call: the name the caller gave itself, else its principal, else nothing to name. */
+    caller: (call: {
+      readonly callerName: string | undefined;
+      readonly principal: string | undefined;
+    }): string => {
+      const name = call.callerName ?? call.principal;
+      return name === undefined ? 'Remote agent' : `Remote agent “${name}”`;
+    },
+    /** Which agent answered, named as the Agents list names it. */
+    answeredBy: (agent: string): string => `answered by ${agent}`,
     loading: 'Loading the recent calls',
     loadFailed: {
       title: 'The recent calls could not be loaded',

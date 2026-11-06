@@ -319,7 +319,7 @@ describe('Recent calls', () => {
     expect(empty.getAttribute('data-cinder-size')).toBe('compact');
   });
 
-  test('are a table of when, who and which agent, newest first, once calls were made', async () => {
+  test('are a list of when, who and which agent answered, newest first, once calls were made', async () => {
     const at = (offset: number) => new Date(Date.now() - offset).toISOString();
     const { view } = open({
       calls: [
@@ -342,15 +342,18 @@ describe('Recent calls', () => {
       ],
     });
 
-    const table = await view.findByTestId('a2a-calls');
+    await view.findAllByTestId('a2a-call');
 
-    const rows = [...table.querySelectorAll<HTMLElement>('tbody tr')];
+    const rows = [...view.container.querySelectorAll<HTMLElement>('[data-testid="a2a-call"]')];
     expect(rows.map((entry) => entry.dataset['task'])).toEqual(['task-2', 'task-1']);
-    expect(rows[0]?.textContent).toContain('api-key:alice');
-    expect(rows[0]?.textContent).toContain('Assistant');
-    expect(rows[1]?.textContent).toContain('planner');
-    expect(rows[1]?.textContent).toContain('api-key:planner');
-    expect(rows[1]?.textContent).toContain('Tool runner');
+    // Who made it is the name the caller gave, else its principal; the principal is the tooltip.
+    expect(rows[0]?.textContent).toContain('Remote agent “api-key:alice”');
+    expect(rows[0]?.textContent).toContain('answered by Assistant');
+    expect(rows[1]?.textContent).toContain('Remote agent “planner”');
+    expect(rows[1]?.textContent).toContain('answered by Tool runner');
+    expect(rows[1]?.querySelector('[title="api-key:planner"]')).not.toBeNull();
+    // The time reads as the clock ("Today, 7:48 AM"), not as "2 h ago".
+    expect(rows[1]?.querySelector('time')?.textContent).toMatch(/\d{1,2}:\d{2}/);
     expect(view.queryByTestId('a2a-calls-empty')).toBeNull();
   });
 

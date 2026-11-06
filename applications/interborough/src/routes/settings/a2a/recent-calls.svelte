@@ -2,10 +2,9 @@
   /**
    * The Recent calls part of Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a"):
    * the remote calls that started a task, newest first, each with when it came, who made it and
-   * which agent answered. They are read from the audit trail, where the Bureau keeps one
-   * `a2a.call` record per call (`../../../lib/a2a-calls.ts`). With none, a compact empty state says
-   * what will appear here. It is an operator table (board ListPatterns, "Option A, for operator
-   * tables only").
+   * which agent answered ("Today, 9:48 AM", Remote agent “planner”, answered by Tool runner).
+   * They are read from the audit trail, where the Bureau keeps one `a2a.call` record per call
+   * (`../../../lib/a2a-calls.ts`). With none, a compact empty state says what will appear here.
    */
   import {
     EmptyState,
@@ -13,7 +12,6 @@
     FormSection,
     RelativeTime,
     Skeleton,
-    Table,
   } from '@lostgradient/cinder';
   import { Activity } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
@@ -73,37 +71,16 @@
       >
         {#snippet icon()}<Activity size={16} aria-hidden="true" />{/snippet}
       </EmptyState>
+    {:else}
+      {#each calls.data as call (call.taskId)}
+        <div class="ib-a2a-call" data-task={call.taskId} data-testid="a2a-call">
+          <RelativeTime date={call.at} format="absolute" class="ib-a2a-call__when" />
+          <span class="ib-a2a-call__caller" title={call.principal}>{copy.caller(call)}</span>
+          <span class="ib-a2a-call__agent">{copy.answeredBy(agentName(call.agent))}</span>
+        </div>
+      {/each}
     {/if}
   </FormSection>
-  {#if calls.data !== undefined && calls.data.length > 0}
-    <Table caption={copy.tableLabel} density="comfortable" data-testid="a2a-calls">
-      <Table.Header>
-        <Table.Row>
-          <Table.HeaderCell>{copy.columns.when}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.caller}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.agent}</Table.HeaderCell>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {#each calls.data as call (call.taskId)}
-          <Table.Row data-task={call.taskId}>
-            <Table.Cell><RelativeTime date={call.at} /></Table.Cell>
-            <Table.Cell>
-              {#if call.callerName !== undefined}
-                <span>{call.callerName}</span>
-                {#if call.principal !== undefined}
-                  <code class="ib-identifier">{call.principal}</code>
-                {/if}
-              {:else}
-                <code class="ib-identifier">{call.principal ?? ''}</code>
-              {/if}
-            </Table.Cell>
-            <Table.Cell>{agentName(call.agent)}</Table.Cell>
-          </Table.Row>
-        {/each}
-      </Table.Body>
-    </Table>
-  {/if}
 </div>
 
 <style>
@@ -112,5 +89,32 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-inline-size: 0;
+  }
+
+  .ib-a2a-call {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-3);
+    row-gap: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-sm);
+    min-inline-size: 0;
+  }
+
+  .ib-a2a-call :global(.ib-a2a-call__when) {
+    flex: none;
+    inline-size: 11rem;
+    color: var(--cinder-text-muted);
+  }
+
+  .ib-a2a-call__caller {
+    flex: 1 1 10rem;
+    min-inline-size: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .ib-a2a-call__agent {
+    color: var(--cinder-text-muted);
   }
 </style>

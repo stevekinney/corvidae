@@ -10,6 +10,7 @@
 import type { Page } from '@playwright/test';
 
 import { A2A_COPY } from '../../src/app/copy.ts';
+import { captureClock } from './capture-clock.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_PORT, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -183,5 +184,54 @@ test.describe('Settings › A2A', () => {
     await expect(settingRow(page, 'a2a.agents').locator('[data-agent]')).toHaveCount(AGENTS.length);
     await expect(settingRow(page, 'a2a.push.enabled')).toBeVisible();
     await captureAtEveryWidth(page, 'accept-off');
+  });
+
+  test('Recent calls list each call with when, who made it and which agent answered', async ({
+    page,
+  }) => {
+    // The sample world has no remote call, so the audit trail answers two for this case (row 50z).
+    const call = (at: number, taskId: string, agentName: string) => ({
+      sequence: null,
+      timestamp: new Date(at).toISOString(),
+      type: 'a2a.call',
+      resource: taskId,
+      principal: 'api-key:planner',
+      detail: { agentName, taskId, callerName: 'planner' },
+    });
+    // A capture pins the browser to the sample world's clock, so the calls are told against that one.
+    const now = Date.parse(captureClock()?.now ?? new Date().toISOString());
+    const trail = [
+      call(now - 5 * 24 * 60 * 60 * 1000, 'task-older', 'assistant'),
+      call(now - 60_000, 'task-newer', 'tool-runner'),
+    ];
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as {
+        id?: unknown;
+        method?: unknown;
+        params?: { type?: unknown };
+      } | null;
+      if (body?.method !== 'bureau.audit.query' || body.params?.type !== 'a2a.call') {
+        return route.fallback();
+      }
+      return route.fulfill({
+        json: { jsonrpc: '2.0', id: body.id ?? null, result: { records: trail, nextCursor: null } },
+      });
+    });
+    await open(page);
+
+    const calls = page.getByTestId('a2a-call');
+    await expect(calls).toHaveCount(2);
+    // Newest first: today's call, then the older one on a named day.
+    // It reads "Today" unless the clock passed midnight between the call and the page.
+    await expect(calls.nth(0)).toContainText(
+      /^(Today|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}), \d{1,2}:\d{2} [AP]M/,
+    );
+    await expect(calls.nth(0)).toContainText('Remote agent “planner”');
+    await expect(calls.nth(0)).toContainText('answered by Tool runner');
+    await expect(calls.nth(1)).toContainText(/^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, /);
+    await expect(calls.nth(1)).toContainText('Remote agent “planner”');
+    await expect(calls.nth(1)).toContainText('answered by Assistant');
+    await expect(page.getByTestId('a2a-calls-empty')).toHaveCount(0);
+    await captureAtEveryWidth(page, 'recent-calls');
   });
 });

@@ -4,6 +4,10 @@
  * seeded host, which has no storage rule. Every change a case makes is one nothing deletes by: the
  * audit window is lengthened and put back, and the field error is never saved.
  *
+ * Clean-up (rows 50h and 50j) is drawn from the host's own standing; the result of Clean up now is
+ * answered by the page's route for the capture, because the number of records a real clean-up
+ * removes depends on what the host holds, and a case here must not delete any.
+ *
  * Each captioned state is captured for the design review (`design-review-capture.ts`) at the three
  * widths Settings is drawn at.
  */
@@ -131,5 +135,57 @@ test.describe('Settings › Data and retention', () => {
     await expect(
       row(page, 'retention.runs').getByRole('radio', { name: 'Keep forever' }),
     ).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('Clean-up is one row, "Remove expired records", with Clean up now as its own action', async ({
+    page,
+  }) => {
+    await page.goto(ROUTE);
+
+    const cleanUp = row(page, 'clean-up');
+    await expect(page.locator('main h2').last()).toHaveText('Clean-up');
+    await expect(cleanUp).toContainText('Remove expired records');
+    await expect(cleanUp).toContainText(/Interborough does this every night at 3:00 AM .+ time\./);
+    // The button belongs to the row, and no button of that name is anywhere else on the page.
+    await expect(cleanUp.getByRole('button', { name: 'Clean up now' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clean up now' })).toHaveCount(1);
+    await captureAtEveryWidth(page, 'clean-up');
+  });
+
+  test('Clean up now reports on its own row how many records it removed, and the button stays', async ({
+    page,
+  }) => {
+    const cleanUps: string[] = [];
+    await page.route('**/host/clean-up', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      cleanUps.push(route.request().method());
+      return route.fulfill({
+        json: {
+          at: new Date().toISOString(),
+          trigger: 'manual',
+          removed: 31,
+          byKind: {
+            audit: 31,
+            reviews: 0,
+            memories: 0,
+            logs: 0,
+            notifications: 0,
+            hookDeliveries: 0,
+            chats: 0,
+          },
+          failed: [],
+        },
+      });
+    });
+    await page.goto(ROUTE);
+
+    const cleanUp = row(page, 'clean-up');
+    await cleanUp.getByRole('button', { name: 'Clean up now' }).click();
+
+    await expect(cleanUp).toContainText('Cleaned up just now. Removed 31 records.');
+    await expect(cleanUp).toContainText(/Interborough does this every night at 3:00 AM .+ time\./);
+    await expect(cleanUp.getByRole('button', { name: 'Clean up now' })).toBeEnabled();
+    expect(cleanUps).toEqual(['POST']);
+    await captureAtEveryWidth(page, 'clean-up-result');
   });
 });

@@ -128,6 +128,7 @@ export function installSettingsBureau(
   stream?: SettingsStream,
   hostMode?: 'local' | 'remote',
   hostStorageSizeBytes?: number | null,
+  hostCleanUp?: (method: 'GET' | 'POST') => Response | Promise<Response>,
 ): BureauStub {
   return installBureauStub(
     {
@@ -172,6 +173,7 @@ export function installSettingsBureau(
         : { subscriptions: { 'bureau.settings.events': stream.handler } }),
       ...(hostMode === undefined ? {} : { hostMode }),
       ...(hostStorageSizeBytes === undefined ? {} : { hostStorageSizeBytes }),
+      ...(hostCleanUp === undefined ? {} : { hostCleanUp }),
     },
   );
 }

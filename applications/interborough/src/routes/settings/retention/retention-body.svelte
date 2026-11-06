@@ -3,10 +3,12 @@
    * The body of Settings › Data and retention (board PageSettingsSections, "Data and retention";
    * rows 50d to 50g): the restart notice every section shares, a Retention section of four rows
    * (audit records, run history, chats and memory), each a choice between Keep forever and
-   * Delete after and a number of days, and a Storage section with the one read-only "Space used"
-   * row. Each row saves as it is left and says so on its own row, and the heading says "Saved just
-   * now" once any has. The other retention windows the Bureau has (`retention.events`, `.tasks`
-   * and so on) are not drawn on the board, so they follow the four rows, each as the schema says.
+   * Delete after and a number of days, a Storage section with the one read-only "Space used"
+   * row, and a Clean-up section with the one row "Remove expired records" and its "Clean up now"
+   * action (rows 50h and 50j). Each row saves as it is left and says so on its own row, and the
+   * heading says "Saved just now" once any has. The other retention windows the Bureau has
+   * (`retention.events`, `.tasks` and so on) are not drawn on the board, so they follow the four
+   * rows, each as the schema says.
    */
   import { FormSection } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
@@ -24,6 +26,7 @@
     RETENTION_ROW_KEYS,
     retentionProblemWith,
   } from './retention-window.ts';
+  import CleanUpRow from './clean-up-row.svelte';
   import StorageUsageRow from './storage-usage-row.svelte';
 
   interface Props {
@@ -136,6 +139,10 @@
 
   <FormSection grouped heading={copy.storage.heading}>
     <StorageUsageRow />
+  </FormSection>
+
+  <FormSection grouped heading={copy.cleanUp.heading}>
+    <CleanUpRow />
   </FormSection>
 </div>
 

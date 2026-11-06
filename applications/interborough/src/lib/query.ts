@@ -257,6 +257,8 @@ export const queryKeys = {
   a2aCalls: () => ['a2a', 'calls'] as const,
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
   hostStorage: () => ['host', 'storage'] as const,
+  /** When the host cleans up, and how the last clean-up went (`/host/clean-up`). */
+  hostCleanUp: () => ['host', 'clean-up'] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */
   hostProviders: () => ['host', 'providers'] as const,
   /** The agents that name a model of one provider, read before the provider is disconnected. */
