@@ -25,7 +25,6 @@ export interface HostRouteInventoryEntry {
 
 const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /api/v1/principal': 'private-owned',
-  'GET /host/integrations': 'member-shared-read',
   'GET /host/providers': 'administrator-shared',
   'PUT /host/providers/:name': 'administrator-shared',
   'DELETE /host/providers/:name': 'administrator-shared',
