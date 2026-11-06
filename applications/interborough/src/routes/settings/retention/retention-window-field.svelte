@@ -28,6 +28,11 @@
     value: unknown;
     /** What Keep forever stores: `'forever'`, or nothing for a window the Bureau has no `'forever'` for. */
     forever: 'forever' | undefined;
+    /**
+     * Whether Keep forever is offered. A window whose unset value is a finite default has no way to
+     * keep for ever, so its row offers only Delete after.
+     */
+    keepForeverOffered?: boolean;
     /** Whether the controls cannot be changed, such as when the deployment locked the setting. */
     disabled?: boolean;
     /** Whether the value is one the row will not save, which marks the days field. */
@@ -43,6 +48,7 @@
     name,
     value,
     forever,
+    keepForeverOffered = true,
     disabled = false,
     invalid = false,
     onChange,
@@ -55,7 +61,9 @@
   let typing = $state<number | null | undefined>(undefined);
   let field = $state<HTMLElement | undefined>(undefined);
 
-  const choice = $derived<RetentionChoice>(pendingAfter ? 'after' : retentionChoiceOf(value));
+  const choice = $derived<RetentionChoice>(
+    !keepForeverOffered || pendingAfter ? 'after' : retentionChoiceOf(value),
+  );
   const shown = $derived(typing !== undefined ? typing : (retentionDaysOf(value) ?? null));
 
   function choose(next: string): void {
@@ -102,7 +110,9 @@
     {disabled}
     onValueChange={choose}
   >
-    <Segment value="forever">{DATA_RETENTION_COPY.retention.keepForever}</Segment>
+    {#if keepForeverOffered}
+      <Segment value="forever">{DATA_RETENTION_COPY.retention.keepForever}</Segment>
+    {/if}
     <Segment value="after">{DATA_RETENTION_COPY.retention.deleteAfter}</Segment>
   </SegmentedControl>
   {#if choice === 'after'}

@@ -210,6 +210,27 @@ describe('Settings › Data and retention', () => {
     expect(served.values['retention.memory']).toBeUndefined();
   });
 
+  test('Receipts offers only Delete after, so no click can clear it back to its one-week default', async () => {
+    const { view, served } = open({ values: { 'retention.receipts': { olderThan: 30 * DAY } } });
+    const receipts = await rowReady(view, 'retention.receipts');
+
+    expect(within(receipts).queryByRole('radio', { name: 'Keep forever' })).toBeNull();
+    expect(choiceOf(receipts, 'Delete after').getAttribute('aria-checked')).toBe('true');
+    expect((within(receipts).getByRole('spinbutton') as HTMLInputElement).value).toBe('30');
+    expect(
+      updates().filter((call) => 'retention.receipts' in (call.params['patch'] as object)),
+    ).toHaveLength(0);
+    expect(served.values['retention.receipts']).toEqual({ olderThan: 30 * DAY });
+
+    // Leaving the days alone writes nothing; typing new ones saves a window, never a clear.
+    const days = within(receipts).getByRole('spinbutton') as HTMLInputElement;
+    await fireEvent.input(days, { target: { value: '14' } });
+    await fireEvent.blur(days);
+    await fireEvent.focusOut(days);
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params['patch']).toEqual({ 'retention.receipts': { olderThan: 14 * DAY } });
+  });
+
   test('a number of days outside 1 to 3650 fails at the field and nothing is saved', async () => {
     const { view } = open({ values: { 'retention.runs': { olderThan: 30 * DAY } } });
     const runs = await rowReady(view, 'retention.runs');

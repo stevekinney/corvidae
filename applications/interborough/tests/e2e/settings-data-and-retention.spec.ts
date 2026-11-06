@@ -95,6 +95,8 @@ test.describe('Settings › Data and retention', () => {
       await expect(row(page, key).getByRole('radio', { name: 'Delete after' })).toBeVisible();
     }
     await expect(page.getByText(/older than/i)).toHaveCount(0);
+    // Receipts falls back to a finite window when cleared, so it cannot offer Keep forever.
+    await expect(row(page, 'retention.receipts').getByRole('radio', { name: 'Keep forever' })).toHaveCount(0);
 
     // Storage is one read-only row, with the alert firing and a link to Health, and no meter.
     const storage = row(page, 'storage-usage');

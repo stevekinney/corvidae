@@ -569,6 +569,7 @@ export {
   type SettingLockReason,
   type SettingsValues,
 } from './settings/settings-schema';
+export { builtInSettingDefaults, SETTINGS_WITHOUT_DEFAULT } from './settings/setting-defaults';
 export type {
   BureauSettings,
   SettingKeyState,

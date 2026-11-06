@@ -35,6 +35,16 @@ export function isRetentionWindowNode(node: SchemaNode | undefined): boolean {
   return (node.anyOf ?? []).some((branch) => isRetentionWindowNode(branch));
 }
 
+/**
+ * The retention windows where leaving the setting unset does not keep the records: the Bureau
+ * falls back to a finite built-in window (`retention.receipts`, one week), and its schema has no
+ * `'forever'` to store. Offering Keep forever there would clear the setting, and the default
+ * would then delete the records the person chose to keep, so such a row is drawn without it. Every
+ * other window either takes `'forever'` or, being in `SETTINGS_WITHOUT_DEFAULT`, keeps its records
+ * while unset. `retention-window.test.ts` checks this list against the Bureau.
+ */
+export const RETENTION_WITHOUT_KEEP_FOREVER: ReadonlySet<string> = new Set(['retention.receipts']);
+
 /** Milliseconds in a day, the unit a person reads a window in. */
 export const RETENTION_DAY_MILLISECONDS = 86_400_000;
 
