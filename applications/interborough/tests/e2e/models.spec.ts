@@ -193,23 +193,49 @@ test('connects a provider, adds its models with no restart, and never prints the
   expect(await page.content()).not.toContain(KEY);
 });
 
+type Settings = { values: Record<string, unknown>; revision: number };
+
+/** Sets the decision model through the Bureau, as a person's own save would. */
+async function setDecisionModel(request: APIRequestContext, model: string): Promise<void> {
+  const current = (await bureauCall(request, 'bureau.settings.get', {})) as Settings;
+  await bureauCall(request, 'bureau.settings.update', {
+    patch: { 'decisions.model': model },
+    expectedRevision: current.revision,
+  });
+}
+
 test('switches the decision model, and the Bureau holds the choice', async ({ page, request }) => {
+  // The host's TypeSafe plugin has no key, so the decision model waits for it: Connect TypeSafe
+  // stands where the select does, and the two settings that depend on it are disabled.
   await openModels(page);
   const row = page.locator('[data-setting="decisions.model"]');
-  await expect(row).toBeVisible();
+  await expect(row.getByRole('link', { name: MODELS_COPY.decisions.model.connect })).toBeVisible();
+  await expect(page.locator('[data-setting="decisions.fallbackModel"] select')).toBeDisabled();
   // The three decision settings are here, and are not on General.
   await expect(page.locator('[data-setting^="decisions."]')).toHaveCount(3);
   await page.goto('/settings');
   await expect(page.locator('[data-setting="tools.wakeup"]')).toBeVisible();
   await expect(page.locator('[data-setting^="decisions."]')).toHaveCount(0);
 
-  await openModels(page);
-  await row.getByRole('combobox').selectOption('catalog');
-  // It saves as the field is left: the row says so, and there is no page-level Save.
-  await expect(row).toContainText('Saved');
-  await expect(page.getByRole('button', { name: SETTINGS_COPY.saveAction })).toHaveCount(0);
-  const settings = (await bureauCall(request, 'bureau.settings.get', {})) as {
-    values: Record<string, unknown>;
-  };
-  expect(settings.values['decisions.model']).toBe('catalog');
+  // A person who chose the chat model fallback keeps their select, whatever TypeSafe's plugin says.
+  // The decision model has no way back to unset, and `catalog` is what unset means.
+  await setDecisionModel(request, 'catalog');
+  try {
+    await openModels(page);
+    await expect(row.getByRole('combobox')).toHaveValue('catalog');
+    await row.getByRole('combobox').selectOption('typesafe:jev');
+    // It saves as the field is left, with no page-level Save; the row then waits for TypeSafe's key.
+    await expect(page.getByRole('button', { name: SETTINGS_COPY.saveAction })).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const settings = (await bureauCall(request, 'bureau.settings.get', {})) as Settings;
+        return settings.values['decisions.model'];
+      })
+      .toBe('typesafe:jev');
+    await expect(
+      row.getByRole('link', { name: MODELS_COPY.decisions.model.connect }),
+    ).toBeVisible();
+  } finally {
+    await setDecisionModel(request, 'catalog');
+  }
 });
