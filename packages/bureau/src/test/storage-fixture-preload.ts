@@ -11,8 +11,13 @@
 import { afterAll } from 'bun:test';
 
 import { undisposedStorageFixtures } from './storage-fixtures';
+import { createShutdownDiagnosticGuard } from './shutdown-diagnostic-guard';
+
+const shutdownDiagnostics = createShutdownDiagnosticGuard(console.error.bind(console));
+console.error = shutdownDiagnostics.error;
 
 afterAll(() => {
+  shutdownDiagnostics.assertClean();
   const undisposed = undisposedStorageFixtures();
   if (undisposed.length > 0) {
     throw new Error(
