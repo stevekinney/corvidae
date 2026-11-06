@@ -83,6 +83,30 @@ for (const name of NAMES) {
         state: 'ready',
         source: '00-showcase.spec.ts',
       });
+
+      // COR-2014 row 17s is a transient state: hold a choice, capture its inline Undo affordance,
+      // then undo before the answer reaches the fixture host so the shared sample world is unchanged.
+      if (name === '/chats/:chat (question waiting)' && (width === 375 || width === 1280)) {
+        const staging = page.getByRole('button', { name: 'Staging', exact: true });
+        await expect(staging).toBeVisible();
+        await staging.click();
+        const heldStatus = page.locator('.chat-question-status[data-state="held"]');
+        await expect(heldStatus).toBeVisible();
+        // Cinder renders the boolean marker as an empty data attribute, not "true".
+        await expect(staging).toHaveAttribute('data-selected');
+        const undo = page.getByRole('button', { name: /Undo/ });
+        await expect(undo).toBeVisible();
+        await captureForDesignReview(page, {
+          route: name,
+          state: 'answer-undo',
+          source: 'showcase.spec.ts',
+        });
+        await undo.click();
+        await expect(heldStatus).toHaveCount(0);
+        await expect(page.locator('.chat-question-status[data-state="sent"]')).toHaveCount(0);
+        await expect(staging).toBeVisible();
+        await expect(staging).not.toHaveAttribute('data-selected');
+      }
     }
   });
 }
@@ -150,10 +174,18 @@ for (const width of [375, 1280] as const) {
     await goOffline(context, pageErrors);
     await page.evaluate(() => window.dispatchEvent(new Event('offline')));
     const banner = await expectOfflineBanner(page, `new chat at ${width}px offline`);
-    // The typed text stays, Send is off, and the reason sits beside it.
-    await expect(composer).toHaveValue('What did I approve yesterday?');
-    await expect(page.getByText('Off until it’s back')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    // COR-2014 row 17b replaces the composer with the blocked row while the host is unreachable.
+    const blockedComposer = page.getByRole('group', { name: 'Composer unavailable' });
+    await expect(blockedComposer).toContainText('Sending is off until Interborough is reachable');
+    await expect(blockedComposer).toBeVisible();
+    const blockedBox = await blockedComposer.boundingBox();
+    expect(blockedBox).not.toBeNull();
+    expect(blockedBox!.y).toBeGreaterThanOrEqual(0);
+    expect(blockedBox!.y + blockedBox!.height).toBeLessThanOrEqual(
+      await page.evaluate(() => window.innerHeight),
+    );
+    await expect(composer).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     // The top bar and the navigation stay live, because navigation still works for loaded pages.
     await expect(page.getByRole('button', { name: 'Search everything' })).toBeEnabled();
     if (width < 1024) {

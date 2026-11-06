@@ -247,10 +247,13 @@ const FILLED_CASES: readonly RingCase[] = [
     expected: 'on-accent',
     target: (page) => page.locator('.cinder-floating-action[data-cinder-variant="primary"]'),
   },
+];
+
+const UNFILLED_CASES: readonly RingCase[] = [
   {
     label: 'enabled Chat send button',
     slug: 'chat',
-    expected: 'gap',
+    expected: 'tight',
     target: (page) => page.locator('.chat-input-send').first(),
     prepare: async (page) => {
       await page.locator('.chat-input textarea').first().fill('Hello');
@@ -258,9 +261,6 @@ const FILLED_CASES: readonly RingCase[] = [
     },
     walkFrom: (page) => page.locator('.chat-input textarea').first(),
   },
-];
-
-const UNFILLED_CASES: readonly RingCase[] = [
   {
     label: 'off Switch',
     slug: 'toggle',

@@ -1018,6 +1018,8 @@ test.describe('chat harness — mounts cleanly', () => {
       // Commit the number and let the cleared error messages settle before clicking.
       await attendees.blur();
       await expect(room).not.toHaveAttribute('aria-invalid', 'true');
+      // The focused Submit button is removed with this answered request; diagnostics guard the
+      // teardown path against Svelte state_unsafe_mutation while the held answer is flushed.
       await request.getByRole('button', { name: 'Submit' }).click();
       await expect
         .poll(submissions)
@@ -2723,8 +2725,10 @@ test.describe('chat harness — attachments', () => {
       ]);
       expect(wrapperBox).not.toBeNull();
       expect(removeBox).not.toBeNull();
-      expect(removeBox?.width).toBeGreaterThanOrEqual(44);
-      expect(removeBox?.height).toBeGreaterThanOrEqual(44);
+      // B06 keeps the compact desktop chip control at 24px; the coarse-pointer rule expands it to
+      // the 44px target, covered by the coarse-pointer probe below.
+      expect(removeBox?.width).toBeGreaterThanOrEqual(24);
+      expect(removeBox?.height).toBeGreaterThanOrEqual(24);
       expect(removeBox?.x ?? 0).toBeGreaterThanOrEqual(wrapperBox?.x ?? 0);
       expect(removeBox?.y ?? 0).toBeGreaterThanOrEqual(wrapperBox?.y ?? 0);
       expect((removeBox?.x ?? 0) + (removeBox?.width ?? 0)).toBeLessThanOrEqual(
@@ -2738,6 +2742,47 @@ test.describe('chat harness — attachments', () => {
       await expect(remove).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(chat.locator('.chat-input-attachment-wrapper')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('gives the remove control a coarse-pointer hit target', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 1280, height: 900 },
+    });
+    try {
+      const chat = harness.locator('#harness-chat');
+      await chat.locator('input[type="file"]').setInputFiles({
+        name: 'coarse-remove-target.png',
+        mimeType: 'image/png',
+        buffer: validPng,
+      });
+
+      const remove = chat.getByRole('button', { name: 'Remove coarse-remove-target.png' });
+      await expect(remove).toBeVisible();
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+      const box = await renderedBox(remove, 'coarse attachment remove control');
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      for (const [dx, dy] of [
+        [-21, 0],
+        [21, 0],
+        [0, -21],
+        [0, 21],
+      ] as const) {
+        const owner = await page.evaluate(
+          ([x, y]) =>
+            document.elementFromPoint(x, y)?.closest('button')?.getAttribute('aria-label') ?? null,
+          [center.x + dx, center.y + dy] as const,
+        );
+        expect(owner, `point (${dx}, ${dy}) from the remove control centre`).toBe(
+          'Remove coarse-remove-target.png',
+        );
+      }
     } finally {
       await dispose();
     }
@@ -2836,8 +2881,11 @@ test.describe('chat harness — composer help', () => {
       await expect(page.getByRole('tooltip')).toHaveCount(0);
 
       const composer = chat.getByRole('textbox', { name: 'Message' });
+      const footer = chat.locator('.chat-input-footer');
+      const footerBefore = await footer.boundingBox();
       await composer.fill('A contextual hint');
-      await expect(chat.locator('.chat-input-hint')).toHaveCount(0);
+      await expect(chat.locator('.chat-input-hint')).toHaveCount(1);
+      expect(await footer.boundingBox()).toEqual(footerBefore);
 
       await expect(send).toBeEnabled();
       await page.mouse.move(0, 0);
@@ -3072,7 +3120,7 @@ test.describe('chat harness — composer acceptance matrix', () => {
       const stop = harness.locator('.chat-input-send[data-stop]');
       await expect(stop).toBeVisible();
       await stop.hover();
-      await expect(page.getByRole('tooltip')).toHaveText('Add a message or attachment');
+      await expect(page.getByRole('tooltip')).toHaveText('Stop generating');
       await page.keyboard.press('Escape');
       await stop.click();
 
@@ -3699,16 +3747,15 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
 });
 
 test.describe('chat harness — composer send button hit area (COR-1552)', () => {
-  // The send button is drawn 32px square. Under a coarse pointer its hit area is the 44×44 target:
-  // a box spans [centre - 22, centre + 22), so the four points 21px out from the centre are inside
-  // it, and each must resolve to the button or one of its descendants.
+  // Send and Stop are labelled secondary buttons. On a coarse pointer their 44px minimum target is
+  // the button itself, so the four points 21px out from the centre must resolve to the control.
   const PROBE_DISTANCE = 21;
 
   async function probeSendButton(page: Page, button: Locator): Promise<void> {
     expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
     const box = await button.boundingBox();
-    expect(box?.width).toBeCloseTo(32, 0);
-    expect(box?.height).toBeCloseTo(32, 0);
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
     const centre = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
     for (const [dx, dy] of [
       [-PROBE_DISTANCE, 0],

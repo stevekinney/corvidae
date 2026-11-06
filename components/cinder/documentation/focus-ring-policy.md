@@ -169,7 +169,7 @@ Filled variants and states that paint the gap today:
 - SchemaForm submit.
 - FileUpload browse button.
 - CapabilityGate primary action.
-- Chat's send button and new-message indicator in `@lostgradient/chat`.
+- Chat's new-message indicator in `@lostgradient/chat`. Chat's labelled secondary Send and Stop buttons use the unfilled-control recipe: B06's contract keeps their focus ring tight, while coarse pointers receive the separate 44px hit target.
 
 FloatingAction `primary` predates this rule and keeps its tight `--cinder-ring-on-accent` ring.
 
