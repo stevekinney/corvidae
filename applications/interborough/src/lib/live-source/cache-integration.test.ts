@@ -219,6 +219,16 @@ describe('applyFleetEventFrame', () => {
     expect(queryClient.getQueryState(HEALTH_RUNNING_RUNS_KEY)?.isInvalidated).toBe(true);
   });
 
+  for (const kind of ['workflow:suspended', 'workflow:resumed'] as const) {
+    test(`${kind} invalidates Health running workflows`, () => {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(HEALTH_RUNNING_RUNS_KEY, () => []);
+
+      applyFleetEventFrame(queryClient, fleetFrame({ kind }));
+      expect(queryClient.getQueryState(HEALTH_RUNNING_RUNS_KEY)?.isInvalidated).toBe(true);
+    });
+  }
+
   test('a fleet gap invalidates Health running workflows for catch-up', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(HEALTH_RUNNING_RUNS_KEY, () => []);

@@ -163,6 +163,8 @@ const WORKFLOW_STARTED_KIND = 'workflow:started';
 /** Lifecycle frames change the Health Overview's current running count. */
 const HEALTH_RUNNING_WORKFLOW_KINDS: readonly string[] = [
   WORKFLOW_STARTED_KIND,
+  'workflow:suspended',
+  'workflow:resumed',
   ...WORKFLOW_SETTLED_KINDS,
 ];
 
