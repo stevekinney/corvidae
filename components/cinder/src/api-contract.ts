@@ -350,6 +350,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       items: { optional: false, type_kind: 'TSArrayType', default: REQUIRED },
       key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
       label: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      openFirst: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       selectedKey: { optional: true, type_kind: 'TSUnionType', default: B(null) },
       onSelectedKeyChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       selectionParameter: { optional: true, type_kind: 'TSUnionType', default: L('selected') },

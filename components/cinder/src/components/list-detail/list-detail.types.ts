@@ -89,6 +89,13 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   header?: Snippet;
   /**
+   * Opens the first item when none is open and the panes sit side by side, so the detail beside the
+   * list is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while
+   * the component shows one pane at a time (below `pushBelow`): there the list is where it starts.
+   * @default false
+   */
+  openFirst?: boolean;
+  /**
    * Key of the open item, or `null` when none is open. Bindable. When it is `null` on mount, the
    * item named by the URL's search parameter opens.
    * @default null

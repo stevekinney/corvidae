@@ -171,6 +171,7 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `label` | `string` | yes | — | Accessible name of the list region, for example "Chats". |
 | `loading` | `boolean` | no | `false` | Shows a placeholder in place of the rows and the open item while the records load: five list rows in the list pane and a block in the detail pane. Nothing shows for the first 300 milliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after ten seconds. |
 | `loadingLabel` | `string` | no | `"Loading"` | What the loading region announces, politely, once the placeholder appears: "Loading memories". |
+| `openFirst` | `boolean` | no | `false` | Opens the first item when none is open and the panes sit side by side, so the detail beside the list is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while the component shows one pane at a time (below `pushBelow`): there the list is where it starts. |
 | `pushBelow` | `number` | no | `600` | Width in pixels of the component below which it shows one pane at a time: the list, then the detail with a Back button. It is measured on the component, not the viewport. |
 | `selectedKey` | `string` \| `null` | no | `null` | Key of the open item, or `null` when none is open. Bindable. When it is `null` on mount, the item named by the URL's search parameter opens. |
 | `selectionParameter` | `string` \| `null` | no | `"selected"` | Name of the search parameter that holds the open item's key. Pass `null` to keep the selection out of the URL. |
