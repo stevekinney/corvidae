@@ -56,7 +56,10 @@ function serve(agents: readonly unknown[], plugins: readonly unknown[]): void {
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
       'bureau.reviews.list': () => ({ reviews: [] }),
     },
-    (url) => (url.endsWith('/host/plugins') ? Response.json({ plugins, unloaded: [] }) : undefined),
+    (url) =>
+      url.endsWith('/host/plugins')
+        ? Response.json({ configurationRevision: null, plugins, unloaded: [] })
+        : undefined,
   ).restore;
 }
 

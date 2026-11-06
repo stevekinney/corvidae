@@ -136,7 +136,11 @@ describe('the Sources tab', () => {
       {
         method: 'PUT',
         path: '/host/tool-sources/notes/tools',
-        body: { tools: { wipe: { acceptsSecrets: true } } },
+        body: {
+          tools: { wipe: { acceptsSecrets: true } },
+          operationId: expect.any(String),
+          expectedRevision: JSON.stringify([NOTES]),
+        },
       },
     ]);
     // The running host loads it at its next start, and the row says so.
@@ -287,7 +291,7 @@ describe('the Sources tab', () => {
       expect(host.requests.at(-1)).toEqual({
         method: 'POST',
         path: '/host/tool-sources/ledger/authorize',
-        body: undefined,
+        body: { operationId: expect.any(String), expectedRevision: JSON.stringify(host.sources) },
       });
       // The browser blocked the tab, so the address is offered as a link instead of being lost.
       const link = await findByTestId('sign-in-link');
@@ -370,7 +374,14 @@ describe('the Sources tab', () => {
       host.requests.at(-1)?.method === 'GET' || host.requests.some((r) => r.method === 'DELETE'),
     ).toBe(true);
     expect(host.requests.filter((request) => request.method === 'DELETE')).toEqual([
-      { method: 'DELETE', path: '/host/tool-sources/notes', body: undefined },
+      {
+        method: 'DELETE',
+        path: '/host/tool-sources/notes',
+        body: {
+          operationId: expect.any(String),
+          expectedRevision: JSON.stringify([NOTES, source('petstore', { kind: 'openapi' })]),
+        },
+      },
     ]);
     expect(container.querySelector('[data-source-row="petstore"]')).not.toBeNull();
     expect(queryByTestId('source-removal')).toBeNull();

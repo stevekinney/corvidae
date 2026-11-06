@@ -1,3 +1,4 @@
+import { secretPublicationDigest } from './secret-publication-digest.ts';
 /**
  * The host's model providers while it runs: what it offers now, and the three ways a person
  * changes it without a restart. {@link ProviderManager.connect} stores a provider's API key and its
@@ -24,11 +25,15 @@
  * @module provider-manager
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import {
+  createLocalHostMutationContext,
+  HostMutationError,
+  type HostMutationContext,
+} from './host-mutation-context.ts';
 
 import type { Bungalow, ConfigurationSnapshot } from '@lostgradient/bungalow';
 import {
-  ANONYMOUS_LOCAL_OWNER,
   type ProviderChecker,
   type resolveProviderGenerate,
   type SettingLockReason,
@@ -59,7 +64,11 @@ import {
   type LoadedProviders,
   type ModelSelection,
 } from './providers.ts';
-import { createWorkspaceSecrets, type WorkspaceSecrets } from './workspace-secrets.ts';
+import {
+  createWorkspaceSecrets,
+  SecretPublicationError,
+  type WorkspaceSecrets,
+} from './workspace-secrets.ts';
 
 /** The longest API key the host stores. Real keys are far shorter; the limit bounds a request. */
 const MAXIMUM_KEY_LENGTH = 4096;
@@ -178,6 +187,8 @@ export type ProviderModelRow = {
 
 /** The provider configuration as the host holds it, without a key. */
 export type ProviderSnapshot = {
+  /** Current storage revision for the next conditional edit. */
+  readonly configurationRevision: string | null;
   /** Committed configuration revision most recently applied by this host. */
   readonly appliedConfigurationRevision: string | null;
   /** Every provider the host can call, connected or not. */
@@ -188,6 +199,8 @@ export type ProviderSnapshot = {
   readonly models: readonly ProviderModelRow[];
   /** Present when writes are refused, with the reason. */
   readonly lockReason?: SettingLockReason;
+  /** Present when configuration may be writable but credential publication is unavailable. */
+  readonly credentialLockReason?: SettingLockReason;
 };
 
 /** The providers a running host offers and how they change. See the module comment. */
@@ -201,20 +214,24 @@ export type ProviderManager = {
   /** The configuration as it is on disk, without a key. */
   snapshot(): Promise<ProviderSnapshot>;
   /** Store a provider's key, list it in the configuration, and apply both. */
-  connect(connection: ProviderConnection): Promise<ProviderChange>;
+  connect(connection: ProviderConnection, mutation?: HostMutationContext): Promise<ProviderChange>;
   /**
    * Replace the catalog edits in the configuration and apply them. `base` is the list of edits the
    * caller started from, as {@link ProviderManager.snapshot} reported it. When it is given, the
    * edits stored now must equal it, or nothing is written and the change is a
    * {@link ProviderConflictError}. Left out, the edits are replaced whatever is stored.
    */
-  editCatalog(edits: unknown, base?: unknown): Promise<ProviderChange>;
+  editCatalog(
+    edits: unknown,
+    base?: unknown,
+    mutation?: HostMutationContext,
+  ): Promise<ProviderChange>;
   /**
    * Remove a provider's key and apply it, so its models leave the catalog and a run that begins
    * after it cannot call the provider. The provider's allowlist and the catalog edits stay in the
    * configuration for a later connect. Connecting again restores it.
    */
-  disconnect(provider: unknown): Promise<ProviderChange>;
+  disconnect(provider: unknown, mutation?: HostMutationContext): Promise<ProviderChange>;
   /** Read the configuration and the keys again and apply them. */
   reload(): Promise<ProviderChange>;
   /**
@@ -287,11 +304,14 @@ export type ProviderAuditEntry = {
   readonly runId: string;
   /** The committed configuration change. */
   readonly type: 'provider.connected' | 'provider.configured' | 'provider.disconnected';
-  /** The person who removed it, as the host's routes act: `anonymous:local`. */
+  /** The server-resolved resource owner who authorized this change. */
   readonly principal: string;
   /** Metadata only: never a key, request, or configuration value. */
   readonly detail: {
     readonly provider: string;
+    readonly actorId?: string;
+    readonly workspaceId?: string;
+    readonly membershipRevision?: string;
     readonly outcome?: 'committed';
     readonly changedKeys?: readonly string[];
     readonly hash?: string;
@@ -476,13 +496,18 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
     return text;
   }
 
-  const apply = async (): Promise<ProviderChange> => {
+  let lastApplication: { revision: string | null; change: ProviderChange } | undefined;
+  const apply = async (observed = false): Promise<ProviderChange> => {
     // Read back from disk, so the host serves what a restart would.
     const next = await load(loaded.providers);
     loaded = next;
+    if (observed && lastApplication?.revision === next.configurationRevision)
+      return lastApplication.change;
     if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
     const catalog = await replaceRows(next.rows);
-    return { providers: providerDiagnostics(next), catalogRevision: catalog };
+    const change = { providers: providerDiagnostics(next), catalogRevision: catalog };
+    lastApplication = { revision: next.configurationRevision, change };
+    return change;
   };
 
   return {
@@ -491,13 +516,23 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
     lockReason,
     generateFor(selection) {
       const selected = { provider: selection.provider, model: selection.model };
+      let cached = loaded;
       const initial = createCatalogGenerate(selected, {
-        ...loaded,
+        ...cached,
         resolveProviderGenerate: options.resolveProviderGenerate,
       });
+      let cachedGenerate = initial;
       const generate: GenerateFunction = async (context) => {
         const admitted = await serialized(async () => {
-          const next = await load(loaded.providers);
+          const prior = loaded;
+          const next = await load(prior.providers);
+          const sameKeys =
+            next.apiKeys.size === cached.apiKeys.size &&
+            [...next.apiKeys].every(([name, value]) => cached.apiKeys.get(name) === value);
+          const reuse =
+            prior === cached &&
+            next.configurationRevision === cached.configurationRevision &&
+            sameKeys;
           const changed = next.configurationRevision !== loaded.configurationRevision;
           // Catalog replacement rebuilds file agents synchronously against current().
           loaded = next;
@@ -505,10 +540,13 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
             if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
             await replaceRows(next.rows);
           }
-          return createCatalogGenerate(selected, {
-            ...next,
-            resolveProviderGenerate: options.resolveProviderGenerate,
-          });
+          if (!reuse)
+            cachedGenerate = createCatalogGenerate(selected, {
+              ...next,
+              resolveProviderGenerate: options.resolveProviderGenerate,
+            });
+          cached = next;
+          return cachedGenerate;
         });
         return admitted(context);
       };
@@ -525,7 +563,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       closed = true;
     },
     async snapshot() {
-      const { document } = await readDocument();
+      const { document, revision } = await readDocument();
       const configuration = parseProviderConfiguration(JSON.stringify(document), location);
       const allowlists = readAllowlists(
         document,
@@ -534,6 +572,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       );
       const reason = lockReason();
       return {
+        configurationRevision: revision,
         appliedConfigurationRevision: loaded.configurationRevision,
         providers: loaded.providers.map((provider) => {
           const models = allowlists.get(provider.plugin);
@@ -550,11 +589,14 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         ),
         models: loaded.rows.map(modelRowOf),
         ...(reason === undefined ? {} : { lockReason: reason }),
+        ...(hostWriteLocks(bungalow).providerKeys === undefined
+          ? {}
+          : { credentialLockReason: 'deployment' as const }),
       };
     },
     // The request is read, checked, and copied before the first `await`: the caller owns it, and
     // may change it while this waits its turn.
-    async connect(connection) {
+    async connect(connection, mutation) {
       assertWritable();
       const contributed = checkedProvider(connection.provider, loaded.providers);
       const provider = contributed.name;
@@ -567,27 +609,37 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         ? [...connection.models]
         : connection.models;
       return serialized(async () => {
-        const { document, revision } = await readDocument();
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        let identity = await authority.revalidate();
+        const { document } = await readDocument();
         const wasConnected = loaded.apiKeys.has(provider);
         const text = validated(
           withAllowlist(document, contributed.plugin, models),
           new Set([...loaded.apiKeys.keys(), provider]),
         );
         const result = await workspaceSecrets.publish({
-          operationId: randomUUID(),
+          operationId: authority.operationIdFor('provider-connect', provider),
+          requestDigest: secretPublicationDigest({
+            operation: 'provider-connect',
+            target: provider,
+            expectedRevision: authority.expectedRevision,
+            payload: { plugin: contributed.plugin, apiKey: key, models },
+          }),
+          authorize: async () => {
+            identity = await authority.revalidate();
+          },
           key: secretKey,
           value: key,
           document: parseDocument(text, location),
-          expectedRevision: revision,
+          expectedRevision: authority.expectedRevision,
         });
         if (result.outcome !== 'committed') {
           await apply();
-          throw new ProviderConfigurationError(
-            location,
-            'configuration',
-            `write outcome: ${result.outcome}. Reload before retrying.`,
-          );
+          throw new SecretPublicationError(result.outcome);
         }
+        if (result.publishedNow !== true) return apply(true);
         // The plugin manager reports what is stored, so it reads the file again; the write stands
         // either way.
         await options.afterConfigurationWrite?.().catch(() => undefined);
@@ -595,20 +647,23 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           .audit?.({
             runId: `provider:${provider}`,
             type: wasConnected ? 'provider.configured' : 'provider.connected',
-            principal: ANONYMOUS_LOCAL_OWNER,
+            principal: authority.owner,
             detail: {
               provider,
               outcome: 'committed',
               ...(models === undefined ? {} : { changedKeys: ['models'] }),
               ...(result.configurationHash === undefined ? {} : { hash: result.configurationHash }),
-              previousRevision: revision,
+              previousRevision: authority.expectedRevision,
+              actorId: identity.actorId,
+              workspaceId: identity.workspaceId,
+              membershipRevision: identity.membershipRevision,
             },
           })
           .catch(() => undefined);
         return apply();
       });
     },
-    async editCatalog(edits, base) {
+    async editCatalog(edits, base, mutation) {
       assertWritable();
       const parsed = parseCatalogEdits(
         edits,
@@ -629,7 +684,11 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         }
       }
       return serialized(async () => {
-        const { document, revision } = await readDocument();
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        let identity = await authority.revalidate();
+        const { document } = await readDocument();
         const { catalog: stored, ...rest } = document;
         // An edit for a provider no loaded plugin contributes is not the caller's to replace: it
         // waits in the file for its plugin, after the edits that replace the others.
@@ -647,14 +706,13 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           next.length === 0 ? rest : { ...rest, catalog: next },
           new Set(loaded.apiKeys.keys()),
         );
-        const result = await bungalow.writeConfiguration(text, { expectedRevision: revision });
+        identity = await authority.revalidate();
+        const result = await bungalow.writeConfiguration(text, {
+          expectedRevision: authority.expectedRevision,
+        });
         if (result.outcome !== 'committed') {
           await apply().catch(() => undefined);
-          throw new ProviderConfigurationError(
-            location,
-            'configuration',
-            `write outcome: ${result.outcome}. Reload before retrying.`,
-          );
+          throw new SecretPublicationError(result.outcome);
         }
         const changedProviders = [
           ...new Set([...current, ...parsed].map((edit) => edit.provider)),
@@ -666,13 +724,16 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
                 .audit?.({
                   runId: `provider:${provider}`,
                   type: 'provider.configured',
-                  principal: ANONYMOUS_LOCAL_OWNER,
+                  principal: authority.owner,
                   detail: {
                     provider,
                     outcome: 'committed',
                     changedKeys: ['catalog'],
                     hash: createHash('sha256').update(text).digest('hex'),
-                    previousRevision: revision,
+                    previousRevision: authority.expectedRevision,
+                    actorId: identity.actorId,
+                    workspaceId: identity.workspaceId,
+                    membershipRevision: identity.membershipRevision,
                   },
                 })
                 .catch(() => undefined),
@@ -681,7 +742,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         return apply();
       });
     },
-    async disconnect(provider) {
+    async disconnect(provider, mutation) {
       assertWritable();
       const contributed = checkedProvider(provider, loaded.providers);
       const secretKey = contributed.secretKey;
@@ -689,7 +750,30 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         throw new ProviderInputError('provider', 'its plugin declares no secret to hold a key.');
       }
       return serialized(async () => {
-        await workspaceSecrets.write(secretKey, '');
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        let identity = await authority.revalidate();
+        const { document } = await readDocument();
+        const publication = await workspaceSecrets.publish({
+          operationId: authority.operationIdFor('provider-disconnect', contributed.name),
+          requestDigest: secretPublicationDigest({
+            operation: 'provider-disconnect',
+            target: contributed.name,
+            expectedRevision: authority.expectedRevision,
+            payload: {},
+          }),
+          authorize: async () => {
+            identity = await authority.revalidate();
+          },
+          key: secretKey,
+          value: '',
+          document,
+          expectedRevision: authority.expectedRevision,
+        });
+        if (publication.outcome !== 'committed')
+          throw new SecretPublicationError(publication.outcome);
+        if (publication.publishedNow !== true) return apply(true);
         // The plugin manager reports whether the provider's plugin still has its secret.
         await options.afterConfigurationWrite?.().catch(() => undefined);
         const change = await apply();
@@ -698,14 +782,19 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           .audit?.({
             runId: `provider:${contributed.name}`,
             type: 'provider.disconnected',
-            principal: ANONYMOUS_LOCAL_OWNER,
-            detail: { provider: contributed.name },
+            principal: authority.owner,
+            detail: {
+              provider: contributed.name,
+              actorId: identity.actorId,
+              workspaceId: identity.workspaceId,
+              membershipRevision: identity.membershipRevision,
+            },
           })
           .catch(() => undefined);
         return change;
       });
     },
-    reload: () => serialized(apply),
+    reload: () => serialized(() => apply()),
     checkDocument(document) {
       validated(document, new Set(loaded.apiKeys.keys()));
     },

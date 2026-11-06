@@ -63,6 +63,8 @@ const providerModelSchema = z.object({
 });
 
 const providersSchema = z.object({
+  configurationRevision: z.string().nullable(),
+  credentialLockReason: z.literal('deployment').optional(),
   providers: z.array(
     z.object({
       name: z.string().min(1),
@@ -118,6 +120,17 @@ export class HostProviderError extends Error {
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
+/** An explicit retry keeps both fields unchanged; a new edit reads a new revision. */
+type MutationOptions = Options & {
+  readonly mutation?: { readonly operationId: string; readonly expectedRevision: string | null };
+};
+
+async function mutationInput(options: MutationOptions) {
+  if (options.mutation !== undefined) return { ...options.mutation };
+  const snapshot = await getProviders(options);
+  return { operationId: crypto.randomUUID(), expectedRevision: snapshot.configurationRevision };
+}
+
 function send(path: string, init: RequestInit, options: Options): Promise<Response> {
   const request = options.fetch ?? fetch;
   return request(path, options.signal === undefined ? init : { ...init, signal: options.signal });
@@ -172,11 +185,12 @@ export async function getProviders(options: Options = {}): Promise<ProvidersSnap
 export async function connectProvider(
   provider: string,
   apiKey: string,
-  options: Options = {},
+  options: MutationOptions = {},
 ): Promise<void> {
+  const mutation = await mutationInput(options);
   const response = await send(
     `${HOST_PROVIDERS_ROUTE}/${encodeURIComponent(provider)}`,
-    jsonRequest('PUT', { apiKey }),
+    jsonRequest('PUT', { apiKey, ...mutation }),
     options,
   );
   if (!response.ok) throw await faultOf(response, apiKey);
@@ -188,10 +202,14 @@ export async function connectProvider(
  *
  * @throws {HostProviderError} When the host refuses the change.
  */
-export async function disconnectProvider(provider: string, options: Options = {}): Promise<void> {
+export async function disconnectProvider(
+  provider: string,
+  options: MutationOptions = {},
+): Promise<void> {
+  const mutation = await mutationInput(options);
   const response = await send(
     `${HOST_PROVIDERS_ROUTE}/${encodeURIComponent(provider)}`,
-    { method: 'DELETE' },
+    jsonRequest('DELETE', mutation),
     options,
   );
   if (!response.ok) throw await faultOf(response);
@@ -209,12 +227,16 @@ export async function disconnectProvider(provider: string, options: Options = {}
  */
 export async function replaceCatalogEdits(
   edits: readonly CatalogEdit[],
-  options: Options & { readonly base?: readonly CatalogEdit[] } = {},
+  options: MutationOptions & { readonly base?: readonly CatalogEdit[] } = {},
 ): Promise<void> {
   const { base, ...rest } = options;
+  const captured = z
+    .record(z.string(), z.unknown())
+    .parse(JSON.parse(JSON.stringify({ edits, ...(base === undefined ? {} : { base }) })));
+  const mutation = await mutationInput(options);
   const response = await send(
     HOST_CATALOG_ROUTE,
-    jsonRequest('PUT', base === undefined ? { edits } : { edits, base }),
+    jsonRequest('PUT', { ...captured, ...mutation }),
     rest,
   );
   if (!response.ok) throw await faultOf(response);

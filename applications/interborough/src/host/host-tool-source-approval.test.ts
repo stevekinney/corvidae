@@ -143,10 +143,15 @@ async function restart(host: Host, path: string): Promise<Host> {
 }
 
 async function save(host: Host, id: string, body: unknown): Promise<void> {
+  const snapshot = await host.toolSources.snapshot();
   const response = await fetch(new URL(`/host/tool-sources/${id}`, host.url), {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...(typeof body === 'object' && body !== null ? body : {}),
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    }),
   });
   expect(response.status).toBe(200);
 }

@@ -176,6 +176,7 @@ export function installBureauStub(
     }
     if (url.pathname === '/host/providers' && options.hostProviders !== undefined) {
       return Response.json({
+        configurationRevision: 'fixture-revision',
         providers: options.hostProviders.map((provider) => ({
           ...provider,
           configured: provider.hasKey,

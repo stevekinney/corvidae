@@ -106,6 +106,7 @@ export function installFakeHost(initial: {
     host.requests.push({ method, path, body });
     if (method === 'GET') {
       return Response.json({
+        configurationRevision: JSON.stringify([host.keys, host.catalog]),
         providers: Object.entries(host.keys).map(([name, hasKey]) => ({
           name,
           configured: hasKey,

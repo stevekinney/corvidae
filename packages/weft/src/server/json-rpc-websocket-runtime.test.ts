@@ -116,6 +116,68 @@ describe('json-rpc websocket runtime helpers', () => {
     release.resolve();
   });
 
+  it('closes the socket when an admitted workspace request rejects', async () => {
+    const { ws, closeCalls } = createWebSocket({
+      revalidateWorkspace: async () => true,
+      jsonRpcSession: {
+        handleMessage: async () => {
+          throw new Error('request failed');
+        },
+        close: async () => {},
+      },
+    });
+
+    handleJsonRpcWebSocketMessage(ws, 'private-operation');
+    await ws.data.workspaceRequestTail;
+    await sleepForTesting(0);
+
+    expect(ws.data.workspaceClosed).toBe(true);
+    expect(closeCalls).toEqual([{ code: 1011, reason: 'Workspace request failed' }]);
+  });
+
+  it('closes the socket when workspace cleanup rejects during admission failure', async () => {
+    const { ws, closeCalls } = createWebSocket({
+      revalidateWorkspace: async () => false,
+      jsonRpcSession: {
+        handleMessage: async () => {},
+        close: async () => {
+          throw new Error('session cleanup failed');
+        },
+      },
+    });
+
+    handleJsonRpcWebSocketMessage(ws, 'private-operation');
+    await ws.data.workspaceRequestTail;
+
+    expect(ws.data.workspaceClosed).toBe(true);
+    expect(closeCalls).toEqual([
+      { code: 1008, reason: 'Workspace membership required' },
+      { code: 1011, reason: 'Workspace request failed' },
+    ]);
+  });
+
+  it('fails closed when workspace revalidation rejects', async () => {
+    const handled: string[] = [];
+    const { ws, closeCalls } = createWebSocket({
+      revalidateWorkspace: async () => {
+        throw new Error('revalidation unavailable');
+      },
+      jsonRpcSession: {
+        handleMessage: async (message) => {
+          handled.push(message);
+        },
+        close: async () => {},
+      },
+    });
+
+    handleJsonRpcWebSocketMessage(ws, 'private-operation');
+    await ws.data.workspaceRequestTail;
+
+    expect(handled).toEqual([]);
+    expect(ws.data.workspaceClosed).toBe(true);
+    expect(closeCalls).toEqual([{ code: 1008, reason: 'Workspace membership required' }]);
+  });
+
   it('discards an outgoing frame when membership is lost at the release barrier', async () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -145,6 +207,60 @@ describe('json-rpc websocket runtime helpers', () => {
       await ws.data.workspaceReleaseTail;
       expect(sent).toEqual([]);
       expect(closeCalls).toEqual([{ code: 1008, reason: 'Workspace membership required' }]);
+    } finally {
+      create.mockRestore();
+    }
+  });
+
+  it('sends an outgoing frame after the workspace release check succeeds', async () => {
+    const { ws, sent } = createWebSocket({ revalidateWorkspace: async () => true });
+    const jsonRpcModule = await import('./json-rpc-websocket.ts');
+    const create = spyOn(jsonRpcModule, 'createJsonRpcWebSocketSession').mockImplementation(
+      (options) => {
+        options.emitter.send('PRIVATE-FRAME');
+        return { handleMessage: async () => {}, close: async () => {} };
+      },
+    );
+
+    try {
+      openGenericJsonRpcWebSocketSession({
+        ws,
+        registry: {} as never,
+        host: {},
+        activeSessions: new Set(),
+      });
+      await ws.data.workspaceReleaseTail;
+
+      expect(sent).toEqual(['PRIVATE-FRAME']);
+    } finally {
+      create.mockRestore();
+    }
+  });
+
+  it('closes the socket when an outgoing frame release fails', async () => {
+    const { ws, closeCalls } = createWebSocket({ revalidateWorkspace: async () => true });
+    const jsonRpcModule = await import('./json-rpc-websocket.ts');
+    const create = spyOn(jsonRpcModule, 'createJsonRpcWebSocketSession').mockImplementation(
+      (options) => {
+        options.emitter.send('PRIVATE-FRAME');
+        return { handleMessage: async () => {}, close: async () => {} };
+      },
+    );
+    ws.send = () => {
+      throw new Error('socket closed');
+    };
+
+    try {
+      openGenericJsonRpcWebSocketSession({
+        ws,
+        registry: {} as never,
+        host: {},
+        activeSessions: new Set(),
+      });
+      await ws.data.workspaceReleaseTail;
+
+      expect(ws.data.workspaceClosed).toBe(true);
+      expect(closeCalls).toEqual([{ code: 1011, reason: 'Workspace stream closed' }]);
     } finally {
       create.mockRestore();
     }

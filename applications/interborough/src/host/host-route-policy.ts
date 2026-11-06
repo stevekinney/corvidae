@@ -17,12 +17,15 @@ export interface HostRouteInventoryEntry {
   readonly pathPrefixes?: readonly string[];
   /** Whether authorization is applied by the child protocol handler. */
   readonly delegated: boolean;
+  /** OAuth redirects prove authority through durable state and current initiating membership. */
+  readonly admission?: 'durable-oauth-callback';
   /** Wire transports reachable through this registered entry. */
   readonly transports: readonly ('http' | 'sse' | 'websocket')[];
 }
 
 const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /api/v1/principal': 'private-owned',
+  'GET /host/integrations': 'member-shared-read',
   'GET /host/providers': 'administrator-shared',
   'PUT /host/providers/:name': 'administrator-shared',
   'DELETE /host/providers/:name': 'administrator-shared',
@@ -68,14 +71,22 @@ export function authorizeHostRoutes(
 ): Record<string, HostHandler | Record<string, HostHandler>> {
   const inventory = inventoryHostRoutes(routes);
   const guarded: Record<string, HostHandler | Record<string, HostHandler>> = {};
-  const wrap = (handler: unknown, classification: WorkspaceOperationClass | null): HostHandler => {
+  const wrap = (
+    handler: unknown,
+    classification: WorkspaceOperationClass | null,
+    admission?: 'durable-oauth-callback',
+  ): HostHandler => {
     if (typeof handler !== 'function') throw new TypeError('Host routes require handlers');
     return async (request, server) => {
       if (classification !== null) {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
       }
-      if (classification !== null && classification !== 'public-discovery') {
+      if (
+        admission === undefined &&
+        classification !== null &&
+        classification !== 'public-discovery'
+      ) {
         const refusal = await authority.authorize(request, classification);
         if (refusal !== undefined) return refusal;
       }
@@ -84,7 +95,8 @@ export function authorizeHostRoutes(
         throw new TypeError('Host handler returned an invalid response');
       return response !== undefined &&
         classification !== null &&
-        classification !== 'public-discovery'
+        classification !== 'public-discovery' &&
+        admission === undefined
         ? authority.release(request, classification, response)
         : response;
     };
@@ -100,7 +112,7 @@ export function authorizeHostRoutes(
     for (const [method, handler] of Object.entries(handlers)) {
       const entry = inventory.find((candidate) => candidate.key === `${method} ${path}`);
       if (entry === undefined) throw new TypeError('Unclassified host route');
-      methods[method] = wrap(handler, entry.resourceClass);
+      methods[method] = wrap(handler, entry.resourceClass, entry.admission);
     }
     guarded[path] = methods;
   }
@@ -141,6 +153,9 @@ export function inventoryHostRoutes(
           key,
           resourceClass,
           delegated: false,
+          ...(key === 'GET /host/oauth/callback/:id'
+            ? { admission: 'durable-oauth-callback' as const }
+            : {}),
           transports: Object.freeze(
             path === '/__dev/reload' ? (['sse'] as const) : (['http'] as const),
           ),

@@ -440,7 +440,15 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
   });
 
   runtime.setTime(SAMPLE_WORLD_TIMES.anthropicKeyRemoved);
-  const removed = await fetch(new URL('/host/providers/anthropic', host.url), { method: 'DELETE' });
+  const providerSnapshot = await host.providers.snapshot();
+  const removed = await fetch(new URL('/host/providers/anthropic', host.url), {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      operationId: crypto.randomUUID(),
+      expectedRevision: providerSnapshot.configurationRevision,
+    }),
+  });
   if (!removed.ok)
     throw new Error(`Removing the Anthropic key answered ${String(removed.status)}.`);
   await clearHookNotifications(host);

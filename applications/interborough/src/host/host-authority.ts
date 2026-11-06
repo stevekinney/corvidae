@@ -13,6 +13,12 @@ import {
   type AuthConfig,
   type OperationHandlerAuthenticate,
 } from '@lostgradient/weft';
+import {
+  createHostMutationContext,
+  HostMutationError,
+  parseHostMutationInput,
+  type HostMutationContext,
+} from './host-mutation-context.ts';
 
 /** Trusted host composition; request payloads cannot select either member. */
 export type HostWorkspaceAuthentication = {
@@ -31,6 +37,11 @@ export type HostAuthority = {
     request: Request,
     classification: WorkspaceOperationClass,
   ): Promise<Response | undefined>;
+  /** Resolve a transport mutation without accepting client-selected identity. */
+  mutation(
+    request: Request,
+    input: Readonly<Record<string, unknown>>,
+  ): Promise<HostMutationContext>;
   /** Revalidate before returning a response and releasing each private body chunk. */
   release(
     request: Request,
@@ -94,6 +105,22 @@ export async function createHostAuthority(
         return new Response('Authentication required', { status: 401 });
       const decision = authorizeWorkspaceClass(classification, context.principal);
       return decision.allowed ? undefined : new Response(decision.reason, { status: 403 });
+    },
+    async mutation(request, input) {
+      const parsed = parseHostMutationInput(input);
+      const resolveIdentity = async () => {
+        const context = await authenticate(request);
+        if (
+          context instanceof Response ||
+          context.principal === undefined ||
+          !authorizeWorkspaceClass('administrator-shared', context.principal).allowed
+        )
+          return undefined;
+        return context.principal.workspace;
+      };
+      const identity = await resolveIdentity();
+      if (identity === undefined) throw new HostMutationError('forbidden');
+      return createHostMutationContext(identity, parsed, resolveIdentity);
     },
     release: (request, classification, response) =>
       guardWorkspaceResponse(

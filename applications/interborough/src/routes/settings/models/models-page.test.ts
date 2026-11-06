@@ -258,7 +258,15 @@ describe('connecting a provider', () => {
 
     await waitFor(() => expect(rowOf(container, 'openai/gpt-5')).not.toBeNull());
     expect(writes()).toEqual([
-      { method: 'PUT', path: '/host/providers/openai', body: { apiKey: KEY } },
+      {
+        method: 'PUT',
+        path: '/host/providers/openai',
+        body: {
+          apiKey: KEY,
+          operationId: expect.any(String),
+          expectedRevision: JSON.stringify([{ anthropic: true, openai: false, gemini: false }, []]),
+        },
+      },
     ]);
     expect(providerOf(container, 'openai')?.textContent).toContain(MODELS_COPY.providers.connected);
     expect(
@@ -395,7 +403,10 @@ describe('disconnecting a provider', () => {
     expect(writes()[0]).toEqual({
       method: 'DELETE',
       path: '/host/providers/anthropic',
-      body: undefined,
+      body: {
+        operationId: expect.any(String),
+        expectedRevision: JSON.stringify([{ anthropic: true, openai: false, gemini: false }, []]),
+      },
     });
     await waitFor(() =>
       expect(rowOf(container, 'anthropic/claude-sonnet-5')?.outerHTML ?? null).toBeNull(),
@@ -546,6 +557,11 @@ describe('a catalog that changed while it was being edited', () => {
         body: {
           edits: [{ provider: 'anthropic', model: 'claude-haiku-4-5', off: true }],
           base: [],
+          operationId: expect.any(String),
+          expectedRevision: JSON.stringify([
+            { anthropic: true, openai: false, gemini: false },
+            [sonnetOff],
+          ]),
         },
       },
     ]);
@@ -653,7 +669,12 @@ describe('the models', () => {
     expect(writes()[0]).toEqual({
       method: 'PUT',
       path: '/host/catalog',
-      body: { edits: [{ provider: 'anthropic', model: 'claude-haiku-4-5', off: true }], base: [] },
+      body: {
+        edits: [{ provider: 'anthropic', model: 'claude-haiku-4-5', off: true }],
+        base: [],
+        operationId: expect.any(String),
+        expectedRevision: JSON.stringify([{ anthropic: true, openai: false, gemini: false }, []]),
+      },
     });
     await waitFor(() => expect(save(getByRole).disabled).toBe(true));
     expect(rowOf(container, 'anthropic/claude-haiku-4-5')?.dataset['off']).toBe('true');
@@ -677,6 +698,11 @@ describe('the models', () => {
     expect(writes()[0]?.body).toEqual({
       edits: [],
       base: [{ provider: 'anthropic', model: 'haiku', off: true }],
+      operationId: expect.any(String),
+      expectedRevision: JSON.stringify([
+        { anthropic: true, openai: false, gemini: false },
+        [{ provider: 'anthropic', model: 'haiku', off: true }],
+      ]),
     });
   });
 
@@ -726,6 +752,8 @@ describe('the models', () => {
         },
       ],
       base: [],
+      operationId: expect.any(String),
+      expectedRevision: JSON.stringify([{ anthropic: true, openai: false, gemini: false }, []]),
     });
   });
 

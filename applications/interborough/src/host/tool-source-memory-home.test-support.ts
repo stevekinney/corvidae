@@ -1,5 +1,6 @@
 import {
   parseSecretReference,
+  SecretProviderError,
   type ConfigurationWriteCondition,
   type ConfigurationWriteResult,
   type PrepareSecretInput,
@@ -8,6 +9,9 @@ import {
   type SecretOperationTransition,
   type SecretProvider,
 } from '@lostgradient/bungalow';
+import { createHostMutationContext } from './host-mutation-context.ts';
+import type { ToolSourceManager } from './tool-source-manager.ts';
+import { localWorkspaceMembership } from './workspace-principal.ts';
 /**
  * A home that holds its configuration and secrets in memory and fails the way a test says, for the
  * tool-source manager tests (COR-1930).
@@ -29,6 +33,7 @@ export function fixtureSecretProvider(
   writable: boolean,
 ): SecretProvider {
   const versions = state.versions ?? new Map<string, string>();
+  const digests = new Map<string, string>();
   const operations = new Map<string, SecretOperationMetadata>();
   const reference = (key: string, version: string) => {
     const serialized = `bungalow-secret-v1.${Buffer.from(JSON.stringify([workspaceId, key, version])).toString('base64url')}`;
@@ -66,19 +71,20 @@ export function fixtureSecretProvider(
         throw new Error('secret disk full');
       const existing = operations.get(input.operationId);
       if (existing !== undefined) {
-        const previous = versions.get(existing.reference.version);
+        const previous = digests.get(existing.reference.version);
         if (
           existing.key !== input.key ||
           existing.expectedRevision !== input.expectedRevision ||
-          previous !== input.value
+          previous !== input.requestDigest
         ) {
-          throw new Error('fixture operation conflict');
+          throw new SecretProviderError('conflict', 'fixture operation conflict');
         }
         return existing;
       }
       if (!writable) throw new Error('fixture provider is read-only');
       const version = `version-${operations.size + 1}`;
       versions.set(version, input.value);
+      digests.set(version, input.requestDigest);
       const created = operation(input, version);
       operations.set(input.operationId, created);
       return created;
@@ -171,4 +177,25 @@ export function activeFixtureSecret(home: ReturnType<typeof memoryHome>, key: st
   const value = home.state.versions.get(reference.version);
   if (value === undefined) throw new Error('Missing active fixture version');
   return { reference, value };
+}
+
+/** Explicit local composition for standalone route tests over this fixture workspace. */
+export function fixtureToolSourceMutation(manager: ToolSourceManager, owner = 'anonymous:local') {
+  return async () => {
+    const snapshot = await manager.snapshot();
+    const directory = localWorkspaceMembership('fixture-workspace');
+    const member = await directory.resolveOwnerMembership?.('anonymous:local');
+    if (member == null) throw new Error('Missing local fixture member');
+    const identity = {
+      ...member,
+      owner,
+      actorId: owner,
+      capabilities: owner === 'anonymous:local' ? member.capabilities : [],
+    };
+    return createHostMutationContext(
+      identity,
+      { operationId: crypto.randomUUID(), expectedRevision: snapshot.configurationRevision },
+      async () => identity,
+    );
+  };
 }

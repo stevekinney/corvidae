@@ -1,3 +1,9 @@
+import {
+  createLocalHostMutationContext,
+  HostMutationError,
+  type HostMutationContext,
+} from './host-mutation-context.ts';
+import { secretPublicationDigest } from './secret-publication-digest.ts';
 /**
  * The host's plugins while it runs (COR-1880): what the owner chose for each, the secrets each
  * declares, and the two ways the owner changes them without editing a file.
@@ -27,7 +33,6 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import {
-  ANONYMOUS_LOCAL_OWNER,
   pluginLoadOrder,
   type BureauPluginEntry,
   type BureauPluginSecrets,
@@ -43,7 +48,11 @@ import { hostWriteLocks } from './locations.ts';
 import { parsePluginSettings, readPluginSettings } from './plugins.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseDocument, parseProviderConfiguration } from './providers.ts';
-import { createWorkspaceSecrets, type WorkspaceSecrets } from './workspace-secrets.ts';
+import {
+  createWorkspaceSecrets,
+  SecretPublicationError,
+  type WorkspaceSecrets,
+} from './workspace-secrets.ts';
 
 /** The longest secret value the host stores. Real keys are far shorter; the limit bounds a request. */
 const MAXIMUM_SECRET_LENGTH = 4096;
@@ -132,6 +141,8 @@ export type PluginUnloaded = {
 
 /** The plugins as the host holds them. */
 export type PluginSnapshot = {
+  /** Current committed storage revision for conditional edits. */
+  readonly configurationRevision: string | null;
   /**
    * Every plugin Bureau loaded, in load order, then those the host skipped before Bureau
    * (`secret-refused`).
@@ -141,6 +152,8 @@ export type PluginSnapshot = {
   readonly unloaded: readonly PluginUnloaded[];
   /** Present when writes are refused, with the reason. */
   readonly lockReason?: SettingLockReason;
+  /** Present when configuration may be writable but credential publication is unavailable. */
+  readonly credentialLockReason?: SettingLockReason;
 };
 
 /** What a settings change reports. */
@@ -192,9 +205,18 @@ export type PluginManager = {
   /** Every plugin with the owner's choices and its secrets' standing. */
   snapshot(): Promise<PluginSnapshot>;
   /** Persist the choices for `name`. */
-  update(name: string, request: PluginSettingsRequest): Promise<PluginSettingsChange>;
+  update(
+    name: string,
+    request: PluginSettingsRequest,
+    mutation?: HostMutationContext,
+  ): Promise<PluginSettingsChange>;
   /** Store the secret `key` of `name`. */
-  saveSecret(name: string, key: string, value: unknown): Promise<PluginSecretChange>;
+  saveSecret(
+    name: string,
+    key: string,
+    value: unknown,
+    mutation?: HostMutationContext,
+  ): Promise<PluginSecretChange>;
   /** Refuse every later change. The host calls it as it shuts down. */
   close(): void;
 };
@@ -268,7 +290,7 @@ export type PluginAuditEntry = {
   readonly detail: {
     readonly outcome: 'committed';
     readonly changedKeys: readonly string[];
-    readonly hash: string;
+    readonly hash?: string;
     readonly previousRevision: string | null;
   };
 };
@@ -541,6 +563,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     },
 
     async snapshot() {
+      const configuration = await bungalow.readConfiguration();
       const listing = await options.listing();
       const reason = lockReason();
       const standingOf = async (
@@ -573,18 +596,22 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         }),
       );
       return {
+        configurationRevision: configuration.revision,
         plugins: [
           ...standing.filter((entry): entry is PluginStanding => entry !== undefined),
           ...[...refusals].map(([entry, problem]) => refusedStanding(entry, problem)),
         ],
         unloaded,
         ...(reason === undefined ? {} : { lockReason: reason }),
+        ...(hostWriteLocks(bungalow).providerKeys === undefined
+          ? {}
+          : { credentialLockReason: 'deployment' as const }),
       };
     },
 
     // The request is read, checked, and copied before the first `await`: the caller owns it, and
     // may change it while this waits its turn.
-    async update(name, request) {
+    async update(name, request, mutation) {
       assertWritable();
       const entry = entryNamed(name);
       if (entry === undefined) throw new PluginNotFoundError(name);
@@ -608,8 +635,16 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       let changedKeys: string[] = [];
       let committedText = '';
       let previousRevision: string | null = null;
+      let mutationOwner = '';
       const change = await serialized(async () => {
         assertWritable();
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        const identity = await authority.revalidate();
+        if (enabled !== undefined && !identity.capabilities.includes('deployment:operate'))
+          throw new HostMutationError('forbidden');
+        mutationOwner = authority.owner;
         const snapshot = await bungalow.readConfiguration();
         const text = snapshot.text;
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
@@ -636,16 +671,16 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         const applied = parsePluginSettings(nextDocument, location);
         if (live && configuration !== undefined) options.checkDocument?.(nextDocument);
         try {
+          const currentIdentity = await authority.revalidate();
+          if (enabled !== undefined && !currentIdentity.capabilities.includes('deployment:operate'))
+            throw new HostMutationError('forbidden');
           const result = await bungalow.writeConfiguration(
             `${JSON.stringify(nextDocument, null, 2)}\n`,
-            { expectedRevision: snapshot.revision },
+            { expectedRevision: authority.expectedRevision },
           );
-          if (result.outcome !== 'committed')
-            throw new Error(
-              `Configuration write outcome: ${result.outcome}. Reload before retrying.`,
-            );
+          if (result.outcome !== 'committed') throw new SecretPublicationError(result.outcome);
           committedText = `${JSON.stringify(nextDocument, null, 2)}\n`;
-          previousRevision = snapshot.revision;
+          previousRevision = authority.expectedRevision;
         } catch (error) {
           // A write that throws may still have replaced the file, so the disk decides what is reported.
           try {
@@ -667,7 +702,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         .audit?.({
           runId: `plugin:${name}`,
           type: 'plugin.configured',
-          principal: ANONYMOUS_LOCAL_OWNER,
+          principal: mutationOwner,
           detail: {
             outcome: 'committed',
             changedKeys,
@@ -683,7 +718,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       return change;
     },
 
-    async saveSecret(name, key, value) {
+    async saveSecret(name, key, value, mutation) {
       assertWritable();
       const entry = entryNamed(name);
       if (entry === undefined) throw new PluginNotFoundError(name);
@@ -710,13 +745,53 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
         throw new PluginInputError('value', 'contains a line break or another control character.');
       }
+      let publishedNow = false;
       const change = await serialized(async () => {
         assertWritable();
-        await writeSecret(key, trimmed);
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        await authority.revalidate();
+        const snapshot = await bungalow.readConfiguration();
+        try {
+          const result = await workspaceSecrets.publish({
+            operationId: authority.operationIdFor('plugin-secret', JSON.stringify([name, key])),
+            requestDigest: secretPublicationDigest({
+              operation: 'plugin-secret',
+              target: JSON.stringify([name, key]),
+              expectedRevision: authority.expectedRevision,
+              payload: { value: trimmed },
+            }),
+            key,
+            value: trimmed,
+            document: parseDocument(snapshot.text, location),
+            expectedRevision: authority.expectedRevision,
+            authorize: async () => {
+              await authority.revalidate();
+            },
+          });
+          if (result.outcome !== 'committed') throw new SecretPublicationError(result.outcome);
+          publishedNow = result.publishedNow === true;
+        } finally {
+          if (publishedNow) secretChanged(key);
+        }
+        if (publishedNow)
+          await options
+            .audit?.({
+              runId: `plugin:${name}`,
+              type: 'plugin.configured',
+              principal: authority.owner,
+              detail: {
+                outcome: 'committed',
+                changedKeys: ['secret'],
+                previousRevision: authority.expectedRevision,
+              },
+            })
+            .catch(() => undefined);
         return { plugin: name, key, set: true } as const;
       });
       // Applied outside the queue, which the work shares.
-      await options.applySecret?.(name);
+      if (publishedNow) await options.applySecret?.(name);
       return change;
     },
   };

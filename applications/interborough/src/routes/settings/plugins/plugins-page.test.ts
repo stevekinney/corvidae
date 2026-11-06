@@ -446,7 +446,11 @@ describe('restarting', () => {
 
     const back = await backBanner(container);
     expect(writes()).toEqual([
-      { method: 'PUT', path: '/host/plugins/demo', body: { enabled: true } },
+      {
+        method: 'PUT',
+        path: '/host/plugins/demo',
+        body: { enabled: true, operationId: expect.any(String), expectedRevision: '{}' },
+      },
       { method: 'POST', path: '/host/restart', body: undefined },
     ]);
     // The dialog is gone; the banner says what applied and how the plugins stand now.
@@ -557,7 +561,11 @@ describe('restarting', () => {
 
     const back = await backBanner(container);
     expect(writes()).toEqual([
-      { method: 'PUT', path: '/host/plugins/linear', body: { enabled: false } },
+      {
+        method: 'PUT',
+        path: '/host/plugins/linear',
+        body: { enabled: false, operationId: expect.any(String), expectedRevision: '{}' },
+      },
       { method: 'POST', path: '/host/restart', body: undefined },
     ]);
     expect(back.textContent).toContain(RESTART_COPY.back.disabled('linear'));
@@ -677,7 +685,11 @@ describe('a change the host applies at once', () => {
       {
         method: 'PUT',
         path: '/host/plugins/anthropic',
-        body: { configuration: { allowlist: ['a', 'b'] } },
+        body: {
+          configuration: { allowlist: ['a', 'b'] },
+          operationId: expect.any(String),
+          expectedRevision: '{}',
+        },
       },
     ]);
     expect(container.ownerDocument.body.querySelector('.cinder-restart-state__card')).toBeNull();
@@ -948,7 +960,7 @@ describe('secrets', () => {
       {
         method: 'PUT',
         path: '/host/plugins/typesafe/secrets/typesafe-api-key',
-        body: { value: SECRET },
+        body: { value: SECRET, operationId: expect.any(String), expectedRevision: '{}' },
       },
     ]);
     expect(bannerText(container)).toBeNull();

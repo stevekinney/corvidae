@@ -31,6 +31,21 @@ test('fully composed host captures its routes and its engine discovery catalog',
     const keys = host.routeInventory.map((entry) => entry.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).toContain('GET /host/providers');
+    expect(
+      host.routeInventory
+        .filter((entry) => entry.admission !== undefined)
+        .map((entry) => ({
+          key: entry.key,
+          admission: entry.admission,
+          resourceClass: entry.resourceClass,
+        })),
+    ).toEqual([
+      {
+        key: 'GET /host/oauth/callback/:id',
+        admission: 'durable-oauth-callback',
+        resourceClass: 'administrator-shared',
+      },
+    ]);
     expect(keys).toContain('POST /host/restart');
     expect(
       host.routeInventory.find((entry) => entry.key === 'GET /host/status')?.resourceClass,

@@ -112,7 +112,6 @@ import {
   type SecretProviderFactory,
 } from '@lostgradient/bungalow';
 import {
-  ANONYMOUS_LOCAL_OWNER,
   BUREAU_PLUGIN_ENTRY,
   createBureau,
   createBureauHandler,
@@ -878,6 +877,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const startPort = options.port ?? resolvePort(environment);
     const toolSources = createToolSourceManager({
       workspaceSecrets,
+      ...(options.workspaceAuthentication === undefined
+        ? {}
+        : { workspace: options.workspaceAuthentication.workspace }),
       bungalow,
       keys: answerKeys,
       configurationQueue,
@@ -1291,8 +1293,37 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       },
       // Where a person edits what the host keeps by hand. The pages show an agent's file path and
       // a workflow's.
-      ...providerRoutes(providers, refuse),
-      ...pluginRoutes(pluginManager, refuse),
+      '/host/integrations': {
+        GET: async () => {
+          const [providerSnapshot, pluginSnapshot, sourceSnapshot] = await Promise.all([
+            providers.snapshot(),
+            pluginManager.snapshot(),
+            toolSources.snapshot(),
+          ]);
+          // Explicit shared projection: never forward configuration, locations, credentials or diagnostics.
+          return Response.json({
+            providers: providerSnapshot.providers.map(({ name }) => ({
+              id: name,
+              name,
+              available: providerSnapshot.models.some(
+                (model) => model.provider === name && !model.off,
+              ),
+            })),
+            plugins: pluginSnapshot.plugins.map(({ descriptor, status }) => ({
+              id: descriptor.name,
+              name: descriptor.title,
+              available: status === 'running',
+            })),
+            toolSources: sourceSnapshot.sources.map(({ id, state }) => ({
+              id,
+              name: id,
+              available: state === 'loaded',
+            })),
+          });
+        },
+      },
+      ...providerRoutes(providers, refuse, authority),
+      ...pluginRoutes(pluginManager, refuse, authority),
       // The nightly clean-up's standing, and "Clean up now" (COR-2009).
       ...cleanUpRoutes(nightlyCleanUp, refuse),
       // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
@@ -1303,8 +1334,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           (await bureauHandler?.(request)) ??
           new Response('The Bureau is not serving yet.', { status: 503 }),
       ),
-      ...skillRoutes(skills, refuse),
-      ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
+      ...skillRoutes(skills, refuse, authority),
+      ...toolSourceRoutes(toolSources, refuse, {
+        mutation: (request, input) => authority.mutation(request, input),
+      }),
       // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
       [HOST_STORAGE_ROUTE]: {
         GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
@@ -1452,34 +1485,35 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       generateFor,
       configurationQueue,
       toolSources: {
-        probe: (request) => toolSources.probe(request),
-        connect: (request) => toolSources.connect(request),
-        configureTools: (request) => toolSources.configureTools(request),
-        remove: (request) => toolSources.remove(request),
+        probe: (request, mutation) => toolSources.probe(request, mutation),
+        connect: (request, mutation) => toolSources.connect(request, mutation),
+        configureTools: (request, mutation) => toolSources.configureTools(request, mutation),
+        remove: (request, mutation) => toolSources.remove(request, mutation),
         affectedAgents: (id) => toolSources.affectedAgents(id),
         snapshot: () => toolSources.snapshot(),
-        authorize: (id) => toolSources.authorize(id),
-        completeAuthorization: (id, callbackUrl) =>
-          toolSources.completeAuthorization(id, callbackUrl),
+        authorize: (id, mutation) => toolSources.authorize(id, mutation),
+        completeAuthorization: (id, callbackUrl, mutation) =>
+          toolSources.completeAuthorization(id, callbackUrl, mutation),
       },
       skills: {
-        setTrust: (request) => skills.setTrust(request),
+        setTrust: (request, mutation) => skills.setTrust(request, mutation),
         refresh: () => skills.refresh(),
         standing: () => skills.standing(),
       },
       plugins: {
         snapshot: () => pluginManager.snapshot(),
-        update: (name, request) => pluginManager.update(name, request),
-        saveSecret: (name, secretKey, value) => pluginManager.saveSecret(name, secretKey, value),
+        update: (name, request, mutation) => pluginManager.update(name, request, mutation),
+        saveSecret: (name, secretKey, value, mutation) =>
+          pluginManager.saveSecret(name, secretKey, value, mutation),
       },
       cleanUp: {
         standing: () => nightlyCleanUp.standing(),
         cleanUpNow: () => nightlyCleanUp.cleanUpNow(),
       },
       providers: {
-        connect: (connection) => providers.connect(connection),
-        disconnect: (provider) => providers.disconnect(provider),
-        editCatalog: (edits, base) => providers.editCatalog(edits, base),
+        connect: (connection, mutation) => providers.connect(connection, mutation),
+        disconnect: (provider, mutation) => providers.disconnect(provider, mutation),
+        editCatalog: (edits, base, mutation) => providers.editCatalog(edits, base, mutation),
         reload: () => providers.reload(),
         snapshot: () => providers.snapshot(),
       },

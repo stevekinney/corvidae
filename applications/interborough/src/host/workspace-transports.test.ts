@@ -1,10 +1,16 @@
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES, type WorkspaceMembership } from '@lostgradient/bureau';
-import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
+import { createAgent } from '@lostgradient/operative';
+import {
+  AUTHORIZATION_SCOPES,
+  MCP_LEGACY_PROTOCOL_VERSION,
+  principalFromApiKey,
+} from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { startOAuthMcpServer } from './tool-source-servers.test-support.ts';
 
 import { startHost, type Host } from './host.ts';
 
@@ -16,7 +22,10 @@ afterEach(async () => {
   for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
-async function authenticatedHost(a2aKey?: string) {
+async function authenticatedHost(
+  a2aKey?: string,
+  pendingGeneration?: { started: () => void; promise: Promise<void> },
+) {
   const home = await mkdtemp(join(tmpdir(), 'interborough-workspace-transports-'));
   homes.push(home);
   const bungalow = await openBungalow({
@@ -27,11 +36,11 @@ async function authenticatedHost(a2aKey?: string) {
   if (a2aKey !== undefined) await bungalow.deploymentSecrets.write('a2a-api-key', a2aKey);
   await bungalow.close();
   const members = new Map<string, WorkspaceMembership>(
-    ['member', 'administrator'].map((actorId) => [
+    ['member', 'administrator', 'owner', 'peer', 'grantee', 'foreign'].map((actorId) => [
       actorId,
       {
         version: 1,
-        workspaceId,
+        workspaceId: actorId === 'foreign' ? 'another-workspace' : workspaceId,
         actorId,
         actorKind: 'user',
         owner: `owner-${actorId}`,
@@ -46,10 +55,26 @@ async function authenticatedHost(a2aKey?: string) {
     workspaceId,
     port: 0,
     plugins: [],
+    extraAgents: {
+      agents: {
+        fixture: createAgent({
+          name: 'fixture',
+          generate: async () => ({ content: 'PRIVATE-HOST-TRANSPORT-SENTINEL', toolCalls: [] }),
+        }),
+        waiting: createAgent({
+          name: 'waiting',
+          generate: async () => {
+            pendingGeneration?.started();
+            await pendingGeneration?.promise;
+            return { content: 'PRIVATE-HOST-TRANSPORT-SENTINEL', toolCalls: [] };
+          },
+        }),
+      },
+    },
     workspaceAuthentication: {
       authentication: {
         resolveApiKeyPrincipal: async (key: string) =>
-          members.has(key)
+          members.has(key) || key === 'removed'
             ? principalFromApiKey({
                 subject: key,
                 scopes: [...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES],
@@ -77,6 +102,98 @@ function request(host: Host, path: string, actor: string, init: RequestInit = {}
 }
 
 describe('injected workspace transport authority', () => {
+  test('members see only shared integration identity and availability', async () => {
+    const { host, members } = await authenticatedHost();
+    await host.toolSources.connect({
+      id: 'private-destination',
+      principal: 'anonymous:local',
+      source: {
+        id: 'private-destination',
+        kind: 'openapi',
+        specification: {
+          type: 'document',
+          document: { openapi: '3.0.0', info: { title: 'Private', version: '1' }, paths: {} },
+        },
+        baseUrl: 'https://private-destination.example',
+        authentication: { type: 'api-key', header: 'x-api-key', credential: 'key' },
+      },
+      credentials: { key: 'private-credential-sentinel' },
+    });
+    const response = await request(host, '/host/integrations', 'member');
+    expect(response.status).toBe(200);
+    const projection = (await response.json()) as {
+      providers: unknown[];
+      plugins: unknown[];
+      toolSources: unknown[];
+    };
+    expect(projection.toolSources).toEqual([
+      { id: 'private-destination', name: 'private-destination', available: true },
+    ]);
+    for (const row of [...projection.providers, ...projection.plugins, ...projection.toolSources]) {
+      expect(Object.keys(row as object).sort()).toEqual(['available', 'id', 'name']);
+    }
+    const text = JSON.stringify(projection);
+    expect(text).not.toContain('private-credential-sentinel');
+    expect(text).not.toContain('https://private-destination.example');
+    const memberConfiguration = await request(host, '/host/tool-sources', 'member');
+    expect(memberConfiguration.status).toBe(403);
+    members.delete('member');
+    const removedIntegration = await request(host, '/host/integrations', 'member');
+    expect(removedIntegration.status).toBe(401);
+  });
+
+  test('OAuth callback authority stays with the initiating administrator', async () => {
+    const { host, members } = await authenticatedHost();
+    const oauth = await startOAuthMcpServer();
+    try {
+      await host.toolSources.connect({
+        id: 'calendar',
+        principal: 'anonymous:local',
+        source: {
+          id: 'calendar',
+          kind: 'mcp',
+          transport: { type: 'http', url: `${oauth.origin}/`, authentication: { type: 'oauth' } },
+        },
+      });
+      const snapshotResponse = await request(host, '/host/tool-sources', 'administrator');
+      const snapshot = (await snapshotResponse.json()) as { configurationRevision: string | null };
+      const input = {
+        operationId: 'one-sign-in',
+        expectedRevision: snapshot.configurationRevision,
+      };
+      const start = await request(host, '/host/tool-sources/calendar/authorize', 'administrator', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      expect(start.status).toBe(200);
+      const answer = (await start.json()) as { authorizationUrl: string };
+      const redirect = await fetch(answer.authorizationUrl, { redirect: 'manual' });
+      const callback = redirect.headers.get('location');
+      if (callback === null) throw new Error('Expected an OAuth callback');
+      const initiating = members.get('administrator');
+      if (initiating === undefined) throw new Error('Missing fixture administrator');
+      const badState = new URL(callback);
+      badState.searchParams.set('state', 'wrong-state');
+      const invalidCallback = await fetch(badState);
+      expect(invalidCallback.status).toBe(400);
+      expect(oauth.issuedAccessTokens).toHaveLength(0);
+      members.delete('administrator');
+      const removedCallback = await fetch(callback);
+      expect(removedCallback.status).toBe(403);
+      expect(oauth.issuedAccessTokens).toHaveLength(0);
+      members.set('administrator', initiating);
+      const complete = await fetch(callback);
+      expect(complete.status).toBe(200);
+      expect(oauth.issuedAccessTokens).toHaveLength(1);
+      const replay = await fetch(callback);
+      expect(replay.status).toBe(400);
+      expect(oauth.issuedAccessTokens).toHaveLength(1);
+    } finally {
+      await oauth.stop();
+    }
+  });
+
   test('keeps the A2A credential a service without workspace-administrator or deployment powers', async () => {
     const { host } = await authenticatedHost('separate-a2a-credential');
     const response = await request(host, '/api/v1/principal', 'separate-a2a-credential');
@@ -185,4 +302,100 @@ describe('injected workspace transport authority', () => {
     const removed = await request(host, '/api/v1/principal', 'member');
     expect(removed.status).toBe(401);
   });
+});
+
+test('the host relay preserves six-actor private outcomes across JSON-RPC, MCP, SSE and AG-UI', async () => {
+  const release = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  const { host } = await authenticatedHost(undefined, {
+    started: started.resolve,
+    promise: release.promise,
+  });
+  const live = await host.bureau.tasks.start('waiting', 'PRIVATE-HOST-TRANSPORT-SENTINEL', {
+    principal: 'owner-owner',
+  });
+  try {
+    await started.promise;
+    const run = await host.bureau.tasks.start('fixture', 'PRIVATE-HOST-TRANSPORT-SENTINEL', {
+      principal: 'owner-owner',
+    });
+    await run.result();
+    for (const actor of ['peer', 'administrator', 'grantee', 'foreign', 'removed', 'owner']) {
+      const deniedMembership = actor === 'foreign' || actor === 'removed';
+      for (const transport of ['jsonrpc', 'mcp'] as const) {
+        const response = await request(host, `/bureau/${transport}`, actor, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            'mcp-protocol-version': MCP_LEGACY_PROTOCOL_VERSION,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: transport === 'mcp' ? 'tools/call' : 'bureau.tasks.get',
+            params:
+              transport === 'mcp'
+                ? { name: 'bureau.tasks.get', arguments: { taskId: run.id } }
+                : { taskId: run.id },
+          }),
+        });
+        const text = await response.text();
+        if (deniedMembership) expect(response.status).toBe(403);
+        else if (actor === 'owner') {
+          expect(response.status).toBe(200);
+          expect(text).toContain(run.id);
+        } else {
+          expect(text).toContain('NotFound');
+          expect(text).not.toContain('PRIVATE-HOST-TRANSPORT-SENTINEL');
+        }
+      }
+      const events = await request(
+        host,
+        `/bureau/v1/subscriptions/bureau.tasks.events?taskId=${encodeURIComponent(run.id)}`,
+        actor,
+        { headers: { accept: 'text/event-stream' } },
+      );
+      const eventsText = await events.text();
+      expect(events.status).toBe(deniedMembership ? 403 : actor === 'owner' ? 200 : 404);
+      if (actor !== 'owner') expect(eventsText).not.toContain('PRIVATE-HOST-TRANSPORT-SENTINEL');
+      else expect(eventsText).toContain('PRIVATE-HOST-TRANSPORT-SENTINEL');
+      const attachment = await request(
+        host,
+        `/bureau/ag-ui/runs/${encodeURIComponent(live.id)}`,
+        actor,
+        { headers: { accept: 'text/event-stream' } },
+      );
+      if (actor === 'owner') release.resolve();
+      const attachmentText = await attachment.text();
+      if (deniedMembership) expect(attachment.status).toBe(403);
+      else if (actor !== 'owner') {
+        expect(attachmentText).toContain('RUN_NOT_FOUND');
+        expect(attachmentText).not.toContain('PRIVATE-HOST-TRANSPORT-SENTINEL');
+      } else {
+        expect(attachment.status).toBe(200);
+        expect(attachmentText).not.toContain('RUN_NOT_FOUND');
+        expect(attachmentText).toContain(live.id);
+        expect(attachmentText).toContain('PRIVATE-HOST-TRANSPORT-SENTINEL');
+      }
+      const before = await host.providers.snapshot();
+      const refusal = await request(host, '/host/providers/anthropic', actor, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          operationId: 'denied-mutation',
+          expectedRevision: before.configurationRevision,
+          apiKey: 'secret',
+        }),
+      });
+      if (actor !== 'administrator') {
+        expect(refusal.status).toBe(403);
+        const after = await host.providers.snapshot();
+        expect(after.configurationRevision).toBe(before.configurationRevision);
+      }
+    }
+  } finally {
+    release.resolve();
+    await live.result();
+  }
 });

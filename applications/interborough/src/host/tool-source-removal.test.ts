@@ -21,7 +21,12 @@ import {
   type ToolSourceManager,
   type ToolSourceState,
 } from './tool-source-manager.ts';
-import { activeFixtureSecret, keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import {
+  activeFixtureSecret,
+  fixtureToolSourceMutation,
+  keysOf,
+  memoryHome,
+} from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import {
   petsDocument,
@@ -172,11 +177,19 @@ describe('a remote home', () => {
   test('still previews the affected agents, and refuses the removal with the reason deployment', async () => {
     const { home, keys } = await homeWithPets('remote');
     const { manager, audited } = await started(home, { keys });
-    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => owner });
+    const routes = toolSourceRoutes(manager, () => undefined, {
+      mutation: fixtureToolSourceMutation(manager, owner),
+    });
     const request = (method: string, path: string) =>
-      Object.assign(new Request(`http://127.0.0.1${path}`, { method }), {
-        params: { id: 'pets' },
-      });
+      Object.assign(
+        new Request(`http://127.0.0.1${path}`, {
+          method,
+          ...(method === 'DELETE' ? { body: '{}' } : {}),
+        }),
+        {
+          params: { id: 'pets' },
+        },
+      );
 
     const preview = await routes['/host/tool-sources/:id/affected-agents'].GET(
       request(

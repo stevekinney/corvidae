@@ -24,6 +24,7 @@ test('two external clients share idempotent preparation and one publication clai
   const second = service.client();
   const input = {
     operationId: 'same-operation',
+    requestDigest: 'a'.repeat(64),
     key: 'api-key',
     value: 'same-value',
     expectedRevision: null,

@@ -484,14 +484,48 @@ await waitUntil(() => compiledRunHandshakes.includes('task:compiled-open'), {
   message: 'compiled task run watch to connect',
   yieldTurn: () => Bun.sleep(10),
 });
+const compiledRunSigintReader = compiledRunSigint.stdout.getReader();
+const compiledRunSigintDecoder = new TextDecoder();
+let compiledRunSigintStdout = '';
+let compiledRunSigintFirstRecord = false;
+while (!compiledRunSigintFirstRecord) {
+  const next = await compiledRunSigintReader.read();
+  if (next.done) break;
+  compiledRunSigintStdout += compiledRunSigintDecoder.decode(next.value, { stream: true });
+  const completeLines = compiledRunSigintStdout.split(/\r?\n/).slice(0, -1);
+  for (const line of completeLines) {
+    try {
+      const record = JSON.parse(line) as {
+        id?: unknown;
+        event?: { kind?: unknown; status?: unknown };
+      };
+      if (
+        record.id === 'task:compiled-open' &&
+        record.event?.kind === 'task.status' &&
+        record.event.status === 'running'
+      ) {
+        compiledRunSigintFirstRecord = true;
+        break;
+      }
+    } catch {
+      // Ignore an incomplete or unrelated line until the expected record arrives.
+    }
+  }
+}
+if (!compiledRunSigintFirstRecord)
+  throw new Error('compiled task run watch did not emit its first stdout record');
 compiledRunSigint.kill('SIGINT');
-const [compiledRunSigintStdout, compiledRunSigintStderr, compiledRunSigintExit] = await Promise.all(
-  [
-    new Response(compiledRunSigint.stdout).text(),
-    new Response(compiledRunSigint.stderr).text(),
-    compiledRunSigint.exited,
-  ],
-);
+for (;;) {
+  const next = await compiledRunSigintReader.read();
+  if (next.done) break;
+  compiledRunSigintStdout += compiledRunSigintDecoder.decode(next.value, { stream: true });
+}
+compiledRunSigintStdout += compiledRunSigintDecoder.decode();
+compiledRunSigintReader.releaseLock();
+const [compiledRunSigintStderr, compiledRunSigintExit] = await Promise.all([
+  new Response(compiledRunSigint.stderr).text(),
+  compiledRunSigint.exited,
+]);
 const compiledRunCancelCountAfterSigint = compiledRunCancelCalls.length;
 
 const compiledRunTimeout = await invoke([

@@ -110,6 +110,11 @@ async function startAt(directory: string, options: Parameters<typeof startHost>[
   return host;
 }
 
+async function mutationFor(host: Host) {
+  const snapshot = await host.providers.snapshot();
+  return { operationId: crypto.randomUUID(), expectedRevision: snapshot.configurationRevision };
+}
+
 function pairsOf(host: Host): string[] {
   return host.bureau.models
     .catalog()
@@ -762,11 +767,11 @@ describe('a catalog save that names the edits it started from', () => {
 
   test('answers 409 with the stored edits over HTTP, and 200 when the base matches', async () => {
     const { directory, host } = await startWithAnthropic([sonnetOff]);
-    const put = (body: unknown) =>
+    const put = async (body: Record<string, unknown>) =>
       fetch(new URL('/host/catalog', host.url), {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, ...(await mutationFor(host)) }),
       });
 
     const stale = await put({ edits: [haikuOff], base: [] });
@@ -956,6 +961,7 @@ describe('disconnecting a provider', () => {
     const { host } = await startConnected();
     const removed = await fetch(new URL('/host/providers/anthropic', host.url), {
       method: 'DELETE',
+      body: JSON.stringify(await mutationFor(host)),
     });
     const text = await removed.text();
 
@@ -964,7 +970,10 @@ describe('disconnecting a provider', () => {
     expect(JSON.parse(text).providers.map((entry: { name: string }) => entry.name)).not.toContain(
       'anthropic',
     );
-    const unknown = await fetch(new URL('/host/providers/voyage', host.url), { method: 'DELETE' });
+    const unknown = await fetch(new URL('/host/providers/voyage', host.url), {
+      method: 'DELETE',
+      body: JSON.stringify(await mutationFor(host)),
+    });
     expect(unknown.status).toBe(400);
     expect(await unknown.json()).toMatchObject({ error: 'invalid', field: 'provider' });
   });
@@ -989,7 +998,15 @@ describe('the provider routes', () => {
       headers: { 'content-type': 'application/json', ...headers },
       ...(body === undefined
         ? {}
-        : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
+        : {
+            body:
+              typeof body === 'string'
+                ? body
+                : JSON.stringify({
+                    ...(typeof body === 'object' && body !== null ? body : {}),
+                    ...(await mutationFor(host)),
+                  }),
+          }),
     });
   }
 

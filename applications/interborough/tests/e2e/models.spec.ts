@@ -22,6 +22,7 @@ const KEY = 'e2e-gemini-key-that-must-never-be-printed';
 
 type Edit = { provider: string; model: string; off?: boolean; contextWindowTokens?: number };
 type Snapshot = {
+  configurationRevision: string | null;
   providers: { name: string; hasKey: boolean }[];
   catalog: Edit[];
   models: { provider: string; model: string; off: boolean; contextWindowTokens: number }[];
@@ -40,16 +41,29 @@ async function editsOf(request: APIRequestContext): Promise<Edit[]> {
 }
 
 async function putEdits(request: APIRequestContext, edits: readonly Edit[]): Promise<void> {
-  const response = await request.put(`${E2E_BASE_URL}/host/catalog`, { data: { edits } });
+  const snapshot = await snapshotOf(request);
+  const response = await request.put(`${E2E_BASE_URL}/host/catalog`, {
+    data: {
+      edits,
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    },
+  });
   expect(response.status()).toBe(200);
 }
 
 /** Removes a provider's key through the host, which is a no-op for one that has none. */
 async function disconnectThroughHost(request: APIRequestContext, name: string): Promise<void> {
-  const response = await request.delete(`${E2E_BASE_URL}/host/providers/${name}`);
-  expect(response.status()).toBe(200);
   const snapshot = await snapshotOf(request);
-  expect(snapshot.providers.find((entry) => entry.name === name)?.hasKey).toBe(false);
+  const response = await request.delete(`${E2E_BASE_URL}/host/providers/${name}`, {
+    data: {
+      operationId: crypto.randomUUID(),
+      expectedRevision: snapshot.configurationRevision,
+    },
+  });
+  expect(response.status()).toBe(200);
+  const after = await snapshotOf(request);
+  expect(after.providers.find((entry) => entry.name === name)?.hasKey).toBe(false);
 }
 
 /** Replaces a number field's value the way a person does: select it, type, and leave the field. */
@@ -263,8 +277,13 @@ test('refuses a model the provider’s allowlist leaves out', async ({ page, req
 test('adds a model the built-in list lacks, then takes it out', async ({ page, request }) => {
   const before = await editsOf(request);
   // Gemini has no allowlist, so the host serves what is added; connecting is safe to repeat.
+  const providerSnapshot = await snapshotOf(request);
   const connected = await request.put(`${E2E_BASE_URL}/host/providers/gemini`, {
-    data: { apiKey: KEY },
+    data: {
+      apiKey: KEY,
+      operationId: crypto.randomUUID(),
+      expectedRevision: providerSnapshot.configurationRevision,
+    },
   });
   expect(connected.ok()).toBe(true);
   try {

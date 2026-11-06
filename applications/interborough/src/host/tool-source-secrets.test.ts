@@ -16,7 +16,11 @@ import {
   type ToolSourceAuditEntry,
   type ToolSourceManager,
 } from './tool-source-manager.ts';
-import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import {
+  fixtureToolSourceMutation,
+  keysOf,
+  memoryHome,
+} from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import {
   petsDocument,
@@ -411,7 +415,9 @@ describe('acceptsSecrets on a saved source tool', () => {
     expect((failure as ToolSourceWriteLockedError).reason).toBe('deployment');
     expect(home.state.configuration).toBeUndefined();
 
-    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => owner });
+    const routes = toolSourceRoutes(manager, () => undefined, {
+      mutation: fixtureToolSourceMutation(manager, owner),
+    });
     const request = Object.assign(
       new Request('http://127.0.0.1/host/tool-sources/pets/tools', {
         method: 'PUT',
@@ -430,7 +436,9 @@ describe('acceptsSecrets on a saved source tool', () => {
     const home = memoryHome();
     const { manager } = await managerOver(home, await keysOf());
     await connectPets(manager);
-    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => owner });
+    const routes = toolSourceRoutes(manager, () => undefined, {
+      mutation: fixtureToolSourceMutation(manager, owner),
+    });
     const put = (body: unknown) =>
       routes['/host/tool-sources/:id/tools'].PUT(
         Object.assign(
@@ -555,12 +563,18 @@ describe('acceptsSecrets when a source is pointed somewhere else', () => {
         sourceId: 'pets',
         kind: 'openapi',
         owner,
+        workspaceId: 'fixture-workspace',
+        actorId: 'local-owner',
+        membershipRevision: 'local-owner-v1',
         granted: ['create-pet', 'delete-pet'],
       },
       {
         sourceId: 'pets',
         kind: 'openapi',
         owner,
+        workspaceId: 'fixture-workspace',
+        actorId: 'local-owner',
+        membershipRevision: 'local-owner-v1',
         granted: ['list-pets'],
         revoked: ['create-pet'],
       },

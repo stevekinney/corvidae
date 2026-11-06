@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { secretPublicationDigest } from './secret-publication-digest.ts';
 
 import {
   parseSecretReference,
@@ -25,8 +26,12 @@ export type SecretHome = Pick<
 
 /** One credential and its complete configuration candidate, computed from the same snapshot. */
 export type SecretPublication = {
+  /** Revalidate current host authority immediately before preparation and configuration publication. */
+  readonly authorize?: () => Promise<void>;
   /** Stable idempotency identifier for this exact publication. */
   readonly operationId: string;
+  /** Trusted logical request digest, computed before encryption when applicable. */
+  readonly requestDigest?: string;
   /** Logical credential key within this workspace. */
   readonly key: string;
   /** Private value prepared before configuration activation. */
@@ -42,6 +47,8 @@ export type PendingSecretOperation = Pick<SecretOperationMetadata, 'id' | 'state
 
 /** Publication evidence without configuration text or credential values. */
 export type SecretPublicationResult = ConfigurationWriteResult & {
+  /** True only when this call performed the publication; observing a prior commit is false. */
+  readonly publishedNow?: boolean;
   readonly configurationHash?: string;
 };
 
@@ -203,17 +210,39 @@ export function createWorkspaceSecrets(home: SecretHome): WorkspaceSecrets {
     },
     async publish(input) {
       // Caller-owned mutable inputs are captured before preparation can suspend.
-      const { operationId, key, value, expectedRevision } = input;
+      const { operationId, key, value, expectedRevision, authorize } = input;
       const document: Record<string, unknown> = structuredClone(input.document);
+      const requestDigest =
+        input.requestDigest ??
+        secretPublicationDigest({
+          operation: 'secret-publication',
+          target: key,
+          expectedRevision,
+          payload: { document, value },
+        });
       const bindings = bindingsOf(document, workspaceId);
       if (!writable) return { outcome: 'read-only' };
+      await authorize?.();
       let operation = structuredClone(
-        await providerCall(() => provider.prepare({ operationId, key, value, expectedRevision })),
+        await providerCall(() =>
+          provider.prepare({ operationId, key, value, expectedRevision, requestDigest }),
+        ),
       );
       assertOperation(operation, { operationId, key, expectedRevision }, workspaceId);
       if (operation.state === 'abandoned') return { outcome: 'conflict' };
       if (operation.state !== 'prepared') {
-        return { outcome: (await reconcileOperation(operation)) ? 'committed' : 'unknown' };
+        return (await reconcileOperation(operation))
+          ? { outcome: 'committed', publishedNow: false }
+          : { outcome: 'unknown' };
+      }
+      const observedConfiguration = await home.readConfiguration();
+      if (observedConfiguration.revision !== expectedRevision) {
+        try {
+          await provider.transitionOperation(operationId, { from: 'prepared', to: 'abandoned' });
+        } catch {
+          // A concurrent claimant owns the receipt; this caller still cannot publish its candidate.
+        }
+        return { outcome: 'conflict' };
       }
       try {
         operation = structuredClone(
@@ -226,12 +255,26 @@ export function createWorkspaceSecrets(home: SecretHome): WorkspaceSecrets {
         const standing = await providerCall(() => provider.getOperation(operationId));
         if (standing?.state === 'abandoned') return { outcome: 'conflict' };
         if (standing !== undefined && (await reconcileOperation(standing)))
-          return { outcome: 'committed' };
+          return { outcome: 'committed', publishedNow: false };
         return { outcome: 'unknown' };
       }
       document[SECRET_BINDINGS_FIELD] = { ...bindings, [key]: operation.reference.serialized };
       const committedText = `${JSON.stringify(document, null, 2)}\n`;
       const configurationHash = createHash('sha256').update(committedText).digest('hex');
+      try {
+        await authorize?.();
+      } catch (error) {
+        // No configuration attempt occurred; a denied claim cannot be retried for publication.
+        try {
+          await provider.transitionOperation(operationId, { from: 'publishing', to: 'abandoned' });
+        } catch {
+          pending = [
+            ...pending.filter((item) => item.id !== operationId),
+            { id: operationId, state: 'publishing' },
+          ];
+        }
+        throw error;
+      }
       let result: ConfigurationWriteResult;
       try {
         result = await home.writeConfiguration(committedText, {
@@ -260,14 +303,16 @@ export function createWorkspaceSecrets(home: SecretHome): WorkspaceSecrets {
       }
       if (next === 'unknown') {
         if (await reconcileOperation({ ...operation, state: 'unknown' }))
-          return { outcome: 'committed', configurationHash };
+          return { outcome: 'committed', configurationHash, publishedNow: true };
         pending = [
           ...pending.filter((item) => item.id !== operationId),
           { id: operationId, state: 'unknown' },
         ];
         return { outcome: 'unknown' };
       }
-      return result.outcome === 'committed' ? { ...result, configurationHash } : result;
+      return result.outcome === 'committed'
+        ? { ...result, configurationHash, publishedNow: true }
+        : result;
     },
     async write(key, value, operationId = randomUUID()) {
       const snapshot = await home.readConfiguration();

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createLocalHostMutationContext } from './host-mutation-context.ts';
 
 import {
   createSkillManager,
@@ -44,6 +45,7 @@ async function fakeHome(
   const options: SkillManagerOptions = {
     bungalow: {
       mode,
+      workspaceId: 'skill-fixture',
       configurationWriteCapability:
         mode === 'remote' ? ('read-only' as const) : ('writable' as const),
       configurationLocation: 's3://bucket/configuration.json',
@@ -94,7 +96,9 @@ describe('a remote home', () => {
   test('answers the route with 403 and the reason', async () => {
     const { options } = await fakeHome('remote');
     const manager = await createSkillManager(options);
-    const routes = skillRoutes(manager, () => undefined);
+    const routes = skillRoutes(manager, () => undefined, {
+      mutation: () => createLocalHostMutationContext(options.bungalow),
+    });
     const request = Object.assign(
       new Request('http://127.0.0.1/host/skills/sources/workspace/trust', {
         method: 'PUT',
@@ -236,7 +240,7 @@ describe('a local home', () => {
 
     // Current standing is authoritative, but matching content does not identify its writer.
     expect(failure).toMatchObject({
-      message: 'Configuration write outcome: unknown. Reload before retrying.',
+      code: 'unavailable',
     });
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
     expect(audited).toEqual([]);
@@ -259,7 +263,7 @@ describe('a local home', () => {
       .catch((caught: unknown) => caught);
 
     expect(failure).toMatchObject({
-      message: 'Configuration write outcome: unknown. Reload before retrying.',
+      code: 'unavailable',
     });
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
     down = false;
@@ -277,9 +281,63 @@ describe('a local home', () => {
       .catch((caught: unknown) => caught);
 
     expect(failure).toMatchObject({
-      message: 'Configuration write outcome: unavailable. Reload before retrying.',
+      code: 'unavailable',
     });
     expect(manager.standing().catalog.records[0]?.available).toBe(false);
     expect(manager.standing().sources[0]?.trust).toBe('untrusted');
+  });
+});
+
+describe('skill trust admission', () => {
+  test('a writable remote backend accepts an authorized deployment operator', async () => {
+    const { options, writes } = await fakeHome('remote');
+    const bungalow = { ...options.bungalow, configurationWriteCapability: 'writable' as const };
+    const manager = await createSkillManager({ ...options, bungalow });
+    const mutation = await createLocalHostMutationContext(bungalow);
+    const change = await manager.setTrust({ source: 'workspace', trusted: true }, mutation);
+    expect(change.changed).toBe(true);
+    expect(writes).toHaveLength(1);
+  });
+
+  test('an edit from a stale revision cannot overwrite another configuration change', async () => {
+    const { options, writes } = await fakeHome('local');
+    const manager = await createSkillManager(options);
+    const mutation = await createLocalHostMutationContext(options.bungalow);
+    const previous = await options.bungalow.readConfiguration();
+    await options.bungalow.writeConfiguration(`${previous.text}\n`, {
+      expectedRevision: previous.revision,
+    });
+    const failure: unknown = await manager
+      .setTrust({ source: 'workspace', trusted: true }, mutation)
+      .then(
+        () => undefined,
+        (error) => error,
+      );
+    expect(failure).toMatchObject({ code: 'conflict' });
+    expect(writes).toHaveLength(1);
+  });
+
+  test('revocation immediately before publication prevents a configuration write', async () => {
+    const { options, writes, audited } = await fakeHome('local');
+    const manager = await createSkillManager(options);
+    const local = await createLocalHostMutationContext(options.bungalow);
+    let evaluations = 0;
+    const mutation = {
+      ...local,
+      async revalidate() {
+        const identity = await local.revalidate();
+        evaluations += 1;
+        return evaluations === 1 ? identity : { ...identity, capabilities: [] };
+      },
+    };
+    const failure: unknown = await manager
+      .setTrust({ source: 'workspace', trusted: true }, mutation)
+      .then(
+        () => undefined,
+        (error) => error,
+      );
+    expect(failure).toMatchObject({ code: 'forbidden' });
+    expect(writes).toEqual([]);
+    expect(audited).toEqual([]);
   });
 });

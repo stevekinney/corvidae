@@ -36,6 +36,11 @@ export type PrepareSecretInput = Readonly<{
   operationId: string;
   key: string;
   value: string;
+  /** SHA-256 of the complete logical request, including plaintext before encoding.
+   * The integrator computes this digest; matching retries may use different ciphertext.
+   * Providers retain it only in private immutable payloads, never operation metadata.
+   */
+  requestDigest: string;
   expectedRevision: string | null;
 }>;
 /** Conditional transitions permitted by the publication state machine. */
@@ -100,6 +105,8 @@ function assertInput(input: PrepareSecretInput): void {
   assertSecretKey(input.key);
   if (
     typeof input.value !== 'string' ||
+    typeof input.requestDigest !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(input.requestDigest) ||
     (input.expectedRevision !== null &&
       (typeof input.expectedRevision !== 'string' || input.expectedRevision.length === 0))
   ) {
@@ -255,6 +262,9 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
         !ID_PATTERN.test(value['operationId']) ||
         version !== `op-${value['operationId']}` ||
         (value['expectedRevision'] !== null && typeof value['expectedRevision'] !== 'string') ||
+        (value['requestDigest'] !== undefined &&
+          (typeof value['requestDigest'] !== 'string' ||
+            !/^[a-f0-9]{64}$/.test(value['requestDigest']))) ||
         typeof value['value'] !== 'string'
       )
         throw new Error('Invalid version');
@@ -264,6 +274,7 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
         operationId: string;
         expectedRevision: string | null;
         value: string;
+        requestDigest?: string;
       };
     } catch (error) {
       return fsError('read secret version', error);
@@ -338,11 +349,11 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
       assertInput(snapshot);
       const existing = readOperation(snapshot.operationId);
       if (existing !== undefined) {
-        const value = await this.readVersion(existing.reference);
+        const payload = readVersionPayload(existing.reference.version);
         if (
           existing.key !== snapshot.key ||
           existing.expectedRevision !== snapshot.expectedRevision ||
-          value !== snapshot.value
+          payload?.requestDigest !== snapshot.requestDigest
         )
           throw new SecretProviderError(
             'conflict',
@@ -362,13 +373,14 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
           operationId: snapshot.operationId,
           expectedRevision: snapshot.expectedRevision,
           value: snapshot.value,
+          requestDigest: snapshot.requestDigest,
         };
         const existingPayload = readVersionPayload(reference.version);
         if (
           existingPayload !== undefined &&
           (existingPayload.key !== snapshot.key ||
             existingPayload.expectedRevision !== snapshot.expectedRevision ||
-            existingPayload.value !== snapshot.value)
+            existingPayload.requestDigest !== snapshot.requestDigest)
         ) {
           throw new SecretProviderError(
             'conflict',

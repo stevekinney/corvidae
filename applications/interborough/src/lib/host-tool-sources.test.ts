@@ -13,7 +13,10 @@ import {
   setAcceptsSecrets,
 } from './host-tool-sources.ts';
 
+const MUTATION = { operationId: 'sign-in-test', expectedRevision: null };
+
 const SNAPSHOT = {
+  configurationRevision: null,
   sources: [
     {
       id: 'notes',
@@ -104,13 +107,14 @@ describe('setAcceptsSecrets', () => {
     const { seen, fetch } = recording(() =>
       Response.json({ id: 'notes', changed: true, restartRequired: true }),
     );
-    await setAcceptsSecrets('notes', { wipe: true, lookup: false }, { fetch });
+    await setAcceptsSecrets('notes', { wipe: true, lookup: false }, { mutation: MUTATION, fetch });
     expect(seen).toEqual([
       {
         path: `${HOST_TOOL_SOURCES_ROUTE}/notes/tools`,
         method: 'PUT',
         body: JSON.stringify({
           tools: { wipe: { acceptsSecrets: true }, lookup: { acceptsSecrets: false } },
+          ...MUTATION,
         }),
       },
     ]);
@@ -120,7 +124,7 @@ describe('setAcceptsSecrets', () => {
     const { seen, fetch } = recording(() =>
       Response.json({ id: 'a b', changed: false, restartRequired: true }),
     );
-    await setAcceptsSecrets('a b', {}, { fetch });
+    await setAcceptsSecrets('a b', {}, { mutation: MUTATION, fetch });
     expect(seen[0]?.path).toBe(`${HOST_TOOL_SOURCES_ROUTE}/a%20b/tools`);
   });
 
@@ -135,7 +139,9 @@ describe('setAcceptsSecrets', () => {
         { status: 400 },
       ),
     );
-    expect(await failureOf(setAcceptsSecrets('notes', { wipe: true }, { fetch }))).toMatchObject({
+    expect(
+      await failureOf(setAcceptsSecrets('notes', { wipe: true }, { mutation: MUTATION, fetch })),
+    ).toMatchObject({
       kind: 'invalid',
       field: 'tools.wipe.acceptsSecrets',
       message: 'expected true or false.',
@@ -152,7 +158,9 @@ describe('setAcceptsSecrets', () => {
     ] as const;
     for (const [body, status, kind] of answers) {
       const { fetch } = recording(() => Response.json(body, { status }));
-      const failure = await failureOf(setAcceptsSecrets('notes', { wipe: true }, { fetch }));
+      const failure = await failureOf(
+        setAcceptsSecrets('notes', { wipe: true }, { mutation: MUTATION, fetch }),
+      );
       expect(failure).toBeInstanceOf(HostToolSourceError);
       expect(failure).toMatchObject({ kind, message: body.message });
     }
@@ -160,7 +168,9 @@ describe('setAcceptsSecrets', () => {
 
   test('treats an answer that is not JSON as a failure with no message', async () => {
     const { fetch } = recording(() => new Response('<html>', { status: 502 }));
-    expect(await failureOf(setAcceptsSecrets('notes', { wipe: true }, { fetch }))).toMatchObject({
+    expect(
+      await failureOf(setAcceptsSecrets('notes', { wipe: true }, { mutation: MUTATION, fetch })),
+    ).toMatchObject({
       kind: 'failed',
       message: '',
     });
@@ -168,27 +178,52 @@ describe('setAcceptsSecrets', () => {
 
   test('fails when a success answer is not the shape the host documents', async () => {
     const { fetch } = recording(() => Response.json({ id: 'notes' }));
-    expect(await failureOf(setAcceptsSecrets('notes', { wipe: true }, { fetch }))).toMatchObject({
+    expect(
+      await failureOf(setAcceptsSecrets('notes', { wipe: true }, { mutation: MUTATION, fetch })),
+    ).toMatchObject({
       kind: 'failed',
     });
   });
 });
 
 describe('authorizeToolSource', () => {
+  test('a new sign-in fetches the committed revision before allocating its request identity', async () => {
+    const { seen, fetch } = recording((entry) =>
+      entry.path === HOST_TOOL_SOURCES_ROUTE
+        ? Response.json({ ...SNAPSHOT, configurationRevision: 'current-revision' })
+        : Response.json({ authorized: true }),
+    );
+    await authorizeToolSource('ledger', { fetch });
+    expect(seen.map((entry) => entry.path)).toEqual([
+      HOST_TOOL_SOURCES_ROUTE,
+      `${HOST_TOOL_SOURCES_ROUTE}/ledger/authorize`,
+    ]);
+    expect(JSON.parse(seen[1]?.body ?? '{}')).toMatchObject({
+      expectedRevision: 'current-revision',
+      operationId: expect.any(String),
+    });
+  });
+
   test('posts to the source’s authorize route and reads the address to open', async () => {
     const { seen, fetch } = recording(() =>
       Response.json({ authorized: false, authorizationUrl: 'http://127.0.0.1:9/authorize' }),
     );
-    const answer = await authorizeToolSource('ledger', { fetch });
+    const answer = await authorizeToolSource('ledger', { fetch, mutation: MUTATION });
     expect(seen).toEqual([
-      { path: `${HOST_TOOL_SOURCES_ROUTE}/ledger/authorize`, method: 'POST', body: undefined },
+      {
+        path: `${HOST_TOOL_SOURCES_ROUTE}/ledger/authorize`,
+        method: 'POST',
+        body: JSON.stringify(MUTATION),
+      },
     ]);
     expect(answer).toEqual({ authorized: false, authorizationUrl: 'http://127.0.0.1:9/authorize' });
   });
 
   test('reads that the stored tokens already work, and a refusal', async () => {
     const worked = recording(() => Response.json({ authorized: true }));
-    expect(await authorizeToolSource('ledger', { fetch: worked.fetch })).toEqual({
+    expect(
+      await authorizeToolSource('ledger', { fetch: worked.fetch, mutation: MUTATION }),
+    ).toEqual({
       authorized: true,
     });
     const refused = recording(() =>
@@ -197,7 +232,9 @@ describe('authorizeToolSource', () => {
         { status: 400 },
       ),
     );
-    expect(await failureOf(authorizeToolSource('notes', { fetch: refused.fetch }))).toMatchObject({
+    expect(
+      await failureOf(authorizeToolSource('notes', { fetch: refused.fetch, mutation: MUTATION })),
+    ).toMatchObject({
       kind: 'invalid',
     });
   });
@@ -229,9 +266,13 @@ describe('previewToolSourceRemoval and removeToolSource', () => {
     const done = recording(() =>
       Response.json({ id: 'notes', changed: true, restartRequired: true, affectedAgents: [] }),
     );
-    await removeToolSource('notes', { fetch: done.fetch });
+    await removeToolSource('notes', { mutation: MUTATION, fetch: done.fetch });
     expect(done.seen).toEqual([
-      { path: `${HOST_TOOL_SOURCES_ROUTE}/notes`, method: 'DELETE', body: undefined },
+      {
+        path: `${HOST_TOOL_SOURCES_ROUTE}/notes`,
+        method: 'DELETE',
+        body: JSON.stringify(MUTATION),
+      },
     ]);
     const refused = recording(() =>
       Response.json(
@@ -239,7 +280,9 @@ describe('previewToolSourceRemoval and removeToolSource', () => {
         { status: 403 },
       ),
     );
-    expect(await failureOf(removeToolSource('notes', { fetch: refused.fetch }))).toMatchObject({
+    expect(
+      await failureOf(removeToolSource('notes', { mutation: MUTATION, fetch: refused.fetch })),
+    ).toMatchObject({
       kind: 'locked',
     });
   });
@@ -251,6 +294,27 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
     credentials: { token: 'a-value' },
   };
 
+  test('snapshots proxied source input before awaiting', async () => {
+    const source = { ...request.source, id: 'notes' };
+    const proxied = new Proxy(
+      { source: new Proxy(source, {}), credentials: new Proxy({ token: 'original' }, {}) },
+      {},
+    );
+    const connect = recording(() =>
+      Response.json({ id: 'notes', changed: true, restartRequired: true }),
+    );
+    const pending = connectToolSource('notes', proxied, {
+      mutation: MUTATION,
+      fetch: connect.fetch,
+    });
+    source.id = 'changed';
+    await pending;
+    expect(JSON.parse(connect.seen[0]?.body ?? '{}')).toMatchObject({
+      source: { id: 'notes' },
+      credentials: { token: 'original' },
+    });
+  });
+
   test('send the description and the credentials in one body to the route of the source', async () => {
     const probe = recording(() => Response.json({ outcome: 'listed', tools: [], skipped: [] }));
     const connect = recording(() =>
@@ -258,13 +322,17 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
     );
 
     await probeToolSource('notes', request, { fetch: probe.fetch });
-    await connectToolSource('notes', request, { fetch: connect.fetch });
+    await connectToolSource('notes', request, { mutation: MUTATION, fetch: connect.fetch });
 
     expect(probe.seen).toEqual([
       { path: '/host/tool-sources/notes/probe', method: 'POST', body: JSON.stringify(request) },
     ]);
     expect(connect.seen).toEqual([
-      { path: '/host/tool-sources/notes', method: 'PUT', body: JSON.stringify(request) },
+      {
+        path: '/host/tool-sources/notes',
+        method: 'PUT',
+        body: JSON.stringify({ ...MUTATION, ...request }),
+      },
     ]);
   });
 
@@ -274,7 +342,11 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
     );
 
     const failure = await failureOf(
-      connectToolSource('notes', { ...request, create: true }, { fetch: created.fetch }),
+      connectToolSource(
+        'notes',
+        { ...request, create: true },
+        { mutation: MUTATION, fetch: created.fetch },
+      ),
     );
 
     expect(JSON.parse(created.seen[0]?.body ?? '{}')).toMatchObject({ create: true });
@@ -282,7 +354,7 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
     const plain = recording(() =>
       Response.json({ id: 'notes', changed: true, restartRequired: true }),
     );
-    await connectToolSource('notes', request, { fetch: plain.fetch });
+    await connectToolSource('notes', request, { mutation: MUTATION, fetch: plain.fetch });
     expect(JSON.parse(plain.seen[0]?.body ?? '{}')).not.toHaveProperty('create');
   });
 
@@ -330,7 +402,9 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
       Response.json({ error: 'owner-only', message: 'Only the owner may.' }, { status: 403 }),
     );
     expect(
-      await failureOf(connectToolSource('notes', request, { fetch: owner.fetch })),
+      await failureOf(
+        connectToolSource('notes', request, { mutation: MUTATION, fetch: owner.fetch }),
+      ),
     ).toMatchObject({
       kind: 'owner-only',
     });

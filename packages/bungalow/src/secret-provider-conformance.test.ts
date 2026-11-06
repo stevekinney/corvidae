@@ -31,6 +31,7 @@ describe('secret providers', () => {
       operationId: 'operation-1',
       key: 'api-key',
       value: 'secret',
+      requestDigest: 'a'.repeat(64),
       expectedRevision: '7',
     });
     expect(
@@ -38,6 +39,7 @@ describe('secret providers', () => {
         operationId: 'operation-1',
         key: 'api-key',
         value: 'secret',
+        requestDigest: 'a'.repeat(64),
         expectedRevision: '7',
       }),
     ).toEqual(first);
@@ -48,6 +50,7 @@ describe('secret providers', () => {
           operationId: 'operation-1',
           key: 'api-key',
           value: 'changed',
+          requestDigest: 'b'.repeat(64),
           expectedRevision: '7',
         })
         .then(
@@ -61,6 +64,7 @@ describe('secret providers', () => {
           operationId: 'operation-1',
           key: 'api-key',
           value: 'secret',
+          requestDigest: 'a'.repeat(64),
           expectedRevision: '8',
         })
         .then(
@@ -74,6 +78,7 @@ describe('secret providers', () => {
           operationId: 'operation-1',
           key: 'api-key',
           value: 'secret',
+          requestDigest: 'a'.repeat(64),
           expectedRevision: null,
         })
         .then(
@@ -89,6 +94,7 @@ describe('secret providers', () => {
       operationId: 'operation-2',
       key: 'token',
       value: 'do-not-persist-in-metadata',
+      requestDigest: 'a'.repeat(64),
       expectedRevision: '1',
     });
     const operations = await provider.listOperations();
@@ -134,6 +140,7 @@ describe('secret providers', () => {
       operationId: 'operation-3',
       key: 'token',
       value: 'secret',
+      requestDigest: 'a'.repeat(64),
       expectedRevision: '1',
     });
     expect(
@@ -152,6 +159,7 @@ describe('secret providers', () => {
       operationId: 'operation-reclaim',
       key: 'token',
       value: 'temporary',
+      requestDigest: 'a'.repeat(64),
       expectedRevision: null,
     });
     expect(
@@ -182,6 +190,7 @@ describe('secret providers', () => {
         workspaceId: 'workspace-a',
         key: 'token',
         operationId: 'operation-crash',
+        requestDigest: 'a'.repeat(64),
         expectedRevision: '1',
         value: 'recovered',
       }),
@@ -193,7 +202,12 @@ describe('secret providers', () => {
     ]) {
       expect(
         await provider
-          .prepare({ operationId: 'operation-crash', value: 'recovered', ...mismatch })
+          .prepare({
+            operationId: 'operation-crash',
+            value: 'recovered',
+            requestDigest: 'a'.repeat(64),
+            ...mismatch,
+          })
           .then(
             () => undefined,
             (error: unknown) => error,
@@ -205,6 +219,7 @@ describe('secret providers', () => {
       operationId: 'operation-crash',
       key: 'token',
       value: 'recovered',
+      requestDigest: 'a'.repeat(64),
       expectedRevision: '1',
     });
     expect(prepared.reference.version).toBe('op-operation-crash');
@@ -219,6 +234,7 @@ describe('secret providers', () => {
       operationId: 'operation-4',
       key: 'token',
       value: 'plain-value-not-metadata',
+      requestDigest: 'a'.repeat(64),
       expectedRevision: '1',
     });
     const second = createLocalSecretProvider({ root, workspaceId: 'workspace-a' });
@@ -245,6 +261,7 @@ describe('secret providers', () => {
           operationId: 'operation-5',
           key: 'token',
           value: 'x',
+          requestDigest: 'a'.repeat(64),
           expectedRevision: '1',
         })
         .then(
@@ -270,6 +287,7 @@ test('maximum-length operation identifiers produce readable references', async (
     operationId: 'a'.repeat(160),
     key: 'token',
     value: 'value',
+    requestDigest: 'a'.repeat(64),
     expectedRevision: null,
   });
   expect(await provider.readVersion(operation.reference)).toBe('value');
@@ -287,3 +305,79 @@ test('managed storage preserves every valid legacy flat key name', async () => {
     expect(await provider.readLegacy(key)).toBe(`original-${key}`);
   }
 });
+
+test('logical receipts accept randomized encodings but reject a different request', async () => {
+  const provider = local();
+  const input = {
+    operationId: 'logical-retry',
+    key: 'token',
+    value: 'ciphertext-one',
+    expectedRevision: '1',
+    requestDigest: 'a'.repeat(64),
+  };
+  const first = await provider.prepare(input);
+  const retry = await provider.prepare({ ...input, value: 'ciphertext-two' });
+  expect(retry).toEqual(first);
+  expect(await provider.readVersion(retry.reference)).toBe('ciphertext-one');
+  expect(
+    await provider.prepare({ ...input, requestDigest: 'b'.repeat(64) }).then(
+      () => undefined,
+      (error: unknown) => error,
+    ),
+  ).toMatchObject({ code: 'conflict' });
+  expect(JSON.stringify(await provider.listOperations())).not.toContain(input.requestDigest);
+});
+
+test('historical versions remain readable but cannot authorize a new preparation', async () => {
+  const root = temporaryRoot();
+  const provider = createLocalSecretProvider({ root, workspaceId: 'workspace-a' });
+  writeFileSync(
+    join(root, '.managed-secrets', 'versions', 'op-historical'),
+    JSON.stringify({
+      workspaceId: 'workspace-a',
+      operationId: 'historical',
+      key: 'token',
+      value: 'preserved',
+      expectedRevision: null,
+    }),
+    { mode: 0o600 },
+  );
+  const receipt = await provider.getOperation('historical');
+  expect(receipt).toBeDefined();
+  if (receipt === undefined) throw new Error('Missing recovered receipt');
+  expect(await provider.readVersion(receipt.reference)).toBe('preserved');
+  expect(
+    await provider
+      .prepare({
+        operationId: 'historical',
+        key: 'token',
+        value: 'preserved',
+        expectedRevision: null,
+        requestDigest: 'a'.repeat(64),
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      ),
+  ).toMatchObject({ code: 'conflict' });
+});
+
+test.each(['', 'A'.repeat(64), 'a'.repeat(63), 'private-invalid-digest'])(
+  'rejects malformed request digests without disclosing input: %s',
+  async (requestDigest) => {
+    expect(
+      await local()
+        .prepare({
+          operationId: 'invalid',
+          key: 'token',
+          value: 'secret',
+          expectedRevision: null,
+          requestDigest,
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        ),
+    ).toMatchObject({ message: 'A secret value and expected revision are required.' });
+  },
+);
