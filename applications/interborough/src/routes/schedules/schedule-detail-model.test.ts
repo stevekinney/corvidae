@@ -149,7 +149,9 @@ describe('the input a schedule sends', () => {
     const input = scheduleInput(
       schedule({ workflowType: 'digest' }),
       undefined,
-      file({ input: { branch: 'main', sinceDate: '2026-10-01', draft: true, depth: 2 } }),
+      file({
+        input: { branch: 'main', sinceDate: '2026-10-01', draft: true, depth: 2, skipped: null },
+      }),
     );
 
     expect(input?.fields).toEqual([
@@ -157,7 +159,14 @@ describe('the input a schedule sends', () => {
       { label: 'Since date', value: '2026-10-01' },
       { label: 'Draft', value: 'Yes' },
       { label: 'Depth', value: '2' },
+      { label: 'Skipped', value: '' },
     ]);
+    const nested = scheduleInput(
+      schedule({ workflowType: 'digest' }),
+      undefined,
+      file({ input: { labels: ['a', 'b'] } }),
+    );
+    expect(nested?.fields).toEqual([{ label: 'Labels', value: '["a","b"]' }]);
   });
 
   test('a workflow with no input has none to show', () => {

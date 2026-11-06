@@ -14,6 +14,7 @@ import { flushSync } from 'svelte';
 
 import { AUDIT_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
+import ToastHost from '../../app/toast-host.svelte';
 import { AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';
 import {
   installBureauStub,
@@ -1127,5 +1128,100 @@ describe('what the page looks up to word an event', () => {
     await view.findByText('Daily summary');
     // A schedule with no name is a schedule, not an identifier.
     expect(view.getAllByText('A schedule').length).toBeGreaterThan(0);
+  });
+});
+
+describe('copying from the pane', () => {
+  const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  afterEach(() => {
+    if (original) Object.defineProperty(navigator, 'clipboard', original);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  function clipboardThatWrites(written: string[]): void {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          written.push(text);
+        },
+      },
+    });
+  }
+
+  test('Copy key copies the whole key and Copy as JSON copies the record, each with a toast', async () => {
+    render(ToastHost);
+    const written: string[] = [];
+    clipboardThatWrites(written);
+    const key = `workflows/${'checkpoints/'.repeat(10)}notes.json`;
+    const deleted = record(8, 2, {
+      type: 'storage.key.deleted',
+      resource: `storage:${key}`,
+      principal: 'system:host',
+      detail: null,
+    });
+    const view = open({ records: [deleted], nextCursor: null });
+    const target = await view.findByTestId('audit-target');
+
+    await fireEvent.click(within(target).getByRole('button', { name: AUDIT_COPY.copyKey }));
+    await waitFor(() => expect(written).toEqual([key]));
+    expect(await view.findByText(AUDIT_COPY.copiedKey)).not.toBeNull();
+
+    await fireEvent.click(view.getByRole('button', { name: AUDIT_COPY.copyAsJson }));
+    await waitFor(() => expect(written).toHaveLength(2));
+    expect(JSON.parse(written[1] ?? '')).toMatchObject({ type: 'storage.key.deleted' });
+    expect(await view.findByText(AUDIT_COPY.copiedAsJson)).not.toBeNull();
+  });
+});
+
+describe('the search box and the end of the table', () => {
+  test('its clear button empties the box and the address', async () => {
+    const view = open(FULL);
+    await view.findByText('Removed the Anthropic key');
+    const box = view.getByPlaceholderText('Search by actor, action or target') as HTMLInputElement;
+    await fireEvent.input(box, { target: { value: 'anthropic' } });
+    await waitFor(() => expect(window.location.search).toContain('q=anthropic'));
+
+    await fireEvent.click(view.getByRole('button', { name: 'Clear search' }));
+
+    await waitFor(() => expect(box.value).toBe(''));
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  test('reading to the end of the table reads the next page of the log', async () => {
+    const original = globalThis.IntersectionObserver;
+    const observers: { callback: IntersectionObserverCallback }[] = [];
+    globalThis.IntersectionObserver = class {
+      readonly callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+        observers.push(this);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    } as unknown as typeof IntersectionObserver;
+    try {
+      const view = open((params) =>
+        params['cursor'] === 'c1'
+          ? { records: [BOOTED], nextCursor: null }
+          : { records: [KEY_REMOVED, STARTED], nextCursor: 'c1' },
+      );
+      await view.findByText('Removed the Anthropic key');
+      await waitFor(() => expect(observers.length).toBeGreaterThan(0));
+      for (const observer of observers) {
+        observer.callback(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          observer as unknown as IntersectionObserver,
+        );
+      }
+      await view.findByText('Server started');
+      expect(queries().some((params) => params['cursor'] === 'c1')).toBe(true);
+    } finally {
+      globalThis.IntersectionObserver = original;
+    }
   });
 });

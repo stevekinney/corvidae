@@ -300,6 +300,33 @@ describe('a read in progress (row 70s)', () => {
         .getAttribute('aria-checked'),
     ).toBe('true');
   });
+
+  test('keeps the filters live: a segment, the Missed runs chip and a chip’s remove button change the address', async () => {
+    jest.useFakeTimers();
+    restoreFetch = installFetchImplementation(() => new Promise<Response>(() => {}));
+    router.navigate('/schedules?agent=tool-runner', { replace: true });
+    const { container } = render(IndexHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        externalBureau: true,
+      },
+    });
+    flushSync();
+    advance(LIST_LOADING_DELAY_MILLISECONDS);
+    const view = within(container);
+
+    await fireEvent.click(view.getByRole('radio', { name: /^Paused\s*,\s*loading$/ }));
+    flushSync();
+    expect(window.location.search).toContain('status=paused');
+
+    await fireEvent.click(view.getByRole('button', { name: 'Missed runs' }));
+    flushSync();
+    expect(window.location.search).toContain('missed=1');
+
+    await fireEvent.click(view.getByRole('button', { name: /Remove.*Agent/i }));
+    flushSync();
+    expect(window.location.search).not.toContain('agent=');
+  });
 });
 
 describe('a first load that failed (row 70w)', () => {

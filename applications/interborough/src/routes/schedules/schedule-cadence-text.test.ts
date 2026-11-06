@@ -61,3 +61,10 @@ describe('cadenceText', () => {
     );
   });
 });
+
+describe('cadenceText for an expression that cannot be read', () => {
+  test('says the expression as it is, with no clock time', () => {
+    const text = cadenceText({ cronExpression: 'not a cron', timeZone: 'UTC' }, NOW);
+    expect(text.full).not.toMatch(/\d{1,2}:\d{2} (AM|PM)/);
+  });
+});

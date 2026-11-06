@@ -129,6 +129,20 @@ describe('upcomingRows', () => {
     ]);
   });
 
+  test('says a deleted workflow on the run that is due', () => {
+    const due = schedule({
+      cronExpression: '0 17 * * 1',
+      nextFireAt: Date.parse('2026-11-02T17:00:00.000Z'),
+    });
+    const rows = upcomingRows(
+      due,
+      { status: 'active', allBlockers: [{ kind: 'deleted', workflowType: 'order-refund' }] },
+      NOW,
+    );
+
+    expect(rows.at(-1)?.note).toBe('won’t start · order-refund was deleted');
+  });
+
   test('says no relative time for a run so far off that its date would be said twice', () => {
     const far = schedule({ nextFireAt: NOW + 9 * DAY });
 
@@ -244,6 +258,13 @@ describe('pastSection', () => {
       running: true,
       needsDetail: true,
     });
+  });
+
+  test('gives no duration to a run that is neither over nor going', () => {
+    const past = pastSection([run('s', '2026-11-02T16:00:00.000Z', 'suspended', 0)], [], {}, NOW);
+
+    expect(past.runs[0]?.duration).toBeUndefined();
+    expect(past.runs[0]?.running).toBe(false);
   });
 
   test('reads a failed run, a canceled one and a timed-out one by their words', () => {

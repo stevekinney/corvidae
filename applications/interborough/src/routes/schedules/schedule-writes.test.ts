@@ -8,9 +8,11 @@ import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 import { HttpClient } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import type { ScheduleKind } from '../../lib/schedule-kinds.ts';
 import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
+import { workflowFaults } from '../../lib/workflow-world.test-support.ts';
 import {
   actionsOf,
   cancelTarget,
@@ -354,5 +356,61 @@ describe('a skip the server refuses because the run it named is no longer the ne
 
     expect(refused).not.toBeInstanceOf(StaleScheduleError);
     expect(refused).toMatchObject({ status: 409, message: 'Schedule is paused' });
+  });
+});
+
+describe('taking a skip back for an agent run', () => {
+  let stubbed: BureauStub | undefined;
+  afterEach(() => {
+    stubbed?.restore();
+    stubbed = undefined;
+  });
+
+  const agentRun = (): ScheduleTarget => target({ kind: 'agent-run', agentName: 'assistant' });
+
+  test('is raised as stale when the run is no longer the schedule’s next', async () => {
+    stubbed = installBureauStub({
+      'bureau.schedules.unskip': () => {
+        throw workflowFaults.occurrenceNotNext();
+      },
+    });
+    expect(await rejectionOf(unskipTarget(client, agentRun(), OCCURRENCE))).toBeInstanceOf(
+      StaleScheduleError,
+    );
+  });
+
+  test('stays the refusal it was for any other fault', async () => {
+    stubbed = installBureauStub({
+      'bureau.schedules.unskip': () => {
+        throw workflowFaults.unavailable();
+      },
+    });
+    const refused = await rejectionOf(unskipTarget(client, agentRun(), OCCURRENCE));
+    expect(refused).not.toBeInstanceOf(StaleScheduleError);
+    expect(refused).toMatchObject({ status: 503 });
+  });
+});
+
+describe('taking a skip back for a code schedule the engine refuses for another reason', () => {
+  test('stays that refusal', async () => {
+    const restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json({ error: 'Schedule is paused', weftCode: 'Conflict' }, { status: 409 }),
+      ),
+    );
+    try {
+      const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+      const refused = await rejectionOf(
+        unskipTarget(
+          { ...engine, baseUrl: 'http://localhost/api', headers: {} } as unknown as HttpClient,
+          target({ kind: 'code' }),
+          OCCURRENCE,
+        ),
+      );
+      expect(refused).not.toBeInstanceOf(StaleScheduleError);
+      expect(refused).toMatchObject({ status: 409 });
+    } finally {
+      restore();
+    }
   });
 });

@@ -10,15 +10,18 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
+import ToastHost from '../../app/toast-host.svelte';
 import { router } from '../../lib/router.svelte.ts';
 import {
   codeDefinition,
   emptyWorld,
   installWorkflowWorld,
+  invalidFile,
   readyFile,
   runFixture,
   scheduleFixture,
   sourceDefinition,
+  workflowFaults,
   type WorkflowStub,
   type World,
 } from '../../lib/workflow-world.test-support.ts';
@@ -382,5 +385,91 @@ describe('the details card', () => {
     const input = within(await findByTestId('schedule-input'));
     expect(input.getByText('Branch')).not.toBeNull();
     expect(input.getByText('main')).not.toBeNull();
+  });
+});
+
+describe('a schedule whose workflow cannot start', () => {
+  const BROKEN = 'bureau-workflow-schedule:order-refund:1';
+
+  /** A schedule on a workflow whose file cannot load, and the Bureau holds it for that. */
+  const brokenWorld = (): Partial<World> => ({
+    definitions: [codeDefinition('agentRun'), sourceDefinition('order-refund')],
+    files: [invalidFile('order-refund')],
+    schedules: [
+      scheduleFixture(BROKEN, 'order-refund', {
+        description: 'Weekly refund audit',
+        status: 'paused',
+        cronExpression: '0 11 * * 1',
+      }),
+    ],
+    scheduleAgents: {},
+    scheduleBlockers: {
+      [BROKEN]: {
+        workflow: 'order-refund',
+        message: 'The file is not valid JSON.',
+        status: 'active',
+      },
+    },
+    attention: [],
+  });
+
+  test('names the workflow by its type in the card, and its reason beside a link to the workflow', async () => {
+    const { findByTestId } = open(`/schedules/${BROKEN}`, brokenWorld());
+
+    const workflow = await findByTestId('schedule-workflow');
+    expect(workflow.querySelector('code')?.textContent).toBe('order-refund');
+    const reasons = await findByTestId('schedule-blockers');
+    expect(within(reasons).getByText('Order refund can’t load')).not.toBeNull();
+    expect(within(reasons).getByRole('link', { name: 'Open workflow' })).not.toBeNull();
+  });
+
+  test('a workflow whose file is gone is a reason with no link', async () => {
+    const { findByTestId } = open(`/schedules/${BROKEN}`, {
+      ...brokenWorld(),
+      files: [],
+      definitions: [codeDefinition('agentRun')],
+      scheduleBlockers: {},
+    });
+
+    const reasons = await findByTestId('schedule-blockers');
+    expect(within(reasons).getByText(/order-refund was deleted/)).not.toBeNull();
+    expect(within(reasons).queryByRole('link')).toBeNull();
+  });
+});
+
+describe('a schedule on a workflow that runs more than one agent', () => {
+  test('lists the agents with commas between them', async () => {
+    const { findByTestId } = open(`/schedules/${DIGEST}`, {
+      files: [
+        readyFile('digest', {
+          title: 'Release notes',
+          trigger: { kind: 'schedule', spec: '0 11 * * 5' },
+          steps: [
+            { handler: 'agent', input: { agent: 'assistant' } },
+            { handler: 'agent', input: { agent: 'tool-runner' } },
+          ],
+        }),
+      ],
+    });
+
+    const agents = await findByTestId('schedule-agents');
+    await waitFor(() =>
+      expect(agents.textContent?.replace(/\s+/g, ' ').trim()).toBe('Assistant, Tool runner'),
+    );
+  });
+});
+
+describe('resuming a paused workflow that the Bureau refuses', () => {
+  test('says the workflow was not resumed, with the reason', async () => {
+    render(ToastHost);
+    const { findByTestId, findByText } = open(`/schedules/${TRIAGE}`);
+    stub?.on('bureau.workflows.resume', () => {
+      throw workflowFaults.unavailable();
+    });
+    const note = await findByTestId('schedule-workflow-paused');
+
+    await fireEvent.click(within(note).getByRole('button', { name: 'Resume workflow' }));
+
+    expect(await findByText(/The workflow was not resumed/)).not.toBeNull();
   });
 });

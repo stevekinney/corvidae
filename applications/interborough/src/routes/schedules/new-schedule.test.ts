@@ -815,6 +815,83 @@ describe('a problem', () => {
   });
 });
 
+describe('a name another schedule has, found when the list cannot be read again', () => {
+  test('is still refused from the list the page already had', async () => {
+    open({
+      schedules: [
+        scheduleFixture('existing', 'order-processing', { description: 'Daily summary' }),
+      ],
+    });
+    await fillChat();
+    await fireEvent.input(field(/^Name/), { target: { value: 'Daily summary' } });
+    // The list read when the page opened is the one left once the read made at Create fails.
+    if (stub !== undefined) stub.world.failSchedules = true;
+    await fireEvent.click(create());
+
+    expect(await view().findByText(COPY.nameTaken)).not.toBeNull();
+    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
+  });
+
+  test('its link opens that schedule, after asking to discard what was typed', async () => {
+    open({
+      schedules: [
+        scheduleFixture('existing', 'order-processing', { description: 'Daily summary' }),
+      ],
+    });
+    await fillChat();
+    await fireEvent.input(field(/^Name/), { target: { value: 'Daily summary' } });
+    await fireEvent.click(create());
+
+    await fireEvent.click(await view().findByRole('link', { name: 'Open Daily summary' }));
+    await discardAndLeave();
+
+    await waitFor(() => expect(router.pathname).toBe('/schedules/existing'));
+  });
+});
+
+describe('a workflow list that could not be read', () => {
+  test('is read again from the field’s own retry', async () => {
+    let failing = true;
+    open({}, (installed) =>
+      installed.on('weft.workflows.definitions.list', () => {
+        if (failing) throw workflowFaults.unavailable();
+        return [];
+      }),
+    );
+    const workflow = await trigger();
+    await waitFor(() => expect(workflow.getAttribute('aria-busy')).not.toBe('true'));
+    await fireEvent.click(workflow);
+    const retry = await waitFor(() => {
+      const found = [...document.querySelectorAll('button')].find((button) =>
+        /try again|retry/i.test(button.textContent ?? ''),
+      );
+      if (found === undefined) throw new Error('Expected a retry beside the failure.');
+      return found;
+    });
+    const before = stub?.callsTo('weft.workflows.definitions.list').length ?? 0;
+    failing = false;
+    await fireEvent.click(retry);
+    await waitFor(() =>
+      expect(stub?.callsTo('weft.workflows.definitions.list').length ?? 0).toBeGreaterThan(before),
+    );
+  });
+});
+
+describe('leaving by closing the tab', () => {
+  test('asks the browser to confirm once something was typed, and not before', async () => {
+    open();
+    await view().findByRole('combobox', { name: /^Workflow/ });
+    const untouched = new window.Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(untouched);
+    expect(untouched.defaultPrevented).toBe(false);
+
+    await fillChat('Something');
+    const typed = new window.Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(typed);
+    expect(typed.defaultPrevented).toBe(true);
+  });
+});
+
 describe('creating', () => {
   /** A create the page is waiting on, which the test answers or never answers. */
   function slowCreate(): { release: () => void } {

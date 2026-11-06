@@ -171,6 +171,26 @@ describe('Skip and Undo, for an agent run', () => {
   });
 });
 
+describe('a skip the engine applied late', () => {
+  test('says so in a notice that can be dismissed, and reads the schedule again', async () => {
+    const { findByRole, findByTestId, queryByTestId } = open(
+      `/schedules/${AGENT_SCHEDULE}`,
+      {},
+      (installed) =>
+        installed.on('bureau.schedules.skipnext', () => {
+          throw workflowFaults.applyFailed();
+        }),
+    );
+
+    await fireEvent.click(await findByRole('button', { name: /^Skip / }));
+
+    const notice = await findByTestId('schedule-notice');
+    expect(notice.getAttribute('data-notice')).toBe('unapplied');
+    await fireEvent.click(within(notice).getByRole('button', { name: /dismiss|close/i }));
+    await waitFor(() => expect(queryByTestId('schedule-notice')).toBeNull());
+  });
+});
+
 describe('Run now, for an agent run', () => {
   test('goes through the Bureau and says so in a toast that opens the task it started', async () => {
     const { findByRole, findByText } = open(`/schedules/${AGENT_SCHEDULE}`);

@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { SCHEDULE_COPY } from '../../app/copy.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
   codeDefinition,
@@ -388,6 +389,34 @@ describe('the filters', () => {
     ).not.toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Clear filters' }));
     await waitFor(() => expect(window.location.search).toBe(''));
+  });
+});
+
+describe('a workflow filter and a Bureau that did not say what the schedules start', () => {
+  test('a workflow in the address that no schedule runs is still named by the chip, and filters to nothing', async () => {
+    const { container } = open('/schedules?workflow=retired-workflow');
+    const view = within(container);
+    expect(await view.findByText('No schedules match these filters')).not.toBeNull();
+    expect(container.textContent).toContain('Workflow: retired-workflow');
+  });
+
+  test('a workflow chosen from the address names the workflow as a person reads it', async () => {
+    const { container } = open('/schedules?workflow=release-notes');
+    await waitFor(() => expect(rows(container).map(titleOf)).toEqual(['Release notes digest']));
+    expect(container.textContent).toContain('Workflow: Release notes');
+  });
+
+  test('says so over the rows it has, and Retry asks again', async () => {
+    const world = sampleWorld({ failBureauSchedules: true, failBureauFiles: true });
+    const { container, findByRole } = open('/schedules', world);
+    const retry = await findByRole('button', { name: 'Retry' });
+    expect(container.textContent).toContain(SCHEDULE_COPY.overlayFailed.title);
+    world.failBureauSchedules = false;
+    world.failBureauFiles = false;
+    await fireEvent.click(retry);
+    await waitFor(() =>
+      expect(container.textContent).not.toContain(SCHEDULE_COPY.overlayFailed.title),
+    );
   });
 });
 
