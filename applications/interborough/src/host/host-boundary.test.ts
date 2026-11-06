@@ -180,9 +180,9 @@ describe('/host/paths', () => {
       configurationFile: join(home, 'configuration.json'),
       locked: {},
       providers: [
-        { name: 'anthropic', secretFile: join(home, 'secrets', 'anthropic-api-key') },
-        { name: 'openai', secretFile: join(home, 'secrets', 'openai-api-key') },
-        { name: 'gemini', secretFile: join(home, 'secrets', 'gemini-api-key') },
+        { name: 'anthropic', secretFile: `workspace:${host.workspaceId}/anthropic-api-key` },
+        { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
+        { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
       ],
     });
   });

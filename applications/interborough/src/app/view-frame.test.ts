@@ -558,6 +558,7 @@ describe('the chat list, a new chat, and the agents', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url === '/host/providers') {
         return Response.json({
+          configurationRevision: null,
           providers: [{ name: 'anthropic', configured: false, hasKey: false }],
           catalog: [],
           models: [],
@@ -640,7 +641,7 @@ describe('the chat list, a new chat, and the agents', () => {
       if (url.endsWith('/host/plugins')) {
         return plugins === null
           ? new Response('down', { status: 500 })
-          : Response.json({ plugins, unloaded: [] });
+          : Response.json({ configurationRevision: null, plugins, unloaded: [] });
       }
       return agents(...names.map((name) => ({ name })));
     });

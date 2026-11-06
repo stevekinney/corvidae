@@ -1,4 +1,7 @@
-import type { Bungalow, DatabaseWorkspaceClaim } from './bungalow.ts';
+import type { Bungalow, DatabaseWorkspaceClaim, SecretProviderFactory } from './bungalow.ts';
+import type { ConfigurationSnapshot, ConfigurationWriteResult } from './configuration.ts';
+import { assertConfigurationWrite } from './configuration.ts';
+import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
 import { secretVariable, type RemoteConfiguration } from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
@@ -13,6 +16,7 @@ const SESSION_TOKEN_PARAMETER = 'X-Amz-Security-Token';
 /** The S3 operations Bungalow performs, which are all a failure's message may name. */
 type S3Operation =
   | 'read configuration'
+  | 'write configuration'
   | 'read deployment ID'
   | 'write deployment ID'
   | 'read workspace identity'
@@ -83,6 +87,41 @@ async function readObject(
     return await response.text();
   } catch (error) {
     throw s3Failure(operation, { code: codeOf(error) });
+  }
+}
+
+/** Read bytes and revision from one HTTP response, never separate GET and HEAD requests. */
+async function readConfigurationObject(
+  client: Bun.S3Client,
+  key: string,
+): Promise<ConfigurationSnapshot> {
+  const response = await send(client, key, 'read configuration', 'GET');
+  if (!response.ok) {
+    await discard(response);
+    if (response.status === 404) return { text: undefined, revision: null };
+    throw s3Failure('read configuration', { status: response.status });
+  }
+  const revision = response.headers.get('etag');
+  if (revision === null || revision === '') {
+    await discard(response);
+    throw s3Failure('read configuration', { code: 'missing-revision' });
+  }
+  try {
+    return { text: await response.text(), revision };
+  } catch {
+    throw s3Failure('read configuration', { code: 'read-failed' });
+  }
+}
+
+/** An uncertain response is observed once; equal content alone cannot prove which writer committed. */
+async function reconcileConfiguration(
+  client: Bun.S3Client,
+  key: string,
+): Promise<ConfigurationWriteResult> {
+  try {
+    return { outcome: 'unknown', current: await readConfigurationObject(client, key) };
+  } catch {
+    return { outcome: 'unknown' };
   }
 }
 
@@ -237,6 +276,8 @@ export async function openRemoteBungalow(
   configuration: RemoteConfiguration,
   configuredWorkspaceId: string | undefined,
   databaseWorkspaceClaim: DatabaseWorkspaceClaim,
+  writableConfiguration = false,
+  secretProviderFactory?: SecretProviderFactory,
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
   const client = s3Client(configuration);
@@ -318,6 +359,24 @@ export async function openRemoteBungalow(
     closed = true;
   };
 
+  const variablePrefix = `${name.toUpperCase().replaceAll('-', '_')}_SECRET_`;
+  const secretProvider =
+    secretProviderFactory?.(workspaceId) ??
+    createEnvironmentSecretProvider({
+      workspaceId,
+      values: Object.fromEntries(
+        [...secrets]
+          .filter(([key]) => key.startsWith(variablePrefix))
+          .map(([key, value]) => [
+            key.slice(variablePrefix.length).toLowerCase().replaceAll('_', '-'),
+            value,
+          ]),
+      ),
+      assertOpen,
+    });
+  if (secretProvider.workspaceId !== workspaceId) {
+    throw new BungalowInputError('The secret provider belongs to a different workspace.');
+  }
   return {
     name,
     mode: 'remote',
@@ -335,30 +394,65 @@ export async function openRemoteBungalow(
       assertDirectoryName(contentName);
       return { kind: 's3', bucket, prefix: `${prefix}${contentName}/` };
     },
+    configurationWriteCapability: writableConfiguration ? 'writable' : 'read-only',
     async readConfiguration() {
       assertOpen();
-      return readObject(client, configurationKey, 'read configuration');
+      return readConfigurationObject(client, configurationKey);
     },
-    writeConfiguration() {
+    async writeConfiguration(text, condition) {
       assertOpen();
-      throw new BungalowStateError(
-        'A remote Bungalow keeps its configuration in the bucket and cannot write it.',
-      );
+      assertConfigurationWrite(text, condition);
+      if (!writableConfiguration) return { outcome: 'read-only' };
+      const expectedRevision = condition.expectedRevision;
+      let url: string;
+      try {
+        url = client.presign(configurationKey, { method: 'PUT', expiresIn: PRESIGN_SECONDS });
+      } catch {
+        // No request has been sent, so failure here is definitely not a commit.
+        return { outcome: 'unavailable' };
+      }
+      try {
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'content-type': 'application/json',
+            ...(expectedRevision === null
+              ? { 'if-none-match': '*' }
+              : { 'if-match': expectedRevision }),
+          },
+          body: text,
+        });
+        await discard(response);
+        if (response.ok) return { outcome: 'committed' };
+        if (
+          response.status === 412 ||
+          response.status === 409 ||
+          (response.status === 404 && expectedRevision !== null)
+        ) {
+          return { outcome: 'conflict' };
+        }
+        if (response.status === 501) return { outcome: 'unsupported' };
+        if (response.status < 500) return { outcome: 'unavailable' };
+      } catch {
+        // The request may have reached durable storage. Read current standing, but never retry.
+      }
+      return reconcileConfiguration(client, configurationKey);
     },
-    secretLocation(key) {
-      assertOpen();
-      return secretVariable(name, key);
-    },
-    writeSecret(key) {
-      assertOpen();
-      assertSecretKey(key);
-      throw new BungalowStateError(
-        'A remote Bungalow reads secrets from environment variables and cannot write one.',
-      );
-    },
-    readSecret(key) {
-      assertOpen();
-      return secrets.get(secretVariable(name, key));
+    secretProvider,
+    deploymentSecrets: {
+      location(key) {
+        assertOpen();
+        return secretVariable(name, key);
+      },
+      async write(key) {
+        assertOpen();
+        assertSecretKey(key);
+        throw new BungalowStateError('Deployment secrets are read-only environment inputs.');
+      },
+      async read(key) {
+        assertOpen();
+        return secrets.get(secretVariable(name, key));
+      },
     },
     close,
     [Symbol.dispose]: close,

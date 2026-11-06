@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { getPrincipalStore } from '../lib/scopes.svelte.ts';
+  import { browserWorkspaceStorage } from './workspace-lifetime.ts';
+
   /**
    * The three steps a new installation shows on Chat's empty state, until each is done or the
    * person dismisses them: connect a provider, create an agent, say hello. A step is done by the
@@ -25,7 +28,11 @@
     writeFirstRunDismissed,
   } from './first-run.ts';
 
-  let dismissed = $state(readFirstRunDismissed());
+  const privateStorage = browserWorkspaceStorage(
+    getPrincipalStore().principal?.workspace,
+    'localStorage',
+  );
+  let dismissed = $state(readFirstRunDismissed(privateStorage));
 
   const providers = createQuery(
     () => ({
@@ -67,7 +74,7 @@
   const shown = $derived(!dismissed && progress !== undefined && !firstRunComplete(progress));
 
   function dismiss(): void {
-    writeFirstRunDismissed();
+    writeFirstRunDismissed(privateStorage);
     dismissed = true;
   }
 

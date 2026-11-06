@@ -8,6 +8,7 @@ import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { createShutdownDiagnosticGuard } from './shutdown-diagnostic-guard';
 import {
   createLmdbStorageFixture,
   createMemoryStorageFixture,
@@ -42,6 +43,25 @@ interface VerbStorage {
   keys(): unknown;
   query(): unknown;
 }
+
+describe('shutdown diagnostic guard', () => {
+  it('forwards diagnostics and fails for process-lease cleanup errors', () => {
+    const forwarded: unknown[][] = [];
+    const guard = createShutdownDiagnosticGuard((...values) => forwarded.push(values));
+    const cause = new Error('closed storage');
+    const message = '[bureau] Could not remove the process lease: closed storage';
+
+    guard.error('an expected unrelated diagnostic', cause);
+    expect(() => guard.assertClean()).not.toThrow();
+    guard.error(message, cause);
+
+    expect(forwarded).toEqual([
+      ['an expected unrelated diagnostic', cause],
+      [message, cause],
+    ]);
+    expect(() => guard.assertClean()).toThrow(message);
+  });
+});
 
 describe('createMemoryStorageFixture', () => {
   // Every memory fixture a test here creates is disposed after it, so the registry preload

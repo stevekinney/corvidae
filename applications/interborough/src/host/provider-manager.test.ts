@@ -1,30 +1,39 @@
+import type { WorkspaceIdentity } from '@lostgradient/weft';
+import {
+  createHostMutationContext,
+  createLocalHostMutationContext,
+} from './host-mutation-context.ts';
 /**
  * The provider manager against a home it does not own: a remote home refuses every write for the
  * reason `deployment`, and a write that fails leaves what the host serves as it was. The home is
  * a record of what was written, so a test can say that nothing was.
  */
-import type { Bungalow } from '@lostgradient/bungalow';
+import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate } from '@lostgradient/bureau';
+import { createAgent } from '@lostgradient/operative';
 import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 
 import { contributedFixtures } from './provider-fixtures.test-support.ts';
 import {
   createProviderManager,
-  ProviderPartialChangeError,
   ProviderWriteLockedError,
+  type ProviderAuditEntry,
 } from './provider-manager.ts';
 import { HOST_CATALOG_ROUTE, providerRoutes } from './provider-routes.ts';
+import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
 const KEY = 'fixture-key-manager-5d21';
 
 type FakeHome = Pick<
   Bungalow,
   | 'mode'
+  | 'workspaceId'
   | 'configurationLocation'
   | 'readConfiguration'
   | 'writeConfiguration'
-  | 'readSecret'
-  | 'writeSecret'
+  | 'secretProvider'
+  | 'configurationWriteCapability'
 > & {
   readonly writes: string[];
   configuration: string | undefined;
@@ -36,6 +45,7 @@ function fakeHome(
   mode: 'local' | 'remote',
   options: {
     readonly failConfiguration?: boolean;
+    readonly unknownConfiguration?: boolean;
     readonly failRestore?: boolean;
     readonly failEverySecret?: boolean;
     /** The first write of a secret reaches the disk and then throws, as a failed directory sync does. */
@@ -44,53 +54,65 @@ function fakeHome(
     readonly failRead?: boolean;
   } = {},
 ): FakeHome {
+  const secrets = new Map([['anthropic-api-key', 'fixture-existing-key']]);
+  const providerState = {
+    secrets,
+    secretWrites: 0,
+    secretWritesBeforeFailing:
+      options.failEverySecret === true
+        ? 0
+        : options.throwAfterStoring === true
+          ? 1
+          : Number.POSITIVE_INFINITY,
+  };
   const home: FakeHome = {
     mode,
+    workspaceId: 'provider-manager-fixture',
+    configurationWriteCapability: mode === 'local' ? 'writable' : 'read-only',
     configurationLocation: 's3://state/configuration.json',
     writes: [],
     configuration: JSON.stringify({
       plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
     }),
-    secrets: new Map([['anthropic-api-key', 'fixture-existing-key']]),
+    secrets,
     unreadable: false,
-    readConfiguration: () => Promise.resolve(home.configuration),
-    writeConfiguration: (text) => {
+    readConfiguration: async () => ({
+      text: home.configuration,
+      revision: home.configuration === undefined ? null : Bun.hash(home.configuration).toString(),
+    }),
+    writeConfiguration: async (text, condition) => {
+      if (
+        condition.expectedRevision !==
+        (home.configuration === undefined ? null : Bun.hash(home.configuration).toString())
+      )
+        return { outcome: 'conflict' };
       home.writes.push('configuration');
-      if (options.failConfiguration === true) throw new Error('The disk is full.');
+      if (options.failConfiguration === true) return { outcome: 'unavailable' };
+      if (options.unknownConfiguration === true) return { outcome: 'unknown' };
       home.configuration = text;
+      return { outcome: 'committed' };
     },
-    readSecret: (key) => {
-      if (home.unreadable) throw new Error('The disk cannot be read.');
-      return home.secrets.get(key);
-    },
-    writeSecret: (key, value) => {
-      home.writes.push(`secret ${key}`);
-      if (options.failEverySecret === true) throw new Error('The disk is full.');
-      // The second write of one secret is the restore.
-      if (
-        options.failRestore === true &&
-        home.writes.filter((write) => write === `secret ${key}`).length > 1
-      ) {
-        throw new Error('The disk is full.');
-      }
-      home.secrets.set(key, value);
-      if (options.failRead === true) home.unreadable = true;
-      if (
-        options.throwAfterStoring === true &&
-        home.writes.filter((write) => write === `secret ${key}`).length === 1
-      ) {
-        throw new Error('The directory could not be synced.');
-      }
-    },
+    secretProvider: fixtureSecretProvider(
+      'provider-manager-fixture',
+      providerState,
+      mode === 'local',
+    ),
   };
   return home;
 }
 
-async function managerFor(home: FakeHome) {
+async function managerFor(
+  home: FakeHome,
+  audits: ProviderAuditEntry[] = [],
+  resolver: typeof resolveProviderGenerate = resolveProviderGenerate,
+) {
   const manager = createProviderManager({
     bungalow: home,
     warn: () => undefined,
-    resolveProviderGenerate,
+    resolveProviderGenerate: resolver,
+    audit: async (entry) => {
+      audits.push(entry);
+    },
   });
   await manager.adopt(contributedFixtures());
   const revisions: number[] = [];
@@ -98,7 +120,7 @@ async function managerFor(home: FakeHome) {
     revisions.push(rows.length);
     return Promise.resolve(revisions.length);
   });
-  return { manager, revisions };
+  return { manager, revisions, audits, home };
 }
 
 async function failureOf(work: Promise<unknown>): Promise<unknown> {
@@ -107,6 +129,69 @@ async function failureOf(work: Promise<unknown>): Promise<unknown> {
     (error: unknown) => error,
   );
 }
+
+describe('provider admission across hosts', () => {
+  test('refreshes committed credentials for old functions without changing an admitted call', async () => {
+    const home = fakeHome('local');
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const observed: string[] = [];
+    const resolver: typeof resolveProviderGenerate = (_definitions, configuration) => {
+      const key = configuration.apiKey ?? '';
+      return async () => {
+        observed.push(key);
+        if (observed.length === 1) {
+          entered.resolve();
+          await release.promise;
+        }
+        return { content: key, toolCalls: [] };
+      };
+    };
+    const writer = await managerFor(home);
+    const observer = await managerFor(home, [], resolver);
+    const generate = observer.manager.generateFor({ provider: 'anthropic', model: 'sonnet' });
+    const first = createAgent({ name: 'first', generate }).run('First').result();
+    await entered.promise;
+    try {
+      await writer.manager.connect({ provider: 'anthropic', apiKey: KEY });
+      await createAgent({ name: 'second', generate }).run('Second').result();
+      expect(observed).toEqual(['fixture-existing-key', KEY]);
+      const standing = await observer.manager.snapshot();
+      const committed = await home.readConfiguration();
+      expect(standing.appliedConfigurationRevision).toBe(committed.revision);
+    } finally {
+      release.resolve();
+      await first;
+    }
+  });
+});
+
+test('a missing committed version denies new provider calls without falling back to a legacy key', async () => {
+  const home = fakeHome('local');
+  const writer = await managerFor(home);
+  await writer.manager.connect({ provider: 'anthropic', apiKey: KEY });
+  let unavailable = false;
+  let dispatched = 0;
+  const observerHome = {
+    ...home,
+    secretProvider: {
+      ...home.secretProvider,
+      readVersion: async (reference: string) => {
+        if (unavailable) throw new SecretProviderError('unavailable', 'Fixture version revoked');
+        return home.secretProvider.readVersion(reference);
+      },
+    },
+  };
+  const { manager } = await managerFor(observerHome, [], () => async () => {
+    dispatched += 1;
+    return { content: 'done', toolCalls: [] };
+  });
+  const generate = manager.generateFor({ provider: 'anthropic', model: 'sonnet' });
+  unavailable = true;
+  const result = await createAgent({ name: 'denied', generate }).run('No fallback').result();
+  expect(result.finishReason).not.toBe('stop-condition');
+  expect(dispatched).toBe(0);
+});
 
 describe('a remote home', () => {
   test('refuses to connect a provider or edit the catalog, writing nothing and reporting `deployment`', async () => {
@@ -147,7 +232,9 @@ describe('a remote home', () => {
     using server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
-      routes: providerRoutes(manager, () => undefined),
+      routes: providerRoutes(manager, () => undefined, {
+        mutation: () => createLocalHostMutationContext(home),
+      }),
     });
     const connect = await fetch(new URL('/host/providers/anthropic', server.url), {
       method: 'PUT',
@@ -165,6 +252,75 @@ describe('a remote home', () => {
       expect(text.includes(KEY)).toBe(false);
     }
     expect(home.writes).toEqual([]);
+  });
+});
+
+describe('configuration audit metadata', () => {
+  test('records committed provider connection and catalog changes without request values', async () => {
+    const home = fakeHome('local');
+    home.secrets.delete('openai-api-key');
+    const initialConfiguration = home.configuration;
+    if (initialConfiguration === undefined) throw new Error('expected initial configuration');
+    const audits: ProviderAuditEntry[] = [];
+    const { manager } = await managerFor(home, audits);
+
+    await manager.connect({ provider: 'openai', apiKey: KEY });
+    const connectedConfiguration = home.configuration;
+    if (connectedConfiguration === undefined) throw new Error('expected connected configuration');
+    await manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]);
+    const catalogConfiguration = home.configuration;
+    if (catalogConfiguration === undefined) throw new Error('expected catalog configuration');
+
+    expect(audits).toHaveLength(2);
+    expect(audits[0]).toMatchObject({
+      runId: 'provider:openai',
+      type: 'provider.connected',
+      principal: 'anonymous:local',
+      detail: {
+        provider: 'openai',
+        outcome: 'committed',
+        hash: createHash('sha256').update(connectedConfiguration).digest('hex'),
+        previousRevision: Bun.hash(initialConfiguration).toString(),
+      },
+    });
+    expect(audits[1]).toMatchObject({
+      runId: 'provider:anthropic',
+      type: 'provider.configured',
+      principal: 'anonymous:local',
+      detail: {
+        provider: 'anthropic',
+        outcome: 'committed',
+        changedKeys: ['catalog'],
+        hash: createHash('sha256').update(catalogConfiguration).digest('hex'),
+        previousRevision: Bun.hash(connectedConfiguration).toString(),
+      },
+    });
+    expect(JSON.stringify(audits)).not.toContain(KEY);
+  });
+
+  test('does not audit catalog conflicts or uncertain configuration writes', async () => {
+    const conflictHome = fakeHome('local');
+    const conflictAudits: ProviderAuditEntry[] = [];
+    const { manager: conflictManager } = await managerFor(conflictHome, conflictAudits);
+    const conflict = await failureOf(
+      conflictManager.editCatalog(
+        [{ provider: 'anthropic', model: 'sonnet', off: true }],
+        [{ provider: 'anthropic', model: 'different', off: false }],
+      ),
+    );
+    expect(conflict).toBeInstanceOf(Error);
+    expect(conflictAudits).toEqual([]);
+
+    const uncertainAudits: ProviderAuditEntry[] = [];
+    const { manager: uncertainManager } = await managerFor(
+      fakeHome('local', { unknownConfiguration: true }),
+      uncertainAudits,
+    );
+    const uncertain = await failureOf(
+      uncertainManager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]),
+    );
+    expect(uncertain).toBeInstanceOf(Error);
+    expect(uncertainAudits).toEqual([]);
   });
 });
 
@@ -188,25 +344,22 @@ describe('disconnecting a provider', () => {
 
     await manager.disconnect('anthropic');
 
-    expect(home.writes).toEqual(['secret anthropic-api-key']);
-    expect(home.secrets.get('anthropic-api-key')).toBe('');
-    expect(home.configuration).toBe(before);
+    expect(home.writes).toEqual(['configuration']);
+    expect(home.configuration).not.toBe(before);
     expect(manager.current().apiKeys.has('anthropic')).toBe(false);
     expect(manager.current().rows).toEqual([]);
     expect(revisions).toHaveLength(1);
   });
 
-  test('a key that cannot be removed is a plain failure: the host keeps serving the provider', async () => {
-    const home = fakeHome('local', { failEverySecret: true });
+  test('a configuration publication failure keeps the provider active', async () => {
+    const home = fakeHome('local', { failConfiguration: true });
     const { manager, revisions } = await managerFor(home);
 
     const failure = await failureOf(manager.disconnect('anthropic'));
 
     expect(failure).toBeInstanceOf(Error);
-    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
-    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
     expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
-    expect(revisions).toHaveLength(1);
+    expect(revisions).toHaveLength(0);
   });
 
   test('a write that throws after replacing the file is judged by the disk: the key is gone', async () => {
@@ -215,7 +368,6 @@ describe('disconnecting a provider', () => {
 
     await manager.disconnect('anthropic');
 
-    expect(home.secrets.get('anthropic-api-key')).toBe('');
     expect(manager.current().apiKeys.has('anthropic')).toBe(false);
   });
 
@@ -230,15 +382,19 @@ describe('disconnecting a provider', () => {
   });
 
   test('answers DELETE with 403 and the reason for a remote home', async () => {
-    const { manager } = await managerFor(fakeHome('remote'));
+    const home = fakeHome('remote');
+    const { manager } = await managerFor(home);
     using server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
-      routes: providerRoutes(manager, () => undefined),
+      routes: providerRoutes(manager, () => undefined, {
+        mutation: () => createLocalHostMutationContext(home),
+      }),
     });
 
     const response = await fetch(new URL('/host/providers/anthropic', server.url), {
       method: 'DELETE',
+      body: '{}',
     });
 
     expect(response.status).toBe(403);
@@ -291,9 +447,7 @@ describe('a write that fails', () => {
     expect(failure).toBeInstanceOf(Error);
     expect(String(failure).includes(KEY)).toBe(false);
     expect(home.configuration).toBe(before);
-    // The key reached the disk before the configuration failed, and was put back: an empty value
-    // reads as no key, and the provider is not listed either way.
-    expect(home.secrets.get('openai-api-key')).toBe('');
+    // Preparation is retained but not activated when publication fails.
     expect(manager.current().rows.map((row) => row.model)).toEqual(models);
     expect([...manager.current().apiKeys.keys()]).toEqual(['anthropic']);
   });
@@ -305,8 +459,6 @@ describe('a write that fails', () => {
     const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
 
     expect(failure).toBeInstanceOf(Error);
-    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
-    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
     expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
     expect(String(failure).includes(KEY)).toBe(false);
   });
@@ -317,11 +469,10 @@ describe('a write that fails', () => {
 
     const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
 
-    expect(failure).toBeInstanceOf(ProviderPartialChangeError);
-    expect((failure as ProviderPartialChangeError).inUse).toBe(true);
-    expect(String(failure)).toContain('is in use');
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ code: 'unavailable' });
     // The host serves what the disk holds, which is the new key.
-    expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
+    expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
     // A fresh home, since the fake counts writes per secret.
     const routed = await managerFor(
       fakeHome('local', { failConfiguration: true, failRestore: true }),
@@ -329,24 +480,22 @@ describe('a write that fails', () => {
     using server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
-      routes: providerRoutes(routed.manager, () => undefined),
+      routes: providerRoutes(routed.manager, () => undefined, {
+        mutation: () => createLocalHostMutationContext(routed.home),
+      }),
     });
     const response = await fetch(new URL('/host/providers/anthropic', server.url), {
       method: 'PUT',
       body: JSON.stringify({ apiKey: KEY }),
     });
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     const text = await response.text();
-    expect(JSON.parse(text)).toMatchObject({
-      error: 'partial',
-      provider: 'anthropic',
-      inUse: true,
-    });
+    expect(JSON.parse(text)).toMatchObject({ error: 'failed', reason: 'unavailable' });
     expect(text.includes(KEY)).toBe(false);
   });
 
   test('a key that cannot be written at all is a plain failure: disk and host stay on the old key', async () => {
-    const home = fakeHome('local', { failEverySecret: true });
+    const home = fakeHome('local', { failConfiguration: true });
     const { manager, revisions } = await managerFor(home);
     const before = home.configuration;
     const loadedBefore = manager.current();
@@ -354,25 +503,25 @@ describe('a write that fails', () => {
     const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
 
     expect(failure).toBeInstanceOf(Error);
-    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
     expect(String(failure).includes(KEY)).toBe(false);
-    // Only the first write was tried: there was nothing to undo.
-    expect(home.writes).toEqual(['secret anthropic-api-key']);
+    expect(home.writes).toEqual(['configuration']);
     expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
     expect(home.configuration).toBe(before);
-    expect(manager.current()).toBe(loadedBefore);
-    expect(revisions).toEqual([]);
+    expect(manager.current().apiKeys).toEqual(loadedBefore.apiKeys);
+    expect(revisions).toEqual([1]);
 
     using server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
-      routes: providerRoutes(manager, () => undefined),
+      routes: providerRoutes(manager, () => undefined, {
+        mutation: () => createLocalHostMutationContext(home),
+      }),
     });
     const response = await fetch(new URL('/host/providers/anthropic', server.url), {
       method: 'PUT',
       body: JSON.stringify({ apiKey: KEY }),
     });
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     const text = await response.text();
     expect(JSON.parse(text).error).toBe('failed');
     expect(text.includes('is in use')).toBe(false);
@@ -384,9 +533,8 @@ describe('a write that fails', () => {
 
     await manager.connect({ provider: 'anthropic', apiKey: KEY });
 
-    expect(home.secrets.get('anthropic-api-key')).toBe(KEY);
     expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
-    expect(home.writes).toEqual(['secret anthropic-api-key', 'configuration']);
+    expect(home.writes).toEqual(['configuration']);
   });
 
   test('a key write that throws after replacing the file undoes it when the configuration then fails', async () => {
@@ -396,37 +544,33 @@ describe('a write that fails', () => {
     const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
 
     expect(failure).toBeInstanceOf(Error);
-    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
     expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
     expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
   });
 
   test('a key write that throws when the disk cannot be read back reports the failure and keeps what it loaded', async () => {
-    const home = fakeHome('local', { throwAfterStoring: true, failRead: true });
+    const home = fakeHome('local', { failConfiguration: true });
     const { manager } = await managerFor(home);
 
     const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
 
     expect(failure).toBeInstanceOf(Error);
     expect(String(failure).includes(KEY)).toBe(false);
-    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
     // The disk cannot be read, so the host cannot reload it and keeps the key it loaded.
     expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
   });
 
-  test('a new provider whose configuration cannot be written keeps the key it stored, and the message says it is in use', async () => {
-    const home = fakeHome('local', { failConfiguration: true, failRestore: true });
+  test('a new provider whose configuration cannot be written does not activate its version', async () => {
+    const home = fakeHome('local', { failConfiguration: true });
     const { manager } = await managerFor(home);
 
     const failure = await failureOf(manager.connect({ provider: 'openai', apiKey: KEY }));
 
-    expect(failure).toBeInstanceOf(ProviderPartialChangeError);
-    expect((failure as ProviderPartialChangeError).inUse).toBe(true);
-    expect(String(failure)).toContain('is in use');
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ code: 'unavailable' });
     expect(String(failure).includes(KEY)).toBe(false);
-    // The key could not be put back, and a provider needs only its key: the host calls it with it.
-    expect(home.secrets.get('openai-api-key')).toBe(KEY);
-    expect(manager.current().apiKeys.get('openai')).toBe(KEY);
+    expect(home.secrets.get('openai-api-key')).toBeUndefined();
+    expect(manager.current().apiKeys.has('openai')).toBe(false);
   });
 
   test('a change after close is refused', async () => {
@@ -454,5 +598,201 @@ describe('a write that fails', () => {
       'gemini',
       'openai',
     ]);
+  });
+});
+
+describe('configuration revision conflicts', () => {
+  test('preserves a competing writer and requires a fresh explicit retry', async () => {
+    const home = fakeHome('local');
+    const { manager } = await managerFor(home);
+    const write = home.writeConfiguration;
+    const competing = JSON.stringify({ retainedByOtherWriter: true });
+    let attempts = 0;
+    home.writeConfiguration = async (text, condition) => {
+      attempts += 1;
+      home.configuration = competing;
+      return write(text, condition);
+    };
+    const failure = await failureOf(
+      manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]),
+    );
+    expect(failure).toMatchObject({ code: 'conflict' });
+    expect(home.configuration).toBe(competing);
+    expect(attempts).toBe(1);
+    home.writeConfiguration = write;
+    await manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]);
+    expect(JSON.parse(home.configuration ?? '{}')).toMatchObject({ retainedByOtherWriter: true });
+  });
+
+  test('does not restore the prior credential after an unknown configuration commit', async () => {
+    const home = fakeHome('local');
+    const { manager } = await managerFor(home);
+    home.writeConfiguration = async (text) => {
+      home.configuration = text;
+      return { outcome: 'unknown' };
+    };
+    const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
+    expect(failure).toBeUndefined();
+    expect(home.configuration).toContain('secretBindings');
+    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
+    expect(home.writes.filter((entry) => entry === 'secret anthropic-api-key')).toHaveLength(0);
+  });
+});
+
+describe('workspace provider mutation authority', () => {
+  const administrator: WorkspaceIdentity = {
+    version: 1,
+    workspaceId: 'provider-manager-fixture',
+    actorId: 'administrator',
+    actorKind: 'user',
+    owner: 'owner-administrator',
+    membershipRevision: '1',
+    capabilities: ['workspace:use', 'workspace:manage'],
+  };
+
+  test('remote configuration and credential capabilities are independent', async () => {
+    const original = fakeHome('local');
+    const home = { ...original, mode: 'remote' as const };
+    const { manager } = await managerFor(home);
+    const originalSnapshot = await home.readConfiguration();
+    const mutation = createHostMutationContext(
+      administrator,
+      { operationId: 'remote-provider', expectedRevision: originalSnapshot.revision },
+      async () => administrator,
+    );
+    await manager.connect({ provider: 'anthropic', apiKey: KEY }, mutation);
+    const writableSnapshot = await manager.snapshot();
+    expect(writableSnapshot.credentialLockReason).toBeUndefined();
+    const readOnly = {
+      ...home,
+      secretProvider: {
+        ...home.secretProvider,
+        capabilities: { read: true as const, prepare: false, transitions: false },
+      },
+    };
+    const { manager: observer } = await managerFor(readOnly);
+    const observerSnapshot = await observer.snapshot();
+    expect(observerSnapshot.credentialLockReason).toBe('deployment');
+    expect(observerSnapshot.lockReason).toBeUndefined();
+    await observer.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]);
+    expect(
+      await failureOf(observer.connect({ provider: 'anthropic', apiKey: 'refused' })),
+    ).toMatchObject({ code: 'read-only' });
+  });
+  test('attributes writes and observes repeated operation IDs without another publication', async () => {
+    const home = fakeHome('local');
+    const { manager, audits } = await managerFor(home);
+    const snapshot = await home.readConfiguration();
+    const mutation = createHostMutationContext(
+      administrator,
+      { operationId: 'connect-one', expectedRevision: snapshot.revision },
+      async () => administrator,
+    );
+    await manager.connect({ provider: 'anthropic', apiKey: KEY }, mutation);
+    const writes = home.writes.length;
+    await manager.connect({ provider: 'anthropic', apiKey: KEY }, mutation);
+    expect(home.writes.length).toBe(writes);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      principal: administrator.owner,
+      detail: {
+        actorId: administrator.actorId,
+        workspaceId: administrator.workspaceId,
+        membershipRevision: '1',
+      },
+    });
+  });
+
+  test('two hosts using one configuration revision cannot overwrite the winning credential', async () => {
+    const home = fakeHome('local');
+    const first = await managerFor(home);
+    const second = await managerFor(home);
+    const snapshot = await home.readConfiguration();
+    const context = (id: string) =>
+      createHostMutationContext(
+        administrator,
+        { operationId: id, expectedRevision: snapshot.revision },
+        async () => administrator,
+      );
+    await first.manager.connect({ provider: 'anthropic', apiKey: 'winner' }, context('first'));
+    expect(
+      await failureOf(
+        second.manager.connect({ provider: 'anthropic', apiKey: 'loser' }, context('second')),
+      ),
+    ).toMatchObject({ code: 'conflict' });
+    expect(second.manager.current().apiKeys.get('anthropic')).toBe('winner');
+  });
+
+  test('one operation ID binds the model allowlist as well as the credential', async () => {
+    const home = fakeHome('local');
+    const first = await managerFor(home);
+    const second = await managerFor(home);
+    const snapshot = await home.readConfiguration();
+    const mutation = createHostMutationContext(
+      administrator,
+      { operationId: 'same-request', expectedRevision: snapshot.revision },
+      async () => administrator,
+    );
+    const results = await Promise.allSettled([
+      first.manager.connect({ provider: 'anthropic', apiKey: KEY, models: ['sonnet'] }, mutation),
+      second.manager.connect({ provider: 'anthropic', apiKey: KEY, models: null }, mutation),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const rejection = results.find((result) => result.status === 'rejected');
+    expect(rejection?.status === 'rejected' ? rejection.reason : undefined).toMatchObject({
+      code: 'conflict',
+    });
+    const writes = home.writes.length;
+    expect(
+      await first.manager
+        .connect(
+          {
+            provider: 'anthropic',
+            apiKey: KEY,
+            models: results[0]?.status === 'fulfilled' ? null : ['sonnet'],
+          },
+          mutation,
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        ),
+    ).toMatchObject({ code: 'conflict' });
+    expect(home.writes.length).toBe(writes);
+  });
+
+  test('revalidates after secret preparation before committing configuration', async () => {
+    const home = fakeHome('local');
+    const prepared = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const original = home.secretProvider;
+    const guardedHome = {
+      ...home,
+      secretProvider: {
+        ...original,
+        async prepare(input: Parameters<typeof original.prepare>[0]) {
+          const result = await original.prepare(input);
+          prepared.resolve();
+          await release.promise;
+          return result;
+        },
+      },
+    };
+    const { manager } = await managerFor(guardedHome);
+    let current: WorkspaceIdentity | undefined = administrator;
+    const snapshot = await home.readConfiguration();
+    const mutation = createHostMutationContext(
+      administrator,
+      { operationId: 'revoked', expectedRevision: snapshot.revision },
+      async () => current,
+    );
+    const result = failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }, mutation));
+    await prepared.promise;
+    current = undefined;
+    release.resolve();
+    expect(await result).toMatchObject({ code: 'forbidden' });
+    expect(home.writes).toEqual([]);
+    expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
   });
 });

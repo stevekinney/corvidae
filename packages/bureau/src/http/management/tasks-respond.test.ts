@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import type { GenerateFunction } from '@lostgradient/operative';
 import {
   createOperationHandler,
@@ -106,6 +107,27 @@ async function parkedApproval(opened: OpenedBureau, principal = OWNER.alice) {
 }
 
 describe('bureau.tasks.respond answering a human wait', () => {
+  it('does not let a workspace administrator use a legacy write scope on a foreign wait', async () => {
+    await withBureau(
+      {
+        generate: parksThenAnswers(),
+        handlerOptions: {
+          workspace: workspaceAdministratorDirectory(),
+        },
+      },
+      async (opened) => {
+        const run = await parkedRun(opened);
+        const body = await rpc(
+          opened.handler,
+          'bureau.tasks.respond',
+          { taskId: run.id, messageId: 'workspace-foreign', answer: 'no access' },
+          'tasks-writer-key',
+        );
+        expect(body.error?.data?.httpStatus).toBe(404);
+      },
+    );
+  });
+
   it('answers with text, delivered to the run as the signal payload, and the run finishes', async () => {
     await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);

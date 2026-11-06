@@ -5,7 +5,8 @@
  * input, under the id it was sent with, is named, and the thread is in the order the run took it.
  */
 import { EventType } from '@ag-ui/core';
-import { describe, expect, it } from 'bun:test';
+import { Mailbox } from '@lostgradient/weft';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { listHeldTasks, waitForCondition } from '../test';
 import {
@@ -67,6 +68,170 @@ describe('a run that delivered session input', () => {
           [true, 'user'],
           [false, 'assistant'],
         ]);
+      },
+    );
+  });
+
+  it('announces the step that took the input when it starts, before the reply that answers it', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')] },
+      async ({ handler, bureau, generate }) => {
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        await bureau.contexts.input('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+          deliveryMode: 'steer',
+          payload: 'One more thing',
+        });
+        generate.release('hold');
+        await stream.rest();
+
+        const events = stream.received.map((frame) => frame.event);
+        const announced = events.filter(
+          (event) => event.type === EventType.CUSTOM && event.name === 'bureau.inputs-delivered',
+        );
+        expect(announced.map((event) => (event as { value?: unknown }).value)).toEqual([
+          { runId: expect.any(String), inputIds: ['follow-up-1'] },
+        ]);
+        const at = events.indexOf(announced[0]!);
+        expect(events[at - 1]?.type).toBe(EventType.STEP_STARTED);
+        expect(
+          events
+            .slice(at)
+            .some(
+              (event) =>
+                event.type === EventType.TEXT_MESSAGE_CONTENT && event.delta.includes('Answer.'),
+            ),
+        ).toBe(true);
+      },
+    );
+  });
+
+  it('never delivers an input retracted before the run reached it', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')] },
+      async ({ handler, bureau, generate }) => {
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        await bureau.contexts.input('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+          deliveryMode: 'steer',
+          payload: 'One more thing',
+        });
+
+        const retracted = await bureau.contexts.retract('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+        });
+        generate.release('hold');
+        await stream.rest();
+
+        expect(retracted).toMatchObject({ outcome: 'retracted', receipt: { state: 'canceled' } });
+        const events = stream.received.map((frame) => frame.event);
+        expect(
+          events.some(
+            (event) => event.type === EventType.CUSTOM && event.name === 'bureau.inputs-delivered',
+          ),
+        ).toBe(false);
+        expect(typesOf(stream.received)).not.toContain(EventType.MESSAGES_SNAPSHOT);
+        const thread = await bureau.contexts.get('thread-1');
+        expect(thread?.conversationHistory?.ids).not.toContain('follow-up-1');
+      },
+    );
+  });
+
+  it('answers a retract after the run took the input as delivered, and the turn stands', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')] },
+      async ({ handler, bureau, generate }) => {
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        await bureau.contexts.input('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+          deliveryMode: 'steer',
+          payload: 'One more thing',
+        });
+        generate.release('hold');
+        await stream.rest();
+
+        const late = await bureau.contexts.retract('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+        });
+        const stranger = await bureau.contexts.retract('thread-1', {
+          id: 'follow-up-1',
+          principal: 'someone-else',
+        });
+
+        expect(late).toMatchObject({ outcome: 'delivered', receipt: { state: 'promoted' } });
+        expect(stranger).toEqual({ outcome: 'not-found' });
+        const thread = await bureau.contexts.get('thread-1');
+        expect(thread?.conversationHistory?.ids).toContain('follow-up-1');
+      },
+    );
+  });
+
+  it('answers a retract that lands after the step boundary claimed the input as retracted, and the turn never takes it', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')] },
+      async ({ handler, bureau, generate }) => {
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        await bureau.contexts.input('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+          deliveryMode: 'steer',
+          payload: 'One more thing',
+        });
+
+        // The boundary has claimed the input and is about to re-read its receipt before it appends
+        // the turn. The retract lands exactly there: it asks for the cancellation and then waits
+        // for the boundary to settle the command, which the boundary does after this read returns.
+        const original = Mailbox.prototype.receipt;
+        let retracting: ReturnType<typeof bureau.contexts.retract> | undefined;
+        const spy = spyOn(Mailbox.prototype, 'receipt').mockImplementation(async function (
+          this: Mailbox,
+          commandId: string,
+        ) {
+          const receipt = await original.call(this, commandId);
+          if (retracting === undefined && receipt?.state === 'claimed') {
+            retracting = bureau.contexts.retract('thread-1', {
+              id: 'follow-up-1',
+              principal: 'anonymous:local',
+            });
+            await waitForCondition(async () => {
+              const current = await original.call(this, commandId);
+              return current?.state === 'cancellation-requested';
+            }, 'the cancellation was requested');
+            return original.call(this, commandId);
+          }
+          return receipt;
+        });
+        let retracted;
+        try {
+          generate.release('hold');
+          await stream.rest();
+          retracted = await retracting;
+        } finally {
+          spy.mockRestore();
+        }
+
+        expect(retracted).toMatchObject({ outcome: 'retracted', receipt: { state: 'canceled' } });
+        const events = stream.received.map((frame) => frame.event);
+        expect(
+          events.some(
+            (event) => event.type === EventType.CUSTOM && event.name === 'bureau.inputs-delivered',
+          ),
+        ).toBe(false);
+        const thread = await bureau.contexts.get('thread-1');
+        expect(thread?.conversationHistory?.ids).not.toContain('follow-up-1');
       },
     );
   });

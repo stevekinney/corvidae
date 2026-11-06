@@ -1,7 +1,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { ToolExecutionResult } from 'armorer';
 import type { ToolCall } from 'armorer/protocol';
-import { Conversation } from 'conversationalist';
+import { type AppendBatchOptions, Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import {
@@ -19,6 +19,7 @@ import {
 } from './events';
 import { toolResultMessageIdentifier } from './message-identifiers';
 import type { EventDispatcher, RunState, StepDeps } from './run-step';
+import type { ToolTimingRecorder } from './tool-timing';
 import type {
   ElicitationOptions,
   ElicitationResponse,
@@ -111,18 +112,31 @@ export interface ResultRowScope {
 }
 
 /**
- * The row ids for appending `results`, derived from the run and step; `undefined`
- * when the run has no id, so the conversation mints them.
+ * The row ids for appending `results`, derived from the run and step, and each row's record of
+ * when its call ran from `timing`. A call that is waiting on a person (`action_required`) has not
+ * run, so its row records no time: whoever runs it once it is approved records its own. `undefined`
+ * when the run has no id and nothing was timed, so the conversation mints the ids and the rows
+ * carry no metadata.
  */
 export function resultRowBatch(
   scope: ResultRowScope | undefined,
-  results: ReadonlyArray<{ readonly callId: string }>,
-): { messageIds: string[] } | undefined {
-  if (scope === undefined || scope.runId === undefined) return undefined;
-  const { runId, step } = scope;
-  return {
-    messageIds: results.map((result) => toolResultMessageIdentifier(runId, step, result.callId)!),
-  };
+  results: ReadonlyArray<{ readonly callId: string; readonly outcome?: string }>,
+  timing?: ToolTimingRecorder,
+): AppendBatchOptions | undefined {
+  const runId = scope?.runId;
+  const messageIds =
+    runId === undefined || scope === undefined
+      ? undefined
+      : results.map((result) => toolResultMessageIdentifier(runId, scope.step, result.callId)!);
+  const metadata =
+    timing === undefined
+      ? []
+      : results.map((result) =>
+          result.outcome === 'action_required' ? undefined : timing.metadataOf(result.callId),
+        );
+  const timed = metadata.some((entry) => entry !== undefined);
+  if (messageIds === undefined && !timed) return undefined;
+  return { ...(messageIds === undefined ? {} : { messageIds }), ...(timed ? { metadata } : {}) };
 }
 
 /**
@@ -149,6 +163,7 @@ export async function sealDanglingToolCalls(
   reason: string,
   calls: ReadonlyArray<ToolCall> = conversation.getPendingToolCalls(),
   rowScope?: ResultRowScope,
+  timing?: ToolTimingRecorder,
 ): Promise<ToolExecutionResult[]> {
   if (calls.length === 0) return [];
 
@@ -162,7 +177,8 @@ export async function sealDanglingToolCalls(
     result: reason,
   }));
 
-  const batch = resultRowBatch(rowScope, danglingResults);
+  timing?.endAll();
+  const batch = resultRowBatch(rowScope, danglingResults, timing);
   if (collectAsync) {
     await conversation.appendToolResultsAsync(danglingResults, batch);
   } else {

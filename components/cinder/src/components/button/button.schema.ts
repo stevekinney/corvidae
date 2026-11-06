@@ -13,7 +13,7 @@ const schema = {
         'soft-danger',
         'ghost',
         'ghost-danger',
-        'link',
+        'ghost-accent',
       ],
       description: 'Visual style.',
       default: 'secondary',

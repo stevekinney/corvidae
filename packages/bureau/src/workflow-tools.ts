@@ -20,26 +20,31 @@
  */
 
 import { createTool, type Tool, type ToolContext } from 'armorer';
+import type { WorkflowStatus } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
 import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
-import { mayRunAccess } from './run-authority.ts';
+import { mayRunUseSharedConfiguration } from './run-authority.ts';
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 import {
   checkWorkflowIdentifier,
   type WorkflowFileDefinition,
   WorkflowFileConflictError,
   WorkflowFileError,
+  serializeWorkflowFile,
 } from './workflow-file';
 import { type BureauWorkflows, WorkflowApplyError } from './workflow-runtime';
+import { WorkflowInputInvalidError } from './workflow-schema.ts';
 
 /**
- * The names of the eight tools within the `bureau` plugin. Hyphens, because provider tool-name
+ * The names of the workflow tools within the `bureau` plugin. Hyphens, because provider tool-name
  * grammars exclude dots.
  */
 export const WORKFLOW_TOOL_NAMES = [
   'workflows-create',
   'workflows-update',
+  'workflows-propose-update',
   'workflows-validate',
   'workflows-catalog',
   'workflows-pause',
@@ -48,10 +53,33 @@ export const WORKFLOW_TOOL_NAMES = [
   'workflows-get',
   'workflows-revisions-list',
   'workflows-revisions-get',
+  'workflows-start',
+  'workflows-signal',
+  'workflows-runs-cancel',
+  'workflows-runs-list',
+  'workflows-runs-get',
+  'workflows-runs-history',
 ] as const;
+
+const WORKFLOW_RUN_STATUS_INPUTS = [
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'canceled',
+  'timed-out',
+  'suspended',
+] as const;
+const workflowRunStatusInput = z.enum(WORKFLOW_RUN_STATUS_INPUTS);
+
+function workflowRunStatus(value: (typeof WORKFLOW_RUN_STATUS_INPUTS)[number]): WorkflowStatus {
+  return value === 'canceled' ? 'cancelled' : value;
+}
 
 /** What the tools read from the Bureau that owns them. */
 export interface WorkflowToolHost {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   /** The workflow files. Read on every call, because the tools exist before the runtime does. */
   readonly workflows: () => BureauWorkflows | undefined;
   /**
@@ -87,6 +115,12 @@ export type WorkflowToolResult =
       readonly issues: readonly WorkflowToolIssue[];
     }
   | { readonly status: 'not-found'; readonly id: string }
+  | {
+      readonly status: 'ok';
+      readonly id: string;
+      readonly baseHash: string;
+      readonly proposedText: string;
+    }
   | { readonly status: 'forbidden'; readonly message: string }
   | {
       readonly status: 'ok';
@@ -307,6 +341,10 @@ function resultOfFailure(error: unknown, id: string): WorkflowToolResult {
   throw error;
 }
 
+function inputIssuesOf(error: WorkflowInputInvalidError): readonly WorkflowToolIssue[] {
+  return error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }));
+}
+
 /** The identifier of the run that made `context`'s call, when it carries one. */
 export function runIdOf(context: ToolContext | undefined): string | undefined {
   const fromExecution = context?.executionContext?.['parentRunId'];
@@ -326,7 +364,9 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         readonly workflows: BureauWorkflows;
         readonly agent: string;
         readonly actor: string;
+        readonly owner: string | undefined;
         readonly hookOrigin: string | undefined;
+        readonly runId: string;
       }
     | { readonly refusal: WorkflowToolResult }
   > {
@@ -337,9 +377,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       workflows === undefined ||
       runId === undefined ||
       identity === undefined ||
-      !mayRunAccess(identity.owner, operationScope, workflows.owner, {
-        allowOperatorScope: false,
-      })
+      !(await mayRunUseSharedConfiguration(
+        host.workspace,
+        identity.owner,
+        operationScope,
+        operationScope === 'bureau.workflows:write',
+        workflows.owner,
+        {
+          allowOperatorScope: false,
+        },
+      ))
     ) {
       return { refusal: { status: 'not-found', id } };
     }
@@ -358,7 +405,14 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         },
       };
     }
-    return { workflows, agent, actor: `agent-run:${runId}`, hookOrigin: identity.hookOrigin };
+    return {
+      workflows,
+      agent,
+      actor: `agent-run:${runId}`,
+      owner: identity.owner,
+      hookOrigin: identity.hookOrigin,
+      runId,
+    };
   }
 
   const definition = (agent: string, input: Record<string, unknown>): WorkflowFileDefinition => {
@@ -543,6 +597,45 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     },
   });
 
+  const proposeUpdate = createTool({
+    name: 'workflows-propose-update',
+    version: '1.0.0',
+    description:
+      'Validate a proposed replacement for a workflow without saving it. The proposal is based on expectedHash and returns its canonical text for a person to review.',
+    input: updateInput,
+    metadata: {
+      readOnly: true,
+      title: 'Propose workflow revision',
+      shortDescription: 'Validate a workflow revision without saving it.',
+    },
+    execute: async (input, context): Promise<WorkflowToolResult> => {
+      const calling = await caller(context, input.id, 'bureau.workflows:read');
+      if ('refusal' in calling) return calling.refusal;
+      const current = await calling.workflows.get(input.id);
+      if (current === undefined) return { status: 'not-found', id: input.id };
+      if (current.hash !== input.expectedHash) {
+        return {
+          status: 'conflict',
+          id: input.id,
+          reason: 'workflow-file-changed',
+          ...(current.hash === undefined ? {} : { currentHash: current.hash }),
+        };
+      }
+      const proposed = definition(calling.agent, input);
+      try {
+        await calling.workflows.validate(input.id, proposed, input.expectedHash);
+        return {
+          status: 'ok',
+          id: input.id,
+          baseHash: current.hash,
+          proposedText: serializeWorkflowFile(input.id, proposed),
+        };
+      } catch (error) {
+        return resultOfFailure(error, input.id);
+      }
+    },
+  });
+
   function guarded(name: 'workflows-pause' | 'workflows-resume', paused: boolean) {
     return createTool({
       name,
@@ -679,7 +772,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           ? { status: 'ok', revisions: [] }
           : calling.refusal;
       }
-      const revisions = await calling.workflows.revisions(input.id);
+      const revisions = await calling.workflows.revisions(
+        input.id,
+        host.workspace === undefined
+          ? undefined
+          : async (runId) => {
+              if (calling.owner === undefined) return false;
+              const identity = await host.runIdentity(runId);
+              return identity.owner === calling.owner;
+            },
+      );
       if (revisions === undefined) return { status: 'not-found', id: input.id };
       return { status: 'ok', revisions: revisions.map(revisionOf) };
     },
@@ -702,7 +804,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     execute: async (input, context): Promise<WorkflowToolResult | Record<string, unknown>> => {
       const calling = await caller(context, input.id, 'bureau.workflows:read');
       if ('refusal' in calling) return calling.refusal;
-      const revisions = await calling.workflows.revisions(input.id);
+      const revisions = await calling.workflows.revisions(
+        input.id,
+        host.workspace === undefined
+          ? undefined
+          : async (runId) => {
+              if (calling.owner === undefined) return false;
+              const identity = await host.runIdentity(runId);
+              return identity.owner === calling.owner;
+            },
+      );
       const revision = revisions?.find(
         (candidate) => candidate.workflowVersion === input.workflowVersion,
       );
@@ -716,9 +827,184 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     },
   });
 
+  const start = createTool({
+    name: 'workflows-start',
+    version: '1.0.0',
+    description: 'Start a workflow file with JSON input and return its run identifier.',
+    input: z.object({ id: z.string().min(1), input: z.json().optional() }),
+    metadata: { mutates: true, title: 'Start workflow', shortDescription: 'Start a workflow run.' },
+    execute: async (input, context) => {
+      const calling = await caller(context, input.id, 'bureau.workflows:write');
+      if ('refusal' in calling) return calling.refusal;
+      try {
+        return {
+          status: 'ok' as const,
+          ...(await calling.workflows.start(input.id, {
+            input: input.input,
+            owner: calling.owner ?? calling.workflows.owner,
+            origin: { kind: 'agent-run' as const, runId: calling.runId, agentId: calling.agent },
+          })),
+        };
+      } catch (error) {
+        if (error instanceof WorkflowInputInvalidError)
+          return { status: 'invalid' as const, code: error.code, issues: inputIssuesOf(error) };
+        if (error instanceof WorkflowFileError && error.code === 'workflow-file-not-found')
+          return { status: 'not-found' as const, id: input.id };
+        if (error instanceof WorkflowFileError)
+          return { status: 'invalid' as const, code: error.code, issues: issuesOf(error) };
+        throw error;
+      }
+    },
+  });
+
+  const signal = createTool({
+    name: 'workflows-signal',
+    version: '1.0.0',
+    description:
+      'Deliver a named signal to waiting workflow runs and start matching signal workflows.',
+    input: z.object({
+      name: z.string().min(1),
+      payload: z.json().optional(),
+      signalId: z.string().min(1).optional(),
+    }),
+    metadata: {
+      mutates: true,
+      title: 'Signal workflows',
+      shortDescription: 'Send a workflow signal.',
+    },
+    execute: async (input, context) => {
+      const calling = await caller(context, '', 'bureau.workflows:write');
+      if ('refusal' in calling)
+        return { status: 'ok' as const, started: [], delivered: [], rejected: [] };
+      const result = await calling.workflows.signal(input.name, input.payload ?? null, {
+        signalId: input.signalId,
+        owner: calling.owner,
+        maySignalRun: async (runId) => {
+          const identity = await host.runIdentity(runId);
+          return identity.owner === calling.owner;
+        },
+      });
+      return {
+        status: 'ok' as const,
+        started: result.started,
+        delivered: result.delivered,
+        rejected: result.rejected,
+      };
+    },
+  });
+
+  const runsList = createTool({
+    name: 'workflows-runs-list',
+    version: '1.0.0',
+    description: 'List workflow-file runs owned by the calling run.',
+    input: z.object({
+      workflow: z.string().optional(),
+      status: workflowRunStatusInput.optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+    }),
+    metadata: {
+      readOnly: true,
+      title: 'List workflow runs',
+      shortDescription: 'List workflow runs.',
+    },
+    execute: async (input, context) => {
+      const calling = await caller(context, '', 'bureau.workflows:read');
+      if ('refusal' in calling) return { status: 'ok' as const, runs: [], nextOffset: null };
+      const page = await calling.workflows.listRuns({
+        workflow: input.workflow,
+        status: input.status === undefined ? undefined : workflowRunStatus(input.status),
+        limit: input.limit ?? 50,
+        offset: input.offset ?? 0,
+        mayReadRun: async (runId) => {
+          const identity = await host.runIdentity(runId);
+          return identity.owner === calling.owner;
+        },
+      });
+      return { status: 'ok' as const, runs: page.runs, nextOffset: page.nextOffset };
+    },
+  });
+
+  const runsGet = createTool({
+    name: 'workflows-runs-get',
+    version: '1.0.0',
+    description: 'Read one workflow-file run owned by the calling run.',
+    input: z.object({ runId: z.string().min(1) }),
+    metadata: {
+      readOnly: true,
+      title: 'Read workflow run',
+      shortDescription: 'Read a workflow run.',
+    },
+    execute: async (input, context) => {
+      const calling = await caller(context, input.runId, 'bureau.workflows:read');
+      if ('refusal' in calling) return calling.refusal;
+      const identity = await host.runIdentity(input.runId);
+      if (identity.owner !== calling.owner)
+        return { status: 'not-found' as const, id: input.runId };
+      const run = await calling.workflows.getRun(input.runId);
+      return run === undefined
+        ? { status: 'not-found' as const, id: input.runId }
+        : { status: 'ok' as const, run };
+    },
+  });
+
+  const runsCancel = createTool({
+    name: 'workflows-runs-cancel',
+    version: '1.0.0',
+    description: 'Request cancellation of one workflow-file run.',
+    input: z.object({ runId: z.string().min(1) }),
+    metadata: {
+      mutates: true,
+      title: 'Cancel workflow run',
+      shortDescription: 'Cancel a workflow run.',
+    },
+    execute: async (input, context) => {
+      const calling = await caller(context, input.runId, 'bureau.workflows:write');
+      if ('refusal' in calling) return calling.refusal;
+      const identity = await host.runIdentity(input.runId);
+      if (identity.owner !== calling.owner)
+        return { status: 'not-found' as const, id: input.runId };
+      try {
+        await calling.workflows.cancel(input.runId);
+        return { status: 'cancel-requested' as const, runId: input.runId };
+      } catch (error) {
+        if (error instanceof WorkflowFileError)
+          return { status: 'not-found' as const, id: input.runId };
+        throw error;
+      }
+    },
+  });
+
+  const runsHistory = createTool({
+    name: 'workflows-runs-history',
+    version: '1.0.0',
+    description: 'Read bounded, sanitized step history for one workflow-file run.',
+    input: z.object({
+      runId: z.string().min(1),
+      limit: z.number().int().min(1).max(500).optional(),
+    }),
+    metadata: {
+      readOnly: true,
+      title: 'Read workflow history',
+      shortDescription: 'Read workflow step history.',
+    },
+    execute: async (input, context) => {
+      const calling = await caller(context, input.runId, 'bureau.workflows:read');
+      if ('refusal' in calling) return calling.refusal;
+      const identity = await host.runIdentity(input.runId);
+      if (identity.owner !== calling.owner)
+        return { status: 'not-found' as const, id: input.runId };
+      const history = await calling.workflows.historyRuns(input.runId, input.limit ?? 100);
+      return history === undefined
+        ? { status: 'not-found' as const, id: input.runId }
+        : { status: 'ok' as const, ...history };
+    },
+  });
+
   return {
     [create.name]: create,
     [update.name]: update,
+    [proposeUpdate.name]: proposeUpdate,
     [validate.name]: validate,
     [catalog.name]: catalog,
     'workflows-pause': guarded('workflows-pause', true),
@@ -727,5 +1013,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     [get.name]: get,
     [revisionsList.name]: revisionsList,
     [revisionsGet.name]: revisionsGet,
+    [start.name]: start,
+    [signal.name]: signal,
+    [runsList.name]: runsList,
+    [runsGet.name]: runsGet,
+    [runsCancel.name]: runsCancel,
+    [runsHistory.name]: runsHistory,
   };
 }

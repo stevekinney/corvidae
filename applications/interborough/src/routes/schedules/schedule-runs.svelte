@@ -319,7 +319,7 @@
           <Button
             data-changes
             mutating
-            variant="link"
+            variant="ghost-accent"
             size="sm"
             disabled={busy}
             aria-label={copy.undoLabel(fire.absolute)}

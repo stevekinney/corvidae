@@ -1,3 +1,9 @@
+import {
+  openWorkspacePrivacyBureau,
+  workspacePrivacyCall,
+  WORKSPACE_PRIVACY_ACTORS,
+  type WorkspacePrivacyActor,
+} from './http/workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-2009 — what needs attention (Health's Needs attention list and its Advanced checks): the kinds
  * the Bureau finds, the one order they are listed in, the checks counted from the same list, and the
@@ -7,9 +13,11 @@ import {
   StorageSizeReportedEvent,
   type AlertStateSnapshot,
   type ScheduleSummary,
+  type WorkspaceIdentity,
 } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from './http/workspace-conformance-ledger.test-support.ts';
 
 import {
   readAttention,
@@ -455,4 +463,163 @@ describe('bureau.health.attention', () => {
 
     expect(answered.error?.data).toMatchObject({ httpStatus: 403 });
   });
+
+  it('workspace members receive only public configuration notices, not private alert, hook, or schedule data', async () => {
+    const opened = await open({
+      bureauOptions: {
+        attention: async () => {
+          const report = await readAttention(
+            sampleWorld({
+              plugins: () => Promise.resolve([plugin('inspectors', 'skipped')]),
+              hooks: () => Promise.resolve([failedHook('private-hook', ALERT_FIRED, false)]),
+            }),
+          );
+          return report.items;
+        },
+      },
+      handlerOptions: {
+        workspace: {
+          workspaceId: 'workspace-a',
+          resolveMembership: async ({ subject }) =>
+            ({
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: subject ?? 'unknown',
+              actorKind: 'user',
+              owner: `api-key:${subject ?? 'unknown'}`,
+              membershipRevision: 'revision-1',
+              capabilities: ['workspace:use', 'workspace:manage'],
+            }) satisfies WorkspaceIdentity,
+        },
+      },
+    });
+
+    const answered = await rpc(
+      opened.handler,
+      'bureau.health.attention',
+      {},
+      'diagnostics-reader-key',
+    );
+
+    expect(answered.error).toBeUndefined();
+    expect(answered.result?.['items']).toEqual([
+      NO_PROVIDER,
+      {
+        kind: 'plugin-not-loaded',
+        area: 'plugins',
+        at: SERVER_STARTED,
+        plugin: 'inspectors',
+        problems: ['setup-failed'],
+      },
+    ]);
+    expect(answered.result?.['count']).toBe(2);
+    expect(answered.result?.['checks']).toEqual([
+      { area: 'providers', count: 1 },
+      { area: 'plugins', count: 1 },
+    ]);
+    expect(JSON.stringify(answered)).not.toContain('storage.size');
+    expect(JSON.stringify(answered)).not.toContain('daily-summary');
+    expect(JSON.stringify(answered)).not.toContain('hooks.slack.com');
+  });
+});
+
+const witnesses = workspaceConformanceLedger('../attention-feed.test.ts');
+it('workspace attention six-actor projections hide private hook alerts and recompute counts', async () => {
+  const opened = await openWorkspacePrivacyBureau({
+    bureauOptions: {
+      attention: async () => {
+        const report = await readAttention(
+          sampleWorld({
+            plugins: () => Promise.resolve([plugin('inspectors', 'skipped')]),
+            hooks: () =>
+              Promise.resolve([failedHook('PRIVATE-HOOK-ATTENTION-b5fe', ALERT_FIRED, false)]),
+          }),
+        );
+        return report.items;
+      },
+    },
+  });
+  try {
+    const sentinel = 'PRIVATE-ATTENTION-NEIGHBOR-4e7a';
+    const task = await opened.bureau.tasks.start('default', sentinel, {
+      principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+    });
+    const owner = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.get', {
+      contextId: task.contextId,
+    });
+    expect(owner.text).toContain(sentinel);
+    witnesses.confirmPrivateSource('bureau.health.attention', owner);
+    for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+      const response = await workspacePrivacyCall(opened, actor, 'bureau.health.attention', {});
+      expect(response.text).not.toContain(sentinel);
+      witnesses.observeWire('bureau.health.attention', actor, response);
+      if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
+      else if (actor === 'administrator') {
+        expect(response.body?.error).toBeUndefined();
+        const items = response.body?.result?.['items'] as unknown[];
+        expect(items).toHaveLength(2);
+        expect(response.body?.result?.['count']).toBe(2);
+        expect(response.body?.result?.['checks']).toEqual([
+          { area: 'providers', count: 1 },
+          { area: 'plugins', count: 1 },
+        ]);
+        expect(response.text).toContain('plugin-not-loaded');
+        expect(response.text).not.toContain('PRIVATE-HOOK-ATTENTION-b5fe');
+      } else expect(response.body?.error?.data?.httpStatus).toBe(403);
+    }
+  } finally {
+    await opened.dispose();
+  }
+});
+
+it('trusted local deployment operators retain full attention while local members remain redacted', async () => {
+  const report = await readAttention(sampleWorld());
+  for (const deploymentOperator of [false, true]) {
+    const opened = await openBureau({
+      localAccess: true,
+      bureauOptions: { attention: async () => report.items },
+      handlerOptions: {
+        workspace: {
+          workspaceId: 'workspace-a',
+          resolveMembership: async () => ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: 'local-owner',
+            actorKind: 'local',
+            owner: 'anonymous:local',
+            membershipRevision: '1',
+            capabilities: deploymentOperator
+              ? ['workspace:use', 'workspace:manage', 'deployment:operate']
+              : ['workspace:use', 'workspace:manage'],
+          }),
+        },
+      },
+    });
+    try {
+      const response = await opened.handler(
+        new Request('http://localhost/jsonrpc', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'bureau.health.attention',
+            params: {},
+          }),
+        }),
+      );
+      const body = (await response.json()) as { result: typeof report };
+      if (deploymentOperator) expect(body.result).toEqual(report);
+      else {
+        expect(body.result.items).toEqual([NO_PROVIDER]);
+        expect(body.result.count).toBe(1);
+      }
+    } finally {
+      await opened.dispose();
+    }
+  }
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

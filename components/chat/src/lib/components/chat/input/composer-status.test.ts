@@ -14,4 +14,11 @@ describe('composerStatusText', () => {
       '3 follow-ups queued · they send when the run is ready',
     );
   });
+
+  test('reads an approval wait, and says a message steers the run when one would', () => {
+    expect(composerStatusText({ kind: 'waiting' })).toBe('Waiting for your approval');
+    expect(composerStatusText({ kind: 'waiting', steers: true })).toBe(
+      'Waiting for your approval · a message now steers the run',
+    );
+  });
 });

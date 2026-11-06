@@ -34,6 +34,7 @@ import {
   createTickerController,
 } from './testing/workflow-contributions.test-support';
 import { WORKFLOW_FILE_SIZE_LIMIT } from './workflow-file';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const harnesses: WorkflowToolsHarness[] = [];
 afterEach(async () => {
@@ -90,6 +91,7 @@ describe('which agents are offered the tools', () => {
     expect([...WORKFLOW_TOOL_NAMES]).toEqual([
       'workflows-create',
       'workflows-update',
+      'workflows-propose-update',
       'workflows-validate',
       'workflows-catalog',
       'workflows-pause',
@@ -98,6 +100,12 @@ describe('which agents are offered the tools', () => {
       'workflows-get',
       'workflows-revisions-list',
       'workflows-revisions-get',
+      'workflows-start',
+      'workflows-signal',
+      'workflows-runs-cancel',
+      'workflows-runs-list',
+      'workflows-runs-get',
+      'workflows-runs-history',
     ]);
     const harness = await start();
     await harness.callTool('bureau__workflows-list', {});
@@ -310,6 +318,7 @@ describe('what a model is shown of a tool’s input', () => {
   it.each([
     ['workflows-create', ['name', 'trigger', 'steps']],
     ['workflows-update', ['id', 'expectedHash', 'trigger', 'steps']],
+    ['workflows-propose-update', ['id', 'expectedHash', 'trigger', 'steps']],
     ['workflows-pause', ['id', 'expectedHash']],
     ['workflows-resume', ['id', 'expectedHash']],
   ] as const)(
@@ -330,6 +339,54 @@ describe('what a model is shown of a tool’s input', () => {
 });
 
 describe('workflows-get and workflow revisions', () => {
+  it('proposes a validated revision without writing it and rejects stale or invalid proposals', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
+    const hash = hashOf(harness, 'digest');
+    const proposal = await harness.callTool('bureau__workflows-propose-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: { kind: 'signal', name: 'approved' },
+      steps: [{ ...STEPS[0], title: 'Write the revised digest' }],
+    });
+    expect(proposal.result).toMatchObject({ status: 'ok', id: 'digest', baseHash: hash });
+    expect((proposal.result as { proposedText: string }).proposedText).toContain('approved');
+    expect(await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8')).toBe(before);
+
+    const invalid = await harness.callTool('bureau__workflows-propose-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: { kind: 'webhook' },
+      steps: STEPS,
+    });
+    expect(invalid.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8')).toBe(before);
+
+    await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: { kind: 'schedule', spec: '2h' },
+      steps: STEPS,
+    });
+    const stale = await harness.callTool('bureau__workflows-propose-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(stale.result).toMatchObject({
+      status: 'conflict',
+      id: 'digest',
+      reason: 'workflow-file-changed',
+      currentHash: hashOf(harness, 'digest'),
+    });
+  });
+
   it('reads a workflow and updates it with the returned hash', async () => {
     const harness = await start();
     await harness.callTool('bureau__workflows-create', {
@@ -479,6 +536,69 @@ describe('workflows-get and workflow revisions', () => {
       status: 'ok',
       document: { activityVersions: { 'x:y': '1' } },
     });
+  });
+
+  it('shares definitions with members but keeps revision usage private from administrators', async () => {
+    const harness = await start({
+      overrides: {
+        workspace: {
+          workspaceId: 'workspace-a',
+          resolveMembership: async ({ subject }) => ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: subject ?? 'unknown',
+            actorKind: 'user',
+            owner: `api-key:${subject ?? 'unknown'}`,
+            membershipRevision: 'revision-1',
+            capabilities: ['workspace:use', 'workspace:manage'],
+          }),
+          resolveOwnerMembership: async (owner) => ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: owner,
+            actorKind: 'user',
+            owner,
+            membershipRevision: 'revision-1',
+            capabilities:
+              owner === 'owner-admin' ? ['workspace:use', 'workspace:manage'] : ['workspace:use'],
+          }),
+        },
+      },
+    });
+    await harness.callTool(
+      'bureau__workflows-create',
+      { name: 'Digest', trigger: TRIGGER, steps: STEPS },
+      { principal: 'owner-admin' },
+    );
+    const listed = await harness.callTool(
+      'bureau__workflows-list',
+      {},
+      { principal: 'owner-member' },
+    );
+    expect(listed.result).toMatchObject({ status: 'ok', workflows: [{ id: 'digest' }] });
+    const refused = await harness.callTool(
+      'bureau__workflows-update',
+      { id: 'digest', expectedHash: hashOf(harness, 'digest'), trigger: TRIGGER, steps: STEPS },
+      { principal: 'owner-member' },
+    );
+    expect(refused.result).toMatchObject({ status: 'not-found' });
+    const run = await harness.bureau.workflows!.start('digest', { owner: 'owner-member' });
+    await harness.bureau.durableEngine()!.getHandle(run.runId).result();
+    const member = await harness.callTool(
+      'bureau__workflows-revisions-list',
+      { id: 'digest' },
+      { principal: 'owner-member' },
+    );
+    expect(member.result).toMatchObject({
+      status: 'ok',
+      revisions: [expect.objectContaining({ workflowVersion: expect.any(String) })],
+    });
+    const administrator = await harness.callTool(
+      'bureau__workflows-revisions-list',
+      { id: 'digest' },
+      { principal: 'owner-admin' },
+    );
+    expect(administrator.result).toMatchObject({ status: 'ok', revisions: [] });
   });
 
   it('lists and reads the revisions that have run', async () => {
@@ -1019,6 +1139,42 @@ describe('who the tools act for', () => {
     expect(answer).toEqual({ status: 'ok', workflows: [] });
   });
 
+  it('keeps the run tools owner-only, with an empty signal response for a foreign A2A caller', async () => {
+    const foreign = await withWorkflow();
+    const principal = { principal: 'api-key:a2a' } as const;
+    const listCall = await foreign.callTool('bureau__workflows-list', {}, principal);
+    expect(listCall.result).toEqual({
+      status: 'ok',
+      workflows: [],
+    });
+    const signalCall = await foreign.callTool(
+      'bureau__workflows-signal',
+      { name: 'go' },
+      principal,
+    );
+    expect(signalCall.result).toEqual({ status: 'ok', started: [], delivered: [], rejected: [] });
+    const startCall = await foreign.callTool(
+      'bureau__workflows-start',
+      { id: 'digest' },
+      principal,
+    );
+    expect(startCall.result).toEqual({ status: 'not-found', id: 'digest' });
+    for (const tool of [
+      'workflows-runs-list',
+      'workflows-runs-get',
+      'workflows-runs-cancel',
+      'workflows-runs-history',
+    ] as const) {
+      const input = tool === 'workflows-runs-list' ? {} : { runId: 'missing-run' };
+      const call = await foreign.callTool(`bureau__${tool}`, input, principal);
+      expect(call.result, tool).toEqual(
+        tool === 'workflows-runs-list'
+          ? { status: 'ok', runs: [], nextOffset: null }
+          : { status: 'not-found', id: 'missing-run' },
+      );
+    }
+  });
+
   it('keeps workflow tools owner-only when the shared authority has local operator scopes', () => {
     expect(
       mayRunAccess('anonymous:local', 'bureau.workflows:read', 'library:custom', {
@@ -1109,6 +1265,113 @@ describe('a chat session run', () => {
   });
 });
 
+describe('agent-owned workflow runs', () => {
+  it('rejects invalid input before creating a run, then records the agent-run origin', async () => {
+    const harness = await start();
+    await harness.putAgent('scribe');
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Manual input',
+      trigger: { kind: 'manual' },
+      inputSchema: { type: 'object', required: ['value'] },
+      steps: STEPS,
+    });
+
+    const invalid = await harness.callTool('bureau__workflows-start', {
+      id: 'manual-input',
+      input: {},
+    });
+    expect(invalid.result).toMatchObject({ status: 'invalid' });
+    expect(await harness.bureau.workflows!.listRuns({ limit: 10, offset: 0 })).toMatchObject({
+      runs: [],
+    });
+
+    const started = await harness.callTool('bureau__workflows-start', {
+      id: 'manual-input',
+      input: { value: 'ok' },
+    });
+    expect(started.result).toMatchObject({ status: 'ok' });
+    const runId = (started.result as { runId: string }).runId;
+    expect(typeof runId).toBe('string');
+    expect(runId.length).toBeGreaterThan(0);
+    let detail = await harness.bureau.workflows!.getRun(runId);
+    await waitUntil(
+      async () => {
+        detail = await harness.bureau.workflows!.getRun(runId);
+        return detail !== undefined;
+      },
+      { message: 'started workflow run did not become readable' },
+    );
+    expect(detail).toMatchObject({
+      origin: { kind: 'agent-run', runId: started.runId, agentId: 'scribe' },
+    });
+    await harness.bureau.durableEngine()!.getHandle(runId).result();
+    const audit = await harness.bureau.internals.auditTrail?.query({
+      runId: 'workflow:manual-input',
+    });
+    expect(audit?.find((entry) => entry.type === 'workflow.started')).toMatchObject({
+      principal: `agent-run:${started.runId}`,
+      detail: { runId },
+    });
+    const history = await harness.bureau.workflows!.historyRuns(runId, 500);
+    expect(history?.events.length).toBeGreaterThan(0);
+    expect(history?.events.every((event) => !Object.hasOwn(event, 'data'))).toBe(true);
+    expect(history?.events.every((event) => event.type.startsWith('file-workflow:'))).toBe(true);
+    const toolHistory = await harness.callTool('bureau__workflows-runs-history', {
+      runId,
+      limit: 500,
+    });
+    expect(toolHistory.result).toMatchObject({ status: 'ok' });
+    const toolEvents = (toolHistory.result as { events: readonly Record<string, unknown>[] })
+      .events;
+    expect(toolEvents.length).toBeGreaterThan(0);
+    expect(toolEvents.every((event) => !Object.hasOwn(event, 'data'))).toBe(true);
+  });
+
+  it('signals a matching workflow and cancels a waiting run', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Wait for go',
+      trigger: { kind: 'signal', name: 'go' },
+      steps: STEPS,
+    });
+    const signalled = await harness.callTool('bureau__workflows-signal', { name: 'go' });
+    expect(signalled.result).toMatchObject({ status: 'ok' });
+    const startedId = (signalled.result as { started: string[] }).started[0]!;
+    expect(typeof startedId).toBe('string');
+    await harness.bureau.durableEngine()!.getHandle(startedId).result();
+
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Wait to cancel',
+      trigger: { kind: 'manual' },
+      steps: [{ kind: 'await-signal', signal: 'never' }],
+    });
+    const waiting = await harness.callTool('bureau__workflows-start', { id: 'wait-to-cancel' });
+    const waitingId = (waiting.result as { runId: string }).runId;
+
+    const cancelled = await harness.callTool('bureau__workflows-runs-cancel', { runId: waitingId });
+    expect(cancelled.result).toEqual({ status: 'cancel-requested', runId: waitingId });
+    let state = await harness.bureau.durableEngine()!.get(waitingId);
+    await waitUntil(
+      async () => {
+        state = await harness.bureau.durableEngine()!.get(waitingId);
+        return state?.status === 'cancelled';
+      },
+      { message: 'workflow run did not reach cancelled' },
+    );
+    expect(state?.status).toBe('cancelled');
+  });
+
+  it('validates run status filters and accepts the canceled spelling', async () => {
+    const harness = await start();
+    const invalid = await harness.callTool('bureau__workflows-runs-list', { status: 'unknown' });
+    expect(invalid.outcome).not.toBe('success');
+    expect(invalid.result).toContain('Invalid option');
+
+    const canceled = await harness.callTool('bureau__workflows-runs-list', { status: 'canceled' });
+    expect(canceled.result).toEqual({ status: 'ok', runs: [], nextOffset: null });
+  });
+});
+
 describe('a calling agent whose identifier is not an agent identifier', () => {
   it('gets invalid-agent from every tool and writes nothing', async () => {
     const harness = await start();
@@ -1141,9 +1404,16 @@ describe('a calling agent whose identifier is not an agent identifier', () => {
       await run('workflows-pause', { id: 'digest', expectedHash: hash }),
       await run('workflows-resume', { id: 'digest', expectedHash: hash }),
       await run('workflows-list', {}),
+      await run('workflows-start', { id: 'digest' }),
+      await run('workflows-signal', { name: 'go' }),
+      await run('workflows-runs-cancel', { runId: 'run-1' }),
     ];
 
-    for (const result of results) {
+    for (const [index, result] of results.entries()) {
+      if (index === 6) {
+        expect(result).toEqual({ status: 'ok', started: [], delivered: [], rejected: [] });
+        continue;
+      }
       expect(result).toMatchObject({ status: 'invalid', code: 'invalid-agent' });
       expect((result as { issues: unknown[] }).issues.length).toBeGreaterThan(0);
     }

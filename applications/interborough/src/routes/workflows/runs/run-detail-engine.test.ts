@@ -147,6 +147,7 @@ describe('a run of a workflow file the engine does not hold', () => {
       result: null,
       error: null,
       finishReason: null,
+      origin: { kind: 'agent-run', runId: 'calling-run-1', agentId: 'assistant' },
     });
 
     const view = mount(id);
@@ -160,6 +161,12 @@ describe('a run of a workflow file the engine does not hold', () => {
     const link = [...rail.querySelectorAll('a')].find((one) => one.textContent === 'e2e-approval');
     expect(link?.getAttribute('href')).toBe(router.href('/workflows/e2e-approval'));
     expect(view.queryByText('No workflow found')).toBeNull();
+    const lineage = view.getByTestId('run-lineage');
+    expect(lineage.textContent).toContain("An agent's tool call");
+    expect(lineage.textContent).toContain('assistant');
+    expect(lineage.querySelector('a')?.getAttribute('href')).toBe(
+      router.href('/runs/calling-run-1'),
+    );
   });
 
   test('says the run could not be loaded when the Bureau fails, rather than that it is missing', async () => {
@@ -187,6 +194,32 @@ describe('a run the engine cannot be read for', () => {
 });
 
 describe('a run the engine holds', () => {
+  test('also reads the Bureau origin while Weft holds the workflow', async () => {
+    const id = 'wf-detail-agent-run-1';
+    routeRun(id, { id });
+    fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
+      id,
+      workflow: 'order-fulfillment',
+      workflowVersion: '1.0.0',
+      status: 'running',
+      createdAt: '2026-10-31T11:26:19.437Z',
+      updatedAt: '2026-10-31T11:26:20.437Z',
+      trigger: { kind: 'manual' },
+      result: null,
+      origin: { kind: 'agent-run', runId: 'calling-run-1', agentId: 'assistant' },
+    });
+
+    const view = mount(id);
+    await waitFor(() => expect(jsonRpcMethodsCalled()).toContain('bureau.workflows.runs.get'));
+    const lineage = await view.findByTestId('run-lineage');
+    await waitFor(() => expect(lineage.textContent).toContain("An agent's tool call"));
+    expect(lineage.textContent).toContain('assistant');
+    expect(lineage.querySelector('a')?.getAttribute('href')).toBe(
+      router.href('/runs/calling-run-1'),
+    );
+    expect(lineage.textContent).not.toContain('agent-run:');
+  });
+
   test('is one header with one status and no tabs, whatever sections it has', async () => {
     const id = 'wf-detail-loaded-1';
     fetchScript.routeUrl(`/workflows/${id}/events`, { events: [] });

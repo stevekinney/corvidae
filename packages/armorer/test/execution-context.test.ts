@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { approvalConsumeSymbol } from '../src/internal/approval-resume';
 
 import { createTool } from '../src/create-tool';
 import {
   type EffectiveToolExecutionContext,
+  type ToolRequestContext,
   narrowToolAuthority,
   privilegedExecutionSnapshot,
   projectExecutionSnapshot,
@@ -282,4 +284,69 @@ describe('execution authority and projections', () => {
     });
     expect(privilegedExecutionSnapshot(effectiveContext).credentials).toEqual({ token: 'secret' });
   });
+});
+
+it('revalidates after delayed policy and prevents the callback after revocation', async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let current = true;
+  let effects = 0;
+  const tool = createTool({
+    name: 'read_private_data',
+    description: 'Read private data',
+    input: z.object({}),
+    policy: {
+      beforeExecute: async () => {
+        entered.resolve();
+        await release.promise;
+        return { allow: true };
+      },
+    },
+    execute: async () => {
+      effects++;
+      return 'private';
+    },
+  });
+  const result = tool.execute(
+    { id: 'revoked-call', name: tool.name, arguments: {} },
+    {
+      requestContext: effectiveContext,
+      revalidateAuthority: async (context) => (current ? context : undefined),
+    },
+  );
+  await entered.promise;
+  current = false;
+  release.resolve();
+  const settled = await result;
+  expect(settled.outcome).toBe('error');
+  expect(effects).toBe(0);
+});
+
+it('a late approval cannot dispatch after authority removal and its admission is rolled back', async () => {
+  let current = true;
+  let effects = 0;
+  let rollbacks = 0;
+  const tool = createTool({
+    name: 'approved_read',
+    description: 'Protected approved read',
+    input: z.object({}),
+    execute: async () => {
+      effects++;
+      return 'private';
+    },
+  });
+  const options = {
+    requestContext: effectiveContext,
+    revalidateAuthority: async (context: ToolRequestContext) => (current ? context : undefined),
+    [approvalConsumeSymbol]: async () => {
+      current = false;
+      return async () => {
+        rollbacks++;
+      };
+    },
+  };
+  const result = await tool.execute({ id: 'approved', name: tool.name, arguments: {} }, options);
+  expect(result.outcome).toBe('error');
+  expect(effects).toBe(0);
+  expect(rollbacks).toBe(1);
 });

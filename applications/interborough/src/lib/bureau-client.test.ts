@@ -4,9 +4,11 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   callBureau,
+  chatContextSchema,
   type ContextWindow,
   deleteContext,
   type Fetcher,
+  forgetContextGrants,
   forkContext,
   forkRefusalReason,
   getAgentModels,
@@ -16,6 +18,7 @@ import {
   listAgents,
   listContexts,
   renameContext,
+  retractContextInput,
   sendContextInput,
   steerContext,
   type SteerOutcome,
@@ -185,6 +188,93 @@ describe('the Bureau’s context operations', () => {
       method: 'bureau.contexts.input',
       params: { contextId: 'c1', input: { id: 'row-1', payload: 'More' } },
     });
+  });
+});
+
+describe('retractContextInput', () => {
+  async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
+    const restore = installFetchImplementation(stub);
+    try {
+      return await body();
+    } finally {
+      restore();
+    }
+  }
+
+  test('takes the input back by the id it was sent under, and says what came of it', async () => {
+    const stub = answering(
+      result({ outcome: 'retracted', receipt: { id: 'row-1', state: 'canceled' } }),
+    );
+
+    const answer = await withStub(stub.fetch, () => retractContextInput('c1', 'row-1'));
+
+    expect(answer).toBe('retracted');
+    expect(stub.calls[0]?.body).toEqual({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.retract',
+      method: 'bureau.contexts.retract',
+      params: { contextId: 'c1', inputId: 'row-1' },
+    });
+  });
+
+  test('answers delivered when the run already took it', async () => {
+    const stub = answering(
+      result({ outcome: 'delivered', receipt: { id: 'row-1', state: 'promoted' } }),
+    );
+
+    expect(await withStub(stub.fetch, () => retractContextInput('c1', 'row-1'))).toBe('delivered');
+  });
+
+  test('answers retracted for an input the Bureau no longer holds, and throws for anything else', async () => {
+    const missing = answering(fault(404, 'NotFound', 'No input with id "row-1"'));
+    const down = answering(fault(503, 'Unavailable', 'Shutting down', { reason: 'shutting-down' }));
+
+    expect(await withStub(missing.fetch, () => retractContextInput('c1', 'row-1'))).toBe(
+      'retracted',
+    );
+    expect(
+      await withStub(down.fetch, () => failureOf(retractContextInput('c1', 'row-1'))),
+    ).toBeInstanceOf(Error);
+  });
+});
+
+describe('forgetContextGrants', () => {
+  async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
+    const restore = installFetchImplementation(stub);
+    try {
+      return await body();
+    } finally {
+      restore();
+    }
+  }
+
+  test('asks the Bureau to forget the named grants, and answers the grants it forgot', async () => {
+    const stub = answering(result({ forgotten: ['shop:issue_refund@1'] }));
+
+    const answer = await withStub(stub.fetch, () =>
+      forgetContextGrants({ contextId: 'c1', tools: ['issue_refund'] }),
+    );
+
+    expect(answer).toEqual(['shop:issue_refund@1']);
+    expect(stub.calls[0]?.body).toEqual({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.forgetgrants',
+      method: 'bureau.contexts.forgetgrants',
+      params: { contextId: 'c1', tools: ['issue_refund'] },
+    });
+  });
+
+  test('throws for a session the Bureau does not hold, and for a Bureau that is shutting down', async () => {
+    const noContext = answering(fault(404, 'NotFound', 'No context', { resource: 'context' }));
+    const down = answering(fault(503, 'Unavailable', 'Shutting down', { reason: 'shutting-down' }));
+
+    for (const stub of [noContext, down]) {
+      expect(
+        await withStub(stub.fetch, () =>
+          failureOf(forgetContextGrants({ contextId: 'c1', tools: ['issue_refund'] })),
+        ),
+      ).toBeInstanceOf(Error);
+    }
   });
 });
 
@@ -664,5 +754,15 @@ describe('the lists and details the chat and agents views read', () => {
     const error = await failureOf(getThreadMessages('nope', { fetch: stub }));
 
     expect(error).toMatchObject({ status: 404 });
+  });
+});
+
+describe('a chat’s end reason', () => {
+  test('reads the one reason this client knows, null, and any other reason as other', () => {
+    const reason = chatContextSchema.shape.endReason;
+    expect(reason.parse('host-stopped')).toBe('host-stopped');
+    expect(reason.parse(null)).toBeNull();
+    expect(reason.parse(undefined)).toBeUndefined();
+    expect(reason.parse('quota-exhausted')).toBe('other');
   });
 });

@@ -229,7 +229,12 @@ describe('a memory record a reloaded thread says was stored', () => {
 });
 
 describe('why the last run stopped, in a reloaded thread', () => {
-  const stopped = { status: 'failed', finishReason: null, statusMessage: 'Provider down' } as const;
+  const stopped = {
+    id: 'task-1',
+    status: 'failed',
+    finishReason: null,
+    statusMessage: 'Provider down',
+  } as const;
 
   for (const shape of shapes) {
     test(`${shape}: shows on the last turn, never on the first turn's reply`, () => {

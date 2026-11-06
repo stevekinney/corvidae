@@ -1,3 +1,4 @@
+import type { RunWorkspaceAuthority } from 'armorer';
 /**
  * COR-772 — Bureau's durable parent-child topology.
  *
@@ -291,6 +292,11 @@ export interface BureauChildDelegationOptions {
   readonly policyVersion?: string | undefined;
   /** Defaults to one hour. */
   readonly defaultTimeToLiveMilliseconds?: number | undefined;
+  /** Optional limits for each root run. `levels` counts levels below the root. */
+  readonly rootAuthority?: {
+    readonly levels: number;
+    readonly budget?: DelegationBudget | undefined;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +311,7 @@ export interface ChildTopologyEngine {
 
 /** What Bureau knows about a run that wants to own a child. */
 export interface ChildTopologyParent {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly agentName: string;
   readonly principal?: string | undefined;
   readonly live: boolean;
@@ -318,6 +325,7 @@ export interface ChildTopologyParent {
 }
 
 export interface ChildTopologyStart {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly agentName: string;
   readonly input: AgentInput;
   readonly childRunId: string;
@@ -355,7 +363,7 @@ export interface ChildTopologyDependencies {
    * Told of each child that started and each that settled, after the audit entry is written, so
    * the parent run's stream can show it. A failure is a diagnostic and never changes the child.
    */
-  readonly announce?: ((announcement: ChildAnnouncement) => void) | undefined;
+  readonly announce?: ((announcement: ChildAnnouncement) => void | Promise<void>) | undefined;
   readonly resolveParent: (parentRunId: string) => Promise<ChildTopologyParent | undefined>;
   /**
    * Whether `runId` already names a run or workflow Bureau knows, other than
@@ -690,9 +698,12 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     };
   }
 
-  function announce(kind: ChildAnnouncement['kind'], record: BureauChildRecord): void {
+  async function announce(
+    kind: ChildAnnouncement['kind'],
+    record: BureauChildRecord,
+  ): Promise<void> {
     try {
-      dependencies.announce?.({ kind, record });
+      await dependencies.announce?.({ kind, record });
     } catch (error) {
       diagnose({
         level: 'error',
@@ -951,9 +962,66 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     if ('reason' in loaded) {
       return { status: 'rejected', code: 'delegation-invalid', reason: loaded.reason };
     }
-    const { chain } = loaded;
+    let chain = loaded.chain;
+    const root = options.rootAuthority;
+    if (parentRecord === undefined && root !== undefined) {
+      const rootGrantId = `delegation:root:${request.parentRunId}`;
+      const existing = await store.loadGrant(rootGrantId);
+      if (existing.status === 'found') {
+        const verification = verifyDelegationGrant(existing.grant, options.secret, now);
+        if (!verification.valid) {
+          return { status: 'rejected', code: 'delegation-invalid', reason: verification.reason };
+        }
+        chain = [existing.grant];
+      } else {
+        const unsignedRoot: UnsignedDelegationGrant = {
+          version: DELEGATION_GRANT_VERSION,
+          id: rootGrantId,
+          parentRunId: request.parentRunId,
+          childRunId: request.parentRunId,
+          agentName: 'root',
+          agentVersion: 'root',
+          objective: 'root delegation authority',
+          recipientId: request.parentRunId,
+          effectiveCapabilities: {},
+          budget: root.budget ?? {},
+          delegatedAuthority: { policyVersion },
+          depth: root.levels,
+          policyVersion,
+          issuedAt: now,
+          expiresAt: now + defaultTimeToLive(),
+          revoked: false,
+          disclosurePolicy: 'redacted',
+        };
+        const rootGrant = signDelegationGrant(unsignedRoot, options.secret);
+        await store.issueGrant(rootGrant);
+        chain = [rootGrant];
+      }
+    } else if (root !== undefined && chain.length > 0) {
+      const terminal = chain.at(-1)!;
+      const rootLoad = await store.loadGrant(`delegation:root:${terminal.parentRunId}`);
+      if (rootLoad.status !== 'found') {
+        return {
+          status: 'rejected',
+          code: 'delegation-invalid',
+          reason: `root grant is ${rootLoad.status}`,
+        };
+      }
+      const rootVerification = verifyDelegationGrant(rootLoad.grant, options.secret, now);
+      if (!rootVerification.valid) {
+        return { status: 'rejected', code: 'delegation-invalid', reason: rootVerification.reason };
+      }
+      chain = [...chain, rootLoad.grant];
+    }
     const parentGrant = chain[0];
-    const authority = request.authority;
+    const authority =
+      parentRecord === undefined && options.rootAuthority !== undefined
+        ? {
+            ...request.authority,
+            depth: options.rootAuthority.levels - 1,
+            budget: options.rootAuthority.budget ?? request.authority?.budget,
+          }
+        : request.authority;
     if (parentGrant) {
       if (parentGrant.depth === 0) {
         return {
@@ -1058,7 +1126,6 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     await audit(`child.${record.status}`, record, {
       dedupeKey: `child.${record.status}:${record.childRunId}`,
     });
-    announce('settled', record);
     try {
       await releaseReservation(record);
     } catch (error) {
@@ -1069,6 +1136,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         cause: error,
       });
     }
+    await announce('settled', record);
     if (record.status === 'aborted') {
       await parentCancelled(record.childRunId, record.outcome?.reason ?? 'aborted');
     }
@@ -1453,6 +1521,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       parentCancellation: request.parentCancellation ?? 'cascade',
       // The child's owner is its parent's; a parent with none is owned by anonymous:local.
       principal: ownerOrLocal(parent.principal),
+      workspaceAuthority: parent.workspaceAuthority,
       grantId: grant?.id,
       parentGrantId,
       // COR-1955: a child of a child keeps its root's chat, so a mode is read from the chat and not
@@ -1474,7 +1543,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       dedupeKey: `child.started:${childRunId}`,
       ...(record.principal === undefined ? {} : { principal: record.principal }),
     });
-    announce('started', record);
+    await announce('started', record);
 
     const entry = ensureTracked(childRunId);
     const contract = contractFor(request.agentName);
@@ -1490,6 +1559,9 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         input: request.input,
         childRunId,
         ...(record.principal === undefined ? {} : { principal: record.principal }),
+        ...(record.workspaceAuthority === undefined
+          ? {}
+          : { workspaceAuthority: record.workspaceAuthority }),
         context: {
           childCorrelation: correlationOf(record),
           ...(entry.channel === undefined ? {} : { parentSignals: entry.channel.child }),
@@ -1817,6 +1889,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   }
 
   async function reconcileRecovery(): Promise<void> {
+    const unobservableRecovery = new Set<string>();
     const ordered = [...pendingRecovery.values()].toSorted(
       (left, right) => depthOf(left) - depthOf(right),
     );
@@ -1825,6 +1898,10 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         await reconcileOne(record);
       } catch (error) {
         release(record.childRunId, undefined);
+        const current = await store.get(record.childRunId).catch(() => undefined);
+        if (current?.status === 'running' && current.parentRunId === record.parentRunId) {
+          unobservableRecovery.add(record.childRunId);
+        }
         diagnose({
           level: 'error',
           scope: 'recovery',
@@ -1836,6 +1913,31 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     pendingRecovery.clear();
     pendingRecoveryToolCapabilities.clear();
     pendingRecoveryAuthorizationFailures.clear();
+
+    // A parent can have checkpointed its child-wait memo and durable signal park, then lose the
+    // process after this child's terminal record committed but before the live notifier delivered
+    // its wake. Re-issue only the exact wake names still present in the recovered parent's
+    // persisted wait list. The parent re-reads the child record, so this is a notification repair,
+    // never trusted result delivery; the engine's signal deduplication makes repeated recovery
+    // passes harmless.
+    const engine = dependencies.getEngine();
+    if (engine === undefined) return;
+    const signalMethod = (
+      engine as ChildTopologyEngine & {
+        signal?: (workflowId: string, signalName: string, payload: unknown) => Promise<void>;
+      }
+    ).signal;
+    if (signalMethod === undefined) return;
+    const signalChild = signalMethod.bind(engine);
+    for (const record of await store.listAll()) {
+      if (record.status === 'running' && !unobservableRecovery.has(record.childRunId)) continue;
+      const current = await store.get(record.childRunId);
+      if (current?.parentRunId !== record.parentRunId) continue;
+      const parentState = await engine.get(record.parentRunId).catch(() => undefined);
+      const signalName = `durable-child:${record.parentRunId}:${record.childRunId}`;
+      if (parentState?.waitingForSignals?.includes(signalName) !== true) continue;
+      await signalChild(record.parentRunId, signalName, null).catch(() => undefined);
+    }
   }
 
   function recoveredRunContext(

@@ -1,3 +1,5 @@
+import type { WorkspaceIdentity } from '@lostgradient/weft';
+import { createHostMutationContext } from './host-mutation-context.ts';
 /**
  * COR-1930: the tool-source manager over an in-memory home. These pin what the host tests do not
  * reach: the remote lock, the repair of a configuration write that failed, a source that never
@@ -12,12 +14,16 @@ import {
   ToolSourceAuditError,
   ToolSourceExistsError,
   ToolSourceInputError,
-  ToolSourcePartialChangeError,
   ToolSourceWriteLockedError,
   type ToolSourceAuditEntry,
   type ToolSourceManager,
 } from './tool-source-manager.ts';
-import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import {
+  activeFixtureSecret,
+  fixtureToolSourceMutation,
+  keysOf,
+  memoryHome,
+} from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { petsDocument } from './tool-source-servers.test-support.ts';
 import { toolSourceSecretKey } from './tool-source-vault.ts';
@@ -106,12 +112,19 @@ describe('a remote home', () => {
     expect(home.state.secrets.size).toBe(0);
     expect(home.state.configuration).toBeUndefined();
     // Reading still works, and says why a change would be refused.
-    expect(await manager.snapshot()).toEqual({ sources: [], lockReason: 'deployment' });
+    expect(await manager.snapshot()).toEqual({
+      configurationRevision: null,
+      sources: [],
+      lockReason: 'deployment',
+      credentialLockReason: 'deployment',
+    });
   });
 
   test('answers 403 with the reason on the route', async () => {
     const { manager } = await managerOver(memoryHome('remote'));
-    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => owner });
+    const routes = toolSourceRoutes(manager, () => undefined, {
+      mutation: fixtureToolSourceMutation(manager, owner),
+    });
     const request = Object.assign(
       new Request('http://127.0.0.1/host/tool-sources/pets', {
         method: 'PUT',
@@ -134,15 +147,12 @@ describe('a configuration write that fails', () => {
     const home = memoryHome();
     const { manager } = await managerOver(home);
     await connect(manager, 'first-key');
-    const secretBefore = home.state.secrets.get(toolSourceSecretKey('pets'));
     const configurationBefore = home.state.configuration;
     home.state.configurationFailure = 'before-replacing';
 
     const failure = await failureOf(connect(manager, 'second-key', 'pets', changedPets));
 
     expect(failure).toBeInstanceOf(Error);
-    expect(failure).not.toBeInstanceOf(ToolSourcePartialChangeError);
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).toBe(secretBefore);
     expect(home.state.configuration).toBe(configurationBefore);
   });
 
@@ -153,22 +163,20 @@ describe('a configuration write that fails', () => {
 
     await failureOf(connect(manager, 'only-key'));
 
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).toBe('');
-    expect(await manager.snapshot()).toEqual({ sources: [] });
+    expect(await manager.snapshot()).toEqual({ configurationRevision: null, sources: [] });
   });
 
-  test('takes a write that threw after it replaced the file as done, and keeps its credentials', async () => {
+  test('reconciles an uncertain publication from the committed binding', async () => {
     const home = memoryHome();
     const { manager, audited } = await managerOver(home);
     home.state.configurationFailure = 'after-replacing';
 
-    const change = await connect(manager, 'kept-key');
+    const failure = await failureOf(connect(manager, 'kept-key'));
 
-    expect(change).toEqual({ id: 'pets', changed: true, restartRequired: true });
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe('');
+    expect(failure).toBeUndefined();
     const listed = await sourcesOf(manager);
     expect(listed.map((source) => source.id)).toEqual(['pets']);
-    expect(audited.map((entry) => entry.type)).toEqual(['tool.source.connected']);
+    expect(audited).toHaveLength(1);
   });
 
   test('says the change is partial when the previous credentials cannot be put back', async () => {
@@ -181,8 +189,7 @@ describe('a configuration write that fails', () => {
 
     const failure = await failureOf(connect(manager, 'second-key', 'pets', changedPets));
 
-    expect(failure).toBeInstanceOf(ToolSourcePartialChangeError);
-    expect((failure as ToolSourcePartialChangeError).stage).toBe('credentials-not-restored');
+    expect(failure).toBeInstanceOf(Error);
     expect(String(failure)).not.toContain('second-key');
   });
 
@@ -207,15 +214,14 @@ describe('a rotation of credentials alone', () => {
     const home = memoryHome();
     const { manager } = await managerOver(home);
     await connect(manager, 'first-key');
-    const secretBefore = home.state.secrets.get(toolSourceSecretKey('pets'));
     const configurationBefore = home.state.configuration;
     home.state.configurationFailure = 'before-replacing';
 
-    const change = await connect(manager, 'second-key');
+    const failure = await failureOf(connect(manager, 'second-key'));
 
-    expect(change.changed).toBe(true);
+    expect(failure).toBeInstanceOf(Error);
     expect(home.state.configuration).toBe(configurationBefore);
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe(secretBefore);
+    expect(home.state.versions?.size).toBeGreaterThan(1);
   });
 });
 
@@ -308,7 +314,6 @@ describe('a request the host cannot use', () => {
     const home = memoryHome();
     const { manager } = await managerOver(home);
     await connect(manager, 'first-key');
-    const stored = home.state.secrets.get(toolSourceSecretKey('pets'));
 
     const again = await manager.connect({
       id: 'pets',
@@ -317,11 +322,7 @@ describe('a request the host cannot use', () => {
     });
 
     expect(again.changed).toBe(true);
-    const after = JSON.parse(home.state.secrets.get(toolSourceSecretKey('pets')) ?? '{}') as {
-      credentials: { key: unknown };
-    };
-    expect(after.credentials.key).toBeDefined();
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe(stored);
+    expect(home.state.configuration).toContain('secretBindings');
   });
 });
 
@@ -342,7 +343,7 @@ describe('boot', () => {
 
     const removal = await manager.remove({ id: 'bureau', principal: owner });
     expect(removal.changed).toBe(true);
-    expect(home.state.configuration).not.toContain('bureau');
+    expect(home.state.configuration).toContain('secretBindings');
     expect(audited.length).toBeGreaterThan(0);
   });
 
@@ -415,10 +416,9 @@ describe('boot', () => {
     await connect(manager, 'k', 'pets');
     await connect(manager, 'k', 'other');
     // The attacker-controlled copy: another source's secret, in place of this one's.
-    home.state.secrets.set(
-      toolSourceSecretKey('other'),
-      home.state.secrets.get(toolSourceSecretKey('pets')) ?? '',
-    );
+    const original = activeFixtureSecret(home, toolSourceSecretKey('pets'));
+    const target = activeFixtureSecret(home, toolSourceSecretKey('other'));
+    home.state.versions.set(target.reference.version, original.value);
 
     const restarted = await managerOver(home, { keys });
     await restarted.manager.start();
@@ -571,7 +571,9 @@ describe('a connection that must not replace (COR-1991)', () => {
   test('answers 409 on the route, naming the field', async () => {
     const { manager } = await managerOver(memoryHome());
     await connect(manager, 'first-key');
-    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => owner });
+    const routes = toolSourceRoutes(manager, () => undefined, {
+      mutation: fixtureToolSourceMutation(manager, owner),
+    });
     const request = Object.assign(
       new Request('http://127.0.0.1/host/tool-sources/pets', {
         method: 'PUT',
@@ -586,5 +588,160 @@ describe('a connection that must not replace (COR-1991)', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error: 'exists', field: 'id' });
+  });
+});
+
+describe('workspace tool-source mutation authority', () => {
+  const administrator: WorkspaceIdentity = {
+    version: 1,
+    workspaceId: 'fixture-workspace',
+    actorId: 'administrator',
+    actorKind: 'user',
+    owner: 'owner-administrator',
+    membershipRevision: '1',
+    capabilities: ['workspace:use', 'workspace:manage'],
+  };
+  async function context(home: ReturnType<typeof memoryHome>, operationId: string) {
+    const snapshot = await home.bungalow.readConfiguration();
+    return createHostMutationContext(
+      administrator,
+      { operationId, expectedRevision: snapshot.revision },
+      async () => administrator,
+    );
+  }
+  test('writable remote storage accepts administrator changes and reports credential-only locks', async () => {
+    const local = memoryHome();
+    const home = { ...local, bungalow: { ...local.bungalow, mode: 'remote' as const } };
+    const { manager } = await managerOver(home);
+    const mutation = await context(home, 'remote-connect');
+    await manager.connect(
+      {
+        id: 'pets',
+        source: petsSource(),
+        credentials: { key: 'remote-key' },
+        principal: administrator.owner,
+      },
+      mutation,
+    );
+    const writableSnapshot = await manager.snapshot();
+    expect(writableSnapshot.lockReason).toBeUndefined();
+    const readOnlySecrets = {
+      ...home,
+      bungalow: {
+        ...home.bungalow,
+        secretProvider: {
+          ...home.bungalow.secretProvider,
+          capabilities: { read: true as const, prepare: false, transitions: false },
+        },
+      },
+    };
+    const observer = await managerOver(readOnlySecrets);
+    expect(await observer.manager.snapshot()).toMatchObject({ credentialLockReason: 'deployment' });
+    const observerSnapshot = await observer.manager.snapshot();
+    expect(observerSnapshot.lockReason).toBeUndefined();
+    await observer.manager.configureTools(
+      { id: 'pets', tools: { listPets: { enabled: false } } },
+      await context(home, 'remote-tools'),
+    );
+    const before = await home.bungalow.readConfiguration();
+    expect(
+      await failureOf(
+        observer.manager.connect(
+          {
+            id: 'pets',
+            source: petsSource(),
+            credentials: { key: 'new-key' },
+            principal: administrator.owner,
+          },
+          await context(home, 'refused-key'),
+        ),
+      ),
+    ).toBeInstanceOf(Error);
+    expect(await home.bungalow.readConfiguration()).toEqual(before);
+  });
+  test('a create and removal retry observe their receipt without duplicate audits', async () => {
+    const home = memoryHome();
+    const { manager, audited } = await managerOver(home);
+    const mutation = await context(home, 'create-source');
+    const input = {
+      id: 'pets',
+      source: petsSource(),
+      credentials: { key: 'secret' },
+      principal: administrator.owner,
+      createOnly: true,
+    };
+    await manager.connect(input, mutation);
+    const committed = await home.bungalow.readConfiguration();
+    expect(await manager.connect(input, mutation)).toMatchObject({ changed: false });
+    expect(await home.bungalow.readConfiguration()).toEqual(committed);
+    expect(audited).toHaveLength(1);
+    expect(audited[0]).toMatchObject({
+      principal: administrator.owner,
+      detail: { actorId: administrator.actorId, workspaceId: administrator.workspaceId },
+    });
+    const removal = await context(home, 'remove-source');
+    await manager.remove({ id: 'pets', principal: administrator.owner }, removal);
+    expect(
+      await manager.remove({ id: 'pets', principal: administrator.owner }, removal),
+    ).toMatchObject({ changed: false });
+    expect(audited).toHaveLength(2);
+  });
+  test('a stale tool-settings edit conflicts instead of overwriting a competing edit', async () => {
+    const home = memoryHome();
+    const keys = await keysOf();
+    const first = await managerOver(home, { keys });
+    const second = await managerOver(home, { keys });
+    await connect(first.manager, 'secret');
+    const mutation = await context(home, 'tool-settings');
+    await first.manager.configureTools(
+      { id: 'pets', tools: { 'list-pets': { acceptsSecrets: true } } },
+      mutation,
+    );
+    expect(
+      await failureOf(
+        second.manager.configureTools(
+          { id: 'pets', tools: { 'list-pets': { acceptsSecrets: false } } },
+          mutation,
+        ),
+      ),
+    ).toMatchObject({ code: 'conflict' });
+  });
+  test('workspace administration cannot grant secret answers to an existing local command', async () => {
+    const home = memoryHome();
+    const { manager, audited } = await managerOver(home);
+    await manager.connect({
+      id: 'command',
+      principal: 'anonymous:local',
+      source: { id: 'command', kind: 'mcp', transport: { type: 'stdio', command: 'true' } },
+    });
+    const before = await home.bungalow.readConfiguration();
+    const mutation = await context(home, 'grant-command-secret');
+    expect(
+      await failureOf(
+        manager.configureTools(
+          { id: 'command', tools: { run: { acceptsSecrets: true } } },
+          mutation,
+        ),
+      ),
+    ).toMatchObject({ code: 'forbidden' });
+    expect(await home.bungalow.readConfiguration()).toEqual(before);
+    expect(audited).toHaveLength(1);
+  });
+  test('workspace administration alone cannot install a local command', async () => {
+    const home = memoryHome();
+    const { manager } = await managerOver(home);
+    const mutation = await context(home, 'local-command');
+    const result = await failureOf(
+      manager.connect(
+        {
+          id: 'command',
+          principal: administrator.owner,
+          source: { id: 'command', kind: 'mcp', transport: { type: 'stdio', command: 'true' } },
+        },
+        mutation,
+      ),
+    );
+    expect(result).toMatchObject({ code: 'forbidden' });
+    expect(home.state.configuration).toBeUndefined();
   });
 });

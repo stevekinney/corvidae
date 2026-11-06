@@ -80,7 +80,7 @@ const host: ReferenceHost = {
       }
       let value: unknown;
       try {
-        value = handler(params.arguments ?? {});
+        value = await handler(params.arguments ?? {});
       } catch (error) {
         // A handler that throws is a tool that answered with an error.
         return { isError: true, content: [{ type: 'text', text: String(error) }] };

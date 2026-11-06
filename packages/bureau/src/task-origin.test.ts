@@ -131,6 +131,7 @@ describe('taskOriginTag', () => {
       'origin:schedule',
       'origin:api',
       'origin:agent',
+      'origin:agent-run',
       'origin:goal',
       'origin:parent',
       'origin:system',

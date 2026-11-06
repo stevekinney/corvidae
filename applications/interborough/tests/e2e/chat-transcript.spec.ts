@@ -132,11 +132,13 @@ test.describe('a denied call', () => {
     await page.locator('.ib-decision').getByRole('button', { name: 'Deny' }).click();
 
     await expect(page.locator('.ib-decision')).toHaveCount(0);
-    await expect(conversation(page).getByText(/Used 2 tools · .+ · 1 denied/)).toBeVisible();
-    await page.getByRole('button', { name: 'Show tool calls' }).click();
-    await expect(conversation(page).getByRole('img', { name: 'Denied' })).toBeVisible();
-    await expect(conversation(page).getByRole('img', { name: 'Failed' })).toHaveCount(0);
-    await expect(conversation(page).getByText(/failed/)).toHaveCount(0);
+    await expect(
+      conversation(page).locator('.cinder-tool-call-rail__item[data-cinder-status="denied"]'),
+    ).toBeVisible();
+    await expect(
+      conversation(page).locator('.cinder-tool-call-rail__item[data-cinder-status="failed"]'),
+    ).toHaveCount(0);
+    await expect(conversation(page).getByText(/failed/i)).toHaveCount(0);
   });
 });
 

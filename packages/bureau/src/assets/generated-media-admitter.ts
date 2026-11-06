@@ -17,6 +17,7 @@ import {
 } from './media-inspection';
 import { claimRowAssets } from './row-asset-claims';
 import type {
+  AssetPrincipal,
   AssetAdmission,
   AssetAdmissionRequest,
   AssetDescriptor,
@@ -44,6 +45,7 @@ export function createAssetGeneratedMediaAdmitter(
   assets: AssetService,
   principalId: string,
   options: {
+    readonly workspaceAuthority?: AssetPrincipal['workspaceAuthority'];
     /**
      * Who holds the rows a run commits and the input row it was seeded with: the holder id for a
      * row id, or `undefined` when the run's rows are claimed some other way (the session's own
@@ -61,7 +63,7 @@ export function createAssetGeneratedMediaAdmitter(
     readonly claimSeededInput?: boolean | undefined;
   } = {},
 ): GeneratedMediaAdmitter {
-  const principal = { id: principalId };
+  const principal = { id: principalId, workspaceAuthority: options.workspaceAuthority };
 
   /** Claims a row's managed assets under the holder the run's claim rule resolves for it. */
   async function retainRow(
@@ -76,6 +78,7 @@ export function createAssetGeneratedMediaAdmitter(
       holderOf,
       [{ id: request.messageId, content: request.parts }],
       {
+        workspaceAuthority: options.workspaceAuthority,
         onFailure: (_assetId, error) => {
           failure ??= { error };
         },

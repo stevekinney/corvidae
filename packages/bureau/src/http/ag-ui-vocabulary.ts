@@ -79,6 +79,26 @@ export const CHILD_RUN_SETTLED_EVENT_NAME = 'bureau.child-run-settled';
 export const TOOL_GRANT_SETTLED_EVENT_NAME = 'bureau.tool-grant-settled';
 
 /**
+ * The `name` of the `CUSTOM` event that announces the step of the run being streamed took input the
+ * client sent while it was working (`bureau.contexts.input`) into the conversation, so a client that
+ * holds those inputs as queued rows shows them as sent from then on (B06, row 18k). Its `value` is
+ * an {@link InputsDeliveredAnnouncement}. A client branches on the name, so it is a one-way door.
+ */
+export const INPUTS_DELIVERED_EVENT_NAME = 'bureau.inputs-delivered';
+
+/**
+ * The `value` of an {@link INPUTS_DELIVERED_EVENT_NAME} event, sent when a step starts that took
+ * input in. The run's terminal `MESSAGES_SNAPSHOT` still places the turns in the thread; this says
+ * only that the run reached them, so they can no longer be retracted.
+ */
+export type InputsDeliveredAnnouncement = {
+  /** The native `AgentRun.id` whose step took the input. */
+  readonly runId: string;
+  /** The ids the inputs were sent under, oldest first: the ids a client holds their rows by. */
+  readonly inputIds: readonly string[];
+};
+
+/**
  * The `value` of a {@link MEMORY_WRITTEN_EVENT_NAME} event, sent once for each `memory_store` call
  * of the run whose result says the record was stored (`stored: true`). It is derived from that
  * call's result, which names the record, the collection it went to, and its memory class.
@@ -169,7 +189,7 @@ export type ToolGrantSettledAnnouncement = {
 
 /**
  * Whether `event` is one of the live-only announcements: a memory record written, a wakeup
- * scheduled, a child run started or settled, a tool grant settled. A stream announces them when
+ * scheduled, a child run started or settled, a tool grant settled, input delivered. A stream announces them when
  * they happen and never reads them back out of a run's recorded history. (`bureau.asset-part` is
  * not one: it names a part of a message a replay shows.)
  */
@@ -177,6 +197,7 @@ export function isLiveAnnouncement(event: Event): boolean {
   return (
     event.type === EventType.CUSTOM &&
     (event.name === MEMORY_WRITTEN_EVENT_NAME ||
+      event.name === INPUTS_DELIVERED_EVENT_NAME ||
       event.name === WAKEUP_SCHEDULED_EVENT_NAME ||
       event.name === CHILD_RUN_STARTED_EVENT_NAME ||
       event.name === CHILD_RUN_SETTLED_EVENT_NAME ||

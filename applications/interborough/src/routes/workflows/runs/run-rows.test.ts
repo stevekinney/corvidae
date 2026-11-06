@@ -11,7 +11,7 @@ import {
   parseRunFilter,
   serializeRunFilter,
 } from './run-rows.ts';
-import { STARTED_BY_LABELS } from './started-by.ts';
+import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
 
 const chat = {
   id: 'chat-1',
@@ -357,7 +357,9 @@ describe('Started by, read from the origin the Bureau recorded', () => {
     goal: { kind: 'goal', goalRunId: 'seeded-goal', attemptId: 'a' },
     parent: { kind: 'parent', parentRunId: 'wf-instance' },
     system: { kind: 'system' },
-  } as const satisfies { readonly [Kind in TaskOriginKind]: Extract<TaskOrigin, { kind: Kind }> };
+  } as const satisfies {
+    readonly [Kind in Exclude<TaskOriginKind, 'agent-run'>]: Extract<TaskOrigin, { kind: Kind }>;
+  };
 
   const rowOf = (origin: unknown) =>
     buildRunRows({
@@ -367,7 +369,12 @@ describe('Started by, read from the origin the Bureau recorded', () => {
     })[0]?.origin;
 
   test('has a label for each kind the Bureau records, and the filter takes exactly those', () => {
-    expect(Object.keys(STARTED_BY_LABELS).toSorted()).toEqual(Object.keys(ORIGINS).toSorted());
+    expect(
+      Object.keys(STARTED_BY_LABELS)
+        .filter((kind) => kind !== 'agent-run')
+        .toSorted(),
+    ).toEqual(Object.keys(ORIGINS).toSorted());
+    expect(STARTED_BY_KINDS).not.toContain('agent-run');
     for (const kind of Object.keys(ORIGINS)) {
       expect(parseRunFilter(new URLSearchParams({ startedBy: kind }))).toEqual({
         startedBy: kind as TaskOriginKind,

@@ -1,225 +1,121 @@
 <script lang="ts" module>
+  import type { Snippet } from 'svelte';
   import type { ChatAttachment } from './chat-attachment.ts';
 
   export interface ChatAttachmentPreviewProps {
     attachment: ChatAttachment;
     class?: string;
+    /** A control drawn at the end of the chip, inside its border, such as Remove. */
+    action?: Snippet | undefined;
   }
 </script>
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
   import { formatBytes } from '../../../utilities/format-bytes.ts';
-  import { FileCode, FileText } from '@lostgradient/cinder';
+  import { Paperclip } from '@lostgradient/cinder';
 
-  let { attachment, class: className }: ChatAttachmentPreviewProps = $props();
-
-  const extension = $derived(
-    attachment.file.name.includes('.')
-      ? attachment.file.name.slice(attachment.file.name.lastIndexOf('.'))
-      : '',
-  );
-
-  const truncatedName = $derived.by(() => {
-    const name = attachment.file.name;
-    const maxLength = 18;
-    if (name.length <= maxLength) return name;
-    const ext = extension;
-    const base = name.slice(0, name.length - ext.length);
-    const availableLength = maxLength - ext.length - 1; // 1 for ellipsis char
-    if (availableLength < 3) return name.slice(0, maxLength - 1) + '\u2026';
-    return base.slice(0, availableLength) + '\u2026' + ext;
-  });
+  let { attachment, class: className, action }: ChatAttachmentPreviewProps = $props();
 </script>
 
-<div
+<!--
+  An attached file is a chip: a paperclip, the file's name and its size, and an optional control
+  at its end. A file that failed keeps its chip, in the danger colour; its reason is drawn beside
+  it by the composer.
+-->
+<span
   class={classNames('chat-attachment-preview', className)}
   data-kind={attachment.kind}
   data-state={attachment.status}
   data-error={attachment.status === 'error' || undefined}
   data-pending={attachment.status === 'pending' || attachment.status === 'uploading' || undefined}
 >
-  {#if attachment.kind === 'image'}
-    <img
-      src={attachment.previewUrl}
-      alt={attachment.file.name}
-      class="chat-attachment-preview-image"
-    />
-  {:else}
-    <div class="chat-attachment-preview-file">
-      <div class="chat-attachment-preview-icon">
-        {#if attachment.kind === 'code'}
-          <FileCode class="cinder-icon-sm" />
-        {:else}
-          <FileText class="cinder-icon-sm" />
-        {/if}
-      </div>
-      <div class="chat-attachment-preview-info">
-        <span class="chat-attachment-preview-name" title={attachment.file.name}>
-          {truncatedName}
-        </span>
-        <span class="chat-attachment-preview-meta">
-          {#if extension}
-            <span class="chat-attachment-preview-ext">{extension}</span>
-          {/if}
-          <span class="chat-attachment-preview-size">{formatBytes(attachment.file.size)}</span>
-        </span>
-      </div>
-    </div>
-  {/if}
-
-  {#if attachment.status === 'error'}
-    <span
-      class="chat-attachment-preview-error-badge"
-      aria-label={attachment.error ?? 'Attachment error'}>!</span
-    >
-  {/if}
+  <Paperclip class="chat-attachment-preview-icon cinder-icon-xs" aria-hidden="true" />
+  <span class="chat-attachment-preview-name" title={attachment.file.name}
+    >{attachment.file.name}</span
+  >
+  <span class="chat-attachment-preview-size">{formatBytes(attachment.file.size)}</span>
 
   {#if attachment.status === 'pending' || attachment.status === 'uploading'}
-    <div
+    <span
       class="chat-attachment-preview-loading"
       role="status"
       aria-label={attachment.status === 'uploading' ? 'Uploading file' : 'Reading file'}
     >
-      <div class="chat-attachment-preview-loading-bar"></div>
-    </div>
+      <span class="chat-attachment-preview-loading-bar"></span>
+    </span>
   {/if}
-</div>
+
+  {#if action}
+    {@render action()}
+  {/if}
+</span>
 
 <style>
   .chat-attachment-preview {
     position: relative;
-    border-radius: var(--cinder-radius-md);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-2);
     overflow: hidden;
-    border: 1px solid var(--cinder-border);
-  }
-
-  /* Image kind: square thumbnail */
-  .chat-attachment-preview[data-kind='image'] {
-    width: 3.5rem;
-    height: 3.5rem;
-  }
-
-  .chat-attachment-preview-image {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  /* Code/document kind: wider card */
-  .chat-attachment-preview[data-kind='code'],
-  .chat-attachment-preview[data-kind='document'] {
-    display: flex;
-    align-items: center;
-    min-width: 8rem;
-    max-width: 14rem;
-    height: 3.5rem;
+    border: 1px solid var(--cinder-border-control);
+    border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-raised);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    line-height: var(--cinder-leading-normal);
   }
 
-  .chat-attachment-preview-file {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-    padding: var(--cinder-space-2);
-    width: 100%;
-    min-width: 0;
-  }
-
-  .chat-attachment-preview-icon {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--cinder-text-subtle);
-  }
-
-  .chat-attachment-preview-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    gap: var(--cinder-space-0-5);
+  .chat-attachment-preview :global(.chat-attachment-preview-icon) {
+    flex: none;
+    color: var(--cinder-text-muted);
   }
 
   .chat-attachment-preview-name {
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-default);
-    white-space: nowrap;
+    min-inline-size: 0;
     overflow: hidden;
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-medium);
     text-overflow: ellipsis;
-  }
-
-  .chat-attachment-preview-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    color: var(--cinder-text-subtle);
-  }
-
-  .chat-attachment-preview-ext {
-    padding: 0 var(--cinder-space-1);
-    background: var(--cinder-surface-inset);
-    border-radius: var(--cinder-radius-sm);
-    font-family: var(--cinder-font-mono);
-    font-size: 0.625rem;
-    line-height: 1.25rem;
+    white-space: nowrap;
   }
 
   .chat-attachment-preview-size {
+    flex: none;
+    color: var(--cinder-text-muted);
     white-space: nowrap;
   }
 
-  /* Error state */
+  /* A failed file keeps its chip; the colour says which one the reason beside it is about. */
   .chat-attachment-preview[data-error] {
     border-color: var(--cinder-status-danger-border);
   }
 
-  .chat-attachment-preview[data-error] .chat-attachment-preview-image {
-    opacity: 0.5;
-  }
-
-  .chat-attachment-preview[data-error] .chat-attachment-preview-icon {
+  .chat-attachment-preview[data-error] :global(.chat-attachment-preview-icon) {
     color: var(--cinder-status-danger-text);
   }
 
-  .chat-attachment-preview-error-badge {
-    position: absolute;
-    bottom: var(--cinder-space-0-5);
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1rem;
-    height: 1rem;
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-bold);
-    color: white;
-    background: var(--cinder-status-danger-solid);
-    border-radius: var(--cinder-radius-full);
-  }
-
-  /* Pending/loading state: dim non-text elements only to preserve text contrast */
-  .chat-attachment-preview[data-pending] .chat-attachment-preview-icon,
-  .chat-attachment-preview[data-pending] .chat-attachment-preview-image {
+  /* Pending: dim non-text elements only to preserve text contrast. */
+  .chat-attachment-preview[data-pending] :global(.chat-attachment-preview-icon) {
     opacity: 0.6;
   }
 
   .chat-attachment-preview-loading {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--cinder-surface-inset);
+    inset-block-end: 0;
+    inset-inline: 0;
+    block-size: 2px;
     overflow: hidden;
+    background: var(--cinder-surface-inset);
   }
 
   .chat-attachment-preview-loading-bar {
-    width: 40%;
-    height: 100%;
+    display: block;
+    inline-size: 40%;
+    block-size: 100%;
     background: var(--cinder-accent-solid);
     animation: loading-slide 1.2s ease-in-out infinite;
   }
@@ -230,6 +126,13 @@
     }
     100% {
       transform: translateX(350%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-attachment-preview-loading-bar {
+      animation: none;
+      inline-size: 100%;
     }
   }
 </style>

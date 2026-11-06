@@ -32,6 +32,11 @@ export type AlertProps = Omit<
   dismissible?: boolean;
   onDismiss?: () => void;
   class?: string;
+  /**
+   * A bold first line in the status colour. With a heading, the alert draws its variant's glyph
+   * when no `icon` is given, and `children` read in the default text colour as the body.
+   */
+  heading?: string;
   children: Snippet;
   icon?: Snippet;
   /**
@@ -62,4 +67,9 @@ export interface AlertSchemaProps {
   dismissible?: boolean;
   /** Custom class merged with `.cinder-alert`. */
   class?: string;
+  /**
+   * A bold first line in the status colour. With a heading, the alert draws its variant's glyph
+   * when no `icon` is given, and its body reads in the default text colour.
+   */
+  heading?: string;
 }

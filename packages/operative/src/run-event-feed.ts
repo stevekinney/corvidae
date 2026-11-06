@@ -168,6 +168,7 @@ const PROJECTIONS: readonly RunEventProjection[] = [
   projection(RunStartedEvent.type, isInstance(RunStartedEvent), () => ({})),
   projection(StepStartedEvent.type, isInstance(StepStartedEvent), (event) => ({
     step: event.step,
+    ...(event.sessionInputIds.length === 0 ? {} : { sessionInputIds: [...event.sessionInputIds] }),
   })),
   projection(StepGeneratedEvent.type, isInstance(StepGeneratedEvent), (event) =>
     withUsage({ step: event.step, toolCalls: projectToolCalls(event.toolCalls) }, event.usage),

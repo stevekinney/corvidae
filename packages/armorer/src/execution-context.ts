@@ -1,4 +1,35 @@
+import { z } from 'zod';
 import type { JSONValue } from './types';
+
+/** Non-secret durable workspace authorization, independent of audit actor and resource owner. */
+export type RunWorkspaceAuthority = {
+  /** Persisted record format. */
+  readonly version: 1;
+  /** Runtime workspace that owns this grant. */
+  readonly workspaceId: string;
+  /** Stable actor resolved by the trusted directory. */
+  readonly actorId: string;
+  /** Directory lookup identity; never reassigned implicitly from resource ownership. */
+  readonly authorizingOwner: string;
+  /** Opaque revision observed at the most recent admission. */
+  readonly membershipRevision: string;
+};
+
+const runWorkspaceAuthoritySchema = z
+  .object({
+    version: z.literal(1),
+    workspaceId: z.string().min(1),
+    actorId: z.string().min(1),
+    authorizingOwner: z.string().min(1),
+    membershipRevision: z.string().min(1),
+  })
+  .strict();
+
+/** Refuse malformed persisted grants rather than adopting a different actor on recovery. */
+export function readRunWorkspaceAuthority(value: unknown): RunWorkspaceAuthority | undefined {
+  const parsed = runWorkspaceAuthoritySchema.safeParse(value);
+  return parsed.success ? Object.freeze(parsed.data) : undefined;
+}
 
 export interface ToolAuthority {
   readonly principalId: string;
@@ -6,6 +37,8 @@ export interface ToolAuthority {
   readonly ownerId: string;
   readonly capabilities: readonly string[];
   readonly authorizationRevision: string;
+  /** Current workspace actor authority; no credentials are persisted here. */
+  readonly workspace?: RunWorkspaceAuthority;
 }
 
 export interface ToolRequestContext {
@@ -117,6 +150,9 @@ export function freezeToolRequestContext(
     ...context,
     authority: Object.freeze({
       ...context.authority,
+      ...(context.authority.workspace === undefined
+        ? {}
+        : { workspace: Object.freeze({ ...context.authority.workspace }) }),
       capabilities: Object.freeze([...context.authority.capabilities]),
     }),
   });
@@ -193,6 +229,9 @@ export function privilegedExecutionSnapshot(
     ...context,
     authority: Object.freeze({
       ...context.authority,
+      ...(context.authority.workspace === undefined
+        ? {}
+        : { workspace: Object.freeze({ ...context.authority.workspace }) }),
       capabilities: Object.freeze([...context.authority.capabilities]),
     }),
     revisions: Object.freeze({ ...context.revisions }),
@@ -250,6 +289,9 @@ export function narrowToolAuthority(
     ...context,
     authority: {
       ...context.authority,
+      ...(context.authority.workspace === undefined
+        ? {}
+        : { workspace: Object.freeze({ ...context.authority.workspace }) }),
       capabilities: narrowedCapabilities,
     },
   });

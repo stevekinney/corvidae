@@ -189,7 +189,7 @@
   {:else if error !== null && error !== undefined}
     <Alert variant="danger">
       {copy.loadFailure}
-      <Button variant="link" size="sm" label={copy.tryAgain} onclick={onReload} />
+      <Button variant="ghost-accent" size="sm" label={copy.tryAgain} onclick={onReload} />
     </Alert>
   {:else if rows.length === 0}
     <p class="ib-worker-tasks__empty" data-testid="worker-tasks-empty">
@@ -224,7 +224,7 @@
             {row.line}
             {#if row.failed}
               <Button
-                variant="link"
+                variant="ghost-accent"
                 size="sm"
                 label={copy.viewPayload}
                 onclick={() => onViewPayload(row.id, row.name)}

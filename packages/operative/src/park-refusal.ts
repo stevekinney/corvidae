@@ -10,7 +10,7 @@
  */
 
 import { renderDurationLabel } from './durable/continuation-input';
-import type { PendingHumanWait, PendingWakeup } from './durable/types';
+import type { PendingChildWait, PendingHumanWait, PendingWakeup } from './durable/types';
 
 /**
  * What `requestHumanInput` and `scheduleWakeup` add to their result when the step already holds a
@@ -22,7 +22,8 @@ export interface RefusedParkRequest {
   /** The park the step already holds, which this request did not replace. */
   pendingPark:
     | { kind: 'human-input'; signalName: string }
-    | { kind: 'wakeup'; duration: PendingWakeup['duration'] };
+    | { kind: 'wakeup'; duration: PendingWakeup['duration'] }
+    | { kind: 'child-wait'; childRunId: string };
   /** Human-readable message the LLM can use in its response. */
   message: string;
 }
@@ -31,6 +32,7 @@ export interface RefusedParkRequest {
 export interface ParkSlots {
   readonly pendingHumanWait: PendingHumanWait | undefined;
   readonly pendingWakeup: PendingWakeup | undefined;
+  readonly pendingChildWait?: PendingChildWait | undefined;
 }
 
 /**
@@ -53,6 +55,13 @@ export function refuseIfStepIsParked(slots: ParkSlots): RefusedParkRequest | und
       refused: true,
       pendingPark: { kind: 'wakeup', duration },
       message: refusalMessage(`a wakeup in ${renderDurationLabel(duration)}`),
+    };
+  }
+  if (slots.pendingChildWait !== undefined) {
+    return {
+      refused: true,
+      pendingPark: { kind: 'child-wait', childRunId: slots.pendingChildWait.childRunId },
+      message: refusalMessage(`child "${slots.pendingChildWait.childRunId}"`),
     };
   }
   return undefined;

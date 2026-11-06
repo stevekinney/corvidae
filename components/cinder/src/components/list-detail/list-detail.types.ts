@@ -126,7 +126,9 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   stackBelow?: number;
   /**
    * Removes the detail pane's inner padding, for a detail view that lays out its own header, body
-   * and footer edge to edge (an open chat, a table, a code frame).
+   * and footer edge to edge (an open chat, a table, a code frame). In the stacked layout the open
+   * detail also fills the height the component is given, so what it docks at its bottom edge, such as
+   * a composer, sits at the bottom of the screen instead of after its content.
    * @default false
    */
   flushDetail?: boolean;

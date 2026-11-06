@@ -21,6 +21,7 @@ export const SCHEDULE_REVISION_POLICIES = new Set<ScheduleRevisionPolicy>([
 ]);
 
 type NormalizedScheduleOptions = Required<Pick<ScheduleOptions, 'overlap' | 'backfill'>> & {
+  initialStatus?: 'active' | 'paused';
   id?: string;
   description?: string;
   jitterMs?: number;
@@ -48,6 +49,7 @@ export function normalizeScheduleOptions(
   }
 
   return {
+    ...normalizeInitialStatus(options.initialStatus),
     overlap: normalizeScheduleOverlap(options.overlap),
     backfill: normalizeScheduleBackfill(options.backfill),
     ...(options.id !== undefined && { id: coerceStartWorkflowId(options.id, 'options.id') }),
@@ -184,4 +186,11 @@ function normalizeScheduleJitter(value: unknown, fieldName: string): number {
     throw new Error(`${fieldName} must resolve to a positive number of milliseconds`);
   }
   return jitterMs;
+}
+
+function normalizeInitialStatus(value: unknown): { initialStatus?: 'active' | 'paused' } {
+  if (value === undefined) return {};
+  if (value !== 'active' && value !== 'paused')
+    throw new Error('options.initialStatus must be active or paused');
+  return { initialStatus: value };
 }

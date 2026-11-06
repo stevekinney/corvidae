@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createLocalHostMutationContext } from './host-mutation-context.ts';
 
 import {
   createSkillManager,
@@ -44,17 +45,25 @@ async function fakeHome(
   const options: SkillManagerOptions = {
     bungalow: {
       mode,
+      workspaceId: 'skill-fixture',
+      configurationWriteCapability:
+        mode === 'remote' ? ('read-only' as const) : ('writable' as const),
       configurationLocation: 's3://bucket/configuration.json',
-      readConfiguration: async () => text,
-      writeConfiguration: (next: string) => {
+      readConfiguration: async () => ({
+        text,
+        revision: text === undefined ? null : Bun.hash(text).toString(),
+      }),
+      writeConfiguration: async (next, condition) => {
+        if (condition.expectedRevision !== (text === undefined ? null : Bun.hash(text).toString()))
+          return { outcome: 'conflict' };
         writes.push(next);
         if (failure === undefined) {
           text = next;
-          return;
+          return { outcome: 'committed' };
         }
         // Bungalow renames the file and then syncs the directory, so a throw may follow the replace.
         if (failure.replaces) text = next;
-        throw failure.error;
+        return failure.replaces ? { outcome: 'unknown' } : { outcome: 'unavailable' };
       },
     },
     audit: async (entry) => {
@@ -87,7 +96,9 @@ describe('a remote home', () => {
   test('answers the route with 403 and the reason', async () => {
     const { options } = await fakeHome('remote');
     const manager = await createSkillManager(options);
-    const routes = skillRoutes(manager, () => undefined);
+    const routes = skillRoutes(manager, () => undefined, {
+      mutation: () => createLocalHostMutationContext(options.bungalow),
+    });
     const request = Object.assign(
       new Request('http://127.0.0.1/host/skills/sources/workspace/trust', {
         method: 'PUT',
@@ -217,21 +228,25 @@ describe('a local home', () => {
     ]);
   });
 
-  test('records a write that threw after replacing the file, because the change took', async () => {
+  test('refreshes standing after an uncertain write without claiming this actor committed it', async () => {
     const error = new Error('the directory could not be synced');
     const { options, audited } = await fakeHome('local', { replaces: true, error });
     const manager = await createSkillManager(options);
     expect(manager.standing().catalog.records[0]?.available).toBe(false);
 
-    const change = await manager.setTrust({ source: 'workspace', trusted: true });
+    const failure = await manager
+      .setTrust({ source: 'workspace', trusted: true })
+      .catch((caught: unknown) => caught);
 
-    // The file says trusted, so the host serves trusted, with a new revision, and records it.
-    expect(change).toMatchObject({ trusted: true, changed: true });
+    // Current standing is authoritative, but matching content does not identify its writer.
+    expect(failure).toMatchObject({
+      code: 'unavailable',
+    });
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
-    expect(audited.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
+    expect(audited).toEqual([]);
   });
 
-  test('owes the record of a write that threw after replacing the file when the trail is down', async () => {
+  test('does not replay or manufacture a success audit after an uncertain write', async () => {
     const error = new Error('the directory could not be synced');
     const { options, audited } = await fakeHome('local', { replaces: true, error });
     let down = true;
@@ -247,11 +262,13 @@ describe('a local home', () => {
       .setTrust({ source: 'workspace', trusted: true })
       .catch((caught: unknown) => caught);
 
-    expect(failure).toMatchObject({ name: 'SkillAuditError', trusted: true });
+    expect(failure).toMatchObject({
+      code: 'unavailable',
+    });
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
     down = false;
     await manager.setTrust({ source: 'workspace', trusted: true });
-    expect(audited.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
+    expect(audited).toEqual([]);
   });
 
   test('keeps serving the file it read when the write throws without replacing it', async () => {
@@ -263,8 +280,64 @@ describe('a local home', () => {
       .setTrust({ source: 'workspace', trusted: true })
       .catch((caught: unknown) => caught);
 
-    expect(failure).toBe(error);
+    expect(failure).toMatchObject({
+      code: 'unavailable',
+    });
     expect(manager.standing().catalog.records[0]?.available).toBe(false);
     expect(manager.standing().sources[0]?.trust).toBe('untrusted');
+  });
+});
+
+describe('skill trust admission', () => {
+  test('a writable remote backend accepts an authorized deployment operator', async () => {
+    const { options, writes } = await fakeHome('remote');
+    const bungalow = { ...options.bungalow, configurationWriteCapability: 'writable' as const };
+    const manager = await createSkillManager({ ...options, bungalow });
+    const mutation = await createLocalHostMutationContext(bungalow);
+    const change = await manager.setTrust({ source: 'workspace', trusted: true }, mutation);
+    expect(change.changed).toBe(true);
+    expect(writes).toHaveLength(1);
+  });
+
+  test('an edit from a stale revision cannot overwrite another configuration change', async () => {
+    const { options, writes } = await fakeHome('local');
+    const manager = await createSkillManager(options);
+    const mutation = await createLocalHostMutationContext(options.bungalow);
+    const previous = await options.bungalow.readConfiguration();
+    await options.bungalow.writeConfiguration(`${previous.text}\n`, {
+      expectedRevision: previous.revision,
+    });
+    const failure: unknown = await manager
+      .setTrust({ source: 'workspace', trusted: true }, mutation)
+      .then(
+        () => undefined,
+        (error) => error,
+      );
+    expect(failure).toMatchObject({ code: 'conflict' });
+    expect(writes).toHaveLength(1);
+  });
+
+  test('revocation immediately before publication prevents a configuration write', async () => {
+    const { options, writes, audited } = await fakeHome('local');
+    const manager = await createSkillManager(options);
+    const local = await createLocalHostMutationContext(options.bungalow);
+    let evaluations = 0;
+    const mutation = {
+      ...local,
+      async revalidate() {
+        const identity = await local.revalidate();
+        evaluations += 1;
+        return evaluations === 1 ? identity : { ...identity, capabilities: [] };
+      },
+    };
+    const failure: unknown = await manager
+      .setTrust({ source: 'workspace', trusted: true }, mutation)
+      .then(
+        () => undefined,
+        (error) => error,
+      );
+    expect(failure).toMatchObject({ code: 'forbidden' });
+    expect(writes).toEqual([]);
+    expect(audited).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { OBSERVABLE_SYMBOL } from '../atomic-state-events.ts';
 import {
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
@@ -6,6 +7,7 @@ import {
 } from '../events.ts';
 import { WorkflowTimeoutError } from '../timeouts.ts';
 import type {
+  CancelWorkflowResult,
   LaunchMetadata,
   MessageName,
   QueryDefinition,
@@ -94,7 +96,7 @@ export type WorkflowClaimHandle = { readonly id: string };
 
 export interface WorkflowHandleEngine extends EventTarget {
   [HANDLE_RESULT_PROMISE](workflowId: string): Promise<unknown>;
-  cancel(workflowId: string): Promise<void>;
+  cancel(workflowId: string): Promise<CancelWorkflowResult>;
   suspend(workflowId: string): Promise<void>;
   resume(workflowId: string): Promise<WorkflowHandle>;
   signal(
@@ -202,7 +204,7 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
     return this.#resultPromise;
   }
 
-  async cancel(): Promise<void> {
+  async cancel(): Promise<CancelWorkflowResult> {
     return this.#engine.cancel(this.id);
   }
 
@@ -392,7 +394,8 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
     );
   }
 
-  [Symbol.observable](): {
+  /** Observe workflow events until completion, cancellation, or failure, including an already settled run. */
+  [OBSERVABLE_SYMBOL](): {
     subscribe: (observer: {
       next?: (event: Event) => void;
       complete?: () => void;

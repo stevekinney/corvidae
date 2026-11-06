@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.contexts.input`: admit one input to a context (a Bureau session) through
  * `Bureau.contexts.input`, so a client can follow up on a run that is still going.
@@ -69,7 +71,8 @@ const contextsInputInput = z.object({
     .describe('The input to admit: an `id` of the caller’s choosing and its `payload`.'),
 });
 
-const inputReceiptSchema = z.object({
+/** Where one admitted input stands: the receipt `bureau.contexts.input` and `bureau.contexts.retract` answer with. */
+export const inputReceiptSchema = z.object({
   id: z.string(),
   sessionId: z.string(),
   deliveryMode: z.enum(['steer', 'queue']),
@@ -136,6 +139,7 @@ export const contextsInputOperation = defineOperation<
   BureauContextsInputOperationHost
 >({
   name: 'bureau.contexts.input',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.input'),
   mcpExposable: true,
   summary: 'Send input to a context',
   description:

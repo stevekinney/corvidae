@@ -309,7 +309,7 @@ const bungalow = await openBungalow({
   environment: { INTERBOROUGH_HOME: home },
 });
 try {
-  bungalow.writeSecret(SECRET_KEY, 'fixture-e2e-key-0c1f');
+  await bungalow.deploymentSecrets.write(SECRET_KEY, 'fixture-e2e-key-0c1f');
 } finally {
   bungalow.close();
 }
@@ -332,11 +332,19 @@ const lifecycle = await (async () => {
     const skillsBefore = await listedNames(supervised, 'bureau.skills.list', 'skills', 'name');
     const stream = await chat(supervised);
     const markerWritten = existsSync(marker) ? await readFile(marker, 'utf8') : undefined;
+    const pluginSnapshotResponse = await fetch(new URL('/host/plugins', supervised.url));
+    const pluginSnapshot = (await pluginSnapshotResponse.json()) as {
+      configurationRevision: string | null;
+    };
 
     const disabled = await fetch(new URL(`/host/plugins/${PLUGIN_NAME}`, supervised.url), {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: false }),
+      body: JSON.stringify({
+        enabled: false,
+        operationId: crypto.randomUUID(),
+        expectedRevision: pluginSnapshot.configurationRevision,
+      }),
     });
     const restarting = await fetch(new URL(HOST_RESTART_ROUTE, supervised.url), {
       method: 'POST',

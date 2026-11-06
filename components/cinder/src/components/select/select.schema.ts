@@ -52,6 +52,12 @@ const schema = {
         'Visual style. `ghost` has no border or fill at rest, a neutral tint on hover and while open,\nthe focus ring wrapping the whole control, and keeps its chevron: use it for a select inside\na bordered container (a composer, an inline toolbar) so the row of controls reads as one\nsurface. `default` is the bordered select for forms and filter bars.',
       default: 'default',
     },
+    tone: {
+      enum: ['default', 'accent'],
+      description:
+        'Colour of the value. `accent` draws it in the accent colour and weight, for the one select that\nnames what the container it sits in is about to do (the agent a new chat is with), beside\n`default` controls that only set options.',
+      default: 'default',
+    },
     presentation: {
       enum: ['native', 'listbox'],
       description:

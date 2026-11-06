@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- terminal orchestration keeps the complete state machine together. */
 import type { BatchOperation } from '@lostgradient/storage';
 import { KEYS } from '../../../storage/keys.ts';
 import { decode, encode } from '../../codec.ts';
@@ -12,6 +13,7 @@ import { tagWorkflowEventGeneration } from '../../events/workflow-event-generati
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../../scheduler.ts';
 import { WorkflowTimeoutError } from '../../timeouts.ts';
 import type {
+  CancelWorkflowResult,
   FailureCategory,
   SearchAttributeValue,
   TerminationReason,
@@ -29,6 +31,13 @@ import { takeCancelHandlers, type CancelHandler } from '../cancel-handlers.ts';
 import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-side-effects.ts';
 import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { staleFailureGuard, type FailureOrigin } from '../execution-attempts.ts';
+import {
+  fileWorkflowTerminalOperations,
+  prepareFileWorkflowTerminalHistory as prepareTerminalHistory,
+  recordFileWorkflowTerminalHistory as recordTerminalHistory,
+  shouldRetryFileWorkflowTermination,
+  type FileWorkflowRunIdentity,
+} from '../file-workflow-history.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
 import { captureInFlightActivityTurn } from '../in-flight-operation.ts';
 import { dropQueuedInlineWorkflowStart } from '../inline-launch-queue.ts';
@@ -68,6 +77,7 @@ import {
   terminalCommitterStamp,
 } from './completion-operations.ts';
 import {
+  cancellationOutcomeFromRefusal,
   captureTerminatedRun,
   settleTerminatedRunAfterRefusal,
 } from './settle-refused-terminal.ts';
@@ -79,6 +89,7 @@ import {
   cancelRunTimers,
   captureOrReadTerminalFence,
   fencedTeardownCommit,
+  sameRunCondition,
   warnUnknownRunIdentity,
 } from './terminal-fence.ts';
 
@@ -111,8 +122,8 @@ export async function cancelWorkflow(
   internals: EngineInternals,
   workflowId: string,
   callbacks: TerminationCallbacks,
-): Promise<void> {
-  await terminateWorkflow(internals, workflowId, 'cancelled', callbacks);
+): Promise<CancelWorkflowResult> {
+  return await terminateWorkflow(internals, workflowId, 'cancelled', callbacks);
 }
 
 export async function timeoutWorkflow(
@@ -123,25 +134,30 @@ export async function timeoutWorkflow(
   await terminateWorkflow(internals, workflowId, 'timed-out', callbacks);
 }
 
+// eslint-disable-next-line complexity -- identity-fenced retry adds one causal branch to this state machine.
 export async function terminateWorkflow(
   internals: EngineInternals,
   workflowId: string,
   status: 'cancelled' | 'timed-out',
   callbacks: TerminationCallbacks,
   reason?: TerminationReason,
-): Promise<void> {
+  historyRetry = 0,
+  historyRunIdentity?: FileWorkflowRunIdentity,
+): Promise<CancelWorkflowResult> {
   const terminatedRun = captureTerminatedRun(internals, workflowId);
-  // A run with a top-level activity in flight settles its result only after the handler turn
-  // running that activity ends (COR-1597). The turn is captured before `cancelWorkflow` evicts it
-  // and is awaited from a detached continuation: the history breaker terminates from inside this
-  // very turn, so awaiting it here would deadlock.
   const inFlightActivityTurn = captureInFlightActivityTurn(internals, workflowId);
   let pendingSettlement: PendingTerminalSettlement | undefined;
   internals.terminalizingWorkflows.add(workflowId);
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.strategy.cancelWorkflow(workflowId);
-
   try {
+    const fileWorkflowHistory = await prepareTerminalHistory(
+      internals,
+      workflowId,
+      status,
+      historyRunIdentity,
+    );
+    const capturedHistoryRunIdentity = historyRunIdentity ?? fileWorkflowHistory?.identity;
     const terminalCleanupToken = internals.workflowsNeedingTerminalCleanup.has(workflowId)
       ? crypto.randomUUID()
       : undefined;
@@ -149,20 +165,6 @@ export async function terminateWorkflow(
     const attributes = attributeBytes
       ? (decode(attributeBytes) as Record<string, SearchAttributeValue>)
       : {};
-    // A finalizer is only owed when the workflow recorded resource state
-    // (`ctx.setFinalizerState`) before terminating — read presence up front,
-    // alongside the attribute read, so the terminal batch can stage the marker
-    // and teardown timer atomically. Absent state means no resource to destroy.
-    //
-    // `setFinalizerState` STAGES its `wf-finalizer-state:` put as a pending atomic
-    // side-effect that the terminal `updateWorkflowState` batch below flushes
-    // (`includePendingAtomicSideEffects` is set for terminal transitions). If no
-    // checkpoint ran between the call and this terminal transition, that put has NOT
-    // reached durable storage yet, so `storage.get()` alone returns null and we would
-    // skip the marker even though the state is about to be committed — silently leaking
-    // the resource. Peek the staged buffer too (non-destructively; the commit flush
-    // still consumes it). The buffer is frozen here: `terminalizingWorkflows` already
-    // contains this id, so `recordFinalizerState` can stage nothing new.
     const finalizerStatePresent =
       (await internals.storage.get(KEYS.finalizerState(workflowId))) !== null ||
       pendingAtomicWorkflowCommitSideEffectsStagePut(
@@ -172,63 +174,104 @@ export async function terminateWorkflow(
       );
     const retainedAttributes = buildRetainedTerminalSearchAttributes(attributes);
     const terminationMessage = status === 'timed-out' ? 'Workflow timed out' : 'Workflow cancelled';
-    const terminationResult = await updateWorkflowState(
-      internals,
-      workflowId,
-      {
-        status,
-        ...(reason !== undefined ? { terminationReason: reason } : {}),
-        ...(terminalCleanupToken !== undefined ? { terminalCleanupToken } : {}),
-        ...terminalCommitterStamp(internals),
-      },
-      // Cancel/timeout are EXTERNAL terminal transitions (ADR 0002): any engine
-      // may commit them against a workflow it does not own, so this rotates the
-      // claim epoch under `ownership: 'workflow-lease'` rather than fencing on
-      // this engine's own claim.
-      'external-terminal',
-      {
-        // Total over non-terminal states (see FORCIBLY_TERMINABLE_STATUSES):
-        // cancelling a suspended workflow terminates it and rejects its pending
-        // result waiter rather than no-op'ing. The abort in strategy.cancelWorkflow
-        // above is a no-op for a suspended run (controller evicted at suspend), so
-        // cancel runs the registered handlers without driving the gone generator.
-        allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
-        buildAdditionalOperations: (_previousState, updatedAt) => {
-          finalizePendingTimelineEntry(
-            internals,
-            workflowId,
-            status,
-            terminationMessage,
-            updatedAt,
-          );
-          const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
-          return [
-            ...(pendingTimelineOperation ? [pendingTimelineOperation] : []),
-            ...(terminalCleanupToken !== undefined
-              ? buildTerminalCleanupTimerOperations(
-                  internals,
-                  workflowId,
-                  true,
-                  updatedAt,
-                  terminalCleanupToken,
-                )
-              : []),
-            // Stage the durable teardown marker + timer atomically with the
-            // terminal transition (#446 Phase 2). Gated on recorded finalizer state
-            // ALONE — NOT on whether the current registration declares a finalizer —
-            // so a recorded resource is never silently dropped when the type isn't
-            // registered with a finalizer here (see buildTeardownOperations). A
-            // workflow that never recorded state pays nothing. The marker carries the
-            // execution claim, fenced on the lease epoch by the enclosing terminal batch.
-            ...buildTeardownOperations(workflowId, finalizerStatePresent, updatedAt),
-          ];
+    let terminationResult: Awaited<ReturnType<typeof updateWorkflowState>>;
+    try {
+      terminationResult = await updateWorkflowState(
+        internals,
+        workflowId,
+        {
+          status,
+          ...(reason !== undefined ? { terminationReason: reason } : {}),
+          ...(terminalCleanupToken !== undefined ? { terminalCleanupToken } : {}),
+          ...terminalCommitterStamp(internals),
         },
-      },
-    );
+        'external-terminal',
+        {
+          allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
+          ...(capturedHistoryRunIdentity === undefined
+            ? {}
+            : {
+                expectedWorkflowExecutionToken:
+                  capturedHistoryRunIdentity.workflowExecutionToken ?? null,
+              }),
+          ...(fileWorkflowHistory === undefined
+            ? {}
+            : {
+                extraConditions: [
+                  fileWorkflowHistory.condition(),
+                  sameRunCondition(workflowId, {
+                    generation: fileWorkflowHistory.identity.generation,
+                    holderMarker: null,
+                  }),
+                ],
+              }),
+          buildAdditionalOperations: (_previousState, updatedAt) => {
+            finalizePendingTimelineEntry(
+              internals,
+              workflowId,
+              status,
+              terminationMessage,
+              updatedAt,
+            );
+            const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
+            const historyOperations = fileWorkflowTerminalOperations(fileWorkflowHistory);
+            return [
+              ...historyOperations,
+              ...(pendingTimelineOperation ? [pendingTimelineOperation] : []),
+              ...(terminalCleanupToken !== undefined
+                ? buildTerminalCleanupTimerOperations(
+                    internals,
+                    workflowId,
+                    true,
+                    updatedAt,
+                    terminalCleanupToken,
+                  )
+                : []),
+              // Stage the durable teardown marker + timer atomically with the
+              // terminal transition (#446 Phase 2). Gated on recorded finalizer state
+              // ALONE — NOT on whether the current registration declares a finalizer —
+              // so a recorded resource is never silently dropped when the type isn't
+              // registered with a finalizer here (see buildTeardownOperations). A
+              // workflow that never recorded state pays nothing. The marker carries the
+              // execution claim, fenced on the lease epoch by the enclosing terminal batch.
+              ...buildTeardownOperations(workflowId, finalizerStatePresent, updatedAt),
+            ];
+          },
+        },
+      );
+    } catch (error) {
+      if (
+        await shouldRetryFileWorkflowTermination(
+          internals,
+          workflowId,
+          fileWorkflowHistory,
+          historyRetry,
+        )
+      ) {
+        return terminateWorkflow(
+          internals,
+          workflowId,
+          status,
+          callbacks,
+          reason,
+          historyRetry + 1,
+          capturedHistoryRunIdentity,
+        );
+      }
+      throw error;
+    }
     if (!terminationResult) {
       await settleTerminatedRunAfterRefusal(internals, workflowId, callbacks, terminatedRun);
-      return;
+      if (status === 'timed-out') {
+        return { workflowId, status: 'already-terminal', terminalStatus: 'timed-out' };
+      }
+      throw new Error(`Workflow "${workflowId}" was not found.`);
     }
+    if ('kind' in terminationResult) {
+      await settleTerminatedRunAfterRefusal(internals, workflowId, callbacks, terminatedRun);
+      return cancellationOutcomeFromRefusal(workflowId, terminationResult);
+    }
+    recordTerminalHistory(internals, workflowId, fileWorkflowHistory);
     const { previousState, updatedAt, fence } = terminationResult;
     const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
     const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
@@ -266,8 +309,7 @@ export async function terminateWorkflow(
       callbacks.swallowPromiseRejection,
     );
 
-    // Cancel is an external transition: the run it ended is the one it wrote, which may not be the
-    // run this engine holds in memory, so the waiter is matched against the durable run.
+    // Match the waiter against the durable run for this external transition.
     const resolver = isSuperseded()
       ? undefined
       : resultWaiterForRun(internals, workflowId, previousState.workflowExecutionToken);
@@ -298,6 +340,7 @@ export async function terminateWorkflow(
     } finally {
       if (!superseded && !pendingSettlement) internals.resultResolvers.delete(workflowId);
     }
+    return { workflowId, status: 'cancel-requested' };
   } finally {
     internals.terminalizingWorkflows.delete(workflowId);
     // After the terminal event is out, and on every path out, so a held result is always released.
@@ -424,6 +467,7 @@ export async function completeWorkflow(
   result: unknown,
   callbacks: TerminationCallbacks,
 ): Promise<void> {
+  const fileWorkflowHistory = await prepareTerminalHistory(internals, workflowId, 'completed');
   const completionMetadata = await callbacks.runSerializedWorkflowStateWrite(
     workflowId,
     async () => {
@@ -438,7 +482,6 @@ export async function completeWorkflow(
       );
       // Settled before the commit; awaited only when the adoption read is still in flight.
       const fence = captured instanceof Promise ? await captured : captured;
-
       const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
       if (visibilityMaintenance !== undefined) await visibilityMaintenance;
       const now = normalizeStorageTimestamp(
@@ -473,6 +516,7 @@ export async function completeWorkflow(
           terminalCleanupToken,
         );
         const operations = buildBaseCompletionOperations(internals, workflowId, base, updatedState);
+        fileWorkflowHistory?.append(operations);
         appendSearchAttributeOperations(operations, workflowId, currentAttributes);
         if (terminalCleanupToken !== undefined) {
           operations.push(
@@ -510,6 +554,7 @@ export async function completeWorkflow(
     },
   );
   if (!completionMetadata) return;
+  recordTerminalHistory(internals, workflowId, fileWorkflowHistory);
   const { claimEpoch, executionToken, fence, activityCompletionReceipts } = completionMetadata;
   for (const receipt of activityCompletionReceipts) {
     callbacks.dispatchEvent(
@@ -567,7 +612,7 @@ export async function failWorkflow(
   const retainedAttributes = buildRetainedTerminalSearchAttributes(attributes, {
     failureCategory,
   });
-
+  const fileWorkflowHistory = await prepareTerminalHistory(internals, workflowId, 'failed');
   const stateUpdate: Partial<WorkflowState> = {
     status: 'failed',
     error: error.message,
@@ -606,7 +651,9 @@ export async function failWorkflow(
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
+        const historyOperations = fileWorkflowTerminalOperations(fileWorkflowHistory);
         return [
+          ...historyOperations,
           ...(pendingTimelineOperation ? [pendingTimelineOperation] : []),
           ...(terminalCleanupToken !== undefined
             ? buildTerminalCleanupTimerOperations(
@@ -621,9 +668,10 @@ export async function failWorkflow(
       },
     },
   );
-  if (!failureResult) {
+  if (!failureResult || 'kind' in failureResult) {
     return;
   }
+  recordTerminalHistory(internals, workflowId, fileWorkflowHistory);
   // Captured synchronously, immediately after the commit resolved — see
   // `releaseWorkflowClaimAfterTerminalSettlement`'s doc.
   const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
@@ -645,7 +693,6 @@ export async function failWorkflow(
     deadline,
     callbacks.swallowPromiseRejection,
   );
-
   // Keep engine-managed terminal attributes queryable after the cleanup above.
   await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);
 
@@ -658,7 +705,6 @@ export async function failWorkflow(
     if (!superseded) {
       await cleanupTerminalWorkflowSynchronously(internals, workflowId, false, callbacks, fenced);
     }
-
     const event = new WorkflowFailedEvent(workflowId, error);
     callbacks.dispatchEvent(event);
     if (!superseded) callbacks.forwardEventToHandle(workflowId, event);
@@ -674,7 +720,6 @@ export async function failWorkflow(
     if (!superseded) internals.resultResolvers.delete(workflowId);
   }
 }
-
 export function buildTerminalCleanupTimerOperations(
   _internals: EngineInternals,
   workflowId: string,
@@ -718,7 +763,6 @@ function buildTeardownOperations(
   if (!finalizerStatePresent) {
     return [];
   }
-
   const token = crypto.randomUUID();
   const claim: TeardownClaim = { status: 'owed', attempts: 0, token };
 

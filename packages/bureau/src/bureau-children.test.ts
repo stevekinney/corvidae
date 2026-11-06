@@ -11,6 +11,7 @@
 
 import {
   createAgent,
+  createCheckpointStore,
   createLazyAgent,
   createMockGenerate,
   defineChildSignals,
@@ -460,6 +461,19 @@ describe('bureau.children over an ephemeral bureau', () => {
         }),
       ),
     ).toThrow('defaultTimeToLiveMilliseconds');
+    expect(
+      await throwingRejectionOf(
+        createBureau({
+          agents: {},
+          children: {
+            delegation: {
+              secret: 's',
+              rootAuthority: { levels: 2, budget: { concurrentChildren: -1 } },
+            },
+          },
+        }),
+      ),
+    ).toThrow('rootAuthority.budget.concurrentChildren');
   });
 });
 
@@ -494,6 +508,90 @@ describe('bureau.children over a durable bureau', () => {
       }),
     };
   }
+
+  it('durably parks the original child-wait call and settles it after the child commits', async () => {
+    const childRelease = Promise.withResolvers<void>();
+    const parentReady = Promise.withResolvers<void>();
+    const allowParentTool = Promise.withResolvers<void>();
+    const waitForChild = createTool({
+      name: 'wait-for-child',
+      description: 'Wait for the named child run to settle.',
+      input: z.object({ childRunId: z.string() }),
+      metadata: { durableChildWait: true },
+      execute: async ({ childRunId }, context) => {
+        const durableChildWait = context.executionContext?.['durableChildWait'];
+        if (typeof durableChildWait !== 'function') {
+          throw new Error('durable child wait was not injected');
+        }
+        return durableChildWait({
+          childRunId,
+          toolCallId: context.meta?.callId ?? context.toolCall.id,
+        });
+      },
+    });
+    const bureau = await createBureau({
+      agents: {
+        planner: createAgent({
+          name: 'planner',
+          toolbox: createToolbox([waitForChild]),
+          generate: async ({ step }) => {
+            if (step === 0) {
+              parentReady.resolve();
+              await allowParentTool.promise;
+              return {
+                content: 'waiting',
+                toolCalls: [{ name: 'wait-for-child', arguments: { childRunId: 'child-1' } }],
+              };
+            }
+            return { content: 'child settled', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+        worker: createAgent({
+          name: 'worker',
+          generate: async () => {
+            await childRelease.promise;
+            return { content: 'done', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+      durableOwnership: { ownership: 'workflow-lease' },
+      onDiagnostic,
+    });
+
+    try {
+      const parent = await bureau.tasks.start('planner', 'wait for work');
+      await parentReady.promise;
+      expect(
+        await bureau.children.dispatch({
+          parentRunId: parent.id,
+          childRunId: 'child-1',
+          agentName: 'worker',
+          input: 'work',
+        }),
+      ).toMatchObject({ outcome: 'started' });
+      allowParentTool.resolve();
+      await pollUntil(async () => {
+        const workflow = await bureau.tasks.workflow(parent.id);
+        return workflow?.status === 'running';
+      });
+      expect(await bureau.tasks.workflow(parent.id)).toMatchObject({ status: 'running' });
+
+      childRelease.resolve();
+      expect(await parent.result()).toMatchObject({ finishReason: 'stop-condition' });
+      expect(
+        await bureau.children.wait({ parentRunId: parent.id, childRunId: 'child-1' }),
+      ).toMatchObject({
+        outcome: 'settled',
+        child: { status: 'completed' },
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
 
   it('refuses a child identifier that names another principal’s run, and leaves that run as it was', async () => {
     await using pathFixture = createSqliteStorageFixture();
@@ -1023,6 +1121,435 @@ describe('bureau.children across a process restart', () => {
       }
     } finally {
       await pathFixture.dispose();
+    }
+  });
+
+  type DurableChildWaitCase = {
+    readonly childRunId: string;
+    readonly childMode: 'completed' | 'failed' | 'aborted' | 'running';
+    readonly dispatchChild?: boolean;
+    readonly forgeWake?: boolean;
+    readonly foreignChild?: boolean;
+    readonly settleBeforeParent?: boolean;
+    readonly cancelParent?: boolean;
+    readonly duplicateWake?: boolean;
+    readonly realDuplicateWake?: boolean;
+    readonly competingPark?: 'human' | 'wakeup';
+    readonly competingParkOrder?: 'child-first' | 'competitor-first';
+  };
+
+  async function runDurableChildWaitCase(testCase: DurableChildWaitCase) {
+    await using pathFixture = createSqliteStorageFixture();
+    const parentReady = Promise.withResolvers<void>();
+    const allowParent = Promise.withResolvers<void>();
+    const childRelease = Promise.withResolvers<void>();
+    const waitForChild = createTool({
+      name: 'wait-for-child',
+      description: 'Wait for the named child run to settle.',
+      input: z.object({ childRunId: z.string() }),
+      metadata: { durableChildWait: true },
+      execute: async ({ childRunId }, context) => {
+        const durableChildWait = context.executionContext?.['durableChildWait'];
+        if (typeof durableChildWait !== 'function') throw new Error('missing durable child wait');
+        return durableChildWait({
+          childRunId,
+          toolCallId: context.meta?.callId ?? context.toolCall.id,
+        });
+      },
+    });
+    let generations = 0;
+    let toolResults: readonly unknown[] = [];
+    const bureau = await createBureau({
+      agents: {
+        planner: createAgent({
+          name: 'planner',
+          toolbox: createToolbox([waitForChild]),
+          generate: async ({ step, conversation }) => {
+            generations += 1;
+            toolResults = conversation
+              .getMessages()
+              .filter((message) => message.role === 'tool-result')
+              .map((message) => message.toolResult);
+            if (step === 0) {
+              parentReady.resolve();
+              await allowParent.promise;
+              const childCall = {
+                id: 'durable-child-wait-call',
+                name: 'wait-for-child',
+                arguments: { childRunId: testCase.childRunId },
+              };
+              const competingCall =
+                testCase.competingPark === 'human'
+                  ? {
+                      id: 'human-park-call',
+                      name: 'requestHumanInput',
+                      arguments: { signalName: 'human' },
+                    }
+                  : {
+                      id: 'wakeup-park-call',
+                      name: 'scheduleWakeup',
+                      arguments: { in: '1h' },
+                    };
+              const toolCalls = [
+                ...(testCase.competingParkOrder === 'competitor-first' ? [competingCall] : []),
+                childCall,
+                ...(testCase.competingParkOrder === 'competitor-first' ? [] : [competingCall]),
+              ];
+              return {
+                content: 'waiting',
+                toolCalls,
+              };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+        worker: createAgent({
+          name: 'worker',
+          generate: async () => {
+            if (testCase.childMode === 'failed') throw new Error('child failed');
+            if (testCase.childMode === 'running') await childRelease.promise;
+            return { content: 'child done', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+        foreignParent: createAgent({
+          name: 'foreignParent',
+          generate: hangUntilAborted,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: pathFixture.storage,
+      durable: true,
+      durableOwnership: { ownership: 'workflow-lease' },
+      onDiagnostic,
+    });
+    try {
+      if (testCase.foreignChild) {
+        const foreignParent = await bureau.tasks.start('foreignParent', 'foreign parent');
+        await pollUntil(async () => {
+          const workflow = await bureau.tasks.workflow(foreignParent.id);
+          return workflow?.status === 'running';
+        });
+        expect(
+          await bureau.children.dispatch({
+            parentRunId: foreignParent.id,
+            childRunId: testCase.childRunId,
+            agentName: 'worker',
+            input: 'foreign work',
+          }),
+        ).toMatchObject({ outcome: 'started' });
+      }
+      const parent = await bureau.tasks.start('planner', 'wait for child');
+      await parentReady.promise;
+      if (testCase.dispatchChild !== false) {
+        const dispatched = await bureau.children.dispatch({
+          parentRunId: parent.id,
+          childRunId: testCase.childRunId,
+          agentName: 'worker',
+          input: 'work',
+        });
+        expect(dispatched.outcome).toBe('started');
+      }
+      if (testCase.settleBeforeParent && testCase.dispatchChild !== false) {
+        await pollUntil(async () => {
+          const child = await bureau.children.get({
+            parentRunId: parent.id,
+            childRunId: testCase.childRunId,
+          });
+          return child?.status === 'completed' || child?.status === 'failed';
+        });
+      }
+      allowParent.resolve();
+      if (testCase.childMode === 'aborted') {
+        await pollUntil(async () => {
+          const child = await bureau.children.get({
+            parentRunId: parent.id,
+            childRunId: testCase.childRunId,
+          });
+          return child?.status === 'running';
+        });
+        await bureau.children.cancel({
+          parentRunId: parent.id,
+          childRunId: testCase.childRunId,
+          reason: 'test cancellation',
+        });
+      } else if (
+        testCase.dispatchChild !== false &&
+        (testCase.childMode === 'completed' || testCase.childMode === 'failed')
+      ) {
+        await pollUntil(async () => {
+          const child = await bureau.children.get({
+            parentRunId: parent.id,
+            childRunId: testCase.childRunId,
+          });
+          return child?.status === 'completed' || child?.status === 'failed';
+        });
+      }
+      if (
+        testCase.childMode === 'running' &&
+        testCase.dispatchChild !== false &&
+        !testCase.settleBeforeParent &&
+        testCase.competingPark === undefined
+      ) {
+        const engine = bureau.durableEngine();
+        expect(engine).toBeDefined();
+        await pollUntil(async () => {
+          const state = await engine?.get(parent.id);
+          return (
+            state?.waitingForSignals?.includes(
+              `durable-child:${parent.id}:${testCase.childRunId}`,
+            ) === true
+          );
+        });
+      }
+      if (testCase.competingPark !== undefined) {
+        const engine = bureau.durableEngine();
+        expect(engine).toBeDefined();
+        const childSignal = `durable-child:${parent.id}:${testCase.childRunId}`;
+        const checkpointStore = createCheckpointStore(
+          textValueStore(pathFixture.storage, { disposeUnderlyingStorage: false }),
+        );
+        if (testCase.competingPark === 'human') {
+          await pollUntil(async () => {
+            const state = await engine?.get(parent.id);
+            return state?.waitingForSignals?.length === 1;
+          });
+          const parkedState = await engine?.get(parent.id);
+          expect(parkedState?.waitingForSignals).toHaveLength(1);
+          const parkedSignal = parkedState?.waitingForSignals?.[0];
+          if (parkedSignal === undefined) throw new Error('missing durable park signal');
+          expect(['human', childSignal]).toContain(parkedSignal);
+        } else {
+          await pollUntil(async () => {
+            const records = await checkpointStore.loadSteps(parent.id, { strict: true });
+            return (
+              records[0]?.results.some((result) => result.callId === 'wakeup-park-call') === true
+            );
+          });
+        }
+        const records = await checkpointStore.loadSteps(parent.id, { strict: true });
+        const parkedStep = records[0];
+        if (parkedStep === undefined) throw new Error('missing first parked step');
+        const refusal = parkedStep.results.find(
+          (result) => result.callId !== 'durable-child-wait-call',
+        );
+        expect(refusal).toBeDefined();
+        expect(refusal?.outcome).toBe('success');
+        const childWaitResult = parkedStep.results.find(
+          (result) => result.callId === 'durable-child-wait-call',
+        );
+        if (childWaitResult === undefined) {
+          expect(refusal?.result).toMatchObject({
+            refused: true,
+            pendingPark: { kind: 'child-wait', childRunId: testCase.childRunId },
+          });
+        } else {
+          expect(parkedStep.results).toContainEqual(
+            expect.objectContaining({
+              callId: 'durable-child-wait-call',
+              result: { parked: false, reason: 'already-parked' },
+            }),
+          );
+        }
+      }
+      if (testCase.realDuplicateWake) {
+        childRelease.resolve();
+        await pollUntil(async () => {
+          const child = await bureau.children.get({
+            parentRunId: parent.id,
+            childRunId: testCase.childRunId,
+          });
+          return child?.status === 'completed';
+        });
+        const signalName = `durable-child:${parent.id}:${testCase.childRunId}`;
+        const engine = bureau.durableEngine();
+        expect(engine).toBeDefined();
+        await engine?.signal(parent.id, signalName, null);
+        await engine?.signal(parent.id, signalName, null);
+      } else if (testCase.forgeWake) {
+        await pollUntil(async () => {
+          const workflow = await bureau.tasks.workflow(parent.id);
+          return workflow?.status === 'running';
+        });
+        await bureau.contexts.signal(
+          parent.contextId,
+          `durable-child:${parent.id}:${testCase.childRunId}`,
+          null,
+        );
+        if (testCase.duplicateWake) {
+          await bureau.contexts.signal(
+            parent.contextId,
+            `durable-child:${parent.id}:${testCase.childRunId}`,
+            null,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(generations).toBe(1);
+        childRelease.resolve();
+        await bureau.children.cancel({
+          parentRunId: parent.id,
+          childRunId: testCase.childRunId,
+          reason: 'finish forged-wake case',
+        });
+      }
+      if (testCase.cancelParent) {
+        await pollUntil(async () => {
+          const workflow = await bureau.tasks.workflow(parent.id);
+          return workflow?.status === 'running';
+        });
+        expect(await bureau.tasks.cancel(parent.id)).toMatchObject({ receipt: 'cancel-requested' });
+        await pollUntil(async () => {
+          const workflow = await bureau.tasks.workflow(parent.id);
+          return workflow?.status === 'cancelled';
+        });
+        return {
+          child: await bureau.children.get({
+            parentRunId: parent.id,
+            childRunId: testCase.childRunId,
+          }),
+          generations,
+          result: undefined,
+          toolResults,
+        };
+      }
+      await pollUntil(async () => {
+        const workflow = await bureau.tasks.workflow(parent.id);
+        return (
+          workflow?.status === 'completed' ||
+          workflow?.status === 'failed' ||
+          workflow?.status === 'cancelled'
+        );
+      });
+      const workflow = await bureau.tasks.workflow(parent.id);
+      const result = workflow?.result;
+      const child = await bureau.children.get({
+        parentRunId: parent.id,
+        childRunId: testCase.childRunId,
+      });
+      return { child, generations, result, toolResults };
+    } finally {
+      childRelease.resolve();
+      await bureau.dispose();
+    }
+  }
+
+  it('returns failed and aborted terminal children as settled model results', async () => {
+    for (const [childMode, expectedStatus] of [
+      ['failed', 'failed'],
+      ['aborted', 'aborted'],
+    ] as const) {
+      const outcome = await runDurableChildWaitCase({
+        childRunId: `child-${childMode}`,
+        childMode,
+      });
+      expect(outcome.child?.status).toBe(expectedStatus);
+      expect(outcome.toolResults).toContainEqual(
+        expect.objectContaining({
+          content: {
+            status: 'settled',
+            child: expect.objectContaining({ status: expectedStatus }),
+          },
+        }),
+      );
+      expect(outcome.generations).toBe(2);
+    }
+  });
+
+  it('settles an already-terminal child in the first durable read without parking', async () => {
+    const outcome = await runDurableChildWaitCase({
+      childRunId: 'child-already-completed',
+      childMode: 'completed',
+      settleBeforeParent: true,
+    });
+    expect(outcome.child?.status).toBe('completed');
+    expect(outcome.generations).toBe(2);
+    expect(outcome.toolResults).toContainEqual(
+      expect.objectContaining({
+        content: { status: 'settled', child: expect.objectContaining({ status: 'completed' }) },
+      }),
+    );
+  });
+
+  it('returns not-found without child data for an unknown or foreign child id', async () => {
+    const unknown = await runDurableChildWaitCase({
+      childRunId: 'missing-child',
+      childMode: 'completed',
+      dispatchChild: false,
+    });
+    expect(unknown.child).toBeUndefined();
+    expect(unknown.toolResults).toContainEqual(
+      expect.objectContaining({ content: { status: 'not-found' } }),
+    );
+    expect(unknown.generations).toBe(2);
+
+    const own = await runDurableChildWaitCase({
+      childRunId: 'foreign-child',
+      childMode: 'running',
+      dispatchChild: false,
+      foreignChild: true,
+    });
+    expect(own.toolResults).toContainEqual(
+      expect.objectContaining({ content: { status: 'not-found' } }),
+    );
+  });
+
+  it('ignores a forged wake until the running child has a terminal record', async () => {
+    const outcome = await runDurableChildWaitCase({
+      childRunId: 'child-forged-wake',
+      childMode: 'running',
+      forgeWake: true,
+    });
+    expect(outcome.child?.status).toBe('aborted');
+    expect(outcome.toolResults).toContainEqual(
+      expect.objectContaining({
+        content: { status: 'settled', child: expect.objectContaining({ status: 'aborted' }) },
+      }),
+    );
+  });
+
+  it('cancels a parked parent without publishing a late ordinary child result', async () => {
+    const outcome = await runDurableChildWaitCase({
+      childRunId: 'child-parent-cancel',
+      childMode: 'running',
+      cancelParent: true,
+    });
+    expect(outcome.child?.status).toBe('aborted');
+    expect(outcome.generations).toBe(1);
+    expect(outcome.toolResults).toEqual([]);
+  });
+
+  it('does not duplicate a real child wake delivered twice', async () => {
+    const outcome = await runDurableChildWaitCase({
+      childRunId: 'child-duplicate-wake',
+      childMode: 'running',
+      realDuplicateWake: true,
+    });
+    expect(outcome.child?.status).toBe('completed');
+    expect(outcome.generations).toBe(2);
+    expect(
+      outcome.toolResults.filter(
+        (result) =>
+          typeof result === 'object' &&
+          result !== null &&
+          (result as { callId?: unknown }).callId === 'durable-child-wait-call',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('honors one first park when child-wait races human input or a wakeup', async () => {
+    for (const competingPark of ['human', 'wakeup'] as const) {
+      for (const competingParkOrder of ['child-first', 'competitor-first'] as const) {
+        const outcome = await runDurableChildWaitCase({
+          childRunId: `child-${competingPark}-${competingParkOrder}-race`,
+          childMode: 'running',
+          competingPark,
+          competingParkOrder,
+          cancelParent: true,
+        });
+        expect(outcome.generations).toBe(1);
+        expect(outcome.toolResults).toHaveLength(0);
+      }
     }
   });
 });

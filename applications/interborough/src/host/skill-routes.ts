@@ -16,6 +16,8 @@
  * @module skill-routes
  */
 
+import type { HostAuthority } from './host-authority.ts';
+import { HostMutationError } from './host-mutation-context.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   SkillAuditError,
@@ -23,6 +25,7 @@ import {
   SkillWriteLockedError,
   type SkillManager,
 } from './skill-manager.ts';
+import { SecretPublicationError } from './workspace-secrets.ts';
 
 /** The route that refreshes the catalog. */
 export const HOST_SKILLS_REFRESH_ROUTE = '/host/skills/refresh';
@@ -58,6 +61,16 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
+    if (error instanceof HostMutationError)
+      return Response.json(
+        { error: error.code, message: error.message },
+        { status: error.code === 'forbidden' ? 403 : error.code === 'conflict' ? 409 : 400 },
+      );
+    if (error instanceof SecretPublicationError)
+      return Response.json(
+        { error: error.code, message: error.message },
+        { status: error.code === 'conflict' ? 409 : error.code === 'read-only' ? 403 : 503 },
+      );
     if (error instanceof SkillWriteLockedError) {
       return Response.json(
         { error: 'locked', reason: error.reason, message: error.message },
@@ -106,14 +119,21 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
 }
 
 /** The routes to merge into the host's `routes`. Each runs the guard first. */
-export function skillRoutes(manager: SkillManager, refuse: Refuse) {
+export function skillRoutes(
+  manager: SkillManager,
+  refuse: Refuse,
+  authority: Pick<HostAuthority, 'mutation'>,
+) {
   return {
     [HOST_SKILL_TRUST_ROUTE]: {
       PUT: (request: Bun.BunRequest<typeof HOST_SKILL_TRUST_ROUTE>) =>
         refuse(request) ??
         respond(async () => {
           const body = await readObject(request);
-          return manager.setTrust({ source: request.params.id, trusted: body['trusted'] });
+          return manager.setTrust(
+            { source: request.params.id, trusted: body['trusted'] },
+            await authority.mutation(request, body),
+          );
         }),
     },
     [HOST_SKILLS_REFRESH_ROUTE]: {

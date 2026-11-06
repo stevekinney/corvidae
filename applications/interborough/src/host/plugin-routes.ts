@@ -1,3 +1,6 @@
+import { SecretProviderError } from '@lostgradient/bungalow';
+import type { HostAuthority } from './host-authority.ts';
+import { HostMutationError } from './host-mutation-context.ts';
 /**
  * The host's routes for plugins (`plugin-manager.ts`, COR-1880):
  *
@@ -49,6 +52,29 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
+    if (error instanceof HostMutationError)
+      return Response.json(
+        { error: error.code, message: error.message },
+        { status: error.code === 'forbidden' ? 403 : error.code === 'conflict' ? 409 : 400 },
+      );
+    if (error instanceof SecretProviderError) {
+      const status =
+        error.code === 'rejected'
+          ? 400
+          : error.code === 'read-only'
+            ? 403
+            : error.code === 'conflict'
+              ? 409
+              : 503;
+      return Response.json(
+        {
+          error: 'failed',
+          reason: error.code,
+          message: 'The secret provider could not complete the operation.',
+        },
+        { status },
+      );
+    }
     if (error instanceof PluginWriteLockedError) {
       return Response.json(
         { error: 'locked', reason: error.reason, message: error.message },
@@ -82,7 +108,11 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
 }
 
 /** The routes to merge into the host's `routes`. Each runs the guard first. */
-export function pluginRoutes(manager: PluginManager, refuse: Refuse) {
+export function pluginRoutes(
+  manager: PluginManager,
+  refuse: Refuse,
+  authority: Pick<HostAuthority, 'mutation'>,
+) {
   return {
     [HOST_PLUGINS_ROUTE]: {
       GET: (request: Request) => refuse(request) ?? respond(() => manager.snapshot()),
@@ -92,12 +122,17 @@ export function pluginRoutes(manager: PluginManager, refuse: Refuse) {
         refuse(request) ??
         respond(async () => {
           const body = await readObject(request);
-          return manager.update(decoded(request.params.name), {
-            enabled: body['enabled'],
-            ...(Object.hasOwn(body, 'configuration')
-              ? { configuration: body['configuration'] }
-              : {}),
-          });
+          const mutation = await authority.mutation(request, body);
+          return manager.update(
+            decoded(request.params.name),
+            {
+              enabled: body['enabled'],
+              ...(Object.hasOwn(body, 'configuration')
+                ? { configuration: body['configuration'] }
+                : {}),
+            },
+            mutation,
+          );
         }),
     },
     [HOST_PLUGIN_SECRET_ROUTE]: {
@@ -109,6 +144,7 @@ export function pluginRoutes(manager: PluginManager, refuse: Refuse) {
             decoded(request.params.name),
             decoded(request.params.key),
             body['value'],
+            await authority.mutation(request, body),
           );
         }),
     },

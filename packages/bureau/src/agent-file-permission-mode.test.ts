@@ -13,6 +13,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 import { createBureauHandler } from './http/create-bureau-handler';
 import {
@@ -130,6 +131,42 @@ async function ask(bureau: Bureau, tool: string, orderId: string, contextId?: st
 }
 
 describe('steering a chat’s permission mode over HTTP (COR-1936)', () => {
+  it('asks for approval before executing the registered mutating child-run tool', async () => {
+    const { bureau, harness } = await open();
+    await harness.put(
+      'helper.md',
+      agentFileText({
+        model: KNOWN_MODEL,
+        tools: '[bureau:child-runs-cancel]',
+      }),
+    );
+    await bureau.agents.refresh();
+    steps.push(() => ({
+      content: '',
+      toolCalls: [
+        {
+          id: 'child-cancel-call',
+          name: 'bureau__child-runs-cancel',
+          arguments: { childRunId: 'missing-child' },
+        },
+      ],
+    }));
+    const task = await bureau.tasks.start('helper', 'Go.', { principal: OWNER.alice });
+    let review = undefined;
+    for await (const _turn of awakeTurns()) {
+      review = bureau.reviews.list().find((candidate) => candidate.runId === task.id);
+      if (review !== undefined) break;
+    }
+    expect(review).toMatchObject({ kind: 'tool-approval' });
+    if (review?.kind !== 'tool-approval') throw new Error('expected a tool approval review');
+    expect(review.approval).toMatchObject({
+      toolName: 'bureau:child-runs-cancel',
+      arguments: { childRunId: 'missing-child' },
+    });
+    expect(task.result).toBeDefined();
+    await task.abort('approval witness complete');
+  });
+
   it('reads on-changes back for a chat nobody steered, and the settled mode after a steer', async () => {
     const { bureau, steer, settled } = await open();
     const first = await ask(bureau, 'read-order', 'A1');

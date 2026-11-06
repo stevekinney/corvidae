@@ -49,7 +49,8 @@ async function startWith(secrets: Readonly<Record<string, string>>): Promise<Hos
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
-    for (const [key, value] of Object.entries(secrets)) bungalow.writeSecret(key, value);
+    for (const [key, value] of Object.entries(secrets))
+      await bungalow.deploymentSecrets.write(key, value);
   } finally {
     bungalow.close();
   }

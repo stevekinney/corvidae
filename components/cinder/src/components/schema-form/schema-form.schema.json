@@ -19,6 +19,10 @@
       "description": "How the fields are drawn. `default` is the plain form. `input` is the Input block of a page\nthat runs or schedules something: short fields share a row two at a time (a switch, an\narray, a group or a JSON field takes the whole row), a boolean is a switch with its\ndescription beside it, and an array of objects is one JSON editor whose status line counts\nthe items.",
       "default": "default"
     },
+    "submitVisible": {
+      "type": "boolean",
+      "description": "Whether the form draws its own submit button. Set `false` when the host submits the form from\na button elsewhere on the page, such as a footer, whose `form` attribute names this form's\n`id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`."
+    },
     "class": {
       "type": "string",
       "description": "Custom class merged with `.cinder-schema-form`."

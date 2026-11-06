@@ -86,7 +86,7 @@
       {onRetry}
     >
       {#snippet secondaryAction()}
-        <Button variant="link" href={router.href(copy.failed.openHealthPath)}
+        <Button variant="ghost-accent" href={router.href(copy.failed.openHealthPath)}
           >{copy.failed.openHealth}</Button
         >
       {/snippet}

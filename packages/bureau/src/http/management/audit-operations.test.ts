@@ -1,3 +1,10 @@
+import {
+  openWorkspacePrivacyBureau,
+  workspacePrivacyCall,
+  WORKSPACE_PRIVACY_ACTORS,
+  type WorkspacePrivacyActor,
+  workspaceAdministratorDirectory,
+} from '../workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-1482 — `bureau.audit.query` over a real Bureau and its handler: what an owner and an
  * operator see, that no record carries a secret, a transcript, a tool argument, or memory
@@ -6,6 +13,7 @@
 import type { GenerateContext } from '@lostgradient/operative';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 import { z } from 'zod';
 
 import { waitForCondition } from '../../test';
@@ -14,6 +22,7 @@ import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import { auditQueryOperation } from './audit-operations.ts';
 import {
   as,
+  answering,
   openBureau,
   type OpenedBureau,
   OWNER,
@@ -115,6 +124,32 @@ describe('the operation', () => {
 });
 
 describe('bureau.audit.query without bureau.audit:read', () => {
+  it('keeps a workspace administrator’s legacy audit scope owner-scoped', async () => {
+    const opened = await openBureau({
+      generate: answering('done'),
+      handlerOptions: {
+        workspace: workspaceAdministratorDirectory(),
+      },
+    });
+    cleanups.push(() => opened.dispose());
+    const own = await opened.bureau.tasks.start('default', 'own', {
+      principal: 'api-key:operator',
+    });
+    const foreign = await opened.bureau.tasks.start('default', 'foreign', { principal: OWNER.bob });
+    for (const run of [own, foreign]) {
+      await waitForCondition(async () => {
+        const records = await opened.bureau.internals.auditTrail?.query({
+          runId: run.id,
+          type: 'run.completed',
+        });
+        return records?.length === 1;
+      }, `run ${run.id} never completed`);
+    }
+    const listed = await rpc(opened.handler, 'bureau.audit.query', {}, 'operator-key');
+    const records = listed.result!['records'] as Array<{ resource: string }>;
+    expect(records.some((record) => record.resource === foreign.id)).toBe(false);
+  });
+
   it('returns only the records about the caller’s own resources', async () => {
     const { opened, aliceRun, bobRun } = await seed();
 
@@ -563,4 +598,73 @@ describe('a Bureau that keeps no audit trail', () => {
 
     expect((refusal as { code?: string }).code).toBe('UNSUPPORTED_CAPABILITY');
   });
+});
+
+const witnesses = workspaceConformanceLedger('management/audit-operations.test.ts');
+it('workspace audit keeps execution records private and shares only redacted configuration metadata', async () => {
+  const opened = await openWorkspacePrivacyBureau({
+    generate: answering('PRIVATE-AUDIT-ANSWER-b2ed'),
+  });
+  cleanups.push(() => opened.dispose());
+  const task = await opened.bureau.tasks.start('default', 'PRIVATE-AUDIT-INPUT-b2ed', {
+    principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+  });
+  const ownerContext = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.get', {
+    contextId: task.contextId,
+  });
+  expect(ownerContext.text).toContain('PRIVATE-AUDIT-INPUT-b2ed');
+  await waitForCondition(async () => {
+    const records = await opened.bureau.internals.auditTrail?.query({
+      runId: task.id,
+      type: 'run.completed',
+    });
+    return records?.length === 1;
+  }, 'private run audit settles');
+  await opened.bureau.internals.auditTrail!.record({
+    runId: 'agent:shared',
+    type: 'agent.updated',
+    principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+    detail: {
+      hash: 'configuration-revision',
+      input: 'PRIVATE-CONFIG-INPUT-b2ed',
+      secret: 'PRIVATE-CONFIG-SECRET-b2ed',
+    },
+  });
+  for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+    const result = await workspacePrivacyCall(opened, actor, 'bureau.audit.query', {});
+    const jsonl = await workspacePrivacyCall(opened, actor, 'bureau.audit.query', {
+      format: 'jsonl',
+    });
+    if (actor === 'owner') expect(jsonl.text).toContain(task.id);
+    else {
+      expect(jsonl.text).not.toContain(task.id);
+      if (actor === 'foreign' || actor === 'removed') expect(jsonl.status).toBe(403);
+      else if (actor === 'administrator') expect(jsonl.text).toContain('agent.updated');
+    }
+    expect(jsonl.text).not.toContain('PRIVATE-');
+    witnesses.observeAudit('bureau.audit.query', actor, result, task.id);
+    if (actor === 'foreign' || actor === 'removed') {
+      expect(result.status).toBe(403);
+      continue;
+    }
+    expect(result.body?.error).toBeUndefined();
+    const records = result.body?.result?.['records'] as View[];
+    if (actor === 'owner') expect(records.some((record) => record.resource === task.id)).toBe(true);
+    else {
+      expect(result.text).not.toContain(task.id);
+      if (actor === 'administrator') {
+        expect(records).toHaveLength(1);
+        expect(records[0]).toMatchObject({
+          resource: 'agent:shared',
+          type: 'agent.updated',
+          detail: { hash: 'configuration-revision' },
+        });
+      } else expect(records).toEqual([]);
+    }
+    expect(result.text).not.toContain('PRIVATE-');
+  }
+});
+
+it('the workspace operation inventory has six executed actor witnesses', () => {
+  witnesses.verify();
 });

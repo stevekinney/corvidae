@@ -51,7 +51,12 @@ export interface MissedFireSource {
 export async function loadMissedFires(options?: Options): Promise<readonly MissedFireSource[]> {
   const schedules = await listBureauSchedules(options);
   const missing = schedules
-    .filter((schedule) => schedule.missedFireCount > 0 && schedule.status !== 'cancelled')
+    .filter(
+      (schedule) =>
+        schedule.missedFireCount !== null &&
+        schedule.missedFireCount > 0 &&
+        schedule.status !== 'cancelled',
+    )
     .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, MISSED_SCHEDULE_LOOKUP_LIMIT);
   const missed = await Promise.all(

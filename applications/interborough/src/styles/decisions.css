@@ -80,85 +80,11 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* ── Tool calls: one row each, folded when there are several ──────────────────── */
+/* ── Tool calls: Cinder's rail, with a call's arguments and result under its row ───────────── */
 
 .ib-tools {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
   min-width: 0;
   padding-block: var(--cinder-space-1);
-}
-
-.ib-tools__fold {
-  display: flex;
-  align-items: center;
-  gap: var(--cinder-space-2);
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-tools__fold-summary {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ib-tool {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-  min-width: 0;
-}
-
-.ib-tool__line {
-  display: flex;
-  align-items: center;
-  gap: var(--cinder-space-2);
-  min-height: 2.25rem;
-  min-width: 0;
-}
-
-.ib-tool__glyph {
-  flex: none;
-  display: inline-flex;
-}
-
-.ib-tool__glyph[data-state='done'],
-.ib-tool__glyph[data-state='denied'] {
-  color: var(--cinder-text-muted);
-}
-
-.ib-tool__glyph[data-state='failed'] {
-  color: var(--cinder-status-danger-text);
-}
-
-.ib-tool__glyph[data-state='needs-you'],
-.ib-tool__glyph[data-state='running'] {
-  color: var(--cinder-status-warning-text);
-}
-
-.ib-tool__name {
-  flex: none;
-  color: var(--cinder-text-muted);
-  font-family: var(--cinder-font-mono);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-tool[data-state='failed'] .ib-tool__name,
-.ib-tool[data-state='needs-you'] .ib-tool__name {
-  color: inherit;
-}
-
-.ib-tool__summary {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ib-tool__details {

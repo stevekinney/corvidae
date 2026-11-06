@@ -464,6 +464,31 @@ describe('Select — required marker', () => {
   });
 });
 
+describe('Select — accent tone', () => {
+  test('marks the field only when the tone is accent, and the accent colours the value', () => {
+    const accent = render(Select, {
+      props: { id: 'tone-accent', label: 'Agent', options: defaultOptions, tone: 'accent' },
+    });
+    expect(
+      accent.container.querySelector('.cinder-select-field')?.getAttribute('data-cinder-tone'),
+    ).toBe('accent');
+    accent.unmount();
+
+    const plain = render(Select, {
+      props: { id: 'tone-default', label: 'Agent', options: defaultOptions },
+    });
+    expect(
+      plain.container.querySelector('.cinder-select-field')?.hasAttribute('data-cinder-tone'),
+    ).toBe(false);
+
+    const styles = readSelectStyles();
+    const block = styles.slice(
+      styles.indexOf(".cinder-select-field[data-cinder-tone='accent'] .cinder-select {"),
+    );
+    expect(block.slice(0, block.indexOf('}'))).toContain('color: var(--cinder-accent-text)');
+  });
+});
+
 describe('Select — ghost variant', () => {
   test('a native ghost select carries the variant on the control and its field', () => {
     const { container } = render(Select, {

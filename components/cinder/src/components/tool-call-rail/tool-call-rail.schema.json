@@ -25,7 +25,7 @@
           },
           "result": {
             "type": "string",
-            "description": "What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow\n(\"→ $42.00, delivered Mon\"); a `denied` call shows it as its own words (\"Denied by you 10:40 AM ·\nnothing refunded\"); a `running` or `waiting` call has none and reads \"Running…\" or \"Waiting on\nyou\", unless this is set."
+            "description": "What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow\n(\"→ $42.00, delivered Mon\"); an `interrupted` call shows it as its own words (\"Interrupted ·\ndidn't finish\"); a `denied` call shows it as its own words (\"Denied by you 10:40 AM ·\nnothing refunded\"); a `running` or `waiting` call has none and reads \"Running…\" or \"Waiting on\nyou\", unless this is set."
           },
           "decision": {
             "type": "string",
@@ -36,7 +36,7 @@
             "description": "How long the call took, formatted by the caller (\"0.2s\"), at the end of the row. Elapsed while `running`."
           },
           "status": {
-            "enum": ["done", "approved", "running", "waiting", "denied", "failed"],
+            "enum": ["done", "approved", "running", "waiting", "denied", "failed", "interrupted"],
             "description": "Where the call stands."
           },
           "failure": {
@@ -46,6 +46,10 @@
           "nested": {
             "type": "boolean",
             "description": "Whether the `children` snippet draws content under this call's row, such as the approval that\na `waiting` call is waiting on, or the approved one under a call that has been decided."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Keeps this call on the rail wherever it falls, folded or not, as a failed or waiting call is.\nFor a finished call whose result the person still has to act on, such as an inline panel."
           }
         },
         "additionalProperties": false,

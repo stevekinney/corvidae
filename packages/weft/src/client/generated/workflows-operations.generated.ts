@@ -47,8 +47,14 @@ export type WorkflowsOperationTypes = {
   };
   'weft.workflows.cancel': {
     readonly input: { readonly workflowId: string };
-    readonly output: unknown;
-    readonly faults: 'NotFound';
+    readonly output:
+      | { readonly status: 'cancel-requested'; readonly workflowId: string }
+      | {
+          readonly status: 'already-terminal';
+          readonly terminalStatus: 'completed' | 'failed' | 'cancelled' | 'timed-out';
+          readonly workflowId: string;
+        };
+    readonly faults: 'Conflict' | 'NotFound';
   };
   'weft.workflows.finalizer.get': {
     readonly input: { readonly workflowId: string };

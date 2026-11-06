@@ -5,6 +5,9 @@
  * the host's own wiring matters: the guard in front of the real listener and the Bureau's handler
  * behind it.
  */
+import { openBungalow } from '@lostgradient/bungalow';
+import { BUREAU_SCOPES } from '@lostgradient/bureau';
+import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -23,11 +26,56 @@ afterEach(async () => {
   }
 });
 
-async function start(): Promise<Host> {
+async function start(authenticated = false): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-mcp-apps-'));
   directories.push(home);
   await enableDemoPlugin(home);
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
+  const workspaceId = bungalow.workspaceId;
+  await bungalow.close();
+  const member = (subject: string | undefined) =>
+    subject === undefined || subject === 'removed'
+      ? null
+      : {
+          version: 1 as const,
+          workspaceId: subject === 'foreign' ? 'another-workspace' : workspaceId,
+          actorId: subject,
+          actorKind: 'user' as const,
+          owner: `owner-${subject}`,
+          membershipRevision: '1',
+          capabilities:
+            subject === 'administrator'
+              ? ['workspace:use' as const, 'workspace:manage' as const]
+              : ['workspace:use' as const],
+        };
+  const host = await startHost({
+    environment: { INTERBOROUGH_HOME: home },
+    port: 0,
+    ...(authenticated
+      ? {
+          workspaceAuthentication: {
+            authentication: {
+              resolveApiKeyPrincipal: async (key: string) =>
+                ['alice', 'bob', 'administrator', 'foreign', 'removed'].includes(key)
+                  ? principalFromApiKey({
+                      subject: key,
+                      scopes: [...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES],
+                    })
+                  : null,
+            },
+            workspace: {
+              workspaceId,
+              resolveMembership: async ({ subject }: { subject: string | undefined }) =>
+                member(subject),
+              resolveOwnerMembership: async (owner: string) => member(owner.replace(/^owner-/, '')),
+            },
+          },
+        }
+      : {}),
+  });
   hosts.push(host);
   return host;
 }
@@ -47,6 +95,39 @@ function toolCall(
 }
 
 describe('the run inspector’s panel', () => {
+  test('authenticated panels read only the invoking member’s private task', async () => {
+    const host = await start(true);
+    const run = await host.bureau.tasks.start('demo:assistant', 'private-input-sentinel', {
+      principal: 'owner-alice',
+    });
+    await run.result();
+    const owner = await toolCall(
+      host,
+      { name: 'bureau.tasks.inspect', arguments: { taskId: run.id } },
+      { 'x-api-key': 'alice' },
+    );
+    expect(owner.status).toBe(200);
+    expect(await owner.json()).toMatchObject({ structuredContent: { task: { id: run.id } } });
+    for (const actor of ['bob', 'administrator']) {
+      const denied = await toolCall(
+        host,
+        { name: 'bureau.tasks.inspect', arguments: { taskId: run.id } },
+        { 'x-api-key': actor, 'x-actor-id': 'alice', 'x-workspace-owner': 'owner-alice' },
+      );
+      const body = await denied.json();
+      expect(body).toMatchObject({ isError: true });
+      expect(JSON.stringify(body)).not.toContain('private-input-sentinel');
+    }
+    for (const actor of ['foreign', 'removed', 'attacker']) {
+      const denied = await toolCall(
+        host,
+        { name: 'bureau.tasks.cancel', arguments: { taskId: run.id } },
+        { 'x-api-key': actor },
+      );
+      expect([401, 403]).toContain(denied.status);
+    }
+  });
+
   test('lists the panels the plugin contributes, and serves the page of one as JSON', async () => {
     const host = await start();
     const listing = await fetch(new URL('/host/mcp-apps', host.url));

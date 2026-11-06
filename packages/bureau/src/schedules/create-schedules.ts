@@ -10,6 +10,8 @@ import type {
  * where that state lives, and the durable event history the schedule owner kind is read from.
  */
 export type SchedulesDependencies = {
+  /** Revision-checked future authority reassignment. */
+  readonly reassign: BureauSchedules['reassign'];
   /** {@link BureauSchedules.create}. */
   readonly create: BureauSchedules['create'];
   /** {@link BureauSchedules.get}. */
@@ -53,6 +55,7 @@ export type SchedulesDependencies = {
 export function createSchedules(dependencies: SchedulesDependencies): BureauSchedules {
   return {
     create: dependencies.create,
+    reassign: dependencies.reassign,
     get: dependencies.get,
     list: dependencies.list,
     pause: dependencies.pause,

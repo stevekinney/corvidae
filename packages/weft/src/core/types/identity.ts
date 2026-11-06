@@ -76,3 +76,15 @@ export type FailureCategory = 'application' | 'timeout' | 'cancellation' | 'reso
  */
 export type WorkflowStatus =
   'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended';
+
+/** Atomic outcome of a workflow cancellation request. */
+export type CancelWorkflowResult =
+  | { readonly workflowId: string; readonly status: 'cancel-requested' }
+  | {
+      readonly workflowId: string;
+      readonly status: 'already-terminal';
+      readonly terminalStatus: Extract<
+        WorkflowStatus,
+        'completed' | 'failed' | 'cancelled' | 'timed-out'
+      >;
+    };

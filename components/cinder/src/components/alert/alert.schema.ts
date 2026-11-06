@@ -19,6 +19,11 @@ const schema = {
       type: 'string',
       description: 'Custom class merged with `.cinder-alert`.',
     },
+    heading: {
+      type: 'string',
+      description:
+        "A bold first line in the status colour. With a heading, the alert draws its variant's glyph\nwhen no `icon` is given, and its body reads in the default text colour.",
+    },
   },
   additionalProperties: false,
   metadata: {

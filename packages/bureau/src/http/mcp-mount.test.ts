@@ -1,3 +1,10 @@
+import { WORKSPACE_MOUNT_CONFORMANCE } from './workspace-conformance.test-support.ts';
+import { workspaceMountLedger } from './workspace-conformance-ledger.test-support.ts';
+import {
+  openWorkspacePrivacyBureau,
+  WORKSPACE_PRIVACY_ACTORS,
+  type WorkspacePrivacyActor,
+} from './workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-839 — Bureau's v1 MCP adapter: the official MCP SDK client, in both
  * protocol eras, lists the twenty-two "observe and steer" tools and calls them as
@@ -219,4 +226,79 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
       expect(outcome.error).toBeDefined();
     }
   });
+});
+
+const witnesses = workspaceMountLedger('mcp-mount.test.ts');
+it('workspace MCP reads, lists, and event pages preserve the six-actor private boundary', async () => {
+  const opened = await openWorkspacePrivacyBureau({
+    durableHistory: true,
+    handlerOptions: { mcp: {} },
+    generate: async () => {
+      throw new Error(WORKSPACE_MOUNT_CONFORMANCE.mcp.sentinel);
+    },
+  });
+  cleanups.push(() => opened.dispose());
+  const sentinel = WORKSPACE_MOUNT_CONFORMANCE.mcp.sentinel;
+  const task = await opened.bureau.tasks.start('default', sentinel, {
+    principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+  });
+  await waitForCondition(async () => {
+    const recorded = await opened.bureau.tasks.get(task.id);
+    return recorded?.status === 'failed';
+  }, 'MCP task fails');
+  for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+    if (actor === 'foreign' || actor === 'removed') {
+      const response = await opened.handler(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'X-API-Key': WORKSPACE_PRIVACY_ACTORS[actor].key,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'initialize',
+            params: {
+              protocolVersion: MCP_PROTOCOL_VERSION,
+              capabilities: {},
+              clientInfo: { name: 'privacy', version: '1' },
+            },
+          }),
+        }),
+      );
+      expect(response.status).toBe(403);
+      await witnesses.observeMcp(WORKSPACE_MOUNT_CONFORMANCE.mcp.key, actor, { response });
+      continue;
+    }
+    const client = await connect(opened.handler, WORKSPACE_PRIVACY_ACTORS[actor].key, {
+      pin: MCP_PROTOCOL_VERSION,
+    });
+    for (const name of ['bureau.tasks.get', 'bureau.tasks.events']) {
+      const result = await client.callTool({ name, arguments: { taskId: task.id } });
+      if (name === 'bureau.tasks.get')
+        await witnesses.observeMcp(WORKSPACE_MOUNT_CONFORMANCE.mcp.key, actor, { result });
+      if (actor === 'owner') {
+        expect(result.isError).toBeFalsy();
+        expect(JSON.stringify(result.structuredContent)).toContain(task.id);
+        if (name === 'bureau.tasks.get')
+          expect(JSON.stringify(result.structuredContent)).toContain(sentinel);
+      } else {
+        expect(result.isError).toBe(true);
+        expect(result.structuredContent).toMatchObject({ code: 'NotFound' });
+        const unknown = await client.callTool({ name, arguments: { taskId: 'unknown-task' } });
+        expect(JSON.stringify(result.structuredContent).replaceAll(task.id, '<id>')).toBe(
+          JSON.stringify(unknown.structuredContent).replaceAll('unknown-task', '<id>'),
+        );
+        expect(JSON.stringify(result)).not.toContain(sentinel);
+      }
+    }
+    const listed = await client.callTool({ name: 'bureau.tasks.list', arguments: {} });
+    expect(listed.isError).toBeFalsy();
+    if (actor !== 'owner') expect(listed.structuredContent).toMatchObject({ tasks: [] });
+  }
+});
+
+it('the MCP mount has six executed actor witnesses', () => {
+  witnesses.verify();
 });

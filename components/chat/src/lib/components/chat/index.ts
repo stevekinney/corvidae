@@ -29,10 +29,12 @@ export type {
 } from './chat.types.ts';
 export type { ChatMarkdownNode, MarkdownNodeOverride } from './message/chat-message-parts.ts';
 export { default as ChatNote } from './message/parts/note-part.svelte';
+export type { AnswerSendResult } from './question/answer-hold.svelte.ts';
 export { default as ChatQuestion } from './question/chat-question.svelte';
-export type { ChatQuestionProps } from './question/chat-question.svelte';
+export type { ChatQuestionHoldCopy, ChatQuestionProps } from './question/chat-question.svelte';
 export { ChatQuestionAnswerError, recordAnswer } from './question/question-answer.ts';
 export type { ChatQuestionIssue, QuestionAnswerRecord } from './question/question-answer.ts';
+export { classifyQuestion } from './question/question-kind.ts';
 export type { QuestionKind } from './question/question-kind.ts';
 export { Chat, CURRENT_SCHEMA_VERSION };
 
@@ -61,6 +63,7 @@ export {
   appendUserMessage,
   buildMessage,
   clearMessageDeliveryStatus,
+  countQueuedFollowUps,
   createConversation,
   createConversationHistory,
   markMessageDeliveryFailed,
@@ -161,6 +164,7 @@ export {
   type UnresolvedToolApproval,
 } from './utilities/index.ts';
 export type {
+  ChatNotSent,
   ChildRunStatus,
   MessageNoteInfo,
   ReasoningInfo,
@@ -176,7 +180,9 @@ export type {
 export {
   applyComposerFormat,
   ChatAttachmentPreview,
+  ChatComposerSettings,
   ChatInput,
+  COMPOSER_FOLD_WIDTH,
   composerStatusText,
   deriveAttachmentKind,
   highlightComposerMarkdown,
@@ -190,6 +196,8 @@ export type {
   ChatAttachmentFailure,
   ChatAttachmentReference,
   ChatAttachmentUpload,
+  ChatComposerBlockedAction,
+  ChatComposerControlsContext,
   ChatComposerFormat,
   ChatComposerStatus,
   ChatComposerToolbarContext,

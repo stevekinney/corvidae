@@ -23,7 +23,7 @@ type Schema = Record<string, unknown>;
 async function ask(schema: Schema, props: Record<string, unknown> = {}) {
   const submitted: unknown[] = [];
   const view = render(ChatQuestion, {
-    props: { schema, id: 'q', onSubmit: (value: unknown) => submitted.push(value), ...props },
+    props: { schema, id: 'q', onSubmit: (value: unknown) => void submitted.push(value), ...props },
   });
   await flush();
   return { ...view, submitted };
@@ -78,7 +78,7 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
     expect(container.textContent).toContain('The first one');
   });
 
-  test('pick one or something else: a choice answers, and Something else opens a field', async () => {
+  test('pick one or something else: a choice answers, and the field below takes your own', async () => {
     const schema = {
       anyOf: [{ enum: ['red', 'blue'] }, { type: 'string', maxLength: 40 }],
       'x-allowOther': true,
@@ -89,10 +89,27 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
     cleanup();
 
     const second = await ask(schema);
-    await fireEvent.click(screen.getByRole('button', { name: 'Something else…' }));
-    await fireEvent.input(screen.getByLabelText('Something else'), { target: { value: 'teal' } });
-    await send();
+    const field = screen.getByPlaceholderText('Choose an answer above, or type your own…');
+    expect(screen.getByRole('button', { name: 'Answer' }).hasAttribute('disabled')).toBe(true);
+    await fireEvent.input(field, { target: { value: 'teal' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
+    await flush();
     expect(second.submitted).toEqual(['teal']);
+  });
+
+  test('pick one or something else in a chat with a composer: no field of its own', async () => {
+    await ask(
+      {
+        anyOf: [{ enum: ['red', 'blue'] }, { type: 'string', maxLength: 40 }],
+        'x-allowOther': true,
+      },
+      { answerInComposer: true },
+    );
+    expect(screen.queryByPlaceholderText('Choose an answer above, or type your own…')).toBeNull();
+    expect(screen.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      'red',
+      'blue',
+    ]);
   });
 
   test('pick several: checkboxes, and Send answers with the picked values in a list', async () => {
@@ -414,5 +431,34 @@ describe('ChatQuestion Change on a moment', () => {
     );
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toMatch(/^2026-10-29T\d{2}:30:00Z$/);
+  });
+});
+
+describe('the pick of a held answer', () => {
+  test('keeps the page’s own text colour on its tint, so the label is never the on-fill white of Cinder’s pressed button', async () => {
+    const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
+    const rule =
+      /\.chat-question-choices :global\(\.chat-question-choice\[data-selected\]\)[^{]*\{([^}]*)\}/u.exec(
+        source,
+      )?.[1];
+
+    expect(rule).toContain('var(--cinder-accent-background)');
+    expect(rule).toContain('color: var(--cinder-text-default)');
+  });
+
+  test('is told from the unpicked choice in a dark theme by a stronger tint and the full accent edge, and keeps the soft tint in a light one', async () => {
+    const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
+    const rule =
+      /\.chat-question-choices :global\(\.chat-question-choice\[data-selected\]\)[^{]*\{([^}]*)\}/u.exec(
+        source,
+      )?.[1];
+
+    // `light-dark()` keeps the light value the board draws and gives a dark theme its own.
+    expect(rule).toMatch(
+      /border-color: light-dark\(var\(--cinder-accent-border\), var\(--cinder-accent-solid\)\)/u,
+    );
+    expect(rule).toMatch(
+      /background: light-dark\(\s*var\(--cinder-accent-background\),\s*color-mix\(in oklch, var\(--cinder-accent-solid\) 3\d%, var\(--cinder-surface\)\)\s*\)/u,
+    );
   });
 });

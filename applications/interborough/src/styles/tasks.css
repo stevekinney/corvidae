@@ -97,10 +97,53 @@
   margin: 0 0 var(--cinder-space-2);
 }
 
+/* A question on the run page is a card: who asked, the question, and the answer under it. */
+.ib-run-wait__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-inline-size: 0;
+  padding: var(--cinder-space-4);
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-lg);
+  background: var(--cinder-surface);
+  /* The choices share the card's row, as two equal buttons. */
+  --chat-question-choice-grow: 1;
+}
+
+.ib-run-wait__kicker {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-run-wait__card .ib-run-wait__prompt {
+  margin: 0;
+  font-size: var(--cinder-text-md);
+  font-weight: 600;
+}
+
+.ib-run-wait__card .ib-run-wait__note {
+  margin: 0;
+}
+
 .ib-run-wait__note {
   margin: var(--cinder-space-2) 0 0;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
+}
+
+.ib-run__message-blocked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-3);
+}
+
+/* The blocked row takes what Cancel run leaves, and drops it to its own line when there is none. */
+.ib-run__message-blocked-row {
+  flex: 1 1 24rem;
+  min-inline-size: 0;
 }
 
 .ib-run__cancel-note {

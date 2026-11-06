@@ -103,6 +103,7 @@
 
 <div
   class={classNames('message-content', streaming && 'message-content-streaming', className)}
+  data-streaming-tail={streaming && streamingTail ? '' : undefined}
   {...rest}
 >
   {#if displayContent}

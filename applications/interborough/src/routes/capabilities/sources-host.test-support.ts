@@ -165,6 +165,7 @@ export function fakeToolSources(initial: {
     }
     if (id === undefined) {
       return Response.json({
+        configurationRevision: JSON.stringify(host.sources),
         sources: host.sources,
         ...(host.lockReason === undefined ? {} : { lockReason: host.lockReason }),
       });

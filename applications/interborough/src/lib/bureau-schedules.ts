@@ -8,7 +8,8 @@
  *
  * A schedule's view carries the start of its input, the prompt each fire runs (`inputPreview`, at
  * most 500 characters), and names the agent (`agentName`). Both are `null` for the schedule of a
- * workflow file, because that runs no agent and sends no prompt.
+ * workflow file, because that runs no agent and sends no prompt. Non-owner workspace responses also redact
+ * input previews, last-fire timestamps, and private fire counters to `null`.
  */
 import { HttpClientError, type ScheduleSpec } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -39,8 +40,8 @@ const viewSchema = z.object({
   /** The upcoming fires a person asked to skip, as ISO 8601 instants, soonest first. */
   skippedOccurrences: z.array(z.string()),
   lastFireAt: z.string().nullable(),
-  missedFireCount: z.number().int(),
-  skippedCount: z.number().int(),
+  missedFireCount: z.number().int().nullable(),
+  skippedCount: z.number().int().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   /**

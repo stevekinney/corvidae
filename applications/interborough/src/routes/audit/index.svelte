@@ -475,7 +475,7 @@
       {#if exportMutation.isPending}
         <div class="ib-audit__progress" data-testid="audit-export-progress">
           <InlineLoading status="active" description={copy.exportProgress(exportCount)} />
-          <Button variant="link" onclick={cancelExport}>{copy.exportCancel}</Button>
+          <Button variant="ghost-accent" onclick={cancelExport}>{copy.exportCancel}</Button>
         </div>
       {/if}
 
@@ -515,7 +515,7 @@
           onRetry={retry}
         >
           {#snippet secondaryAction()}
-            <Button variant="link" href={router.href(copy.failed.openHealthPath)}
+            <Button variant="ghost-accent" href={router.href(copy.failed.openHealthPath)}
               >{copy.failed.openHealth}</Button
             >
           {/snippet}

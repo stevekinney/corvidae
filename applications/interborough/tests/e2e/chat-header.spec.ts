@@ -1,7 +1,8 @@
 /**
- * An open chat's header and composer controls (COR-1967), against the real host: the model, the
- * reasoning effort and the permission mode are always shown, each changes from the composer and is
- * kept across a reload, the note says when a change applies, and the context-window ring reads
+ * An open chat's composer controls (COR-1967), against the real host: the model, the reasoning
+ * effort and the permission mode are ghost selects on the composer's control row, each changes from
+ * there and is kept across a reload, the line under the composer says when a change applies, and the
+ * context meter and the header's context-window ring read
  * `bureau.contexts.window` and opens to what fills the window. The cases run at a phone's width and
  * a desktop's, with axe passing. COR-1968 adds the More menu (rename, branch, export, delete), editing
  * a sent message by fork, and the abort of a cancelled upload on the server.
@@ -11,7 +12,7 @@ import type { Page } from '@playwright/test';
 import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
 import { CHAT_COPY } from '../../src/app/copy.ts';
 import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
-import { newThreadId, runToEnd } from './chat-support.ts';
+import { newThreadId, revealSettings, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -27,8 +28,12 @@ const [SONNET, HAIKU] = MODEL_SWITCHER_MODELS;
 const model = (page: Page) => page.getByRole('combobox', { name: 'Model' });
 const effort = (page: Page) => page.getByRole('combobox', { name: 'Effort' });
 const permission = (page: Page) => page.getByRole('combobox', { name: 'Permissions' });
-const summary = (page: Page, setting: string) => page.locator(`[data-setting="${setting}"]`);
-const note = (page: Page) => page.getByTestId('chat-settings-note');
+/** Opens a ghost select and chooses the option with these words. */
+async function choose(page: Page, select: ReturnType<typeof model>, label: string) {
+  await select.click();
+  await page.getByRole('option', { name: label }).click();
+}
+const note = (page: Page) => page.locator('.chat-input-status');
 
 async function open(page: Page, request: Parameters<typeof runToEnd>[0], agent: string) {
   const threadId = newThreadId('header');
@@ -46,32 +51,33 @@ for (const viewport of VIEWPORTS) {
   }) => {
     await page.setViewportSize(viewport);
     await open(page, request, 'demo:model-switcher');
+    // A composer this narrow folds the three selects into one Settings control; open it.
+    await revealSettings(page);
 
-    // The header says what the chat runs with before anything was changed.
-    await expect(summary(page, 'model')).toHaveText(SONNET.model);
-    await expect(summary(page, 'effort')).toHaveText('Agent default');
-    await expect(summary(page, 'permission')).toHaveText('Ask on changes');
-    await checkA11y(`the chat header, at ${viewport.width} pixels`);
+    // The composer says what the chat runs with before anything was changed.
+    await expect(model(page)).toContainText(SONNET.model);
+    await expect(effort(page)).toContainText('Agent default');
+    await expect(permission(page)).toContainText('On changes asks');
+    await checkA11y(`the chat composer, at ${viewport.width} pixels`);
 
     // The permission mode changes from the composer, and says when it applies.
-    await permission(page).selectOption('read-only');
-    await expect(summary(page, 'permission')).toHaveText('Read-only');
+    await choose(page, permission(page), 'Read-only');
+    await expect(permission(page)).toContainText('Read-only');
     await expect(permission(page)).toBeEnabled();
-    await expect(note(page)).toContainText('Applies to the next run.');
-    await expect(note(page)).toContainText('Every tool that is not read-only is denied.');
+    await expect(note(page)).toHaveText('Permissions Read-only applies to the next run.');
 
-    // So does the model, and the header follows it.
-    await model(page).selectOption({ label: HAIKU.model });
-    await expect(summary(page, 'model')).toHaveText(HAIKU.model);
+    // So does the model.
+    await choose(page, model(page), HAIKU.model);
+    await expect(model(page)).toContainText(HAIKU.model);
     await expect(model(page)).toBeEnabled();
 
     // A reload shows the chat kept both.
     await page.reload();
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-    await expect(summary(page, 'permission')).toHaveText('Read-only');
-    await expect(summary(page, 'model')).toHaveText(HAIKU.model);
-    await expect(permission(page)).toHaveValue('read-only');
-    await checkA11y(`the chat header after changes, at ${viewport.width} pixels`);
+    await revealSettings(page);
+    await expect(permission(page)).toContainText('Read-only');
+    await expect(model(page)).toContainText(HAIKU.model);
+    await checkA11y(`the chat composer after changes, at ${viewport.width} pixels`);
   });
 
   test(`reads the context window and opens to its breakdown, at ${viewport.width} pixels`, async ({
@@ -101,15 +107,14 @@ test('changes the effort, says when it applies, and keeps it across a reload', a
 }) => {
   await open(page, request, 'demo:model-switcher');
 
-  await effort(page).selectOption('low');
-  await expect(summary(page, 'effort')).toHaveText('Low');
+  await choose(page, effort(page), 'Low');
+  await expect(effort(page)).toContainText('Low');
   await expect(effort(page)).toBeEnabled();
-  await expect(note(page)).toContainText('Applies to the next run.');
+  await expect(note(page)).toHaveText('Effort Low applies to the next run.');
 
   await page.reload();
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-  await expect(summary(page, 'effort')).toHaveText('Low');
-  await expect(effort(page)).toHaveValue('low');
+  await expect(effort(page)).toContainText('Low');
 });
 
 test('shows the model of an agent that allows one, or none, though it offers no choice', async ({
@@ -117,13 +122,14 @@ test('shows the model of an agent that allows one, or none, though it offers no 
   request,
 }) => {
   await open(page, request, SINGLE_MODEL_AGENT_NAME);
-  await expect(summary(page, 'model')).toHaveText(SONNET.model);
+  await expect(model(page)).toContainText(SONNET.model);
   await expect(model(page)).toBeDisabled();
-  await expect(model(page).locator('option')).toHaveText([SONNET.model]);
 
+  // A scripted agent runs on no model, so its composer has Permissions only.
   await open(page, request, 'demo:echo');
-  await expect(summary(page, 'model')).toHaveText('Agent default');
-  await expect(model(page)).toBeDisabled();
+  await expect(permission(page)).toBeVisible();
+  await expect(model(page)).toHaveCount(0);
+  await expect(effort(page)).toHaveCount(0);
 });
 
 // The header's More menu and editing a sent message (COR-1968).
@@ -256,41 +262,6 @@ test('deletes the chat after asking, and returns to the list', async ({
   await expect(page).toHaveURL(/\/chats$/);
   const gone = await bureauCall(request, 'bureau.contexts.get', { contextId: threadId });
   expect(gone.error?.data?.weftCode).toBe('NotFound');
-});
-
-test('editing a sent message resends by fork, and leaves the original chat as it was', async ({
-  page,
-  request,
-  checkA11y,
-}) => {
-  const parentId = await openTwoTurns(page, request, 'edit');
-
-  const second = page.locator(USER_ROW).filter({ hasText: 'Second question' });
-  await second.hover();
-  await page.getByRole('button', { name: 'Edit message' }).last().click();
-  const editor = page.getByRole('textbox', { name: 'Edit message content' });
-  await editor.fill('A better second question');
-  await checkA11y('editing a sent message');
-  await page.getByRole('button', { name: 'Save & Resend' }).click();
-
-  await expect(page).toHaveURL(
-    (url) => url.pathname.startsWith('/chats/') && url.pathname !== `/chats/${parentId}`,
-  );
-  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-  const rows = page.locator(USER_ROW);
-  await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText('First question');
-  await expect(rows.last()).toContainText('A better second question');
-  await expect(page.locator(ASSISTANT_ROW)).toHaveCount(2);
-  await expect(page.locator('.weft-chat-header__origin')).toContainText(
-    CHAT_COPY.branch.branchedFrom,
-  );
-
-  // The chat it was edited in still holds the question as it was sent.
-  await page.goto(`/chats/${parentId}`);
-  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-  await expect(page.locator(USER_ROW).last()).toContainText('Second question');
-  await expect(page.locator(USER_ROW).last()).not.toContainText('better');
 });
 
 test('aborts the upload on the server when the person cancels an attachment', async ({

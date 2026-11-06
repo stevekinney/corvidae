@@ -111,6 +111,7 @@ describe('session.cancel() — durable cancellation', () => {
     const fakeEngine = createSessionEngine({
       cancel: async (id: string) => {
         cancelledIds.push(id);
+        return { workflowId: id, status: 'cancel-requested' };
       },
       get: async (id: string) => ({ id, status: 'cancelled' }),
       signal: async () => {},
@@ -183,7 +184,7 @@ describe('session.cancel() — durable cancellation', () => {
     checkpointConversation.appendUserMessage('from checkpoint');
     checkpointConversation.appendAssistantMessage('checkpoint answer');
     const engine = createSessionEngine({
-      cancel: async () => {},
+      cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
       get: async (id: string) => ({
         id,
         status: 'completed',

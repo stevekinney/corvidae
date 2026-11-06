@@ -25,7 +25,14 @@ import type {
  * @default `"secondary"`
  */
 export type ButtonVariant =
-  'primary' | 'secondary' | 'soft' | 'danger' | 'soft-danger' | 'ghost' | 'ghost-danger' | 'link';
+  | 'primary'
+  | 'secondary'
+  | 'soft'
+  | 'danger'
+  | 'soft-danger'
+  | 'ghost'
+  | 'ghost-danger'
+  | 'ghost-accent';
 
 /**
  * Size of the button. All sizes use compact visual heights; see button.a11y.md for touch-target guidance.

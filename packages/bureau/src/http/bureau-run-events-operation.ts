@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from './workspace-authorization.ts';
+
 /**
  * `operative.runs.events` as `createBureauHandler` serves it: the same feed, with
  * the owner predicate in front of it.
@@ -33,6 +35,7 @@ export const bureauRunEventsSubscriptionOperation = defineOperation<
   BureauRunEventsOperationHost
 >({
   name: runEventsSubscriptionOperation.name,
+  authorize: authorizeWorkspaceOperation('operative.runs.events'),
   mcpExposable: false,
   kind: 'subscription',
   summary: runEventsSubscriptionOperation.summary,

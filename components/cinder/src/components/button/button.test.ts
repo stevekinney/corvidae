@@ -44,14 +44,14 @@ describe('Button rendering', () => {
     );
   });
 
-  test('supports the link variant, which stays a button', () => {
+  test('supports the ghost-accent variant', () => {
     const { container } = render(Button, {
-      props: { label: 'Undo', variant: 'link', size: 'sm' },
+      props: { label: 'Undo', variant: 'ghost-accent' },
     });
 
-    const button = container.querySelector('button');
-    expect(button?.getAttribute('data-cinder-variant')).toBe('link');
-    expect(button?.getAttribute('type')).toBe('button');
+    expect(container.querySelector('button')?.getAttribute('data-cinder-variant')).toBe(
+      'ghost-accent',
+    );
   });
 
   test('loading button is aria-disabled and aria-busy, and stays focusable (no native disabled)', () => {

@@ -175,8 +175,8 @@ describe('an entry inside the root that is not what Bungalow expects', () => {
 
   test('a FIFO as a secret is refused promptly instead of blocking the read', async () => {
     using handle = await openIn(temporaryDirectory());
-    makeFifo(handle.secretLocation('token'));
-    const error = thrownBy(() => handle.readSecret('token'));
+    makeFifo(handle.deploymentSecrets.location('token'));
+    const error = await rejectedBy(handle.deploymentSecrets.read('token'));
     expect(error).toBeInstanceOf(BungalowStateError);
     expect((error as Error).message).toContain('secret file');
     expect((error as Error).message).not.toContain('token');
@@ -187,8 +187,10 @@ describe('an entry inside the root that is not what Bungalow expects', () => {
     const target = join(temporaryDirectory(), 'theirs');
     writeFileSync(target, 'not a secret of ours');
     chmodSync(target, 0o644);
-    symlinkSync(target, handle.secretLocation('token'));
-    expect(thrownBy(() => handle.readSecret('token'))).toBeInstanceOf(BungalowStateError);
+    symlinkSync(target, handle.deploymentSecrets.location('token'));
+    expect(await rejectedBy(handle.deploymentSecrets.read('token'))).toBeInstanceOf(
+      BungalowStateError,
+    );
     expect(modeOf(target)).toBe(0o644);
   });
 
@@ -197,8 +199,8 @@ describe('an entry inside the root that is not what Bungalow expects', () => {
     const other = join(temporaryDirectory(), 'theirs');
     writeFileSync(other, 'shared');
     chmodSync(other, 0o644);
-    linkSync(other, handle.secretLocation('token'));
-    const error = thrownBy(() => handle.readSecret('token'));
+    linkSync(other, handle.deploymentSecrets.location('token'));
+    const error = await rejectedBy(handle.deploymentSecrets.read('token'));
     expect(error).toBeInstanceOf(BungalowStateError);
     expect((error as Error).message).toContain('hard link');
     expect(modeOf(other)).toBe(0o644);
@@ -208,10 +210,10 @@ describe('an entry inside the root that is not what Bungalow expects', () => {
     using handle = await openIn(temporaryDirectory());
     const target = join(temporaryDirectory(), 'theirs');
     writeFileSync(target, 'not a secret of ours');
-    symlinkSync(target, handle.secretLocation('token'));
-    handle.writeSecret('token', 'ours');
+    symlinkSync(target, handle.deploymentSecrets.location('token'));
+    await handle.deploymentSecrets.write('token', 'ours');
     expect(readFileSync(target, 'utf8')).toBe('not a secret of ours');
-    expect(handle.readSecret('token')).toBe('ours');
+    expect(await handle.deploymentSecrets.read('token')).toBe('ours');
   });
 
   test('the temporary-file sweep neither deletes through a symbolic link nor follows one', async () => {

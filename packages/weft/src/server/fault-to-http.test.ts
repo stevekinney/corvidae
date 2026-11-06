@@ -103,6 +103,25 @@ describe('faultToHttpResponse', () => {
     });
   });
 
+  it('surfaces only explicitly approved conflict reasons', async () => {
+    const replacement = faultToHttpResponse({
+      code: 'Conflict',
+      message: 'workflow replaced',
+      data: { reason: 'workflow-replaced', publicReason: 'workflow-replaced' },
+    });
+    const privateConflict = faultToHttpResponse({
+      code: 'Conflict',
+      message: 'private conflict',
+      data: { reason: 'private-internal-reason' },
+    });
+
+    expect(await replacement.json()).toEqual({
+      error: 'workflow replaced',
+      data: { reason: 'workflow-replaced' },
+    });
+    expect(await privateConflict.json()).toEqual({ error: 'private conflict' });
+  });
+
   it('masks EngineFailure to the exact canonical bytes', async () => {
     const response = faultToHttpResponse({
       code: 'EngineFailure',

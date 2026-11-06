@@ -1,4 +1,4 @@
-import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
+import { initializeWorkspaceHome, storedWorkspaceSecret } from './workspace-home.test-support.ts';
 /**
  * COR-1901: a local host writes the provider configuration and a provider's key, and reloads the
  * catalog without a restart. The provider path runs against a fake client, and every key is a
@@ -11,7 +11,7 @@ import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { StorageSizeReportedEvent } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, statSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -55,7 +55,7 @@ async function storeKey(directory: string, name: string, key: string): Promise<v
     environment: { INTERBOROUGH_HOME: directory },
   });
   try {
-    bungalow.writeSecret(name, key);
+    await bungalow.deploymentSecrets.write(name, key);
   } finally {
     bungalow.close();
   }
@@ -110,6 +110,11 @@ async function startAt(directory: string, options: Parameters<typeof startHost>[
   return host;
 }
 
+async function mutationFor(host: Host) {
+  const snapshot = await host.providers.snapshot();
+  return { operationId: crypto.randomUUID(), expectedRevision: snapshot.configurationRevision };
+}
+
 function pairsOf(host: Host): string[] {
   return host.bureau.models
     .catalog()
@@ -144,11 +149,12 @@ describe('connecting a provider', () => {
     expect(pairsOf(host)).toEqual(['anthropic/claude-sonnet-5']);
     expect(change.catalogRevision).toBe(before + 1);
     expect(change.providers).toEqual([{ name: 'anthropic', models: ['claude-sonnet-5'] }]);
-    const secret = join(directory, 'secrets', 'anthropic-api-key');
-    expect(statSync(secret).mode & 0o777).toBe(0o600);
-    expect(await readFile(secret, 'utf8')).toBe(KEY_A);
+    const secret = await storedWorkspaceSecret(directory, 'anthropic-api-key');
+    expect(statSync(secret.path).mode & 0o777).toBe(0o600);
+    expect(secret.value).toBe(KEY_A);
     expect(JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'))).toEqual({
       plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
+      secretBindings: { 'anthropic-api-key': expect.any(String) },
     });
     expect(statSync(join(directory, 'configuration.json')).mode & 0o777).toBe(0o600);
     expect(host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toBeFunction();
@@ -177,9 +183,14 @@ describe('connecting a provider', () => {
     expect(written).toEqual({
       note: 'mine',
       plugins: { anthropic: { enabled: true, configuration: { models: ['sonnet'] } } },
+      secretBindings: {
+        'anthropic-api-key': expect.any(String),
+        'openai-api-key': expect.any(String),
+      },
     });
     expect(Object.hasOwn(written, 'providers')).toBe(false);
-    expect(await readFile(join(directory, 'secrets', 'anthropic-api-key'), 'utf8')).toBe(KEY_B);
+    const active = await storedWorkspaceSecret(directory, 'anthropic-api-key');
+    expect(active.value).toBe(KEY_B);
     expect(pairsOf(host)).toContain('anthropic/claude-sonnet-5');
     expect(pairsOf(host).some((pair) => pair.startsWith('openai/'))).toBe(true);
 
@@ -198,6 +209,7 @@ describe('connecting a provider', () => {
 
     expect(JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'))).toEqual({
       plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
+      secretBindings: { 'anthropic-api-key': expect.any(String) },
     });
   });
 
@@ -234,7 +246,9 @@ describe('connecting a provider', () => {
     // A refused request leaves nothing on disk.
     expect(existsSync(join(directory, 'configuration.json'))).toBe(false);
     expect(existsSync(join(directory, 'secrets', 'anthropic-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
     expect(existsSync(join(directory, 'secrets', 'openai-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
   });
 
   test('refuses to write over a configuration that is already invalid, and says which field', async () => {
@@ -250,6 +264,7 @@ describe('connecting a provider', () => {
       '{"catalog":[{"color":"red"}]}',
     );
     expect(existsSync(join(directory, 'secrets', 'openai-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
   });
 
   test('never reports a key: not in the change, the snapshot, the diagnostics, or a warning', async () => {
@@ -271,7 +286,7 @@ describe('connecting a provider', () => {
 });
 
 describe('a key that changes under running work', () => {
-  test('a generate resolved before the change keeps its key, and one resolved after uses the new one', async () => {
+  test('a generate resolved before the change refreshes its key when invoked after the change', async () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
@@ -287,7 +302,7 @@ describe('a key that changes under running work', () => {
 
     await createAgent({ name: 'started-before', generate: started }).run('Hello').result();
     await createAgent({ name: 'started-after', generate: later }).run('Hello').result();
-    expect(requests).toEqual(['A', 'B']);
+    expect(requests).toEqual(['B', 'B']);
   });
 
   test('a file agent runs with the new key from the first run after the change', async () => {
@@ -752,11 +767,11 @@ describe('a catalog save that names the edits it started from', () => {
 
   test('answers 409 with the stored edits over HTTP, and 200 when the base matches', async () => {
     const { directory, host } = await startWithAnthropic([sonnetOff]);
-    const put = (body: unknown) =>
+    const put = async (body: Record<string, unknown>) =>
       fetch(new URL('/host/catalog', host.url), {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, ...(await mutationFor(host)) }),
       });
 
     const stale = await put({ edits: [haikuOff], base: [] });
@@ -801,10 +816,15 @@ describe('disconnecting a provider', () => {
     expect(pairsOf(host).some((pair) => pair.startsWith('anthropic/'))).toBe(false);
     expect(pairsOf(host).some((pair) => pair.startsWith('openai/'))).toBe(true);
     expect(() => host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toThrow();
-    expect(await readFile(join(directory, 'secrets', 'anthropic-api-key'), 'utf8')).toBe('');
+    const cleared = await storedWorkspaceSecret(directory, 'anthropic-api-key');
+    expect(cleared.value).toBe('');
     expect(await readFile(join(directory, 'secrets', 'openai-api-key'), 'utf8')).toBe(KEY_B);
     // The allowlist and the catalog edit wait for a later connect.
-    expect(await readFile(join(directory, 'configuration.json'), 'utf8')).toBe(configuration);
+    const after = JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'));
+    expect(after).toEqual({
+      ...JSON.parse(configuration),
+      secretBindings: { 'anthropic-api-key': expect.any(String) },
+    });
     const snapshot = await host.providers.snapshot();
     expect(snapshot.providers.find((entry) => entry.name === 'anthropic')).toMatchObject({
       hasKey: false,
@@ -949,6 +969,7 @@ describe('disconnecting a provider', () => {
     const { host } = await startConnected();
     const removed = await fetch(new URL('/host/providers/anthropic', host.url), {
       method: 'DELETE',
+      body: JSON.stringify(await mutationFor(host)),
     });
     const text = await removed.text();
 
@@ -957,7 +978,10 @@ describe('disconnecting a provider', () => {
     expect(JSON.parse(text).providers.map((entry: { name: string }) => entry.name)).not.toContain(
       'anthropic',
     );
-    const unknown = await fetch(new URL('/host/providers/voyage', host.url), { method: 'DELETE' });
+    const unknown = await fetch(new URL('/host/providers/voyage', host.url), {
+      method: 'DELETE',
+      body: JSON.stringify(await mutationFor(host)),
+    });
     expect(unknown.status).toBe(400);
     expect(await unknown.json()).toMatchObject({ error: 'invalid', field: 'provider' });
   });
@@ -982,7 +1006,15 @@ describe('the provider routes', () => {
       headers: { 'content-type': 'application/json', ...headers },
       ...(body === undefined
         ? {}
-        : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
+        : {
+            body:
+              typeof body === 'string'
+                ? body
+                : JSON.stringify({
+                    ...(typeof body === 'object' && body !== null ? body : {}),
+                    ...(await mutationFor(host)),
+                  }),
+          }),
     });
   }
 
@@ -1059,5 +1091,6 @@ describe('the provider routes', () => {
 
     expect(response.status).toBe(403);
     expect(existsSync(join(directory, 'secrets', 'anthropic-api-key'))).toBe(false);
+    expect(await readdir(join(directory, '.managed-secrets', 'versions'))).toEqual([]);
   });
 });

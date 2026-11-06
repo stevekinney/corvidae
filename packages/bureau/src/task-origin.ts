@@ -22,6 +22,7 @@ export const TASK_ORIGIN_KINDS = [
   'schedule',
   'api',
   'agent',
+  'agent-run',
   'goal',
   'parent',
   'system',
@@ -96,6 +97,13 @@ export interface AgentTaskOrigin {
   readonly toolCallId?: string | undefined;
 }
 
+/** A top-level workflow run started by an agent tool call. */
+export interface AgentRunTaskOrigin {
+  readonly kind: 'agent-run';
+  readonly runId: string;
+  readonly agentId: string;
+}
+
 /** The task is one attempt of a goal (COR-1868): a subordinate task of the goal's run. */
 export interface GoalTaskOrigin {
   /** Discriminant. */
@@ -131,6 +139,7 @@ export type TaskOrigin =
   | ScheduleTaskOrigin
   | ApiTaskOrigin
   | AgentTaskOrigin
+  | AgentRunTaskOrigin
   | GoalTaskOrigin
   | ParentTaskOrigin
   | SystemTaskOrigin;
@@ -192,6 +201,7 @@ const ORIGIN_CHECKS: Readonly<
     isNonEmptyString(value['agentName']) &&
     (value['parentContextId'] === undefined || isNonEmptyString(value['parentContextId'])) &&
     (value['toolCallId'] === undefined || isNonEmptyString(value['toolCallId'])),
+  'agent-run': (value) => isNonEmptyString(value['runId']) && isNonEmptyString(value['agentId']),
   goal: (value) => isNonEmptyString(value['goalRunId']) && isNonEmptyString(value['attemptId']),
   parent: (value) => isNonEmptyString(value['parentRunId']),
   system: () => true,

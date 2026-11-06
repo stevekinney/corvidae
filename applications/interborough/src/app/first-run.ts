@@ -47,7 +47,9 @@ export function firstRunComplete(progress: FirstRunProgress): boolean {
 }
 
 /** Whether the person dismissed the checklist. Storage that cannot be read means it was not. */
-export function readFirstRunDismissed(storage: Storage | undefined = defaultStorage()): boolean {
+export function readFirstRunDismissed(
+  storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = defaultStorage(),
+): boolean {
   if (storage === undefined) return false;
   try {
     return storage.getItem(FIRST_RUN_DISMISSED_KEY) === 'true';
@@ -57,7 +59,9 @@ export function readFirstRunDismissed(storage: Storage | undefined = defaultStor
 }
 
 /** Keeps the dismissal. Storage that is full or blocked keeps it for this page only. */
-export function writeFirstRunDismissed(storage: Storage | undefined = defaultStorage()): void {
+export function writeFirstRunDismissed(
+  storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = defaultStorage(),
+): void {
   if (storage === undefined) return;
   try {
     storage.setItem(FIRST_RUN_DISMISSED_KEY, 'true');

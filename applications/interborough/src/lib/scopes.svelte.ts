@@ -45,6 +45,7 @@
 import { getContext, hasContext, setContext } from 'svelte';
 
 import { HttpClientError, type HttpClient } from '@lostgradient/weft';
+import { z } from 'zod';
 
 /** Every authorization scope a credential can be granted, in the order Weft names them. */
 export const AUTHORIZATION_SCOPES = [
@@ -79,6 +80,8 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
 
 /** Who the server says the caller is and the scopes it granted them. */
 export interface Principal {
+  /** Server-resolved identity used to isolate browser data. */
+  workspace?: { readonly workspaceId: string; readonly actorId: string };
   /**
    * The scopes the server reported as granted for this credential
    * (`weft.system.principal`). Empty for an anonymous principal. Shrinks
@@ -297,8 +300,18 @@ export async function resolvePrincipal(client: PrincipalProbeClient): Promise<Pr
     throw error;
   }
 
+  const workspace =
+    introspected.workspace === undefined
+      ? {}
+      : {
+          workspace: {
+            workspaceId: introspected.workspace.workspaceId,
+            actorId: introspected.workspace.actorId,
+          },
+        };
+
   if (introspected.method === 'unauthenticated') {
-    return { scopes: [], subject: null, unauthenticatedAccess: 'warn' };
+    return { scopes: [], subject: null, unauthenticatedAccess: 'warn', ...workspace };
   }
 
   if (introspected.method === 'unauthenticated-local') {
@@ -306,6 +319,7 @@ export async function resolvePrincipal(client: PrincipalProbeClient): Promise<Pr
       scopes: introspected.scopes.filter(isConsoleScope),
       subject: introspected.subject,
       unauthenticatedAccess: 'warn',
+      ...workspace,
     };
   }
 
@@ -316,6 +330,38 @@ export async function resolvePrincipal(client: PrincipalProbeClient): Promise<Pr
     scopes: introspected.scopes.filter(isConsoleScope),
     subject: introspected.subject,
     unauthenticatedAccess: null,
+    ...workspace,
+  };
+}
+
+const hostPrincipalSchema = z.object({
+  method: z.enum([
+    'jwt',
+    'api-key',
+    'mtls',
+    'stdio-local',
+    'unauthenticated-local',
+    'unauthenticated',
+  ]),
+  subject: z.string().nullable(),
+  scopes: z.array(z.string()),
+  workspace: z.object({ workspaceId: z.string().min(1), actorId: z.string().min(1) }),
+});
+
+/** Resolve this host's verified caller rather than the engine relay's internal credential. */
+export async function resolveHostPrincipal(
+  headers: HeadersInit,
+  fetcher: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<Principal | null> {
+  const response = await fetcher('/api/v1/principal', { headers, cache: 'no-store' });
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error(`Host principal request failed: ${response.status}`);
+  const result = hostPrincipalSchema.parse(await response.json());
+  return {
+    scopes: result.method === 'unauthenticated' ? [] : result.scopes.filter(isConsoleScope),
+    subject: result.subject,
+    unauthenticatedAccess: result.method === 'unauthenticated' ? 'warn' : null,
+    workspace: result.workspace,
   };
 }
 

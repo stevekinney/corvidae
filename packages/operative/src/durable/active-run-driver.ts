@@ -52,6 +52,7 @@ export async function driveDurableRun(
   onStepToolbox: ((toolbox: AnyToolbox) => void) | undefined,
   runtime: RuntimeServices,
   hookTracker: (promise: Promise<unknown>) => void,
+  deferredChildCallIds: Set<string>,
   // COR-713: receives every generated-media admission a step starts, so `closed()` can wait.
   admissionTracker: (admission: GeneratedMediaAdmission) => void,
   // AB-361: settles `ActiveRun.durablyStarted` — see that field's doc
@@ -165,8 +166,22 @@ export async function driveDurableRun(
     options: { ...options, agentName, signal },
     toolbox: options.toolbox,
     emitter,
+    deferredChildCallIds,
     onStepToolbox,
     admissionTracker,
+    requestChildWait: (request) => {
+      if (services.childWaitPrincipal !== request.principal)
+        return { parked: false, reason: 'unauthorized' as const };
+      if (
+        services.pendingChildWait !== undefined ||
+        services.pendingHumanWait !== undefined ||
+        services.pendingWakeup !== undefined
+      )
+        return { parked: false, reason: 'already-parked' as const };
+      services.pendingChildWait = { schemaVersion: 1, ...request };
+      services.deferredChildCallIds?.add(request.toolCallId);
+      return { parked: true };
+    },
   };
   // COR-297 — Weft's two-phase start. `prepare()` commits the run's durable
   // record (`pending`, not yet executing); that commit is the write

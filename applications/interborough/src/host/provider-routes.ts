@@ -1,3 +1,6 @@
+import { SecretProviderError } from '@lostgradient/bungalow';
+import type { HostAuthority } from './host-authority.ts';
+import { HostMutationError } from './host-mutation-context.ts';
 /**
  * The host's routes for the model providers (`provider-manager.ts`):
  *
@@ -26,7 +29,6 @@ import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   ProviderConflictError,
   ProviderInputError,
-  ProviderPartialChangeError,
   ProviderWriteLockedError,
   type ProviderManager,
 } from './provider-manager.ts';
@@ -72,6 +74,29 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
+    if (error instanceof HostMutationError)
+      return Response.json(
+        { error: error.code, message: error.message },
+        { status: error.code === 'forbidden' ? 403 : error.code === 'conflict' ? 409 : 400 },
+      );
+    if (error instanceof SecretProviderError) {
+      const status =
+        error.code === 'rejected'
+          ? 400
+          : error.code === 'read-only'
+            ? 403
+            : error.code === 'conflict'
+              ? 409
+              : 503;
+      return Response.json(
+        {
+          error: 'failed',
+          reason: error.code,
+          message: 'The secret provider could not complete the operation.',
+        },
+        { status },
+      );
+    }
     if (error instanceof ProviderWriteLockedError) {
       return Response.json(
         { error: 'locked', reason: error.reason, message: error.message },
@@ -102,17 +127,7 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
         { status: 400 },
       );
     }
-    if (error instanceof ProviderPartialChangeError) {
-      return Response.json(
-        {
-          error: 'partial',
-          provider: error.provider,
-          inUse: error.inUse,
-          message: error.message,
-        },
-        { status: 500 },
-      );
-    }
+
     // Nothing from the failure is repeated: it may hold a path or, from a provider, a value.
     return Response.json(
       { error: 'failed', message: 'The provider configuration could not be changed.' },
@@ -122,7 +137,11 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
 }
 
 /** The routes to merge into the host's `routes`. Each runs the guard first. */
-export function providerRoutes(manager: ProviderManager, refuse: Refuse) {
+export function providerRoutes(
+  manager: ProviderManager,
+  refuse: Refuse,
+  authority: Pick<HostAuthority, 'mutation'>,
+) {
   return {
     [HOST_PROVIDERS_ROUTE]: {
       GET: (request: Request) => refuse(request) ?? respond(() => manager.snapshot()),
@@ -132,14 +151,22 @@ export function providerRoutes(manager: ProviderManager, refuse: Refuse) {
         refuse(request) ??
         respond(async () => {
           const body = await readObject(request);
-          return manager.connect({
-            provider: request.params.name,
-            apiKey: body['apiKey'],
-            models: body['models'],
-          });
+          const mutation = await authority.mutation(request, body);
+          return manager.connect(
+            {
+              provider: request.params.name,
+              apiKey: body['apiKey'],
+              models: body['models'],
+            },
+            mutation,
+          );
         }),
       DELETE: (request: Bun.BunRequest<typeof HOST_PROVIDER_ROUTE>) =>
-        refuse(request) ?? respond(() => manager.disconnect(request.params.name)),
+        refuse(request) ??
+        respond(async () => {
+          const mutation = await authority.mutation(request, await readObject(request));
+          return manager.disconnect(request.params.name, mutation);
+        }),
     },
     [HOST_PROVIDERS_RELOAD_ROUTE]: {
       POST: (request: Request) => refuse(request) ?? respond(() => manager.reload()),
@@ -149,7 +176,11 @@ export function providerRoutes(manager: ProviderManager, refuse: Refuse) {
         refuse(request) ??
         respond(async () => {
           const body = await readObject(request);
-          return manager.editCatalog(body['edits'], body['base']);
+          return manager.editCatalog(
+            body['edits'],
+            body['base'],
+            await authority.mutation(request, body),
+          );
         }),
     },
   };

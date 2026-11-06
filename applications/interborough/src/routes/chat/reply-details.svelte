@@ -7,7 +7,7 @@
    * the effort, the cost and the time are not carried by either.
    */
   import { Button, EmptyState, ErrorState, Popover, Skeleton } from '@lostgradient/cinder';
-  import { Info } from '@lucide/svelte';
+  import { ChevronDown } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy.ts';
@@ -47,14 +47,14 @@
   {#snippet trigger()}
     <Button
       type="button"
-      class="chat-message-action-button"
+      class="chat-message-action-button weft-reply-details__trigger"
       size="xs"
       variant="ghost"
-      iconOnly
-      label={COPY.action}
+      aria-expanded={open}
       onclick={() => (open = !open)}
     >
-      <Info class="cinder-icon-xs" />
+      {COPY.action}
+      <ChevronDown class="cinder-icon-xs" aria-hidden="true" />
     </Button>
   {/snippet}
   <div class="weft-reply-details" data-testid="reply-details">

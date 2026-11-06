@@ -18,6 +18,7 @@ import {
 } from '../../lib/live-source/event-stream-hub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
+import { chooseOption, optionLabels } from './listbox.test-support.ts';
 import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -107,31 +108,7 @@ describe('a new chat', () => {
       },
     );
 
-  test('offers every listed agent in a searchable list above the composer, starting from the agent it was given', async () => {
-    restore = served().restore;
-    landAt('/chats/new');
-
-    const { findByRole } = mount({
-      sessionId: 'thread-1',
-      title: null,
-      agentName: 'assistant',
-      isNew: true,
-    });
-
-    const agent = await findByRole('combobox', { name: 'Agent' });
-    // The list fills once the Bureau has said which agents there are.
-    await waitFor(() => expect((agent as HTMLInputElement).value).toMatch(/assistant/i));
-    await fireEvent.input(agent, { target: { value: '' } });
-    await fireEvent.focus(agent);
-    const listbox = await findByRole('listbox');
-    const options = listbox.querySelectorAll('[role="option"]');
-    const names = [...options].map((option) => option.textContent ?? '');
-    expect(names.some((name) => name.includes('Researcher'))).toBe(true);
-    // An agent that opts into A2A takes a chat as any other does.
-    expect(names.some((name) => name.includes('Internal'))).toBe(true);
-  });
-
-  test('puts the agent pill in the composer and leaves the header with the title alone', async () => {
+  test('offers every listed agent in a list inside the composer, starting from the agent it was given', async () => {
     restore = served().restore;
     landAt('/chats/new');
 
@@ -142,12 +119,37 @@ describe('a new chat', () => {
       isNew: true,
     });
 
-    const pill = await findByRole('combobox', { name: 'Agent' });
-    expect(pill.closest('.ib-agent-pill')).not.toBeNull();
+    const agent = await findByRole('combobox', { name: 'Agent' });
+    // The list fills once the Bureau has said which agents there are.
+    await waitFor(() => expect(agent.textContent).toMatch(/assistant/i));
+    const names = await optionLabels(container, 'weft-chat-agent');
+    expect(names).toContain('Researcher');
+    // An agent that opts into A2A takes a chat as any other does.
+    expect(names).toContain('Internal');
+  });
+
+  test('puts the agent select at the top of the composer and leaves the header with the title alone', async () => {
+    restore = served().restore;
+    landAt('/chats/new');
+
+    const { container, findByRole } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    const select = await findByRole('combobox', { name: 'Agent' });
+    expect(select.closest('.chat-input-header')).not.toBeNull();
+    expect(select.closest('.ib-agent-select')).not.toBeNull();
+    expect(select.getAttribute('data-cinder-variant')).toBe('ghost');
     expect(
       container.querySelector('[data-testid="chat-header"]')?.querySelector('input, select'),
     ).toBeNull();
-    expect(container.querySelectorAll('[role="combobox"]')).toHaveLength(1);
+    // The agent first, then the one setting a scripted agent has, and the Send beside it.
+    const row = container.querySelector('.chat-input-footer-left')!;
+    expect(row.querySelector('#weft-chat-permission')).not.toBeNull();
+    expect(row.querySelector('#weft-chat-agent')).toBeNull();
   });
 
   test('greets with the agent and its prompts, and shows the other agents as one row until one is chosen', async () => {
@@ -334,23 +336,16 @@ describe('a new chat', () => {
     restore = served().restore;
     landAt('/chats/new');
     const length = window.history.length;
-    const { findByRole } = mount({
+    const { container, findByRole } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'assistant',
       isNew: true,
     });
     const agent = await findByRole('combobox', { name: 'Agent' });
-    await waitFor(() => expect((agent as HTMLInputElement).value).toMatch(/assistant/i));
+    await waitFor(() => expect(agent.textContent).toMatch(/assistant/i));
 
-    await fireEvent.input(agent, { target: { value: '' } });
-    await fireEvent.focus(agent);
-    const listbox = await findByRole('listbox');
-    const option = [...listbox.querySelectorAll('[role="option"]')].find((entry) =>
-      (entry.textContent ?? '').includes('Researcher'),
-    );
-    if (option === undefined) throw new Error('Expected the researcher to be offered.');
-    await fireEvent.mouseDown(option);
+    await chooseOption(container, 'Researcher', 'weft-chat-agent');
 
     expect(router.current.search.get('agent')).toBe('researcher');
     expect(window.history.length).toBe(length);
@@ -1253,7 +1248,7 @@ describe('attachments', () => {
     await attach(container, big);
 
     await waitFor(() => expect(states(container)).toEqual(['error']));
-    expect(await findByText(/larger than the 10 MB this agent accepts/)).not.toBeNull();
+    expect(await findByText('Can’t attach: 10 MB is over the 10 MB limit.')).not.toBeNull();
     expect(state.methods).toEqual([]);
   });
 
@@ -1275,8 +1270,10 @@ describe('attachments', () => {
     await attach(container, big, new File(['zip'], 'a.zip', { type: 'application/zip' }));
 
     await waitFor(() => expect(states(container)).toEqual(['error', 'error']));
-    expect(await findByText(/larger than the 3\.0 MB this agent accepts/)).not.toBeNull();
-    expect(await findByText(/does not accept that type of file/)).not.toBeNull();
+    expect(await findByText('Can’t attach: 4.0 MB is over the 3.0 MB limit.')).not.toBeNull();
+    expect(
+      await findByText('Can’t attach: ZIP files aren’t supported. Use PNG, JPG.'),
+    ).not.toBeNull();
     expect(state.methods).toEqual([]);
   });
 
@@ -1290,12 +1287,12 @@ describe('attachments', () => {
     [
       'bureau.assets.uploads.complete',
       () => jsonRpcFault(422, 'Unprocessable', { reason: 'upload-incomplete' }),
-      /could not be uploaded/,
+      /Upload failed/,
     ],
     [
       'bureau.assets.uploads.append',
       () => new Response('Too large', { status: 413 }),
-      /could not be uploaded/,
+      /Upload failed/,
     ],
   ] as const)(
     'shows an upload fault from %s on the attachment as an error',
@@ -1324,18 +1321,11 @@ describe('attachments', () => {
     await attach(container, png());
     await waitFor(() => expect(states(container)).toEqual(['ready']));
 
-    const chooser = await findByRole('combobox', { name: 'Agent' });
-    await fireEvent.input(chooser, { target: { value: '' } });
-    await fireEvent.focus(chooser);
-    const listbox = await findByRole('listbox');
-    const option = [...listbox.querySelectorAll('[role="option"]')].find((entry) =>
-      (entry.textContent ?? '').includes('Plain'),
-    );
-    if (option === undefined) throw new Error('Expected the plain agent to be offered.');
-    await fireEvent.mouseDown(option);
+    await findByRole('combobox', { name: 'Agent' });
+    await chooseOption(container, 'Plain', 'weft-chat-agent');
 
     await waitFor(() => expect(states(container)).toEqual(['error']));
-    expect(await findByText(/does not accept that type of file/)).not.toBeNull();
+    expect(await findByText('Can’t attach: this agent does not take files.')).not.toBeNull();
     await sendMessage(container, 'Hello');
     await waitFor(() => expect(state.runs).toHaveLength(1));
     expect(state.runs[0]?.messages[0]?.content).toBe('Hello');
@@ -1456,6 +1446,14 @@ describe('attachments', () => {
 
 describe('the files on a row', () => {
   const SEER = { ...AGENT, name: 'seer', displayName: 'Seer', media: null };
+  const WORKFLOW_REVISION_PANEL = {
+    plugin: 'inspectors',
+    app: 'workflow-revision-review',
+    title: 'Review workflow revision',
+    uri: 'ui://bureau/workflow-revision-review/v1',
+    opensFromTool: 'bureau.workflows.update',
+    opensFromAgentTool: 'bureau:workflows-propose-update',
+  };
   const reload = (history: unknown[]) => {
     restore = bureau(
       { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
@@ -1472,6 +1470,99 @@ describe('the files on a row', () => {
     landAt('/chats/session-1');
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
   };
+
+  const reloadWithWorkflowRevisionPanel = (results: string | readonly string[]) => {
+    const proposalResults = typeof results === 'string' ? [results] : results;
+    let appReads = 0;
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({
+            threadId: 'session-1',
+            messages: proposalResults.flatMap((result, index) => {
+              const callId = index === 0 ? 'proposal-call' : 'malformed-proposal';
+              return [
+                {
+                  id: callId,
+                  role: 'assistant',
+                  toolCalls: [
+                    {
+                      id: callId,
+                      type: 'function',
+                      function: {
+                        name: 'bureau__workflows-propose-update',
+                        arguments: '{"id":"daily","expectedHash":"hash-1"}',
+                      },
+                    },
+                  ],
+                },
+                {
+                  id: `${callId}-result`,
+                  role: 'tool',
+                  toolCallId: callId,
+                  content: result,
+                },
+              ];
+            }),
+          });
+        }
+        if (url === '/host/mcp-apps') {
+          appReads += 1;
+          return Response.json({ apps: [WORKFLOW_REVISION_PANEL] });
+        }
+        if (url.endsWith('/apps/workflow-revision-review')) {
+          return Response.json({ html: '<div id="root">workflow review</div>' });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    return {
+      ...mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' }),
+      appReads: () => appReads,
+    };
+  };
+
+  test('mounts the workflow revision panel for a completed proposal tool result', async () => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel(
+      JSON.stringify({
+        status: 'ok',
+        id: 'daily',
+        baseHash: 'hash-1',
+        proposedText: 'id: daily\ntrigger: 1h\nsteps: []',
+      }),
+    );
+
+    await waitFor(() => expect(appReads()).toBe(1));
+    await waitFor(() => {
+      const frame = container.querySelector('iframe[title="Review workflow revision"]');
+      expect(frame?.getAttribute('srcdoc')).toContain('workflow review');
+    });
+  });
+
+  test('does not mount the workflow revision panel for a malformed proposal result', async () => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel([
+      JSON.stringify({
+        status: 'ok',
+        id: 'daily',
+        baseHash: 'hash-1',
+        proposedText: 'id: daily\ntrigger: 1h\nsteps: []',
+      }),
+      'not-json',
+    ]);
+
+    await waitFor(() => expect(appReads()).toBe(1));
+    await waitFor(() =>
+      expect(container.querySelectorAll('iframe[title="Review workflow revision"]')).toHaveLength(
+        1,
+      ),
+    );
+    expect(container.querySelector('[data-tool-call-row="malformed-proposal"] iframe')).toBeNull();
+  });
 
   test('shows an image a run announces on the assistant row it ends with', async () => {
     restore = bureau(

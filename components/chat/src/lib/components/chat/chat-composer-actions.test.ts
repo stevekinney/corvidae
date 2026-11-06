@@ -157,7 +157,8 @@ describe('Chat composerActions', () => {
     const picker = right.querySelector<HTMLSelectElement>('[data-testid="model-picker"]')!;
     expect(picker.disabled).toBe(false);
     expect(picker.closest('[inert]')).toBeNull();
-    expect(right.querySelector('button[aria-label="Send message"]')).not.toBeNull();
+    // Stop takes Send's place while the box is empty.
+    expect(right.querySelector('button[aria-label="Send message"]')).toBeNull();
     expect(right.querySelector('button[aria-label="Stop generating"]')).not.toBeNull();
   });
 

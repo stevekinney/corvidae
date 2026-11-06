@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { createAgent } from '@lostgradient/operative';
 import {
   AUTHORIZATION_SCOPES,
+  type AuthConfig,
   type AuthorizationScope,
   createOperationHandler,
   unauthenticatedLocalAuthContext,
@@ -29,6 +30,7 @@ import { authentication, type Handler, type RpcBody } from './management-fixture
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { workflowFileDirectory } from '../../sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
+import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 export interface Served {
   readonly bureau: Bureau;
@@ -52,6 +54,9 @@ export interface ServeOptions {
   readonly agents?: AgentDefinitions;
   /** Build a durable Bureau with no `workflowSource`, so it has no workflow directory. */
   readonly withoutDirectory?: boolean;
+  /** Shared immutable workspace binding for the Bureau and both test handlers. */
+  readonly workspace?: WorkspaceMembershipOptions;
+  readonly authentication?: AuthConfig;
 }
 
 export async function serveWorkflows(
@@ -68,6 +73,7 @@ export async function serveWorkflows(
     ...(options.withoutDirectory === true
       ? {}
       : { workflowSource: workflowFileDirectory(directory) }),
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     storage: new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
@@ -76,7 +82,10 @@ export async function serveWorkflows(
     await bureau.dispose();
     await rm(directory, { recursive: true, force: true });
   });
-  const keyed = createBureauHandler(bureau, { authentication });
+  const keyed = createBureauHandler(bureau, {
+    authentication: options.authentication ?? authentication,
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
+  });
   const noBureauScopes = new Set<AuthorizationScope>(
     [...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES)].filter(
       (scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope),

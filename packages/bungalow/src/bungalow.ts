@@ -1,18 +1,15 @@
-import {
-  closeSync,
-  constants,
-  fsyncSync,
-  mkdtempSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  writeSync,
-} from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
-import { ensureDirectory, openEntry, readEntry, syncDirectory } from './entry-guard.ts';
+import type {
+  ConfigurationSnapshot,
+  ConfigurationWriteCapability,
+  ConfigurationWriteCondition,
+  ConfigurationWriteResult,
+} from './configuration.ts';
+import { localConfigurationSnapshot, writeLocalConfiguration } from './configuration.ts';
+import { ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import { sanitizeCause } from './error-code.ts';
 import {
@@ -29,6 +26,7 @@ import {
   resolveBungalowRoot,
   type BungalowEnvironment,
 } from './resolve-root.ts';
+import { createLocalSecretProvider, type SecretProvider } from './secret-provider.ts';
 import { generateUlid, isUlid } from './ulid.ts';
 import { assertBungalowName, assertDirectoryName, assertSecretKey } from './validation.ts';
 
@@ -85,32 +83,19 @@ export type Bungalow = {
   content(name: string): ContentLocation;
   /** The `Bun.S3Client` remote mode configured from the environment, or `undefined` locally. */
   s3Client(): Bun.S3Client | undefined;
-  /** The text of the configuration, or `undefined` when none has been written. Absence is valid. */
-  readConfiguration(): Promise<string | undefined>;
-  /**
-   * Replace the configuration with `text`, atomically: the text goes to a temporary file that is
-   * synced and then renamed over `configuration.json`, so a crash or a failure at any step leaves
-   * the previous file whole. The file is mode 0600. Bungalow stores the text as given and never
-   * parses it, so the caller validates it first. Remote mode keeps the configuration in a bucket
-   * object a person puts there, so it throws `BungalowStateError`. A failure throws
-   * `BungalowFilesystemError`, whose message and cause never carry the text or a path.
-   */
-  writeConfiguration(text: string): void;
-  /**
-   * Where the secret `key` is stored: its 0600 file path in local mode, the name of its
-   * `<NAME>_SECRET_<KEY>` variable in remote mode. The key is validated.
-   */
-  secretLocation(key: string): string;
-  /**
-   * Store `value` in its own 0600 file, replacing any earlier value. Remote mode reads secrets from
-   * the environment, so there it throws `BungalowStateError`.
-   */
-  writeSecret(key: string, value: string): void;
-  /**
-   * The stored value, or `undefined` when the key has never been written (locally) or its
-   * variable is unset or empty (remotely).
-   */
-  readSecret(key: string): string | undefined;
+  /** The backend's write capability, independent of mode and caller permissions. */
+  readonly configurationWriteCapability: ConfigurationWriteCapability;
+  /** Configuration bytes and their backend revision from one read. */
+  readConfiguration(): Promise<ConfigurationSnapshot>;
+  /** Await one conditional replacement; unknown means a commit cannot safely be ruled out. */
+  writeConfiguration(
+    text: string,
+    condition: ConfigurationWriteCondition,
+  ): Promise<ConfigurationWriteResult>;
+  /** Workspace-bound managed versions; configuration publication is owned by the application. */
+  readonly secretProvider: SecretProvider;
+  /** Deployment inputs independent of the managed provider, including root encryption keys. */
+  readonly deploymentSecrets: DeploymentSecrets;
   /**
    * End the handle: release the lock locally. Idempotent once it has succeeded; a failed close can
    * be retried.
@@ -118,6 +103,19 @@ export type Bungalow = {
   close(): void;
   [Symbol.dispose](): void;
 };
+
+/** Bootstrap inputs never resolve through an injected managed-secret provider. */
+export type DeploymentSecrets = {
+  /** Read a validated deployment key; backend failure is distinct from absence. */
+  read(key: string): Promise<string | undefined>;
+  /** Store a local deployment input; environment-backed inputs are read-only. */
+  write(key: string, value: string): Promise<void>;
+  /** Operator-facing location without a credential value. */
+  location(key: string): string;
+};
+
+/** Trusted composition binds a provider once, after the backing workspace identity is verified. */
+export type SecretProviderFactory = (workspaceId: string) => SecretProvider;
 
 /** Trusted composition hook: undefined identity checks an empty database before bootstrap;
  * a persisted identity atomically binds the raw store before workspace publication. */
@@ -137,6 +135,10 @@ export type OpenBungalowOptions = {
   readonly workspaceId?: string;
   /** Required in remote mode: the application binds the database it owns before recovery. */
   readonly databaseWorkspaceClaim?: DatabaseWorkspaceClaim;
+  /** Opt in to conditional remote configuration writes. Defaults to read-only; authorization is separate. */
+  readonly writableConfiguration?: boolean;
+  /** Inject a provider bound to this home; location does not determine its capabilities. */
+  readonly secretProvider?: SecretProviderFactory;
 };
 
 export type OpenTemporaryBungalowOptions = {
@@ -153,51 +155,6 @@ function filesystem<Result>(description: string, step: () => Result): Result {
       cause: sanitizeCause(error),
     });
   }
-}
-
-/** Write every byte, since `writeSync` may write fewer than it was given. */
-function writeFully(descriptor: number, contents: Buffer): void {
-  let offset = 0;
-  while (offset < contents.length) {
-    offset += writeSync(descriptor, contents, offset, contents.length - offset);
-  }
-}
-
-/**
- * Write a file that is 0600 from its first byte, then rename it into place and sync the entry.
- * The rename replaces whatever entry was at `path` (a symbolic link, a FIFO, a stale file) rather
- * than writing through it, so a write can never land on something that is not Bungalow's.
- */
-function writePrivateFile(
-  path: string,
-  contents: string,
-  rename: (from: string, to: string) => void = renameSync,
-): void {
-  const temporary = `${path}.${process.pid}-${crypto.randomUUID()}.tmp`;
-  let descriptor: number | undefined;
-  try {
-    descriptor = openEntry(
-      temporary,
-      'temporary file',
-      'file',
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
-      SECRET_MODE,
-    );
-    writeFully(descriptor, Buffer.from(contents));
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    rename(temporary, path);
-  } catch (error) {
-    if (descriptor !== undefined) closeSync(descriptor);
-    try {
-      unlinkSync(temporary);
-    } catch {
-      // The temporary file was never created, or is already gone.
-    }
-    throw error;
-  }
-  syncDirectory(dirname(path));
 }
 
 /**
@@ -262,6 +219,7 @@ export type OpenAtRootDependencies = {
   readonly onClose?: () => void;
   /** Replaces the rename that publishes a written configuration, so a test can fail it. */
   readonly renameConfiguration?: (from: string, to: string) => void;
+  readonly secretProvider?: SecretProviderFactory;
   readonly workspaceId?: string;
 };
 
@@ -341,6 +299,19 @@ export function openAtRoot(
     finished = true;
   };
 
+  let secretProvider: SecretProvider;
+  try {
+    secretProvider =
+      dependencies.secretProvider?.(workspaceId) ??
+      createLocalSecretProvider({ root, workspaceId, assertOpen });
+    if (secretProvider.workspaceId !== workspaceId) {
+      throw new BungalowInputError('The secret provider belongs to a different workspace.');
+    }
+  } catch (error) {
+    close();
+    throw error;
+  }
+
   return {
     name,
     mode: 'local',
@@ -360,37 +331,49 @@ export function openAtRoot(
       filesystem('prepare a content directory', () => ensureDirectory(path, 'content directory'));
       return { kind: 'directory', path };
     },
+    configurationWriteCapability: 'writable',
     async readConfiguration() {
       assertOpen();
-      return filesystem('read the configuration', () =>
-        readEntry(configurationLocation, 'configuration file'),
+      return localConfigurationSnapshot(
+        filesystem('read the configuration', () =>
+          readEntry(configurationLocation, 'configuration file'),
+        ),
       );
     },
-    writeConfiguration(text) {
+    async writeConfiguration(text, condition) {
       assertOpen();
-      if (typeof text !== 'string') {
-        throw new BungalowInputError('The configuration must be text.');
-      }
-      filesystem('write the configuration', () =>
-        writePrivateFile(configurationLocation, text, renameConfiguration),
+      return writeLocalConfiguration(
+        text,
+        condition,
+        () =>
+          filesystem('read the configuration', () =>
+            readEntry(configurationLocation, 'configuration file'),
+          ),
+        (next) =>
+          filesystem('write the configuration', () =>
+            writePrivateFile(configurationLocation, next, renameConfiguration),
+          ),
       );
     },
-    secretLocation(key) {
-      assertOpen();
-      assertSecretKey(key);
-      return join(secrets, key);
-    },
-    writeSecret(key, value) {
-      assertOpen();
-      assertSecretKey(key);
-      filesystem('write a secret', () => writePrivateFile(join(secrets, key), value));
-    },
-    readSecret(key) {
-      assertOpen();
-      assertSecretKey(key);
-      return filesystem('read a secret', () =>
-        readEntry(join(secrets, key), 'secret file', SECRET_MODE),
-      );
+    secretProvider,
+    deploymentSecrets: {
+      location(key) {
+        assertOpen();
+        assertSecretKey(key);
+        return join(secrets, key);
+      },
+      async write(key, value) {
+        assertOpen();
+        assertSecretKey(key);
+        filesystem('write a deployment secret', () => writePrivateFile(join(secrets, key), value));
+      },
+      async read(key) {
+        assertOpen();
+        assertSecretKey(key);
+        return filesystem('read a deployment secret', () =>
+          readEntry(join(secrets, key), 'secret file', SECRET_MODE),
+        );
+      },
     },
     close,
     [Symbol.dispose]: close,
@@ -457,6 +440,8 @@ export async function openBungalowWithDependencies(
       remote,
       options.workspaceId,
       options.databaseWorkspaceClaim,
+      options.writableConfiguration === true,
+      options.secretProvider,
     );
   }
   const variable = bungalowHomeVariable(options.name);
@@ -469,13 +454,11 @@ export async function openBungalowWithDependencies(
     );
   }
   const root = resolveOpenRoot({ ...options, environment });
-  return openAtRoot(
-    options.name,
-    root,
-    options.workspaceId === undefined
-      ? dependencies
-      : { ...dependencies, workspaceId: options.workspaceId },
-  );
+  return openAtRoot(options.name, root, {
+    ...dependencies,
+    ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
+    ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
+  });
 }
 
 /** The temporary directory as an absolute path, since `TMPDIR` is allowed to be relative. */

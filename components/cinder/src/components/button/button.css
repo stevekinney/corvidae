@@ -258,20 +258,10 @@
     border-color: transparent;
   }
 
-  /* link — an action that reads as a text link: the accent text with no fill or border, for an
- * action that sits beside a row's state as a word (Undo beside "Skipped"). It keeps the size's
- * height, so it lines up with a button beside it, and a tighter inline padding. */
-  .cinder-button[data-cinder-variant='link'] {
+  /* An action inside a line of text (Undo, Remove): the label alone, in the accent text colour. */
+  .cinder-button[data-cinder-variant='ghost-accent'] {
     background: transparent;
     color: var(--cinder-accent-text);
-    border-color: transparent;
-    padding-inline: var(--cinder-space-1);
-  }
-
-  .cinder-button[data-cinder-variant='link']:disabled:not([data-cinder-loading]),
-  .cinder-button[data-cinder-variant='link'][aria-disabled='true']:not([data-cinder-loading]) {
-    background: transparent;
-    color: var(--cinder-text-disabled);
     border-color: transparent;
   }
 
@@ -289,6 +279,21 @@
 
   .cinder-button[data-cinder-variant='ghost']:disabled:not([data-cinder-loading]),
   .cinder-button[data-cinder-variant='ghost'][aria-disabled='true']:not([data-cinder-loading]) {
+    background: transparent;
+    color: var(--cinder-text-disabled);
+    border-color: transparent;
+  }
+
+  .cinder-button[data-cinder-variant='ghost-accent'][data-cinder-loading] {
+    background: transparent;
+    color: var(--cinder-accent-text);
+    border-color: transparent;
+  }
+
+  .cinder-button[data-cinder-variant='ghost-accent']:disabled:not([data-cinder-loading]),
+  .cinder-button[data-cinder-variant='ghost-accent'][aria-disabled='true']:not(
+      [data-cinder-loading]
+    ) {
     background: transparent;
     color: var(--cinder-text-disabled);
     border-color: transparent;
@@ -423,6 +428,12 @@
       color: var(--cinder-text-default);
     }
 
+    .cinder-button[data-cinder-variant='ghost-accent']:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ) {
+      background: var(--cinder-surface-hover);
+    }
+
     .cinder-button[data-cinder-variant='ghost-danger']:hover:not(:disabled):not(
         [aria-disabled='true']
       ) {
@@ -436,11 +447,6 @@
       background: var(--cinder-status-danger-background);
       border-color: var(--cinder-status-danger-border);
       color: var(--cinder-status-danger-text);
-    }
-
-    .cinder-button[data-cinder-variant='link']:hover:not(:disabled):not([aria-disabled='true']) {
-      text-decoration: underline;
-      text-underline-offset: 0.15em;
     }
 
     .cinder-button[data-cinder-variant='soft']:hover:not(:disabled):not([aria-disabled='true']) {
@@ -475,6 +481,12 @@
   }
 
   .cinder-button[data-cinder-variant='ghost']:active:not(:disabled):not([aria-disabled='true']) {
+    background: var(--cinder-surface-pressed);
+  }
+
+  .cinder-button[data-cinder-variant='ghost-accent']:active:not(:disabled):not(
+      [aria-disabled='true']
+    ) {
     background: var(--cinder-surface-pressed);
   }
 

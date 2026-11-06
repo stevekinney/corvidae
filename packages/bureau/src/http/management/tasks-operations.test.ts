@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type CleanupAcknowledgement, createAgent } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
@@ -86,6 +87,39 @@ function createTaskRecords(opened: OpenedBureau) {
 }
 
 describe('bureau.tasks.list', () => {
+  it('keeps a workspace administrator’s legacy operator scope owner-scoped', async () => {
+    await withBureau(
+      {
+        handlerOptions: {
+          workspace: workspaceAdministratorDirectory(),
+        },
+      },
+      async (opened) => {
+        const own = await startRun(opened, 'api-key:operator');
+        const foreign = await startRun(opened, OWNER.alice);
+        const listed = await rpc(opened.handler, 'bureau.tasks.list', {}, 'operator-key');
+        expect(tasksOf(listed).map((task) => task.id)).toEqual([own.id]);
+        expect(tasksOf(listed).map((task) => task.id)).not.toContain(foreign.id);
+
+        const foreignGet = await rpc(
+          opened.handler,
+          'bureau.tasks.get',
+          { taskId: foreign.id },
+          'operator-key',
+        );
+        const unknownGet = await rpc(
+          opened.handler,
+          'bureau.tasks.get',
+          { taskId: 'missing-task' },
+          'operator-key',
+        );
+        expect(JSON.stringify(foreignGet).replaceAll(foreign.id, '<id>')).toBe(
+          JSON.stringify(unknownGet).replaceAll('missing-task', '<id>'),
+        );
+      },
+    );
+  });
+
   it('lists only the caller’s own tasks without bureau.tasks:read, newest first', async () => {
     await withBureau({}, async (opened) => {
       const first = await startRun(opened, OWNER.alice);

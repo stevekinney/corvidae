@@ -53,7 +53,10 @@ describe('reattaching a run with an old-shape checkpoint (COR-713)', () => {
     const context = await contextWithVersionlessCursor(runId);
     try {
       // The engine accepts the cancellation, so the rejection below is read as an abort.
-      spyOn(context.engine, 'cancel').mockResolvedValue(undefined);
+      spyOn(context.engine, 'cancel').mockResolvedValue({
+        workflowId: runId,
+        status: 'cancel-requested',
+      });
       const run = reattachDurableActiveRun(context, {
         runId,
         handle: {

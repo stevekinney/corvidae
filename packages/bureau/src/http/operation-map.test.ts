@@ -1,3 +1,4 @@
+import { openBureau } from './management/management-fixtures.test-support.ts';
 /**
  * COR-1703. Every operation `createBureauHandler` serves has a row in the operation map, and every
  * row names an operation that is served and, unless exempt, a member a Bureau has.
@@ -28,7 +29,7 @@ import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
 import type { Bureau } from '../types.ts';
-import { BUREAU_HANDLER_OPERATIONS } from './create-bureau-handler.ts';
+import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from './create-bureau-handler.ts';
 import { OPERATION_MAP, type OperationBinding } from './operation-map.ts';
 
 /**
@@ -116,6 +117,60 @@ describe('the operation map', () => {
     expect(problemsWith(served, OPERATION_MAP, opened.bureau)).toEqual([]);
   });
 
+  it('requires a contributed route classification in a fully composed workspace host', async () => {
+    const workspace = {
+      workspaceId: 'workspace-a',
+      resolveMembership: async () => ({
+        version: 1 as const,
+        workspaceId: 'workspace-a',
+        actorId: 'local-owner',
+        actorKind: 'local' as const,
+        owner: 'anonymous:local',
+        membershipRevision: '1',
+        capabilities: ['workspace:use' as const],
+      }),
+    };
+    const workspaceOpened = await openBureau({
+      bureauOptions: { workspace },
+      handlerOptions: { workspace },
+    });
+    try {
+      let calls = 0;
+      const plugin = {
+        pathPrefix: '/fixture-plugin',
+        fetch: async () => {
+          calls += 1;
+          return new Response('fixture-metadata');
+        },
+      };
+      expect(() =>
+        createBureauHandler(workspaceOpened.bureau, {
+          unauthenticatedAccess: 'allow',
+          workspace,
+          mounts: [plugin],
+        }),
+      ).toThrow('requires a resource classification');
+      const handler = createBureauHandler(workspaceOpened.bureau, {
+        unauthenticatedAccess: 'allow',
+        workspace,
+        mounts: [{ ...plugin, workspaceClass: 'administrator-shared' }],
+      });
+      const refused = await handler(new Request('http://localhost/fixture-plugin'));
+      expect(refused.status).toBe(403);
+      expect(calls).toBe(0);
+      const memberHandler = createBureauHandler(workspaceOpened.bureau, {
+        unauthenticatedAccess: 'allow',
+        workspace,
+        mounts: [{ ...plugin, workspaceClass: 'member-shared-read' }],
+      });
+      const permitted = await memberHandler(new Request('http://localhost/fixture-plugin'));
+      expect(await permitted.text()).toBe('fixture-metadata');
+      expect(calls).toBe(1);
+    } finally {
+      await workspaceOpened.dispose();
+    }
+  });
+
   it('fails on a served operation that has no row', () => {
     const { 'bureau.reviews.list': _removed, ...withoutReviewsList } = OPERATION_MAP;
     expect(problemsWith(served, withoutReviewsList, opened.bureau)).toEqual([
@@ -126,7 +181,7 @@ describe('the operation map', () => {
   it('fails on a row whose operation is not served', () => {
     const extra: Record<string, OperationBinding> = {
       ...OPERATION_MAP,
-      'bureau.reviews.retire': { member: 'reviews.resolve' },
+      'bureau.reviews.retire': { workspaceClass: 'private-owned', member: 'reviews.resolve' },
     };
     expect(problemsWith(served, extra, opened.bureau)).toEqual([
       'bureau.reviews.retire has a row but is not served',
@@ -144,7 +199,10 @@ describe('the operation map', () => {
   });
 
   it('fails on an exempt row with no reason', () => {
-    const bare = { ...OPERATION_MAP, 'bureau.events': { exempt: ' ' } };
+    const bare = {
+      ...OPERATION_MAP,
+      'bureau.events': { ...OPERATION_MAP['bureau.events'], exempt: ' ' },
+    };
     expect(problemsWith(served, bare, opened.bureau)).toEqual([
       'bureau.events is exempt without a reason',
     ]);

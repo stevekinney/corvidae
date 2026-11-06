@@ -21,7 +21,7 @@ A plugin is a module whose default export is `definePlugin(...)`. There are two 
 
 Workspace plugins load first, in the order the host lists them, and folder plugins after them by folder name. The first plugin to claim a name keeps it; a later one is skipped with `name-clash`.
 
-Plugin code is trusted and runs in the host's process. It loads once, when the host starts. There is no sandbox and no hot reload of code; the files a plugin ships (below) are the one thing that reloads while the host runs.
+Plugin code is trusted and runs in the host's process. It loads once, when the host starts. There is no sandbox and no hot reload of code; the files a plugin ships (below) are the one thing that reloads while the host runs. Deployment operators choose executable plugins; workspace administrators cannot install arbitrary code. A configured integration uses the workspace's external account and existing agent grants, so that account's third-party data is not partitioned per Interborough user. Invocation state, chats, and memory remain owner-private within Interborough unless explicitly shared.
 
 ## Scaffold your first plugin
 
@@ -248,7 +248,7 @@ A file that names a contribution nothing loaded holds (a tool you misspelled, a 
 
 The owner's choices persist under `plugins.<name>` in Bungalow's `configuration.json`, as `{ "enabled": true, "configuration": { ... } }`, and `setup` receives only that entry's `configuration`, parsed by your schema. A value the schema refuses skips the plugin with a `configuration-invalid` problem naming the field, and the host still starts. Give every field a default so the plugin works with no entry at all.
 
-A secret is declared by its full Bungalow key, or as `{ key, generated: true }`, which asks the host to create a random value the first time the plugin is enabled. A remote deployment cannot write secrets, so a generated secret there must be set in the environment. A key the host keeps for itself is refused with `secret-refused`. Read a secret inside the contribution, when you need it:
+A secret is declared by its full Bungalow key, or as `{ key, generated: true }`, which asks the host to create a random value the first time the plugin is enabled. The default remote environment provider is read-only, so a generated secret there must be supplied by the deployment. Trusted composition may inject a writable workspace secret provider and enable revision-checked configuration writes; no production cloud-secret vendor adapter is included. A key the host keeps for itself is refused with `secret-refused`. Read a secret inside the contribution, when you need it:
 
 ```ts
 import { definePlugin } from '@lostgradient/interborough-plugin';

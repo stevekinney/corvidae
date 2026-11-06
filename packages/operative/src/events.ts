@@ -43,10 +43,18 @@ export class StepStartedEvent extends Event {
   static readonly type = 'step.started' as const;
   readonly conversation: Conversation;
   readonly step: number;
-  constructor(conversation: Conversation, step: number) {
+  /**
+   * The ids of the session inputs (follow-ups a client sent while the run was working) this step
+   * took into the conversation to answer, in the order they were appended: the ids they were
+   * admitted under, which a client holds their rows by. Empty for a step that took none, and for
+   * every step of a run with no session input gate.
+   */
+  readonly sessionInputIds: readonly string[];
+  constructor(conversation: Conversation, step: number, sessionInputIds: readonly string[] = []) {
     super(StepStartedEvent.type);
     this.conversation = conversation;
     this.step = step;
+    this.sessionInputIds = [...sessionInputIds];
   }
 }
 

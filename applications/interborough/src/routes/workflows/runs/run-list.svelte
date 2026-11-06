@@ -34,7 +34,7 @@
   import RecordsToolbar from '../../../app/records/records-toolbar.svelte';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
   import RunOrigin from './run-origin.svelte';
-  import { STARTED_BY_LABELS } from './started-by.ts';
+  import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
   import {
     buildRunRows,
     filterLabelOf,
@@ -169,7 +169,7 @@
       key: 'startedBy',
       label: TASK_COPY.startedByLabel,
       placeholder: TASK_COPY.anyOrigin,
-      options: Object.entries(STARTED_BY_LABELS).map(([value, label]) => ({ value, label })),
+      options: STARTED_BY_KINDS.map((value) => ({ value, label: STARTED_BY_LABELS[value] })),
     },
     {
       type: 'select' as const,

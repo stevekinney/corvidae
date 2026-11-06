@@ -31,9 +31,11 @@ describe('chat message action buttons', () => {
     const withoutTouchBlock = source.replace(extractTouchMediaBlock(source), '');
     // The selector is wrapped in :global() so Svelte scoping does not prevent it
     // from reaching the CopyButton child component's rendered <button>.
-    const baseRuleMatches = withoutTouchBlock.match(
-      /(?::global\()?\.chat-message-action-button(?:\))?\s*\{/g,
-    );
+    // The transcript line restyles the same buttons as words (`.chat-message-line :global(...)`),
+    // a scoped override of the one base rule, so it is not counted as a second base.
+    const baseRuleMatches = withoutTouchBlock
+      .replaceAll('.chat-message-line :global(.chat-message-action-button)', '')
+      .match(/(?::global\()?\.chat-message-action-button(?:\))?\s*\{/g);
     expect(baseRuleMatches).not.toBeNull();
     expect(baseRuleMatches).toHaveLength(1);
   });

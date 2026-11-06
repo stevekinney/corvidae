@@ -317,7 +317,10 @@ describe('ChatMessage — tool-call rendering', () => {
           kind: 'search',
         }),
         pairs: [
-          { call: { id: 'repeated', name: 'first', arguments: {} } },
+          {
+            call: { id: 'repeated', name: 'first', arguments: {} },
+            result: { callId: 'repeated', outcome: 'success', content: 'ok' },
+          },
           {
             call: { id: 'repeated', name: 'second', arguments: {} },
             result: {
@@ -351,9 +354,39 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(container.textContent).toContain('Network unavailable');
   });
 
+  test('while a call has no answer, the group’s line is that call in the present tense, and the count returns when it is answered', () => {
+    const describeToolCall = (pair: ToolCallPair): ToolCallPresentation =>
+      pair.result === undefined
+        ? { verb: 'Using', tense: 'present', detail: `${pair.call.name}…` }
+        : { verb: 'Used', tense: 'past', detail: pair.call.name };
+    const running: ToolCallPair = { call: { id: 'c1', name: 'Lookup order', arguments: {} } };
+    const view = render(ToolCallTimeline, {
+      props: { pairs: [running], messageId: 'running', describeToolCall },
+    });
+    expect(view.container.querySelector('h3')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Using Lookup order…',
+    );
+    cleanup();
+
+    const answered = render(ToolCallTimeline, {
+      props: {
+        pairs: [{ ...running, result: { callId: 'c1', outcome: 'success', content: 'ok' } }],
+        messageId: 'answered',
+        describeToolCall,
+      },
+    });
+    expect(answered.container.querySelector('h3')?.textContent).toContain('Used 1 tool');
+  });
+
   describe('counted strings agree with the count', () => {
-    const pair: ToolCallPair = { call: { id: 'only', name: 'lookup', arguments: {} } };
-    const second: ToolCallPair = { call: { id: 'other', name: 'fetch', arguments: {} } };
+    const pair: ToolCallPair = {
+      call: { id: 'only', name: 'lookup', arguments: {} },
+      result: { callId: 'only', outcome: 'success', content: 'ok' },
+    };
+    const second: ToolCallPair = {
+      call: { id: 'other', name: 'fetch', arguments: {} },
+      result: { callId: 'other', outcome: 'success', content: 'ok' },
+    };
     const describeToolCall = (): ToolCallPresentation => ({
       verb: 'Checking',
       tense: 'present',

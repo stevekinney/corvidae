@@ -96,6 +96,7 @@
     issues: hostIssues,
     submitLabel = 'Submit',
     variant = 'default',
+    submitVisible = true,
     class: customClassName,
     onSubmit,
     onDraftChange,
@@ -800,7 +801,9 @@
     value={formState.serializedValue}
   />
 
-  <button type="submit" class="cinder-schema-form__submit" disabled={submitting}>
-    {submitting ? 'Validating...' : submitLabel}
-  </button>
+  {#if submitVisible}
+    <button type="submit" class="cinder-schema-form__submit" disabled={submitting}>
+      {submitting ? 'Validating...' : submitLabel}
+    </button>
+  {/if}
 </form>

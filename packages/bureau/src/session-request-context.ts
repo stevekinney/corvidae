@@ -1,3 +1,4 @@
+import { readRunWorkspaceAuthority } from 'armorer';
 import type { JSONValue } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
@@ -49,6 +50,8 @@ function readPersistedAuthority(
   value: Record<string, JSONValue>,
 ): ToolRequestContext['authority'] | undefined {
   const capabilities = value['capabilities'];
+  const workspace = readRunWorkspaceAuthority(value['workspace']);
+  if (value['workspace'] !== undefined && workspace === undefined) return undefined;
   if (
     typeof value['principalId'] !== 'string' ||
     typeof value['tenantId'] !== 'string' ||
@@ -59,6 +62,7 @@ function readPersistedAuthority(
   )
     return undefined;
   return {
+    ...(workspace === undefined ? {} : { workspace }),
     principalId: value['principalId'],
     tenantId: value['tenantId'],
     ownerId: value['ownerId'],
@@ -114,4 +118,21 @@ export function recoveredRequestContextFromMetadata(
     persistedAgentId ?? agentName,
     undefined,
   );
+}
+
+/** Only durable authority fields cross the session boundary; transport credentials never do. */
+export function persistedRequestAuthority(context: ToolRequestContext, agentId: string) {
+  return {
+    agentId,
+    principalId: context.authority.principalId,
+    tenantId: context.authority.tenantId,
+    ownerId: context.authority.ownerId,
+    capabilities: [...context.authority.capabilities],
+    authorizationRevision: context.authority.authorizationRevision,
+    ...(context.authority.workspace === undefined
+      ? {}
+      : { workspace: { ...context.authority.workspace } }),
+    ...(context.audience === undefined ? {} : { audience: context.audience }),
+    ...(context.deadline === undefined ? {} : { deadline: context.deadline }),
+  };
 }

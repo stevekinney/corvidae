@@ -55,7 +55,7 @@ function host(agents: readonly string[], plugins: readonly unknown[] | null): vo
     if (url.endsWith('/host/plugins')) {
       return plugins === null
         ? new Response('down', { status: 500 })
-        : Response.json({ plugins, unloaded: [] });
+        : Response.json({ configurationRevision: null, plugins, unloaded: [] });
     }
     return Response.json({ jsonrpc: '2.0', id: 1, result: { agents: agents.map(agent) } });
   });

@@ -1,4 +1,4 @@
-import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
+import { initializeWorkspaceHome, storedWorkspaceSecret } from './workspace-home.test-support.ts';
 /**
  * COR-1931: removing a saved tool source. The owner previews the agent files that name its tools,
  * removal answers the same list and audits it, no agent file is edited, and after the host starts
@@ -51,7 +51,10 @@ async function home(): Promise<string> {
     environment: { INTERBOROUGH_HOME: directory },
   });
   try {
-    bungalow.writeSecret('anthropic-api-key', 'fixture-anthropic-key-removal-31ce');
+    await bungalow.deploymentSecrets.write(
+      'anthropic-api-key',
+      'fixture-anthropic-key-removal-31ce',
+    );
   } finally {
     bungalow.close();
   }
@@ -75,12 +78,28 @@ async function restart(host: Host, path: string): Promise<Host> {
   return startAt(path);
 }
 
-function send(host: Host, method: string, path: string, body?: unknown): Promise<Response> {
+async function send(host: Host, method: string, path: string, body?: unknown): Promise<Response> {
+  const mutationSnapshot =
+    (method === 'PUT' || method === 'POST' || method === 'DELETE') &&
+    typeof body === 'object' &&
+    body !== null
+      ? await host.toolSources.snapshot()
+      : undefined;
+  const payload =
+    (method === 'PUT' || method === 'POST' || method === 'DELETE') &&
+    typeof body === 'object' &&
+    body !== null
+      ? {
+          ...body,
+          operationId: crypto.randomUUID(),
+          expectedRevision: mutationSnapshot?.configurationRevision,
+        }
+      : body;
   return fetch(new URL(path, host.url), {
     method,
-    ...(body === undefined
+    ...(payload === undefined
       ? {}
-      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
   });
 }
 
@@ -200,8 +219,12 @@ describe('removing a saved tool source', () => {
   test('reports the affected agents and audits them, leaves every agent file as it was, and invalidates the agents only at the next start', async () => {
     const { host, path } = await hostWithSourceAndAgents();
     const before = await agentFilesOf(path);
+    const removalSnapshot = await host.toolSources.snapshot();
 
-    const removed = await send(host, 'DELETE', '/host/tool-sources/files');
+    const removed = await send(host, 'DELETE', '/host/tool-sources/files', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: removalSnapshot.configurationRevision,
+    });
 
     expect(removed.status).toBe(200);
     const body = (await removed.json()) as { affectedAgents: { id: string }[] };
@@ -244,24 +267,31 @@ describe('removing a saved tool source', () => {
     expect(standingOf(second, 'plain').state).toBe('ready');
   });
 
-  test('deletes the encrypted credential, so no file holds it and the secret is empty', async () => {
+  test('deactivates the encrypted credential while retaining its immutable published version', async () => {
     const { host, path } = await hostWithSourceAndAgents();
-    const secretPath = join(path, 'secrets', 'tool-source-files');
-    const held = await readFile(secretPath, 'utf8');
+    const active = await storedWorkspaceSecret(path, 'tool-source-files');
+    const secretPath = active.path;
+    const held = active.value ?? '';
     expect(held.length).toBeGreaterThan(0);
-    // The ciphertext of the credential, which a scan can find while it is stored and not after.
+    // Published versions remain immutable; removal activates an empty credential record.
     const ciphertext = (JSON.parse(held) as { credentials: { token: { ciphertext: string } } })
       .credentials.token.ciphertext;
     expect(ciphertext.length).toBeGreaterThan(0);
     expect(await filesHolding(path, ciphertext)).toEqual([secretPath]);
     expect(await filesHolding(path, BEARER)).toEqual([]);
 
-    await send(host, 'DELETE', '/host/tool-sources/files');
+    const removalSnapshot = await host.toolSources.snapshot();
+    await send(host, 'DELETE', '/host/tool-sources/files', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: removalSnapshot.configurationRevision,
+    });
 
-    expect(await readFile(secretPath, 'utf8')).toBe('');
+    const cleared = await storedWorkspaceSecret(path, 'tool-source-files');
+    expect(cleared.path).not.toBe(secretPath);
+    expect(JSON.parse(cleared.value ?? '')).toMatchObject({ credentials: {} });
     const remaining = await host.toolSources.snapshot();
     expect(remaining.sources).toEqual([]);
-    expect(await filesHolding(path, ciphertext)).toEqual([]);
+    expect(await filesHolding(path, ciphertext)).toEqual([secretPath]);
     expect(await filesHolding(path, BEARER)).toEqual([]);
   });
 
@@ -277,19 +307,32 @@ describe('removing a saved tool source', () => {
         transport: { type: 'http', url: `${oauth.origin}/`, authentication: { type: 'oauth' } },
       },
     });
-    const started = await send(host, 'POST', '/host/tool-sources/calendar/authorize');
+    const authorizationSnapshot = await host.toolSources.snapshot();
+    const started = await send(host, 'POST', '/host/tool-sources/calendar/authorize', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: authorizationSnapshot.configurationRevision,
+    });
     const { authorizationUrl } = (await started.json()) as { authorizationUrl: string };
     const redirect = await fetch(authorizationUrl, { redirect: 'manual' });
     const callback = redirect.headers.get('location') ?? '';
-    const secretPath = join(path, 'secrets', 'tool-source-calendar');
     // The verifier, the state and the sign-in are held while the sign-in waits.
-    const waiting = await readFile(secretPath, 'utf8');
+    const pending = await storedWorkspaceSecret(path, 'tool-source-calendar');
+    const waiting = pending.value ?? '';
     expect(waiting.length).toBeGreaterThan(0);
 
-    const removed = await send(host, 'DELETE', '/host/tool-sources/calendar');
+    const removalSnapshot = await host.toolSources.snapshot();
+    const removed = await send(host, 'DELETE', '/host/tool-sources/calendar', {
+      operationId: crypto.randomUUID(),
+      expectedRevision: removalSnapshot.configurationRevision,
+    });
 
     expect(removed.status).toBe(200);
-    expect(await readFile(secretPath, 'utf8')).toBe('');
+    const activeState = await storedWorkspaceSecret(path, 'tool-source-calendar');
+    expect(JSON.parse(activeState.value ?? '')).toEqual({
+      version: 1,
+      sourceId: 'calendar',
+      credentials: {},
+    });
     expect(
       await filesHolding(path, new URL(authorizationUrl).searchParams.get('state') ?? '-'),
     ).toEqual([]);
@@ -297,6 +340,7 @@ describe('removing a saved tool source', () => {
     const late = await fetch(callback);
     expect(late.status).toBe(400);
     expect(oauth.issuedAccessTokens).toEqual([]);
-    expect(await readFile(secretPath, 'utf8')).toBe('');
+    const lateState = await storedWorkspaceSecret(path, 'tool-source-calendar');
+    expect(lateState).toEqual(activeState);
   });
 });

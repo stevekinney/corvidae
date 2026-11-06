@@ -16,6 +16,7 @@ import {
   isForbidden,
   isUnauthorized,
   PrincipalStore,
+  resolveHostPrincipal,
   resolvePrincipal,
   scopeGate,
   scopeReason,
@@ -137,7 +138,72 @@ describe('PrincipalStore.bootstrap', () => {
   });
 });
 
+test('boot uses the host-resolved principal and rejects an absent workspace', async () => {
+  let observedHeaders: Headers | undefined;
+  const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    observedHeaders = new Headers(init?.headers);
+    return Response.json({
+      method: 'api-key',
+      subject: 'credential',
+      scopes: ['system:read'],
+      workspace: { workspaceId: 'a', actorId: 'b' },
+    });
+  };
+  expect(
+    await resolveHostPrincipal(
+      { authorization: 'Bearer fixture', 'x-api-key': 'fixture' },
+      fetcher,
+    ),
+  ).toEqual({
+    scopes: ['system:read'],
+    subject: 'credential',
+    unauthenticatedAccess: null,
+    workspace: { workspaceId: 'a', actorId: 'b' },
+  });
+  expect(observedHeaders?.get('authorization')).toBe('Bearer fixture');
+  expect(observedHeaders?.get('x-api-key')).toBe('fixture');
+  expect(
+    await throwingRejectionOf(
+      resolveHostPrincipal({}, async () =>
+        Response.json({ method: 'api-key', subject: 'credential', scopes: [] }),
+      ),
+    ),
+  ).toThrow();
+});
+
+test('the host local owner retains the existing local shell banner state', async () => {
+  const fetcher = async () =>
+    Response.json({
+      method: 'unauthenticated-local',
+      subject: 'anonymous:local',
+      scopes: ['system:read'],
+      workspace: { workspaceId: 'local', actorId: 'local-owner' },
+    });
+  const principal = await resolveHostPrincipal({}, fetcher);
+  expect(principal?.unauthenticatedAccess).toBeNull();
+});
+
 describe('resolvePrincipal', () => {
+  test('retains the server-resolved workspace and stable actor', async () => {
+    const principal = await resolvePrincipal(
+      principalClient(async () => ({
+        method: 'api-key',
+        subject: 'credential-subject',
+        scopes: ['system:read'],
+        workspace: {
+          version: 1,
+          workspaceId: 'workspace-a',
+          actorId: 'actor-a',
+          actorKind: 'user',
+          owner: 'owner-a',
+          membershipRevision: 'revision-1',
+          capabilities: ['workspace:use'],
+        },
+      })),
+    );
+    expect(principal?.workspace).toEqual({ workspaceId: 'workspace-a', actorId: 'actor-a' });
+  });
+
   test('an authenticated principal reports its granted scopes verbatim, no banner', async () => {
     const principal = await resolvePrincipal(
       principalClient(async () => ({

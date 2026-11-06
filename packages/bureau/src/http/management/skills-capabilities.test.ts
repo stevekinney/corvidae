@@ -434,6 +434,13 @@ describe('bureau.agents.catalog', () => {
     const tools = listOf(response, 'tools');
     const byName = Object.fromEntries(tools.map((tool) => [String(tool['name']), tool]));
     expect(Object.keys(byName).toSorted()).toEqual([
+      'bureau:assets-publish',
+      'bureau:assets-read',
+      'bureau:child-runs-cancel',
+      'bureau:child-runs-dispatch',
+      'bureau:child-runs-get',
+      'bureau:child-runs-list',
+      'bureau:child-runs-wait',
       'bureau:discover-agents',
       'issue-refund',
       'lookup-order',

@@ -66,7 +66,7 @@ const schema = {
     flushDetail: {
       type: 'boolean',
       description:
-        "Removes the detail pane's inner padding, for a detail view that lays out its own header, body\nand footer edge to edge (an open chat, a table, a code frame).",
+        "Removes the detail pane's inner padding, for a detail view that lays out its own header, body\nand footer edge to edge (an open chat, a table, a code frame). In the stacked layout the open\ndetail also fills the height the component is given, so what it docks at its bottom edge, such as\na composer, sits at the bottom of the screen instead of after its content.",
       default: false,
     },
     defaultListWidth: {

@@ -22,8 +22,12 @@ import type { BureauScope } from './bureau-scopes.ts';
  * local caller, `anonymous:local`; an API key owns as
  * `api-key:<encodeURIComponent(subject)>`. A credential type v1 does not accept
  * (JWT, mTLS), or one with no subject, names no owner.
+ * A workspace-aware host instead supplies the explicit owner resolved from current membership;
+ * credential rotation never changes that durable owner implicitly.
  */
 export function ownerOfPrincipal(principal: Principal): string | undefined {
+  if (principal.method !== 'unauthenticated' && principal.workspace !== undefined)
+    return principal.workspace.owner;
   if (principal.method === 'unauthenticated-local') return ANONYMOUS_LOCAL_OWNER;
   if (principal.method === 'api-key' && principal.subject !== undefined) {
     return apiKeyOwner(principal.subject);
@@ -44,7 +48,9 @@ export type OwnerAccessRequest = {
 export type OwnerAccessPredicate = (request: OwnerAccessRequest) => boolean;
 
 /**
- * Whether `principal` may act on a resource owned by `resourceOwner`: it holds
+ * Workspace principals reach only their own private resources; neither workspace administration
+ * nor an operator scope overrides that boundary. Outside workspace composition,
+ * whether `principal` may act on a resource owned by `resourceOwner`: it holds
  * the operator scope, or it is the owner. An unauthenticated principal, a
  * principal that owns nothing, and a resource with no owner pass only through
  * the operator scope.
@@ -55,13 +61,29 @@ export const mayAccessOwnedResource: OwnerAccessPredicate = ({
   operatorScope,
 }) => {
   if (principal.method === 'unauthenticated') return false;
-  if (principal.hasScope(operatorScope)) return true;
+  if (principal.workspace !== undefined) {
+    return (
+      principal.workspace.capabilities.includes('workspace:use') &&
+      resourceOwner !== undefined &&
+      principal.workspace.owner === resourceOwner
+    );
+  }
+  if (mayUseCrossOwnerScope(principal, operatorScope)) return true;
   const recordedOwner = (principal as Principal & { readonly owner?: string }).owner;
   if (recordedOwner !== undefined)
     return resourceOwner !== undefined && recordedOwner === resourceOwner;
   const caller = ownerOfPrincipal(principal);
   return caller !== undefined && resourceOwner !== undefined && caller === resourceOwner;
 };
+
+/** Operator scopes never broaden private ownership on the workspace surface. */
+export function mayUseCrossOwnerScope(principal: Principal, scope: BureauScope): boolean {
+  return (
+    principal.method !== 'unauthenticated' &&
+    principal.workspace === undefined &&
+    principal.hasScope(scope)
+  );
+}
 
 /** What the owner-scoped operations read from the handler's `host`. */
 export type BureauOwnershipHost = {

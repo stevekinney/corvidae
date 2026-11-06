@@ -140,10 +140,11 @@ export type ReviewsMembers = AssertNever<
   Exclude<keyof BureauReviews, 'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf'>
 >;
 
-// `schedules` has exactly the fifteen operations.
+// `schedules` includes the fifteen operations and revision-checked future authority reassignment.
 export type SchedulesMembers = AssertNever<
   Exclude<
     keyof BureauSchedules,
+    | 'reassign'
     | 'create'
     | 'get'
     | 'list'
@@ -164,7 +165,7 @@ export type SchedulesMembers = AssertNever<
   >
 >;
 
-// `contexts` has exactly the thirteen operations.
+// `contexts` has exactly the fourteen operations.
 export type ContextsMembers = AssertNever<
   Exclude<
     keyof BureauContexts,
@@ -174,6 +175,8 @@ export type ContextsMembers = AssertNever<
     | 'rename'
     | 'signal'
     | 'input'
+    | 'retract'
+    | 'forgetGrants'
     | 'inputsDeliveredBy'
     | 'steer'
     | 'steering'
@@ -285,6 +288,7 @@ type TopLevelMembers =
   | 'frames'
   // The members that did not change.
   | 'id'
+  | 'workspaceBinding'
   | 'durableEngine'
   | 'lifecycle'
   | 'shutdown'

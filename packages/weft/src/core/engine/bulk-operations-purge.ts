@@ -428,6 +428,7 @@ async function addWorkflowPrefixDeleteKeys(
   deleteKeys: Set<string>,
   workflowId: string,
 ): Promise<void> {
+  deleteKeys.add(KEYS.signalSequence(workflowId));
   for (const prefix of workflowPurgePrefixes(workflowId)) {
     const keys = await collectKeysForPrefix(storage, prefix);
     for (const key of keys) deleteKeys.add(key);
@@ -468,6 +469,7 @@ function workflowPurgePrefixes(workflowId: string): string[] {
     // `onTerminalConflict: 'start-new'` restart — read the prior run's timeline.
     `wf:${encodedWorkflowId}:timeline:`,
     `ev:${encodedWorkflowId}:`,
+    KEYS.fileWorkflowEventReceiptPrefix(workflowId),
     // The run's persisted `ctx.log` lines (COR-1811): they live as long as the run does.
     KEYS.workflowLogPrefix(workflowId),
     KEYS.watchEventPrefix(workflowId),
@@ -484,7 +486,6 @@ function workflowPurgePrefixes(workflowId: string): string[] {
     `sigres:v1:${encodedWorkflowId}:`,
   ];
 }
-
 function appendKeyDeleteOperations(
   deleteOperations: BatchOperation[],
   deleteKeys: Iterable<string>,

@@ -84,6 +84,8 @@ const unloadedSchema = z.object({
 });
 
 const pluginsSchema = z.object({
+  configurationRevision: z.string().nullable(),
+  credentialLockReason: z.literal('deployment').optional(),
   plugins: z.array(pluginSchema),
   unloaded: z.array(unloadedSchema),
   lockReason: z.enum(SETTING_LOCK_REASONS).optional(),
@@ -164,6 +166,14 @@ export class HostPluginError extends Error {
 }
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
+type MutationOptions = Options & {
+  readonly mutation?: { readonly operationId: string; readonly expectedRevision: string | null };
+};
+async function mutationInput(options: MutationOptions) {
+  if (options.mutation !== undefined) return { ...options.mutation };
+  const snapshot = await getPlugins(options);
+  return { operationId: crypto.randomUUID(), expectedRevision: snapshot.configurationRevision };
+}
 
 function send(path: string, init: RequestInit, options: Options): Promise<Response> {
   const request = options.fetch ?? fetch;
@@ -219,11 +229,13 @@ export async function getPlugins(options: Options = {}): Promise<PluginsSnapshot
 export async function updatePlugin(
   name: string,
   change: { readonly enabled?: boolean; readonly configuration?: unknown },
-  options: Options = {},
+  options: MutationOptions = {},
 ): Promise<PluginChange> {
+  const copiedChange = z.record(z.string(), z.unknown()).parse(JSON.parse(JSON.stringify(change)));
+  const mutation = await mutationInput(options);
   const response = await send(
     `${HOST_PLUGINS_ROUTE}/${encodeURIComponent(name)}`,
-    jsonRequest('PUT', change),
+    jsonRequest('PUT', { ...copiedChange, ...mutation }),
     options,
   );
   if (!response.ok) throw await faultOf(response);
@@ -240,11 +252,12 @@ export async function savePluginSecret(
   name: string,
   key: string,
   value: string,
-  options: Options = {},
+  options: MutationOptions = {},
 ): Promise<void> {
+  const mutation = await mutationInput(options);
   const response = await send(
     `${HOST_PLUGINS_ROUTE}/${encodeURIComponent(name)}/secrets/${encodeURIComponent(key)}`,
-    jsonRequest('PUT', { value }),
+    jsonRequest('PUT', { value, ...mutation }),
     options,
   );
   if (!response.ok) throw await faultOf(response, value);

@@ -26,8 +26,8 @@
  *   and serves what a restart would. A write that did not take is reported as the original failure.
  *   One that did take is a change like any other: it is recorded, or owed to the trail if that
  *   fails.
- * - **Local only.** A remote home keeps its configuration in a bucket the host cannot write, so a
- *   change there is refused with the lock reason `deployment` ({@link SkillWriteLockedError}).
+ * - **Explicit write capability.** Read-only backends refuse changes. Trusting filesystem skill
+ *   sources requires current deployment authority immediately before the configuration CAS.
  * - **A catalog is replaced, never edited.** Each discovery makes a new revision. A skill client
  *   offers the revision it was built with and, given `currentCatalog` (COR-1926), checks a skill
  *   against the current catalog when the skill is used. A file agent that lists `allowedSkills`
@@ -41,7 +41,6 @@
 
 import type { Bungalow } from '@lostgradient/bungalow';
 import {
-  ANONYMOUS_LOCAL_OWNER,
   auditTrailSkillSourceOwnerId,
   type SettingLockReason,
   type SkillSourceStanding,
@@ -54,7 +53,11 @@ import {
 } from '@lostgradient/bureau/skills';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
-import { hostWriteLocks } from './locations.ts';
+import {
+  createLocalHostMutationContext,
+  HostMutationError,
+  type HostMutationContext,
+} from './host-mutation-context.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseProviderConfiguration } from './providers.ts';
 import {
@@ -64,6 +67,7 @@ import {
   trustPolicyOf,
   type SkillsConfiguration,
 } from './skills-configuration.ts';
+import { SecretPublicationError } from './workspace-secrets.ts';
 
 /** A write the home does not allow: the reason is the one `settings.get` reports for a locked key. */
 export class SkillWriteLockedError extends Error {
@@ -155,7 +159,7 @@ export type SkillManager = {
   /** Why a trust change is refused, or `undefined` when it is allowed. */
   lockReason(): SettingLockReason | undefined;
   /** Decide whether a configured source is trusted, write the decision, apply it, and record it. */
-  setTrust(request: SkillTrustRequest): Promise<SkillTrustChange>;
+  setTrust(request: SkillTrustRequest, mutation?: HostMutationContext): Promise<SkillTrustChange>;
   /** Read the configuration again and discover the catalog again, for a person who edited the file or a directory by hand. */
   refresh(): Promise<{ readonly revision: number }>;
   /** Refuse every later change. The host calls it as it shuts down. */
@@ -167,7 +171,12 @@ export type SkillManagerOptions = {
   /** The open home. Its mode decides whether a write is allowed. */
   readonly bungalow: Pick<
     Bungalow,
-    'mode' | 'configurationLocation' | 'readConfiguration' | 'writeConfiguration'
+    | 'mode'
+    | 'workspaceId'
+    | 'configurationLocation'
+    | 'readConfiguration'
+    | 'writeConfiguration'
+    | 'configurationWriteCapability'
   >;
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
@@ -203,7 +212,8 @@ export async function discoverFirstSkills(
   const location = bungalow.configurationLocation;
   let text: string | undefined;
   try {
-    text = await bungalow.readConfiguration();
+    const snapshot = await bungalow.readConfiguration();
+    text = snapshot.text;
   } catch {
     throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
   }
@@ -218,7 +228,6 @@ export async function discoverFirstSkills(
 export async function createSkillManager(options: SkillManagerOptions): Promise<SkillManager> {
   const { bungalow } = options;
   const location = bungalow.configurationLocation;
-  const owner = options.owner ?? ANONYMOUS_LOCAL_OWNER;
   const now = options.now ?? Date.now;
   const configurationQueue = options.configurationQueue ?? createConfigurationQueue();
   let closed = false;
@@ -226,7 +235,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
   /** Changes that were applied and not recorded, oldest first. In memory: a restart drops them. */
   const unrecorded: SkillAuditEntry[] = [];
 
-  const lockReason = (): SettingLockReason | undefined => hostWriteLocks(bungalow).configuration;
+  const lockReason = (): SettingLockReason | undefined =>
+    bungalow.configurationWriteCapability === 'writable' ? undefined : 'deployment';
   const serialized = <Result>(work: () => Promise<Result>): Promise<Result> =>
     configurationQueue.run(() => {
       if (closed) throw new Error('The host is shutting down.');
@@ -235,7 +245,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
 
   async function readText(): Promise<string | undefined> {
     try {
-      return await bungalow.readConfiguration();
+      const snapshot = await bungalow.readConfiguration();
+      return snapshot.text;
     } catch {
       throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
     }
@@ -308,8 +319,6 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     }
   }
 
-  const trustOf = (source: string) => current?.sources.find((entry) => entry.id === source)?.trust;
-
   await discover(readSkillsConfiguration(await readText(), location));
 
   return {
@@ -329,7 +338,7 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
       }),
     // The request is read, checked, and copied before the first `await`: the caller owns it, and
     // may change it while this waits its turn.
-    async setTrust(request) {
+    async setTrust(request, suppliedMutation) {
       const reason = lockReason();
       if (reason !== undefined) throw new SkillWriteLockedError(reason);
       const source = request.source;
@@ -341,7 +350,21 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
         throw new SkillInputError('trusted', 'expected true or false.');
       }
       return serialized(async () => {
-        const text = await readText();
+        const mutation = suppliedMutation ?? (await createLocalHostMutationContext(bungalow));
+        const authorize = async () => {
+          const identity = await mutation.revalidate();
+          if (
+            identity.workspaceId !== bungalow.workspaceId ||
+            !identity.capabilities.includes('deployment:operate')
+          )
+            throw new HostMutationError('forbidden');
+          return identity;
+        };
+        await authorize();
+        const snapshot = await bungalow.readConfiguration();
+        if (snapshot.revision !== mutation.expectedRevision)
+          throw new HostMutationError('conflict');
+        const text = snapshot.text;
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
         if (text !== undefined) parseProviderConfiguration(text, location);
         const configuration = readSkillsConfiguration(text, location);
@@ -363,6 +386,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
         // The same check the next start applies, before a byte is written.
         const applied = parseSkillsConfiguration(nextDocument.skills, location);
         const next = `${JSON.stringify(nextDocument, null, 2)}\n`;
+        const identity = await authorize();
+        const owner = identity.owner;
         const entry: SkillAuditEntry = {
           runId: auditTrailSkillSourceOwnerId(source),
           type: trusted ? 'skill.source.trusted' : 'skill.source.untrusted',
@@ -370,16 +395,14 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
           timestampMs: now(),
           detail: { sourceId: source, trusted, owner },
         };
-        let written = true;
-        try {
-          bungalow.writeConfiguration(next);
-        } catch (error) {
-          // A write that throws may still have replaced the file, so the disk decides what is served.
-          written = false;
+        const result = await bungalow.writeConfiguration(next, {
+          expectedRevision: snapshot.revision,
+        });
+        if (result.outcome !== 'committed') {
           await readBackAfterFailure();
-          if (trustOf(source) !== (trusted ? 'trusted' : 'untrusted')) throw error;
+          throw new SecretPublicationError(result.outcome);
         }
-        const standing = written ? await discover(applied) : standingNow();
+        const standing = await discover(applied);
         // The change is applied now. It is queued behind what is already owed so the trail keeps its
         // order, and it stays owed if the trail cannot take it.
         unrecorded.push(entry);

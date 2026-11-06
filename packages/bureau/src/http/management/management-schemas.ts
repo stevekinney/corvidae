@@ -74,6 +74,7 @@ export const taskOriginSchema = z.discriminatedUnion('kind', [
     agentName: z.string(),
     toolCallId: z.string().optional(),
   }),
+  z.object({ kind: z.literal('agent-run'), runId: z.string(), agentId: z.string() }),
   z.object({ kind: z.literal('goal'), goalRunId: z.string(), attemptId: z.string() }),
   z.object({ kind: z.literal('parent'), parentRunId: z.string() }),
   z.object({ kind: z.literal('system') }),
@@ -166,6 +167,7 @@ export function resourceNotFound(
   resource:
     | 'task'
     | 'context'
+    | 'input'
     | 'agent'
     | 'workflow'
     | 'run'

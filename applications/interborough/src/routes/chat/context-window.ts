@@ -54,3 +54,8 @@ const NUMBER = new Intl.NumberFormat('en-US');
 export function formatTokens(tokens: number): string {
   return NUMBER.format(tokens);
 }
+
+/** A token count as a short number for a tooltip: `76K` for 75,800, and the plain count below 1,000. */
+export function formatCompactTokens(tokens: number): string {
+  return tokens < 1000 ? NUMBER.format(tokens) : `${NUMBER.format(Math.round(tokens / 1000))}K`;
+}

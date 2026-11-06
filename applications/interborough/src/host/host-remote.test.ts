@@ -6,7 +6,7 @@
  */
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,6 +34,7 @@ function remoteVariables(server: S3TestServer): Record<string, string> {
     S3_REGION: client.region,
     S3_ACCESS_KEY_ID: client.accessKeyId,
     S3_SECRET_ACCESS_KEY: client.secretAccessKey,
+    INTERBOROUGH_SECRET_DELEGATION_SECRET: 'delegation-secret-for-the-test-0123456789',
   };
 }
 
@@ -107,7 +108,50 @@ describe('remote mode needs the answer encryption key (COR-1920)', () => {
   });
 });
 
+describe('remote mode needs the delegation secret', () => {
+  test('stops before listening when INTERBOROUGH_SECRET_DELEGATION_SECRET is unset', async () => {
+    const server = createS3TestServer();
+    servers.push(server);
+    const port = await freePort();
+    const {
+      INTERBOROUGH_SECRET_DELEGATION_SECRET: _delegation,
+      ...environment
+    }: Record<string, string> = {
+      ...remoteVariables(server),
+      INTERBOROUGH_SECRET_APPROVAL_SECRET: 'approval-secret-for-the-test-0123456789',
+      INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY: TEST_ANSWER_ENCRYPTION_KEY,
+    };
+
+    const failure = await startHost({ environment, port }).then(
+      (host) => {
+        hosts.push(host);
+        return undefined;
+      },
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('INTERBOROUGH_SECRET_DELEGATION_SECRET');
+    const listener = Bun.serve({ port, fetch: () => new Response() });
+    await listener.stop(true);
+  });
+});
+
 describe('local mode', () => {
+  test('creates and reuses the local delegation secret across restarts', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-local-delegation-'));
+    directories.push(home);
+    const first = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    const secretPath = join(home, 'secrets', 'delegation-secret');
+    const firstSecret = await readFile(secretPath, 'utf8');
+    await first.close();
+    hosts.splice(hosts.indexOf(first), 1);
+
+    const second = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(second);
+    expect(await readFile(secretPath, 'utf8')).toBe(firstSecret);
+  });
+
   test.each([
     ['unset', {}],
     ['empty', { INTERBOROUGH_DATABASE_URL: '', INTERBOROUGH_BUCKET: '' }],

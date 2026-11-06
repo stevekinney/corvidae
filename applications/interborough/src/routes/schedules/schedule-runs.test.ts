@@ -161,7 +161,7 @@ describe('Skip, and a skipped run (rows 72k, 73a, 73g and 73p)', () => {
     ).toEqual([expect.stringMatching(/^Skip Thu Nov 5/), expect.stringMatching(/^Skip Wed Nov 4/)]);
     const undo = getByRole('button', { name: /^Undo skipping Tue Nov 3/ });
     expect(undo.textContent?.trim()).toBe('Undo');
-    expect(undo.getAttribute('data-cinder-variant')).toBe('link');
+    expect(undo.getAttribute('data-cinder-variant')).toBe('ghost-accent');
     expect(undo.querySelector('svg')).not.toBeNull();
     await fireEvent.click(undo);
     expect(unskipped).toEqual([Date.parse('2026-11-03T09:00:00.000Z')]);

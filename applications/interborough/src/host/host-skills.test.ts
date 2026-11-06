@@ -245,9 +245,12 @@ describe('skills in configuration.json', () => {
     await writeSkill(pluginSkills, 'plugged');
     const bungalow = {
       mode: 'local' as const,
+      workspaceId: 'skill-fixture',
+      configurationWriteCapability: 'writable' as const,
       configurationLocation: join(home, 'configuration.json'),
-      readConfiguration: async () =>
-        JSON.stringify({
+      readConfiguration: async () => ({
+        revision: 'initial',
+        text: JSON.stringify({
           skills: {
             sources: [
               { id: 'home', kind: 'user', path: userSkills },
@@ -256,7 +259,8 @@ describe('skills in configuration.json', () => {
             trusted: ['home'],
           },
         }),
-      writeConfiguration: async () => {},
+      }),
+      writeConfiguration: async () => ({ outcome: 'committed' as const }),
     };
     const catalog = await discoverFirstSkills({
       bungalow,
@@ -505,12 +509,22 @@ describe('changing the trust of a source', () => {
 
 describe('the skill routes', () => {
   async function send(host: Host, method: string, path: string, body?: unknown) {
+    const snapshot = await host.providers.snapshot();
     return fetch(new URL(path, host.url), {
       method,
       headers: { 'content-type': 'application/json' },
       ...(body === undefined
         ? {}
-        : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
+        : {
+            body:
+              typeof body === 'string'
+                ? body
+                : JSON.stringify({
+                    ...(body as object),
+                    operationId: crypto.randomUUID(),
+                    expectedRevision: snapshot.configurationRevision,
+                  }),
+          }),
     });
   }
 

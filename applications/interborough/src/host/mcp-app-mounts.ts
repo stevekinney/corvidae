@@ -6,7 +6,10 @@
 import type { BureauPlugins } from '@lostgradient/bureau';
 import type { OperationMcpResource } from '@lostgradient/weft';
 
-import { buildMcpAppPage } from './mcp-app-build.ts';
+import { buildMcpAppPage, type BuiltMcpApp } from './mcp-app-build.ts';
+
+/** Environment variable naming the archive's prebuilt built-in MCP app directory. */
+export const MCP_APP_PREBUILT_DIRECTORY_VARIABLE = 'INTERBOROUGH_MCP_APP_DIRECTORY';
 
 /** The MCP App media type. */
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
@@ -50,8 +53,12 @@ export type ServedMcpApp = {
   readonly uri: string;
   /** The Bureau tool a client runs to open the page. */
   readonly opensFromTool: string;
+  /** The agent tool id that may open this app inline in Chat. */
+  readonly opensFromAgentTool?: string;
   /** The Bureau MCP tool names the panel may call, and no others. */
   readonly allowedTools: readonly string[];
+  /** Bureau tools callable only by this host panel, outside the generic MCP inventory. */
+  readonly hostOnlyTools: readonly string[];
   /** The built, self-contained page. */
   readonly html: string;
 };
@@ -72,15 +79,25 @@ export type McpAppFailure = {
  * skipped with `name-clash`). An app whose page does not build is left out and reported in
  * `failures`, never thrown: a plugin's contribution must not stop the host from starting.
  */
-export async function mcpAppMounts(contributed: ContributedMcpApps) {
+export async function mcpAppMounts(contributed: ContributedMcpApps, prebuiltDirectory?: string) {
   const built = await Promise.all(
     contributed.map(async ({ plugin, app }) => {
       try {
-        const page = await buildMcpAppPage({
-          entry: app.entry.href,
-          title: app.title,
-          styles: app.styles ?? '',
-        });
+        const prebuilt =
+          prebuiltDirectory === undefined ||
+          prebuiltDirectory.trim() === '' ||
+          plugin !== 'inspectors'
+            ? undefined
+            : await Bun.file(`${prebuiltDirectory}/${app.name}.json`)
+                .json()
+                .catch(() => undefined as BuiltMcpApp | undefined);
+        const page =
+          prebuilt ??
+          (await buildMcpAppPage({
+            entry: app.entry.href,
+            title: app.title,
+            styles: app.styles ?? '',
+          }));
         return { plugin, app, page };
       } catch (error) {
         const message = failureMessage(error);
@@ -113,7 +130,11 @@ export async function mcpAppMounts(contributed: ContributedMcpApps) {
       title: app.title,
       uri: app.uri,
       opensFromTool: app.opensFromTool,
+      ...(app.opensFromAgentTool === undefined
+        ? {}
+        : { opensFromAgentTool: app.opensFromAgentTool }),
       allowedTools: [...app.allowedTools],
+      hostOnlyTools: [...(app.hostOnlyTools ?? [])],
       html: page.html,
     });
     toolMeta[app.opensFromTool] = {

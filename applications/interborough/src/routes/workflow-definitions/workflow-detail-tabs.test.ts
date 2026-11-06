@@ -16,6 +16,7 @@ import {
   installWorkflowWorld,
   invalidFile,
   readyFile,
+  runFixture,
   sourceDefinition,
   workflowFaults,
   type RevisionFixture,
@@ -368,6 +369,23 @@ describe('starting a run', () => {
     expect(action?.textContent?.trim()).toBe(WORKFLOW_COPY.page.startAction);
     await fireEvent.click(action as HTMLElement);
     await waitFor(() => expect(router.pathname).toBe('/workflows/digest/run'));
+  });
+
+  test('names an agent-run origin and links its calling run', async () => {
+    const { container } = open('/workflows/digest', {
+      runs: [
+        runFixture('agent-run-1', 'digest', {
+          origin: { kind: 'agent-run', agentId: 'journey-author', runId: 'calling-run-1' },
+        }),
+      ],
+    });
+    const root = await ready(container);
+    await openTab(root, TABS.runs);
+    const row = root.querySelector('[data-run="agent-run-1"]') as HTMLElement;
+    await waitFor(() => expect(row.textContent).toContain("An agent's tool call"));
+    expect(row.textContent).toContain('journey-author');
+    expect(row.querySelector('a[href="/runs/calling-run-1"]')?.textContent).toBe('Calling run');
+    expect(row.textContent).not.toContain('agent-run ·');
   });
 });
 

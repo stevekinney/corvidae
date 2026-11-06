@@ -94,19 +94,55 @@ export function attachmentSettings(
   };
 }
 
+/** The type of a file in capitals, as its name's extension says (`TIFF`), else its MIME subtype. */
+function fileKindWords(file: File): string {
+  const dot = file.name.lastIndexOf('.');
+  const extension = dot > 0 ? file.name.slice(dot + 1) : '';
+  const subtype = file.type.split('/')[1] ?? '';
+  const kind = extension !== '' ? extension : subtype;
+  return kind === '' ? 'These' : kind.toUpperCase();
+}
+
+/** What an accepted MIME type is called to a person; `image/*` is the formats a model takes. */
+const ACCEPTED_WORDS: Readonly<Record<string, string>> = {
+  'image/*': 'PNG, JPG',
+  'application/pdf': 'PDF',
+  'text/*': 'text',
+  'audio/*': 'audio',
+  'video/*': 'video',
+};
+
+/** The accepted types as a phrase: `PNG, JPG, PDF or text`. */
+function acceptedKindWords(acceptedTypes: readonly string[]): string {
+  const words = acceptedTypes.flatMap((type) => {
+    const known = Object.hasOwn(ACCEPTED_WORDS, type) ? ACCEPTED_WORDS[type] : undefined;
+    return known ?? [type.split('/')[1]?.toUpperCase() ?? type];
+  });
+  const last = words.at(-1);
+  if (last === undefined) return '';
+  return words.length === 1 ? last : `${words.slice(0, -1).join(', ')} or ${last}`;
+}
+
 /** The words for a refusal or a failed upload, in `CHAT_COPY.attachments`. */
 export function chatAttachmentErrorMessage(failure: ChatAttachmentFailure): string {
   switch (failure.kind) {
     case 'too-large':
-      return CHAT_COPY.attachments.tooLarge(failure.maxFileSize);
+      return CHAT_COPY.attachments.tooLarge(failure.file.size, failure.maxFileSize);
     case 'type-not-accepted':
-      return CHAT_COPY.attachments.typeNotAccepted;
+      if (failure.acceptedTypes.length === 0) return CHAT_COPY.attachments.noFiles;
+      return CHAT_COPY.attachments.typeNotAccepted(
+        fileKindWords(failure.file),
+        acceptedKindWords(failure.acceptedTypes),
+      );
     case 'upload-failed': {
       const { error } = failure;
       if (!(error instanceof AttachmentUploadError)) return CHAT_COPY.attachments.uploadFailed;
       switch (error.kind) {
         case 'too-large':
-          return CHAT_COPY.attachments.tooLarge(error.limit ?? DEFAULT_MAX_ATTACHMENT_BYTES);
+          return CHAT_COPY.attachments.tooLarge(
+            failure.file.size,
+            error.limit ?? DEFAULT_MAX_ATTACHMENT_BYTES,
+          );
         case 'rejected':
           return CHAT_COPY.attachments.rejected;
         case 'expired':

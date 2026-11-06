@@ -38,7 +38,7 @@
             />{/if}
         {/snippet}
         <Button
-          variant="link"
+          variant="ghost-accent"
           size="sm"
           label={HEALTH_FRAME_COPY.storageDetails}
           trailingIcon={chevron}

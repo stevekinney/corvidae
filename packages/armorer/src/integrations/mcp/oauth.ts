@@ -52,6 +52,10 @@ import {
   parseMcpAuthorizationCallback,
   validateMcpAuthorizationResponseIssuer,
 } from './oauth-callback';
+import {
+  withOAuthTokenRequestGate,
+  type BeforeMcpOAuthTokenRequest,
+} from './oauth-token-request-gate';
 import { fromMcpTools, type FromMCPToolsOptions } from './tools';
 
 export {
@@ -263,6 +267,8 @@ export type CompleteMcpOAuthAuthorizationOptions = {
   /** The same storage hook passed to {@link createMcpOAuthProvider} for this session. */
   tokenStorage: McpOAuthTokenStorage;
   fetchFn?: FetchLike;
+  /** Await a host-owned claim before every token HTTP attempt, including SDK retries. */
+  beforeTokenRequest?: BeforeMcpOAuthTokenRequest;
 };
 
 /**
@@ -306,11 +312,14 @@ export async function completeMcpOAuthAuthorization(
     throw new Error('Authorization callback is missing the required `code` parameter.');
   }
 
+  const tokenFetch = options.beforeTokenRequest
+    ? withOAuthTokenRequestGate(fetchFn ?? fetch, options.beforeTokenRequest)
+    : fetchFn;
   return auth(provider, {
     serverUrl,
     authorizationCode: code,
     ...(iss ? { iss } : {}),
-    ...(fetchFn ? { fetchFn } : {}),
+    ...(tokenFetch ? { fetchFn: tokenFetch } : {}),
   });
 }
 
@@ -328,6 +337,8 @@ export type ConnectMcpClientWithOAuthOptions = ConnectMcpClientOptions & {
   /** An {@link OAuthClientProvider}, typically from {@link createMcpOAuthProvider}. */
   provider: OAuthClientProvider;
   transportOptions?: Omit<StreamableHTTPClientTransportOptions, 'authProvider'>;
+  /** Await a host-owned claim before every token HTTP attempt, including SDK retries. */
+  beforeTokenRequest?: BeforeMcpOAuthTokenRequest;
 };
 
 const DEFAULT_MCP_CLIENT_INFO: Implementation = {
@@ -382,6 +393,14 @@ export async function connectMcpClientWithOAuth(
   const url = serverUrl instanceof URL ? serverUrl : new URL(serverUrl);
   const transport = new StreamableHTTPClientTransport(url, {
     ...transportOptions,
+    ...(options.beforeTokenRequest
+      ? {
+          fetch: withOAuthTokenRequestGate(
+            transportOptions?.fetch ?? fetch,
+            options.beforeTokenRequest,
+          ),
+        }
+      : {}),
     authProvider: provider,
   });
   return connectMcpClient(transport, {

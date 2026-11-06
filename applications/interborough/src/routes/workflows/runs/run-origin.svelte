@@ -65,6 +65,9 @@
     {STARTED_BY_LABELS.api}
   {:else if origin.kind === 'agent'}
     {@render link(origin.href)} ({TASK_COPY.agent})
+  {:else if origin.kind === 'agent-run'}
+    An agent's tool call · {origin.agentName} ·
+    <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}>Calling run</a>
   {:else if origin.kind === 'goal'}
     {@render link(origin.href)}{#if origin.session}
       {@const session = origin.session}

@@ -62,6 +62,7 @@ describe('regression — durable abort and cancel', () => {
         cancelledIds.push(id);
         // Unblock the handle so driveDurableRun can complete and the run settles.
         rejectHandle(new Error('cancelled by test'));
+        return { workflowId: id, status: 'cancel-requested' };
       },
       signal: async () => {},
       update: async () => {},
@@ -153,6 +154,7 @@ describe('regression: [Symbol.dispose]() forwards to the durable inner run (PRRT
       cancel: async (id: string) => {
         cancelledIds.push(id);
         rejectHandle(new Error('cancelled by dispose'));
+        return { workflowId: id, status: 'cancel-requested' };
       },
       signal: async () => {},
       update: async () => {},
@@ -229,7 +231,7 @@ describe('regression: cancel() only persists aborted status when engine.cancel()
       }),
     );
     const engine = createSessionEngine({
-      cancel: async () => {},
+      cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
       get: async () => ({ id: runId, status: 'cancelled' }),
     });
     const handle = createSessionHandle(sessionId, {
@@ -275,9 +277,10 @@ describe('regression: cancel() only persists aborted status when engine.cancel()
     const cancelStarted = Promise.withResolvers<void>();
     const releaseCancel = Promise.withResolvers<void>();
     const engine = createSessionEngine({
-      cancel: async () => {
+      cancel: async (id: string) => {
         cancelStarted.resolve();
         await releaseCancel.promise;
+        return { workflowId: id, status: 'cancel-requested' };
       },
       get: async () => ({ id: runId, status: 'cancelled' }),
     });

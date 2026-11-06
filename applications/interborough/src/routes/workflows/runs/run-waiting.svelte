@@ -15,9 +15,11 @@
 
   interface RunWaitingProps {
     task: TaskView;
+    /** Called with `true` while a picked answer is in its Undo window and `false` when it is not. */
+    onAnswerHold?: ((held: boolean) => void) | undefined;
   }
 
-  let { task }: RunWaitingProps = $props();
+  let { task, onAnswerHold }: RunWaitingProps = $props();
 
   /** The questions that were sent from here, as they were listed when they were. */
   let kept = $state.raw<readonly TaskOpenWait[]>([]);
@@ -35,20 +37,25 @@
 </script>
 
 {#if questions.length > 0}
+  {@const waiting = open.some((wait) => !answers.has(wait.reviewId))}
   <section
     class="ib-run__section ib-run__waiting"
     aria-labelledby="ib-run-waiting"
     data-section="waiting"
   >
     <h2 id="ib-run-waiting" class="ib-run__heading-2">
-      {open.some((wait) => !answers.has(wait.reviewId))
-        ? TASK_COPY.waitsHeading
-        : TASK_COPY.waitsAnsweredHeading}
+      {waiting ? TASK_COPY.waitsHeading : TASK_COPY.waitsAnsweredHeading}
     </h2>
+    {#if waiting}
+      <p class="ib-run__note">
+        {TASK_COPY.waitsSummary(open.filter((wait) => !answers.has(wait.reviewId)).length)}
+      </p>
+    {/if}
     {#each questions as wait (wait.reviewId)}
       <RunWait
         taskId={task.id}
         {wait}
+        {onAnswerHold}
         answered={answers.get(wait.reviewId)}
         onSending={() => {
           if (!kept.some((entry) => entry.reviewId === wait.reviewId)) kept = [...kept, wait];

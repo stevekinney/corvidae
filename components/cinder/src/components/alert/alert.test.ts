@@ -38,6 +38,62 @@ const emptySnippet = createRawSnippet(() => ({
 }));
 
 describe('Alert rendering', () => {
+  test('a heading draws the variant glyph, the heading, and the body apart from it', () => {
+    const { container } = render(Alert, {
+      props: { variant: 'danger', heading: 'Couldn’t get an answer', children: textSnippet('429') },
+    });
+    expect(container.querySelector('.cinder-alert__icon svg')).not.toBeNull();
+    expect(container.querySelector('.cinder-alert__heading')?.textContent).toBe(
+      'Couldn’t get an answer',
+    );
+    expect(container.querySelector('.cinder-alert__body')?.textContent).toBe('429');
+  });
+
+  test.each(['info', 'success', 'warning', 'danger'] as const)(
+    'a %s alert with a heading draws a glyph of its own',
+    (variant) => {
+      const { container } = render(Alert, {
+        props: { variant, heading: 'Heading', children: emptySnippet },
+      });
+      expect(container.querySelector('.cinder-alert__icon svg')).not.toBeNull();
+    },
+  );
+
+  test('an alert without a heading draws no glyph of its own and no heading or body wrapper', () => {
+    const { container } = render(Alert, {
+      props: { variant: 'danger', children: textSnippet('429') },
+    });
+    expect(container.querySelector('.cinder-alert__icon')).toBeNull();
+    expect(container.querySelector('.cinder-alert__heading')).toBeNull();
+    expect(container.querySelector('.cinder-alert__body')).toBeNull();
+  });
+
+  test('an icon snippet replaces the default glyph of a heading', () => {
+    const { container } = render(Alert, {
+      props: {
+        heading: 'Heads up',
+        icon: textSnippet('custom-glyph'),
+        children: emptySnippet,
+      },
+    });
+    expect(container.querySelector('.cinder-alert__icon')?.textContent).toBe('custom-glyph');
+    expect(container.querySelectorAll('.cinder-alert__icon')).toHaveLength(1);
+  });
+
+  test('actions render at the right edge, after the content and before the dismiss button', () => {
+    const { container } = render(Alert, {
+      props: { dismissible: true, actions: textSnippet('Try again'), children: textSnippet('x') },
+    });
+    const root = container.querySelector('.cinder-alert')!;
+    const order = [...root.children].map((child) => child.className.split(' ')[0]);
+    expect(order).toEqual([
+      'cinder-alert__content',
+      'cinder-alert__actions',
+      'cinder-_dismiss-button',
+    ]);
+    expect(root.querySelector('.cinder-alert__actions')?.textContent).toBe('Try again');
+  });
+
   test('renders without errors with required props', () => {
     const { container } = render(Alert, {
       props: {

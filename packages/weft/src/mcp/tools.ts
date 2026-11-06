@@ -172,7 +172,9 @@ function buildToolImplementations(engine: Engine): ToolImplementation[] {
         const outcome = await waitForWorkflowToolResult(handle, {
           timeoutMs,
           signal: context.signal,
-          cancel: () => context.engine.cancel(handle.id),
+          cancel: async () => {
+            await context.engine.cancel(handle.id);
+          },
           trackPendingWork: context.trackPendingWork,
         });
         if (outcome.status === 'timed-out') {

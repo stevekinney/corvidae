@@ -192,6 +192,8 @@ export interface CreatePeerCallToolOptions {
   description: string;
   /** The client for the peer, from `createA2APeerClient` in `@lostgradient/weft/a2a`. */
   peer: A2APeerClient;
+  /** The canonical configured base URL, included in the durable request binding. */
+  peerUrl?: string | undefined;
   /**
    * The child's name in the registry and in child-workflow events. Defaults to the tool's
    * `name`.
@@ -213,6 +215,8 @@ export interface CreatePeerCallToolOptions {
    * does not send again, because the first message may have had effects.
    */
   durable?: PeerCallJournal | undefined;
+  /** Redacts untrusted peer text before it reaches child events, results, or errors. */
+  redactPeerText?: ((text: string) => string) | undefined;
   /** When supplied, the tool emits the four child-workflow events and registers the child. */
   parentContext?:
     | {
@@ -255,7 +259,7 @@ function isTerminalFailure(state: A2APeerStopState): state is 'failed' | 'reject
  * {@link CreatePeerCallToolOptions.durable}).
  */
 export function createPeerCallTool(options: CreatePeerCallToolOptions) {
-  const { name, description, peer, parentContext, durable } = options;
+  const { name, description, peer, peerUrl, parentContext, durable, redactPeerText } = options;
   const agentName = options.agentName ?? name;
   // Children stopped at a question, by remote task id, until a later call continues the task.
   const interrupted = new Map<string, (reason: string) => void>();
@@ -275,8 +279,6 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
           ? executionParentRunId
           : (parentContext?.parentRunId ?? '');
 
-      // Reading the card first means a peer this client must refuse never becomes a child.
-      const card = await peer.card();
       // A call that cannot be keyed is not journaled: it has nothing a replay could find.
       const operationKey = context.durableOperationKey;
       const journalKey: PeerCallJournalKey | undefined =
@@ -288,7 +290,11 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
         journalKey === undefined
           ? ''
           : await sha256Hex(
-              JSON.stringify([params.message, params.taskId ?? '', params.contextId ?? '']),
+              JSON.stringify(
+                peerUrl === undefined
+                  ? [params.message, params.taskId ?? '', params.contextId ?? '']
+                  : [peerUrl, params.message, params.taskId ?? '', params.contextId ?? ''],
+              ),
             );
       const recorded =
         durable !== undefined && journalKey !== undefined
@@ -299,6 +305,8 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
       if (recorded !== undefined && recorded.requestDigest !== requestDigest) {
         throw new PeerCallMismatchError(recorded.taskId);
       }
+      // Bind a replay to the configured destination before reading a card from a replacement.
+      const card = await peer.card();
       const childRunId = `peer-${crypto.randomUUID()}`;
       const controller = new AbortController();
       const signal =
@@ -409,6 +417,7 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
           remote(outcome.state, outcome.taskId, outcome.contextId),
         );
       } catch (error) {
+        const safeError = redactPeerError(error, redactPeerText);
         if (signal.aborted) {
           finish(
             'aborted',
@@ -416,26 +425,27 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
             remoteRunResult('', 'aborted'),
           );
         } else {
-          finish('failed', error instanceof Error ? error.message : String(error));
+          finish('failed', safeError instanceof Error ? safeError.message : String(safeError));
         }
-        throw error;
+        throw safeError;
       }
 
+      const peerMessage = redactPeerText?.(outcome.message) ?? outcome.message;
       const details: PeerCallErrorDetails = {
         provenance: outcome.provenance,
         taskId: outcome.taskId,
         contextId: outcome.contextId,
-        peerMessage: outcome.message,
+        peerMessage,
       };
       const peerName = outcome.provenance.agentName;
       if (outcome.state === 'completed') {
-        finish('completed', undefined, remoteRunResult(outcome.message, 'stop-condition'));
+        finish('completed', undefined, remoteRunResult(peerMessage, 'stop-condition'));
         return {
           untrusted: true,
           provenance: outcome.provenance,
           taskId: outcome.taskId,
           contextId: outcome.contextId,
-          message: outcome.message,
+          message: peerMessage,
           artifacts: outcome.artifacts,
         } satisfies PeerCallResult;
       }
@@ -443,7 +453,7 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
         finish(
           'aborted',
           typeof signal.reason === 'string' ? signal.reason : undefined,
-          remoteRunResult(outcome.message, 'aborted'),
+          remoteRunResult(peerMessage, 'aborted'),
         );
         throw signal.reason instanceof Error
           ? signal.reason
@@ -484,6 +494,19 @@ async function peerMessageId(key: PeerCallJournalKey): Promise<string> {
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function redactPeerError(
+  error: unknown,
+  redactPeerText: ((text: string) => string) | undefined,
+): unknown {
+  if (redactPeerText === undefined || !(error instanceof Error)) return error;
+  const message = redactPeerText(error.message);
+  if (message === error.message) return error;
+  const scrubbed = Object.assign(Object.create(Object.getPrototypeOf(error)), error) as Error;
+  scrubbed.message = message;
+  scrubbed.name = error.name;
+  return scrubbed;
 }
 
 /**

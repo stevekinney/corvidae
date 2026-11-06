@@ -52,6 +52,8 @@ const sourceSchema = z.object({
 });
 
 const snapshotSchema = z.object({
+  configurationRevision: z.string().nullable(),
+  credentialLockReason: z.literal('deployment').optional(),
   sources: z.array(sourceSchema),
   lockReason: z.enum(SETTING_LOCK_REASONS).optional(),
 });
@@ -163,6 +165,16 @@ export class HostToolSourceError extends Error {
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
+type MutationOptions = Options & {
+  readonly mutation?: { readonly operationId: string; readonly expectedRevision: string | null };
+};
+
+async function mutationInput(options: MutationOptions) {
+  if (options.mutation !== undefined) return { ...options.mutation };
+  const snapshot = await getToolSources(options);
+  return { operationId: crypto.randomUUID(), expectedRevision: snapshot.configurationRevision };
+}
+
 function send(path: string, init: RequestInit, options: Options): Promise<Response> {
   const request = options.fetch ?? fetch;
   return request(path, options.signal === undefined ? init : { ...init, signal: options.signal });
@@ -248,17 +260,40 @@ export async function probeToolSource(
 export async function connectToolSource(
   id: string,
   request: ToolSourceRequest,
-  options: Options = {},
+  options: MutationOptions = {},
 ): Promise<ToolSourceChange> {
-  const response = await send(sourcePath(id), jsonRequest('PUT', request), options);
+  const captured = z.record(z.string(), z.unknown()).parse(
+    JSON.parse(
+      JSON.stringify({
+        source: request.source,
+        credentials: request.credentials,
+        ...(request.create === true ? { create: true } : {}),
+      }),
+    ),
+  );
+  const mutation = await mutationInput(options);
+  const response = await send(
+    sourcePath(id),
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...mutation, ...captured }),
+    },
+    options,
+  );
   return readJson(response, changeSchema);
 }
 
-function jsonRequest(method: string, request: ToolSourceRequest): RequestInit {
+function jsonRequest(
+  method: string,
+  request: ToolSourceRequest,
+  mutation?: MutationOptions['mutation'],
+): RequestInit {
   return {
     method,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
+      ...mutation,
       source: request.source,
       credentials: request.credentials,
       ...(request.create === true ? { create: true } : {}),
@@ -276,17 +311,18 @@ function jsonRequest(method: string, request: ToolSourceRequest): RequestInit {
 export async function setAcceptsSecrets(
   id: string,
   tools: Readonly<Record<string, boolean>>,
-  options: Options = {},
+  options: MutationOptions = {},
 ): Promise<void> {
   const settings = Object.fromEntries(
     Object.entries(tools).map(([tool, acceptsSecrets]) => [tool, { acceptsSecrets }]),
   );
+  const mutation = await mutationInput(options);
   const response = await send(
     sourcePath(id, '/tools'),
     {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ tools: settings }),
+      body: JSON.stringify({ tools: settings, ...mutation }),
     },
     options,
   );
@@ -301,9 +337,18 @@ export async function setAcceptsSecrets(
  */
 export async function authorizeToolSource(
   id: string,
-  options: Options = {},
+  options: MutationOptions = {},
 ): Promise<ToolSourceAuthorization> {
-  const response = await send(sourcePath(id, '/authorize'), { method: 'POST' }, options);
+  const mutation = await mutationInput(options);
+  const response = await send(
+    sourcePath(id, '/authorize'),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(mutation),
+    },
+    options,
+  );
   return readJson(response, authorizationSchema);
 }
 
@@ -329,9 +374,18 @@ export async function previewToolSourceRemoval(
  */
 export async function removeToolSource(
   id: string,
-  options: Options = {},
+  options: MutationOptions = {},
 ): Promise<ToolSourceRemoved> {
-  const response = await send(sourcePath(id), { method: 'DELETE' }, options);
+  const mutation = await mutationInput(options);
+  const response = await send(
+    sourcePath(id),
+    {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(mutation),
+    },
+    options,
+  );
   return readJson(response, removedSchema);
 }
 

@@ -151,6 +151,32 @@ describe('the sample world, part A', () => {
     ]);
     expectAt(sent[0]?.createdAt, SAMPLE_WORLD_TIMES.refund4472Asked);
     expectAt(sent[1]?.createdAt, SAMPLE_WORLD_TIMES.refund4471Started);
+    // COR-2014: the 4471 reply names the model it ran on (Sonnet 5.5 since Oct 27), and its
+    // lookup's answer says when the call ran.
+    const rows = (history?.ids ?? []).map((id) => history?.messages[id]);
+    const replies = rows.filter(
+      (message) => message?.role === 'assistant' && message.createdAt >= sent[1]!.createdAt,
+    );
+    expect(replies.length).toBeGreaterThan(0);
+    for (const reply of replies) {
+      expect(reply?.metadata['bureau:replyModel']).toEqual({
+        provider: 'anthropic',
+        model: 'claude-sonnet-5-5',
+      });
+    }
+    const lookups = rows.filter(
+      (message) =>
+        message?.role === 'tool-result' &&
+        message.toolResult?.outcome === 'success' &&
+        message.createdAt >= sent[1]!.createdAt,
+    );
+    expect(lookups.length).toBeGreaterThan(0);
+    for (const lookup of lookups) {
+      expect(lookup?.metadata['toolTiming']).toMatchObject({
+        startedAt: expect.any(String),
+        endedAt: expect.any(String),
+      });
+    }
 
     const hello = byId.get(SAMPLE_WORLD_CHATS.sayHello.threadId);
     expect(hello).toMatchObject({

@@ -269,7 +269,7 @@ describe('Workers route when the workers could not be read (row 78z)', () => {
     expect(retry.querySelector('svg')).not.toBeNull();
     const open = view.getByRole('link', { name: copy.failed.openHealth });
     expect(open.getAttribute('href')).toBe('/health');
-    expect(open.getAttribute('data-cinder-variant')).toBe('link');
+    expect(open.getAttribute('data-cinder-variant')).toBe('ghost-accent');
   });
 
   test('Try again reads the workers again and the page returns when they answer', async () => {

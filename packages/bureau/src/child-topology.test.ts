@@ -116,6 +116,7 @@ function workflowState(
 function createFakeEngine() {
   const states = new Map<string, WorkflowState>();
   const handles = new Map<string, Deferred>();
+  const signals: { readonly workflowId: string; readonly name: string }[] = [];
   const handleFor = (id: string): Deferred => {
     let handle = handles.get(id);
     if (!handle) {
@@ -126,6 +127,10 @@ function createFakeEngine() {
   };
   return {
     states,
+    signals,
+    signal: async (workflowId: string, name: string) => {
+      signals.push({ workflowId, name });
+    },
     handleFor,
     get: async (id: string) => states.get(id) ?? null,
     getHandle: (id: string) => ({ result: () => handleFor(id).promise }),
@@ -1685,6 +1690,12 @@ describe('recovery', () => {
     });
     await store.register(runningRecord({ childRunId: 'settles' }));
     await store.register(runningRecord({ childRunId: 'explodes' }));
+    engine.states.set(
+      'parent-1',
+      workflowState('parent-1', 'running', {
+        waitingForSignals: ['durable-child:parent-1:explodes'],
+      }),
+    );
     await fixture.topology.prepareRecovery();
     const settles = await store.get('settles');
     await store.update(settles!, { ...settles!, status: 'completed' });
@@ -1698,6 +1709,9 @@ describe('recovery', () => {
     expect(
       await fixture.topology.children.wait({ parentRunId: 'parent-1', childRunId: 'explodes' }),
     ).toMatchObject({ outcome: 'unobservable' });
+    expect(engine.signals).toEqual([
+      { workflowId: 'parent-1', name: 'durable-child:parent-1:explodes' },
+    ]);
   });
 
   it('leaves a child another process reattached first to that process', async () => {
@@ -1746,6 +1760,83 @@ describe('delegation grants', () => {
     if (load.status !== 'found') throw new Error('grant missing');
     return load.grant;
   }
+
+  it('persists root authority budgets and attenuates depth across descendants', async () => {
+    const fixture = createFixture({
+      delegation: {
+        ...delegation,
+        rootAuthority: { levels: 3, budget: { concurrentChildren: 4, totalDescendants: 16 } },
+      },
+      parents: {
+        'parent-1': { agentName: 'planner', live: true },
+        'child-a': { agentName: 'worker', live: true },
+        'child-b': { agentName: 'worker', live: true },
+        'child-c': { agentName: 'worker', live: true },
+        'child-d': { agentName: 'worker', live: true },
+        'grandchild-a': { agentName: 'worker', live: true },
+        'great-grandchild-a': { agentName: 'worker', live: true },
+      },
+    });
+    for (const childRunId of ['child-a', 'child-b', 'child-c', 'child-d']) {
+      expect(
+        await fixture.topology.children.dispatch({
+          parentRunId: 'parent-1',
+          agentName: 'worker',
+          input: 'x',
+          childRunId,
+        }),
+      ).toMatchObject({ outcome: 'started', grant: { depth: 2 } });
+    }
+    expect(
+      await fixture.topology.children.dispatch({
+        parentRunId: 'parent-1',
+        agentName: 'worker',
+        input: 'x',
+        childRunId: 'child-e',
+      }),
+    ).toMatchObject({ outcome: 'rejected', code: 'budget-exhausted' });
+    const grandchild = await fixture.topology.children.dispatch({
+      parentRunId: 'child-a',
+      agentName: 'worker',
+      input: 'x',
+      childRunId: 'grandchild-a',
+    });
+    expect(grandchild).toMatchObject({ outcome: 'started' });
+    expect(
+      await fixture.topology.children.dispatch({
+        parentRunId: 'grandchild-a',
+        agentName: 'worker',
+        input: 'x',
+        childRunId: 'great-grandchild-a',
+      }),
+    ).toMatchObject({ outcome: 'started', grant: { depth: 0 } });
+    expect(
+      await fixture.topology.children.dispatch({
+        parentRunId: 'great-grandchild-a',
+        agentName: 'worker',
+        input: 'x',
+        childRunId: 'depth-exhausted',
+      }),
+    ).toMatchObject({ outcome: 'rejected', code: 'depth-exhausted' });
+
+    const descendants = ['child-a', 'child-b', 'child-c', 'child-d'].flatMap((parent) =>
+      Array.from({ length: 4 }, (_, index) => ({
+        parentRunId: parent,
+        agentName: 'worker',
+        input: 'x',
+        childRunId: `${parent}-grandchild-${index}`,
+      })),
+    );
+    const descendantResults = [];
+    for (const request of descendants) {
+      descendantResults.push(await fixture.topology.children.dispatch(request));
+    }
+    expect(descendantResults.filter((result) => result.outcome === 'started')).toHaveLength(10);
+    expect(descendantResults.at(-1)).toMatchObject({
+      outcome: 'rejected',
+      code: 'budget-exhausted',
+    });
+  });
 
   it('issues a signed grant for a top-level dispatch and discloses only what its policy allows', async () => {
     const fixture = createFixture({ delegation });

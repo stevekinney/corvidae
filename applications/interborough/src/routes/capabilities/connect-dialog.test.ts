@@ -273,6 +273,8 @@ describe('Connect a source', () => {
         },
         credentials: { key: TOKEN },
         create: true,
+        operationId: expect.any(String),
+        expectedRevision: '[]',
       },
     });
     await waitFor(() => expect(document_dialogGone()).toBe(true));
@@ -319,6 +321,8 @@ describe('Connect a source', () => {
       },
       credentials: {},
       create: true,
+      operationId: expect.any(String),
+      expectedRevision: '[]',
     });
   });
 

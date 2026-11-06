@@ -458,6 +458,19 @@ const MAILBOX_MAXIMUM_COMMAND_TIMEOUT_MS = 31_536_000_000;
  */
 export const SESSION_INPUT_EXPIRED_MESSAGE = 'the input expired before it was delivered';
 
+/** Reason recorded on a command its own caller retracted before any run took it (B06, row 18k). */
+export const SESSION_INPUT_RETRACTED_REASON =
+  'the caller retracted the input before it was delivered';
+
+/**
+ * How long a retract waits for a command a step boundary holds to settle (B06, row 18k). The
+ * boundary either rejects a command whose cancellation landed before its last check, which
+ * takes a few mailbox reads, or has already returned it for the step to append, which settles
+ * only after the step's turn commits and so is not waited for. A command still unsettled when
+ * this runs out is the second case: the step has it.
+ */
+export const SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS = 5_000;
+
 /** Reason recorded on a command cancelled because its identity was taken over by another session. */
 export const SESSION_INPUT_IDENTITY_TAKEN_REASON =
   'the same input id was admitted to another session while this admission was in flight';

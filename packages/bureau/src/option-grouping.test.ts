@@ -58,17 +58,21 @@ describe('memory over storage needs an explicit id', () => {
 
   it('resolves the same options once an id is given', async () => {
     const fixture = createSqliteStorageFixture({ runtime });
+    const diagnostics: unknown[] = [];
+    let bureau: Bureau<Record<never, never>> | undefined;
     try {
-      const bureau = await createBureau({
+      bureau = await createBureau({
         id: 'option-grouping-bureau',
         storage: fixture.storage,
         memory: governedMemory(),
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       });
-      bureaus.push(bureau);
       expect(bureau.id).toBe('option-grouping-bureau');
     } finally {
+      await bureau?.dispose();
       await fixture.dispose();
     }
+    expect(diagnostics).toEqual([]);
   });
 
   it('refuses memory over in-memory storage without an id, as the handler does for any storage', async () => {

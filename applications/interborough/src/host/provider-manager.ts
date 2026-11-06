@@ -1,3 +1,4 @@
+import { secretPublicationDigest } from './secret-publication-digest.ts';
 /**
  * The host's model providers while it runs: what it offers now, and the three ways a person
  * changes it without a restart. {@link ProviderManager.connect} stores a provider's API key and its
@@ -9,30 +10,40 @@
  *
  * - **Validated before written.** A change is checked against the current keys before any byte is
  *   written, so a request cannot leave a configuration the next start refuses.
- * - **Local only.** A remote home keeps its configuration in a bucket and its secrets in the
- *   environment, which the host cannot write, so a write there is refused with the lock reason
- *   `deployment` ({@link ProviderWriteLockedError}).
+ * - **Conditional publication.** Credentials are prepared as immutable versions. A configuration
+ *   CAS activates the reference and its allowlist together; failed or uncertain writes never
+ *   restore an old credential over another writer. Backend capabilities decide writability.
  * - **No secret leaves.** An error names the field, never the value, and nothing here returns,
  *   logs, or audits a key.
  * - **A catalog save names what it started from.** {@link ProviderManager.editCatalog} may be given
  *   the edits the caller read before it changed them. Under the configuration queue they are
  *   compared with the edits stored now, and a mismatch is a {@link ProviderConflictError} that
  *   writes nothing, so a save never overwrites an edit made elsewhere since.
- * - **In-flight runs keep what they started with.** A generate captures the key it was resolved
- *   with, so a run that began before a change finishes with the provider it began with, and a run
- *   that begins after it resolves the new one.
+ * - **In-flight runs keep what they started with.** Each provider call resolves the committed key before
+ *   dispatch. A call already in flight finishes with that key; the next call resolves current state.
  *
  * @module provider-manager
  */
 
-import type { Bungalow } from '@lostgradient/bungalow';
+import { createHash } from 'node:crypto';
 import {
-  ANONYMOUS_LOCAL_OWNER,
+  createLocalHostMutationContext,
+  HostMutationError,
+  type HostMutationContext,
+} from './host-mutation-context.ts';
+
+import type { Bungalow, ConfigurationSnapshot } from '@lostgradient/bungalow';
+import {
   type ProviderChecker,
   type resolveProviderGenerate,
   type SettingLockReason,
 } from '@lostgradient/bureau';
-import type { BackendDescriptor, GenerateFunction } from '@lostgradient/operative';
+import {
+  readBackendDescriptors,
+  withBackendDescriptors,
+  type BackendDescriptor,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 
 import { parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -53,6 +64,11 @@ import {
   type LoadedProviders,
   type ModelSelection,
 } from './providers.ts';
+import {
+  createWorkspaceSecrets,
+  SecretPublicationError,
+  type WorkspaceSecrets,
+} from './workspace-secrets.ts';
 
 /** The longest API key the host stores. Real keys are far shorter; the limit bounds a request. */
 const MAXIMUM_KEY_LENGTH = 4096;
@@ -68,30 +84,6 @@ export class ProviderWriteLockedError extends Error {
     );
     this.name = 'ProviderWriteLockedError';
     this.reason = reason;
-  }
-}
-
-/**
- * A change that stored a provider's new key but could not write the configuration, and could not
- * put the old key back. `inUse` is what the host actually loaded afterwards: a rotation of a
- * configured provider uses the new key, while a new provider whose configuration was not written
- * is not loaded, so its stored key is not used. The message says which and names no value.
- */
-export class ProviderPartialChangeError extends Error {
-  /** The provider whose key was stored. */
-  readonly provider: string;
-  /** Whether the host is calling the provider with the stored key, as the host loaded it. */
-  readonly inUse: boolean;
-
-  constructor(provider: string, inUse: boolean) {
-    super(
-      inUse
-        ? `The ${provider} key was stored and is in use, but the configuration could not be written and the previous key could not be put back.`
-        : `The ${provider} key was stored but is not in use, because the configuration could not be written, so the provider is not configured. The previous key could not be put back.`,
-    );
-    this.name = 'ProviderPartialChangeError';
-    this.provider = provider;
-    this.inUse = inUse;
   }
 }
 
@@ -195,6 +187,10 @@ export type ProviderModelRow = {
 
 /** The provider configuration as the host holds it, without a key. */
 export type ProviderSnapshot = {
+  /** Current storage revision for the next conditional edit. */
+  readonly configurationRevision: string | null;
+  /** Committed configuration revision most recently applied by this host. */
+  readonly appliedConfigurationRevision: string | null;
   /** Every provider the host can call, connected or not. */
   readonly providers: readonly ProviderStatus[];
   /** The catalog edits in `configuration.json`. */
@@ -203,33 +199,39 @@ export type ProviderSnapshot = {
   readonly models: readonly ProviderModelRow[];
   /** Present when writes are refused, with the reason. */
   readonly lockReason?: SettingLockReason;
+  /** Present when configuration may be writable but credential publication is unavailable. */
+  readonly credentialLockReason?: SettingLockReason;
 };
 
 /** The providers a running host offers and how they change. See the module comment. */
 export type ProviderManager = {
   /** What the host offers now. Read it at the moment of use, not once: a change replaces it. */
   current(): LoadedProviders;
-  /** The generate for a catalog model, resolved with the key held now. A run keeps the one it was given. */
+  /** The generate for a catalog model, resolved with the key held now. Each call resolves current committed credentials; an admitted call keeps its credential. */
   generateFor(selection: ModelSelection): GenerateFunction;
   /** Why writes are refused, or `undefined` when they are allowed. */
   lockReason(): SettingLockReason | undefined;
   /** The configuration as it is on disk, without a key. */
   snapshot(): Promise<ProviderSnapshot>;
   /** Store a provider's key, list it in the configuration, and apply both. */
-  connect(connection: ProviderConnection): Promise<ProviderChange>;
+  connect(connection: ProviderConnection, mutation?: HostMutationContext): Promise<ProviderChange>;
   /**
    * Replace the catalog edits in the configuration and apply them. `base` is the list of edits the
    * caller started from, as {@link ProviderManager.snapshot} reported it. When it is given, the
    * edits stored now must equal it, or nothing is written and the change is a
    * {@link ProviderConflictError}. Left out, the edits are replaced whatever is stored.
    */
-  editCatalog(edits: unknown, base?: unknown): Promise<ProviderChange>;
+  editCatalog(
+    edits: unknown,
+    base?: unknown,
+    mutation?: HostMutationContext,
+  ): Promise<ProviderChange>;
   /**
    * Remove a provider's key and apply it, so its models leave the catalog and a run that begins
    * after it cannot call the provider. The provider's allowlist and the catalog edits stay in the
    * configuration for a later connect. Connecting again restores it.
    */
-  disconnect(provider: unknown): Promise<ProviderChange>;
+  disconnect(provider: unknown, mutation?: HostMutationContext): Promise<ProviderChange>;
   /** Read the configuration and the keys again and apply them. */
   reload(): Promise<ProviderChange>;
   /**
@@ -264,6 +266,8 @@ export type ProviderManager = {
 
 /** What {@link createProviderManager} reads. */
 export type ProviderManagerOptions = {
+  /** Shared activation/recovery service for this host. */
+  readonly workspaceSecrets?: WorkspaceSecrets;
   /** The open home. Its mode decides whether a write is allowed. */
   readonly bungalow: Pick<
     Bungalow,
@@ -271,8 +275,9 @@ export type ProviderManagerOptions = {
     | 'configurationLocation'
     | 'readConfiguration'
     | 'writeConfiguration'
-    | 'readSecret'
-    | 'writeSecret'
+    | 'workspaceId'
+    | 'secretProvider'
+    | 'configurationWriteCapability'
   >;
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
@@ -293,16 +298,25 @@ export type ProviderManagerOptions = {
   readonly audit?: (entry: ProviderAuditEntry) => Promise<void>;
 };
 
-/** What {@link ProviderManagerOptions.audit} is handed: the audit entry of a removed provider key. */
+/** What {@link ProviderManagerOptions.audit} is handed for a provider configuration change. */
 export type ProviderAuditEntry = {
   /** `provider:<name>`, the resource the entry is filed under. */
   readonly runId: string;
-  /** `provider.disconnected`. */
-  readonly type: 'provider.disconnected';
-  /** The person who removed it, as the host's routes act: `anonymous:local`. */
+  /** The committed configuration change. */
+  readonly type: 'provider.connected' | 'provider.configured' | 'provider.disconnected';
+  /** The server-resolved resource owner who authorized this change. */
   readonly principal: string;
-  /** The provider, by its plugin's name, such as `anthropic`. */
-  readonly detail: { readonly provider: string };
+  /** Metadata only: never a key, request, or configuration value. */
+  readonly detail: {
+    readonly provider: string;
+    readonly actorId?: string;
+    readonly workspaceId?: string;
+    readonly membershipRevision?: string;
+    readonly outcome?: 'committed';
+    readonly changedKeys?: readonly string[];
+    readonly hash?: string;
+    readonly previousRevision?: string | null;
+  };
 };
 
 /** The page's view of a catalog row. */
@@ -406,18 +420,20 @@ function withAllowlist(
 /** Create the manager. It holds nothing until {@link ProviderManager.adopt} hands it the providers. */
 export function createProviderManager(options: ProviderManagerOptions): ProviderManager {
   const { bungalow } = options;
+  const workspaceSecrets = options.workspaceSecrets ?? createWorkspaceSecrets(bungalow);
   const location = bungalow.configurationLocation;
   const load = (providers: readonly ContributedProvider[]): Promise<LoadedProviders> =>
     loadProviders({
       configurationLocation: location,
       readConfiguration: () => bungalow.readConfiguration(),
-      readSecret: (key) => bungalow.readSecret(key),
+      readSecret: (key, snapshot) => workspaceSecrets.read(key, snapshot),
       warn: options.warn,
       providers,
     });
 
   // Nothing is offered until the plugins have been set up and `adopt` hands over their providers.
   let loaded: LoadedProviders = {
+    configurationRevision: null,
     providers: [],
     allowlists: new Map(),
     rows: [],
@@ -442,17 +458,21 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
   };
 
   /** The configuration as an object whose other keys a write keeps, or `{}` when none exists. */
-  async function readDocument(): Promise<Record<string, unknown>> {
-    let text: string | undefined;
+  async function readDocument(): Promise<{
+    document: Record<string, unknown>;
+    revision: string | null;
+  }> {
+    let snapshot: ConfigurationSnapshot;
     try {
-      text = await bungalow.readConfiguration();
+      snapshot = await bungalow.readConfiguration();
     } catch {
       throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
     }
+    const { text, revision } = snapshot;
     // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
     const document = parseDocument(text, location);
     if (text !== undefined) parseProviderConfiguration(text, location);
-    return document;
+    return { document, revision };
   }
 
   /** Check a document against the keys the host would hold, then write it. Nothing is written when it fails. */
@@ -476,26 +496,62 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
     return text;
   }
 
-  const apply = async (): Promise<ProviderChange> => {
+  let lastApplication: { revision: string | null; change: ProviderChange } | undefined;
+  const apply = async (observed = false): Promise<ProviderChange> => {
     // Read back from disk, so the host serves what a restart would.
     const next = await load(loaded.providers);
     loaded = next;
+    if (observed && lastApplication?.revision === next.configurationRevision)
+      return lastApplication.change;
     if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
     const catalog = await replaceRows(next.rows);
-    return { providers: providerDiagnostics(next), catalogRevision: catalog };
+    const change = { providers: providerDiagnostics(next), catalogRevision: catalog };
+    lastApplication = { revision: next.configurationRevision, change };
+    return change;
   };
 
   return {
     current: () => loaded,
     configurationQueue,
     lockReason,
-    generateFor: (selection) =>
-      createCatalogGenerate(selection, {
-        rows: loaded.rows,
-        apiKeys: loaded.apiKeys,
-        providers: loaded.providers,
+    generateFor(selection) {
+      const selected = { provider: selection.provider, model: selection.model };
+      let cached = loaded;
+      const initial = createCatalogGenerate(selected, {
+        ...cached,
         resolveProviderGenerate: options.resolveProviderGenerate,
-      }),
+      });
+      let cachedGenerate = initial;
+      const generate: GenerateFunction = async (context) => {
+        const admitted = await serialized(async () => {
+          const prior = loaded;
+          const next = await load(prior.providers);
+          const sameKeys =
+            next.apiKeys.size === cached.apiKeys.size &&
+            [...next.apiKeys].every(([name, value]) => cached.apiKeys.get(name) === value);
+          const reuse =
+            prior === cached &&
+            next.configurationRevision === cached.configurationRevision &&
+            sameKeys;
+          const changed = next.configurationRevision !== loaded.configurationRevision;
+          // Catalog replacement rebuilds file agents synchronously against current().
+          loaded = next;
+          if (changed) {
+            if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
+            await replaceRows(next.rows);
+          }
+          if (!reuse)
+            cachedGenerate = createCatalogGenerate(selected, {
+              ...next,
+              resolveProviderGenerate: options.resolveProviderGenerate,
+            });
+          cached = next;
+          return cachedGenerate;
+        });
+        return admitted(context);
+      };
+      return withBackendDescriptors(generate, readBackendDescriptors(initial));
+    },
     async adopt(providers) {
       loaded = await load([...providers]);
       return loaded.rows;
@@ -507,7 +563,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       closed = true;
     },
     async snapshot() {
-      const document = await readDocument();
+      const { document, revision } = await readDocument();
       const configuration = parseProviderConfiguration(JSON.stringify(document), location);
       const allowlists = readAllowlists(
         document,
@@ -516,6 +572,8 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       );
       const reason = lockReason();
       return {
+        configurationRevision: revision,
+        appliedConfigurationRevision: loaded.configurationRevision,
         providers: loaded.providers.map((provider) => {
           const models = allowlists.get(provider.plugin);
           const hasKey = loaded.apiKeys.has(provider.name);
@@ -531,11 +589,14 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         ),
         models: loaded.rows.map(modelRowOf),
         ...(reason === undefined ? {} : { lockReason: reason }),
+        ...(hostWriteLocks(bungalow).providerKeys === undefined
+          ? {}
+          : { credentialLockReason: 'deployment' as const }),
       };
     },
     // The request is read, checked, and copied before the first `await`: the caller owns it, and
     // may change it while this waits its turn.
-    async connect(connection) {
+    async connect(connection, mutation) {
       assertWritable();
       const contributed = checkedProvider(connection.provider, loaded.providers);
       const provider = contributed.name;
@@ -548,61 +609,61 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         ? [...connection.models]
         : connection.models;
       return serialized(async () => {
-        const document = await readDocument();
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        let identity = await authority.revalidate();
+        const { document } = await readDocument();
+        const wasConnected = loaded.apiKeys.has(provider);
         const text = validated(
           withAllowlist(document, contributed.plugin, models),
           new Set([...loaded.apiKeys.keys(), provider]),
         );
-        const previousKey = bungalow.readSecret(secretKey);
-        // True once the new key is on the disk. A write that throws may still have replaced the
-        // file (Bungalow renames it, then syncs the directory), so a throw is checked against the
-        // disk and not taken to mean that nothing changed.
-        let keyWritten = false;
-        try {
-          try {
-            bungalow.writeSecret(secretKey, key);
-            keyWritten = true;
-          } catch (error) {
-            let onDisk: string | undefined;
-            let known = true;
-            try {
-              onDisk = bungalow.readSecret(secretKey);
-            } catch {
-              known = false;
-            }
-            if (onDisk === key) keyWritten = true;
-            else {
-              // The key is not there, or cannot be told. Read the disk back so the host serves
-              // what it holds, and report the failure.
-              if (!known) await apply().catch(() => undefined);
-              throw error;
-            }
-          }
-          bungalow.writeConfiguration(text);
-        } catch (error) {
-          if (!keyWritten) throw error;
-          // The key went first. Put the old one back (an empty value reads as no key), so a change
-          // that did not happen leaves the host on the key it had.
-          let restored = true;
-          try {
-            bungalow.writeSecret(secretKey, previousKey ?? '');
-          } catch {
-            restored = false;
-          }
-          // Whatever is on the disk now is what the host should serve.
-          await apply().catch(() => undefined);
-          if (!restored) {
-            throw new ProviderPartialChangeError(provider, loaded.apiKeys.get(provider) === key);
-          }
-          throw error;
+        const result = await workspaceSecrets.publish({
+          operationId: authority.operationIdFor('provider-connect', provider),
+          requestDigest: secretPublicationDigest({
+            operation: 'provider-connect',
+            target: provider,
+            expectedRevision: authority.expectedRevision,
+            payload: { plugin: contributed.plugin, apiKey: key, models },
+          }),
+          authorize: async () => {
+            identity = await authority.revalidate();
+          },
+          key: secretKey,
+          value: key,
+          document: parseDocument(text, location),
+          expectedRevision: authority.expectedRevision,
+        });
+        if (result.outcome !== 'committed') {
+          await apply();
+          throw new SecretPublicationError(result.outcome);
         }
+        if (result.publishedNow !== true) return apply(true);
         // The plugin manager reports what is stored, so it reads the file again; the write stands
         // either way.
         await options.afterConfigurationWrite?.().catch(() => undefined);
+        await options
+          .audit?.({
+            runId: `provider:${provider}`,
+            type: wasConnected ? 'provider.configured' : 'provider.connected',
+            principal: authority.owner,
+            detail: {
+              provider,
+              outcome: 'committed',
+              ...(models === undefined ? {} : { changedKeys: ['models'] }),
+              ...(result.configurationHash === undefined ? {} : { hash: result.configurationHash }),
+              previousRevision: authority.expectedRevision,
+              actorId: identity.actorId,
+              workspaceId: identity.workspaceId,
+              membershipRevision: identity.membershipRevision,
+            },
+          })
+          .catch(() => undefined);
         return apply();
       });
     },
-    async editCatalog(edits, base) {
+    async editCatalog(edits, base, mutation) {
       assertWritable();
       const parsed = parseCatalogEdits(
         edits,
@@ -623,7 +684,12 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         }
       }
       return serialized(async () => {
-        const { catalog: stored, ...rest } = await readDocument();
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        let identity = await authority.revalidate();
+        const { document } = await readDocument();
+        const { catalog: stored, ...rest } = document;
         // An edit for a provider no loaded plugin contributes is not the caller's to replace: it
         // waits in the file for its plugin, after the edits that replace the others.
         const names = new Set(loaded.providers.map((provider) => provider.name));
@@ -640,11 +706,43 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           next.length === 0 ? rest : { ...rest, catalog: next },
           new Set(loaded.apiKeys.keys()),
         );
-        bungalow.writeConfiguration(text);
+        identity = await authority.revalidate();
+        const result = await bungalow.writeConfiguration(text, {
+          expectedRevision: authority.expectedRevision,
+        });
+        if (result.outcome !== 'committed') {
+          await apply().catch(() => undefined);
+          throw new SecretPublicationError(result.outcome);
+        }
+        const changedProviders = [
+          ...new Set([...current, ...parsed].map((edit) => edit.provider)),
+        ].filter((provider) => names.has(provider));
+        await Promise.all(
+          changedProviders.map(
+            async (provider) =>
+              await options
+                .audit?.({
+                  runId: `provider:${provider}`,
+                  type: 'provider.configured',
+                  principal: authority.owner,
+                  detail: {
+                    provider,
+                    outcome: 'committed',
+                    changedKeys: ['catalog'],
+                    hash: createHash('sha256').update(text).digest('hex'),
+                    previousRevision: authority.expectedRevision,
+                    actorId: identity.actorId,
+                    workspaceId: identity.workspaceId,
+                    membershipRevision: identity.membershipRevision,
+                  },
+                })
+                .catch(() => undefined),
+          ),
+        );
         return apply();
       });
     },
-    async disconnect(provider) {
+    async disconnect(provider, mutation) {
       assertWritable();
       const contributed = checkedProvider(provider, loaded.providers);
       const secretKey = contributed.secretKey;
@@ -652,24 +750,30 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         throw new ProviderInputError('provider', 'its plugin declares no secret to hold a key.');
       }
       return serialized(async () => {
-        try {
-          // An empty value reads as no key, as the restore of a failed connect relies on.
-          bungalow.writeSecret(secretKey, '');
-        } catch (error) {
-          // A write that throws may still have replaced the file, so the disk decides.
-          let removed = false;
-          try {
-            const onDisk = bungalow.readSecret(secretKey);
-            removed = onDisk === undefined || onDisk === '';
-          } catch {
-            removed = false;
-          }
-          if (!removed) {
-            // Whatever is on the disk is what the host should serve.
-            await apply().catch(() => undefined);
-            throw error;
-          }
-        }
+        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+        if (authority.workspaceId !== bungalow.workspaceId)
+          throw new HostMutationError('forbidden');
+        let identity = await authority.revalidate();
+        const { document } = await readDocument();
+        const publication = await workspaceSecrets.publish({
+          operationId: authority.operationIdFor('provider-disconnect', contributed.name),
+          requestDigest: secretPublicationDigest({
+            operation: 'provider-disconnect',
+            target: contributed.name,
+            expectedRevision: authority.expectedRevision,
+            payload: {},
+          }),
+          authorize: async () => {
+            identity = await authority.revalidate();
+          },
+          key: secretKey,
+          value: '',
+          document,
+          expectedRevision: authority.expectedRevision,
+        });
+        if (publication.outcome !== 'committed')
+          throw new SecretPublicationError(publication.outcome);
+        if (publication.publishedNow !== true) return apply(true);
         // The plugin manager reports whether the provider's plugin still has its secret.
         await options.afterConfigurationWrite?.().catch(() => undefined);
         const change = await apply();
@@ -678,14 +782,19 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           .audit?.({
             runId: `provider:${contributed.name}`,
             type: 'provider.disconnected',
-            principal: ANONYMOUS_LOCAL_OWNER,
-            detail: { provider: contributed.name },
+            principal: authority.owner,
+            detail: {
+              provider: contributed.name,
+              actorId: identity.actorId,
+              workspaceId: identity.workspaceId,
+              membershipRevision: identity.membershipRevision,
+            },
           })
           .catch(() => undefined);
         return change;
       });
     },
-    reload: () => serialized(apply),
+    reload: () => serialized(() => apply()),
     checkDocument(document) {
       validated(document, new Set(loaded.apiKeys.keys()));
     },
@@ -694,7 +803,8 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       if (!Array.isArray(models) || !models.every((entry) => typeof entry === 'string')) return [];
       let text: string | undefined;
       try {
-        text = await bungalow.readConfiguration();
+        const snapshot = await bungalow.readConfiguration();
+        text = snapshot.text;
       } catch {
         throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
       }

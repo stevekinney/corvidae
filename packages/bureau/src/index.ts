@@ -1,3 +1,11 @@
+export type { WorkspaceOperationClass } from './http/operation-map.ts';
+export { authorizeWorkspaceClass } from './http/workspace-authorization.ts';
+export { withWorkspaceMembership } from './http/workspace-principal.ts';
+export type {
+  WorkspaceCredential,
+  WorkspaceMembership,
+  WorkspaceMembershipOptions,
+} from './http/workspace-principal.ts';
 export {
   BUREAU_RESERVED_KEY_FAMILIES,
   BUREAU_RESERVED_KEY_PREFIXES,
@@ -536,7 +544,12 @@ export type {
   PlanSelectionRequest,
 } from './model-policy';
 export { createModelPolicyPlanner, modelPolicyDenialOf } from './model-policy';
-export { EffortNotSupportedError, ModelPolicyDeniedError } from './file-agent-generate';
+export {
+  EffortNotSupportedError,
+  ModelPolicyDeniedError,
+  REPLY_MODEL_METADATA_KEY,
+  type ReplyModel,
+} from './file-agent-generate';
 export type {
   CatalogFactory,
   Models,
@@ -879,6 +892,7 @@ export {
  * attach through its `mounts` option.
  */
 export {
+  type BureauResourceInventoryEntry,
   type BureauHandlerHost,
   type BureauHandlerSource,
   type BureauHandlerOptions,

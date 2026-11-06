@@ -82,7 +82,7 @@ test.describe('the list of agents', () => {
     await row(page, 'demo:tool-runner').getByRole('link', { name: 'New chat' }).click();
 
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Atool-runner$/);
-    await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue(/tool-runner/i);
+    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText(/tool-runner/i);
   });
 });
 

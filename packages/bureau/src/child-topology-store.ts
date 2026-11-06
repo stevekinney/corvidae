@@ -1,3 +1,4 @@
+import { readRunWorkspaceAuthority, type RunWorkspaceAuthority } from 'armorer';
 /**
  * COR-772 — the durable half of Bureau's parent-child topology.
  *
@@ -118,6 +119,8 @@ export interface BureauChildChat {
 
 /** The durable description of one parent-child relationship. */
 export interface BureauChildRecord {
+  /** Parent authorization captured independently from owner attribution. */
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly schemaVersion: typeof CHILD_RECORD_SCHEMA_VERSION;
   readonly parentRunId: string;
   readonly childRunId: string;
@@ -298,6 +301,8 @@ function isChildRecord(value: unknown): value is BureauChildRecord {
     recoveries >= 0 &&
     isWorkflowIdentity(value['workflow']) &&
     PARENT_CANCELLATIONS.includes(value['parentCancellation'] as string) &&
+    (value['workspaceAuthority'] === undefined ||
+      readRunWorkspaceAuthority(value['workspaceAuthority']) !== undefined) &&
     isOptional(value['principal'], 'string') &&
     isOptional(value['grantId'], 'string') &&
     isOptional(value['parentGrantId'], 'string') &&

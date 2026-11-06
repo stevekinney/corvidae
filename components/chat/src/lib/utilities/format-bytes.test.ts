@@ -8,4 +8,9 @@ describe('formatBytes', () => {
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatBytes(2.5 * 1024 * 1024)).toBe('2.5 MB');
   });
+
+  test('drops a trailing .0, so 240 KB reads as 240 KB', () => {
+    expect(formatBytes(240 * 1024)).toBe('240 KB');
+    expect(formatBytes(28 * 1024 * 1024)).toBe('28 MB');
+  });
 });

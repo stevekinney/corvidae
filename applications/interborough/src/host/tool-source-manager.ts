@@ -1,3 +1,14 @@
+import type { WorkspaceIdentity } from '@lostgradient/weft';
+import {
+  createLocalHostMutationContext,
+  HostMutationError,
+  type HostMutationContext,
+} from './host-mutation-context.ts';
+import { secretPublicationDigest } from './secret-publication-digest.ts';
+import { createToolSourceOAuthAuthority } from './tool-source-oauth-authority.ts';
+import type { ToolSourceOAuthBinding } from './tool-source-oauth-session.ts';
+import type { WorkspaceSecrets } from './workspace-secrets.ts';
+import { SecretPublicationError } from './workspace-secrets.ts';
 /**
  * The host's saved tool sources while it runs (COR-1930): the MCP servers and OpenAPI services
  * `toolSources` in `configuration.json` names (`tool-sources-configuration.ts`), whose tools an
@@ -82,12 +93,13 @@
  * @module tool-source-manager
  */
 
-import type { Bungalow } from '@lostgradient/bungalow';
+import { type Bungalow, type ConfigurationSnapshot } from '@lostgradient/bungalow';
 import {
   ANONYMOUS_LOCAL_OWNER,
   auditTrailToolSourceOwnerId,
   type AnswerEncryptionKeys,
   type SettingLockReason,
+  type WorkspaceMembershipOptions,
 } from '@lostgradient/bureau';
 import {
   readToolTitle,
@@ -213,29 +225,6 @@ export class ToolSourceOwnerOnlyError extends Error {
   }
 }
 
-/**
- * A change whose credentials were stored but whose configuration could not be written, and whose
- * previous credentials could not be put back (`connect`), or whose configuration was written but
- * whose credentials could not be cleared (`remove`). The message says which and names no value.
- */
-export class ToolSourcePartialChangeError extends Error {
-  /** The source the change was for. */
-  readonly sourceId: string;
-  /** What is left behind: the stored credentials are `new` and not in use, or `orphaned` after a removal. */
-  readonly stage: 'credentials-not-restored' | 'credentials-not-cleared';
-
-  constructor(sourceId: string, stage: 'credentials-not-restored' | 'credentials-not-cleared') {
-    super(
-      stage === 'credentials-not-restored'
-        ? `The credentials of tool source "${sourceId}" were stored, but the configuration could not be written and the previous credentials could not be put back.`
-        : `Tool source "${sourceId}" was removed from the configuration, but its stored credentials could not be cleared.`,
-    );
-    this.name = 'ToolSourcePartialChangeError';
-    this.sourceId = sourceId;
-    this.stage = stage;
-  }
-}
-
 /** A change that was written and applied, but could not be recorded in the audit trail. The change stands. */
 export class ToolSourceAuditError extends Error {
   /** The source the change was for. */
@@ -267,6 +256,9 @@ export type ToolSourceAuditEntry = {
     readonly sourceId: string;
     readonly kind: string;
     readonly owner: string;
+    readonly workspaceId?: string;
+    readonly actorId?: string;
+    readonly membershipRevision?: string;
     readonly commandLine?: string;
     /** For a removal: the identifiers of the agent files that named the source's tools, comma-joined. */
     readonly affectedAgents?: string;
@@ -351,10 +343,14 @@ export type ToolSourceStanding = {
 
 /** The saved tool sources as the host holds them, with no credential. */
 export type ToolSourceSnapshot = {
+  /** Opaque committed configuration revision used by explicit mutations. */
+  readonly configurationRevision: string | null;
   /** The configured sources, in the order the file lists them. */
   readonly sources: readonly ToolSourceStanding[];
   /** Present when changes are refused, with the reason. */
   readonly lockReason?: SettingLockReason;
+  /** Present when configuration may be writable but credential publication is unavailable. */
+  readonly credentialLockReason?: SettingLockReason;
 };
 
 /** What a probe asks for. Every field is `unknown` because it arrives from a request: the manager checks it. */
@@ -506,12 +502,12 @@ export type ToolSourceManager = {
    * Contact a source that is not saved, with the credentials the request carries, and report the
    * tools it lists. Writes, stores and records nothing, and holds no connection afterwards.
    */
-  probe(request: ToolSourceProbeRequest): Promise<ToolSourceProbe>;
+  probe(request: ToolSourceProbeRequest, mutation?: HostMutationContext): Promise<ToolSourceProbe>;
   /**
    * Store a source's credentials and list the source in the configuration. A source this adds is
    * loaded at once when the host is live, and its tools are available without a restart.
    */
-  connect(request: ToolSourceConnection): Promise<ToolSourceChange>;
+  connect(request: ToolSourceConnection, mutation?: HostMutationContext): Promise<ToolSourceChange>;
   /**
    * From now on, load each source {@link connect} adds at once (and an OAuth source once its first
    * sign-in completes) and hand the tools it offers, the ones that are on, to `add`, by the name an
@@ -520,21 +516,35 @@ export type ToolSourceManager = {
    */
   goLive(add: (tools: Readonly<Record<string, Tool>>) => Promise<void>): void;
   /** Set the per-tool settings (`acceptsSecrets`, `enabled`) of a configured source. Loaded at the next start. */
-  configureTools(request: ToolSourceToolSettingsChange): Promise<ToolSourceChange>;
+  configureTools(
+    request: ToolSourceToolSettingsChange,
+    mutation?: HostMutationContext,
+  ): Promise<ToolSourceChange>;
   /** Remove a source from the configuration and clear its credentials. No agent file is changed. */
-  remove(request: { readonly id: unknown; readonly principal: string }): Promise<ToolSourceRemoval>;
+  remove(
+    request: { readonly id: unknown; readonly principal: string },
+    mutation?: HostMutationContext,
+  ): Promise<ToolSourceRemoval>;
   /** The agent files a removal of the source would leave invalid. Changes nothing, and works on a remote home. */
   affectedAgents(id: unknown): Promise<ToolSourceRemovalPreview>;
   /** Start an MCP OAuth sign-in for a configured source. */
-  authorize(id: unknown): Promise<ToolSourceAuthorization>;
+  authorize(id: unknown, mutation?: HostMutationContext): Promise<ToolSourceAuthorization>;
   /** Finish a sign-in from the URL the browser came back to. */
-  completeAuthorization(id: unknown, callbackUrl: string): Promise<ToolSourceChange>;
+  completeAuthorization(
+    id: unknown,
+    callbackUrl: string,
+    mutation?: HostMutationContext,
+  ): Promise<ToolSourceChange>;
   /** Refuse every later change and close every connection the sources hold. The host calls it as it shuts down. */
   close(): Promise<void>;
 };
 
 /** What {@link createToolSourceManager} reads. */
 export type ToolSourceManagerOptions = {
+  /** Injected hosts resolve the initiating administrator before every OAuth exchange. */
+  readonly workspace?: WorkspaceMembershipOptions;
+  /** Shared activation/recovery service for this host. */
+  readonly workspaceSecrets?: WorkspaceSecrets;
   /** The open home. Its mode decides whether a write is allowed. */
   readonly bungalow: Pick<
     Bungalow,
@@ -542,8 +552,9 @@ export type ToolSourceManagerOptions = {
     | 'configurationLocation'
     | 'readConfiguration'
     | 'writeConfiguration'
-    | 'readSecret'
-    | 'writeSecret'
+    | 'workspaceId'
+    | 'secretProvider'
+    | 'configurationWriteCapability'
   >;
   /** The installation's answer keys, which seal the credentials. */
   readonly keys: AnswerEncryptionKeys;
@@ -946,7 +957,18 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   const location = bungalow.configurationLocation;
   const owner = options.owner ?? ANONYMOUS_LOCAL_OWNER;
   const configurationQueue = options.configurationQueue ?? createConfigurationQueue();
-  const vault: ToolSourceVault = createToolSourceVault({ bungalow, keys: options.keys });
+  const vault: ToolSourceVault = createToolSourceVault({
+    bungalow,
+    keys: options.keys,
+    ...(options.workspaceSecrets === undefined
+      ? {}
+      : { workspaceSecrets: options.workspaceSecrets }),
+  });
+  const oauthAuthority = createToolSourceOAuthAuthority({
+    vault,
+    home: bungalow,
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
+  });
   const timeout = options.loadTimeoutMilliseconds ?? DEFAULT_LOAD_TIMEOUT_MILLISECONDS;
   const probeTimeout = options.probeTimeoutMilliseconds ?? DEFAULT_PROBE_TIMEOUT_MILLISECONDS;
   const warn = options.warn ?? (() => undefined);
@@ -993,7 +1015,22 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       return work();
     });
 
-  async function readText(): Promise<string | undefined> {
+  async function assertMutation(
+    mutation: HostMutationContext,
+    source?: ToolSourceDescription,
+  ): Promise<WorkspaceIdentity> {
+    const identity = await mutation.revalidate();
+    if (
+      mutation.workspaceId !== bungalow.workspaceId ||
+      (source !== undefined &&
+        isLocalCommand(source) &&
+        !identity.capabilities.includes('deployment:operate'))
+    )
+      throw new HostMutationError('forbidden');
+    return identity;
+  }
+
+  async function readSnapshot() {
     try {
       return await bungalow.readConfiguration();
     } catch {
@@ -1004,25 +1041,23 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   /** The configuration as an object whose other keys a write keeps, and the sources it lists. */
   async function readDocument(): Promise<{
     text: string | undefined;
+    revision: string | null;
     document: Record<string, unknown>;
     sources: readonly ConfiguredToolSource[];
   }> {
-    const text = await readText();
+    const { text, revision } = await readSnapshot();
     // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
     if (text !== undefined) parseProviderConfiguration(text, location);
     const sources = readToolSourcesConfiguration(text, location);
     const parsed: unknown = text === undefined ? {} : JSON.parse(text);
-    return { text, document: isPlainObject(parsed) ? parsed : {}, sources };
+    return { text, revision, document: isPlainObject(parsed) ? parsed : {}, sources };
   }
 
-  const resolveCredential = async ({
-    sourceId,
-    credential,
-  }: {
-    sourceId: string;
-    credential: string;
-  }): Promise<string | undefined> => {
-    const secrets = await vault.read(sourceId);
+  const resolveCredential = async (
+    { sourceId, credential }: { sourceId: string; credential: string },
+    snapshot?: ConfigurationSnapshot,
+  ): Promise<string | undefined> => {
+    const secrets = await vault.read(sourceId, snapshot);
     return secrets.credentials.get(credential);
   };
 
@@ -1033,35 +1068,61 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       if (retired.has(request.sourceId)) return undefined;
       // A file edited by hand can drop the source and add one of the same id elsewhere: the tools
       // loaded under the old description are not given the new source's credentials.
-      const { sources } = await readDocument();
-      const current = sources.find((entry) => entry.source.id === request.sourceId);
+      const snapshot = await readDocument();
+      const current = snapshot.sources.find((entry) => entry.source.id === request.sourceId);
       if (current === undefined || recipientOf(current.source) !== recipientOf(loaded)) {
         return undefined;
       }
-      return resolveCredential(request);
+      return resolveCredential(request, snapshot);
     };
 
-  /** A source's sign-in state for a load at boot: empty and read-only once that incarnation is {@link retired}. */
-  function storageForLoaded(sourceId: string): McpOAuthTokenStorage {
-    const storage = vault.tokenStorage(sourceId);
-    return {
-      load: () => (retired.has(sourceId) ? Promise.resolve({}) : storage.load()),
-      save: (patch) => (retired.has(sourceId) ? undefined : storage.save(patch)),
-      clear: (names) => (retired.has(sourceId) ? undefined : storage.clear?.(names)),
-    };
-  }
-
-  /** The OAuth pieces for a load or a completion: storage in the vault, and the callback on this host's origin. */
-  function oauthOptions(
+  /** Every persistent loader shares one fenced storage/admission session. */
+  function oauthForSource(
+    source: ToolSourceDescription,
     onAuthorizationRequired: ToolSourceOAuthOptions['onAuthorizationRequired'],
     turn: TokenStorageTurn = 'take',
-    storage: (sourceId: string) => McpOAuthTokenStorage = (sourceId) =>
-      vault.tokenStorage(sourceId, turn),
+    binding?: ToolSourceOAuthBinding,
   ): ToolSourceOAuthOptions {
+    const revision = revisionOf(source);
+    let pending: ReturnType<typeof oauthAuthority.session> | undefined;
+    const session = () =>
+      (pending ??= oauthAuthority.session(
+        source.id,
+        revision,
+        async (snapshot) =>
+          !retired.has(source.id) && (await isCurrent(source.id, revision, snapshot)),
+        turn,
+        binding,
+      ));
+    const storage: McpOAuthTokenStorage = {
+      load: async () => {
+        const current = await session();
+        return current.tokenStorage.load();
+      },
+      save: async (input) => {
+        const patch = structuredClone(input);
+        const current = await session();
+        await current.tokenStorage.save(patch);
+      },
+      clear: async (input) => {
+        const keys = [...input];
+        const current = await session();
+        await current.tokenStorage.clear?.(keys);
+      },
+    };
     return {
-      tokenStorage: storage,
-      redirectUrl: (sourceId) => `${options.origin()}${oauthCallbackPath(sourceId)}`,
+      tokenStorage: (id) => {
+        if (id !== source.id) throw new HostMutationError('forbidden');
+        return storage;
+      },
+      redirectUrl: (id) => `${options.origin()}${oauthCallbackPath(id)}`,
       onAuthorizationRequired,
+      beforeTokenRequest: async (id, request) => {
+        if (id !== source.id) throw new HostMutationError('forbidden');
+        const snapshot = { ...request };
+        const current = await session();
+        return current.beforeTokenRequest(snapshot);
+      },
     };
   }
 
@@ -1151,7 +1212,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const loaded = await within((signal) =>
         loadToolSource(source, {
           resolveCredential: resolveForLoaded(source),
-          oauth: oauthOptions(() => undefined, 'take', storageForLoaded),
+          oauth: oauthForSource(source, () => undefined),
           signal,
           ...fetchOption,
         }),
@@ -1230,7 +1291,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     let credentials: readonly string[] = [];
     let authorized: boolean | undefined;
     try {
-      credentials = vault.credentialNames(entry.source.id);
+      credentials = await vault.credentialNames(entry.source.id);
       if (isOAuth(entry.source)) {
         const secrets = await vault.read(entry.source.id);
         authorized = secrets.oauth?.tokens !== undefined;
@@ -1277,17 +1338,25 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     source: ToolSourceDescription,
     access: { readonly granted?: readonly string[]; readonly revoked?: readonly string[] } = {},
     affected?: readonly AffectedAgent[],
+    identity?: WorkspaceIdentity,
   ): Promise<void> {
     const commandLine = commandLineOf(source);
     try {
       await options.audit({
         runId: auditTrailToolSourceOwnerId(source.id),
         type,
-        principal: owner,
+        principal: identity?.owner ?? owner,
         detail: {
           sourceId: source.id,
           kind: source.kind,
-          owner,
+          owner: identity?.owner ?? owner,
+          ...(identity === undefined
+            ? {}
+            : {
+                workspaceId: identity.workspaceId,
+                actorId: identity.actorId,
+                membershipRevision: identity.membershipRevision,
+              }),
           ...(commandLine === undefined ? {} : { commandLine }),
           ...(affected === undefined
             ? {}
@@ -1314,10 +1383,19 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
    * the source's turn, where every change to the source's secret and configuration also takes its
    * turn, so the answer holds for the write that follows it.
    */
-  async function isCurrent(id: string, revision: string): Promise<boolean> {
+  async function isCurrent(
+    id: string,
+    revision: string,
+    snapshot?: ConfigurationSnapshot,
+  ): Promise<boolean> {
     try {
-      const entry = await configured(id);
-      return revisionOf(entry.source) === revision;
+      const entry =
+        snapshot === undefined
+          ? await configured(id)
+          : readToolSourcesConfiguration(snapshot.text, location).find(
+              (candidate) => candidate.source.id === id,
+            );
+      return entry !== undefined && revisionOf(entry.source) === revision;
     } catch {
       return false;
     }
@@ -1335,22 +1413,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     }
   }
 
-  /** Write `text` as the configuration, and say whether the file holds it afterwards. */
-  async function writeConfiguration(text: string): Promise<boolean> {
-    try {
-      bungalow.writeConfiguration(text);
-      return true;
-    } catch {
-      // Bungalow renames the file and then syncs the directory, so a throw may follow a write
-      // that took. Read the disk back instead of assuming.
-      try {
-        return (await bungalow.readConfiguration()) === text;
-      } catch {
-        return false;
-      }
-    }
-  }
-
+  /** Await a conditional write; uncertainty never takes the credential-rollback path. */
   /** Where a source added while the host runs hands its tools: the Bureau's catalog, once it is built. */
   let live: ((tools: Readonly<Record<string, Tool>>) => Promise<void>) | undefined;
 
@@ -1403,7 +1466,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       await Promise.all(sources.map((entry) => loadOne(entry)));
     },
     async snapshot() {
-      const { sources } = await readDocument();
+      const { sources, revision } = await readDocument();
       const standings = await Promise.all(
         sources.map((entry) => {
           const previous = booted.get(entry.source.id);
@@ -1439,14 +1502,21 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         }),
       );
       const reason = lockReason();
-      return { sources: standings, ...(reason === undefined ? {} : { lockReason: reason }) };
+      return {
+        configurationRevision: revision,
+        sources: standings,
+        ...(reason === undefined ? {} : { lockReason: reason }),
+        ...(hostWriteLocks(bungalow).providerKeys === undefined
+          ? {}
+          : { credentialLockReason: 'deployment' as const }),
+      };
     },
     // The request is checked, as `connect` checks it, before anything is contacted. Nothing is
     // stored, written to the configuration, put in the audit trail, or taken from the vault: the
     // credentials live in this call, and a source that answers is closed before it returns.
-    async probe(request) {
+    async probe(request, input) {
       assertWritable();
-      const { id, source } = checkedDescription(request, owner);
+      const { id, source } = checkedDescription(request, input?.owner ?? owner);
       const supplied = checkedCredentials(request.credentials, referencedCredentials(source));
       for (const name of referencedCredentials(source)) {
         if (!supplied.has(name)) {
@@ -1456,17 +1526,22 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       if (closed) throw new Error('The host is shutting down.');
       // One storage for the whole probe: the loader asks for it more than once.
       const storage = probeTokenStorage();
+      const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+      await assertMutation(mutation, source);
       let loaded: LoadedToolSource;
       try {
         loaded = await within(
           (signal) =>
             loadToolSource(source, {
               resolveCredential: ({ credential }) => supplied.get(credential),
-              oauth: oauthOptions(
-                () => undefined,
-                'take',
-                () => storage,
-              ),
+              oauth: {
+                tokenStorage: () => storage,
+                redirectUrl: (sourceId) => `${options.origin()}${oauthCallbackPath(sourceId)}`,
+                onAuthorizationRequired: () => undefined,
+                beforeTokenRequest: () => {
+                  throw new HostMutationError('forbidden');
+                },
+              },
               signal,
               ...fetchOption,
             }),
@@ -1510,9 +1585,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     },
     // The request is read, checked, and copied before the first `await`: the caller owns it, and
     // may change it while this waits its turn.
-    async connect(request) {
+    async connect(request, input) {
       assertWritable();
-      const { id, source } = checkedDescription(request, owner);
+      const { id, source } = checkedDescription(request, input?.owner ?? owner);
       const referenced = referencedCredentials(source);
       const supplied = checkedCredentials(request.credentials, referenced);
       const createOnly = request.createOnly === true;
@@ -1522,9 +1597,13 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       let added = false;
       const change = await serialized(() =>
         vault.exclusive(id, async () => {
-          const { text: currentText, document, sources } = await readDocument();
+          const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+          let identity = await assertMutation(mutation, source);
+          const { revision, document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
-          if (createOnly && existing !== undefined) {
+          const operationId = mutation.operationIdFor('tool-source-connect', id);
+          const priorOperation = await bungalow.secretProvider.getOperation(operationId);
+          if (createOnly && existing !== undefined && priorOperation === undefined) {
             throw new ToolSourceExistsError(id);
           }
           // What is held is carried over only for the same source going to the same place. A new
@@ -1595,43 +1674,59 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             supplied.size === 0 &&
             // A secret that cannot be read is replaced by this request, even one that names no credential.
             !unreadable;
-          if (unchanged) return { id, changed: false, restartRequired: true };
+          if (unchanged && priorOperation === undefined)
+            return { id, changed: false, restartRequired: true };
 
-          // A new source has no previous text to put back: writing it replaces any orphan, and a
-          // failed change leaves the orphan cleared rather than restored.
-          const previousText = existing === undefined ? undefined : vault.stored(id);
-          // A write that throws may still have replaced the secret, so both steps put the previous
-          // text back (an empty value reads as no secret) when the change does not complete.
-          // The loaded incarnation stops being given credentials before the new ones are stored,
-          // since it is still connected to the old address; a change that does not complete
-          // puts the previous ones back and lifts the fence with them.
+          // Fence the old recipient before activation; credentials and description commit together.
           const fences = existing !== undefined && !sameRecipient && !retired.has(id);
           if (fences) retired.add(id);
-          const putPreviousBack = (): void => {
-            try {
-              vault.restore(id, previousText);
-            } catch {
-              throw new ToolSourcePartialChangeError(id, 'credentials-not-restored');
-            }
-            if (fences) retired.delete(id);
-          };
           try {
-            await vault.write(id, {
-              credentials,
-              oauth: keepsSignIn ? previous.oauth : undefined,
-              signIn: keepsSignIn ? previous.signIn : undefined,
-            });
+            const publication = await vault.write(
+              id,
+              {
+                credentials,
+                oauth: keepsSignIn ? previous.oauth : undefined,
+                signIn: keepsSignIn ? previous.signIn : undefined,
+                oauthBinding: keepsSignIn ? previous.oauthBinding : undefined,
+                oauthClaim: keepsSignIn ? previous.oauthClaim : undefined,
+              },
+              { text, revision: mutation.expectedRevision },
+              async () => {
+                identity = await assertMutation(mutation, source);
+              },
+              {
+                operationId,
+                requestDigest: secretPublicationDigest({
+                  operation: 'tool-source-connect',
+                  target: id,
+                  expectedRevision: mutation.expectedRevision,
+                  payload: {
+                    source,
+                    credentials: Object.fromEntries(supplied),
+                    createOnly,
+                    tools:
+                      incomingTools === undefined ? undefined : Object.fromEntries(incomingTools),
+                  },
+                }),
+              },
+            );
+            if (publication.publishedNow !== true) {
+              if (fences) retired.delete(id);
+              return { id, changed: false, restartRequired: true };
+            }
           } catch (error) {
-            putPreviousBack();
+            // No compensation writes. A definite unchanged configuration can safely lift the fence.
+            const standing = await bungalow.readConfiguration();
+            if (
+              fences &&
+              error instanceof SecretPublicationError &&
+              error.definitelyRejected &&
+              standing.revision === revision
+            )
+              retired.delete(id);
             throw error;
           }
-          // A rotation of credentials alone leaves the file as it is: nothing to write or repair.
-          if (text !== currentText && !(await writeConfiguration(text))) {
-            // The configuration is not the one meant: the file still describes the previous credentials.
-            putPreviousBack();
-            throw new Error('The tool-source configuration could not be written.');
-          }
-          await record('tool.source.connected', source, { revoked });
+          await record('tool.source.connected', source, { revoked }, undefined, identity);
           added = existing === undefined;
           return { id, changed: true, restartRequired: true };
         }),
@@ -1642,11 +1737,13 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     goLive(add) {
       live = add;
     },
-    async configureTools(request) {
+    async configureTools(request, input) {
       assertWritable();
       const id = checkedIdentifier(request.id, 'id');
       const incoming = checkedToolSettings(request.tools);
       return serialized(async () => {
+        const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+        let identity = await assertMutation(mutation);
         const { text: currentText, document, sources } = await readDocument();
         const existing = sources.find((entry) => entry.source.id === id);
         if (existing === undefined) {
@@ -1667,26 +1764,59 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         parseProviderConfiguration(text, location);
         parseToolSourcesConfiguration(nextDocument.toolSources, location);
         if (text === currentText) return { id, changed: false, restartRequired: true };
-        if (!(await writeConfiguration(text))) {
-          throw new Error('The tool-source configuration could not be written.');
-        }
+        identity = await assertMutation(mutation, existing.source);
+        const publication = await bungalow.writeConfiguration(text, {
+          expectedRevision: mutation.expectedRevision,
+        });
+        if (publication.outcome !== 'committed')
+          throw new SecretPublicationError(publication.outcome);
         const before = new Set(acceptingTools(existing.tools));
         const after = new Set(acceptingTools(tools));
-        await record('tool.source.tools-configured', existing.source, {
-          granted: [...after].filter((name) => !before.has(name)).sort(),
-          revoked: [...before].filter((name) => !after.has(name)).sort(),
-        });
+        await record(
+          'tool.source.tools-configured',
+          existing.source,
+          {
+            granted: [...after].filter((name) => !before.has(name)).sort(),
+            revoked: [...before].filter((name) => !after.has(name)).sort(),
+          },
+          undefined,
+          identity,
+        );
         return { id, changed: true, restartRequired: true };
       });
     },
-    async remove(request) {
+    async remove(request, input) {
       assertWritable();
       const id = checkedIdentifier(request.id, 'id');
       return serialized(() =>
         vault.exclusive(id, async () => {
+          const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+          let identity = await assertMutation(mutation);
+          const operationId = mutation.operationIdFor('tool-source-remove', id);
+          const receipt = {
+            operationId,
+            requestDigest: secretPublicationDigest({
+              operation: 'tool-source-remove',
+              target: id,
+              expectedRevision: mutation.expectedRevision,
+              payload: {},
+            }),
+          };
           const { document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
           if (existing === undefined) {
+            const prior = await bungalow.secretProvider.getOperation(operationId);
+            if (prior !== undefined && prior.state !== 'prepared') {
+              await vault.clear(
+                id,
+                { text: JSON.stringify(document), revision: mutation.expectedRevision },
+                async () => {
+                  await assertMutation(mutation);
+                },
+                receipt,
+              );
+              return { id, changed: false, restartRequired: true, affectedAgents: [] };
+            }
             throw new ToolSourceInputError('source', 'not a configured source.', 'unknown-source');
           }
           // Read before anything is written: a failure here changes nothing. Agent files are only read.
@@ -1699,9 +1829,16 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
               : { ...rest, toolSources: serializeToolSources(remaining) };
           const text = `${JSON.stringify(nextDocument, null, 2)}\n`;
           parseProviderConfiguration(text, location);
-          if (!(await writeConfiguration(text))) {
-            throw new Error('The tool-source configuration could not be written.');
-          }
+          const publication = await vault.clear(
+            id,
+            { text, revision: mutation.expectedRevision },
+            async () => {
+              identity = await assertMutation(mutation);
+            },
+            receipt,
+          );
+          if (publication.publishedNow !== true)
+            return { id, changed: false, restartRequired: true, affectedAgents: affected };
           retired.add(id);
           booted.delete(id);
           // Its connection was opened with credentials a removal cannot take back (a local command
@@ -1712,12 +1849,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             loadedSources.splice(loadedSources.indexOf(connection), 1);
             await connection.close().catch(() => undefined);
           }
-          try {
-            vault.clear(id);
-          } catch {
-            throw new ToolSourcePartialChangeError(id, 'credentials-not-cleared');
-          }
-          await record('tool.source.removed', existing.source, {}, affected);
+          await record('tool.source.removed', existing.source, {}, affected, identity);
           return { id, changed: true, restartRequired: true, affectedAgents: affected };
         }),
       );
@@ -1727,26 +1859,46 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       await configured(id);
       return { id, tools: loadedToolNames(id).toSorted(), affectedAgents: await agentsUsing(id) };
     },
-    async authorize(rawId) {
+    async authorize(rawId, input) {
       assertWritable();
+      const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+      await mutation.revalidate();
       const id = checkedIdentifier(rawId, 'source');
       const entry = await configured(id);
       if (!isOAuth(entry.source)) {
         throw new ToolSourceInputError('source', 'does not sign in with OAuth.');
       }
       const revision = revisionOf(entry.source);
+      const binding = await oauthAuthority.begin(id, revision, mutation);
+      const waiting = await vault.read(id);
+      if (
+        waiting.oauthBinding?.flowId === binding.flowId &&
+        waiting.signIn?.authorizationUrl !== undefined &&
+        waiting.oauth?.state !== undefined
+      ) {
+        const elapsed = now() - waiting.signIn.startedAt;
+        if (
+          waiting.signIn.revision !== revision ||
+          !(elapsed >= 0 && elapsed <= SIGN_IN_TIME_TO_LIVE_MILLISECONDS)
+        )
+          throw new ToolSourceInputError(
+            'source',
+            'the sign-in has expired or changed. Start a new operation.',
+          );
+        return { authorized: false, authorizationUrl: waiting.signIn.authorizationUrl };
+      }
       let authorizationUrl: URL | undefined;
       try {
         const loaded = await within((signal) =>
           loadToolSource(entry.source, {
             resolveCredential,
-            oauth: oauthOptions(
+            oauth: oauthForSource(
+              entry.source,
               (_sourceId, url) => {
                 authorizationUrl = url;
               },
               'take',
-              (sourceId) =>
-                vault.tokenStorage(sourceId, 'take', () => isCurrent(sourceId, revision)),
+              binding,
             ),
             signal,
             ...fetchOption,
@@ -1757,27 +1909,28 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         await assertCurrent(id, revision);
         return { authorized: true };
       } catch (error) {
+        await assertCurrent(id, revision);
         if (
           error instanceof ToolSourceAuthorizationRequiredError &&
           authorizationUrl !== undefined
         ) {
           // The sign-in is good for this description and for a while: the callback checks both.
-          const recorded = await vault.beginSignIn(id, { startedAt: now(), revision }, () =>
-            isCurrent(id, revision),
+          await oauthAuthority.recordSignIn(
+            id,
+            binding,
+            { startedAt: now(), revision, authorizationUrl: authorizationUrl.href },
+            (snapshot) => isCurrent(id, revision, snapshot),
           );
-          if (!recorded) {
-            await assertCurrent(id, revision);
-            throw new ToolSourceInputError('source', 'changed while the sign-in was starting.');
-          }
           return { authorized: false, authorizationUrl: authorizationUrl.href };
         }
-        throw error;
+        if (error instanceof HostMutationError) throw error;
+        throw new ToolSourceInputError('source', 'the sign-in could not be started.');
       }
     },
     // Taken in turn with every other change to the configuration and to this source's secret: a
     // removal or a change that arrives during the token exchange waits for it, and one that came
     // first is seen here, so the tokens are never written for a source that is gone or different.
-    async completeAuthorization(rawId, callbackUrl) {
+    async completeAuthorization(rawId, callbackUrl, input) {
       assertWritable();
       const id = checkedIdentifier(rawId, 'source');
       const change = await serialized(() =>
@@ -1786,7 +1939,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           if (!isOAuth(entry.source)) {
             throw new ToolSourceInputError('source', 'does not sign in with OAuth.');
           }
-          const { oauth: waiting, signIn } = await vault.read(id);
+          const { oauth: waiting, signIn, oauthBinding } = await vault.read(id);
+          if (
+            oauthBinding === undefined ||
+            (input !== undefined &&
+              (oauthBinding.workspaceId !== input.workspaceId ||
+                oauthBinding.actorId !== input.actorId ||
+                oauthBinding.owner !== input.owner))
+          )
+            throw new HostMutationError('forbidden');
           // Armorer skips the `state` check when none was recorded, so a callback with no flow in
           // progress is refused here before it can reach the token endpoint.
           if (
@@ -1796,8 +1957,14 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           ) {
             throw new ToolSourceInputError('callback', 'no sign-in is waiting for this source.');
           }
+          const parameters = new URL(callbackUrl).searchParams;
+          if (parameters.getAll('state').length !== 1 || parameters.get('state') !== waiting.state)
+            throw new ToolSourceInputError('callback', 'the sign-in state is invalid.');
+          const identity = await oauthAuthority.identity(oauthBinding);
+          if (input !== undefined) await input.revalidate();
           // This call holds the source's turn, so the loader's storage must not wait for it.
-          const storage = vault.tokenStorage(id, 'held');
+          const oauth = oauthForSource(entry.source, () => undefined, 'held', oauthBinding);
+          const storage = oauth.tokenStorage(id);
           const elapsed = now() - signIn.startedAt;
           const refusal =
             signIn.revision !== revisionOf(entry.source)
@@ -1816,8 +1983,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           const cancel = schedule(() => controller.abort(), timeout);
           const baseFetch = options.fetch ?? fetch;
           const bounded: typeof fetch = Object.assign(
-            (input: RequestInfo | URL, init?: RequestInit) =>
-              baseFetch(input, {
+            (address: RequestInfo | URL, init?: RequestInit) =>
+              baseFetch(address, {
                 ...init,
                 signal:
                   init?.signal === undefined || init.signal === null
@@ -1828,7 +1995,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           );
           try {
             await completeToolSourceAuthorization(entry.source, {
-              oauth: oauthOptions(() => undefined, 'held'),
+              oauth,
               callbackUrl,
               fetch: bounded,
             });
@@ -1847,7 +2014,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             const { tokensRejected: _replaced, ...standing } = previous.standing;
             booted.set(id, { ...previous, standing });
           }
-          await record('tool.source.authorized', entry.source);
+          await record('tool.source.authorized', entry.source, {}, undefined, identity);
           return { id, changed: true, restartRequired: true };
         }),
       );

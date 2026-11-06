@@ -12,8 +12,14 @@ import type { HTMLAttributes } from 'svelte/elements';
  * - `denied`: a person refused it; a neutral prohibition glyph and neutral words, never red and
  *   never called failed. It never folds.
  * - `failed`: it ended in an error; a red cross and the result in red. It never folds.
+ * - `interrupted`: the run ended while the call was under way, so nobody knows how it ended; a red
+ *   circled cross and the result in red, with no arrow, because there is no answer. The caller
+ *   words it by the tool's risk ("Interrupted · didn't finish" for a tool that only reads,
+ *   "Interrupted · may have run" for one that changes things). It never folds, and it is never a
+ *   green or neutral dot.
  */
-export type ToolCallRailStatus = 'done' | 'approved' | 'running' | 'waiting' | 'denied' | 'failed';
+export type ToolCallRailStatus =
+  'done' | 'approved' | 'running' | 'waiting' | 'denied' | 'failed' | 'interrupted';
 
 /** One tool call of a turn. */
 export type ToolCallRailCall = {
@@ -27,7 +33,8 @@ export type ToolCallRailCall = {
   input?: string | undefined;
   /**
    * What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow
-   * ("→ $42.00, delivered Mon"); a `denied` call shows it as its own words ("Denied by you 10:40 AM ·
+   * ("→ $42.00, delivered Mon"); an `interrupted` call shows it as its own words ("Interrupted ·
+   * didn't finish"); a `denied` call shows it as its own words ("Denied by you 10:40 AM ·
    * nothing refunded"); a `running` or `waiting` call has none and reads "Running…" or "Waiting on
    * you", unless this is set.
    */
@@ -54,6 +61,11 @@ export type ToolCallRailCall = {
    * a `waiting` call is waiting on, or the approved one under a call that has been decided.
    */
   nested?: boolean | undefined;
+  /**
+   * Keeps this call on the rail wherever it falls, folded or not, as a failed or waiting call is.
+   * For a finished call whose result the person still has to act on, such as an inline panel.
+   */
+  pinned?: boolean | undefined;
 };
 
 /** The words the rail speaks, for a caller that is not writing English. */
@@ -78,6 +90,8 @@ export type ToolCallRailLabels = {
   waitingResult?: string | undefined;
   /** The result of a `denied` call that has none. Defaults to "Denied". */
   denied?: string | undefined;
+  /** The result of an `interrupted` call that has none. Defaults to "Interrupted". */
+  interrupted?: string | undefined;
   /** The link on a failed call that opens its details. Defaults to "Details". */
   details?: string | undefined;
   /** The link on a failed call that asks the agent to retry. Defaults to "Ask the agent to retry". */

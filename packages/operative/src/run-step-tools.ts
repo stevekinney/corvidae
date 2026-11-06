@@ -23,6 +23,7 @@ import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
 import { explicitAbortReason } from './run-step-utilities';
 import { admitToolResultMedia, retainToolResultMedia } from './tool-result-media';
+import { ToolTimingRecorder } from './tool-timing';
 import type { GenerateResponse } from './types';
 
 export interface ToolExecutionDependencies {
@@ -75,6 +76,8 @@ export async function executeTools(
   let materializedToolCalls: ToolCall[] = [];
   let results: ToolExecutionResult[] = [];
   const resultRowScope = { runId: deps.runId, step };
+  // When each call ran, on the run's clock: its result row records it (`tool-timing.ts`).
+  const timing = new ToolTimingRecorder(() => deps.runtime.clock.nowISO());
   /**
    * Admits a step's result rows, appends them, then claims the managed assets they now point at,
    * so none expires under its row. Every committed row passes through admission here, whatever a
@@ -87,10 +90,12 @@ export async function executeTools(
     const rows = await admitToolResultMedia(admitter, unadmitted, mediaContext);
     // The conversation is what the model reads; the step record keeps the results as they were.
     const modelRows = rows.map(modelFacingToolResult);
+    timing.endAll();
+    const batch = resultRowBatch(resultRowScope, rows, timing);
     if (deps.collectAsync) {
-      await conversation.appendToolResultsAsync(modelRows, resultRowBatch(resultRowScope, rows));
+      await conversation.appendToolResultsAsync(modelRows, batch);
     } else {
-      conversation.appendToolResults(modelRows, resultRowBatch(resultRowScope, rows));
+      conversation.appendToolResults(modelRows, batch);
     }
     try {
       await retainToolResultMedia(
@@ -258,6 +263,32 @@ export async function executeTools(
                   ...(deps.parentSignals !== undefined
                     ? { parentSignals: deps.parentSignals }
                     : {}),
+                  ...(deps.requestChildWait !== undefined && deps.runId !== undefined
+                    ? {
+                        durableChildWait: (request: { childRunId: string; toolCallId: string }) => {
+                          const toolCall = callsToExecute.find(
+                            (call) => call.id === request.toolCallId,
+                          );
+                          const tool =
+                            toolCall === undefined
+                              ? undefined
+                              : stepToolbox.resolveTool(toolCall.name);
+                          if (
+                            tool === undefined ||
+                            !tool.ok ||
+                            tool.tool.metadata?.['durableChildWait'] !== true ||
+                            deps.childWaitPrincipal === undefined
+                          )
+                            return { parked: false as const, reason: 'unauthorized' as const };
+                          return deps.requestChildWait?.({
+                            parentRunId: deps.runId!,
+                            childRunId: request.childRunId,
+                            toolCallId: request.toolCallId,
+                            principal: deps.childWaitPrincipal,
+                          });
+                        },
+                      }
+                    : {}),
                 },
               }
             : {}),
@@ -278,11 +309,13 @@ export async function executeTools(
             callsToExecute.some((call) => call.id === event.toolCallId)
           ) {
             emittedSettledCallIds.add(event.toolCallId);
+            timing.ended(event.toolCallId);
           }
         };
         const eventTarget = emitter instanceof EventTarget ? emitter : undefined;
         eventTarget?.addEventListener(ToolSettledBubbleEvent.type, onForwardedSettled);
         let executeResult: ToolExecutionResult | ToolExecutionResult[];
+        timing.started(callsToExecute.map((call) => call.id));
         try {
           executeResult =
             deps.parentContext !== undefined && deps.withTraceContext !== undefined
@@ -300,9 +333,12 @@ export async function executeTools(
           eventTarget?.removeEventListener(ToolSettledBubbleEvent.type, onForwardedSettled);
         }
 
+        const pendingChildCallId = deps.getPendingChildWait?.()?.toolCallId;
         executedResults = await admitToolResultMedia(
           admitter,
-          Array.isArray(executeResult) ? executeResult : [executeResult],
+          (Array.isArray(executeResult) ? executeResult : [executeResult]).filter(
+            (result) => result.toolCallId !== pendingChildCallId,
+          ),
           mediaContext,
         );
         // COR-1628 — a call the toolbox answers without executing it (a refusal by the active
@@ -385,6 +421,7 @@ export async function executeTools(
             'Tool execution failed before a result could be produced',
             undefined,
             resultRowScope,
+            timing,
           );
           dispatchSettledResults(
             emitter,

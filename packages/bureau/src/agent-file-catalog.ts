@@ -979,6 +979,38 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     return resources;
   }
 
+  /** Validates the durable child-agent allowlist against code and ready file agents. */
+  function childAgentsProblem(
+    id: string,
+    definition: AgentFileDefinition,
+    entries?: Iterable<FileEntry>,
+  ): AgentFileProblem | undefined {
+    const names = definition.childAgents;
+    if (names === undefined) return undefined;
+    const available = new Set(options.reservedIdentifiers);
+    for (const entry of entries ?? directoryWatcher?.entries().values() ?? []) {
+      if (entry.id !== id && entry.problem === undefined) available.add(entry.id);
+    }
+    const issues = names.flatMap((name, index) => {
+      const message =
+        name === id
+          ? `Agent "${id}" cannot dispatch itself.`
+          : available.has(name)
+            ? undefined
+            : `Agent "${name}" is not a code agent or ready file agent.`;
+      return message === undefined
+        ? []
+        : [{ path: `childAgents.${index}`, message, reference: name }];
+    });
+    return issues.length === 0
+      ? undefined
+      : {
+          code: 'invalid-frontmatter',
+          message: `The definition cannot dispatch ${issues.map((issue) => issue.message).join('; ')}.`,
+          issues,
+        };
+  }
+
   /** What a run needs to compact its conversation, or nothing when the file does not ask for it. */
   function contextManagementOf(
     id: string,
@@ -1451,6 +1483,51 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         entry = await withReferences(entry);
         settled.set(id, entry);
       }
+      if (
+        isChildAgentsProblem(entry.problem) &&
+        entry.definition !== undefined &&
+        entry.hash !== undefined
+      ) {
+        const definition = entry.definition;
+        const childProblem = childAgentsProblem(id, definition, loaded.values());
+        if (childProblem === undefined) {
+          const definitionRevision = recorded.get(id)?.revision ?? 1;
+          const resources = checkResources(definition);
+          if ('problem' in resources) {
+            settled.set(id, { ...entry, problem: resources.problem });
+            continue;
+          }
+          const descriptor =
+            entry.descriptor ??
+            [...loaded.values()].find(
+              (candidate) =>
+                candidate.definition?.model === entry.definition?.model &&
+                candidate.descriptor !== undefined,
+            )?.descriptor ??
+            resources.descriptor;
+          if (descriptor === undefined) continue;
+          const { problem: _problem, ...withoutProblem } = entry;
+          try {
+            entry = {
+              ...withoutProblem,
+              descriptor,
+              agent: buildAgent(
+                id,
+                entry.identity ?? entry.hash,
+                definition,
+                descriptor,
+                definitionRevision,
+                entry.documents,
+              ),
+              definitionRevision,
+            };
+            settled.set(id, entry);
+          } catch (error) {
+            entry = { ...withoutProblem, problem: modelSetupProblem(definition, error) };
+            settled.set(id, entry);
+          }
+        }
+      }
       if (entry.problem !== undefined || entry.hash === undefined) continue;
       if (entry.definition === undefined) continue; // A ready entry always has one.
       const revision = await revisionOf(id, entry);
@@ -1458,7 +1535,21 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     }
     // A document no agent names any more is not kept.
     for (const key of referenceCache.keys()) if (!referenced.has(key)) referenceCache.delete(key);
+    // Child references are resolved only after every file has been loaded, so deleting or restoring
+    // a referenced file updates the referrer's state in the same catalog rebuild.
+    for (const [id, entry] of settled) {
+      if (entry.definition === undefined) continue;
+      const problem = childAgentsProblem(id, entry.definition, settled.values());
+      if (problem !== undefined) {
+        const { agent: _agent, ...withoutAgent } = entry;
+        settled.set(id, { ...withoutAgent, problem });
+      }
+    }
     return settled;
+  }
+
+  function isChildAgentsProblem(problem: AgentFileProblem | undefined): boolean {
+    return problem?.issues?.some((issue) => issue.path.startsWith('childAgents.')) === true;
   }
 
   const directoryWatcher = createDefinitionScanner<FileEntry>({

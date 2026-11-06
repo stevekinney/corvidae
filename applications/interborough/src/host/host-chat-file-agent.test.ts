@@ -52,7 +52,7 @@ async function startWithFileAgents(files: Record<string, string>) {
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
-    bungalow.writeSecret('anthropic-api-key', FIXTURE_KEY);
+    await bungalow.deploymentSecrets.write('anthropic-api-key', FIXTURE_KEY);
   } finally {
     bungalow.close();
   }

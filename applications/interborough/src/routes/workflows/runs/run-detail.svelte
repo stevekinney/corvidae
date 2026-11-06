@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { browserWorkspaceStorage } from '../../../app/workspace-lifetime.ts';
+
   /**
    * `/runs/:run`: one run, as one page with one header and one status, and no tabs. The header says
    * what ran and how the run stands, with Open chat and Cancel run beside a More menu for the rest.
@@ -28,6 +30,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import NotFoundState from '../../../app/not-found-state.svelte';
   import { getContext } from '../../../lib/bureau-client.ts';
@@ -60,6 +63,7 @@
   import RunHeader from './run-header.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunPanels from './run-panels.svelte';
+  import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
 
@@ -104,6 +108,7 @@
 
   const follower = new TaskFollower({
     taskId: initialRunId,
+    storage: browserWorkspaceStorage(principal.principal?.workspace, 'sessionStorage'),
     isOver: () => task.data !== undefined && isTerminalState(task.data.status),
     onElement: (element) => {
       taskEvents += 1;
@@ -211,15 +216,14 @@
     undefined,
   );
 
-  // A run of a workflow file that the engine behind the console does not hold may still be the
-  // Bureau's (`bureau.workflows.runs.get`): the end-to-end host's engine is a fixture, and answers
-  // the read by the run's identifier with a 404. Asked only once the engine has said it does not
-  // have the run, and only for a run no task describes.
+  // A workflow-file run's durable origin belongs to the Bureau even when the engine also holds the
+  // live workflow. Read it for every run with no task or goal, so the page does not lose agent-run
+  // provenance merely because Weft still has the instance.
   const fileRun = createQuery(
     () => ({
       queryKey: queryKeys.workflows.fileRun(initialRunId),
       queryFn: ({ signal }) => getWorkflowFileRun(initialRunId, { signal }),
-      enabled: engineAllowed && engine.notFound && notFound && attempt === undefined,
+      enabled: engineAllowed && notFound && attempt === undefined,
       retry: false,
     }),
     undefined,
@@ -359,6 +363,9 @@
   );
 
   let restartOpen = $state(false);
+  /** Whether an answer to the run's question is in its Undo window, which the status line says. */
+  let answerHeld = $state(false);
+  const answerUndoSeconds = $derived(Math.round(answerUndoMilliseconds() / 1000));
 </script>
 
 {#if follower.removed || unknownRun}
@@ -402,6 +409,7 @@
           : undefined}
         task={task.data}
         chat={chatLink}
+        note={answerHeld ? TASK_COPY.answerSentStatus(answerUndoSeconds) : undefined}
         engineStatus={workflow?.status}
         pendingAction={engine.pendingAction}
         actionGate={engine.actionGate}
@@ -422,7 +430,8 @@
     <div class="ib-run__layout">
       <div class="ib-run__main">
         {#if task.data}
-          <RunWaiting task={task.data} />
+          <RunWaiting task={task.data} onAnswerHold={(held) => (answerHeld = held)} />
+          <RunMessageBlocked task={task.data} />
         {/if}
         {#if summary !== undefined}
           <RunInputOutput
@@ -431,7 +440,7 @@
             answerTruncated={follower.artifact?.truncated === true}
             followState={follower.state}
             {workflow}
-            record={workflow === undefined ? record : undefined}
+            {record}
           />
           <RunActivity
             task={task.data}
@@ -472,6 +481,7 @@
           engine={workflow === undefined ? undefined : engine}
           {workflow}
           recordWorkflow={record?.workflow}
+          workflowOrigin={record?.origin?.kind === 'agent-run' ? record.origin : null}
           startedAt={summary.startedAt}
           updatedAt={summary.updatedAt}
           over={summary.over}

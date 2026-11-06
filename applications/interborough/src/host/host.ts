@@ -1,3 +1,9 @@
+import {
+  authorizeHostRoutes,
+  inventoryEngineRelay,
+  inventoryHostRoutes,
+  type HostRouteInventoryEntry,
+} from './host-route-policy.ts';
 /**
  * The Interborough host: one loopback origin that serves the browser application, Weft's engine
  * API for the Engine console, and a Bureau.
@@ -92,8 +98,19 @@
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
+import {
+  combineHostAuthentication,
+  createHostAuthority,
+  type HostWorkspaceAuthentication,
+} from './host-authority.ts';
+import { localWorkspaceMembership } from './workspace-principal.ts';
 
-import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
+import {
+  openBungalow,
+  type Bungalow,
+  type BungalowEnvironment,
+  type SecretProviderFactory,
+} from '@lostgradient/bungalow';
 import {
   ANONYMOUS_LOCAL_OWNER,
   BUREAU_PLUGIN_ENTRY,
@@ -104,28 +121,33 @@ import {
   type AgentDefinitions,
   type AgentWithBureauTools,
   type Bureau,
+  type BureauOptions,
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
 import {
   type GenerateFunction,
+  type PeerCallJournal,
   type RuntimeServices,
   type Validator,
 } from '@lostgradient/operative';
 import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
+  handleRequest,
   serve,
   type AlertingOptions,
   type RegistryAgnosticEngine,
   type ServeOptions,
   type WeftServer,
 } from '@lostgradient/weft';
+import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lostgradient/weft/a2a';
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { HOST_STORAGE_ROUTE, HOST_STORAGE_SUMMARY_ROUTE } from '../lib/host-storage.ts';
-import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
+import { A2A_API_KEY_SECRET_KEY, A2A_SUBJECT, resolveA2aExposure } from './a2a-authentication.ts';
+import { createA2APeerTools, readA2APeersConfiguration } from './a2a-peers.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -147,9 +169,15 @@ import {
   resolveA2aPublicOrigin,
   resolvePort,
 } from './environment-configuration.ts';
-import { HOST_DEPENDENCIES, loadFolderPlugins, PLUGIN_FOLDER_NAME } from './folder-plugins.ts';
+import {
+  HOST_DEPENDENCIES,
+  loadFolderPlugins,
+  PLUGIN_FOLDER_NAME,
+  PLUGIN_RUNTIME_DIRECTORY_VARIABLE,
+} from './folder-plugins.ts';
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
+import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
 import { hostStorageReport, hostStorageSummary } from './host-storage.ts';
 import {
   bureauUpgradeServer,
@@ -172,7 +200,7 @@ import {
   redactDatabase,
   type HostDatabase,
 } from './locations.ts';
-import { mcpAppMounts } from './mcp-app-mounts.ts';
+import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE, mcpAppMounts } from './mcp-app-mounts.ts';
 import { mcpAppRoutes } from './mcp-app-routes.ts';
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
@@ -194,6 +222,7 @@ import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { TOOL_SOURCE_SECRET_PREFIX } from './tool-source-vault.ts';
+import { createWorkspaceSecrets } from './workspace-secrets.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
@@ -207,6 +236,8 @@ const LOOPBACK = '127.0.0.1';
  * secret of its own.
  */
 export const APPROVAL_SECRET_KEY = 'approval-secret';
+/** Bungalow secret used to sign durable child-run authority grants. */
+export const DELEGATION_SECRET_KEY = 'delegation-secret';
 
 /**
  * The restart-applied settings a remote host holds to their code options (COR-1797): ownership,
@@ -309,6 +340,12 @@ export type HostOptions = {
   readonly environment?: BungalowEnvironment;
   /** The workspace identity to bind to the trusted backing store. */
   readonly workspaceId?: string;
+  /** Inject verified credentials and a directory for this exact workspace; no listener expansion. */
+  readonly workspaceAuthentication?: HostWorkspaceAuthentication;
+  /** Trusted provider factory; browser payloads cannot select it. */
+  readonly secretProvider?: SecretProviderFactory;
+  /** Opt in to revision-checked remote configuration publication. */
+  readonly writableConfiguration?: boolean;
   /** The port to listen on; `0` asks for a free one. Defaults to `INTERBOROUGH_PORT`, then 7234. */
   readonly port?: number;
   /** The built application to serve. Defaults to `build/` at the package root. */
@@ -331,6 +368,12 @@ export type HostOptions = {
   >;
   /** Agents to define beside the ones the plugins contribute, for tests that need an agent of their own. */
   readonly extraAgents?: ExtraAgents;
+  /** Egress policy for configured A2A peers; tests may allow an explicit loopback destination. */
+  readonly a2aPeerEgressPolicy?: EgressPolicy;
+  /** Fetch implementation for configured peers; used by end-to-end fixtures to observe requests. */
+  readonly a2aPeerFetch?: typeof fetch;
+  /** Observes nonterminal updates from a configured peer during durable recovery. */
+  readonly a2aPeerRecoveryUpdate?: (update: A2APeerUpdate) => void;
   /**
    * The code-defined agents that opt into A2A (COR-1819): each is served at
    * `/bureau/a2a/<name>` with an Agent Card, as a file agent with `a2a: true` is. Every name must
@@ -448,6 +491,8 @@ export type HostOptions = {
  * means to stop it.
  */
 export type Host = {
+  /** The exact public listener routes, classified before registration. */
+  readonly routeInventory: readonly HostRouteInventoryEntry[];
   /** The origin the host listens on, `http://127.0.0.1:<port>/`. */
   readonly url: URL;
   /** The Bureau, running on Bungalow's database. */
@@ -547,16 +592,29 @@ export type Host = {
  * the same on every host, and a host without it does not start: a secret one host made up would
  * not verify an approval another host signed.
  */
-function approvalSecret(bungalow: Bungalow): string {
-  const existing = bungalow.readSecret(APPROVAL_SECRET_KEY);
+async function approvalSecret(bungalow: Bungalow): Promise<string> {
+  const existing = await bungalow.deploymentSecrets.read(APPROVAL_SECRET_KEY);
   if (existing !== undefined) return existing;
   if (bungalow.mode === 'remote') {
     throw new Error(
-      `${bungalow.secretLocation(APPROVAL_SECRET_KEY)} is not set. Remote mode needs it: it signs the approvals every host verifies.`,
+      `${bungalow.deploymentSecrets.location(APPROVAL_SECRET_KEY)} is not set. Remote mode needs it: it signs the approvals every host verifies.`,
     );
   }
   const created = `${crypto.randomUUID()}${crypto.randomUUID()}`;
-  bungalow.writeSecret(APPROVAL_SECRET_KEY, created);
+  await bungalow.deploymentSecrets.write(APPROVAL_SECRET_KEY, created);
+  return created;
+}
+
+async function delegationSecret(bungalow: Bungalow): Promise<string> {
+  const existing = await bungalow.deploymentSecrets.read(DELEGATION_SECRET_KEY);
+  if (existing !== undefined) return existing;
+  if (bungalow.mode === 'remote') {
+    throw new Error(
+      `${bungalow.deploymentSecrets.location(DELEGATION_SECRET_KEY)} is not set. Remote mode needs it: it signs durable child-run authority grants every host verifies.`,
+    );
+  }
+  const created = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+  await bungalow.deploymentSecrets.write(DELEGATION_SECRET_KEY, created);
   return created;
 }
 
@@ -665,6 +723,7 @@ type EngineUpstream = { readonly url: string; readonly key: string };
 
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
+  const incarnationId = randomUUID();
   // The clock the host's own times are read from: its runtime's, so they agree with its Bureau's.
   const clock = options.runtime?.clock ?? { now: () => Date.now() };
   // The demo plugin's agents are named `demo:<name>`, and Bureau skips a plugin whose contribution
@@ -697,6 +756,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     bungalow = await openBungalow({
       name: APPLICATION_NAME,
       environment,
+      ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
+      ...(options.writableConfiguration === undefined
+        ? {}
+        : { writableConfiguration: options.writableConfiguration }),
       ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
       databaseWorkspaceClaim: async (databaseUrl, prefix, workspaceId) => {
         // Required deployment secrets must be present before opening its database. The
@@ -704,6 +767,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         for (const variable of [
           'INTERBOROUGH_SECRET_APPROVAL_SECRET',
           'INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY',
+          'INTERBOROUGH_SECRET_DELEGATION_SECRET',
         ]) {
           if (environment[variable] === undefined || environment[variable] === '') {
             throw new Error(`${variable} is not set. Remote mode needs it on every host.`);
@@ -726,11 +790,22 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   };
   try {
     // No engine, plugin or listener may start before the workspace is bound and secrets validate.
+    if (
+      options.workspaceAuthentication !== undefined &&
+      (options.workspaceAuthentication.authentication === undefined ||
+        options.workspaceAuthentication.workspace?.workspaceId !== bungalow.workspaceId)
+    )
+      throw new Error(
+        'Workspace authentication requires credentials and this workspace directory.',
+      );
     const database = redactDatabase(bungalow.database);
-    const approval = approvalSecret(bungalow);
+    const workspaceSecrets = createWorkspaceSecrets(bungalow);
+    await workspaceSecrets.reconcile();
+    const approval = await approvalSecret(bungalow);
+    const delegation = await delegationSecret(bungalow);
     // The A2A key and public origin (COR-1904), read as early, so a public origin without a key
     // stops the host before anything listens.
-    const a2aExposure = resolveA2aExposure(
+    const a2aExposure = await resolveA2aExposure(
       bungalow,
       a2aPublicOrigin,
       options.warn ?? ((message) => console.warn(message)),
@@ -751,7 +826,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
       directory: content.kind === 'directory' ? content.path : undefined,
-      dependencies: HOST_DEPENDENCIES,
+      dependencies: environment[PLUGIN_RUNTIME_DIRECTORY_VARIABLE]?.trim() || HOST_DEPENDENCIES,
       developmentPaths: developmentPlugins,
     });
     // The built-in `bureau` plugin (COR-1890) is listed first so the Plugins page shows it and the
@@ -762,6 +837,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const isProviderPlugin = (plugin: string): boolean =>
       held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true;
     const pluginManager = await createPluginManager({
+      workspaceSecrets,
+      audit: async (entry) => {
+        await held.bureau?.internals.auditTrail?.record(entry);
+      },
       bungalow,
       plugins,
       unloaded: folderPlugins.failures.map((failure) => ({
@@ -788,7 +867,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         if (isProviderPlugin(plugin)) await held.providers?.reload();
       },
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
-      reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
+      reservedSecretKeys: [APPROVAL_SECRET_KEY, DELEGATION_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
       reservedSecretPrefixes: [ANSWER_ENCRYPTION_KEY, TOOL_SOURCE_SECRET_PREFIX],
     });
     held.plugins = pluginManager;
@@ -804,14 +883,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       return recorded?.agentName ?? undefined;
     };
     const providers = createProviderManager({
-      bungalow: {
-        mode: bungalow.mode,
-        configurationLocation: bungalow.configurationLocation,
-        readConfiguration: () => bungalow.readConfiguration(),
-        writeConfiguration: (text) => bungalow.writeConfiguration(text),
-        readSecret: (key) => bungalow.readSecret(key),
-        writeSecret: (key, value) => pluginManager.writeSecret(key, value),
-      },
+      workspaceSecrets,
+      bungalow,
       configurationQueue,
       afterConfigurationWrite: () => pluginManager.reload(),
       warn: options.warn ?? ((message) => console.warn(message)),
@@ -834,6 +907,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     let hostOrigin: string | undefined;
     const startPort = options.port ?? resolvePort(environment);
     const toolSources = createToolSourceManager({
+      workspaceSecrets,
+      ...(options.workspaceAuthentication === undefined
+        ? {}
+        : { workspace: options.workspaceAuthentication.workspace }),
       bungalow,
       keys: answerKeys,
       configurationQueue,
@@ -851,6 +928,52 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.toolSources = toolSources;
     await toolSources.start();
+    const configuration = await bungalow.readConfiguration();
+    const configuredPeers = readA2APeersConfiguration(
+      configuration.text,
+      bungalow.configurationLocation,
+    );
+    const peerSecrets = new Map<string, string | undefined>();
+    for (const peer of configuredPeers) {
+      if (peer.bearerSecret !== undefined && !peerSecrets.has(peer.bearerSecret)) {
+        peerSecrets.set(
+          peer.bearerSecret,
+          await workspaceSecrets.read(peer.bearerSecret, configuration),
+        );
+      }
+    }
+    const recoverableStartedApprovals = new Map<
+      string,
+      NonNullable<BureauOptions['recoverableStartedApprovals']> extends ReadonlyMap<
+        string,
+        infer Approval
+      >
+        ? Approval
+        : never
+    >();
+    let peerCalls: PeerCallJournal | undefined;
+    const peerCallHandoff: PeerCallJournal = {
+      read: (key) => {
+        if (peerCalls === undefined) throw new Error('The Bureau peer journal is not ready.');
+        return peerCalls.read(key);
+      },
+      write: (key, entry) => {
+        if (peerCalls === undefined) throw new Error('The Bureau peer journal is not ready.');
+        return peerCalls.write(key, entry);
+      },
+    };
+    const peerTools = createA2APeerTools({
+      peers: configuredPeers,
+      readSecret: (key) => peerSecrets.get(key),
+      ...(options.a2aPeerFetch === undefined ? {} : { fetch: options.a2aPeerFetch }),
+      ...(options.a2aPeerRecoveryUpdate === undefined
+        ? {}
+        : { onRecoveryUpdate: options.a2aPeerRecoveryUpdate }),
+      egressPolicy: options.a2aPeerEgressPolicy ?? createEgressPolicy(),
+      peerCalls: peerCallHandoff,
+      recoverableStartedApprovals,
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
@@ -880,7 +1003,53 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return source === undefined ? [] : [source];
         }),
     });
+    const peerToolNames = new Set(Object.keys(peerTools));
+    const sourceTools = toolSources.tools();
+    for (const name of Object.keys(sourceTools)) {
+      if (peerToolNames.has(name)) {
+        (options.warn ?? ((message) => console.warn(message)))(
+          `Configured A2A peer tool "${name}" replaces an existing tool with the same name.`,
+        );
+      }
+    }
+    const localWorkspace = localWorkspaceMembership(
+      bungalow.workspaceId,
+      a2aExposure.authentication !== undefined,
+    );
+    const configuredWorkspace = options.workspaceAuthentication?.workspace ?? localWorkspace;
+    if (configuredWorkspace.workspaceId !== bungalow.workspaceId)
+      throw new Error('The authentication directory belongs to another workspace.');
+    const workspace =
+      options.workspaceAuthentication === undefined || a2aExposure.authentication === undefined
+        ? configuredWorkspace
+        : {
+            ...configuredWorkspace,
+            resolveMembership: async (
+              credential: Parameters<typeof configuredWorkspace.resolveMembership>[0],
+            ) =>
+              credential.method === 'api-key' && credential.subject === A2A_SUBJECT
+                ? localWorkspace.resolveMembership(credential)
+                : configuredWorkspace.resolveMembership(credential),
+            resolveOwnerMembership: async (owner: string) =>
+              owner === `api-key:${encodeURIComponent(A2A_SUBJECT)}`
+                ? ((await localWorkspace.resolveOwnerMembership?.(owner)) ?? null)
+                : ((await configuredWorkspace.resolveOwnerMembership?.(owner)) ?? null),
+          };
+    const authentication = await combineHostAuthentication(
+      options.workspaceAuthentication?.authentication,
+      a2aExposure.authentication,
+    );
+    const authority = await createHostAuthority(
+      workspace,
+      authentication,
+      options.workspaceAuthentication === undefined,
+    );
     const bureau = await createBureau({
+      peerCallsReady: (journal) => {
+        peerCalls = journal;
+      },
+      recoverableStartedApprovals,
+      workspace,
       id: bungalow.workspaceId,
       ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       agents: { ...options.extraAgents?.agents },
@@ -930,13 +1099,22 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: createAgentSource(bungalow, agentContent, toolSources.tools()),
+      agentSource: createAgentSource(bungalow, agentContent, {
+        ...sourceTools,
+        ...peerTools,
+      }),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
       pluginAgentSource: createPluginAgentSource,
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,
+      children: {
+        delegation: {
+          secret: delegation,
+          rootAuthority: { levels: 2, budget: { concurrentChildren: 4, totalDescendants: 16 } },
+        },
+      },
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowSource: createWorkflowSource(bungalow, workflowContent),
@@ -968,7 +1146,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // to this clean-up (`expiredRecords: 'on-request'`), and Data and retention reports it.
     const nightlyCleanUp = startNightlyCleanUp({
       storage,
-      removeExpiredRecords: () => bureau.removeExpiredRecords(),
+      removeExpiredRecords: async () => {
+        await workspaceSecrets.reconcile();
+        return bureau.removeExpiredRecords();
+      },
       now: clock.now,
       ...options.nightlyCleanUp,
       warn: options.warn ?? ((message) => console.warn(message)),
@@ -1035,7 +1216,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The handler is built once the listener has a port, because the Agent Card of an agent that
     // opts into A2A names the URL it is served at (COR-1819). Until then `/bureau/*` answers 503,
     // which only a client that guessed the port could see.
-    const mcpMounts = await mcpAppMounts(bureau.plugins.mcpApps());
+    const mcpMounts = await mcpAppMounts(
+      bureau.plugins.mcpApps(),
+      environment[MCP_APP_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
+    );
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
     // never stops the host from starting.
     for (const failure of mcpMounts.failures) {
@@ -1071,6 +1255,162 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       options.onRestartRequested === undefined
         ? undefined
         : restartHandler(options.onRestartRequested);
+    const publicRoutes = {
+      ...applicationRoutes(buildDirectory, refuse, shell),
+      '/api/v1/principal': {
+        GET: async (request: Request) => {
+          const context = await authority.authenticate(request);
+          if (context instanceof Response) return context;
+          const principalUrl = new URL(request.url);
+          principalUrl.pathname = '/v1/principal';
+          return handleRequest(new Request(principalUrl, request), engine, {
+            authContext: context,
+          });
+        },
+      },
+      // The development reload stream. A production host registers no route, so the path is a 404.
+      ...(devReload === undefined
+        ? {}
+        : {
+            [DEV_RELOAD_ROUTE]: {
+              GET: (request: Request) => refuse(request) ?? devReload.connect(),
+            },
+          }),
+      // The guard answers first, for an upgrade as for any request. An upgrade goes to Bureau's
+      // handler with the prefix removed, as a request does; a refused one falls through to the
+      // handler, which answers it as the plain request it then is.
+      [`${BUREAU_PATH_PREFIX}/*`]: async (
+        request: Request,
+        listener: Bun.Server<HostSocketData>,
+      ) => {
+        const refusal = refuseBureau(request);
+        if (refusal !== undefined) return refusal;
+        if (bureauHandler === undefined) {
+          return new Response('The Bureau is not serving yet.', { status: 503 });
+        }
+        const bureauRequest = withoutBureauPrefix(request);
+        if (
+          isWebSocketUpgrade(request) &&
+          (await bureauHandler.upgrade(bureauRequest, bureauUpgradeServer(listener, request)))
+        ) {
+          return undefined;
+        }
+        return bureauHandler(bureauRequest);
+      },
+      // Whether the host can restart, and the command it was launched with (COR-2009), and the
+      // restart request itself. The guard answers first, so a page on another origin cannot
+      // restart the host. A host no supervisor started has no `POST`, so that path is a 404.
+      [HOST_RESTART_ROUTE]: {
+        GET: (request: Request) =>
+          refuse(request) ??
+          Response.json({
+            available: restart !== undefined,
+            launch: launchCommand ?? null,
+          } satisfies HostRestartStanding),
+        ...(restart === undefined
+          ? {}
+          : { POST: (request: Request) => refuse(request) ?? restart() }),
+      },
+      [HOST_STATUS_ROUTE]: {
+        GET: (request: Request) =>
+          refuse(request) ??
+          Response.json({
+            deploymentId: bungalow.deploymentId,
+            incarnationId,
+            diagnostics: {
+              bureau: bureau.internals.diagnostics(),
+              weft: {
+                lease: engine.getLeaseHealth(),
+                workers: server.registry.getWorkerSummaries(clock.now()),
+                connections: server.connections(),
+              },
+              build: buildDiagnostics(buildDirectory),
+              providers: providerDiagnostics(providers.current()),
+              pendingSecretOperations: workspaceSecrets.pending(),
+              pendingSecretOperationCount: workspaceSecrets.pending().length,
+            },
+          } satisfies HostStatus),
+      },
+      // Where a person edits what the host keeps by hand. The pages show an agent's file path and
+      // a workflow's.
+      '/host/integrations': {
+        GET: async () => {
+          const [providerSnapshot, pluginSnapshot, sourceSnapshot] = await Promise.all([
+            providers.snapshot(),
+            pluginManager.snapshot(),
+            toolSources.snapshot(),
+          ]);
+          // Explicit shared projection: never forward configuration, locations, credentials or diagnostics.
+          return Response.json({
+            providers: providerSnapshot.providers.map(({ name }) => ({
+              id: name,
+              name,
+              available: providerSnapshot.models.some(
+                (model) => model.provider === name && !model.off,
+              ),
+            })),
+            plugins: pluginSnapshot.plugins.map(({ descriptor, status }) => ({
+              id: descriptor.name,
+              name: descriptor.title,
+              available: status === 'running',
+            })),
+            toolSources: sourceSnapshot.sources.map(({ id, state }) => ({
+              id,
+              name: id,
+              available: state === 'loaded',
+            })),
+          });
+        },
+      },
+      ...providerRoutes(providers, refuse, authority),
+      ...pluginRoutes(pluginManager, refuse, authority),
+      // The nightly clean-up's standing, and "Clean up now" (COR-2009).
+      ...cleanUpRoutes(nightlyCleanUp, refuse),
+      // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
+      ...mcpAppRoutes(
+        mcpMounts.apps,
+        refuse,
+        async (request) =>
+          (await bureauHandler?.(request)) ??
+          new Response('The Bureau is not serving yet.', { status: 503 }),
+      ),
+      ...skillRoutes(skills, refuse, authority),
+      ...toolSourceRoutes(toolSources, refuse, {
+        mutation: (request, input) => authority.mutation(request, input),
+      }),
+      // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
+      [HOST_STORAGE_ROUTE]: {
+        GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
+      },
+      // How many keys storage holds under a prefix, and how large it is, for the storage page's
+      // footer and its "Storage details".
+      [HOST_STORAGE_SUMMARY_ROUTE]: {
+        GET: async (request: Request) =>
+          refuse(request) ??
+          Response.json(
+            await hostStorageSummary(
+              storage,
+              new URL(request.url).searchParams.get('prefix') ?? '',
+            ),
+          ),
+      },
+      [HOST_PATHS_ROUTE]: {
+        GET: async (request: Request) =>
+          refuse(request) ??
+          Response.json(
+            hostPathsReport(
+              bungalow,
+              { agents: agentContent, workflows: workflowContent },
+              providers
+                .current()
+                .providers.flatMap(({ name, secretKey }) =>
+                  secretKey === undefined ? [] : [{ name, secretKey }],
+                ),
+            ),
+          ),
+      },
+    };
+    inventoryHostRoutes(publicRoutes);
     const publicServer = Bun.serve<HostSocketData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
@@ -1081,99 +1421,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // one (COR-1643). The listener is loopback-only behind the request guard, so a connection
       // that stays open costs nothing a timeout would save.
       idleTimeout: 0,
-      routes: {
-        ...applicationRoutes(buildDirectory, refuse, shell),
-        // The development reload stream. A production host registers no route, so the path is a 404.
-        ...(devReload === undefined
-          ? {}
-          : {
-              [DEV_RELOAD_ROUTE]: {
-                GET: (request: Request) => refuse(request) ?? devReload.connect(),
-              },
-            }),
-        // The guard answers first, for an upgrade as for any request. An upgrade goes to Bureau's
-        // handler with the prefix removed, as a request does; a refused one falls through to the
-        // handler, which answers it as the plain request it then is.
-        [`${BUREAU_PATH_PREFIX}/*`]: async (
-          request: Request,
-          listener: Bun.Server<HostSocketData>,
-        ) => {
-          const refusal = refuseBureau(request);
-          if (refusal !== undefined) return refusal;
-          if (bureauHandler === undefined) {
-            return new Response('The Bureau is not serving yet.', { status: 503 });
-          }
-          const bureauRequest = withoutBureauPrefix(request);
-          if (
-            isWebSocketUpgrade(request) &&
-            (await bureauHandler.upgrade(bureauRequest, bureauUpgradeServer(listener, request)))
-          ) {
-            return undefined;
-          }
-          return bureauHandler(bureauRequest);
-        },
-        // Whether the host can restart, and the command it was launched with (COR-2009), and the
-        // restart request itself. The guard answers first, so a page on another origin cannot
-        // restart the host. A host no supervisor started has no `POST`, so that path is a 404.
-        [HOST_RESTART_ROUTE]: {
-          GET: (request: Request) =>
-            refuse(request) ??
-            Response.json({
-              available: restart !== undefined,
-              launch: launchCommand ?? null,
-            } satisfies HostRestartStanding),
-          ...(restart === undefined
-            ? {}
-            : { POST: (request: Request) => refuse(request) ?? restart() }),
-        },
-        // Where a person edits what the host keeps by hand. The pages show an agent's file path and
-        // a workflow's.
-        ...providerRoutes(providers, refuse),
-        ...pluginRoutes(pluginManager, refuse),
-        // The nightly clean-up's standing, and "Clean up now" (COR-2009).
-        ...cleanUpRoutes(nightlyCleanUp, refuse),
-        // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
-        ...mcpAppRoutes(
-          mcpMounts.apps,
-          refuse,
-          async (request) =>
-            (await bureauHandler?.(request)) ??
-            new Response('The Bureau is not serving yet.', { status: 503 }),
-        ),
-        ...skillRoutes(skills, refuse),
-        ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
-        // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
-        [HOST_STORAGE_ROUTE]: {
-          GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
-        },
-        // How many keys storage holds under a prefix, and how large it is, for the storage page's
-        // footer and its "Storage details".
-        [HOST_STORAGE_SUMMARY_ROUTE]: {
-          GET: async (request: Request) =>
-            refuse(request) ??
-            Response.json(
-              await hostStorageSummary(
-                storage,
-                new URL(request.url).searchParams.get('prefix') ?? '',
-              ),
-            ),
-        },
-        [HOST_PATHS_ROUTE]: {
-          GET: async (request: Request) =>
-            refuse(request) ??
-            Response.json(
-              hostPathsReport(
-                bungalow,
-                { agents: agentContent, workflows: workflowContent },
-                providers
-                  .current()
-                  .providers.flatMap(({ name, secretKey }) =>
-                    secretKey === undefined ? [] : [{ name, secretKey }],
-                  ),
-              ),
-            ),
-        },
-      },
+      routes: authorizeHostRoutes(publicRoutes, authority, refuse),
       async fetch(request, listener) {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
@@ -1183,6 +1431,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           if (isShellNavigation(request)) return shell();
           return new Response('Not found', { status: 404 });
         }
+        const denied = await authority.authorize(request, 'deployment-operator');
+        if (denied !== undefined) return denied;
         const { url, key } = await upstream;
         if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const data = webSocketRelayData(request, url, key);
@@ -1193,12 +1443,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         const deletion = await storageDeletionOf(request);
         const relayed = await relayRequest(request, url, key);
         if (deletion !== undefined && (await storageDeletionApplied(deletion, relayed))) {
+          const actor = await authority.authenticate(request);
+          const principal =
+            actor instanceof Response
+              ? ANONYMOUS_LOCAL_OWNER
+              : (actor.principal?.subject ?? ANONYMOUS_LOCAL_OWNER);
           for (const deleted of deletion.keys) {
             await held.bureau?.internals.auditTrail
               ?.record({
                 runId: storageResourceOf(deleted),
                 type: 'storage.key.deleted',
-                principal: ANONYMOUS_LOCAL_OWNER,
+                principal,
                 detail: null,
               })
               .catch(() => undefined);
@@ -1233,12 +1488,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       detail: options.version === undefined ? {} : { version: options.version },
     });
     bureauHandler = createBureauHandler(bureau, {
+      workspace,
       // The local caller, unless the request carries a credential. With an A2A key configured
       // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
-      unauthenticatedAccess: 'allow',
-      ...(a2aExposure.authentication === undefined
-        ? {}
-        : { authentication: a2aExposure.authentication }),
+      ...(options.workspaceAuthentication === undefined
+        ? {
+            unauthenticatedAccess: 'allow' as const,
+            ...(authentication === undefined ? {} : { authentication }),
+          }
+        : { authentication: authentication! }),
       // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
       // `RunAgentInput` Chat's transport sends.
       agUi: {},
@@ -1262,6 +1520,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
 
     const key = randomBytes(32).toString('hex');
+    const engineServerOptions = { ...options.engineServer };
+    // HostOptions exposes timing options only; this listener serves the built-in registry.
+    const engineInventory = inventoryEngineRelay();
     const server = serve({
       engine,
       hostname: LOOPBACK,
@@ -1275,12 +1536,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // the private listener the relay forwards to.
       publicOrigin,
       trustedHosts: allowedHosts(publicPort),
-      ...options.engineServer,
+      ...engineServerOptions,
     });
     held.server = server;
     await server.ready;
     engineUpstream?.({ url: server.url, key });
     return {
+      routeInventory: Object.freeze([
+        ...inventoryHostRoutes(publicRoutes, bureauHandler.resourceInventory),
+        engineInventory,
+      ]),
       url: new URL(`http://${LOOPBACK}:${publicPort}/`),
       bureau,
       engine,
@@ -1292,34 +1557,35 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       generateFor,
       configurationQueue,
       toolSources: {
-        probe: (request) => toolSources.probe(request),
-        connect: (request) => toolSources.connect(request),
-        configureTools: (request) => toolSources.configureTools(request),
-        remove: (request) => toolSources.remove(request),
+        probe: (request, mutation) => toolSources.probe(request, mutation),
+        connect: (request, mutation) => toolSources.connect(request, mutation),
+        configureTools: (request, mutation) => toolSources.configureTools(request, mutation),
+        remove: (request, mutation) => toolSources.remove(request, mutation),
         affectedAgents: (id) => toolSources.affectedAgents(id),
         snapshot: () => toolSources.snapshot(),
-        authorize: (id) => toolSources.authorize(id),
-        completeAuthorization: (id, callbackUrl) =>
-          toolSources.completeAuthorization(id, callbackUrl),
+        authorize: (id, mutation) => toolSources.authorize(id, mutation),
+        completeAuthorization: (id, callbackUrl, mutation) =>
+          toolSources.completeAuthorization(id, callbackUrl, mutation),
       },
       skills: {
-        setTrust: (request) => skills.setTrust(request),
+        setTrust: (request, mutation) => skills.setTrust(request, mutation),
         refresh: () => skills.refresh(),
         standing: () => skills.standing(),
       },
       plugins: {
         snapshot: () => pluginManager.snapshot(),
-        update: (name, request) => pluginManager.update(name, request),
-        saveSecret: (name, secretKey, value) => pluginManager.saveSecret(name, secretKey, value),
+        update: (name, request, mutation) => pluginManager.update(name, request, mutation),
+        saveSecret: (name, secretKey, value, mutation) =>
+          pluginManager.saveSecret(name, secretKey, value, mutation),
       },
       cleanUp: {
         standing: () => nightlyCleanUp.standing(),
         cleanUpNow: () => nightlyCleanUp.cleanUpNow(),
       },
       providers: {
-        connect: (connection) => providers.connect(connection),
-        disconnect: (provider) => providers.disconnect(provider),
-        editCatalog: (edits, base) => providers.editCatalog(edits, base),
+        connect: (connection, mutation) => providers.connect(connection, mutation),
+        disconnect: (provider, mutation) => providers.disconnect(provider, mutation),
+        editCatalog: (edits, base, mutation) => providers.editCatalog(edits, base, mutation),
         reload: () => providers.reload(),
         snapshot: () => providers.snapshot(),
       },
@@ -1332,6 +1598,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
         build: buildDiagnostics(buildDirectory),
         providers: providerDiagnostics(providers.current()),
+        pendingSecretOperations: workspaceSecrets.pending(),
+        pendingSecretOperationCount: workspaceSecrets.pending().length,
       }),
       notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),
