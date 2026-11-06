@@ -10,6 +10,14 @@ export type CliTarget = {
   readonly url: string;
   /** Headers attached to every request. */
   readonly headers: Record<string, string>;
+  /** Whether this target is an authenticated non-loopback management endpoint. */
+  readonly remote?: boolean;
+  /** Server-resolved authority for this connection. */
+  readonly authority?: {
+    readonly actor: string;
+    readonly workspace: string;
+    readonly capabilities: readonly string[];
+  };
 };
 
 function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): CliFailure {
@@ -24,6 +32,11 @@ export async function request(
   dependencies: CliClientDependencies,
   init?: RequestInit,
 ): Promise<CliCommandResult> {
+  if (target.remote === true && (path === '/jsonrpc' || path.startsWith('/bureau/a2a'))) {
+    throw makeCliFailure('Authenticated management credentials cannot be sent to A2A endpoints.', {
+      exitCode: 3,
+    });
+  }
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
