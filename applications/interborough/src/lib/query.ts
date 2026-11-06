@@ -224,6 +224,12 @@ export const queryKeys = {
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
     /** How many runs are running now: working or not yet started, never waiting on a person. */
     running: () => ['bureau-tasks', 'running'] as const,
+    /**
+     * The newest runs of one chat session, read while the chat waits for the run a decision made
+     * elsewhere continues it with (COR-2016). Under the session's entry, so what invalidates the
+     * session's runs invalidates this too.
+     */
+    sessionLatest: (contextId: string) => ['bureau-tasks', 'session', contextId, 'latest'] as const,
   },
   /** What needs attention now (`bureau.health.attention`), for the sidebar's Health dot. */
   bureauAttention: {

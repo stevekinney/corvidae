@@ -175,6 +175,8 @@ function hostOf(options: {
       (options.engine ?? []).filter((entry) => entry.status === (filter.status ?? 'pending')),
   };
   return {
+    // A stub run is no chat's, so no decision here continues one.
+    reviewContinuation: async () => ({ status: 'not-chat' }),
     reviews: {
       list: () => options.pending ?? [],
       get: async () => undefined,

@@ -1666,6 +1666,11 @@
     "$.reviews[]|oneOf[2].status"
   ],
   "output:bureau.reviews.resolve": [
+    "$.continuation",
+    "$.continuation|oneOf[0].runId",
+    "$.continuation|oneOf[0].status",
+    "$.continuation|oneOf[1].reason",
+    "$.continuation|oneOf[1].status",
     "$.decision",
     "$.feedback",
     "$.id",

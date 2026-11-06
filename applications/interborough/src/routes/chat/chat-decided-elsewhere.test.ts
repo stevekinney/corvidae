@@ -7,7 +7,7 @@
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { taskFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -205,5 +205,94 @@ describe('an approval decided on another page', () => {
     await until(() => expect(container.querySelector('[data-approval-decision]')).toBeNull());
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe('');
     expect(container.querySelector('.cinder-approval-card--row')).toBeNull();
+  });
+});
+
+describe('the run a decision on another page continues the chat with (design row 18j)', () => {
+  test('is joined once it starts: Running, Stop in Send’s place, and a message now steers the run', async () => {
+    const thread = decidedThread(APPROVED, { refunded: 4200 });
+    let decided = false;
+    let continued = false;
+    const served = bureau(
+      {
+        // The chat as read when it opened, waiting on the approval: not read again before the
+        // continuation is joined.
+        'bureau.contexts.get': () => ({ ...CONTEXT, activity: 'awaiting-input' }),
+        'bureau.reviews.list': () => ({
+          reviews: decided
+            ? []
+            : [
+                toolApprovalFixture({
+                  sessionId: 'session-1',
+                  approval: { ...toolApprovalFixture().approval, callId: 'call-refund' },
+                }),
+              ],
+        }),
+        // The decided run, and the run Reviews started to continue the chat once it has.
+        'bureau.tasks.list': () => ({
+          tasks: continued ? [taskFixture({ id: 'run-2', status: 'working' })] : [],
+          nextPageToken: null,
+        }),
+      },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({ threadId: 'session-1', messages: decided ? thread : [] });
+        }
+        if (!url.includes('/threads/')) return undefined;
+        if (!decided) return sse(PARKED);
+        if (!continued) return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        // The continuation is going: its stream opens with the thread and stays open.
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              for (const frame of [
+                { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-2' },
+                { type: 'MESSAGES_SNAPSHOT', messages: thread },
+              ]) {
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`));
+              }
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    );
+    restore = served.restore;
+    landAt('/chats/session-1');
+    jest.useFakeTimers();
+    const { container, getByTestId } = mount();
+    await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
+
+    // Reviews decides it, and the read the decision causes comes before the continuation starts.
+    decided = true;
+    jest.advanceTimersByTime(3_000);
+    await settle(20);
+    await until(() => expect(container.querySelector('[data-approval-decision]')).toBeNull());
+    expect(container.querySelector('button[aria-label="Stop generating"]')).toBeNull();
+
+    // The continuation starts: the next read of the chat's runs finds it, and the page joins it.
+    continued = true;
+    jest.advanceTimersByTime(3_000);
+    await settle(20);
+
+    await until(() =>
+      expect(container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
+    // The chat reads Running beside its title, whatever the earlier read of it said.
+    expect(container.querySelector('[role="img"][aria-label="Running"]')).not.toBeNull();
+    expect(container.querySelector('[role="img"][aria-label="Waiting on you"]')).toBeNull();
+    await until(() =>
+      expect(container.querySelector('.chat-input-status')?.textContent?.trim()).toBe(
+        'A message now steers the run.',
+      ),
+    );
+    // The decision is still said once, and its row stays collapsed.
+    expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe(
+      'Approved in Reviews. Refund order 4471 for $42.00.',
+    );
+    expect(container.querySelector('.cinder-approval-card__outcome')?.textContent).toContain(
+      'Approved by you in Reviews',
+    );
   });
 });

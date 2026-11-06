@@ -94,6 +94,7 @@
   import { uploadAsset } from '../../lib/bureau-assets.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
+  import { isRunning, listTasks } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
   import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
@@ -943,16 +944,15 @@
   }
   // The chat's state beside its title, in the shared status words: a person's turn first, then a
   // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
+  // A run this page is reading is going, whatever an earlier read of the chat said: a chat that
+  // waited on an approval decided elsewhere is Running once the page joins the run that continues
+  // it (design row 18j), before the Bureau's record of the chat is read again.
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (context.data?.endReason === 'host-stopped') return CHAT_COPY.status.ended;
-    if (
-      approvals.length > 0 ||
-      shownRequests.length > 0 ||
-      context.data?.activity === 'awaiting-input'
-    ) {
-      return CHAT_COPY.status.waiting;
-    }
+    if (approvals.length > 0 || shownRequests.length > 0) return CHAT_COPY.status.waiting;
+    if (session.streaming) return CHAT_COPY.status.running;
+    if (context.data?.activity === 'awaiting-input') return CHAT_COPY.status.waiting;
     if (runGoing) return CHAT_COPY.status.running;
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
@@ -1102,6 +1102,42 @@
       )
       .join(' ');
   }
+  /**
+   * Whether a decision made on another page settled what the chat waited on and the page has not yet
+   * joined the run that continues it. `bureau.reviews.resolve` starts that run once the last
+   * approval of the chat's run is decided (COR-2016), just after the decision itself is announced, so
+   * the read of the thread the announcement causes can come before it. The chat's newest runs are
+   * read until one is going, and the page joins it: the chat shows Running, Stop takes Send's place,
+   * and a message steers the run. They are read again whenever `bureau.events` reports a run, and
+   * every few seconds while that feed is not live. The wait ends when the page joins a run, when the
+   * person sends, or when the chat waits on a person again.
+   */
+  let awaitingContinuation = $state(false);
+  const latestRuns = createQuery(
+    () => ({
+      queryKey: queryKeys.bureauTasks.sessionLatest(sessionId),
+      queryFn: ({ signal }) => listTasks({ contextId: sessionId, limit: 5 }, { signal }),
+      enabled: awaitingContinuation && !session.streaming && !session.attaching,
+      // poll-reason: fallback
+      refetchInterval: bureauLive() ? false : REREAD_POLL_MILLISECONDS,
+      retry: false,
+    }),
+    undefined,
+  );
+  $effect(() => {
+    if (!awaitingContinuation) return;
+    if (session.streaming || waitingOnPerson) {
+      untrack(() => (awaitingContinuation = false));
+      return;
+    }
+    const going = latestRuns.data?.tasks.some(isRunning) === true;
+    if (!going || session.attaching) return;
+    untrack(() => void joinContinuation());
+  });
+  /** Joins the run the chat's runs show going, and stops waiting for one once it has. */
+  async function joinContinuation(): Promise<void> {
+    if (await session.attach()) awaitingContinuation = false;
+  }
   const seen = new SeenReviews();
   $effect(() => {
     const reviews = pendingReviews.data;
@@ -1142,6 +1178,9 @@
           // The thread now says what is decided, so these reviews are not watched for any longer.
           seen.forget(decided);
           sayDecidedAway(decided.calls, questions);
+          // An approval decided there continues the chat with a run of its own, which the read
+          // may have come too early to join.
+          if (decided.calls.length > 0 && !session.streaming) awaitingContinuation = true;
         } else if (rereadFor === key) {
           rereadFor = '';
         }

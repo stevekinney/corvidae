@@ -1724,6 +1724,10 @@ export interface BureauReviews {
    * (`approvalDecision`, COR-2016), so a page that was not there can say so. A
    * resolution the policy gates again (`superseded`) writes nothing.
    *
+   * It starts no run. The chat's AG-UI resume and the `bureau.reviews.resolve`
+   * operation each start the run that answers a chat's decided approvals, under
+   * one command id per decided run (`http/review-continuation.ts`, COR-2016).
+   *
    * Throws `BureauError('NOT_FOUND')` when `input.id` does not match a
    * currently pending review (including an already-resolved one).
    */

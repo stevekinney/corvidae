@@ -397,6 +397,7 @@ describe('bureau.reviews.resolve `answer`, against a stubbed host', () => {
 
   function serve(review: PendingReview, record: ResolveReviewInput[], fail?: Error) {
     const host: BureauReviewsOperationHost = {
+      reviewContinuation: async () => ({ status: 'not-chat' }),
       reviews: {
         list: () => [review],
         get: async () => ({ ...review, status: 'pending' as const }),

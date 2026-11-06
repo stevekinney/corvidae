@@ -96,6 +96,10 @@ import {
 } from './ag-ui-vocabulary.ts';
 import type { OwnerAccessPredicate } from './owner-predicate.ts';
 import { getOwn } from 'conversationalist';
+import {
+  ContinuationOutcomeNotWrittenError,
+  startChatContinuation,
+} from './review-continuation.ts';
 
 /** The version of the resume command's contract the ledger keys on. */
 export const AG_UI_OPERATION_VERSION = 'bureau.ag-ui.v1';
@@ -880,7 +884,9 @@ export function createResume(context: ResumeContext) {
         created = await continuationRun(request, reviews);
       } catch (error) {
         await ledger.release(entry).catch(() => false);
-        return error instanceof OutcomeNotWritten ? OUTCOME_NOT_WRITTEN : CONTINUATION_NOT_STARTED;
+        return error instanceof ContinuationOutcomeNotWrittenError
+          ? OUTCOME_NOT_WRITTEN
+          : CONTINUATION_NOT_STARTED;
       }
       result = { runId: created, mode: 'created', outcomes: [], recovered: true };
     } else {
@@ -895,44 +901,26 @@ export function createResume(context: ResumeContext) {
     return result;
   }
 
-  /** The conversation still shows a call this resume answered as waiting on approval, so no run may start from it. */
-  class OutcomeNotWritten extends Error {}
-
   /**
-   * The run that continues from resolved approvals. Its request id is the
-   * command's, so asking twice starts one. It starts from the conversation as it
-   * stands, so it is refused while that conversation still shows any call this
-   * resume answered as waiting on approval: the run would be asked the same
-   * question again.
+   * The run that continues from resolved approvals (`review-continuation.ts`). Its command id is
+   * the decided run's, the one `bureau.reviews.resolve` continues under too, so asking twice, or a
+   * decision made in Reviews racing this resume, starts one. It starts from the conversation as it
+   * stands, so it is refused while that conversation still shows any call this resume answered as
+   * waiting on approval: the run would be asked the same question again.
    */
   async function continuationRun(
     request: ResumeRequest,
     reviews: ReadonlyMap<string, PendingReview>,
   ): Promise<string> {
-    // A tool approval is the owner's alone, so the session is the caller's own. Another owner's
-    // session under the same id is a missing one, and `tasks.start` below refuses it again.
-    const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
-    const history = session?.conversationHistory;
-    for (const review of reviews.values()) {
-      if (review.kind !== 'tool-approval' || history === undefined) continue;
-      const row = history.ids
-        .map((id) => getOwn(history.messages, id)!)
-        .find((candidate) => candidate.toolResult?.callId === review.approval.callId);
-      if (row?.toolResult?.outcome === 'action_required') throw new OutcomeNotWritten();
-    }
-    // The resume answers the conversation as it stands, which now ends in the resolved review's row.
-    const created = await bureau.tasks.start(
-      request.agentName,
-      { continue: true },
-      {
-        contextId: request.threadId,
-        principal: request.owner,
-        commandId: `ag-ui-resume:${request.threadId}:${interruptKey([...reviews.values()])}`,
-        // The continuation is the chat's own: the Bureau fills the context, agent, and principal.
-        origin: { kind: 'chat' },
-      },
-    );
-    return created.id;
+    const approvals = [...reviews.values()].filter((review) => review.kind === 'tool-approval');
+    // A tool approval is the owner's alone, so the session is the caller's own.
+    return startChatContinuation(bureau, {
+      sessionId: request.threadId,
+      runId: approvals[0]!.runId,
+      agentName: request.agentName,
+      owner: request.owner,
+      callIds: approvals.map((review) => review.approval.callId),
+    });
   }
 
   /** Whether any entry approves a tool call: the one answer that runs a tool. */
@@ -1121,7 +1109,7 @@ export function createResume(context: ResumeContext) {
         // The approvals are resolved, so a retry of this resume finds nothing pending.
         // The thread is not stuck: a start with a new message continues from the
         // conversation as it stands.
-        return error instanceof OutcomeNotWritten
+        return error instanceof ContinuationOutcomeNotWrittenError
           ? refuse('RUN_FAILED', OUTCOME_NOT_WRITTEN.message)
           : refuse('RUN_FAILED', CONTINUATION_NOT_STARTED.message);
       }

@@ -350,11 +350,46 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
   });
 });
 
+/**
+ * The stream of a run that is going, held open as a live run's is: the page reads it through
+ * `fetch`, so a run the sample world does not hold can be joined. Installed before the page loads,
+ * it answers the thread's attach once `window.__continuationFrames` holds the frames to send.
+ */
+async function holdContinuationStream(page: Page, thread: string): Promise<void> {
+  await page.addInitScript((threadId: string) => {
+    const original = window.fetch.bind(window);
+    const holding = async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const frames = (window as unknown as { __continuationFrames?: unknown[] })
+        .__continuationFrames;
+      if (frames === undefined || !url.includes(`/ag-ui/threads/${threadId}/run`)) {
+        return original(input, init);
+      }
+      const encoder = new TextEncoder();
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            for (const frame of frames) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+            }
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    };
+    window.fetch = Object.assign(holding, { preconnect: window.fetch.preconnect });
+  }, thread);
+}
+
 test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', () => {
-  test('collapses the approval in place to who decided, where and when, says so once to a screen reader, and offers no Deny or Approve', async ({
+  test('collapses the approval in place to who decided, where and when, says so once to a screen reader, and offers no Deny or Approve, then joins the run that continues it', async ({
     page,
     request,
   }) => {
+    await holdContinuationStream(page, SAMPLE_WORLD_THREADS.refund);
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
@@ -378,6 +413,52 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await answerOperation(page, 'bureau.reviews.list', (route) =>
       route.fulfill({ json: { jsonrpc: '2.0', id: 1, result: { reviews: [] } } }),
     );
+    // The chat's runs: none going until the Bureau starts the run that continues the chat.
+    let continuing = false;
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        method?: string;
+        params?: { contextId?: string };
+      };
+      if (
+        body.method !== 'bureau.tasks.list' ||
+        body.params?.contextId !== SAMPLE_WORLD_THREADS.refund ||
+        !continuing
+      ) {
+        await route.fallback();
+        return;
+      }
+      const at = new Date(SAMPLE_NOW_MILLISECONDS).toISOString();
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            tasks: [
+              {
+                id: 'run-refund-continued',
+                contextId: SAMPLE_WORLD_THREADS.refund,
+                agentName: 'tool-runner',
+                owner: 'anonymous:local',
+                actor: null,
+                kind: 'chat',
+                origin: { kind: 'chat' },
+                status: 'working',
+                finishReason: null,
+                statusMessage: null,
+                createdAt: at,
+                updatedAt: at,
+                cleanup: null,
+                openWaits: [],
+                wakeAt: null,
+              },
+            ],
+            nextPageToken: null,
+          },
+        },
+      });
+    });
+    let decidedMessages: unknown[] = [];
     await page.route('**/ag-ui/threads/*/messages', async (route) => {
       const response = await route.fetch();
       const body = (await response.json()) as { messages: Array<Record<string, unknown>> };
@@ -399,28 +480,23 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
             `"decidedAt":"${new Date(SAMPLE_NOW_MILLISECONDS).toISOString()}"`,
           ),
       ) as Record<string, unknown>;
-      await route.fulfill({
-        response,
-        json: {
-          ...body,
-          messages: body.messages.map((message) =>
-            message['role'] === 'tool' && message['toolCallId'] === callId
-              ? {
-                  ...outcome,
-                  id: message['id'],
-                  toolCallId: callId,
-                  metadata: {
-                    ...(outcome['metadata'] as Record<string, unknown>),
-                    approvalDecision: {
-                      ...(outcome['metadata'] as { approvalDecision?: object }).approvalDecision,
-                      asked: 'Refund order 4471 for $42.00',
-                    },
-                  },
-                }
-              : message,
-          ),
-        },
-      });
+      decidedMessages = body.messages.map((message) =>
+        message['role'] === 'tool' && message['toolCallId'] === callId
+          ? {
+              ...outcome,
+              id: message['id'],
+              toolCallId: callId,
+              metadata: {
+                ...(outcome['metadata'] as Record<string, unknown>),
+                approvalDecision: {
+                  ...(outcome['metadata'] as { approvalDecision?: object }).approvalDecision,
+                  asked: 'Refund order 4471 for $42.00',
+                },
+              },
+            }
+          : message,
+      );
+      await route.fulfill({ response, json: { ...body, messages: decidedMessages } });
     });
     await page.route('**/ag-ui/threads/*/run', (route) =>
       route.fulfill({
@@ -451,6 +527,36 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'approved in Reviews',
+      source: SOURCE,
+    });
+
+    // The decision was the last the run waited on, so the Bureau continues the chat with a run of
+    // its own (`bureau.reviews.resolve`), which starts just after the decision is told. Once the
+    // chat's runs show it, the page joins it: Running, Stop in Send's place, and a message steers.
+    continuing = true;
+    await page.evaluate(
+      ({ thread, messages }) => {
+        (window as unknown as { __continuationFrames?: unknown[] }).__continuationFrames = [
+          { type: 'RUN_STARTED', threadId: thread, runId: 'run-refund-continued' },
+          { type: 'MESSAGES_SNAPSHOT', messages },
+        ];
+        window.dispatchEvent(new Event('visibilitychange'));
+      },
+      { thread: SAMPLE_WORLD_THREADS.refund, messages: decidedMessages },
+    );
+    const composer = page.getByRole('form', { name: 'Chat message composer' });
+    await expect(composer.getByRole('button', { name: 'Stop generating' })).toBeVisible();
+    await expect(composer.getByRole('button', { name: 'Send message' })).toHaveCount(0);
+    await expect(conversationArea(page).getByText('A message now steers the run.')).toBeVisible();
+    await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
+    // The decision stays as it was, and is not told again.
+    await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
+      /Approved by you in Reviews\s*·\s*10:46 AM/,
+    );
+    await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'running after Reviews',
       source: SOURCE,
     });
   });
