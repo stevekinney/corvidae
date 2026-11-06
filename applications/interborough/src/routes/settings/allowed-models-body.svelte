@@ -58,6 +58,7 @@
     modelDisplayName,
     providerDisplayName,
   } from './models/format-model.ts';
+  import ModelName from './models/model-name.svelte';
   import { controlFor, MODEL_POLICY_KEY, type Control } from './settings-controls.ts';
   import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
   import { SettingsForm } from './settings-form.svelte.ts';
@@ -327,10 +328,12 @@
               disabled={locked || denied}
               onValueChange={(allowed) => edit(withModelAllowed(current, model.model, allowed))}
             />
-            <label class="weft-allowed__name" for={checkboxId(model)}
-              >{modelDisplayName(model.model)}</label
-            >
-            <code class="weft-allowed__identifier">{model.model}</code>
+            <ModelName
+              name={modelDisplayName(model.model)}
+              identifier={model.model}
+              layout="inline"
+              labelFor={checkboxId(model)}
+            />
             <span class="weft-allowed__abilities">{formatModelAbilities(model)}</span>
           </div>
         {/each}
@@ -497,19 +500,6 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
-  }
-
-  /* The model's name reads as the row's title, with its identifier small beside it. */
-  .weft-allowed__name {
-    font-weight: var(--cinder-font-semibold);
-    cursor: pointer;
-  }
-
-  .weft-allowed__identifier {
-    color: var(--cinder-text-muted);
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-xs);
-    overflow-wrap: anywhere;
   }
 
   .weft-allowed__abilities {

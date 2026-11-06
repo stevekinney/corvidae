@@ -1,7 +1,7 @@
 /**
  * A stand-in for the host's provider routes, for the Models page tests: it answers
  * `GET /host/providers`, `PUT /host/providers/<name>`, `PUT /host/catalog` and
- * `POST /host/providers/reload`, and `DELETE /host/providers/<name>` from state a test holds, records what it was sent, and sends every
+ * `DELETE /host/providers/<name>` from state a test holds, records what it was sent, and sends every
  * other request on to the fetch underneath. The real routes are exercised against a real host in
  * `src/host/host-provider-changes.test.ts` and the Playwright suite.
  */
@@ -22,6 +22,8 @@ export type FakeHost = {
   lockReason?: 'deployment';
   /** Makes the next write answer with this response instead of making the change. */
   refuseNext?: Response;
+  /** Answers every read with this status and no body while set, as a host that is failing does. */
+  readStatus?: number;
   readonly requests: HostRequest[];
   restore(): void;
 };
@@ -105,6 +107,9 @@ export function installFakeHost(initial: {
     const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
     host.requests.push({ method, path, body });
     if (method === 'GET') {
+      if (host.readStatus !== undefined) {
+        return Response.json({ error: 'failed', message: '' }, { status: host.readStatus });
+      }
       return Response.json({
         providers: Object.entries(host.keys).map(([name, hasKey]) => ({
           name,

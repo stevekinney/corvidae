@@ -1500,8 +1500,7 @@ export const API_REFERENCE_COPY = {
  */
 export const MODELS_COPY = {
   title: 'Models',
-  intro:
-    'Connect the providers your agents call, choose which of their models are on, and set how decisions are made.',
+  intro: 'Agents run on a model. Connect a provider to make its models available.',
   loading: 'Loading providers and models',
   /** The notice shown when a page sent the person here to connect a provider, with the way back. */
   returnNotice: {
@@ -1518,26 +1517,28 @@ export const MODELS_COPY = {
   providerNames: { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Gemini' } as Readonly<
     Record<string, string>
   >,
+  /** What each provider's models are called, under its name. A provider not listed here shows nothing. */
+  providerTaglines: {
+    anthropic: 'Claude models',
+    openai: 'GPT models',
+    gemini: 'Gemini models',
+  } as Readonly<Record<string, string>>,
+  /** The order the providers are listed in; one the host adds follows them. */
+  providerOrder: ['anthropic', 'openai', 'gemini'] as readonly string[],
   locked:
     'This host keeps its providers and keys in its deployment, so they cannot be changed here.',
   providers: {
     heading: 'Providers',
-    description: 'A provider is connected once its API key is saved on this machine.',
+    /** The reason there is no provider banner: while none is connected this says why agents can't answer. */
+    description:
+      'Agents can’t answer until one is connected. Connect one to make its models available.',
+    connectedDescription: 'Connected providers show Manage.',
     listLabel: 'Providers',
     connected: 'Connected',
-    /** A provider whose plugin is waiting for its key (`needs-setup` in `GET /host/plugins`). */
-    needsSetup: 'Needs setup',
-    pluginLink: (name: string): string => `Open the ${name} plugin`,
     connect: 'Connect',
     manage: 'Manage',
     connectLabel: (name: string): string => `Connect ${name}`,
     manageLabel: (name: string): string => `Manage ${name}`,
-    disconnect: 'Disconnect',
-    disconnectLabel: (name: string): string => `Disconnect ${name}`,
-    reload: 'Reload from files',
-    reloaded: 'Providers read again from the configuration file',
-    reloadFailed: 'The configuration could not be read again',
-    modelCount: (count: number): string => `${String(count)} ${count === 1 ? 'model' : 'models'}`,
   },
   connectDialog: {
     connectTitle: (name: string): string => `Connect ${name}`,
@@ -1549,6 +1550,7 @@ export const MODELS_COPY = {
     keyRequired: 'Enter the key.',
     connect: 'Connect',
     replace: 'Replace key',
+    removeKey: 'Remove key',
     cancel: 'Cancel',
     connectedToast: (name: string): string => `${name} connected`,
     replacedToast: (name: string): string => `${name} key replaced`,
@@ -1580,75 +1582,63 @@ export const MODELS_COPY = {
     failed: 'The key could not be removed.',
     locked: 'This host keeps its keys in its deployment, so it cannot remove one.',
   },
+  /** The catalog (board SettingsShell, "Models · /settings/models" and "Models · provider connected"). */
   models: {
     heading: 'Models',
+    /** With no model to list, the catalog says only what it is. */
+    emptyDescription: 'Every model your connected providers offer.',
     description:
-      'Every model your connected providers offer. Turn one off to keep it from agents and plans, or correct what a row says.',
+      'Every model your connected providers offer. Which models agents may use is set under Allowed models.',
     tableLabel: 'Models',
     columns: {
       model: 'Model',
-      context: 'Context',
       abilities: 'Abilities',
-      price: 'Price per million tokens',
-      on: 'On',
-      actions: 'Actions',
+      context: 'Context',
+      allowed: 'Allowed',
     },
-    onLabel: (model: string): string => `${model} is on`,
-    abilities: {
-      tools: 'Tools',
-      images: 'Images',
-      structuredOutput: 'Structured output',
-    },
-    noAbilities: 'Text only',
-    noPrice: 'No price',
-    price: (input: string, output: string): string => `${input} in, ${output} out`,
-    contextTokens: (count: string): string => `${count} tokens`,
-    added: 'Added',
-    edit: 'Edit',
-    editLabel: (model: string): string => `Edit ${model}`,
-    add: 'Add a model',
-    save: 'Save models',
-    discard: 'Discard model changes',
-    saved: 'Models saved',
-    unsaved: 'You have unsaved changes to the models.',
-    saveFailed: 'The models were not saved',
-    /** The catalog changed under a working copy: another tab saved, or the files were edited and read again. */
-    changedElsewhere: {
-      title: 'The models changed while you were editing',
-      description:
-        'Another tab, or a change to the configuration file, changed them. Reload to see what they are now. Reloading discards your changes, and saving them would overwrite the change, so Save is held until you reload.',
-      action: 'Reload models',
-    },
+    allowed: 'Allowed',
+    notAllowed: 'Not allowed',
     empty: {
       title: 'No models yet',
-      description: 'Connect a provider and the models it offers appear here.',
-      action: 'Connect a provider',
+      description: 'Models appear here once you connect a provider.',
+      action: 'Go to Providers',
+    },
+    /** The catalog failed to load after the key was saved: the error sits here, not on the provider row. */
+    loadFailed: {
+      title: 'Couldn’t load the models',
+      description: (providers: readonly string[], status: number | undefined): string => {
+        const code = status === undefined ? '' : ` (${String(status)})`;
+        if (providers.length === 0) return `The model list didn’t come back${code}.`;
+        const subject =
+          providers.length === 1
+            ? `${providers.join('')} is connected, but its model list`
+            : `${nameList(providers)} are connected, but their model lists`;
+        return `${subject} didn’t come back${code}.`;
+      },
+      retry: 'Try again',
     },
   },
-  rowDialog: {
-    editTitle: (model: string): string => `Edit ${model}`,
-    addTitle: 'Add a model',
-    addDescription:
-      'Add a model the built-in list lacks. It copies the abilities of the model you base it on.',
-    provider: 'Provider',
-    model: 'Model name',
-    modelDescription: 'The name the provider calls it.',
-    basedOn: 'Based on',
-    basedOnDescription: 'A model of the same provider with the same abilities.',
-    contextWindow: 'Context window (tokens)',
-    maxOutput: 'Largest answer (tokens)',
-    inputPrice: 'Input price per million tokens',
-    outputPrice: 'Output price per million tokens',
-    apply: 'Apply',
-    add: 'Add model',
-    cancel: 'Cancel',
-    modelRequired: 'Enter the model name.',
-    modelExists: 'That provider already lists this model.',
-    modelNotAllowed: 'That provider’s model list in the configuration does not include this model.',
-    basedOnRequired: 'Choose the model it is based on.',
-    wholeNumber: 'Enter a whole number above zero.',
-    price: 'Enter a price that is not negative.',
-    outputTooLarge: 'The largest answer cannot be bigger than the context window.',
+  /** The Decisions section (board SettingsShell, "Models · /settings/models"). */
+  decisions: {
+    heading: 'Decisions',
+    description:
+      'The model that makes quick judgments for the app, apart from the models agents chat with.',
+    model: {
+      label: 'Decision model',
+      description:
+        'TypeSafe answers yes-or-no and classification questions for Interborough. It isn’t a chat provider.',
+      connect: 'Connect TypeSafe',
+    },
+    fallbackModel: {
+      label: 'Fallback model',
+      description: 'Used when the decision model can’t answer.',
+      connectFirst: 'Connect TypeSafe first',
+    },
+    maximumPerTask: {
+      label: 'Maximum per task',
+      description: 'The most decision calls one task may make.',
+      connectFirst: 'The most decision calls one task may make. Connect TypeSafe first.',
+    },
   },
 } as const;
 

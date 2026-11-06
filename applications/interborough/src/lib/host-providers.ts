@@ -107,12 +107,15 @@ export class HostProviderError extends Error {
   readonly kind: HostProviderFaultKind;
   /** The field the host named, for an `invalid` answer. */
   readonly field: string | undefined;
+  /** The HTTP status of an answer the page could not read, such as a 503 for the list of models. */
+  readonly status: number | undefined;
 
-  constructor(kind: HostProviderFaultKind, message: string, field?: string) {
+  constructor(kind: HostProviderFaultKind, message: string, field?: string, status?: number) {
     super(message);
     this.name = 'HostProviderError';
     this.kind = kind;
     this.field = field;
+    this.status = status;
   }
 }
 
@@ -159,7 +162,14 @@ async function faultOf(response: Response, secret?: string): Promise<HostProvide
 /** Asks the host for its providers, the models it offers, and the catalog edits. */
 export async function getProviders(options: Options = {}): Promise<ProvidersSnapshot> {
   const response = await send(HOST_PROVIDERS_ROUTE, {}, options);
-  if (!response.ok) throw new Error(`The host answered ${response.status}.`);
+  if (!response.ok) {
+    throw new HostProviderError(
+      'failed',
+      `The host answered ${String(response.status)}.`,
+      undefined,
+      response.status,
+    );
+  }
   return providersSchema.parse(await response.json());
 }
 

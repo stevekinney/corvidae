@@ -50,6 +50,8 @@
     reverted?: boolean;
     /** The row's own words in place of the Bureau's description, such as in the Remote deployment card. */
     descriptionOverride?: string | undefined;
+    /** The row's own label in place of the one made from the key, such as "Decision model" for `decisions.model`. */
+    labelOverride?: string | undefined;
     /** Called when the person changes the value, which ends what Revert said about it. */
     onEdit?: (() => void) | undefined;
   }
@@ -64,11 +66,12 @@
     appliedNote,
     reverted = false,
     descriptionOverride,
+    labelOverride,
     onEdit,
   }: Props = $props();
 
   const id = $derived(`weft-setting-${name.replaceAll('.', '-')}`);
-  const label = $derived(settingLabel(name));
+  const label = $derived(labelOverride ?? settingLabel(name));
   /** The description as plain words: a code span reads as its text. */
   const description = $derived(
     descriptionOverride ??

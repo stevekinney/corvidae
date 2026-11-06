@@ -86,6 +86,16 @@ describe('getProviders', () => {
   });
 });
 
+describe('a read the host answers with an error', () => {
+  test('carries the status the page words ("didn’t come back (503)")', async () => {
+    const failing = recording(() => new Response('unavailable', { status: 503 }));
+    const error = await failureOf(getProviders({ fetch: failing.fetch }));
+    expect(error).toBeInstanceOf(HostProviderError);
+    expect((error as HostProviderError).status).toBe(503);
+    expect((error as HostProviderError).kind).toBe('failed');
+  });
+});
+
 describe('connectProvider', () => {
   test('puts the key to the provider’s route and nothing else', async () => {
     const { seen, fetch } = recording(() => Response.json({ providers: [], catalogRevision: 2 }));

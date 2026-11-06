@@ -455,6 +455,9 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
   // Settings › General holds one saved change that waits for a restart: the claim renew interval
   // at 15 seconds (board SettingsShell, "General · /settings", row 47f).
   await saveSetting(host, 'engine.workflowClaimRenewInterval', 15_000);
+  // Settings › Models draws "Maximum per task" reading 10 while TypeSafe waits for its key (board
+  // SettingsShell, "Models · /settings/models", row 48g); the Bureau's own default is 20.
+  await saveSetting(host, 'decisions.maximumPerTask', 10);
   // Settings › Allowed models draws the caller's default effort as High (board PageSettingsSections,
   // "Allowed models · /settings/allowed-models", row 49e). The schema has no default for the policy,
   // so the sample world stores one: nothing denied, and the one local caller's effort.

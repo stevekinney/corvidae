@@ -4,7 +4,12 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { formatModelAbilities, modelDisplayName } from './format-model.ts';
+import {
+  formatModelAbilities,
+  modelDisplayName,
+  providersInOrder,
+  providerTagline,
+} from './format-model.ts';
 
 describe('modelDisplayName', () => {
   test('capitalizes the words and joins a version split across hyphens with a point', () => {
@@ -28,5 +33,32 @@ describe('formatModelAbilities', () => {
     expect(formatModelAbilities({ tools: true, images: false })).toBe('Tools');
     expect(formatModelAbilities({ tools: false, images: true })).toBe('Images');
     expect(formatModelAbilities({ tools: false, images: false })).toBe('Text only');
+  });
+});
+
+describe('providersInOrder', () => {
+  test('lists Anthropic, OpenAI and Gemini first whatever order the host reports, then the rest as reported', () => {
+    const names = (list: readonly { name: string }[]) => list.map((entry) => entry.name);
+    expect(
+      names(
+        providersInOrder([
+          { name: 'gemini' },
+          { name: 'zeta' },
+          { name: 'anthropic' },
+          { name: 'openai' },
+          { name: 'alpha' },
+        ]),
+      ),
+    ).toEqual(['anthropic', 'openai', 'gemini', 'zeta', 'alpha']);
+  });
+});
+
+describe('providerTagline', () => {
+  test('says what a known provider’s models are called, and nothing for one it has no words for', () => {
+    expect(providerTagline('anthropic')).toBe('Claude models');
+    expect(providerTagline('openai')).toBe('GPT models');
+    expect(providerTagline('gemini')).toBe('Gemini models');
+    expect(providerTagline('ollama')).toBeUndefined();
+    expect(providerTagline('constructor')).toBeUndefined();
   });
 });

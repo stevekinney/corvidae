@@ -35,6 +35,30 @@ export function providerDisplayName(provider: string): string {
     : provider;
 }
 
+/** What a provider's models are called ("Claude models"), or `undefined` for one the page has no words for. */
+export function providerTagline(provider: string): string | undefined {
+  return Object.hasOwn(MODELS_COPY.providerTaglines, provider)
+    ? MODELS_COPY.providerTaglines[provider]
+    : undefined;
+}
+
+/**
+ * The providers in the order the page lists them: Anthropic, OpenAI and Gemini, then any other the
+ * host offers in the order it reported it. The host's own order is not relied on.
+ */
+export function providersInOrder<Provider extends { readonly name: string }>(
+  providers: readonly Provider[],
+): Provider[] {
+  const rank = (provider: Provider): number => {
+    const position = MODELS_COPY.providerOrder.indexOf(provider.name);
+    return position === -1 ? MODELS_COPY.providerOrder.length : position;
+  };
+  return providers
+    .map((provider, index) => ({ provider, index }))
+    .toSorted((a, b) => rank(a.provider) - rank(b.provider) || a.index - b.index)
+    .map(({ provider }) => provider);
+}
+
 /** A provider's own name for a model family that is spelled in capitals, such as `gpt`. */
 const ACRONYMS: ReadonlySet<string> = new Set(['gpt']);
 

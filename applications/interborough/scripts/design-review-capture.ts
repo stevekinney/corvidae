@@ -64,6 +64,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/restart.spec.ts',
   'tests/e2e/settings-general.spec.ts',
   'tests/e2e/settings-allowed-models.spec.ts',
+  'tests/e2e/settings-models.spec.ts',
   'tests/e2e/first-run.spec.ts',
 ] as const;
 

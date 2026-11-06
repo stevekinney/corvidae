@@ -14,7 +14,11 @@
 
   import { showToast } from '../../../app/toast-host.svelte';
   import { MODELS_COPY } from '../../../app/copy.ts';
-  import { connectProvider, HostProviderError } from '../../../lib/host-providers.ts';
+  import {
+    connectProvider,
+    HostProviderError,
+    type ProvidersSnapshot,
+  } from '../../../lib/host-providers.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { providerDisplayName } from './format-model.ts';
 
@@ -23,9 +27,11 @@
     provider: string | null;
     /** Whether that provider already has a key, which makes this a replacement. */
     connected: boolean;
+    /** Opens the removal of the provider's key; the dialog closes first. Offered only while the provider has a key. */
+    onRemove?: (provider: string) => void;
   }
 
-  let { provider = $bindable(), connected }: Props = $props();
+  let { provider = $bindable(), connected, onRemove }: Props = $props();
 
   const copy = MODELS_COPY.connectDialog;
   const queryClient = useQueryClient();
@@ -44,6 +50,13 @@
     if (error.kind === 'locked') return copy.locked;
     if (error.kind === 'partial') return error.message === '' ? copy.partial : error.message;
     return error.message === '' ? copy.failed : `${copy.failed} ${error.message}`;
+  }
+
+  function remove(): void {
+    if (sending || provider === null) return;
+    const name = provider;
+    close();
+    onRemove?.(name);
   }
 
   function close(): void {
@@ -71,6 +84,18 @@
         variant: 'success',
       });
       provider = null;
+      // The key is saved, so the provider reads Connected now, whether or not the list of models
+      // that follows it comes back (`models-section.svelte` says when it does not).
+      queryClient.setQueryData<ProvidersSnapshot>(queryKeys.hostProviders(), (current) =>
+        current === undefined
+          ? current
+          : {
+              ...current,
+              providers: current.providers.map((entry) =>
+                entry.name === name ? { ...entry, configured: true, hasKey: true } : entry,
+              ),
+            },
+      );
       // The catalog changed under the page and under the agent editor's model choices.
       void queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.catalog() });
@@ -123,6 +148,9 @@
     </form>
   {/snippet}
   {#snippet footer()}
+    {#if connected && onRemove !== undefined}
+      <Button variant="secondary" onclick={remove} disabled={sending}>{copy.removeKey}</Button>
+    {/if}
     <Button variant="secondary" onclick={close} disabled={sending}>{copy.cancel}</Button>
     <Button data-changes variant="primary" onclick={() => void submit()} loading={sending}
       >{connected ? copy.replace : copy.connect}</Button
