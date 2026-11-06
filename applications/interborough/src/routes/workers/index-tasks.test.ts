@@ -460,17 +460,18 @@ describe('the open worker’s tasks', () => {
     });
 
     test('a read of the tasks that fails says so, and Try again reads them again', async () => {
-      scripted = new ScriptedFetch();
-      routeHappyPaths(scripted, { workers: [GONE] });
-      scripted.routeJsonRpcMethodError('weft.task.queues.tasks', 500, 'broke', 'Internal');
+      const script = new ScriptedFetch();
+      scripted = script;
+      routeHappyPaths(script, { workers: [GONE] });
+      script.routeJsonRpcMethodError('weft.task.queues.tasks', 500, 'broke', 'Internal');
       router.navigate('/health/workers?worker=reports-worker', { replace: true });
 
       const { findByRole } = renderRoute();
       const retry = await findByRole('button', { name: 'Try again' });
-      const before = callsTo(scripted, 'weft.task.queues.tasks').length;
+      const before = callsTo(script, 'weft.task.queues.tasks').length;
       await fireEvent.click(retry);
       await waitFor(() =>
-        expect(callsTo(scripted, 'weft.task.queues.tasks').length).toBeGreaterThan(before),
+        expect(callsTo(script, 'weft.task.queues.tasks').length).toBeGreaterThan(before),
       );
     });
 

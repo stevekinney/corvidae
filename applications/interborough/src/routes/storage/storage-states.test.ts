@@ -190,7 +190,9 @@ describe('a rewritten value that is not text', () => {
     );
 
     await waitFor(() =>
-      expect(pane.queryByRole('textbox', { name: STORAGE_COPY.detail.editLabel })).toBeNull(),
+      expect(
+        pane.queryByRole('textbox', { name: STORAGE_COPY.detail.editLabel })?.outerHTML ?? null,
+      ).toBeNull(),
     );
     expect(pane.queryByTestId('storage-rewritten')).toBeNull();
   });

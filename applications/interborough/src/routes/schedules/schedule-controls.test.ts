@@ -251,7 +251,7 @@ describe('a skip the engine applied late', () => {
     const notice = await findByTestId('schedule-notice');
     expect(notice.getAttribute('data-notice')).toBe('unapplied');
     await fireEvent.click(within(notice).getByRole('button', { name: /dismiss|close/i }));
-    await waitFor(() => expect(queryByTestId('schedule-notice')).toBeNull());
+    await waitFor(() => expect(queryByTestId('schedule-notice')?.outerHTML ?? null).toBeNull());
   });
 });
 

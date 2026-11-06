@@ -362,13 +362,14 @@ describe('Workers route — a worker’s deployment', () => {
   });
 
   test('Resume deployment calls weft.worker.deployments.resume with the deployment’s name, with no dialog', async () => {
-    scripted = new ScriptedFetch();
-    routeHappyPaths(scripted, {
+    const script = new ScriptedFetch();
+    scripted = script;
+    routeHappyPaths(script, {
       workers: [worker({ id: 'wkr_billing', deploymentName: 'billing', buildId: 'build-a' })],
       deployments: [deployment({ deploymentName: 'billing' })],
     });
-    routeBilling(scripted);
-    scripted.routeJsonRpcMethod('weft.worker.deployments.resume', { ok: true });
+    routeBilling(script);
+    script.routeJsonRpcMethod('weft.worker.deployments.resume', { ok: true });
 
     resetLocation('/health/workers?worker=wkr_billing&tab=queues');
     const { findByRole, queryByRole } = await renderWorkersRoute();
@@ -376,7 +377,7 @@ describe('Workers route — a worker’s deployment', () => {
     await fireEvent.click(await findByRole('button', { name: 'Resume deployment' }));
 
     await waitFor(() =>
-      expect(callsTo(scripted, 'weft.worker.deployments.resume')).toEqual([
+      expect(callsTo(script, 'weft.worker.deployments.resume')).toEqual([
         { deploymentName: 'billing' },
       ]),
     );

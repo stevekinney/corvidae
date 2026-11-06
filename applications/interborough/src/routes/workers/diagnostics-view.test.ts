@@ -259,7 +259,7 @@ describe('DiagnosticsView — links in the evidence', () => {
             operationId: 'op_one',
             workerId: 'worker-7',
             evidence: ['heartbeat missed for 90s'],
-          } as Partial<StandardTaskDiagnosticItem>),
+          }),
         ],
         summary: { ...EMPTY_SUMMARY, staleInflight: 1 },
         now: NOW,

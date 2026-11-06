@@ -356,8 +356,11 @@ describe('the status and risk of a tool call', () => {
     ...LOOKUPS,
     reviews: review === undefined ? new Map() : new Map([['approval:run-1:c1', review]]),
   });
-  const factsOf = (type: string, detail: Record<string, unknown>, lookups: AuditLookups) =>
-    detailOf(worded({ type, detail }, lookups), lookups, NOW).facts;
+  const factsOf = (
+    type: string,
+    detail: Record<string, string | number | boolean>,
+    lookups: AuditLookups,
+  ) => detailOf(worded({ type, detail }, lookups), lookups, NOW).facts;
   const detail = { toolName: 'issue-refund', toolCallId: 'c1' };
 
   test('a call that ran says Done or Failed by how it ended', () => {
