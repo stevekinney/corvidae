@@ -52,6 +52,8 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'context.summarizerModel': 'anthropic/claude-haiku-5-5',
   'decisions.maximumPerTask': 3,
   'retention.audit': { olderThan: 86_400_000 },
+  'retention.runs': { olderThan: 2_592_000_000 },
+  'retention.chats': { olderThan: 5_184_000_000 },
   'retention.events': { olderThan: 3_600_000 },
   'retention.tasks': 'forever',
   'retention.receipts': { olderThan: 7_200_000 },

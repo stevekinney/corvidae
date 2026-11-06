@@ -160,6 +160,12 @@ export const settingsSchema = z
     'retention.audit': retentionWindow.describe(
       'How long audit records are kept before they are deleted.',
     ),
+    'retention.runs': retentionWindow.describe(
+      'How long finished runs and their steps are kept. Deleting a run removes its page; a link to it then says the run doesn’t exist.',
+    ),
+    'retention.chats': retentionWindow.describe(
+      'How long chats are kept after their last message.',
+    ),
     'retention.events': retentionWindow.describe(
       'How long recent activity is kept for the pages that follow it live. Run history has its own setting.',
     ),
@@ -232,7 +238,7 @@ export const settingsSchema = z
       })
       .strict()
       .describe(
-        'How long run history is kept, by how the run ended. Recent activity has its own setting.',
+        'How long run history is kept, by how the run ended, in place of the one window `retention.runs` sets for every outcome. Recent activity has its own setting.',
       ),
     'engine.retentionSweepInterval': positiveMilliseconds.describe(
       'How often old run history is removed.',
@@ -324,6 +330,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'decisions.maximumPerTask': 'live',
   'context.summarizerModel': 'live',
   'retention.audit': 'live',
+  'retention.runs': 'live',
+  'retention.chats': 'live',
   'retention.events': 'live',
   'retention.tasks': 'live',
   'retention.receipts': 'live',

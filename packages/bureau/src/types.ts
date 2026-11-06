@@ -284,10 +284,11 @@ export type BureauHumanInputOption =
 /**
  * COR-2009 — a kind of record {@link Bureau.removeExpiredRecords} removes: `audit` records,
  * resolved `reviews`, `memories`, the log lines of finished runs (`logs`, counted by run),
- * `notifications` and settled `hookDeliveries`.
+ * `notifications`, settled `hookDeliveries`, and `chats` whose last message is older than
+ * `retention.chats` allows.
  */
 export type ExpiredRecordKind =
-  'audit' | 'reviews' | 'memories' | 'logs' | 'notifications' | 'hookDeliveries';
+  'audit' | 'reviews' | 'memories' | 'logs' | 'notifications' | 'hookDeliveries' | 'chats';
 
 /** COR-2009 — what {@link Bureau.removeExpiredRecords} removed. */
 export interface ExpiredRecordRemoval {

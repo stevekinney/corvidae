@@ -14638,6 +14638,46 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   }
 
+  /** The most chats one maintenance pass deletes, so a first pass over a large backlog stays bounded. */
+  const CHAT_RETENTION_BATCH_SIZE = 100;
+
+  /**
+   * Deletes the chats whose last message is older than `retention.chats`, read per pass so a change
+   * applies to the next one, through the same deletion a person's delete runs (live runs cancelled,
+   * content purged, the deletion audited). A chat is a context no goal, schedule or try started, and
+   * its age is its `updatedAt`, which a rename does not move. With the setting `'forever'` nothing is
+   * deleted. A failure is reported and never stops the rest of a pass. Resolves how many chats it
+   * deleted, or `'failed'`.
+   */
+  async function pruneChats(pass: MaintenancePassName): Promise<number | 'failed'> {
+    const window = currentSettings()['retention.chats'];
+    if (window === undefined || window === 'forever' || !runtime.sessionStore) return 0;
+    try {
+      const cutoff = runtimeServices.clock.now() - window.olderThan;
+      const oldest = await listSessions({
+        origin: 'chat',
+        sortBy: 'updatedAt',
+        sortOrder: 'asc',
+        limit: CHAT_RETENTION_BATCH_SIZE,
+      });
+      let deleted = 0;
+      for (const chat of oldest) {
+        if (new Date(chat.updatedAt).getTime() >= cutoff) break;
+        const report = await deleteSession(chat.id);
+        if (report.deleted) deleted += 1;
+      }
+      return deleted;
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} chat retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+      return 'failed';
+    }
+  }
+
   /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
@@ -14855,6 +14895,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await pruneNotifications('Manual');
         // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
         await pruneHookDeliveries('Manual');
+        // Chats past `retention.chats`.
+        await pruneChats('Manual');
       }
       // COR-1898 — governed memory's embedder switch advances only when asked to.
       await memoryEmbedder?.reconcile();
@@ -14945,6 +14987,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         logs: await pruneWorkflowLogs('Requested'),
         notifications: await pruneNotifications('Requested'),
         hookDeliveries: await pruneHookDeliveries('Requested'),
+        chats: await pruneChats('Requested'),
       });
     })();
     manualDurableMaintenancePasses.add(pass);
@@ -15242,6 +15285,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           await pruneNotifications('Automatic');
           // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
           await pruneHookDeliveries('Automatic');
+          // Chats past `retention.chats`.
+          await pruneChats('Automatic');
         }
         // COR-1898 — governed memory's embedder switch advances only when asked to.
         await memoryEmbedder?.reconcile();

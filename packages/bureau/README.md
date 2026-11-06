@@ -264,6 +264,8 @@ A bad value throws `BureauError` (`BAD_REQUEST`) at construction. Each key keeps
 - **`notifications`**: `{ olderThan }` only, in milliseconds, default unset (an owner keeps up to 1000). See [notifications](#notifications).
 - **`hookDeliveries`**: `{ olderThan }` only, in milliseconds, default unset (a hook keeps every delivery record until it is deleted). Removes settled deliveries (delivered, exhausted, aborted, failed) last written longer ago than the window; a pending delivery is never removed. Has effect only with `hooks`.
 
+Two windows are settings only, with no code option, and both default to `'forever'`: `retention.runs` (`'forever' | { olderThan }`) sets the one window the durable engine keeps every finished run for, except an outcome `engine.retention` sets itself, and `retention.chats` deletes a chat whose last message is older than the window, through the deletion a person's delete runs, in the maintenance pass and in `removeExpiredRecords` (kind `chats`). A pass deletes at most 100 chats.
+
 The host fields attach memory, assets, and the sinks a host wants to hear from.
 
 | Field | Type | Purpose |

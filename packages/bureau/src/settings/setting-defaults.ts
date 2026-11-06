@@ -92,6 +92,8 @@ export function builtInSettingDefaults(context: BuiltInDefaultsContext): BuiltIn
     'decisions.fallbackModel': DEFAULT_DECISION_FALLBACK_MODEL,
     'decisions.maximumPerTask': DEFAULT_DECISIONS_PER_TASK,
     'retention.audit': 'forever',
+    'retention.runs': 'forever',
+    'retention.chats': 'forever',
     'retention.events': { olderThan: DEFAULT_EVENT_RETENTION_MS },
     'retention.tasks': { olderThan: DEFAULT_TASK_RETENTION_MS },
     'retention.receipts': { olderThan: COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS },

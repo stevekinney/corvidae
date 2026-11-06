@@ -18,6 +18,7 @@ const kindSchema = z.enum([
   'logs',
   'notifications',
   'hookDeliveries',
+  'chats',
 ]);
 
 const runSchema = z.object({

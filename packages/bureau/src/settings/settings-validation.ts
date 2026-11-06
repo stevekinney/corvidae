@@ -59,6 +59,18 @@ export const OPTION_VALIDATORS: Readonly<Partial<Record<SettingKey, (value: unkn
       value as Parameters<typeof validateAuditRetentionOption>[0],
       refuse,
     ),
+  'retention.runs': (value) =>
+    validateRetentionWindowOption(
+      value as Parameters<typeof validateRetentionWindowOption>[0],
+      'retention.runs',
+      refuse,
+    ),
+  'retention.chats': (value) =>
+    validateRetentionWindowOption(
+      value as Parameters<typeof validateRetentionWindowOption>[0],
+      'retention.chats',
+      refuse,
+    ),
   'retention.events': (value) =>
     validateRetentionWindowOption(
       value as Parameters<typeof validateRetentionWindowOption>[0],

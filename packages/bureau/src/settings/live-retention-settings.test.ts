@@ -73,6 +73,37 @@ describe('retention.audit', () => {
   });
 });
 
+describe('retention.chats', () => {
+  it('the next maintenance pass deletes a chat whose last message is older than the new window', async () => {
+    await withLiveSettingsBureau(async ({ at, change, bureau, settledTask }) => {
+      await settledTask();
+      expect(await bureau.contexts.list()).toHaveLength(1);
+      at(2 * DAY_MS);
+      await bureau.maintain();
+      expect(await bureau.contexts.list()).toHaveLength(1);
+
+      await change({ 'retention.chats': { olderThan: DAY_MS } });
+      await bureau.maintain();
+      expect(await bureau.contexts.list()).toHaveLength(0);
+    });
+  });
+
+  it('keeps a chat with a message newer than the window, and counts what a request removes', async () => {
+    await withLiveSettingsBureau(async ({ at, change, bureau, settledTask }) => {
+      await settledTask();
+      at(2 * DAY_MS);
+      await settledTask('another');
+      await change({ 'retention.chats': { olderThan: DAY_MS } });
+
+      const removal = await bureau.removeExpiredRecords();
+
+      expect(removal.byKind.chats).toBe(1);
+      expect(removal.failed).toEqual([]);
+      expect(await bureau.contexts.list()).toHaveLength(1);
+    });
+  });
+});
+
 describe('retention.receipts', () => {
   it('a run-creation receipt expires by the new window', async () => {
     await withLiveSettingsBureau(async ({ at, change, bureau, runtime }) => {
