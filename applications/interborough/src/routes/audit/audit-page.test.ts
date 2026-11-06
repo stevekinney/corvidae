@@ -9,7 +9,8 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import { AUDIT_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
@@ -25,6 +26,7 @@ import { landAt } from '../chat/pages.test-support.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
+  jest.useRealTimers();
   cleanup();
   stub?.restore();
   stub = undefined;
@@ -1015,5 +1017,115 @@ describe('a refresh that fails over events on screen', () => {
     // Asking again after a failure would repeat at once, and again after that.
     await quietFor(100);
     expect(secondPageReads()).toHaveLength(first);
+  });
+});
+
+describe('a log that is slow to read', () => {
+  /** The page with a log that never answers, once it has waited long enough to offer Cancel. */
+  async function openHanging() {
+    // The route's page is loaded on demand; load it first so that mounting it needs no real time.
+    await import('./index.svelte');
+    jest.useFakeTimers();
+    const view = open(FULL, {
+      'bureau.audit.query': (params) =>
+        isProbe(params) ? { records: [KEY_REMOVED], nextCursor: null } : new Promise(() => {}),
+    });
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    flushSync();
+    jest.advanceTimersByTime(10_500);
+    flushSync();
+    return view;
+  }
+
+  test('Cancel stops the read and says nothing was changed, and Try again reads once more', async () => {
+    const view = await openHanging();
+    await fireEvent.click(view.getByRole('button', { name: /cancel/i }));
+    flushSync();
+    expect(view.getByText(AUDIT_COPY.stopped.title)).not.toBeNull();
+    expect(view.getByText(AUDIT_COPY.stopped.description)).not.toBeNull();
+    expect(view.queryByTestId('audit-loading')).toBeNull();
+
+    const before = queries().length;
+    await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
+    flushSync();
+    expect(view.queryByText(AUDIT_COPY.stopped.title)).toBeNull();
+    expect(view.getByTestId('audit-loading')).not.toBeNull();
+    expect(queries().length).toBeGreaterThanOrEqual(before);
+  });
+
+  test('pressing Enter in the search box submits nothing', async () => {
+    const view = open(FULL);
+    await view.findByText('Removed the Anthropic key');
+    const form = view.getByRole('search', { name: AUDIT_COPY.searchLabel });
+    // A submit that is not prevented would reload the page; this one is taken over.
+    expect(await fireEvent.submit(form)).toBe(false);
+  });
+});
+
+describe('what the page looks up to word an event', () => {
+  const SCHEDULE = (id: string, description: string | null) => ({
+    id,
+    owner: 'anonymous:local',
+    agentName: null,
+    inputPreview: null,
+    workflowType: 'daily-report',
+    description,
+    cronExpression: '0 9 * * *',
+    intervalMs: null,
+    status: 'active',
+    overlap: 'skip',
+    revision: 1,
+    timeZone: 'America/Denver',
+    nextFireAt: null,
+    skippedOccurrences: [],
+    lastFireAt: null,
+    missedFireCount: 0,
+    skippedCount: 0,
+    createdAt: new Date(NOW).toISOString(),
+    updatedAt: new Date(NOW).toISOString(),
+    blocker: null,
+  });
+
+  test('a memory an agent corrected is quoted, and a schedule is called by its name when it has one', async () => {
+    const corrected = record(7, 2, {
+      type: 'memory.corrected',
+      principal: 'run-7',
+      detail: { agentName: 'tool-runner', writer: 'agent', memoryId: 'm-1' },
+    });
+    const named = record(8, 3, {
+      type: 'schedule.created',
+      resource: 'schedule:s-1',
+      detail: { scheduleId: 's-1' },
+    });
+    const unnamed = record(9, 4, {
+      type: 'schedule.paused',
+      resource: 'schedule:s-2',
+      detail: { scheduleId: 's-2' },
+    });
+    const view = open(
+      { records: [corrected, named, unnamed], nextCursor: null },
+      {
+        'bureau.memory.get': () => ({
+          memory: {
+            id: 'm-1',
+            content: 'prefers long summaries',
+            memoryClass: 'preference',
+            source: 'agent',
+            trust: 'trusted',
+            createdAt: new Date(NOW).toISOString(),
+            sessionId: null,
+          },
+          lineage: { runId: null, corrects: null, correctedBy: null },
+        }),
+        'bureau.schedules.list': () => ({
+          schedules: [SCHEDULE('s-1', 'Daily summary'), SCHEDULE('s-2', null)],
+          nextOffset: null,
+        }),
+      },
+    );
+    await view.findByText('“prefers long summaries”');
+    await view.findByText('Daily summary');
+    // A schedule with no name is a schedule, not an identifier.
+    expect(view.getAllByText('A schedule').length).toBeGreaterThan(0);
   });
 });

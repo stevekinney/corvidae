@@ -11,6 +11,10 @@ export interface StorageServerOptions {
   readonly mode?: 'local' | 'remote';
   /** Fails the scan with this status, for the error state. */
   readonly scanStatus?: number;
+  /** Starts with every scan unanswered, as `control.holdScan` does once a test sets it. */
+  readonly holdScan?: boolean;
+  /** Whether the host answers `/host/paths`. True by default; false leaves the paths unknown. */
+  readonly hostPaths?: boolean;
   /** Whether the storage reports `conditionalBatch`. True by default. */
   readonly conditionalBatch?: boolean;
   /** Fails the capabilities call with this status, so the page never learns what the storage can do. */
@@ -31,6 +35,8 @@ export interface StorageServerControl {
   pageStatus: number | undefined;
   /** Fails a read of one key's value with this status. */
   valueStatus: number | undefined;
+  /** Never answers a scan of the keys, so the table stays loading until the read is cancelled. */
+  holdScan: boolean;
   /** Never answers a read of one key's value, so the pane stays loading until the read is cancelled. */
   holdValues: boolean;
   /** When each key was last written, in epoch milliseconds, as a scan reports it. A key with no entry reports none. */
@@ -104,6 +110,7 @@ export function serveStorage(options: StorageServerOptions): {
     pageStatus: undefined,
     valueStatus: undefined,
     holdValues: false,
+    holdScan: options.holdScan ?? false,
     writtenAt: new Map(),
   };
   const store = new Map<string, Uint8Array>(
@@ -124,6 +131,7 @@ export function serveStorage(options: StorageServerOptions): {
       });
     }
     if (url.pathname === '/host/paths') {
+      if (options.hostPaths === false) return new Response('Not found', { status: 404 });
       return Response.json(
         stubHostPaths('/home/me/agents', '/home/me/workflows', options.mode ?? 'local'),
       );
@@ -169,6 +177,7 @@ export function serveStorage(options: StorageServerOptions): {
       });
     }
     if (url.pathname === '/v1/storage' && call.method === 'GET') {
+      if (control.holdScan) return heldRead(call.signal);
       if (control.scanStatus !== undefined) {
         return Response.json(
           { error: 'The store is unavailable.' },

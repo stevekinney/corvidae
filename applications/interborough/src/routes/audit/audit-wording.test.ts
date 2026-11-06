@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { AUDIT_EVENT_KINDS } from '../../lib/audit-event-types.ts';
+
 import type { AuditRecord } from '../../lib/bureau-audit.ts';
 import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
 import {
@@ -89,9 +91,7 @@ describe('the words of each kind of record', () => {
       'Denied a tool call',
     );
     // Without its review the call has only the tool to name.
-    expect(worded({ type: 'review.tool-approval.denied', detail }).target).toBe(
-      'Issue refund',
-    );
+    expect(worded({ type: 'review.tool-approval.denied', detail }).target).toBe('Issue refund');
   });
 
   test('a memory is quoted when it is known and falls back to the agent', () => {
@@ -315,5 +315,137 @@ describe('what the records ask the page to look up', () => {
     ]);
     expect(requests.sessionIds).toEqual(['chat-1']);
     expect(requests.scheduleIds).toContain('s-1');
+  });
+});
+
+describe('records at the edges of the wording', () => {
+  test('an agent noticed a run with no principal, and a resource of an unknown kind is shown whole', () => {
+    const started = worded({
+      type: 'run.started',
+      principal: null,
+      detail: { agentName: 'writer' },
+    });
+    expect(started.actor).toEqual({ kind: 'agent', name: 'Writer' });
+    expect(worded({ type: 'workflow.created', resource: 'thing:x' }).target).toBe('thing:x');
+  });
+
+  test('a type the log lists but has no sentence for is not an event', () => {
+    const kinds = AUDIT_EVENT_KINDS as unknown as Map<string, string>;
+    kinds.set('future.type', 'other');
+    try {
+      expect(describeRecord(record({ type: 'future.type' }), LOOKUPS)).toBeUndefined();
+    } finally {
+      kinds.delete('future.type');
+    }
+  });
+});
+
+describe('the status and risk of a tool call', () => {
+  const reviewWith = (status: string, risk: string | undefined) =>
+    ({
+      approval: {
+        callId: 'c1',
+        toolName: 'issue-refund',
+        arguments: {},
+        action: { type: 'approval', message: 'Refund order 4471?', risk },
+      },
+      status,
+      sessionId: 'chat-1',
+    }) as unknown as BureauToolApproval;
+  const lookupsWith = (review: BureauToolApproval | undefined): AuditLookups => ({
+    ...LOOKUPS,
+    reviews: review === undefined ? new Map() : new Map([['approval:run-1:c1', review]]),
+  });
+  const factsOf = (type: string, detail: Record<string, unknown>, lookups: AuditLookups) =>
+    detailOf(worded({ type, detail }, lookups), lookups, NOW).facts;
+  const detail = { toolName: 'issue-refund', toolCallId: 'c1' };
+
+  test('a call that ran says Done or Failed by how it ended', () => {
+    const ran = { ...detail, reviewId: 'approval:run-1:c1' };
+    const done = factsOf('tool.settled', { ...ran, status: 'success' }, LOOKUPS);
+    expect(done.find((fact) => fact.term === 'Status')?.value).toEqual({
+      kind: 'status',
+      word: 'Done',
+    });
+    const failed = factsOf('tool.settled', { ...ran, status: 'error' }, LOOKUPS);
+    expect(failed.find((fact) => fact.term === 'Status')?.value).toEqual({
+      kind: 'status',
+      word: 'Failed',
+    });
+  });
+
+  test('a call that waits in a review says what the review says', () => {
+    const status = (review: BureauToolApproval | undefined) =>
+      factsOf('review.tool-approval.denied', detail, lookupsWith(review)).find(
+        (fact) => fact.term === 'Status',
+      )?.value;
+    expect(status(reviewWith('pending', undefined))).toEqual({
+      kind: 'status',
+      word: 'Waiting on you',
+    });
+    expect(status(reviewWith('approved', undefined))).toEqual({ kind: 'status', word: 'Done' });
+    expect(status(reviewWith('denied', undefined))).toEqual({ kind: 'status', word: 'Canceled' });
+    expect(status(undefined)).toEqual({ kind: 'status', word: 'Waiting on you' });
+    expect(
+      factsOf('review.tool-approval.approved', detail, LOOKUPS).find(
+        (fact) => fact.term === 'Status',
+      )?.value,
+    ).toEqual({ kind: 'status', word: 'Done' });
+  });
+
+  test('the risk is the tool’s tier, or the review’s own when the catalog does not list the tool', () => {
+    const riskOf = (review: BureauToolApproval | undefined, tier?: 'mutating' | 'read-only') =>
+      factsOf('review.tool-approval.denied', detail, {
+        ...lookupsWith(review),
+        tools: tier === undefined ? new Map() : new Map([['issue-refund', { title: null, tier }]]),
+      }).find((fact) => fact.term === 'Risk')?.value;
+    expect(riskOf(reviewWith('pending', 'high'))).toMatchObject({
+      text: expect.stringMatching(/danger/i),
+    });
+    expect(riskOf(reviewWith('pending', 'medium'))).toMatchObject({ kind: 'text' });
+    expect(riskOf(reviewWith('pending', 'low'))).toBeUndefined();
+    expect(riskOf(undefined, 'mutating')).toMatchObject({ kind: 'text' });
+    expect(riskOf(undefined, 'read-only')).toBeUndefined();
+  });
+});
+
+describe('the panes of the schedule and memory records not shown above', () => {
+  test('a missed, started, created and resumed schedule link to the schedule', () => {
+    for (const type of [
+      'schedule.missed',
+      'schedule.fired',
+      'schedule.created',
+      'schedule.resumed',
+      'schedule.cancelled',
+    ]) {
+      const model = detailOf(
+        worded({ type, resource: 'schedule:s-1', detail: { scheduleId: 's-1' } }),
+        LOOKUPS,
+        NOW,
+      );
+      expect(model.facts[0]?.value, type).toMatchObject({ kind: 'link', text: 'Daily summary' });
+    }
+  });
+
+  test('a corrected memory links to its agent, and a target with a place links to it', () => {
+    const corrected = worded({
+      type: 'memory.corrected',
+      detail: { agentName: 'writer', writer: 'agent', memoryId: 'm-1' },
+    });
+    expect(detailOf(corrected, LOOKUPS, NOW).facts[0]?.value).toMatchObject({
+      kind: 'link',
+      text: 'Writer',
+    });
+    const linked = detailOf(
+      worded({
+        type: 'hook.created',
+        resource: 'agent:writer',
+        detail: { hookId: 'agent:writer' },
+      }),
+      LOOKUPS,
+      NOW,
+    );
+    expect(linked.facts).toHaveLength(1);
+    expect(linked.facts[0]?.value.kind).toBe('link');
   });
 });
