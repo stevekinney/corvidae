@@ -111,7 +111,23 @@ async function authenticatedHost(removed: () => boolean): Promise<Host> {
                 : ['workspace:use'],
           };
         },
-        resolveOwnerMembership: async () => null,
+        resolveOwnerMembership: async (owner) => {
+          if (removed()) return null;
+          const subject = owner.replace(/^api-key:/, '').replace(/^owner-/, '');
+          if (!['alice', 'bob', 'administrator'].includes(subject)) return null;
+          return {
+            version: 1,
+            workspaceId: actualWorkspaceId,
+            actorId: subject,
+            actorKind: 'user',
+            owner: `owner-${subject}`,
+            membershipRevision: 'fixture-v1',
+            capabilities:
+              subject === 'administrator'
+                ? ['workspace:use', 'workspace:manage', 'deployment:operate']
+                : ['workspace:use'],
+          };
+        },
       },
     },
   });
@@ -504,6 +520,160 @@ describe('CLI authenticated workspace authority', () => {
     expect(json.exitCode).toBe(3);
     expect(json.stderr).toBe('reflected x-api-key=[redacted]');
     expect(json.stderr).not.toContain('alice-secret');
+  });
+
+  test('private chat ownership is enforced by the real host for CLI context reads', async () => {
+    const host = await authenticatedHost(() => false);
+    const https = await authenticatedHttpsFixture(host);
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-authority-chat-'));
+    homes.push(directory);
+    const preferencesPath = join(directory, 'preferences.json');
+    const base = { preferencesPath, environment: { ALICE: 'alice', BOB: 'bob' } };
+    await executeCli(
+      [
+        'connection',
+        'add',
+        'alice',
+        '--url',
+        https.url.toString(),
+        '--credential-reference',
+        'ALICE',
+      ],
+      base,
+    );
+    await executeCli(
+      ['connection', 'add', 'bob', '--url', https.url.toString(), '--credential-reference', 'BOB'],
+      base,
+    );
+    const created = await host.bureau.tasks.start('demo:assistant', 'alice-private-chat secret', {
+      principal: 'owner-alice',
+    });
+    await created.result();
+    const aliceList = await executeCli(['chats', 'list', '--connection', 'alice'], {
+      ...base,
+      fetch: https.fetch,
+    });
+    expect(aliceList.exitCode).toBe(0);
+    expect(aliceList.stdout).toContain('alice-private-chat secret');
+    const bobList = await executeCli(['chats', 'list', '--connection', 'bob'], {
+      ...base,
+      fetch: https.fetch,
+    });
+    expect(bobList.exitCode).toBe(0);
+    expect(bobList.stdout).not.toContain('alice-private-chat secret');
+  });
+
+  test('admitted CLI watch is revoked before the next private frame and action', async () => {
+    let revoked = false;
+    const host = await authenticatedHost(() => revoked);
+    const https = await authenticatedHttpsFixture(host);
+    const run = await host.bureau.tasks.start('demo:request-human-input', 'Ship it', {
+      principal: 'owner-alice',
+    });
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-authority-watch-'));
+    homes.push(directory);
+    const preferencesPath = join(directory, 'preferences.json');
+    const base = { preferencesPath, environment: { ALICE: 'alice' }, fetch: https.fetch };
+    await executeCli(
+      [
+        'connection',
+        'add',
+        'alice',
+        '--url',
+        https.url.toString(),
+        '--credential-reference',
+        'ALICE',
+      ],
+      base,
+    );
+    const admittedResponse = await fetch(
+      new URL(
+        `/bureau/v1/subscriptions/bureau.tasks.events?taskId=${encodeURIComponent(run.id)}`,
+        host.url,
+      ),
+      { headers: { accept: 'text/event-stream', 'x-api-key': 'alice' } },
+    );
+    expect(admittedResponse.ok).toBe(true);
+    const admitted = true;
+    revoked = true;
+    const watched = await executeCli(
+      ['runs', 'watch', '--kind', 'task', run.id, '--connection', 'alice'],
+      {
+        ...base,
+        fetch: async () => admittedResponse,
+      },
+    );
+    expect(admitted).toBe(true);
+    expect(watched.exitCode).toBe(1);
+    expect(watched.stderr).not.toBe('');
+    const denied = await executeCli(['chats', 'list', '--connection', 'alice'], base);
+    expect(denied.exitCode).toBe(3);
+    expect(denied.stderr).toBe('Workspace membership required');
+  });
+
+  test('connection switching gives each CLI watch a distinct server stream', async () => {
+    const first = await authenticatedHost(() => false);
+    const second = await authenticatedHost(() => false);
+    const firstHttps = await authenticatedHttpsFixture(first);
+    const secondHttps = await authenticatedHttpsFixture(second);
+    const firstRun = await first.bureau.tasks.start('demo:echo', 'workspace-a-frame', {
+      principal: 'owner-alice',
+    });
+    const secondRun = await second.bureau.tasks.start('demo:echo', 'workspace-b-frame', {
+      principal: 'owner-alice',
+    });
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-authority-switch-'));
+    homes.push(directory);
+    const preferencesPath = join(directory, 'preferences.json');
+    const base = { preferencesPath, environment: { ALICE: 'alice' } };
+    await executeCli(
+      [
+        'connection',
+        'add',
+        'first',
+        '--url',
+        firstHttps.url.toString(),
+        '--credential-reference',
+        'ALICE',
+      ],
+      base,
+    );
+    await executeCli(
+      [
+        'connection',
+        'add',
+        'second',
+        '--url',
+        secondHttps.url.toString(),
+        '--credential-reference',
+        'ALICE',
+      ],
+      base,
+    );
+    const firstWatch = await executeCli(
+      ['runs', 'watch', '--kind', 'task', firstRun.id, '--connection', 'first', '--output', 'json'],
+      { ...base, fetch: firstHttps.fetch },
+    );
+    const secondWatch = await executeCli(
+      [
+        'runs',
+        'watch',
+        '--kind',
+        'task',
+        secondRun.id,
+        '--connection',
+        'second',
+        '--output',
+        'json',
+      ],
+      { ...base, fetch: secondHttps.fetch },
+    );
+    expect(firstWatch.exitCode).toBe(0);
+    expect(secondWatch.exitCode).toBe(0);
+    expect(firstWatch.stdout).toContain(firstRun.id);
+    expect(firstWatch.stdout).not.toContain(secondRun.id);
+    expect(secondWatch.stdout).toContain(secondRun.id);
+    expect(secondWatch.stdout).not.toContain(firstRun.id);
   });
 
   test('credential-bearing asset, stream, and A2A paths fail before fetch', async () => {
