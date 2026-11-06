@@ -18,6 +18,7 @@ import {
   MODELS_COPY,
   VIEW_COPY,
 } from '../../src/app/copy.ts';
+import { FIRST_RUN_DISMISSED_KEY } from '../../src/app/first-run.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -25,7 +26,6 @@ import { expect, test } from './fixtures.ts';
 test.use({ baseURL: E2E_FIRST_RUN_URL });
 test.describe.configure({ mode: 'serial' });
 
-const DISMISSED_KEY = 'interborough:first-run:dismissed';
 const KEY = 'e2e-first-run-key-that-must-never-be-printed';
 const AGENT_NAME = 'First run agent';
 const AGENT_IDENTIFIER = 'first-run-agent';
@@ -121,9 +121,20 @@ test('dismissing the steps keeps the choice in this browser, across a reload', a
   await page.getByRole('button', { name: FIRST_RUN_COPY.dismissLabel }).click();
 
   await expect(checklist(page)).toHaveCount(0);
-  expect(await page.evaluate((key) => window.localStorage.getItem(key), DISMISSED_KEY)).toBe(
-    'true',
-  );
+  // The choice is kept under a key the workspace and actor namespace (`workspaceStorage`), so the
+  // page reads the key the app names rather than a raw one: every entry the page holds for it says
+  // dismissed.
+  expect(
+    await page.evaluate((key) => {
+      const kept: string[] = [];
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const name = window.localStorage.key(index);
+        if (name !== null && name.endsWith(`:${key}`))
+          kept.push(window.localStorage.getItem(name) ?? '');
+      }
+      return kept;
+    }, FIRST_RUN_DISMISSED_KEY),
+  ).toEqual(['true']);
   await page.reload();
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
   await expect(checklist(page)).toHaveCount(0);

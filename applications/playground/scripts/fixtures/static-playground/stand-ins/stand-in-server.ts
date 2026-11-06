@@ -6,7 +6,8 @@
  *
  * `--hold-port` withholds the port file until `<record>/release-port` exists, so a case can kill
  * the server during startup. `--advertise-port <n>` reports port `n` instead of its own, so the
- * gate's preflight talks to a responder the case controls.
+ * gate's preflight talks to a responder the case controls. `--owner-pid <pid>` ends the server and
+ * its sleeper once that process is gone.
  */
 import { join } from 'node:path';
 
@@ -15,7 +16,12 @@ import {
   startStaticServer,
   writePortFile,
 } from '../../../static-playground-server.ts';
-import { argumentValue, startSleeper, waitForFile } from './stand-in-processes.ts';
+import {
+  argumentValue,
+  exitWhenOwnerIsGone,
+  startSleeper,
+  waitForFile,
+} from './stand-in-processes.ts';
 
 const directory = argumentValue('--directory');
 const portFile = argumentValue('--port-file');
@@ -24,6 +30,7 @@ if (directory === undefined || portFile === undefined || record === undefined) {
   throw new Error('usage: stand-in-server.ts --directory <dir> --port-file <file> --record <dir>');
 }
 
+exitWhenOwnerIsGone();
 const server = startStaticServer({ directory, configuration: await loadStaticHostConfiguration() });
 await Bun.write(join(record, 'server.pid'), `${process.pid}\n`);
 startSleeper(record, 'server-grandchild');

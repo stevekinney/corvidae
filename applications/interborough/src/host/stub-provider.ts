@@ -9,7 +9,7 @@
  */
 import { openBungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { HostOptions } from './host.ts';
@@ -17,11 +17,36 @@ import type { HostOptions } from './host.ts';
 /** The fixture secret written for the provider. It is not a credential for anything. */
 export const FIXTURE_PROVIDER_KEY = 'fixture-anthropic-key-5e2b';
 
+/** Whether `value` is a plain object, so its keys can be read. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** The JSON object in `path`, or an empty one when there is no such file. */
+async function readConfigurationDocument(path: string): Promise<Record<string, unknown>> {
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return {};
+    throw error;
+  }
+  const document: unknown = JSON.parse(text);
+  if (!isRecord(document)) throw new Error(`${path} does not hold a JSON object.`);
+  return document;
+}
+
+/** `value` when it is a plain object, else an empty one. */
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
 /**
- * Writes the provider configuration and its secret into a home directory. It replaces the home's
- * `configuration.json`, so a caller that also turns plugins on does that afterwards. `models`
- * is the provider's allowlist, each entry a model or an alias, so a test chooses how many models
- * the catalog offers.
+ * Writes the provider configuration and its secret into a home directory. It sets the Anthropic
+ * plugin's model allowlist in the home's `configuration.json` and keeps every other key the file
+ * holds, plugins another caller turned on included, so it may run before or after
+ * `enableDemoPlugin` (`demo-plugin-home.ts`). `models` is the provider's allowlist, each entry a
+ * model or an alias, so a test chooses how many models the catalog offers.
  */
 export async function writeProviderHome(
   home: string,
@@ -32,9 +57,22 @@ export async function writeProviderHome(
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
+    const path = join(home, 'configuration.json');
+    const document = await readConfigurationDocument(path);
+    const plugins = asRecord(document['plugins']);
+    const anthropic = asRecord(plugins['anthropic']);
     await writeFile(
-      join(home, 'configuration.json'),
-      JSON.stringify({ plugins: { anthropic: { configuration: { models } } } }),
+      path,
+      JSON.stringify({
+        ...document,
+        plugins: {
+          ...plugins,
+          anthropic: {
+            ...anthropic,
+            configuration: { ...asRecord(anthropic['configuration']), models },
+          },
+        },
+      }),
     );
     await bungalow.deploymentSecrets.write('anthropic-api-key', FIXTURE_PROVIDER_KEY);
   } finally {
