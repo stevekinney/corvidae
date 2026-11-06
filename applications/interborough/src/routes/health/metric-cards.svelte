@@ -109,7 +109,7 @@
       <p class="ib-metric-card__caption">{copy.noFinished}</p>
     {:else}
       <p class="ib-metric-card__value">{finishTime(finish.milliseconds)}</p>
-      <p class="ib-metric-card__caption">{copy.medianCaption(finish.count)}</p>
+      <p class="ib-metric-card__caption">{copy.medianCaption(finish.count, started?.total)}</p>
     {/if}
   </Card>
 </div>

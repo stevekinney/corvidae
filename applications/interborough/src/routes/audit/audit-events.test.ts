@@ -223,6 +223,49 @@ describe('what was done, in words', () => {
     ).toBe('Server started');
     expect(
       describeRecord(
+        record({ type: 'host.started', principal: 'system:host', resource: 'host' }),
+        LOOKUPS,
+      )?.target,
+    ).toBe('Interborough');
+    // A start that recorded its version names it (row 82h).
+    expect(
+      describeRecord(
+        record({
+          type: 'host.started',
+          principal: 'system:host',
+          resource: 'host',
+          detail: { version: '2.4.1' },
+        }),
+        LOOKUPS,
+      )?.target,
+    ).toBe('Interborough 2.4.1');
+    // A deleted chat names itself and its messages when its record kept them (row 82i), and is
+    // only "Chat" when it did not.
+    expect(
+      describeRecord(
+        record({
+          type: 'session.deleted',
+          resource: 'session:s-1',
+          detail: { title: 'Scratch test', messageCount: 12 },
+        }),
+        LOOKUPS,
+      ),
+    ).toMatchObject({ action: 'Deleted a chat', target: '“Scratch test” · 12 messages' });
+    expect(
+      describeRecord(
+        record({
+          type: 'session.deleted',
+          resource: 'session:s-1',
+          detail: { title: 'Scratch test', messageCount: 1 },
+        }),
+        LOOKUPS,
+      )?.target,
+    ).toBe('“Scratch test” · 1 message');
+    expect(
+      describeRecord(record({ type: 'session.deleted', resource: 'session:s-1' }), LOOKUPS)?.target,
+    ).toBe('Chat');
+    expect(
+      describeRecord(
         record({
           type: 'agent.updated',
           resource: 'agent:tool-runner',

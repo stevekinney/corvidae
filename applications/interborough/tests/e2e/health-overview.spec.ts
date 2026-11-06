@@ -14,7 +14,8 @@
  */
 import type { Page } from '@playwright/test';
 
-import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { answerRecentActivityAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -45,6 +46,11 @@ test.describe('the sample world', () => {
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
+      // Recent activity lists the runs and events the board draws (`board-activity-world.ts`); the
+      // rest of the sample world's trail follows them in the Audit log's own specification.
+      await answerRecentActivityAsDesigned(page);
+      // Yesterday and Oct 29 are told against the sample world's "now", whatever day it is.
+      await page.clock.setFixedTime(SAMPLE_NOW);
       await page.goto('/health');
       await settled(page);
       const main = page.locator('main');
@@ -155,8 +161,8 @@ test.describe('the sample world', () => {
         'Central time',
       );
       const lines = main.locator('[data-activity] .ib-recent-activity__text');
-      // Nine lines at most. The sample world holds older runs the canvas does not draw (the Oct 30
-      // order 4468 run and the chat the server stopped on Oct 29), which follow these.
+      // Nine lines, the board's: the sample world's other chats (the Oct 30 order 4468 run, the
+      // chat the server stopped on Oct 29) are not drawn in this frame.
       await expect(lines).toHaveCount(9);
       for (const [index, text] of [
         'You removed the Anthropic key',
@@ -166,12 +172,19 @@ test.describe('the sample world', () => {
         /^Missed runs noticed · Daily summary · was due /,
         'Server started',
         'Run finished · Say hello',
+        'You deleted a chat · “Scratch test”',
+        'Schedule ran · Daily summary',
       ].entries()) {
         await expect(lines.nth(index)).toHaveText(text);
       }
       await expect(main.locator('[data-activity] .ib-recent-activity__time').first()).toHaveText(
         WHEN,
       );
+      // The last three lines are older than today: yesterday's, and the Oct 29 run's day.
+      const times = main.locator('[data-activity] .ib-recent-activity__time');
+      await expect(times.nth(6)).toHaveText('Yesterday, 4:12 PM');
+      await expect(times.nth(7)).toHaveText('Yesterday, 4:12 PM');
+      await expect(times.nth(8)).toHaveText('Oct 29');
 
       // 76n: three cards.
       await expect(main.getByTestId('metric-cards').locator('h2')).toHaveText([

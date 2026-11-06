@@ -202,3 +202,27 @@ describe('a schedule’s missed occurrences', () => {
     }
   });
 });
+
+describe('a host’s start', () => {
+  it('names the version it started at, and nothing else of what the host recorded', async () => {
+    const { bureau } = createStubBureau();
+    const trail = createAuditTrail(bureau, textValueStore(new MemoryStorage()));
+    try {
+      await trail.record({
+        runId: 'host',
+        type: 'host.started',
+        principal: 'system:host',
+        detail: { version: '2.4.1', environment: 'a secret the log must not carry' },
+      });
+      const audit = createAudit({
+        trail: () => trail,
+        ownerOf: async () => undefined,
+        refusal: (message) => new Error(message),
+      });
+      const page = await audit.query({ type: 'host.started' });
+      expect(page.records.map((record) => record.detail)).toEqual([{ version: '2.4.1' }]);
+    } finally {
+      trail.dispose();
+    }
+  });
+});

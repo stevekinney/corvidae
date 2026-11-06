@@ -138,6 +138,64 @@ async function answerAllClearActivity(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Feeds the page's fleet event stream `reports` of the storage's size, `hoursAgo` each, as the
+ * engine's own size reports would arrive, and keeps the stream open as the host's does. The sample
+ * world's storage holds 1.6 GB (its seed's one reading), so the all-clear frame's 0.4 GB and its
+ * flat line over the last day are this stream's, read by the page's own card (row 76v).
+ */
+async function answerStorageSizes(
+  page: Page,
+  reports: { bytes: number; hoursAgo: number }[],
+): Promise<void> {
+  await page.addInitScript((sent) => {
+    const { preconnect } = window.fetch;
+    const original = window.fetch.bind(window);
+    window.fetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const address =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!new URL(address, location.href).pathname.endsWith('/v1/events/sse')) {
+          return original(input, init);
+        }
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            sent.forEach((report, index) => {
+              const emittedAtMs = Date.now() - report.hoursAgo * 3_600_000;
+              const envelope = {
+                kind: 'storage:size-reported',
+                sequence: index + 1,
+                cursor: String(index + 1),
+                emittedAtMs,
+                payload: { sizeBytes: report.bytes },
+              };
+              controller.enqueue(
+                encoder.encode(
+                  `id: ${String(index + 1)}\nevent: storage:size-reported\ndata: ${JSON.stringify(envelope)}\n\n`,
+                ),
+              );
+            });
+            controller.enqueue(encoder.encode('event: ping\ndata: {"replayComplete":true}\n\n'));
+            // The stream stays open, as the host's does, until the page closes it.
+            init?.signal?.addEventListener('abort', () => {
+              try {
+                controller.close();
+              } catch {
+                // Already closed.
+              }
+            });
+          },
+        });
+        return Promise.resolve(
+          new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }),
+        );
+      },
+      { preconnect },
+    );
+  }, reports);
+}
+
 /** The runs the engine lists for Health's cards: `count` done runs that each took `seconds`. */
 async function answerRunsStarted(
   page: Page,
@@ -187,6 +245,13 @@ for (const width of WIDTHS) {
     await answerAttention(page, () => listed([]));
     await answerNoReviews(page);
     await answerAllClearActivity(page);
+    // The storage holds 0.4 GB, as it has all day (row 76v).
+    const gigabyte = 1024 ** 3;
+    await answerStorageSizes(page, [
+      { bytes: Math.round(0.4 * gigabyte), hoursAgo: 23.5 },
+      { bytes: Math.round(0.4 * gigabyte), hoursAgo: 12 },
+      { bytes: Math.round(0.4 * gigabyte), hoursAgo: 0.1 },
+    ]);
     // 14 runs started and 11 the day before, each done in 1m 12s (row 76v).
     await answerRunsStarted(page, { started: 14, before: 11, seconds: 72 });
     await page.goto('/health');
@@ -228,15 +293,22 @@ for (const width of WIDTHS) {
     await expect(lines.nth(0)).toContainText('Run finished · Refund order 4472');
     await expect(lines.nth(1)).toContainText('Server started');
     const cards = main.getByTestId('metric-cards');
+    // Storage use: 0.4 GB, a flat line, and the axis from "0.4 GB · 24 hours ago" to "Now".
+    const storage = cards.locator('[data-metric="storage"]');
+    await expect(storage).toContainText('0.4 GB');
+    await expect(storage.locator('.cinder-sparkbar')).toBeVisible();
+    await expect(storage).toContainText('0.4 GB · 24 hours ago');
+    await expect(storage).toContainText('Now');
+    await expect(storage).not.toContainText('Charts fill in');
     await expect(cards.locator('[data-metric="runs-started"]')).toContainText('14');
     await expect(cards.locator('[data-metric="runs-started"]')).toContainText(
       '3 more than the day before',
     );
     await expect(cards.locator('[data-metric="time-to-finish"]')).toContainText('1m 12s');
     await expect(cards.locator('[data-metric="time-to-finish"]')).toContainText(
-      // The board says "Median across 14 runs" here and "3 finished runs" on the sample world's
-      // Overview; the page words it once, as "finished runs".
-      'Median across 14 finished runs',
+      // Every run that started finished, so the caption counts runs; the sample world's Overview,
+      // where two still wait on you, says "3 finished runs".
+      'Median across 14 runs',
     );
     await expect(main.getByTestId('metric-cards').locator('h2')).toHaveText([
       'Storage use',

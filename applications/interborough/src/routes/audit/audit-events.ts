@@ -254,12 +254,17 @@ function wordingOf(
   const copy = AUDIT_EVENT_COPY;
   const agent = text(record, 'agentName');
   switch (record.type) {
-    case 'host.started':
+    case 'host.started': {
+      const version = text(record, 'version');
       return {
         action: copy.serverStarted,
-        target: copy.serverStartedTarget,
+        target:
+          version === undefined
+            ? copy.serverStartedTarget
+            : copy.serverStartedVersionTarget(version),
         title: copy.serverStarted,
       };
+    }
     case 'provider.disconnected': {
       const provider = text(record, 'provider');
       const name = provider === undefined ? 'provider' : providerDisplayName(provider);
@@ -388,8 +393,16 @@ function wordingOf(
         action: record.type === 'hook.created' ? copy.createdHook : copy.editedHook,
         target: text(record, 'hookId') ?? record.resource,
       };
-    case 'session.deleted':
-      return { action: copy.deletedChat, target: copy.chatTargetDeleted };
+    case 'session.deleted': {
+      const title = text(record, 'title');
+      return {
+        action: copy.deletedChat,
+        target:
+          title === undefined
+            ? copy.chatTargetDeleted
+            : copy.deletedChatTarget(title, numberOf(record, 'messageCount')),
+      };
+    }
     case 'storage.key.deleted':
       return {
         action: copy.deletedStorageKey,

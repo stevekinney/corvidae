@@ -115,6 +115,9 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   'memoryId',
   'correctsId',
   'writer',
+  // The version a host started at, which a `host.started` record carries so the log can say
+  // "Interborough 2.4.1"; a release number, never content.
+  'version',
 ];
 
 /** A scalar the projection keeps: a string cut to the limit, a number, or a boolean. */

@@ -370,6 +370,12 @@ export type HostOptions = {
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
   /**
+   * The version this host runs, recorded with its `host.started` audit event so the audit log can
+   * say "Server started · Interborough 2.4.1". Left out, the event carries no version and the log
+   * names the host alone. The showcase host passes the sample world's (`showcase.ts`).
+   */
+  readonly version?: string;
+  /**
    * Which runtime settings the Bureau holds to their code options (`settings.locked`, each with
    * the reason it is held), so the settings page shows them read-only and says why. A person's
    * host locks none; the end-to-end host locks one, so the page's locked state is exercised
@@ -1224,7 +1230,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       runId: 'host',
       type: 'host.started',
       principal: HOST_ACTOR,
-      detail: {},
+      detail: options.version === undefined ? {} : { version: options.version },
     });
     bureauHandler = createBureauHandler(bureau, {
       // The local caller, unless the request carries a credential. With an A2A key configured

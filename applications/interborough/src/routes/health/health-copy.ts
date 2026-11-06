@@ -239,8 +239,14 @@ export const HEALTH_METRICS_COPY = {
       : difference > 0
         ? `${difference} more than the day before`
         : `${-difference} fewer than the day before`,
-  medianCaption: (count: number): string =>
-    `Median across ${count} finished ${count === 1 ? 'run' : 'runs'}`,
+  /**
+   * The Time to finish caption. When every run that started finished, "finished" adds nothing and
+   * the caption counts the runs ("Median across 14 runs", row 76v); when some are still going,
+   * waiting on a person or over without finishing, it says how many of them finished ("Median
+   * across 3 finished runs", row 76m).
+   */
+  medianCaption: (count: number, startedTotal?: number): string =>
+    `Median across ${count} ${startedTotal === count ? '' : 'finished '}${count === 1 ? 'run' : 'runs'}`,
   noFinished: 'No run has finished',
   /** The value of a card that could not be read. */
   unavailable: '—',

@@ -149,6 +149,9 @@ export const showcaseHookFetch: typeof fetch = Object.assign(
   { preconnect: fetch.preconnect },
 );
 
+/** The version the sample world's host reports in its audit log ("Interborough 2.4.1", decisions.md row 82h). */
+export const SHOWCASE_VERSION = '2.4.1';
+
 /** The showcase's storage warning level: the threshold of its `storage.size` alert rule, 1 GB. */
 export const SHOWCASE_STORAGE_WARNING_BYTES = 1024 ** 3;
 
@@ -182,6 +185,7 @@ export function showcaseHostOptions(
   | 'hookFetch'
   | 'alerts'
   | 'storageSizeReportIntervalMilliseconds'
+  | 'version'
 > {
   const scripts = showcaseAgentScripts(pacing);
   return {
@@ -195,5 +199,6 @@ export function showcaseHostOptions(
     // engine's own report of the real database's few megabytes would resolve the alert a minute
     // later, so it is off.
     storageSizeReportIntervalMilliseconds: 0,
+    version: SHOWCASE_VERSION,
   };
 }

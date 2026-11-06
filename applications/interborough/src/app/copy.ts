@@ -2665,6 +2665,8 @@ export const AUDIT_EVENT_COPY = {
   you: 'You',
   serverStarted: 'Server started',
   serverStartedTarget: 'Interborough',
+  /** The target of a start that recorded its version: "Interborough 2.4.1". */
+  serverStartedVersionTarget: (version: string): string => `Interborough ${version}`,
   removedProviderKey: (provider: string): string => `Removed the ${provider} key`,
   providerTarget: (provider: string): string => `${provider} provider`,
   startedRun: 'Started a run',
@@ -2693,6 +2695,11 @@ export const AUDIT_EVENT_COPY = {
   editedHook: 'Edited a hook',
   deletedChat: 'Deleted a chat',
   chatTargetDeleted: 'Chat',
+  /** The target of a deleted chat whose record kept its title: "“Scratch test” · 12 messages". */
+  deletedChatTarget: (title: string, messages: number | undefined): string =>
+    messages === undefined
+      ? `“${title}”`
+      : `“${title}” · ${messages.toLocaleString('en-US')} ${messages === 1 ? 'message' : 'messages'}`,
   deletedStorageKey: 'Deleted a storage key',
   storageTarget: (key: string): string => `Storage › ${key}`,
   connectedToolSource: 'Connected a tool source',

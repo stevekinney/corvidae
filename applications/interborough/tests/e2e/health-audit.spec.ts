@@ -14,6 +14,7 @@
 import type { Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { answerAuditAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -95,6 +96,8 @@ test.describe('Health › Audit log on the sample world', () => {
     checkA11y,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
+    // The rows the board draws (`board-activity-world.ts`), in the sample world's own words.
+    await answerAuditAsDesigned(page);
     await openAudit(page);
     const main = page.locator('main');
 
@@ -222,20 +225,36 @@ test.describe('Health › Audit log on the sample world', () => {
       'Asked to refund order 4472',
       'Issue refund · order 4472',
     ]);
-    expect(await cellsOf(page, 9)).toEqual([
+    expect(await cellsOf(page, 7)).toEqual([
       '9:00 AM',
       'Interborough',
       'Noticed 4 missed runs',
       'Daily summary',
     ]);
-    expect(await cellsOf(page, 10)).toEqual([
+    // The server names the version it started at.
+    expect(await cellsOf(page, 8)).toEqual([
       '9:00 AM',
       'Interborough',
       'Server started',
-      'Interborough',
+      'Interborough 2.4.1',
     ]);
-    // 82i: yesterday's rows follow under a heading of their own.
+    // 82h: today lists nine rows, and the log nine plus the two days that follow.
+    await expect(rows(page)).toHaveCount(11);
+    // 82i: yesterday's one row follows under a heading of its own, then Thu Oct 29's.
     expect(headings[1]).toBe('Yesterday, Sun Nov 1 · Central time');
+    expect(await cellsOf(page, 9)).toEqual([
+      '4:12 PM',
+      'You',
+      'Deleted a chat',
+      '“Scratch test” · 12 messages',
+    ]);
+    expect(headings[2]).toBe('Thu Oct 29 · Central time');
+    expect(await cellsOf(page, 10)).toEqual([
+      '11:38 AM',
+      'You',
+      'Edited an agent',
+      'Tool runner · version 3 → 4',
+    ]);
     const texts = await rows(page).evaluateAll((all) => all.map((row) => row.textContent ?? ''));
     expect(
       texts.some((text) => text.includes('Interborough') && text.includes('Noticed 4 missed runs')),
@@ -243,8 +262,11 @@ test.describe('Health › Audit log on the sample world', () => {
     expect(
       texts.some((text) => text.includes('Interborough') && text.includes('Server started')),
     ).toBe(true);
-    // 82j: the log holds actions and decisions, and no row is a chat message.
-    expect(texts.some((text) => /message/i.test(text))).toBe(false);
+    // 82j: the log holds actions and decisions, and no row is a chat message: the one row that says
+    // "messages" is the deleted chat's, which counts them.
+    expect(texts.filter((text) => /message/i.test(text) && !text.includes('Scratch test'))).toEqual(
+      [],
+    );
 
     // 82l: the newest event is open on load with its row tinted; the pane sits beside the table.
     await expect(rows(page).first()).toHaveAttribute('aria-current', 'true');
@@ -291,6 +313,7 @@ test.describe('Health › Audit log on the sample world', () => {
     // The table is as tall as the window less the page around it, and scrolls inside that, so the
     // last day is below the fold of an ordinary window. 1500 pixels hold every day (rows 82h, 82i).
     await page.setViewportSize({ width: 1280, height: 1500 });
+    await answerAuditAsDesigned(page);
     await openAudit(page);
     const main = page.locator('main');
     const headings = main.locator('tbody th[colspan], tbody td[colspan]');

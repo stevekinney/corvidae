@@ -45,7 +45,53 @@ describe('the metric cards on a quiet day', () => {
     expect(started?.textContent).toContain('3 more than the day before');
     const finish = view.container.querySelector('[data-metric="time-to-finish"]');
     expect(finish?.textContent).toContain('1m 12s');
-    expect(finish?.textContent).toContain('Median across 14 finished runs');
+    expect(finish?.textContent).toContain('Median across 14 runs');
+  });
+});
+
+describe('the Time to finish caption', () => {
+  test('counts the runs when every run that started finished, and the finished runs when some did not (rows 76v, 76m)', () => {
+    const run = (id: string, status: string) => ({
+      id,
+      status,
+      createdAt: NOW,
+      updatedAt: NOW + 8_000,
+    });
+    const waiting = new Map([
+      ['run-4', 'approval' as const],
+      ['run-5', 'question' as const],
+    ]);
+    const runs = [
+      run('run-1', 'completed'),
+      run('run-2', 'completed'),
+      run('run-3', 'completed'),
+      run('run-4', 'running'),
+      run('run-5', 'running'),
+    ];
+    const view = render(MetricCards, {
+      props: {
+        storageBytes: GIGABYTE,
+        samples: [],
+        started: startedSummary(runs, waiting),
+        finish: { milliseconds: 8_000, count: 3 },
+      },
+    });
+    expect(view.container.querySelector('[data-metric="time-to-finish"]')?.textContent).toContain(
+      'Median across 3 finished runs',
+    );
+    cleanup();
+
+    const single = render(MetricCards, {
+      props: {
+        storageBytes: GIGABYTE,
+        samples: [],
+        started: startedSummary([run('run-1', 'completed')], new Map()),
+        finish: { milliseconds: 8_000, count: 1 },
+      },
+    });
+    expect(single.container.querySelector('[data-metric="time-to-finish"]')?.textContent).toContain(
+      'Median across 1 run',
+    );
   });
 });
 

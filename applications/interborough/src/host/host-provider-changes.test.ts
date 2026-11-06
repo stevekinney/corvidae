@@ -831,6 +831,14 @@ describe('disconnecting a provider', () => {
     expect(JSON.stringify(page)).not.toContain(KEY_A);
   });
 
+  test('records the version a host was started with in its host.started event (row 82h)', async () => {
+    const versioned = await startAt(await home(), { version: '2.4.1' });
+    const page = await versioned.bureau.audit.query({ limit: 100 });
+    expect(page.records.find((record) => record.type === 'host.started')?.detail).toEqual({
+      version: '2.4.1',
+    });
+  });
+
   test('lists no model provider connected under Needs attention once the last key is removed (COR-2009)', async () => {
     const { host } = await startConnected();
     const connected = await host.bureau.attention();
