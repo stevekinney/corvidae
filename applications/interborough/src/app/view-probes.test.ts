@@ -1,9 +1,11 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { HttpClient } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { agentsListQuery } from '../lib/agent-queries.ts';
 import { goalFixture, taskFixture } from '../lib/bureau-fixtures.test-support.ts';
-import { installBureauStub, type BureauStub } from '../lib/bureau-stub.test-support.ts';
+import { installBureauStub, StubFault, type BureauStub } from '../lib/bureau-stub.test-support.ts';
 import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
 
 let stub: BureauStub | undefined;
@@ -45,6 +47,65 @@ describe('the workflows probe', () => {
     expect(probeFor('workflows', { type: 'digest' }, '/workflows/:workflow')).toBeDefined();
     // The first workflow is written here, so there is nothing to find before the page is shown.
     expect(probeFor('workflows', {}, '/workflows/new')).toBeUndefined();
+  });
+});
+
+describe('the agents probe', () => {
+  test('shares the list read with the page query while the route chunk loads', async () => {
+    let calls = 0;
+    stub = installBureauStub({
+      'bureau.agents.list': () => {
+        calls += 1;
+        return {
+          agents: [
+            {
+              name: 'alpha',
+              displayName: 'Alpha',
+              description: null,
+              definitionRevision: 1,
+              kind: 'code',
+              a2a: false,
+              media: null,
+            },
+          ],
+        };
+      },
+    });
+    const queryClient = new QueryClient();
+    const page = queryClient.fetchQuery(agentsListQuery());
+    const probe = probeFor('agents', { agent: 'alpha' });
+    if (probe === undefined) throw new Error('Expected an agent probe.');
+
+    await Promise.all([
+      page,
+      probe(new HttpClient({ baseUrl: 'http://localhost/api' }), queryClient),
+    ]);
+    expect(calls).toBe(1);
+  });
+
+  test('keeps forbidden and missing-agent faults at the probe boundary', async () => {
+    stub = installBureauStub({
+      'bureau.agents.list': () => {
+        throw new StubFault('forbidden', 403, 'forbidden');
+      },
+    });
+    const forbidden = probeFor('agents', { agent: 'alpha' });
+    if (forbidden === undefined) throw new Error('Expected an agent probe.');
+    expect(
+      await rejectionOf(
+        forbidden(new HttpClient({ baseUrl: 'http://localhost/api' }), new QueryClient()),
+      ),
+    ).toMatchObject({ status: 403 });
+
+    stub.restore();
+    stub = installBureauStub({ 'bureau.agents.list': () => ({ agents: [] }) });
+    const missing = probeFor('agents', { agent: 'alpha' });
+    if (missing === undefined) throw new Error('Expected an agent probe.');
+    expect(
+      await rejectionOf(
+        missing(new HttpClient({ baseUrl: 'http://localhost/api' }), new QueryClient()),
+      ),
+    ).toMatchObject({ status: 404 });
   });
 });
 
