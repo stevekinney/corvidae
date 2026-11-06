@@ -127,6 +127,7 @@ export async function buildDocumentWorkflowDefinition(
     // Pure, and the same on a replay: it reads the recorded input and yields nothing.
     checkSchema('input', firedBy);
     let previous: unknown = null;
+    let pendingSignal: unknown;
     for (const [index, step] of document.steps.entries()) {
       switch (step.kind) {
         case 'activity':
@@ -137,23 +138,25 @@ export async function buildDocumentWorkflowDefinition(
               input: step.input ?? null,
               trigger: firedBy,
               previous,
+              ...(pendingSignal === undefined ? {} : { signal: pendingSignal }),
               workflowId: context.workflowId,
               step: index,
             }),
             index,
           );
+          pendingSignal = undefined;
           break;
         case 'sleep':
           yield* documentOperation(context.sleep(step.duration), index);
-          previous = null;
           break;
         case 'await-signal':
-          previous = yield* documentOperation(context.waitForSignal(step.signal), index);
+          pendingSignal = yield* documentOperation(context.waitForSignal(step.signal), index);
           break;
       }
     }
-    checkSchema('output', previous);
-    return previous;
+    const output = document.steps.at(-1)?.kind === 'await-signal' ? pendingSignal : previous;
+    checkSchema('output', output);
+    return output;
   };
 
   const builder = workflow({
