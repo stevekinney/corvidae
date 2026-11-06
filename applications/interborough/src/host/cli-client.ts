@@ -635,7 +635,12 @@ async function resolveTarget(
     };
   const target: CliTarget = {
     url: raw.replace(/\/$/, ''),
-    headers: credential === undefined ? {} : { 'x-api-key': credential },
+    headers:
+      credential === undefined
+        ? {}
+        : remote === undefined
+          ? { authorization: `Bearer ${credential}` }
+          : { 'x-api-key': credential },
     ...(remote === undefined ? {} : { remote: true }),
   };
   if (remote === undefined) return target;
