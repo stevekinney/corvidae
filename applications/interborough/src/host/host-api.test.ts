@@ -1,15 +1,17 @@
 /**
  * COR-2019 — Interborough's own API on a running host: its description at `/api/openapi.json`, the
  * session at `/host/session` holding every scope, operations answered over the host's Bureau, and
- * Weft's engine operations under `/api/v1` still relayed as before.
+ * Weft's engine operations under `/api/v1` still relayed as before. A host whose session lacks the
+ * four write scopes the pages need refuses the Bureau operations and settings routes they gate.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { API_SCOPES } from '../lib/api-scopes.ts';
+import { API_SCOPES, type ApiScope } from '../lib/api-scopes.ts';
 import { startHost, type Host } from './host.ts';
+import { BUREAU_METHOD_SCOPES } from './scope-gate.ts';
 
 let home: string;
 let host: Host;
@@ -78,5 +80,94 @@ describe('the host’s API', () => {
   test('refuses a request from another origin before the operation', async () => {
     const response = await call('/api/runs', { headers: { origin: 'http://evil.example' } });
     expect(response.status).toBe(403);
+  });
+
+  test('names in the scope table only operations the Bureau serves', async () => {
+    const response = await call('/bureau/openrpc.json');
+    expect(response.status).toBe(200);
+    const document = (await response.json()) as { methods: { name: string }[] };
+    const served = new Set(document.methods.map((method) => method.name));
+    expect([...BUREAU_METHOD_SCOPES.keys()].filter((method) => !served.has(method))).toEqual([]);
+  });
+});
+
+describe('a session without the write scopes the pages need', () => {
+  const WITHHELD: readonly ApiScope[] = [
+    'schedules:write',
+    'agents:write',
+    'hooks:write',
+    'settings:write',
+  ];
+  let narrowHome: string;
+  let narrow: Host;
+
+  beforeAll(async () => {
+    narrowHome = await mkdtemp(join(tmpdir(), 'interborough-api-narrow-'));
+    narrow = await startHost({
+      environment: { INTERBOROUGH_HOME: narrowHome },
+      port: 0,
+      apiPrincipal: () => ({
+        subject: 'anonymous:local',
+        scopes: new Set(API_SCOPES.filter((scope) => !WITHHELD.includes(scope))),
+      }),
+    });
+  });
+
+  afterAll(async () => {
+    await narrow.close();
+    await rm(narrowHome, { recursive: true, force: true });
+  });
+
+  const bureau = async (method: string, params: unknown) => {
+    const response = await fetch(new URL('/bureau/jsonrpc', narrow.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: method, method, params }),
+    });
+    return (await response.json()) as {
+      result?: unknown;
+      error?: { code: number; data: { scope?: string } };
+    };
+  };
+
+  test.each([
+    ['bureau.schedules.create', 'schedules:write'],
+    ['bureau.agents.definitions.create', 'agents:write'],
+    ['bureau.hooks.create', 'hooks:write'],
+    ['bureau.settings.update', 'settings:write'],
+  ])('refuses %s, naming %s', async (method, scope) => {
+    const answer = await bureau(method, {});
+    expect(answer.error?.code).toBe(-32011);
+    expect(answer.error?.data.scope).toBe(scope);
+  });
+
+  test('still answers what it holds the scope for', async () => {
+    const answer = await bureau('bureau.schedules.list', {});
+    expect(answer.error).toBeUndefined();
+    expect(answer.result).toBeDefined();
+  });
+
+  test('refuses changing a plugin or a provider, and still lists them', async () => {
+    const plugin = await fetch(new URL('/host/plugins/demo', narrow.url), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(plugin.status).toBe(403);
+    expect(await plugin.json()).toMatchObject({ error: 'forbidden', scope: 'settings:write' });
+    const provider = await fetch(new URL('/host/providers/anthropic', narrow.url), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ apiKey: 'sk-test' }),
+    });
+    expect(provider.status).toBe(403);
+    const listed = await fetch(new URL('/host/plugins', narrow.url));
+    expect(listed.status).toBe(200);
+  });
+
+  test('says the session holds only the scopes it was given', async () => {
+    const response = await fetch(new URL('/host/session', narrow.url));
+    const session = (await response.json()) as { scopes: string[] };
+    expect(session.scopes).toEqual(API_SCOPES.filter((scope) => !WITHHELD.includes(scope)));
   });
 });

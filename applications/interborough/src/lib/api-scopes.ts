@@ -5,8 +5,9 @@
  * operations under `/api/v1` keep their own scopes (`scopes.svelte.ts`). Interborough is
  * single-user for now, so the session at the keyboard holds all ten.
  *
- * The host enforces them and the Settings page lists them, so both read this one browser-safe
- * catalog, in the order the board lists it.
+ * The host enforces them, on the `/api` operations and on the Bureau operations and settings routes
+ * Interborough's own pages call (`src/host/scope-gate.ts`), and the Settings page lists them, so
+ * both read this one browser-safe catalog, in the order the board lists it.
  */
 
 /** Every scope of Interborough's API, in the order Settings › API reference lists them. */

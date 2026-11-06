@@ -323,6 +323,9 @@ describe('Settings › API reference', () => {
     );
     expect(text('triage-inbox')).toBe('workflows/triage-inbox.json 1 workflow · Triage inbox');
     expect(within(panel).queryByRole('button', { name: /open file/i })).toBeNull();
+    // The board's read-only tab draws the intro and the files, and nothing under them.
+    expect(within(panel).queryAllByRole('button')).toEqual([]);
+    expect([...panel.children].map((child) => child.tagName)).toEqual(['P', 'UL']);
   });
 
   test('the tab in the address is the tab that opens, and choosing a tab changes the address', async () => {

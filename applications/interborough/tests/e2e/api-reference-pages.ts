@@ -1,18 +1,16 @@
 /**
- * Where a specification meets Settings › API reference: the Workflow sources tab, whose registry of
- * workflow types, installed revisions and dynamic sources sits folded under the list of workflow
- * files (board PageSettingsSections, "API reference · Workflow sources").
+ * Where the registry flows used to meet Settings › API reference. The Workflow sources tab folded the
+ * registry of workflow types, installed revisions and dynamic sources under its list of workflow
+ * files, which the board (PageSettingsSections, "API reference · Workflow sources", row 50y) does not
+ * draw, so COR-2019 took it out. No board gives the registry another page yet, so each specification
+ * that starts here fails, naming why, until one does.
  */
 import type { Page } from '@playwright/test';
 
-import { API_REFERENCE_COPY } from '../../src/app/copy.ts';
-import { expect } from './fixtures.ts';
-
-/** Opens the Workflow sources tab with the registry unfolded, which the revision and source flows start from. */
+/** Where the revision and source flows would open the registry; it has no page yet. */
 export async function openWorkflowSources(page: Page): Promise<void> {
   await page.goto('/settings/api-reference?group=sources');
-  const registry = page.getByRole('button', { name: API_REFERENCE_COPY.sources.registryHeading });
-  await expect(registry).toBeVisible();
-  await registry.click();
-  await expect(registry).toHaveAttribute('aria-expanded', 'true');
+  throw new Error(
+    'The workflow registry has no page: Settings › API reference › Workflow sources draws only the workflow files (board row 50y), and no board places the registry elsewhere yet.',
+  );
 }

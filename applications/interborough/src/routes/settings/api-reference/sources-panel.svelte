@@ -3,19 +3,16 @@
    * The Workflow sources tab (board PageSettingsSections, "API reference · Workflow sources"): where
    * Interborough reads workflow files from, read-only. Each file is listed by its path with what it
    * holds: how many workflows, their names, and how many schedules. A workflow is edited in its
-   * file, and "Open file" belongs on each workflow, so there is none here.
-   *
-   * Under the list, folded away, is what the server itself has registered: the workflow types, their
-   * installed revisions and the dynamic sources the engine loads from (`routes/system/registry-tab.svelte`).
+   * file, and "Open file" belongs on each workflow, so there is none here. The tab draws nothing
+   * under the list.
    */
-  import { Collapsible, humanizeIdentifier } from '@lostgradient/cinder';
+  import { humanizeIdentifier } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { API_REFERENCE_COPY } from '../../../app/copy.ts';
   import { listWorkflowFiles } from '../../../lib/workflow-files.ts';
   import { getHostPaths, workflowFilePath } from '../../../lib/host-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import RegistryTab from '../../system/registry-tab.svelte';
   import { failureStatusOf } from './failure-status.ts';
   import LoadState from './load-state.svelte';
 
@@ -83,9 +80,6 @@
         {/each}
       </ul>
     {/if}
-    <Collapsible trigger={copy.registryHeading} variant="flat">
-      <RegistryTab />
-    </Collapsible>
   {:else}
     <LoadState
       kind={files.isError ? 'error' : canceled ? 'canceled' : 'loading'}

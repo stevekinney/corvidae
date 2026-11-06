@@ -53,7 +53,10 @@
  * - The rest of `/api/*` (`/api/v1/*` and so on), `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery
  *   documents: Weft's engine operations, relayed to its server.
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
- *   served by `createBureauHandler` with the `/bureau` prefix removed. A WebSocket upgrade there
+ *   served by `createBureauHandler` with the `/bureau` prefix removed. A request that needs a scope
+ *   of Interborough's API the session does not hold is refused before it reaches Bureau
+ *   (`scope-gate.ts`), as a write to `/host/plugins` or `/host/providers` is without
+ *   `settings:write`. A WebSocket upgrade there
  *   (`bureau.events` at `/bureau/jsonrpc`) goes to the same handler's `upgrade`, and
  *   `host-websocket.ts` dispatches the upgraded socket to Bureau beside the engine relay's. They
  *   do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
@@ -134,7 +137,7 @@ import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { API_DESCRIPTION_ROUTE, apiDescription } from './api-description.ts';
-import { apiRoutes, localApiPrincipal } from './api-routes.ts';
+import { apiRoutes, localApiPrincipal, type ApiPrincipal } from './api-routes.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
@@ -194,6 +197,7 @@ import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
+import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
@@ -452,6 +456,14 @@ export type HostOptions = {
     /** The clock the clean-up reads, in milliseconds since the epoch. */
     readonly now?: () => number;
   };
+  /**
+   * Who a request to Interborough's own operations acts as, and the scopes of Interborough's API it
+   * holds (`src/lib/api-scopes.ts`): the seven `/api` operations, the Bureau operations and AG-UI
+   * runs the pages call, and the plugin and provider settings check them (`scope-gate.ts`).
+   * Omitted, every request is the local person holding every scope, because Interborough is
+   * single-user for now.
+   */
+  readonly apiPrincipal?: (request: Request) => ApiPrincipal;
 };
 
 /**
@@ -1075,6 +1087,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       a2aExposure.publicOrigin === undefined
         ? refuse
         : createRequestGuard(() => listening?.port ?? 0, a2aExposure.publicOrigin);
+    // Who a request to Interborough's own operations acts as: the local person, holding every scope
+    // of Interborough's API, unless the host was started with another (`scope-gate.ts`).
+    const apiPrincipal = options.apiPrincipal ?? (() => localApiPrincipal(ANONYMOUS_LOCAL_OWNER));
+    // Changing a provider or a plugin is changing settings, which needs `settings:write`.
+    const refuseSettingsWrites = refuseWritesWithoutScope(refuse, 'settings:write', apiPrincipal);
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
@@ -1119,6 +1136,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             return new Response('The Bureau is not serving yet.', { status: 503 });
           }
           const bureauRequest = withoutBureauPrefix(request);
+          // The scopes of Interborough's API, on the operations its pages call (`scope-gate.ts`).
+          const forbidden = await bureauScopeRefusal(bureauRequest, apiPrincipal(request));
+          if (forbidden !== undefined) return forbidden;
           if (
             isWebSocketUpgrade(request) &&
             (await bureauHandler.upgrade(bureauRequest, bureauUpgradeServer(listener, request)))
@@ -1161,8 +1181,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
-        ...providerRoutes(providers, refuse),
-        ...pluginRoutes(pluginManager, refuse),
+        ...providerRoutes(providers, refuseSettingsWrites),
+        ...pluginRoutes(pluginManager, refuseSettingsWrites),
         // The nightly clean-up's standing, and "Clean up now" (COR-2009).
         ...cleanUpRoutes(nightlyCleanUp, refuse),
         // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
@@ -1170,6 +1190,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           mcpMounts.apps,
           refuse,
           async (request) =>
+            (await bureauScopeRefusal(request, apiPrincipal(request))) ??
             (await bureauHandler?.(request)) ??
             new Response('The Bureau is not serving yet.', { status: 503 }),
         ),
@@ -1182,7 +1203,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           {
             bureau,
             timeline: (runId) => engine.getTimeline(runId),
-            principal: () => localApiPrincipal(ANONYMOUS_LOCAL_OWNER),
+            principal: apiPrincipal,
           },
           refuse,
         ),

@@ -20,6 +20,9 @@
  * the path, the query and the body are validated, and a request that fails is answered `400` with
  * every issue. A refusal is JSON of the shape `apiFault` describes (`api-contract.ts`).
  *
+ * The same scopes gate the Bureau operations, AG-UI runs and settings routes Interborough's own
+ * pages call (`scope-gate.ts`), so a scope this API lists is one the whole host enforces.
+ *
  * @module api-routes
  */
 import { BureauError, WorkflowInputInvalidError } from '@lostgradient/bureau';

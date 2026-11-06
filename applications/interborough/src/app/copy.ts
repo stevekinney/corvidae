@@ -1658,7 +1658,6 @@ export const API_REFERENCE_COPY = {
     schedules: (count: number): string =>
       `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
     empty: 'No workflow files yet. Add one to the workflows folder and it loads on the next start.',
-    registryHeading: 'Registered workflow types and dynamic sources',
     noRegistryTitle: 'No workflow types are registered',
     noRegistryDescription:
       'No eagerly registered workflow or activity definitions appear in this server. Dynamic sources never appear here; they are listed above.',
