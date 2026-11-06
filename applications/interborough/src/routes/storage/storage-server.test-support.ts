@@ -17,6 +17,8 @@ export interface StorageServerOptions {
   readonly capabilitiesStatus?: number;
   /** The size `/host/storage/summary` reports, or `null` for a backend that cannot say. Absent: 4,096. */
   readonly sizeBytes?: number | null;
+  /** The size a firing storage alert reports through `bureau.health.attention`. Absent: no alert fires. */
+  readonly alertSizeBytes?: number;
 }
 
 /** What a test changes about the server while it runs. */
@@ -125,6 +127,30 @@ export function serveStorage(options: StorageServerOptions): {
       return Response.json(
         stubHostPaths('/home/me/agents', '/home/me/workflows', options.mode ?? 'local'),
       );
+    }
+    if (call.body !== undefined && call.body.includes('bureau.health.attention')) {
+      const items =
+        options.alertSizeBytes === undefined
+          ? []
+          : [
+              {
+                kind: 'alert',
+                area: 'storage',
+                at: 1,
+                metric: 'storage.size',
+                currentValue: options.alertSizeBytes,
+                threshold: 1,
+              },
+            ];
+      return Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          items,
+          count: items.length,
+          checks: items.length === 0 ? [] : [{ area: 'storage', count: 1 }],
+        },
+      });
     }
     if (call.body !== undefined && call.body.includes('weft.storage.capabilities')) {
       if (options.capabilitiesStatus !== undefined) {

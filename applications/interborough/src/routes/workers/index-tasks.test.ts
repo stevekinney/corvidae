@@ -354,4 +354,93 @@ describe('the open worker’s tasks', () => {
     await waitUntil(() => document.querySelector('[role="dialog"]') === null);
     expect(await findByText('Tasks on the reports queue')).not.toBeNull();
   });
+
+  describe('the payload dialog when the retained result is not a value', () => {
+    const DEAD_LETTER = {
+      operationId: 'op-1',
+      attempt: 5,
+      attemptTokenDigest: 'digest',
+      pendingStatus: 'failed',
+      resultDigest: 'sha256:r',
+      deadLetteredAt: 1,
+      persistenceFailureReason: 'storage',
+    };
+
+    /** Opens the payload of the one failed task, with the dead-letter read scripted by `route`. */
+    async function openPayload(route: (script: ScriptedFetch) => void) {
+      scripted = new ScriptedFetch();
+      routeHappyPaths(scripted, { workers: [GONE] });
+      routeTasks(scripted, { failed: [failedTask('op-1', 'collect-merged-changes')], waiting: 0 });
+      route(scripted);
+      router.navigate('/health/workers?worker=reports-worker', { replace: true });
+      const view = renderRoute();
+      await fireEvent.click(await view.findByRole('button', { name: 'View payload' }));
+      return within(await view.findByRole('dialog', { name: 'Payload of collect-merged-changes' }));
+    }
+
+    test('a payload over the inline size says how large it is and shows nothing', async () => {
+      const dialog = await openPayload((script) =>
+        script.routeJsonRpcMethod('weft.tasks.deadletters.get', {
+          ...DEAD_LETTER,
+          payload: {
+            kind: 'omitted',
+            reason: 'exceeds-max-bytes',
+            serializedBytes: 5_242_880,
+            maxBytes: 1_048_576,
+          },
+        }),
+      );
+      expect(
+        await dialog.findByText(/The payload is .*MB, over the .*MB this view reads inline/),
+      ).not.toBeNull();
+    });
+
+    test('a task that kept no payload says the worker returned none', async () => {
+      const dialog = await openPayload((script) =>
+        script.routeJsonRpcMethod('weft.tasks.deadletters.get', {
+          ...DEAD_LETTER,
+          payload: { kind: 'absent' },
+        }),
+      );
+      expect(
+        await dialog.findByText('The worker returned no payload for this task.'),
+      ).not.toBeNull();
+    });
+
+    test('is loading until the read answers', async () => {
+      let deferred: { resolve: (result: unknown) => void } | undefined;
+      const dialog = await openPayload((script) => {
+        deferred = script.deferJsonRpcMethod('weft.tasks.deadletters.get');
+      });
+      expect(dialog.getByRole('status', { name: 'Payload' })).not.toBeNull();
+      deferred?.resolve({ ...DEAD_LETTER, payload: { kind: 'absent' } });
+      expect(
+        await dialog.findByText('The worker returned no payload for this task.'),
+      ).not.toBeNull();
+    });
+
+    test('a refusal locks the payload and names the scope', async () => {
+      const dialog = await openPayload((script) =>
+        script.routeJsonRpcMethodError('weft.tasks.deadletters.get', 403, 'no', 'Forbidden'),
+      );
+      expect(await dialog.findByText('The payload is locked')).not.toBeNull();
+    });
+
+    test('a task the server no longer holds says the payload is gone', async () => {
+      const dialog = await openPayload((script) =>
+        script.routeJsonRpcMethodError('weft.tasks.deadletters.get', 404, 'gone', 'NotFound'),
+      );
+      expect(await dialog.findByText('The payload is gone')).not.toBeNull();
+    });
+
+    test('any other failure offers to try again, and the retry reads again', async () => {
+      const dialog = await openPayload((script) =>
+        script.routeJsonRpcMethodError('weft.tasks.deadletters.get', 500, 'broke', 'Internal'),
+      );
+      const retry = await dialog.findByRole('button', { name: /try again|retry/i });
+      const before = scripted?.calls.length ?? 0;
+      await fireEvent.click(retry);
+      await waitFor(() => expect(scripted?.calls.length ?? 0).toBeGreaterThan(before));
+    });
+  });
 });
