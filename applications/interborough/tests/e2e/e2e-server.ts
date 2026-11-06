@@ -591,12 +591,14 @@ const secondaryResults = await Promise.allSettled([
   (async () => {
     const connectHome = join(scratch, 'connect-home');
     await mkdir(connectHome, { recursive: true });
-    const started = await startConnectHost({
-      home: connectHome,
-      buildDirectory,
-      port: E2E_CONNECT_PORT,
-    });
-    trackStartupResource(started);
+    const started = await trackStartupPromise(
+      startConnectHost({
+        home: connectHome,
+        buildDirectory,
+        port: E2E_CONNECT_PORT,
+        onStartupResource: (stop) => startupCleanup.push(stop),
+      }),
+    );
     reportStartupPhase('connect-ready');
     return started;
   })(),

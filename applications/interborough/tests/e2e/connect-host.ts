@@ -51,6 +51,7 @@ export type ConnectHostOptions = {
   /** The built application the host serves. */
   readonly buildDirectory: string;
   readonly port: number;
+  readonly onStartupResource?: (stop: () => Promise<void>) => void;
 };
 
 const SUPERVISOR = join(import.meta.dir, '..', '..', 'src', 'host', 'supervisor.ts');
@@ -118,6 +119,15 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       stderr: 'inherit',
     });
     supervisor = startedSupervisor;
+    let stopped = false;
+    const stop = async (): Promise<void> => {
+      if (stopped) return;
+      stopped = true;
+      startedSupervisor.kill('SIGTERM');
+      await startedSupervisor.exited.catch(() => undefined);
+      await Promise.all([bearer?.stop(), oauth?.stop(), pets?.stop()]);
+    };
+    options.onStartupResource?.(stop);
     if (startedSupervisor.stdout === null || typeof startedSupervisor.stdout === 'number') {
       throw new Error("The connect host's supervisor did not expose stdout.");
     }
@@ -143,18 +153,9 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
         pets: runningPets.origin,
       },
       supervisorPid: startedSupervisor.pid,
-      stop: async () => {
-        // The supervisor forwards the signal to the host and ends once it has gone.
-        startedSupervisor.kill('SIGTERM');
-        await startedSupervisor.exited;
-        await Promise.all([runningBearer.stop(), runningOauth.stop(), runningPets.stop()]);
-      },
+      stop,
     };
   } catch (error) {
-    if (supervisor !== undefined) {
-      supervisor.kill('SIGTERM');
-      await supervisor.exited.catch(() => undefined);
-    }
     await Promise.allSettled([bearer?.stop(), oauth?.stop(), pets?.stop()]);
     throw error;
   }
