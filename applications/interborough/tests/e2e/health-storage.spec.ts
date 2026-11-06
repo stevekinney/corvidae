@@ -127,6 +127,13 @@ test.describe('Health › Storage on the sample world', () => {
       /^Showing 100 of [\d,]+ keys\. Scroll to load more\.$/,
     );
     await expect(main.getByRole('button', { name: 'Load more' })).toHaveCount(0);
+    // The table's foot, scrolled into view, is the footer at rest.
+    await main.getByTestId('storage-count').scrollIntoViewIfNeeded();
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'footer at rest',
+      source: SOURCE,
+    });
 
     // 80j, 80k: a managed key's pane, top to bottom.
     await summary.click();
@@ -155,9 +162,10 @@ test.describe('Health › Storage on the sample world', () => {
     const framed = await value.evaluate((element) => getComputedStyle(element).borderTopWidth);
     expect(framed).toBe('0px');
 
+    // Named for what it shows, so the showcase's own `ready` capture does not overwrite it (80k).
     await captureForDesignReview(page, {
       route: '/health/storage',
-      state: 'ready',
+      state: 'key selected',
       source: SOURCE,
     });
     await checkA11y('health storage at 1280px');
@@ -575,6 +583,8 @@ test.describe('Health › Storage writes and states', () => {
       'Couldn’t save the value. Interborough didn’t answer. Your edit is still here.',
     );
     await expect(alert.locator('strong')).toHaveText('Couldn’t save the value.');
+    // The failure is said once: no toast repeats the alert (row 80w).
+    await expect(page.getByRole('group', { name: 'Notification' })).toHaveCount(0);
     // The alert is above the editor, which keeps what was typed; the header folds the key into its line.
     const alertBox = await alert.boundingBox();
     const editorBox = await editor.boundingBox();

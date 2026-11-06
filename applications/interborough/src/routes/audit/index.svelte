@@ -326,7 +326,8 @@
   const columns: DataTableColumn<EventRow>[] = [
     { key: 'when', label: copy.columns.when },
     { key: 'who', label: copy.columns.who },
-    { key: 'what', label: copy.columns.what },
+    // What is the row's header and the only semibold cell (row 82f); When is a plain time.
+    { key: 'what', label: copy.columns.what, rowHeader: true },
     { key: 'target', label: copy.columns.target, truncate: true, maxWidth: TARGET_COLUMN_WIDTH },
   ];
 

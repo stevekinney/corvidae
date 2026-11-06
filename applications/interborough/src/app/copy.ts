@@ -1370,9 +1370,6 @@ export const SCHEDULE_COPY = {
     /** The label of the region while the page loads or fails, before the schedule has a name. */
     title: 'Edit schedule',
     heading: (name: string): string => `Edit ${name}`,
-    /** The note under the heading: where the page is opened from and where focus lands. */
-    description:
-      'Opened from When › Edit on the schedule page. Focus lands on Repeats, the first field in that group, and the page scrolls to it.',
     save: 'Save changes',
     saving: 'Saving…',
     cancel: 'Cancel',

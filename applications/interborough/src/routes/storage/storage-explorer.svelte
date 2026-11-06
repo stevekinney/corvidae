@@ -325,6 +325,8 @@
       />
     {:else}
       <div class="ib-storage__range" role="group" aria-label={copy.range.label}>
+        <!-- The group is named for assistive technology; this is the label a sighted reader sees (row 80q). -->
+        <span class="ib-storage__range-label" aria-hidden="true">{copy.range.label}</span>
         <div class="ib-storage__range-field">
           <Input
             id="ib-storage-range-start"
@@ -538,6 +540,12 @@
   .ib-storage__range-field {
     flex: 1 1 8rem;
     min-width: 0;
+  }
+
+  .ib-storage__range-label {
+    flex: none;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
   }
 
   .ib-storage__to {

@@ -17,10 +17,10 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -280,6 +280,7 @@ async function answerStart(page: Page): Promise<void> {
 
 test('Run now on Release notes digest says so in a toast that opens the run, and its actions are Open file and Run now', async ({
   page,
+  pageErrors,
   checkA11y,
 }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
@@ -293,9 +294,48 @@ test('Run now on Release notes digest says so in a toast that opens the run, and
   await expect(main.getByRole('button', { name: 'Edit' })).toHaveCount(0);
   await expect(main.getByRole('button', { name: 'More actions' })).toHaveCount(0);
 
+  // The page asks the engine for the schedule's runs again once the run has started, and the one
+  // that started is among them (row 73t); until then the engine's list is the world's own.
+  let started = false;
+  // The run is the test's own, so the engine, asked for it, says it has none.
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(404, /\/v1\/workflows\/run-release-notes-now/),
+    reason: 'the run the test adds to the timeline does not exist on the engine',
+  });
+  const runsRead = /\/v1\/workflows\?.*schedule_id=/;
+  await page.route(runsRead, async (route) => {
+    const response = await route.fetch();
+    if (!started) {
+      await route.fulfill({ response });
+      return;
+    }
+    const json = (await response.json()) as { items?: Record<string, unknown>[] };
+    const [newest] = json.items ?? [];
+    if (newest === undefined) {
+      await route.fulfill({ response, json });
+      return;
+    }
+    // Started at the sample world's now, as the page itself counts it.
+    const now = Date.parse(SAMPLE_NOW);
+    const { completedAt: _completedAt, ...unfinished } = newest;
+    const running = {
+      ...unfinished,
+      id: 'run-release-notes-now',
+      status: 'running',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await route.fulfill({ response, json: { ...json, items: [running, ...(json.items ?? [])] } });
+  });
+  const timeline = runsList(page);
+  const before = await timeline.locator('a[href]').count();
+  started = true;
   await runNow.click();
   const toast = page.getByText('Started Release notes digest.');
   await expect(toast).toBeVisible();
+  // The new run is in the timeline beside the ones that were there.
+  await expect(timeline.locator('a[href$="/run-release-notes-now"]')).toHaveCount(1);
+  expect(await timeline.locator('a[href]').count()).toBe(before + 1);
   const open = page.getByRole('button', { name: 'Open run' });
   await expect(open).toBeVisible();
   // Docked at the bottom right of the page, and it dismisses itself.
@@ -316,6 +356,7 @@ test('Run now on Release notes digest says so in a toast that opens the run, and
   await expect(page.getByText('Started Release notes digest.')).toBeVisible();
   await page.getByRole('button', { name: 'Open run' }).click();
   await expect(page).toHaveURL(/\/runs\/run-release-notes-now$/);
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 
 /** The Runs list of the page that is open. */
@@ -857,3 +898,44 @@ for (const width of WIDTHS) {
     await checkA11y(`schedule detail, never run at ${width}px`);
   });
 }
+
+test('Daily summary shown stale: the summary drops "in 16 hours", the runs are as they were, and Skip is inert (73p)', async ({
+  page,
+  pageErrors,
+  checkA11y,
+}) => {
+  const refused = 'net::ERR_CONNECTION_REFUSED';
+  for (const pattern of [
+    new RegExp(`^request failed: .* \\(${refused}\\)$`),
+    new RegExp(`^console error: .*${refused}`),
+  ]) {
+    pageErrors.expectEvery({ pattern, reason: 'the test took the page’s network away on purpose' });
+  }
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSchedule(page, 'Daily summary');
+  const main = page.locator('main');
+  const summary = main.getByTestId('schedule-summary');
+  await expect(summary).toHaveText('Next Tue Nov 3, 3:00 AM (in 16 hours) · Last ran Oct 29, done');
+  const upcoming = runsList(page).locator('li[data-cinder-tone="pending"]');
+  const rows = await upcoming.count();
+  const skip = main.getByRole('button', { name: /^Skip Tue Nov 3, 3:00 AM/ });
+  await expect(skip).toBeEnabled();
+
+  await page.route(/\/(v1|bureau|api)\//, (route) => route.abort('connectionrefused'));
+  await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+  const banner = page.getByRole('region', { name: 'Connection problem' });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('Can’t reach the Interborough server.');
+
+  // Old data, controls inert: no relative time it can no longer keep, the same runs, Skip held.
+  await expect(summary).toHaveText('Next Tue Nov 3, 3:00 AM · Last ran Oct 29, done');
+  await expect(upcoming).toHaveCount(rows);
+  await expect(skip).toBeDisabled();
+  await expect(runsList(page).locator('li[data-cinder-kind="now"]')).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/schedules/:schedule',
+    state: 'stale',
+    source: SOURCE,
+  });
+  await checkA11y('schedule detail, shown stale');
+});

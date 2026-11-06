@@ -203,6 +203,7 @@
         outcome.outcome === 'queued' ? copy.runNowOutcome.queued : copy.runNowStarted(name),
         {
           variant: 'success',
+          showIcon: true,
           action: { label: copy.openRun, onAction: () => router.navigate(path) },
         },
       );

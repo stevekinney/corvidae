@@ -260,7 +260,11 @@ for (const width of WIDTHS) {
     // The rows keep full contrast.
     await expect(main.locator('li[data-schedule]').first()).toHaveCSS('opacity', '1');
 
-    await captureForDesignReview(page, { route: '/schedules', state: 'stale', source: SOURCE });
+    await captureForDesignReview(page, {
+      route: '/schedules',
+      state: 'refresh-failed',
+      source: SOURCE,
+    });
     await checkA11y(`schedules failed refresh at ${width}px`);
 
     await page.unroute(SCHEDULES_READ);
@@ -297,7 +301,11 @@ test('a server that stops answering over rows on screen keeps them, holds the he
   await expect(banner).toBeVisible();
   await expect(banner).toContainText('Can’t reach the Interborough server.');
   await expect(banner).toContainText('Showing what loaded as of');
+  await expect(banner).toContainText('Changes are off until it’s back.');
+  // The shared preset counts down to the next try and says which attempt it is (row 70u).
+  await expect(banner).toContainText(/Retrying in \d+ s \(attempt \d+ of \d+\)\./);
   await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+  await captureForDesignReview(page, { route: '/schedules', state: 'stale', source: SOURCE });
   // The page does not say it again, keeps its rows at full contrast, and holds only the "+".
   await expect(main.getByRole('region', { name: 'Refresh problem' })).toHaveCount(0);
   await expect(main.locator('li[data-schedule]')).toHaveCount(4);

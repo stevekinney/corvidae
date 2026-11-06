@@ -9,12 +9,15 @@ import type { AttentionItem } from '../../lib/bureau-attention.ts';
 import type { AuditRecord } from '../../lib/bureau-audit.ts';
 import { queryAudit } from '../../lib/bureau-audit.ts';
 import { getContext } from '../../lib/bureau-client.ts';
+import { getBureauReview } from '../../lib/bureau-reviews.ts';
 import { listBureauSchedules } from '../../lib/bureau-schedules.ts';
+import { reviewIdOf, summaryOf, withoutAmount } from '../audit/audit-events.ts';
 import type { WaitKind } from './health-overview-data.ts';
 import {
   ACTIVITY_LINE_LIMIT,
   activityLines,
   lookupsFor,
+  olderRunsOf,
   type ActivityLine,
 } from './recent-activity.ts';
 
@@ -41,6 +44,7 @@ export interface ActivityRead {
   readonly queryAudit?: typeof queryAudit;
   readonly getContext?: typeof getContext;
   readonly listSchedules?: typeof listBureauSchedules;
+  readonly getReview?: typeof getBureauReview;
 }
 
 /** Reads and words Recent activity. */
@@ -88,6 +92,36 @@ export async function loadRecentActivity(read: ActivityRead): Promise<RecentActi
       }
     }),
   );
+  // An earlier run of a chat is named by what its review asked, because the chat's title names the
+  // latest run: a review that cannot be read leaves the run named by its agent.
+  const runSentences = new Map<string, string>();
+  const older = olderRunsOf(records);
+  const reviewOfRun = new Map<string, string>();
+  for (const record of records) {
+    if (
+      !older.has(record.resource) ||
+      !record.type.startsWith('review.tool-approval.') ||
+      reviewOfRun.has(record.resource)
+    ) {
+      continue;
+    }
+    const reviewId = reviewIdOf(record);
+    if (reviewId !== undefined) reviewOfRun.set(record.resource, reviewId);
+  }
+  await Promise.all(
+    [...reviewOfRun].map(async ([run, reviewId]) => {
+      try {
+        const review = await (read.getReview ?? getBureauReview)(
+          reviewId,
+          read.signal === undefined ? {} : { signal: read.signal },
+        );
+        const sentence = review.kind === 'tool-approval' ? summaryOf(review) : undefined;
+        if (sentence !== undefined) runSentences.set(run, withoutAmount(sentence));
+      } catch {
+        // Without the review, the run is named by its agent.
+      }
+    }),
+  );
   const scheduleNames = new Map<string, string>();
   if (scheduleIds.length > 0) {
     try {
@@ -109,6 +143,7 @@ export async function loadRecentActivity(read: ActivityRead): Promise<RecentActi
       now: read.now,
       chatTitles,
       scheduleNames,
+      runSentences,
     }),
     total,
   };

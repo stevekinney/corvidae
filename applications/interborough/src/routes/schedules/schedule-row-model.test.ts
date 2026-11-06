@@ -237,7 +237,7 @@ describe('a schedule that is a workflow file’s trigger', () => {
     );
     expect(row.kind.kind).toBe('workflow-file');
     expect(text(row.lineTwo)).toMatch(
-      /^Workflow · Release notes · From a workflow file · Every Friday at /,
+      /^Workflow · Release notes · Every Friday at .* · From a workflow file$/,
     );
     expect(row.statusWord).toBe('Active');
   });

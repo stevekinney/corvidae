@@ -237,6 +237,7 @@
 
     {#if tab === 'waiting' && counts !== undefined && waitingCount > rows.length}
       <LoadMore
+        variant="footer"
         {hasMore}
         loading={loadingMore}
         loadedCount={rows.length}

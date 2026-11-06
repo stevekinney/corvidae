@@ -288,17 +288,16 @@ export function scheduleRowOf(schedule: ScheduleSummary, context: ScheduleRowCon
   const agentNames = agentIds.map((id) => agentLabel(id, context.agents));
   const fileDefined = kind.kind === 'workflow-file';
   // A file's schedule that carries fixed input is "From a workflow file": the file decides what
-  // each run is fed, so the line says where the schedule is defined where it would say the agent.
+  // each run is fed, so the line says where the schedule is defined instead of the agent, after the
+  // cadence (row 70k).
   const fixedInput =
     fileDefined &&
     file?.trigger != null &&
     'input' in file.trigger &&
     file.trigger['input'] != null;
-  const whoRuns: RowSegment[] = fixedInput
-    ? [[{ text: 'From a workflow file' }]]
-    : agentNames.length > 0
-      ? [[{ text: agentNames.join(', ') }]]
-      : [];
+  const definedInFile: RowSegment = [{ text: 'From a workflow file' }];
+  const whoRuns: RowSegment[] =
+    !fixedInput && agentNames.length > 0 ? [[{ text: agentNames.join(', ') }]] : [];
 
   const workflowSegment: RowSegment = cannotLoad
     ? [
@@ -314,10 +313,15 @@ export function scheduleRowOf(schedule: ScheduleSummary, context: ScheduleRowCon
     ...(blockers.some((blocker) => blocker.kind === 'provider') ? [PROVIDER_REASON] : []),
     ...whoRuns,
     [{ text: cadence.full }],
+    ...(fixedInput ? [definedInFile] : []),
   ];
 
   const phoneWorkflow: RowSegment = [{ text: workflowLabel }];
-  const phoneLineTwo: RowSegment[] = [[{ text: 'Workflow' }], phoneWorkflow, ...whoRuns];
+  const phoneLineTwo: RowSegment[] = [
+    [{ text: 'Workflow' }],
+    phoneWorkflow,
+    ...(fixedInput ? [definedInFile] : whoRuns),
+  ];
 
   const reasonSegments: RowSegment[] = phoneBlockers.map((blocker) => {
     switch (blocker.kind) {

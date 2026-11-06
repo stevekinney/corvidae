@@ -107,6 +107,20 @@ test.describe('the sample world', () => {
           ? rows.nth(row).getByRole('link', { name })
           : rows.nth(row).getByRole('button', { name: 'More actions' });
       await expect(action(0, 'Connect a provider')).toBeVisible();
+      // Line two sits directly under the title, not a row below the buttons (76h, 76i).
+      for (let index = 0; index < 3; index += 1) {
+        const title = await rows
+          .nth(index)
+          .locator('.cinder-stacked-list-item__title')
+          .boundingBox();
+        const lineTwo = await rows
+          .nth(index)
+          .locator('.cinder-stacked-list-item__line-two')
+          .boundingBox();
+        const gap = (lineTwo?.y ?? 0) - ((title?.y ?? 0) + (title?.height ?? 0));
+        expect(gap, `line two of row ${String(index)} is tight under its title`).toBeLessThan(10);
+        expect(gap).toBeGreaterThanOrEqual(0);
+      }
       await expect(rows.nth(1)).toContainText('Storage is over its warning level · 1.6 GB');
       await expect(rows.nth(1)).toContainText('Alert firing since');
       await expect(rows.nth(1)).not.toContainText(/capacity|threshold|limit/i);
@@ -147,7 +161,7 @@ test.describe('the sample world', () => {
       for (const [index, text] of [
         'You removed the Anthropic key',
         'Run started · Refund order 4471 · waiting on you',
-        'Run finished · Refund order 4471',
+        'Run finished · Refund order 4472',
         'Storage alert firing · over its warning level',
         /^Missed runs noticed · Daily summary · was due /,
         'Server started',
@@ -329,6 +343,18 @@ test.describe('the sample world', () => {
     await captureForDesignReview(page, {
       route: '/health/storage',
       state: 'tablet-key',
+      source: SOURCE,
+    });
+    // The table narrowed to the key, so the pane under it is in the capture (06q, 06r): the full
+    // table is thousands of pixels tall and the capture stops short of its foot.
+    await main.getByPlaceholder('Keys starting with').fill('agent-session:summary');
+    await expect(main.locator('tbody tr[data-cinder-row-id]')).toHaveCount(1);
+    await main.locator('tbody tr[data-cinder-row-id]').click();
+    await expect(pane.getByRole('button', { name: 'Copy key', exact: true })).toBeInViewport();
+    await expect(pane.getByRole('button', { name: 'Copy value', exact: true })).toBeInViewport();
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'tablet-key pane',
       source: SOURCE,
     });
     await checkA11y('health storage at 768px');

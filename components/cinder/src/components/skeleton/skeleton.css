@@ -176,6 +176,13 @@
         'status .';
       row-gap: var(--cinder-space-2);
     }
+
+    /* A row with no status word keeps its marker beside the text, as the real row does: the
+     * status drops under the text only for the status-first rows that lead with a word. */
+    .cinder-skeleton-row[data-cinder-status-column='none'] {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas: 'status text time';
+    }
   }
 
   .cinder-skeleton-group[data-cinder-variant='list'] > .cinder-skeleton-status {

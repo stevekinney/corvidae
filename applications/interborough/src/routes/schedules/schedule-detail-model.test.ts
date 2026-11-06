@@ -79,7 +79,7 @@ describe('nextSummary', () => {
     ).toEqual([{ text: 'No next run' }]);
   });
 
-  test('says a run that is due and will not start as due, with “won’t start” in amber', () => {
+  test('says a run that is due and will not start as due, with the due part and “won’t start” in amber', () => {
     const due = nextSummary(
       schedule({ nextFireAt: NOW + 14 * 60_000 }),
       { status: 'active', blockers: [{ kind: 'provider' }] },
@@ -89,6 +89,7 @@ describe('nextSummary', () => {
     // The clock is the viewer's, so the words are checked and not the hour.
     expect(due).toHaveLength(2);
     expect(due[0]?.text).toMatch(/^Due (today, )?.* \(in 14 minutes\)$/);
+    expect(due[0]?.tone).toBe('warning');
     expect(due[1]).toEqual({ text: 'won’t start', tone: 'warning' });
   });
 });

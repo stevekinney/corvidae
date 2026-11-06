@@ -169,6 +169,11 @@ for (const width of WIDTHS) {
     // The skeleton shows once the 300 ms have gone; the counts' labels and the card headings are text.
     const card = main.getByTestId('needs-attention');
     await expect(card.locator('.cinder-skeleton-row')).toHaveCount(3);
+    // Each row's dot sits beside its title bar, at a phone's width too, not stacked under it (76x).
+    const dot = await card.locator('.cinder-skeleton-status-bar').first().boundingBox();
+    const bar = await card.locator('.cinder-skeleton-title-bar').first().boundingBox();
+    expect(Math.abs((dot?.y ?? 0) - (bar?.y ?? 100))).toBeLessThan(8);
+    expect(dot?.x ?? 0).toBeLessThan(bar?.x ?? 0);
     const counts = main.getByRole('group', { name: 'Health counts' });
     await expect(counts.locator('.cinder-statistic__label')).toHaveText([
       'Running now',

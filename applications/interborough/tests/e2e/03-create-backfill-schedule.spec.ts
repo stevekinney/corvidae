@@ -59,8 +59,8 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
     page.getByTestId('schedule-runs').locator('li[data-cinder-tone="pending"]'),
   ).toHaveCount(3);
   // The schedule's own fields are in the details beside the runs, with the cron it was made with.
-  const rail = page.getByTestId('schedule-rail');
-  await expect(rail.getByText('Workflow version', { exact: true })).toBeVisible();
-  await expect(rail.getByText('Runs the fires it missed')).toBeVisible();
+  const details = page.getByTestId('schedule-details');
+  await expect(details.getByTestId('schedule-revision')).toHaveText('Latest');
+  await expect(details.getByTestId('schedule-catch-up')).toHaveText('Catch up on missed runs');
   await checkA11y('schedule detail — next fires populated');
 });

@@ -1,4 +1,8 @@
+import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
+
+import CountHarness from './queue-task-clear-count.test-harness.svelte';
 
 import { TaskClearController, type TaskClearDependencies } from './queue-task-clear.svelte.ts';
 
@@ -115,6 +119,20 @@ describe('TaskClearController', () => {
     controller.stage('reports', ['c'], 'Cleared.');
     await controller.flush();
     expect(controller.hiddenCount('reports')).toBe(0);
+  });
+
+  test('a count derived from the held tasks follows a clear and its Undo (row 78u)', async () => {
+    const { controller, toasts } = harness();
+    const view = render(CountHarness, { controller, queue: 'reports' });
+    expect(view.getByTestId('held').textContent).toBe('0');
+
+    controller.stage('reports', ['a', 'b'], 'Cleared.');
+    await tick();
+    expect(view.getByTestId('held').textContent).toBe('2');
+
+    toasts[0]?.undo();
+    await tick();
+    expect(view.getByTestId('held').textContent).toBe('0');
   });
 
   test('stages nothing for no tasks', () => {

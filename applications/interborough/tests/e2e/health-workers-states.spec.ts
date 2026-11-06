@@ -448,6 +448,10 @@ test('Clear all holds the tasks for an Undo toast, and sends nothing until the p
   await expect(toast).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
   expect(fleet.cleared).toEqual([]);
+  // The counts follow the held clear: no failed tasks to retry or clear, the waiting ones stay (78u).
+  await expect(page.getByRole('radio', { name: /^Failed for good/ })).toContainText('0');
+  await expect(page.getByRole('button', { name: /^Retry all/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Clear all/ })).toHaveCount(0);
   await captureForDesignReview(page, {
     route: '/health/workers',
     state: 'cleared',
@@ -556,6 +560,13 @@ test('the Waiting tab lists tasks in arrival order, a page at a time', async ({
   );
   await expect(tasks.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
   await expect(tasks.getByText('Showing 3 of 12 waiting tasks')).toBeVisible();
+  // The count is at the start of the footer and Load more at the end of it (79c).
+  const count = await tasks.getByText('Showing 3 of 12 waiting tasks').boundingBox();
+  const more = await tasks.getByRole('button', { name: 'Load more' }).boundingBox();
+  expect(count?.x ?? 1e9).toBeLessThan(more?.x ?? 0);
+  expect(Math.abs((count?.y ?? 0) - (more?.y ?? 1e9))).toBeLessThan(40);
+  const card = await tasks.boundingBox();
+  expect((more?.x ?? 0) + (more?.width ?? 0)).toBeGreaterThan((card?.width ?? 0) * 0.8);
   await captureForDesignReview(page, {
     route: '/health/workers',
     state: 'waiting-tab',
@@ -596,6 +607,13 @@ test('a long id wraps in the header with a Copy button, and the list cuts it fro
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Payments worker EU');
   await expect(detail(page).getByTestId('worker-id')).toHaveText(id);
   await expect(detail(page).getByRole('button', { name: 'Copy the worker ID' })).toBeVisible();
+  // Copy sits beside the id, not on a line of its own under it (79g).
+  const idBox = await detail(page).getByTestId('worker-id').boundingBox();
+  const copyBox = await detail(page)
+    .getByRole('button', { name: 'Copy the worker ID' })
+    .boundingBox();
+  expect((copyBox?.x ?? 0) >= (idBox?.x ?? 0) + (idBox?.width ?? 0) - 1).toBe(true);
+  expect((copyBox?.y ?? 1e9) < (idBox?.y ?? 0) + (idBox?.height ?? 0)).toBe(true);
   await expect(detail(page).getByTestId('worker-status-line')).toHaveText(
     'Last heard from just now',
   );

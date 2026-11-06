@@ -51,6 +51,40 @@ export interface ActivitySources {
   readonly waitingRuns: ReadonlyMap<string, WaitKind>;
   /** The reference time for "Yesterday" and "Today", in epoch milliseconds. */
   readonly now: number;
+  /**
+   * The tool's own sentence of a run's review, by run ("Refund order 4472"), which names a run that
+   * is not the newest of its chat: a chat's title is the start of its latest message, so it names
+   * only the latest run, and an earlier run's own message is not recorded.
+   */
+  readonly runSentences?: ReadonlyMap<string, string>;
+}
+
+/**
+ * The runs that are not the newest of their chat, which the chat's title does not name. A run with
+ * no chat is its own newest.
+ */
+export function olderRunsOf(records: readonly AuditRecord[]): ReadonlySet<string> {
+  const newest = new Map<string, AuditRecord>();
+  const starts = records.filter((record) => record.type === 'run.started');
+  for (const record of starts) {
+    const sessionId = stringOf(record, 'sessionId');
+    if (sessionId === undefined) continue;
+    const held = newest.get(sessionId);
+    if (
+      held === undefined ||
+      Date.parse(record.timestamp) > Date.parse(held.timestamp) ||
+      (record.timestamp === held.timestamp && (record.sequence ?? 0) > (held.sequence ?? 0))
+    ) {
+      newest.set(sessionId, record);
+    }
+  }
+  const latest = new Set([...newest.values()].map((record) => record.resource));
+  return new Set(
+    starts
+      .filter((record) => stringOf(record, 'sessionId') !== undefined)
+      .map((record) => record.resource)
+      .filter((run) => !latest.has(run)),
+  );
 }
 
 /** The records that name a chat or a schedule the lines need to look up, so the loader can ask for exactly those. */
@@ -88,6 +122,7 @@ export function activityLines(
   limit: number = ACTIVITY_LINE_LIMIT,
 ): readonly ActivityLine[] {
   const { records, attention, chatTitles, scheduleNames, waitingRuns, now } = sources;
+  const older = olderRunsOf(records);
   const at = (record: AuditRecord): number => Date.parse(record.timestamp);
 
   // A run's start, its end, when its last review was decided, and whether a schedule started it.
@@ -111,6 +146,11 @@ export function activityLines(
     const begin = started.get(run);
     const sessionId = begin === undefined ? undefined : stringOf(begin, 'sessionId');
     const agent = begin === undefined ? undefined : stringOf(begin, 'agentName');
+    // An earlier run of a chat is named by its own review, never by the chat's latest message.
+    if (older.has(run)) {
+      const sentence = sources.runSentences?.get(run);
+      return sentence ?? runTitle(undefined, agent);
+    }
     const title = sessionId === undefined ? undefined : chatTitles.get(sessionId);
     return runTitle(title === undefined || title === null ? undefined : { title }, agent);
   };

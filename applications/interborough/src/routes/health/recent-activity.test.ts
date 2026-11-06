@@ -125,6 +125,8 @@ function sources(overrides: Partial<ActivitySources> = {}): ActivitySources {
       ['run-6', 'approval'],
       ['run-4', 'question'],
     ]),
+    // The earlier refund run is named by what its review asked: the chat's title is the later run's.
+    runSentences: new Map([['run-5', 'Refund order 4472']]),
     now: NOW,
     ...overrides,
   };
@@ -139,13 +141,20 @@ describe('the lines', () => {
     expect(texts(activityLines(sources()))).toEqual([
       'You removed the Anthropic key',
       'Run started · Refund order 4471 · waiting on you',
-      'Run finished · Refund order 4471',
+      'Run finished · Refund order 4472',
       'Storage alert firing · over its warning level',
       'Missed runs noticed · Daily summary · was due <time>',
       'Server started',
       'Run finished · Say hello',
       'Schedule ran · Daily summary',
     ]);
+  });
+
+  test('an earlier run of a chat is named by its own review and never by the chat’s latest message (row 76m)', () => {
+    const lines = texts(activityLines(sources({ runSentences: new Map() })));
+    // Without the review the run is named after its agent, not after the later message.
+    expect(lines).toContain('Run finished · tool-runner');
+    expect(lines).not.toContain('Run finished · Refund order 4471');
   });
 
   test('a run that paused for an approval finishes when the approval was decided, not when it paused', () => {
@@ -182,14 +191,14 @@ describe('the lines', () => {
           records: [
             record('2026-11-02T16:40:00Z', 'run.error', 'run-x'),
             record('2026-11-02T16:39:00Z', 'run.started', 'run-x', { sessionId: 'chat-hello' }),
-            record('2026-11-02T16:38:00Z', 'run.started', 'run-y', { sessionId: 'chat-hello' }),
+            record('2026-11-02T16:38:00Z', 'run.started', 'run-y', { sessionId: 'chat-release' }),
           ],
           attention: [],
           waitingRuns: new Map(),
         }),
       ),
     );
-    expect(lines).toEqual(['Run failed · Say hello', 'Run started · Say hello']);
+    expect(lines).toEqual(['Run failed · Say hello', 'Run started · Ship the release notes fix']);
   });
 
   test('a run whose chat is gone is named after its agent', () => {
@@ -324,6 +333,48 @@ describe('reading it from the Bureau', () => {
     expect(result.total).toBe(78);
     expect(texts(result.lines)).toContain('Run started · Refund order 4471 · waiting on you');
     expect(texts(result.lines)).toContain('Schedule ran · Daily summary');
+  });
+
+  test('names an earlier run of a chat from the sentence of its review, without the amount (row 76m)', async () => {
+    const reads: string[] = [];
+    const withReview = [
+      record(
+        '2026-11-02T16:33:00Z',
+        'review.tool-approval.approved',
+        'run-5',
+        { reviewId: 'approval:run-5:call-1' },
+        'anonymous:local',
+      ),
+      ...sampleRecords.filter(
+        (entry) => !(entry.type === 'review.tool-approval.approved' && entry.resource === 'run-5'),
+      ),
+    ];
+    const result = await loadRecentActivity({
+      attention: [storageAlert, missed],
+      waitingRuns: new Map([['run-6', 'approval']]),
+      now: NOW,
+      queryAudit: async () => ({ records: withReview, nextCursor: null, total: 78 }),
+      getContext: async (id) =>
+        ({
+          id,
+          title:
+            id === 'chat-refunds' ? 'Please refund order 4471, it arrived damaged.' : 'Say hello',
+        }) as never,
+      listSchedules: async () => [{ id: 'daily', description: 'Daily summary' }] as never,
+      getReview: async (reviewId) => {
+        reads.push(reviewId);
+        return {
+          kind: 'tool-approval',
+          approval: {
+            action: { message: 'Refund order 4472 for $18.50?' },
+            reason: 'Issue refund asks first',
+          },
+        } as never;
+      },
+    });
+    expect(reads).toEqual(['approval:run-5:call-1']);
+    expect(texts(result.lines)).toContain('Run finished · Refund order 4472');
+    expect(texts(result.lines)).toContain('Run started · Refund order 4471 · waiting on you');
   });
 
   test('reads on, a page at a time, until the lines fill the section, and no further than three pages', async () => {

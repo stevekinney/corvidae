@@ -294,6 +294,9 @@
         showToast(copy.saved(key), { variant: 'success' });
         await refresh();
       },
+      // The failure is said once, in the alert above the editor with the draft kept; the default
+      // toast would say it a second time (row 80w).
+      onError: () => undefined,
     }),
     undefined,
   );

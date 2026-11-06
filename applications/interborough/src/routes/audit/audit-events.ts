@@ -142,7 +142,7 @@ export function summaryOf(review: BureauToolApproval | null | undefined): string
 }
 
 /** The call's own sentence without its amount: "Refund order 4471 for $42.00" reads "Refund order 4471". */
-function withoutAmount(summary: string): string {
+export function withoutAmount(summary: string): string {
   return summary.replace(/\s+for\s+[$€£]\d[\d,]*(?:\.\d+)?$/, '');
 }
 

@@ -729,14 +729,8 @@
 >
   {#if target === undefined}
     <PageHeader title={copy.title} headingLevel={1} description={copy.description(zone)} />
-  {:else if deleted}
-    <PageHeader title={editCopy.heading(editedName ?? '')} headingLevel={1} />
   {:else}
-    <PageHeader
-      title={editCopy.heading(editedName ?? '')}
-      headingLevel={1}
-      description={editCopy.description}
-    />
+    <PageHeader title={editCopy.heading(editedName ?? '')} headingLevel={1} />
   {/if}
 
   <fieldset class="ib-schedule-new__fields" disabled={creating} bind:this={formRegion}>

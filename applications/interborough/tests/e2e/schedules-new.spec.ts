@@ -10,12 +10,13 @@
  * The slow reads are held by answering the engine's catalog differently, which is also what the
  * page waits on; the ten-second statuses are proved in the unit test, not slept here.
  */
-import type { Page } from '@playwright/test';
+import type { APIResponse, Page, Route } from '@playwright/test';
 
-import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { jsonEditor } from './json-editor-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -367,4 +368,248 @@ test('a workflow’s input fields are waited for with placeholders and the foote
 
   release();
   await expect(main.getByLabel(/^Branch/)).toBeVisible();
+});
+
+/** The input schema the board draws for Triage inbox, which the sample world's file does not carry. */
+const TRIAGE_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    folder: { type: 'string', title: 'Folder', default: 'Inbox' },
+    messages: {
+      type: 'string',
+      title: 'Messages',
+      enum: ['Unread only', 'All messages'],
+      default: 'Unread only',
+    },
+    limit: {
+      type: 'string',
+      title: 'Limit',
+      enum: ['25 messages', '50 messages', '100 messages'],
+      default: '50 messages',
+    },
+    flagUrgent: {
+      type: 'boolean',
+      title: 'Flag urgent messages',
+      description: 'Mark anything that looks urgent for a review.',
+      default: true,
+    },
+  },
+  required: ['folder'],
+} as const;
+
+/** The input schema the board draws for Order refund, whose file the sample world leaves unable to load. */
+const REFUND_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    orderNumber: { type: 'string', title: 'Order number', default: '4398' },
+    lineItems: {
+      type: 'array',
+      title: 'Line items',
+      items: {
+        type: 'object',
+        properties: { sku: { type: 'string' }, quantity: { type: 'integer' } },
+      },
+    },
+  },
+  required: ['orderNumber', 'lineItems'],
+} as const;
+
+/**
+ * Describes one workflow with an input schema the sample world does not give it, so the page can
+ * draw the fields a design frame names. The Bureau's file and the engine's definition both say what
+ * the input is, so both are answered, and a file that cannot load is answered as one that can (the
+ * sample world's Order refund). A name the engine does not have is described from Release notes
+ * under its own name. Every other read passes through.
+ */
+async function describeWorkflow(page: Page, name: string, inputSchema: unknown): Promise<void> {
+  type Answer = { result?: Record<string, unknown> } & Record<string, unknown>;
+  /** The route's own answer, or Release notes' when the sample world has none for `name`. */
+  const answerOf = async (
+    route: Route,
+    body: string,
+  ): Promise<{ response: APIResponse; json: Answer }> => {
+    let response = await route.fetch();
+    let json = (await response.json()) as Answer;
+    if (json.result === undefined) {
+      response = await route.fetch({ postData: body.replace(`"${name}"`, '"release-notes"') });
+      json = (await response.json()) as Answer;
+    }
+    return { response, json };
+  };
+  await page.route('**/jsonrpc', async (route) => {
+    const body = route.request().postData() ?? '';
+    if (!body.includes('"weft.workflows.definitions.get"') || !body.includes(`"${name}"`)) {
+      await route.fallback();
+      return;
+    }
+    const { response, json } = await answerOf(route, body);
+    const result = json.result ?? {};
+    const contract = (result['contract'] ?? {}) as Record<string, unknown>;
+    await route.fulfill({
+      response,
+      json: {
+        ...json,
+        result: { ...result, name, origin: 'source', contract: { ...contract, name, inputSchema } },
+      },
+    });
+  });
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postData() ?? '';
+    if (body.includes('"bureau.workflows.list"')) {
+      const response = await route.fetch();
+      const json = (await response.json()) as Answer;
+      const files = (json.result?.['workflows'] ?? []) as { id: string }[];
+      for (const file of files) {
+        if (file.id === name) Object.assign(file, { state: 'ready', problem: null, inputSchema });
+      }
+      await route.fulfill({ response, json });
+      return;
+    }
+    if (body.includes('"bureau.workflows.get"') && body.includes(`"${name}"`)) {
+      const { response, json } = await answerOf(route, body);
+      await route.fulfill({
+        response,
+        json: {
+          ...json,
+          result: {
+            ...json.result,
+            id: name,
+            state: 'ready',
+            problem: null,
+            inputSchema,
+          },
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+}
+
+test('a workflow whose schema takes no input says so in one line, with no fields (75a)', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  // The sample world gives Release notes a branch and a date (its schedule feeds them), so the
+  // frame's no-input workflow is the same workflow described as taking none.
+  await describeWorkflow(page, 'release-notes', {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+  });
+  await page.goto(ROUTE);
+  const main = page.locator('main');
+  await choose(page, /Release notes/);
+
+  await expect(main.getByText('Release notes takes no input.')).toBeVisible();
+  await expect(main.getByTestId('new-schedule-input')).toHaveCount(0);
+  await expect(footer(page)).toHaveText('Creates a schedule that starts Release notes.');
+  await captureForDesignReview(page, { route: ROUTE, state: 'no input', source: SOURCE });
+  await checkA11y('new schedule, a workflow with no input');
+});
+
+test('Triage inbox draws Folder, Messages and Limit and a switch from its input schema (74y)', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await describeWorkflow(page, 'triage-inbox', TRIAGE_INPUT_SCHEMA);
+  await page.goto(ROUTE);
+  const main = page.locator('main');
+  await choose(page, /Triage inbox/);
+
+  await expect(main).toContainText('What Triage inbox needs each time it runs.');
+  const input = main.getByTestId('new-schedule-input');
+  await expect(input.getByLabel(/^Folder/)).toHaveValue('Inbox');
+  await expect(input.getByLabel(/^Messages/)).toBeVisible();
+  await expect(input.getByLabel(/^Limit/)).toBeVisible();
+  const flag = input.getByRole('switch', { name: 'Flag urgent messages' });
+  await expect(flag).toBeChecked();
+  await expect(input.getByText('Mark anything that looks urgent for a review.')).toBeVisible();
+  // Folder is the one required field, and Messages shares its row.
+  expect(await topOf(page, /^Messages/)).toBe(await topOf(page, /^Folder/));
+  await captureForDesignReview(page, { route: ROUTE, state: 'triage input', source: SOURCE });
+  await checkA11y('new schedule, Triage inbox input');
+});
+
+test('Order refund draws its Line items as a JSON editor with its validity line and Format, over a plain Order number (75o)', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  // The sample world's Order refund cannot load, so the picker holds it off; the frame is the same
+  // workflow with its file mended.
+  await describeWorkflow(page, 'order-refund', REFUND_INPUT_SCHEMA);
+  await page.goto(ROUTE);
+  const main = page.locator('main');
+  await choose(page, /Order refund/);
+
+  await expect(main).toContainText('What Order refund needs each time it runs.');
+  const input = main.getByTestId('new-schedule-input');
+  await expect(input.getByLabel(/^Order number/)).toHaveValue('4398');
+  const editor = await jsonEditor(input, /^Line items/);
+  await editor.fill('[{"sku":"mug-12","quantity":1}]');
+  await expect(input.getByText('Valid JSON · array of 1 item')).toBeVisible();
+  await expect(input.getByRole('button', { name: 'Format' })).toBeVisible();
+  await captureForDesignReview(page, { route: ROUTE, state: 'order refund input', source: SOURCE });
+  await checkA11y('new schedule, Order refund input');
+});
+
+test('Weekdays at 9:00 AM reads back in words and lists Tue, Wed and Thu as the next runs, with Create enabled (74q)', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  // The next runs count from the sample world's Monday, Nov 2, whatever day the run is on.
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.goto(ROUTE);
+  const main = page.locator('main');
+  await choose(page, /Chat with an agent/);
+  await main.getByLabel(/^Message/).fill('Summarize yesterday’s chats and open reviews.');
+  await main.getByLabel(/^Name/).fill('Daily summary');
+  await main.getByLabel('Repeats', { exact: true }).selectOption('weekdays');
+  await main.getByLabel('At', { exact: true }).fill('9:00 AM');
+
+  await expect(main.getByLabel('Repeats', { exact: true })).toHaveValue('weekdays');
+  await expect(main.locator('.cinder-schedule-builder__summary-text')).toHaveText(
+    'Weekdays at 9:00 AM Central time.',
+  );
+  const fires = main.locator('.cinder-schedule-builder__preview-item');
+  await expect(fires.nth(0)).toContainText(/Tue(sday)?,? Nov 3/);
+  await expect(fires.nth(1)).toContainText(/Wed(nesday)?,? Nov 4/);
+  await expect(fires.nth(2)).toContainText(/Thu(rsday)?,? Nov 5/);
+  await expect(fires.first()).toContainText('9:00 AM');
+  await expect(footer(page)).toHaveText('Creates a schedule that starts a chat with Assistant.');
+  await expect(createButton(page)).toBeEnabled();
+  await captureForDesignReview(page, { route: ROUTE, state: 'weekdays', source: SOURCE });
+  await checkA11y('new schedule, weekdays');
+});
+
+test('at a phone width an interval hides At and Time zone and its preview names no zone, and a cron error sits muted under its field (06j)', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 375, height: 1000 });
+  await page.goto(ROUTE);
+  const main = page.locator('main');
+  await choose(page, /Chat with an agent/);
+  await main.getByLabel(/^Message/).fill('Check the refund queue.');
+
+  await main.getByLabel('Repeats', { exact: true }).selectOption('interval');
+  await expect(main.getByLabel('At', { exact: true })).toHaveCount(0);
+  await expect(main.getByRole('combobox', { name: /^Time zone/ })).toHaveCount(0);
+  await expect(main.locator('.cinder-schedule-builder__summary-text')).not.toContainText(/time\b/);
+  await captureForDesignReview(page, { route: ROUTE, state: 'interval', source: SOURCE });
+  await checkA11y('new schedule, an interval at a phone width');
+
+  await main.getByLabel('Repeats', { exact: true }).selectOption({ label: 'Custom cron' });
+  await main.getByLabel('Day of week').fill('8');
+  await main.getByLabel('Day of week').blur();
+  await expect(main.locator('.cinder-schedule-builder__panel')).toContainText(
+    'No preview until the cron expression is valid.',
+  );
+  await expect(createButton(page)).toBeEnabled();
+  await captureForDesignReview(page, { route: ROUTE, state: 'cron error', source: SOURCE });
+  await checkA11y('new schedule, a cron error at a phone width');
 });

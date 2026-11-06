@@ -250,7 +250,7 @@ describe('the rows', () => {
         ?.textContent?.trim(),
     ).toBe('can’t load');
     expect(lineTwoOf(release as HTMLElement)).toMatch(
-      /^Workflow · Release notes · From a workflow file · Every Friday at .+ · Last run /,
+      /^Workflow · Release notes · Every Friday at .+ · From a workflow file · Last run /,
     );
     expect(lineTwoOf(inbox as HTMLElement)).toMatch(
       /^Workflow · Triage inbox · Assistant · Every day at .+ · Last run /,

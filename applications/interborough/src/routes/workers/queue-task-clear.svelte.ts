@@ -32,7 +32,8 @@ interface StagedClear {
 /** Holds failed tasks out of the lists while their Undo toast is up, and clears them when it ends. */
 export class TaskClearController {
   readonly #hidden = new SvelteSet<string>();
-  readonly #staged = new Set<StagedClear>();
+  // Reactive, because the counts and the buttons the page derives from `hiddenCount` follow it.
+  readonly #staged = new SvelteSet<StagedClear>();
   readonly #dependencies: TaskClearDependencies;
 
   constructor(dependencies: TaskClearDependencies) {

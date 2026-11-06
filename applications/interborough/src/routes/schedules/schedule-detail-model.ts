@@ -60,7 +60,7 @@ export type SummaryPart = {
 /**
  * The first half of the summary line: when it runs next, and with what the viewer sees of it.
  * "Next Tue Nov 3, 3:00 AM (in 16 hours)", "No next run while paused", and for a schedule that is
- * due and will not start "Due today, 11:00 AM (in 14 minutes)" then "won't start" in amber.
+ * due and will not start "Due today, 11:00 AM (in 14 minutes)" then "won't start", both in amber (row 72z).
  */
 export function nextSummary(
   schedule: Pick<ScheduleSummary, 'nextFireAt'>,
@@ -96,6 +96,7 @@ export function nextSummary(
       text: stale
         ? SCHEDULE_COPY.detail.summary.dueStale(due)
         : SCHEDULE_COPY.detail.summary.due(due, relative),
+      tone: 'warning',
     },
     { text: SCHEDULE_COPY.detail.summary.wontStart, tone: 'warning' },
   ];

@@ -104,7 +104,7 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
   // The new schedule page has no revision policy of its own, so the schedule follows the active revision.
-  await expect(page.getByTestId('schedule-rail')).toBeVisible();
+  await expect(page.getByTestId('schedule-details')).toBeVisible();
   await checkA11y('schedule detail — a schedule made on the new schedule page');
 });
 

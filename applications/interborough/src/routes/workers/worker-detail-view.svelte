@@ -130,10 +130,12 @@
       {#if longId}
         <div class="ib-worker-detail__long-id">
           <code class="ib-worker-detail__id" data-testid="worker-id">{worker.id}</code>
-          <CopyButton value={worker.id} label={copy.copyLabel} copiedLabel={copy.copied}>
-            {copy.copy}
-            {#snippet confirmation()}{copy.copied}{/snippet}
-          </CopyButton>
+          <span class="ib-worker-detail__copy">
+            <CopyButton value={worker.id} label={copy.copyLabel} copiedLabel={copy.copied}>
+              {copy.copy}
+              {#snippet confirmation()}{copy.copied}{/snippet}
+            </CopyButton>
+          </span>
         </div>
       {/if}
       <p class="ib-worker-detail__status">
@@ -203,11 +205,22 @@
     overflow-wrap: anywhere;
   }
 
+  /* The full id wraps inside its own column and the Copy button stays beside it (row 79g). */
   .ib-worker-detail__long-id {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-wrap: nowrap;
+    align-items: flex-start;
     gap: var(--cinder-space-2);
+    min-width: 0;
+  }
+
+  .ib-worker-detail__long-id .ib-worker-detail__id {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .ib-worker-detail__copy {
+    flex: none;
   }
 
   .ib-worker-detail__status {

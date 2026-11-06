@@ -6,7 +6,8 @@
    * action. The count chip is neutral and these are never counted as Needs you. This list is the
    * page's status: there is no banner above it. With nothing to report the card collapses to one
    * row with a green check, and a list that could not be read says so rather than claiming all is
-   * well.
+   * well. Line two is the row's meta, so it sits directly under the title with the actions centred
+   * beside both lines (rows 76h, 76i, 76u), not the third `detail` line a phone's row adds.
    */
   import {
     Badge,
@@ -113,7 +114,7 @@
       <StackedListItem lines leadingTone="success">
         {#snippet leading()}<Check aria-hidden="true" size={16} />{/snippet}
         {#snippet title()}{copy.allClearTitle}{/snippet}
-        {#snippet detail()}{copy.allClearLine}{/snippet}
+        {#snippet meta()}{copy.allClearLine}{/snippet}
       </StackedListItem>
     </ul>
   {:else if rows !== undefined}
@@ -122,13 +123,14 @@
         {@const Glyph = GLYPHS[row.glyph]}
         <StackedListItem
           lines
+          wrapMeta
           leadingTone="warning"
           actions={actionsOf(row)}
           data-attention={row.id}
         >
           {#snippet leading()}<Glyph aria-hidden="true" size={16} />{/snippet}
           {#snippet title()}{row.title}{/snippet}
-          {#snippet detail()}{row.description}{/snippet}
+          {#snippet meta()}{row.description}{/snippet}
         </StackedListItem>
       {/snippet}
     </DataList>
