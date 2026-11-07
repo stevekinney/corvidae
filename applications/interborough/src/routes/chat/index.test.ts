@@ -62,6 +62,16 @@ describe('a session whose page could not read it', () => {
     expect(container.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
+  test('is the forbidden page when the Bureau refuses the person the chat', async () => {
+    contextAnswering(() => Response.json({ error: 'Forbidden' }, { status: 403 }));
+    landAt('/chats/session-1');
+
+    const { findByRole, container } = mount();
+
+    await findByRole('heading', { name: VIEW_COPY.chat.forbidden.title });
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
   test('is an error with a way to try again for any other failure', async () => {
     let healthy = false;
     const context = contextAnswering(() =>

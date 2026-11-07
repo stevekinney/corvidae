@@ -313,3 +313,43 @@ describe('the states of the list', () => {
     await findAllByRole('link', { name: /Say hello/ });
   });
 });
+
+describe('the list on a phone and a modified click', () => {
+  test('a phone’s list is its own screen titled Chat, with no search or segments (06l)', async () => {
+    serveChats();
+    landAt('/chats');
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(max-width: 639.98px)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const { findByRole, queryByRole } = mount();
+
+      expect((await findByRole('heading', { level: 1 })).textContent?.trim()).toBe('Chat');
+      expect(queryByRole('searchbox', { name: 'Search chats' })).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  test('a modified click is left to the browser, so a row can open in another tab', async () => {
+    serveChats();
+    landAt('/chats');
+    const { region } = await list();
+    const link = region.querySelector<HTMLAnchorElement>('a[href^="/chats/"]');
+    if (link === null) throw new Error('No row link.');
+
+    const modified = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true });
+    link.dispatchEvent(modified);
+    expect(modified.defaultPrevented).toBe(false);
+
+    const plain = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(plain);
+    expect(plain.defaultPrevented).toBe(true);
+  });
+});
