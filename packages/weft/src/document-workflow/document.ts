@@ -152,6 +152,7 @@ export type WorkflowDocumentStep =
     }>
   | Readonly<{
       kind: 'map';
+      over: string;
       steps: readonly WorkflowDocumentStep[];
       concurrency?: number | undefined;
     }>;
@@ -244,6 +245,7 @@ export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.laz
     }),
     z.strictObject({
       kind: z.literal('map'),
+      over: z.string().min(1),
       steps: z.array(workflowDocumentStepSchema).min(1),
       concurrency: mapConcurrencySchema,
     }),

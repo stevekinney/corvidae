@@ -75,6 +75,17 @@ function documentStepIndexes(
   return indexes;
 }
 
+function containsWait(steps: readonly WorkflowDocument['steps'][number][]): boolean {
+  return steps.some(
+    (step) =>
+      step.kind === 'await-signal' ||
+      (step.kind === 'branch' &&
+        (Object.values(step.cases).some(containsWait) ||
+          (step.otherwise !== undefined && containsWait(step.otherwise)))) ||
+      (step.kind === 'map' && containsWait(step.steps)),
+  );
+}
+
 function* documentOperation<T>(
   operation: Generator<unknown, T, unknown>,
   documentStep: number,
@@ -231,30 +242,35 @@ export async function buildDocumentWorkflowDefinition(
             break;
           }
           case 'map': {
-            if (!Array.isArray(state.previous)) {
+            const source =
+              typeof state.previous === 'object' && state.previous !== null
+                ? Object.getOwnPropertyDescriptor(state.previous, step.over)?.value
+                : undefined;
+            if (!Array.isArray(source)) {
               throw new WorkflowDocumentMapError(
                 'not-array',
-                `Map step ${String(index)} requires the previous result to be an array`,
+                `Map step ${String(index)} requires field "${step.over}" of the previous result to be an array`,
               );
             }
-            if (state.previous.length > 1000) {
+            if (source.length > 1000) {
               throw new WorkflowDocumentMapError(
                 'too-many',
-                `Map step ${String(index)} cannot iterate more than 1000 items (received ${String(state.previous.length)})`,
+                `Map step ${String(index)} cannot iterate more than 1000 items (received ${String(source.length)})`,
               );
             }
             const concurrency = step.concurrency ?? 4;
-            const values = state.previous;
+            const values = source;
             const results: unknown[] = [];
-            for (let start = 0; start < values.length; start += concurrency) {
-              const batch = values.slice(start, start + concurrency);
+            const batchSize = containsWait(step.steps) ? 1 : concurrency;
+            for (let start = 0; start < values.length; start += batchSize) {
+              const batch = values.slice(start, start + batchSize);
               const operations = batch.map((value, offset) => {
                 const itemState: RunState = {
                   previous: value,
                   pendingSignal: undefined,
                   lastStepWasSignal: false,
                 };
-                return (function* () {
+                return (function* (): Generator<ContextOperationRequest, unknown, unknown> {
                   const result = yield* runSteps(
                     step.steps,
                     [...iteration, start + offset],
@@ -267,7 +283,13 @@ export async function buildDocumentWorkflowDefinition(
                       : result;
                 })();
               });
-              results.push(...(yield* context.all(operations)));
+              results.push(
+                ...((yield* context.all(operations) as unknown as Generator<
+                  ContextOperationRequest,
+                  unknown[],
+                  unknown
+                >) as unknown[]),
+              );
             }
             state.previous = results;
             state.pendingSignal = undefined;

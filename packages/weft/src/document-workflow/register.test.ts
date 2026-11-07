@@ -99,9 +99,10 @@ describe('registerWorkflowDocuments()', () => {
     mapActive = 0;
     mapMaximum = 0;
     const document = createDocument('map-document', [
-      { kind: 'activity', handler: 'version', input: [1, 2, 3, 4, 5] },
+      { kind: 'activity', handler: 'version', input: { items: [1, 2, 3, 4, 5] } },
       {
         kind: 'map',
+        over: 'items',
         steps: [{ kind: 'activity', handler: 'mapWork', input: 'work' }],
       },
     ]);
@@ -121,18 +122,22 @@ describe('registerWorkflowDocuments()', () => {
   it('rejects non-array and over-limit map inputs with named errors', async () => {
     const nonArray = createDocument('map-not-array', [
       { kind: 'activity', handler: 'version', input: 'nope' },
-      { kind: 'map', steps: [{ kind: 'activity', handler: 'version' }] },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'version' }] },
     ]);
     const tooMany = createDocument('map-too-many', [
-      { kind: 'activity', handler: 'version', input: Array.from({ length: 1001 }, () => null) },
-      { kind: 'map', steps: [{ kind: 'activity', handler: 'version' }] },
+      {
+        kind: 'activity',
+        handler: 'version',
+        input: { items: Array.from({ length: 1001 }, () => null) },
+      },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'version' }] },
     ]);
     await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
     await registerWorkflowDocuments(engine, host, { active: [nonArray, tooMany] });
     const nonArrayRun = await engine.start('map-not-array', null, { id: 'map-not-array-run' });
     const tooManyRun = await engine.start('map-too-many', null, { id: 'map-too-many-run' });
     expect(await throwingRejectionOf(nonArrayRun.result())).toThrow(
-      'requires the previous result to be an array',
+      'requires field "items" of the previous result to be an array',
     );
     expect(await throwingRejectionOf(tooManyRun.result())).toThrow(
       'cannot iterate more than 1000 items',
@@ -143,8 +148,13 @@ describe('registerWorkflowDocuments()', () => {
     mapActive = 0;
     mapMaximum = 0;
     const document = createDocument('map-cleanup', [
-      { kind: 'activity', handler: 'version', input: [1, 2, 3, 4] },
-      { kind: 'map', concurrency: 4, steps: [{ kind: 'activity', handler: 'mapFail' }] },
+      { kind: 'activity', handler: 'version', input: { items: [1, 2, 3, 4] } },
+      {
+        kind: 'map',
+        over: 'items',
+        concurrency: 4,
+        steps: [{ kind: 'activity', handler: 'mapFail' }],
+      },
     ]);
     await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
     await registerWorkflowDocuments(engine, host, { active: [document] });

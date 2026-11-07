@@ -187,6 +187,7 @@ describe('validateWorkflowDocument()', () => {
         steps: [
           {
             kind: 'map',
+            over: 'items',
             concurrency: 2,
             steps: [{ kind: 'activity', handler: 'missing' }],
           },
@@ -195,9 +196,9 @@ describe('validateWorkflowDocument()', () => {
     );
     expect(issues.map((issue) => issue.path)).toEqual(['steps[0].steps[0].handler']);
     expect(
-      issuesOf(document({ steps: [{ kind: 'map', concurrency: 0, steps: [] }] })).map(
-        (issue) => issue.path,
-      ),
+      issuesOf(
+        document({ steps: [{ kind: 'map', over: 'items', concurrency: 0, steps: [] }] }),
+      ).map((issue) => issue.path),
     ).toContain('steps[0].concurrency');
   });
 
