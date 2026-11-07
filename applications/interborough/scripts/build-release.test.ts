@@ -262,12 +262,16 @@ describe('release arguments', () => {
 
   // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects an existing release output before installing or staging', async () => {
-    if (process.platform !== 'darwin' || process.arch !== 'arm64') return;
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-collision-'));
     try {
       await writeFile(join(output, 'interborough-0.0.0-test-darwin-arm64.tar.gz'), 'sentinel');
       expect(
-        await throwingRejectionOf(buildRelease(['--version', '0.0.0-test', '--outdir', output])),
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+            platform: 'darwin',
+            architecture: 'arm64',
+          }),
+        ),
       ).toThrow('Release output already exists');
       expect(
         await Bun.file(join(output, 'interborough-0.0.0-test-darwin-arm64.tar.gz')).text(),
