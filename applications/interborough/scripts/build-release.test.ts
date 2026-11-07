@@ -84,7 +84,7 @@ async function releaseFixture(
       if (arguments_.includes('--compile')) {
         await writeFile(
           output,
-          `#!/opt/homebrew/bin/bun
+          `#!${process.execPath}
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home') + 1];
@@ -162,6 +162,8 @@ await new Promise(() => {});
     }
   };
   const operations: ReleaseOperations = {
+    platform: 'darwin',
+    architecture: 'arm64',
     runCommand: command,
     buildApplication: async (options) => {
       const outdir = options?.outdir;
@@ -282,7 +284,10 @@ describe('release arguments', () => {
     try {
       expect(
         await throwingRejectionOf(
-          buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release']),
+          buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release'], {
+            platform: 'darwin',
+            architecture: 'arm64',
+          }),
         ),
       ).toThrow('Release inputs are dirty');
     } finally {
