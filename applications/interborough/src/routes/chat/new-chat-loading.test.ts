@@ -3,12 +3,16 @@
  * composer already there, and a Send that cannot be pressed. The skeleton's status line and its
  * Cancel come after ten seconds, which `chat-new-states.spec.ts` runs against the real page.
  */
-import { cleanup, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
+import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import NewChatLoading from './new-chat-loading.svelte';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  jest.useRealTimers();
+});
 
 describe('New chat while its agents load', () => {
   test('is the page in placeholders with the composer already there, and nothing to press', async () => {
@@ -31,5 +35,24 @@ describe('New chat while its agents load', () => {
     expect(container.querySelectorAll('.cinder-skeleton').length).toBeGreaterThanOrEqual(5);
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+  });
+
+  test('after 10 s shows the skeleton’s own status line with a Cancel that calls back', async () => {
+    jest.useFakeTimers();
+    const onCancel = mock(() => undefined);
+    const { container } = render(NewChatLoading, { props: { onCancel } });
+    flushSync();
+    jest.advanceTimersByTime(9_999);
+    flushSync();
+    expect(container.textContent).not.toContain('Still loading');
+    jest.advanceTimersByTime(1);
+    flushSync();
+
+    const status = [...container.querySelectorAll('[role="status"]')].find((element) =>
+      element.textContent?.includes('Still loading'),
+    );
+    expect(status).not.toBeUndefined();
+    await fireEvent.click(within(status as HTMLElement).getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

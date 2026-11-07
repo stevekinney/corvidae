@@ -1,33 +1,8 @@
 /**
- * How a run's state reads, everywhere a person sees one: the chat's task strip, the runs list, and
- * a run's page. The Bureau has six task states and a person needs five words (`copy.ts`'s
- * `TASK_COPY.states`): a task that is submitted has not started, which is Working to anyone
- * waiting on it. This gives each state its words and its badge, so no screen invents its own.
+ * The order a person reads a run's states in, and which of them mean a run is over. The words each
+ * state is shown with are `copy.ts`'s `TASK_COPY.states`.
  */
-import type { BadgeVariant } from '@lostgradient/cinder';
-
-import { TASK_COPY } from '../app/copy.ts';
 import type { TaskState } from './bureau-tasks.ts';
-
-/** How a task state reads on screen: its label and badge variant. */
-export type TaskStatePresentation = {
-  readonly label: string;
-  readonly variant: BadgeVariant;
-};
-
-const VARIANTS: Readonly<Record<TaskState, BadgeVariant>> = {
-  submitted: 'info',
-  working: 'info',
-  'input-required': 'warning',
-  completed: 'success',
-  failed: 'danger',
-  canceled: 'neutral',
-};
-
-/** The label and badge variant a task state is shown with. */
-export function taskStatePresentation(state: TaskState): TaskStatePresentation {
-  return { label: TASK_COPY.states[state], variant: VARIANTS[state] };
-}
 
 /** The states a run can be narrowed by, in the order a person reads them. */
 export const TASK_STATE_ORDER: readonly TaskState[] = [

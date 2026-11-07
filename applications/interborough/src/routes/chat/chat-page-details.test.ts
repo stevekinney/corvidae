@@ -249,3 +249,63 @@ describe('the details popover (16u, 16v)', () => {
     expect(details.textContent).not.toContain('As run');
   });
 });
+
+describe('the details popover, copying and an unset model', () => {
+  async function open() {
+    const view = mount();
+    await fireEvent.click(await view.findByRole('button', { name: TITLE }));
+    return { ...view, details: await view.findByTestId('chat-details') };
+  }
+
+  test('copies the session ID and says it was copied', async () => {
+    serve();
+    landAt('/chats/session-1');
+    const written: string[] = [];
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void written.push(text) },
+    });
+    try {
+      const { details } = await open();
+      await fireEvent.click(
+        within(details).getByRole('button', { name: 'Copy session ID', hidden: true }),
+      );
+
+      await waitFor(() => expect(written).toEqual(['session-1']));
+      await waitFor(() => expect(details.textContent).toContain('Session ID copied'));
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(navigator, 'clipboard');
+      else Object.defineProperty(navigator, 'clipboard', original);
+    }
+  });
+
+  test('says Agent default for a model neither the chat nor its agent names', async () => {
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => ({
+          ...CONTEXT,
+          agentName: 'tool-runner',
+          title: TITLE,
+          effort: 'medium',
+        }),
+        'bureau.agents.list': () => ({ agents: [TOOL_RUNNER] }),
+        'bureau.agents.models': () => ({ selectable: true, models: [], default: null }),
+      },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({ threadId: 'session-1', messages: [] });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { details } = await open();
+
+    const group = within(details).getByRole('region', { name: 'As run', hidden: true });
+    expect(group.textContent).toContain('Model Agent default');
+  });
+});

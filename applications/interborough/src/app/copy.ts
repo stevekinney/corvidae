@@ -2905,11 +2905,11 @@ export const CHAT_COPY = {
       },
     },
     showAll: 'Show all chats',
-    /** What line two says of a chat that ended, in place of its last message: why it ended. */
-    endedBecause: {
-      'host-stopped': 'The server restarted before I finished.',
-      other: 'This chat ended before the agent finished.',
-    },
+    /**
+     * What line two says of a chat that ended, in place of its last message: why it ended. The host
+     * stopping it is the one reason that ends a chat.
+     */
+    endedBecause: 'The server restarted before I finished.',
     /** The list could not be read: the error stays in the list and the page stays live. */
     failedTitle: 'Couldn’t load chats',
     failedDescription: 'Interborough didn’t send them back.',

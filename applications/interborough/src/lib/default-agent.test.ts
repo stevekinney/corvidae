@@ -6,6 +6,7 @@ import {
   findDefaultAgent,
   findWorkflowAuthor,
   listAgentsWithReadiness,
+  workflowAuthorQuery,
 } from './default-agent.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
 
@@ -139,5 +140,17 @@ describe('the agent a chat started from Workflows begins with', () => {
       [plugin('demo', 'needs-setup', ['demo:author'])],
     );
     expect(await findWorkflowAuthor()).toBe('notes');
+  });
+});
+
+describe('workflowAuthorQuery', () => {
+  test('reads the workflow author, with the signal it was given, and trusts it for a moment', async () => {
+    host([{ name: 'workflow-author', tools: [CREATE_WORKFLOW_TOOL] }, 'assistant'], []);
+    const query = workflowAuthorQuery();
+
+    expect(await query.queryFn({ signal: new AbortController().signal })).toBe('workflow-author');
+    expect(await query.queryFn({})).toBe('workflow-author');
+    expect(query.staleTime).toBeGreaterThan(0);
+    expect(query.retry).toBe(false);
   });
 });

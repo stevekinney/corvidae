@@ -118,8 +118,6 @@
     "src/lib/system-lease.ts LeaseStatusPresentation.description",
     "src/lib/system-lease.ts LeaseStatusPresentation.label",
     "src/lib/system-lease.ts LeaseStatusPresentation.variant",
-    "src/lib/task-status.ts TaskStatePresentation.label",
-    "src/lib/task-status.ts TaskStatePresentation.variant",
     "src/lib/worker-inheritance-rules.ts WorkerInheritanceRule.heading",
     "src/lib/worker-inheritance-rules.ts WorkerInheritanceRule.surface",
     "src/lib/worker-inheritance-rules.ts WorkerInheritanceRule.text",

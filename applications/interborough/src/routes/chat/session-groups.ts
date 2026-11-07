@@ -88,13 +88,6 @@ export function waitingChatIds(reviews: readonly BureauReview[]): readonly strin
   return [...ids];
 }
 
-/** Why a chat ended, in words, for line two: the host stopping it is the one reason the Bureau names. */
-function endedBecause(context: Pick<ChatContext, 'endReason'>): string {
-  return context.endReason === 'host-stopped'
-    ? CHAT_COPY.list.endedBecause['host-stopped']
-    : CHAT_COPY.list.endedBecause.other;
-}
-
 /**
  * A session as a row. The snippet is the latest message the Bureau records; while the chat waits on
  * the person it is the question being asked instead, because the last thing said is then the
@@ -112,7 +105,7 @@ export function sessionRow(
     (status === 'Waiting on you' ? questions.get(context.id) : undefined) ??
     // A chat that ended says why, which is the thing to read: its last message is only the
     // person's own.
-    (status === 'Ended' ? endedBecause(context) : undefined) ??
+    (status === 'Ended' ? CHAT_COPY.list.endedBecause : undefined) ??
     (preview === undefined || preview === '' ? undefined : preview) ??
     CHAT_COPY.messageCount(context.messageCount);
   const updated = Date.parse(context.updatedAt);

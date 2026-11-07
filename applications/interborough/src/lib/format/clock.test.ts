@@ -102,6 +102,18 @@ describe('viewerTimeZone', () => {
   test('names a zone the formatters accept', () => {
     expect(() => dateLine(NOW, viewerTimeZone())).not.toThrow();
   });
+
+  test('is UTC where the browser cannot say', () => {
+    const original = Intl.DateTimeFormat;
+    Intl.DateTimeFormat = (() => {
+      throw new RangeError('No zone');
+    }) as never;
+    try {
+      expect(viewerTimeZone()).toBe('UTC');
+    } finally {
+      Intl.DateTimeFormat = original;
+    }
+  });
 });
 
 describe('zoneLabel and calendarDay', () => {
