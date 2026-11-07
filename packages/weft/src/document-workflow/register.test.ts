@@ -14,7 +14,12 @@ import {
 } from '../core/events/catalog-events.ts';
 import { workflow } from '../core/types.ts';
 import { KEYS } from '../storage/keys.ts';
-import { WorkflowDocumentValidationError, type DocumentWorkflowHost } from './document.ts';
+import {
+  WorkflowDocumentValidationError,
+  validateWorkflowDocument,
+  workflowDocumentVersion,
+  type DocumentWorkflowHost,
+} from './document.ts';
 import { documentActivityOperation } from './interpreter.ts';
 import { registerWorkflowDocuments } from './register.ts';
 
@@ -73,6 +78,117 @@ async function fileWorkflowEvents(engine: Engine, workflowId: string) {
 }
 
 describe('registerWorkflowDocuments()', () => {
+  it('runs only the matching branch case and continues with its result', async () => {
+    traces.length = 0;
+    const document = createDocument('branch-document', [
+      { kind: 'activity', handler: 'version', input: { status: 'ready' } },
+      {
+        kind: 'branch',
+        on: 'status',
+        cases: {
+          ready: [{ kind: 'activity', handler: 'trace', input: 'selected' }],
+          waiting: [{ kind: 'activity', handler: 'trace', input: 'wrong' }],
+        },
+        otherwise: [{ kind: 'activity', handler: 'trace', input: 'fallback' }],
+      },
+      { kind: 'activity', handler: 'trace', input: 'after' },
+    ]);
+
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+
+    const run = await engine.start('branch-document', null, { id: 'branch-run' });
+    expect(await run.result()).toBe('after');
+    expect(traces.map(({ input }) => input)).toEqual(['selected', 'after']);
+  });
+
+  it('uses static preorder identities for a later branch case', async () => {
+    identities.length = 0;
+    const document = createDocument('branch-static-address', [
+      { kind: 'activity', handler: 'version', input: { status: 'waiting' } },
+      {
+        kind: 'branch',
+        on: 'status',
+        cases: {
+          ready: [{ kind: 'activity', handler: 'identify', input: 'ready' }],
+          waiting: [{ kind: 'activity', handler: 'identify', input: 'waiting' }],
+        },
+        otherwise: [{ kind: 'activity', handler: 'identify', input: 'otherwise' }],
+      },
+    ]);
+
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('branch-static-address', null, { id: 'branch-static-run' });
+
+    expect(await run.result()).toEqual({ workflowId: 'branch-static-run', step: 3 });
+    expect(identities).toEqual([{ workflowId: 'branch-static-run', step: 3, stepAddress: '3' }]);
+  });
+
+  it('recovers a parked nested step with the same address after case reordering', async () => {
+    identities.length = 0;
+    const original = createDocument('branch-recovery-address', [
+      { kind: 'activity', handler: 'version', input: { status: 'waiting' } },
+      {
+        kind: 'branch',
+        on: 'status',
+        cases: {
+          ready: [{ kind: 'activity', handler: 'greet', input: 'ready' }],
+          waiting: [
+            { kind: 'await-signal', signal: 'go' },
+            { kind: 'activity', handler: 'identify' },
+          ],
+        },
+      },
+    ]);
+    const reordered = createDocument('branch-recovery-address', [
+      { kind: 'activity', handler: 'version', input: { status: 'waiting' } },
+      {
+        kind: 'branch',
+        on: 'status',
+        cases: {
+          waiting: [
+            { kind: 'await-signal', signal: 'go' },
+            { kind: 'activity', handler: 'identify' },
+          ],
+          ready: [{ kind: 'activity', handler: 'greet', input: 'ready' }],
+        },
+      },
+    ]);
+    expect(await workflowDocumentVersion(validateWorkflowDocument(original, host))).toBe(
+      await workflowDocumentVersion(validateWorkflowDocument(reordered, host)),
+    );
+
+    const storage = new MemoryStorage();
+    {
+      await using engine = new Engine({ storage });
+      await registerWorkflowDocuments(engine, host, { active: [original] });
+      await engine.start('branch-recovery-address', null, { id: 'branch-recovery-run' });
+      await waitForParkedOnSignal(engine, 'branch-recovery-run');
+    }
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [reordered] });
+    const [handle] = await restarted.recoverAll();
+    await handle!.signal('go', null);
+    expect(await handle!.result()).toEqual({ workflowId: 'branch-recovery-run', step: 4 });
+    expect(identities).toEqual([{ workflowId: 'branch-recovery-run', step: 4, stepAddress: '4' }]);
+  });
+
+  it('fails a branch with no matching case or otherwise using a named error', async () => {
+    const document = createDocument('branch-no-match', [
+      { kind: 'activity', handler: 'greet', input: { status: 'missing' } },
+      { kind: 'branch', on: 'status', cases: { ready: [{ kind: 'activity', handler: 'greet' }] } },
+    ]);
+
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('branch-no-match', null, { id: 'branch-no-match-run' });
+
+    const rejected = await throwingRejectionOf(run.result());
+    expect(rejected).toThrow('Branch has no matching case for field "status"');
+  });
+
   it('records durable lifecycle history for document steps', async () => {
     const document = createDocument('document-history', [
       { kind: 'activity', handler: 'greet', input: 'hello' },

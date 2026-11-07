@@ -63,6 +63,36 @@ describe('a document step whose handler is plugin:name', () => {
     expect(seen[0]).toMatchObject({ input: { issue: 'COR-1' }, trigger: { from: 'test' } });
   });
 
+  it('registers and runs a contributed handler nested in a branch case', async () => {
+    const harness = await start();
+    registrationEngine(harness).register(
+      activity({
+        name: 'linear__sync-issue',
+        execute: async (argument: { input?: unknown }) =>
+          argument.input === 'status' ? { status: 'ready' } : { synced: argument.input },
+      }),
+    );
+    await harness.put(
+      'nested.json',
+      workflowFileText('nested', {
+        trigger: NEVER,
+        steps: [
+          { kind: 'activity', handler: 'linear:sync-issue', input: 'status' },
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: { ready: [{ kind: 'activity', handler: 'linear:sync-issue', input: 'nested' }] },
+            otherwise: [{ kind: 'activity', handler: 'linear:sync-issue', input: 'fallback' }],
+          },
+        ],
+      }),
+    );
+    await harness.bureau.workflows?.refresh();
+
+    const handle = await registrationEngine(harness).start('nested', null, { id: 'nested-run' });
+    expect(await handle.result()).toEqual({ synced: 'nested' });
+  });
+
   it('is invalid when nothing is registered under the mapped name', async () => {
     const harness = await start();
     await harness.put(

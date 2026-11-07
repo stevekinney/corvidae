@@ -9,6 +9,7 @@
 export { normalizeScheduleSpec } from '../core/engine/validation/schedule.ts';
 export type { NormalizedScheduleSpec } from '../core/engine/validation/schedule.ts';
 export {
+  WorkflowDocumentBranchError,
   WorkflowDocumentSchemaError,
   WorkflowDocumentValidationError,
   canonicalWorkflowDocumentJson,

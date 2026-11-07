@@ -7,8 +7,8 @@
  * Weft never sees `review`: Bureau strips it before handing Weft the document, so the engine knows
  * only that an instance waits for a signal. This module joins the two. The engine says which
  * instances wait, on which signal, and at which step (the timeline's `stepIndex` of the running
- * `wait-signal` entry, which for the document interpreter is the step's index in the file); the
- * file says whether that step is a review. The file is the one the instance runs on, read through
+ * `wait-signal` entry's `documentStep`, which is the canonical preorder index of the document
+ * step; the file says whether that step is a review. The file is the one the instance runs on, read through
  * {@link WorkflowReviewWaitsDependencies.revisionSteps}: the newest saved version whose Weft
  * revision is the instance's.
  *
@@ -33,7 +33,7 @@ import type {
 } from '@lostgradient/weft';
 
 import type { DiagnosticSink, PendingHumanWaitReview } from './types';
-import type { WorkflowFileStep } from './workflow-file';
+import { workflowFileStepsInCanonicalOrder, type WorkflowFileStep } from './workflow-file';
 
 /** The steps as written of the revision an instance runs on. */
 export interface WorkflowRevisionSteps {
@@ -141,22 +141,26 @@ function waitingStep(
     }
   | undefined {
   const waiting = state.waitingForSignals ?? [];
+  const ordered = workflowFileStepsInCanonicalOrder(steps);
   const entry = timeline.findLast(
     (candidate) =>
       candidate.operationType === 'wait-signal' &&
       candidate.status === 'running' &&
       waiting.includes(candidate.operationLabel),
   );
-  if (entry?.stepIndex !== undefined && awaits(steps[entry.stepIndex], entry.operationLabel)) {
+  if (
+    entry?.documentStep !== undefined &&
+    awaits(ordered[entry.documentStep]?.step, entry.operationLabel)
+  ) {
     return {
-      stepIndex: entry.stepIndex,
+      stepIndex: entry.documentStep,
       signalName: entry.operationLabel,
       since: entry.timestamp,
       stepAddress: entry.documentStepAddress,
     };
   }
   for (const signalName of waiting) {
-    const indices = steps.flatMap((step, index) => (awaits(step, signalName) ? [index] : []));
+    const indices = ordered.flatMap(({ step, index }) => (awaits(step, signalName) ? [index] : []));
     if (indices.length === 1) {
       return {
         stepIndex: indices[0]!,
@@ -229,7 +233,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
     if (revision === undefined) return undefined;
     const step = waitingStep(state, await engine.getTimeline(runId), revision.steps);
     if (step === undefined) return undefined;
-    const written = revision.steps[step.stepIndex];
+    const written = workflowFileStepsInCanonicalOrder(revision.steps)[step.stepIndex]?.step;
     if (written?.['review'] !== true) return undefined;
     return {
       runId,

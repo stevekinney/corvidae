@@ -28,6 +28,26 @@ function renameVersionKeys<TValue>(
   return Object.fromEntries(Object.entries(versions).map(([key, value]) => [rename(key), value]));
 }
 
+function renameSteps(
+  steps: readonly WorkflowDocumentStep[],
+  rename: (handler: string) => string,
+): WorkflowDocumentStep[] {
+  return steps.map((step) => {
+    if (step.kind === 'activity') return { ...step, handler: rename(step.handler) };
+    if (step.kind !== 'branch') return step;
+    return {
+      ...step,
+      cases: Object.fromEntries(
+        Object.entries(step.cases).map(([literal, nested]) => [
+          literal,
+          renameSteps(nested, rename),
+        ]),
+      ),
+      ...(step.otherwise === undefined ? {} : { otherwise: renameSteps(step.otherwise, rename) }),
+    };
+  });
+}
+
 /**
  * `document` with its `name`, every activity step's handler, and the handlers its
  * `activityVersions` pins, rewritten by `rename`.
@@ -39,9 +59,7 @@ function renameHandlers(
   return {
     ...document,
     name: rename(document.name),
-    steps: document.steps.map((step): WorkflowDocumentStep =>
-      step.kind === 'activity' ? { ...step, handler: rename(step.handler) } : step,
-    ),
+    steps: renameSteps(document.steps, rename),
     ...(document.activityVersions === undefined
       ? {}
       : { activityVersions: renameVersionKeys(document.activityVersions, rename) }),
@@ -68,17 +86,52 @@ export function toWeftDocumentInput(input: unknown): unknown {
   if (!isRecord(input)) return input;
   const mapped: Record<string, unknown> = { ...input };
   if (typeof input['name'] === 'string') mapped['name'] = weftNameOf(input['name']);
-  if (Array.isArray(input['steps'])) {
-    mapped['steps'] = input['steps'].map((step: unknown) =>
-      isRecord(step) && step['kind'] === 'activity' && typeof step['handler'] === 'string'
-        ? { ...step, handler: weftNameOf(step['handler']) }
-        : step,
-    );
-  }
+  if (Array.isArray(input['steps'])) mapped['steps'] = renameInputSteps(input['steps'], weftNameOf);
   if (isRecord(input['activityVersions'])) {
     mapped['activityVersions'] = renameVersionKeys(input['activityVersions'], weftNameOf);
   }
   return mapped;
+}
+
+function renameInputSteps(
+  steps: readonly unknown[],
+  rename: (handler: string) => string,
+  onActivity?: (step: Record<string, unknown>, indexPath: string) => void,
+  path = 'steps',
+): unknown[] {
+  return steps.map((step, index) => {
+    if (!isRecord(step)) return step;
+    const stepPath = `${path}[${String(index)}]`;
+    if (step['kind'] === 'activity' && typeof step['handler'] === 'string') {
+      onActivity?.(step, stepPath);
+      return { ...step, handler: rename(step['handler']) };
+    }
+    if (step['kind'] !== 'branch') return step;
+    const cases = isRecord(step['cases'])
+      ? Object.fromEntries(
+          Object.entries(step['cases']).map(([literal, nested]) => [
+            literal,
+            Array.isArray(nested)
+              ? renameInputSteps(nested, rename, onActivity, `${stepPath}.cases.${literal}`)
+              : nested,
+          ]),
+        )
+      : step['cases'];
+    return {
+      ...step,
+      cases,
+      ...(Array.isArray(step['otherwise'])
+        ? {
+            otherwise: renameInputSteps(
+              step['otherwise'],
+              rename,
+              onActivity,
+              `${stepPath}.otherwise`,
+            ),
+          }
+        : {}),
+    };
+  });
 }
 
 /**
@@ -94,16 +147,12 @@ export function validateBureauWorkflowDocument(
   const issues: WorkflowDocumentIssue[] = [];
   let prepared = input;
   if (isRecord(input) && Array.isArray(input['steps'])) {
-    const steps: unknown[] = input['steps'].map((step: unknown, index) => {
-      if (!isRecord(step) || step['kind'] !== 'activity' || typeof step['handler'] !== 'string') {
-        return step;
-      }
-      const problem = handlerNameIssue(step['handler']);
+    const steps = renameInputSteps(input['steps'], weftNameOf, (step, path) => {
+      const handler = step['handler'] as string;
+      const problem = handlerNameIssue(handler);
       if (problem !== undefined) {
-        issues.push({ path: `steps[${String(index)}].handler`, message: problem });
-        return step;
+        issues.push({ path: `${path}.handler`, message: problem });
       }
-      return { ...step, handler: weftNameOf(step['handler']) };
     });
     prepared = { ...input, steps };
   }
