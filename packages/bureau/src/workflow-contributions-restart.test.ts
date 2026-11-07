@@ -88,7 +88,9 @@ async function storeAndFiles() {
                           name: 'y',
                           version: activityVersion,
                           execute: (argument: { input: unknown }) =>
-                            activityAnswer(activityVersion, argument.input),
+                            argument.input === 'status'
+                              ? { status: 'ready' }
+                              : activityAnswer(activityVersion, argument.input),
                         },
                       ],
                     }),
@@ -214,6 +216,29 @@ describe('a run waiting across a restart, on a revision that pins x:y@1', () => 
 });
 
 describe('a new run, with the file unchanged', () => {
+  it('registers and runs a contributed handler nested in a branch', async () => {
+    const { bureauOver } = await storeAndFiles();
+    const bureau = await bureauOver('1', false, true);
+    await bureau.put(
+      'nested.json',
+      pipeline({
+        name: 'nested',
+        steps: [
+          { kind: 'activity', handler: 'x:y', input: 'status' },
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: { ready: [{ kind: 'activity', handler: 'x:y', input: 'nested' }] },
+          },
+        ],
+      }),
+    );
+    await bureau.bureau.workflows?.refresh();
+
+    const handle = await bureau.bureau.durableEngine()!.start('nested', null, { id: 'nested-run' });
+    expect(await handle.result()).toBe(activityAnswer('1', 'nested'));
+  });
+
   it('runs on the version that is loaded now, as a new revision', async () => {
     const { bureauOver } = await storeAndFiles();
     await parkedAtVersionOne(bureauOver);
