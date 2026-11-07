@@ -103,6 +103,7 @@ describe('registerWorkflowDocuments()', () => {
       {
         kind: 'map',
         over: 'items',
+        concurrency: 2,
         steps: [{ kind: 'activity', handler: 'mapWork', input: 'work' }],
       },
     ]);
@@ -116,6 +117,26 @@ describe('registerWorkflowDocuments()', () => {
       { input: 'work', previous: 4, stepAddress: '2#3' },
       { input: 'work', previous: 5, stepAddress: '2#4' },
     ]);
+    expect(mapMaximum).toBe(2);
+  });
+
+  it('defaults map concurrency to four iterations', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
+    const document = createDocument('map-default-concurrency', [
+      { kind: 'activity', handler: 'version', input: { items: [1, 2, 3, 4, 5] } },
+      {
+        kind: 'map',
+        over: 'items',
+        steps: [{ kind: 'activity', handler: 'mapWork', input: 'work' }],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-default-concurrency', null, {
+      id: 'map-default-concurrency-run',
+    });
+    await run.result();
     expect(mapMaximum).toBe(4);
   });
 
@@ -166,7 +187,7 @@ describe('registerWorkflowDocuments()', () => {
   it('runs wait-bearing map steps through the normal parent run with stable iteration addresses', async () => {
     identities.length = 0;
     const document = createDocument('map-wait', [
-      { kind: 'activity', handler: 'version', input: { items: ['a'] } },
+      { kind: 'activity', handler: 'version', input: { items: ['a', 'b'] } },
       {
         kind: 'map',
         over: 'items',
@@ -181,8 +202,56 @@ describe('registerWorkflowDocuments()', () => {
     await registerWorkflowDocuments(engine, host, { active: [document] });
     const run = await engine.start('map-wait', null, { id: 'map-wait-run' });
     await run.signal('continue', { ok: true });
+    await waitForCondition(async () => identities.length === 1, {
+      label: 'first wait-bearing map iteration to complete',
+    });
+    const waiting = await engine.getTimeline(run.id);
+    expect(
+      waiting.filter((entry) => entry.operationType === 'wait-signal').length,
+    ).toBeGreaterThanOrEqual(2);
+    await run.signal('continue', { ok: true });
     await run.result();
+    expect(identities.map(({ stepAddress }) => stepAddress)).toEqual(['3#0', '3#1']);
+  });
+
+  it('recovers a partially completed map without replaying effects, then cancels cleanly', async () => {
+    identities.length = 0;
+    const storage = new MemoryStorage();
+    const document = createDocument('map-restart-cancel', [
+      { kind: 'activity', handler: 'version', input: { items: ['a', 'b'] } },
+      {
+        kind: 'map',
+        over: 'items',
+        steps: [
+          { kind: 'await-signal', signal: 'continue' },
+          { kind: 'activity', handler: 'identify' },
+        ],
+      },
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      const run = await original.start('map-restart-cancel', null, {
+        id: 'map-restart-cancel-run',
+      });
+      await run.signal('continue', { item: 'a' });
+      await waitForCondition(async () => identities.length === 1, {
+        label: 'partial map result to commit before restart',
+      });
+    }
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [run] = await restarted.recoverAll();
+    expect(run?.id).toBe('map-restart-cancel-run');
+    await run!.cancel();
     expect(identities.map(({ stepAddress }) => stepAddress)).toEqual(['3#0']);
+    const state = await restarted.get('map-restart-cancel-run');
+    const timeline = await restarted.getTimeline('map-restart-cancel-run');
+    expect(state?.status).toBe('cancelled');
+    expect(
+      timeline.some((entry) => entry.operationType === 'activity' && entry.status === 'running'),
+    ).toBe(false);
   });
   it('runs only the matching branch case and continues with its result', async () => {
     traces.length = 0;

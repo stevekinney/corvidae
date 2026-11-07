@@ -22,7 +22,11 @@ import {
   type WorkflowRuntimeOptions,
   WorkflowApplyError,
 } from './workflow-runtime';
-import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-host';
+import {
+  createWorkflowDocumentHost,
+  type AgentStepRequest,
+  type AgentStepResult,
+} from './workflow-host';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
@@ -67,6 +71,7 @@ interface World {
     prepare?: (engine: Engine) => void;
     /** The contributed activities and trigger kinds the files may use (COR-1874). */
     contributions?: WorkflowContributions;
+    runAgentStep?: (request: AgentStepRequest) => Promise<AgentStepResult>;
   }): Promise<{
     readonly engine: Engine;
     readonly runtime: WorkflowRuntime;
@@ -103,7 +108,13 @@ async function world(): Promise<World> {
           contributions: options.contributions,
           runAgentStep: async (request) => {
             requests.push(request);
-            return { content: request.message, output: null, finishReason: 'stop-condition' };
+            return (
+              options.runAgentStep?.(request) ?? {
+                content: request.message,
+                output: null,
+                finishReason: 'stop-condition',
+              }
+            );
           },
         }),
         snapshotStore: createWorkflowSnapshotStore({
@@ -120,6 +131,50 @@ async function world(): Promise<World> {
     },
   };
 }
+
+describe('mapped agent steps', () => {
+  it('returns distinct actual agent run ids for each parent-run iteration', async () => {
+    const w = await world();
+    await w.put('mapped', {
+      name: 'mapped',
+      trigger: { kind: 'manual' },
+      steps: [
+        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'seed' } },
+        {
+          kind: 'map',
+          over: 'output',
+          concurrency: 2,
+          steps: [
+            { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'item' } },
+          ],
+        },
+      ],
+    });
+    let agentRunNumber = 0;
+    const { engine } = await w.boot({
+      runAgentStep: async (request) => {
+        if (request.message.includes('seed')) {
+          return {
+            content: 'seed',
+            output: ['one', 'two'],
+            finishReason: 'stop-condition',
+          };
+        }
+        return {
+          content: request.message,
+          output: { runId: `agent-run-${String(++agentRunNumber)}` },
+          finishReason: 'stop-condition',
+        };
+      },
+    });
+    const run = await engine.start('mapped', null, { id: 'mapped-run' });
+    const result = (await run.result()) as AgentStepResult[];
+    const runIds = result.map((item) => (item.output as { runId: string }).runId);
+    expect(runIds).toEqual(['agent-run-1', 'agent-run-2']);
+    expect(new Set(runIds).size).toBe(2);
+    expect(w.requests.filter((request) => request.message.includes('item'))).toHaveLength(2);
+  });
+});
 
 async function versionOf(engine: Engine, workflowId: string): Promise<string | undefined> {
   const state = await engine.get(workflowId);

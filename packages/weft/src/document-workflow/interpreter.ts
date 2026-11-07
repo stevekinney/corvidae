@@ -139,6 +139,44 @@ export function* documentActivityOperation<T>(
   }
 }
 
+function mapSource(
+  step: Extract<WorkflowDocument['steps'][number], { kind: 'map' }>,
+  index: number,
+  previous: unknown,
+): readonly unknown[] {
+  const source =
+    typeof previous === 'object' && previous !== null
+      ? Object.getOwnPropertyDescriptor(previous, step.over)?.value
+      : undefined;
+  if (!Array.isArray(source)) {
+    throw new WorkflowDocumentMapError(
+      'not-array',
+      `Map step ${String(index)} requires field "${step.over}" of the previous result to be an array`,
+    );
+  }
+  if (source.length > 1000) {
+    throw new WorkflowDocumentMapError(
+      'too-many',
+      `Map step ${String(index)} cannot iterate more than 1000 items (received ${String(source.length)})`,
+    );
+  }
+  return source;
+}
+
+function branchSteps(
+  step: Extract<WorkflowDocument['steps'][number], { kind: 'branch' }>,
+  previous: unknown,
+): readonly WorkflowDocument['steps'][number][] {
+  const candidate =
+    typeof previous === 'object' && previous !== null && Object.hasOwn(previous, step.on)
+      ? Object.getOwnPropertyDescriptor(previous, step.on)?.value
+      : undefined;
+  const literal = String(candidate);
+  const selected = Object.hasOwn(step.cases, literal) ? step.cases[literal] : step.otherwise;
+  if (selected === undefined) throw new WorkflowDocumentBranchError(step.on, candidate);
+  return selected;
+}
+
 /**
  * Build the workflow definition that interprets `document`. Its version is the
  * document's {@link workflowDocumentVersion}. Its `.activities()` map holds
@@ -188,14 +226,76 @@ export async function buildDocumentWorkflowDefinition(
     // Pure, and the same on a replay: it reads the recorded input and yields nothing.
     checkSchema('input', firedBy);
     type RunState = { previous: unknown; pendingSignal: unknown; lastStepWasSignal: boolean };
+    type RunSteps = (
+      steps: readonly WorkflowDocument['steps'][number][],
+      iteration: readonly (string | number)[],
+      state: RunState,
+    ) => Generator<ContextOperationRequest, unknown, unknown>;
+    const indexOf = (step: WorkflowDocument['steps'][number]): number => {
+      const index = stepIndexes.get(step);
+      if (index === undefined) throw new Error('Document step is missing from its static index');
+      return index;
+    };
+    function* runMap(
+      step: Extract<WorkflowDocument['steps'][number], { kind: 'map' }>,
+      index: number,
+      iteration: readonly (string | number)[],
+      state: RunState,
+      runNested: RunSteps,
+    ): Generator<ContextOperationRequest, void, unknown> {
+      const source = mapSource(step, index, state.previous);
+      const results: unknown[] = [];
+      if (containsWait(step.steps)) {
+        for (const [offset, value] of source.entries()) {
+          const itemState: RunState = {
+            previous: value,
+            pendingSignal: undefined,
+            lastStepWasSignal: false,
+          };
+          yield* runNested(step.steps, [...iteration, offset], itemState);
+          results.push(itemState.lastStepWasSignal ? itemState.pendingSignal : itemState.previous);
+        }
+      } else {
+        const batchSize = step.concurrency ?? 4;
+        for (let start = 0; start < source.length; start += batchSize) {
+          const operations = source.slice(start, start + batchSize).map((value, offset) => {
+            const itemState: RunState = {
+              previous: value,
+              pendingSignal: undefined,
+              lastStepWasSignal: false,
+            };
+            return (function* (): Generator<ContextOperationRequest, unknown, unknown> {
+              const result = yield* runNested(
+                step.steps,
+                [...iteration, start + offset],
+                itemState,
+              );
+              return itemState.lastStepWasSignal
+                ? itemState.pendingSignal
+                : result === undefined
+                  ? itemState.previous
+                  : result;
+            })();
+          });
+          results.push(
+            ...(yield* context.all(operations) as unknown as Generator<
+              ContextOperationRequest,
+              unknown[],
+              unknown
+            >),
+          );
+        }
+      }
+      state.previous = results;
+      state.pendingSignal = undefined;
+    }
     const runSteps = function* (
       steps: readonly WorkflowDocument['steps'][number][],
       iteration: readonly (string | number)[],
       state: RunState,
     ): Generator<ContextOperationRequest, unknown, unknown> {
       for (const step of steps) {
-        const index = stepIndexes.get(step);
-        if (index === undefined) throw new Error('Document step is missing from its static index');
+        const index = indexOf(step);
         const address = documentStepAddress(index, iteration);
         state.lastStepWasSignal = step.kind === 'await-signal';
         switch (step.kind) {
@@ -227,88 +327,11 @@ export async function buildDocumentWorkflowDefinition(
             );
             break;
           case 'branch': {
-            const candidate =
-              typeof state.previous === 'object' &&
-              state.previous !== null &&
-              Object.hasOwn(state.previous, step.on)
-                ? Object.getOwnPropertyDescriptor(state.previous, step.on)?.value
-                : undefined;
-            const literal = String(candidate);
-            const selected = Object.hasOwn(step.cases, literal)
-              ? step.cases[literal]
-              : step.otherwise;
-            if (selected === undefined) throw new WorkflowDocumentBranchError(step.on, candidate);
-            yield* runSteps(selected, iteration, state);
+            yield* runSteps(branchSteps(step, state.previous), iteration, state);
             break;
           }
           case 'map': {
-            const source =
-              typeof state.previous === 'object' && state.previous !== null
-                ? Object.getOwnPropertyDescriptor(state.previous, step.over)?.value
-                : undefined;
-            if (!Array.isArray(source)) {
-              throw new WorkflowDocumentMapError(
-                'not-array',
-                `Map step ${String(index)} requires field "${step.over}" of the previous result to be an array`,
-              );
-            }
-            if (source.length > 1000) {
-              throw new WorkflowDocumentMapError(
-                'too-many',
-                `Map step ${String(index)} cannot iterate more than 1000 items (received ${String(source.length)})`,
-              );
-            }
-            const concurrency = step.concurrency ?? 4;
-            const values = source;
-            const results: unknown[] = [];
-            if (containsWait(step.steps)) {
-              for (const [offset, value] of values.entries()) {
-                const itemState: RunState = {
-                  previous: value,
-                  pendingSignal: undefined,
-                  lastStepWasSignal: false,
-                };
-                yield* runSteps(step.steps, [...iteration, offset], itemState);
-                results.push(
-                  itemState.lastStepWasSignal ? itemState.pendingSignal : itemState.previous,
-                );
-              }
-              state.previous = results;
-              state.pendingSignal = undefined;
-              break;
-            }
-            const batchSize = concurrency;
-            for (let start = 0; start < values.length; start += batchSize) {
-              const batch = values.slice(start, start + batchSize);
-              const operations = batch.map((value, offset) => {
-                const itemState: RunState = {
-                  previous: value,
-                  pendingSignal: undefined,
-                  lastStepWasSignal: false,
-                };
-                return (function* (): Generator<ContextOperationRequest, unknown, unknown> {
-                  const result = yield* runSteps(
-                    step.steps,
-                    [...iteration, start + offset],
-                    itemState,
-                  );
-                  return itemState.lastStepWasSignal
-                    ? itemState.pendingSignal
-                    : result === undefined
-                      ? itemState.previous
-                      : result;
-                })();
-              });
-              results.push(
-                ...((yield* context.all(operations) as unknown as Generator<
-                  ContextOperationRequest,
-                  unknown[],
-                  unknown
-                >) as unknown[]),
-              );
-            }
-            state.previous = results;
-            state.pendingSignal = undefined;
+            yield* runMap(step, index, iteration, state, runSteps);
             break;
           }
         }

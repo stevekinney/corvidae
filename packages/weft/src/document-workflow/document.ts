@@ -53,7 +53,6 @@ export function documentStepAddress(
   if (iteration === undefined || iteration.length === 0) return String(step);
   return `${String(step)}#${iteration.map((segment) => encodeURIComponent(String(segment)).replaceAll('.', '%2E')).join('.')}`;
 }
-
 /**
  * A host-registered activity handler a document names by key. A thrown error
  * fails the instance with that error. The optional `context` is the activity's
@@ -286,7 +285,6 @@ export class WorkflowDocumentValidationError extends Error {
     this.issues = issues;
   }
 }
-
 /** Thrown when a branch has no matching case and no `otherwise` steps. */
 export class WorkflowDocumentBranchError extends Error {
   constructor(field: string, value: unknown) {
@@ -294,7 +292,6 @@ export class WorkflowDocumentBranchError extends Error {
     this.name = 'WorkflowDocumentBranchError';
   }
 }
-
 /** Thrown when a map step cannot iterate its previous result. */
 export class WorkflowDocumentMapError extends Error {
   readonly code: 'not-array' | 'too-many';
@@ -305,7 +302,6 @@ export class WorkflowDocumentMapError extends Error {
     this.code = code;
   }
 }
-
 /**
  * A run ended because its input or output did not satisfy the document's schema. The message
  * begins with `code`, then `: `, then each issue as `path: message` joined by `; `, so a host that
@@ -327,7 +323,6 @@ export class WorkflowDocumentSchemaError extends Error {
     this.issues = issues;
   }
 }
-
 function formatPath(path: readonly PropertyKey[]): string {
   let formatted = '';
   for (const segment of path) {
@@ -396,7 +391,6 @@ function hostIssues(
   issues.push(...pinIssues(document, host));
   return issues;
 }
-
 function visitSteps(
   steps: readonly WorkflowDocumentStep[],
   path: string,
@@ -415,7 +409,6 @@ function visitSteps(
     }
   }
 }
-
 /** The issues with a document's `activityVersions`: a pin for a handler no step uses, or one the host cannot honor. */
 function pinIssues(
   document: WorkflowDocument,
@@ -449,7 +442,6 @@ function pinIssues(
   }
   return issues;
 }
-
 /**
  * Validate `input` as a {@link WorkflowDocument} against what `host` has
  * registered, and return a detached copy. Call it when a document is written:
