@@ -236,8 +236,9 @@ describe('Home', () => {
       .map((row) => row.textContent?.replaceAll(/\s+/g, ' ').trim());
     expect(rows[0]).toContain('Waiting on you');
     expect(rows[0]).toContain('Please refund order 4471, it arrived damaged.');
-    // A chat that waits on you says the question it asks.
-    expect(rows[0]).toContain('Refund order 4471 for $42.00?');
+    // A chat that waits on an approval says what the agent said (01l, 16f); one that waits on a
+    // question says the question.
+    expect(rows[0]).toContain('I found order 4471 ($42.00). I need your approval to refund it.');
     expect(rows[0]).toContain('10:42 AM');
     expect(rows[1]).toContain('Which environment should the release go to?');
     expect(rows[2]).toContain('Done');

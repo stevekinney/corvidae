@@ -179,6 +179,9 @@ test.describe('New chat on the sample world (23a, 23b, 23c, 23e, 23g, 23j)', () 
     const refund = row('Please refund order 4471, it arrived damaged.');
     await expect(refund).toContainText('10:42 AM');
     await expect(refund).toContainText('Waiting on you');
+    await expect(refund).toContainText(
+      'I found order 4471 ($42.00). I need your approval to refund it.',
+    );
     const release = row('Ship the release notes fix.');
     await expect(release).toContainText('9:46 AM');
     await expect(release).toContainText('Waiting on you');

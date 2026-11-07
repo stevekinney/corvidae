@@ -314,7 +314,7 @@ describe('a new chat', () => {
     ).restore;
     handOffFirstMessage('assistant', 'What did I approve yesterday?');
     landAt('/chats/new?agent=assistant');
-    const { findByText } = mount({
+    const { container, findByText } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'assistant',
@@ -322,6 +322,8 @@ describe('a new chat', () => {
     });
 
     await findByText('Hello from the agent.');
+    // The text went through the composer, and the started chat cleared it as it clears a typed one.
+    await waitFor(() => expect(container.querySelector('textarea')?.value).toBe(''));
     expect(bodies).toHaveLength(1);
     expect(bodies[0]?.messages.findLast((message) => message.role === 'user')?.content).toBe(
       'What did I approve yesterday?',

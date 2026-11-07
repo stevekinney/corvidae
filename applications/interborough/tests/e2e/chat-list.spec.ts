@@ -95,9 +95,11 @@ test.describe('the chat list on the sample world', () => {
     const refund = row(page, 'Please refund order 4471, it arrived damaged.');
     await expect(refund).toContainText('10:42 AM');
     await expect(refund).toContainText('Waiting on you');
-    // Line two is what the chat asks while it waits: the approval's own question, which is the
-    // thing to read (the agent's last words in the sample world are the order's note).
-    await expect(refund).toContainText('Refund order 4471 for $42.00?');
+    // Line two is the agent's own last words, which is what it needs from you (16f); a chat that
+    // waits on a question says the question instead.
+    await expect(refund).toContainText(
+      'I found order 4471 ($42.00). I need your approval to refund it.',
+    );
     const release = row(page, 'Ship the release notes fix.');
     await expect(release).toContainText('9:46 AM');
     await expect(release).toContainText('Waiting on you');
@@ -178,7 +180,7 @@ test.describe('the chat list at other widths', () => {
       /^Today · Monday, Nov 2\s*Central time$/,
     );
     await expect(row(page, 'Please refund order 4471, it arrived damaged.')).toContainText(
-      'Tool runner · Refund order 4471 for $42.00?',
+      'Tool runner · I found order 4471 ($42.00). I need your approval to refund it.',
     );
     await expect(row(page, 'Ship the release notes fix.')).toContainText(
       'Request human input · Which environment should the release go to?',

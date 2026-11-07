@@ -203,8 +203,11 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText('Waiting on you');
     await expect(rows.nth(0)).toContainText('Please refund order 4471, it arrived damaged.');
-    // A chat that waits on you says the question it asks.
-    await expect(rows.nth(0)).toContainText('Refund order 4471 for $42.00?');
+    // A chat that waits on an approval says what the agent said, and one that waits on a question
+    // says the question.
+    await expect(rows.nth(0)).toContainText(
+      'I found order 4471 ($42.00). I need your approval to refund it.',
+    );
     await expect(rows.nth(1)).toContainText('Which environment should the release go to?');
     await expect(rows.nth(0)).toContainText('10:42 AM');
     await expect(rows.nth(2)).toContainText('Done');
