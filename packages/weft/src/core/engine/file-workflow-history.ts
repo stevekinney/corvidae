@@ -298,6 +298,9 @@ function completionEvents(
 }
 
 function startEvents(operation: ContextOperationRequest, step: number): FileWorkflowEvent[] {
+  if (operation.type === 'parallel') {
+    return operation.operations.flatMap((child) => startEvents(child, step));
+  }
   const documentStep = (operation as ContextOperationRequest & { documentStep?: number })
     .documentStep;
   if (documentStep === undefined && operation.type !== 'activity') return [];
@@ -331,6 +334,33 @@ function startEvents(operation: ContextOperationRequest, step: number): FileWork
   return events;
 }
 
+function parallelCompletionEvents(operation: ContextOperationRequest): FileWorkflowEvent[] {
+  if (operation.type !== 'parallel') return [];
+  return operation.operations.flatMap((child) => {
+    const operationLabel =
+      child.type === 'activity'
+        ? child.activityName
+        : child.type === 'wait-signal'
+          ? child.signalName
+          : child.type;
+    const documentOperation = child as ContextOperationRequest & {
+      documentStep?: number;
+      documentStepAddress?: string;
+    };
+    return completionEvents({
+      operationType: child.type,
+      operationLabel,
+      ...(documentOperation.documentStep === undefined
+        ? {}
+        : { documentStep: documentOperation.documentStep }),
+      ...(documentOperation.documentStepAddress === undefined
+        ? {}
+        : { documentStepAddress: documentOperation.documentStepAddress }),
+      status: 'completed',
+    });
+  });
+}
+
 export async function appendFileWorkflowCheckpointEvents(
   internals: EngineInternals,
   workflowId: string,
@@ -344,6 +374,7 @@ export async function appendFileWorkflowCheckpointEvents(
   const pending = internals.pendingTimelineEntries.get(workflowId)?.entry;
   const events = [
     ...completionEvents(pending),
+    ...parallelCompletionEvents(operation),
     ...startEvents(operation, stepIndex(operation, pendingStepIndex)),
   ];
   return appendEvents(internals, workflowId, operations, events, existing, initialHead);

@@ -58,6 +58,8 @@ const host: DocumentWorkflowHost = {
       mapActive--;
       return { input, previous, stepAddress };
     },
+    mapAfter: ({ previous, stepAddress }) => ({ previous, stepAddress }),
+    mapUndefined: () => undefined,
     mapFail: async ({ previous }) => {
       mapActive++;
       mapMaximum = Math.max(mapMaximum, mapActive);
@@ -104,20 +106,63 @@ describe('registerWorkflowDocuments()', () => {
         kind: 'map',
         over: 'items',
         concurrency: 2,
-        steps: [{ kind: 'activity', handler: 'mapWork', input: 'work' }],
+        steps: [
+          { kind: 'activity', handler: 'mapWork', input: 'work' },
+          { kind: 'activity', handler: 'mapAfter' },
+        ],
       },
     ]);
     await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
     await registerWorkflowDocuments(engine, host, { active: [document] });
     const run = await engine.start('map-document', null, { id: 'map-run' });
     expect(await run.result()).toEqual([
-      { input: 'work', previous: 1, stepAddress: '2#0' },
-      { input: 'work', previous: 2, stepAddress: '2#1' },
-      { input: 'work', previous: 3, stepAddress: '2#2' },
-      { input: 'work', previous: 4, stepAddress: '2#3' },
-      { input: 'work', previous: 5, stepAddress: '2#4' },
+      {
+        previous: { input: 'work', previous: 1, stepAddress: '2#0' },
+        stepAddress: '3#0',
+      },
+      {
+        previous: { input: 'work', previous: 2, stepAddress: '2#1' },
+        stepAddress: '3#1',
+      },
+      {
+        previous: { input: 'work', previous: 3, stepAddress: '2#2' },
+        stepAddress: '3#2',
+      },
+      {
+        previous: { input: 'work', previous: 4, stepAddress: '2#3' },
+        stepAddress: '3#3',
+      },
+      {
+        previous: { input: 'work', previous: 5, stepAddress: '2#4' },
+        stepAddress: '3#4',
+      },
     ]);
     expect(mapMaximum).toBe(2);
+    const events = await fileWorkflowEvents(engine, 'map-run');
+    expect(
+      events
+        .filter((event) => event.type === 'file-workflow:activity-started')
+        .map((event) => event.data),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepAddress: '2#0' }),
+        expect.objectContaining({ stepAddress: '3#0' }),
+        expect.objectContaining({ stepAddress: '2#1' }),
+        expect.objectContaining({ stepAddress: '3#1' }),
+      ]),
+    );
+    expect(
+      events
+        .filter((event) => event.type === 'file-workflow:activity-completed')
+        .map((event) => event.data),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepAddress: '2#0' }),
+        expect.objectContaining({ stepAddress: '3#0' }),
+        expect.objectContaining({ stepAddress: '2#1' }),
+        expect.objectContaining({ stepAddress: '3#1' }),
+      ]),
+    );
   });
 
   it('defaults map concurrency to four iterations', async () => {
@@ -138,6 +183,17 @@ describe('registerWorkflowDocuments()', () => {
     });
     await run.result();
     expect(mapMaximum).toBe(4);
+  });
+
+  it('preserves an undefined result from a mapped item', async () => {
+    const document = createDocument('map-undefined', [
+      { kind: 'activity', handler: 'version', input: { items: [1] } },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'mapUndefined' }] },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-undefined', null, { id: 'map-undefined-run' });
+    expect(await run.result()).toEqual([undefined]);
   });
 
   it('rejects non-array and over-limit map inputs with named errors', async () => {

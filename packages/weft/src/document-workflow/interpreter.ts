@@ -163,6 +163,45 @@ function mapSource(
   return source;
 }
 
+function* runMapBatch(
+  context: WorkflowContext,
+  generators: Generator<ContextOperationRequest, unknown, unknown>[],
+): Generator<ContextOperationRequest, unknown[], unknown> {
+  const itemResults: unknown[] = Array.from({ length: generators.length });
+  let pending = generators.map((generator, itemIndex) => ({
+    generator,
+    itemIndex,
+    result: undefined as unknown,
+  }));
+  while (pending.length > 0) {
+    const nextPending: typeof pending = [];
+    const operations: Generator<ContextOperationRequest, unknown, unknown>[] = [];
+    for (const entry of pending) {
+      const next = entry.generator.next(entry.result);
+      if (next.done) itemResults[entry.itemIndex] = next.value;
+      else {
+        operations.push(
+          (function* (): Generator<ContextOperationRequest, unknown, unknown> {
+            return yield next.value;
+          })(),
+        );
+        nextPending.push(entry);
+      }
+    }
+    if (operations.length === 0) break;
+    const operationResults = yield* context.all(operations) as unknown as Generator<
+      ContextOperationRequest,
+      unknown[],
+      unknown
+    >;
+    for (let resultIndex = 0; resultIndex < nextPending.length; resultIndex++) {
+      nextPending[resultIndex]!.result = operationResults[resultIndex];
+    }
+    pending = nextPending;
+  }
+  return itemResults;
+}
+
 function branchSteps(
   step: Extract<WorkflowDocument['steps'][number], { kind: 'branch' }>,
   previous: unknown,
@@ -258,32 +297,17 @@ export async function buildDocumentWorkflowDefinition(
       } else {
         const batchSize = step.concurrency ?? 4;
         for (let start = 0; start < source.length; start += batchSize) {
-          const operations = source.slice(start, start + batchSize).map((value, offset) => {
+          const generators = source.slice(start, start + batchSize).map((value, offset) => {
             const itemState: RunState = {
               previous: value,
               pendingSignal: undefined,
               lastStepWasSignal: false,
             };
             return (function* (): Generator<ContextOperationRequest, unknown, unknown> {
-              const result = yield* runNested(
-                step.steps,
-                [...iteration, start + offset],
-                itemState,
-              );
-              return itemState.lastStepWasSignal
-                ? itemState.pendingSignal
-                : result === undefined
-                  ? itemState.previous
-                  : result;
+              return yield* runNested(step.steps, [...iteration, start + offset], itemState);
             })();
           });
-          results.push(
-            ...(yield* context.all(operations) as unknown as Generator<
-              ContextOperationRequest,
-              unknown[],
-              unknown
-            >),
-          );
+          results.push(...(yield* runMapBatch(context, generators)));
         }
       }
       state.previous = results;
