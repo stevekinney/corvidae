@@ -187,16 +187,23 @@ function* runMapBatch(
   generators: Generator<ContextOperationRequest, unknown, unknown>[],
 ): Generator<ContextOperationRequest, unknown[], unknown> {
   const itemResults: unknown[] = Array.from({ length: generators.length });
-  let pending = generators.map((generator, itemIndex) => ({
+  let pending: {
+    generator: Generator<ContextOperationRequest, unknown, unknown>;
+    itemIndex: number;
+    resume: { kind: 'next'; value: unknown } | { kind: 'throw'; error: unknown };
+  }[] = generators.map((generator, itemIndex) => ({
     generator,
     itemIndex,
-    result: undefined as unknown,
+    resume: { kind: 'next', value: undefined },
   }));
   while (pending.length > 0) {
     const nextPending: typeof pending = [];
     const operations: Generator<ContextOperationRequest, unknown, unknown>[] = [];
     for (const entry of pending) {
-      const next = entry.generator.next(entry.result);
+      const next =
+        entry.resume.kind === 'throw'
+          ? entry.generator.throw(entry.resume.error)
+          : entry.generator.next(entry.resume.value);
       if (next.done) itemResults[entry.itemIndex] = next.value;
       else {
         operations.push(
@@ -208,13 +215,18 @@ function* runMapBatch(
       }
     }
     if (operations.length === 0) break;
-    const operationResults = yield* context.all(operations) as unknown as Generator<
+    const operationResults = yield* context.allSettled(operations) as unknown as Generator<
       ContextOperationRequest,
       unknown[],
       unknown
     >;
     for (let resultIndex = 0; resultIndex < nextPending.length; resultIndex++) {
-      nextPending[resultIndex]!.result = operationResults[resultIndex];
+      const outcome = operationResults[resultIndex] as
+        { status: 'fulfilled'; value: unknown } | { status: 'rejected'; reason: unknown };
+      nextPending[resultIndex]!.resume =
+        outcome.status === 'fulfilled'
+          ? { kind: 'next', value: outcome.value }
+          : { kind: 'throw', error: outcome.reason };
     }
     pending = nextPending;
   }
