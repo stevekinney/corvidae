@@ -176,6 +176,8 @@ describe('registerWorkflowDocuments()', () => {
   });
 
   it('runs every step in a mapped item before collecting its result', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
     const document = createDocument('map-multi-step', [
       { kind: 'activity', handler: 'version', input: { items: [1, 2] } },
       {
@@ -194,6 +196,7 @@ describe('registerWorkflowDocuments()', () => {
       { previous: { input: 'work', previous: 1, stepAddress: '2#0' }, stepAddress: '3#0' },
       { previous: { input: 'work', previous: 2, stepAddress: '2#1' }, stepAddress: '3#1' },
     ]);
+    expect(mapMaximum).toBe(2);
   });
 
   it('preserves an undefined result from a mapped item', async () => {
@@ -222,7 +225,7 @@ describe('registerWorkflowDocuments()', () => {
     await registerWorkflowDocuments(engine, host, { active: [document] });
     const run = await engine.start('map-retry', null, { id: 'map-retry-run' });
     expect(await run.result()).toEqual([10, 20]);
-    expect(retryMapAttempts).toEqual([1, 1, 2]);
+    expect(retryMapAttempts).toEqual([1, 2, 1]);
   });
 
   it('rejects non-array and over-limit map inputs with named errors', async () => {

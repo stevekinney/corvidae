@@ -86,25 +86,6 @@ function containsWait(steps: readonly WorkflowDocument['steps'][number][]): bool
   );
 }
 
-function containsRetryingActivity(
-  steps: readonly WorkflowDocument['steps'][number][],
-  host: DocumentWorkflowHost,
-): boolean {
-  return steps.some((step) => {
-    if (step.kind === 'activity') {
-      const registered = Object.getOwnPropertyDescriptor(host.activities, step.handler)?.value;
-      return typeof registered !== 'function' && registered?.retry !== undefined;
-    }
-    if (step.kind === 'branch') {
-      return (
-        Object.values(step.cases).some((branch) => containsRetryingActivity(branch, host)) ||
-        (step.otherwise !== undefined && containsRetryingActivity(step.otherwise, host))
-      );
-    }
-    return step.kind === 'map' && containsRetryingActivity(step.steps, host);
-  });
-}
-
 function* documentOperation<T>(
   operation: Generator<unknown, T, unknown>,
   documentStep: number,
@@ -326,21 +307,6 @@ export async function buildDocumentWorkflowDefinition(
           results.push(itemState.lastStepWasSignal ? itemState.pendingSignal : itemState.previous);
         }
       } else {
-        const hasRetryingActivity = containsRetryingActivity(step.steps, host);
-        if (hasRetryingActivity || step.steps.length > 1) {
-          for (const [offset, value] of source.entries()) {
-            const itemState: RunState = {
-              previous: value,
-              pendingSignal: undefined,
-              lastStepWasSignal: false,
-            };
-            const result = yield* runNested(step.steps, [...iteration, offset], itemState);
-            results.push(itemState.lastStepWasSignal ? itemState.pendingSignal : result);
-          }
-          state.previous = results;
-          state.pendingSignal = undefined;
-          return;
-        }
         const batchSize = step.concurrency ?? 4;
         for (let start = 0; start < source.length; start += batchSize) {
           const generators = source.slice(start, start + batchSize).map((value, offset) => {
