@@ -247,6 +247,7 @@ export interface AgentStepRequest {
   /** The instance and the step, which together name this step's run across a restart. */
   readonly workflowId: string;
   readonly step: number;
+  readonly stepAddress?: string;
 }
 
 export interface WorkflowHostDependencies {
@@ -341,6 +342,7 @@ export function createWorkflowDocumentHost(
         message: composeAgentMessage(message, argument.trigger, argument.previous, argument.signal),
         workflowId: argument.workflowId,
         step: argument.step,
+        ...(argument.stepAddress === undefined ? {} : { stepAddress: argument.stepAddress }),
         ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       });
     },

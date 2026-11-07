@@ -20,7 +20,11 @@ import type {
   DocumentWorkflowHost,
   WorkflowDocument,
 } from './document.ts';
-import { WorkflowDocumentSchemaError, workflowDocumentVersion } from './document.ts';
+import {
+  documentStepAddress,
+  WorkflowDocumentSchemaError,
+  workflowDocumentVersion,
+} from './document.ts';
 
 /** The distinct values `pick` selects from the document's steps, in first-seen order. */
 function distinctStepValues(
@@ -38,6 +42,7 @@ function distinctStepValues(
 function* documentOperation<T>(
   operation: Generator<unknown, T, unknown>,
   documentStep: number,
+  stepAddress: string,
 ): Generator<ContextOperationRequest, T, unknown> {
   let input: unknown;
   while (true) {
@@ -46,6 +51,7 @@ function* documentOperation<T>(
     const request = result.value as ContextOperationRequest;
     if (request.type === 'activity' || request.type === 'sleep' || request.type === 'wait-signal') {
       request.documentStep = documentStep;
+      request.documentStepAddress = stepAddress;
     }
     input = yield request;
   }
@@ -59,13 +65,17 @@ function* documentOperation<T>(
 function* documentActivityOperation<T>(
   operation: Generator<unknown, T, unknown>,
   documentStep: number,
+  stepAddress: string,
 ): Generator<ContextOperationRequest, T, unknown> {
   let input: unknown;
   while (true) {
     const result = operation.next(input);
     if (result.done) return result.value;
     const request = result.value as ContextOperationRequest;
-    if (request.type === 'activity') request.documentStep = documentStep;
+    if (request.type === 'activity') {
+      request.documentStep = documentStep;
+      request.documentStepAddress = stepAddress;
+    }
     try {
       input = yield request;
     } catch (error) {
@@ -73,7 +83,10 @@ function* documentActivityOperation<T>(
       const thrown = operation.throw(error);
       if (thrown.done) return thrown.value;
       const thrownRequest = thrown.value as ContextOperationRequest;
-      if (thrownRequest.type === 'activity') thrownRequest.documentStep = documentStep;
+      if (thrownRequest.type === 'activity') {
+        thrownRequest.documentStep = documentStep;
+        thrownRequest.documentStepAddress = stepAddress;
+      }
       input = yield thrownRequest;
     }
   }
@@ -141,16 +154,22 @@ export async function buildDocumentWorkflowDefinition(
               ...(pendingSignal === undefined ? {} : { signal: pendingSignal }),
               workflowId: context.workflowId,
               step: index,
+              stepAddress: documentStepAddress(index),
             }),
             index,
+            documentStepAddress(index),
           );
           pendingSignal = undefined;
           break;
         case 'sleep':
-          yield* documentOperation(context.sleep(step.duration), index);
+          yield* documentOperation(context.sleep(step.duration), index, documentStepAddress(index));
           break;
         case 'await-signal':
-          pendingSignal = yield* documentOperation(context.waitForSignal(step.signal), index);
+          pendingSignal = yield* documentOperation(
+            context.waitForSignal(step.signal),
+            index,
+            documentStepAddress(index),
+          );
           break;
       }
     }
