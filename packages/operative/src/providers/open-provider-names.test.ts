@@ -23,6 +23,18 @@ const exampleDefinition = {
   stream: () => async () => ({ content: 'example', toolCalls: [] }),
 } as const satisfies ProviderDefinition<'example'>;
 
+const decisionOnlyDefinition = {
+  name: 'decision-only',
+  decide: () => ({
+    name: 'decision-only/model',
+    kinds: new Set(['boolean'] as const),
+    decide: async () => ({ value: true, provider: 'decision-only', model: 'model' }),
+  }),
+} as const satisfies ProviderDefinition<'decision-only'>;
+
+// @ts-expect-error A provider must expose at least one capability factory.
+const emptyDefinition = { name: 'empty' } satisfies ProviderDefinition<'empty'>;
+
 /** The row the example provider contributes: a seed row re-attributed to the provider's name. */
 function exampleRow(overrides: Partial<BackendDescriptor> = {}): BackendDescriptor {
   const [seed] = createModelCatalog({ now: () => FIXED_NOW }).descriptors;
@@ -40,6 +52,10 @@ function exampleRow(overrides: Partial<BackendDescriptor> = {}): BackendDescript
 }
 
 describe('ProviderName is open', () => {
+  it('allows a decision-only provider and rejects an empty definition at compile time', () => {
+    expect(decisionOnlyDefinition.name).toBe('decision-only');
+    expect(emptyDefinition).toBeDefined();
+  });
   it('accepts a name no built-in provider carries', () => {
     const name: ProviderName = 'example';
     expect(name).toBe(exampleDefinition.name);

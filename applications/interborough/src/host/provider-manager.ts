@@ -197,6 +197,10 @@ export type ProviderModelRow = {
   readonly tools: boolean;
   /** Whether the model can answer to a schema. */
   readonly structuredOutput: boolean;
+  readonly decisions?: {
+    readonly kinds: readonly string[];
+    readonly only: boolean;
+  };
   /** Whether the model takes images. */
   readonly images: boolean;
   /** The price per million tokens, when the catalog has one. */
@@ -374,6 +378,7 @@ function modelRowOf(row: BackendDescriptor): ProviderModelRow {
     streaming: row.streaming,
     tools: row.tools,
     structuredOutput: row.structuredOutput,
+    ...(row.decisions === undefined ? {} : { decisions: row.decisions }),
     images: row.modalities.image.input,
     ...(row.pricing === undefined
       ? {}

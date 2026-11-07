@@ -35,6 +35,7 @@ import type {
   GeneratedMediaAdmitter,
   DurableRunDeps,
   GenerateFunction,
+  DecisionModel,
   GenerationMode,
   GuardrailHooks,
   GuardrailsOptions,
@@ -1571,11 +1572,42 @@ export function resolveProviderGenerate(
       `Unknown provider "${configuration.provider}". Registered providers: ${registered === '' ? 'none' : registered}.`,
     );
   }
-  if (streamEventTarget === undefined) return definition.generate(configuration);
+  if (streamEventTarget === undefined) {
+    if (definition.generate === undefined) {
+      throw new TypeError(`Provider "${definition.name}" does not provide generate capability.`);
+    }
+    return definition.generate(configuration);
+  }
+  if (definition.stream === undefined) {
+    throw new TypeError(`Provider "${definition.name}" does not provide stream capability.`);
+  }
   return withEnhancedStreaming(definition.stream(configuration), {
     eventTarget: streamEventTarget,
     onTextDelta: streamingConfiguration?.onTextDelta,
   });
+}
+
+/** Builds the native decision model for a configured provider. */
+export function resolveProviderDecide(
+  definitions: readonly ProviderDefinition[],
+  configuration: ProviderConfiguration,
+): DecisionModel {
+  const seen = new Set<string>();
+  for (const { name } of definitions) {
+    if (seen.has(name)) throw new Error(`Duplicate provider definition "${name}".`);
+    seen.add(name);
+  }
+  const definition = definitions.find(({ name }) => name === configuration.provider);
+  if (definition === undefined) {
+    const registered = definitions.map(({ name }) => name).join(', ');
+    throw new Error(
+      `Unknown provider "${configuration.provider}". Registered providers: ${registered === '' ? 'none' : registered}.`,
+    );
+  }
+  if (definition.decide === undefined) {
+    throw new TypeError(`Provider "${definition.name}" does not provide decide capability.`);
+  }
+  return definition.decide(configuration);
 }
 
 export function applyCache(

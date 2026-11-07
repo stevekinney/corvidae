@@ -617,6 +617,7 @@ export {
   DEFAULT_RUN_MEMORY_CAPABILITIES,
   DEFAULT_TOOL_MEMORY_CAPABILITIES,
   resolveProviderGenerate,
+  resolveProviderDecide,
 } from './runtime-composition';
 export {
   serializeActionDetail,

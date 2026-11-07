@@ -1,6 +1,7 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import type { MediaLimits, MimeFamily, Modality, ModalityMatrix } from 'conversationalist';
 
+import type { DecisionKind } from '../decisions/types.ts';
 import { readEnvironmentConfiguration } from '../environment-configuration.ts';
 import { ANTHROPIC_LIMITS, GEMINI_LIMITS, OPENAI_LIMITS } from './model-catalog-data.ts';
 import {
@@ -60,6 +61,14 @@ export interface GeneratedAssetBehavior {
   readonly maxConcurrentGenerations?: number | undefined;
 }
 
+/** Decision requests a backend answers natively, and whether it answers decisions only. */
+export interface BackendDecisions {
+  /** The decision request kinds this backend answers. */
+  readonly kinds: readonly DecisionKind[];
+  /** Whether this backend is intended only for decisions, not generation. */
+  readonly only: boolean;
+}
+
 export interface BackendDescriptor {
   readonly descriptorVersion: number;
   readonly provider: ProviderName;
@@ -102,6 +111,8 @@ export interface BackendDescriptor {
   readonly tools: boolean;
   readonly parallelTools: boolean;
   readonly structuredOutput: boolean;
+  /** Native decision capabilities, when the backend exposes them. */
+  readonly decisions?: BackendDecisions | undefined;
   readonly parameterCompatibility: readonly (keyof BaseProviderOptions)[];
   readonly caching: boolean; // subsumes ProviderCapabilities.requestControlledContextCaching
   readonly batchInference: boolean;

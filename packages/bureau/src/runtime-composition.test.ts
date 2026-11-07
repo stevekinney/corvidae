@@ -73,6 +73,7 @@ import {
   recoveredRequestContext,
   registerTrailingOnStep,
   removeLastScheduledFireTranscript,
+  resolveProviderDecide,
   resolveProviderGenerate,
 } from './runtime-composition';
 
@@ -6727,5 +6728,48 @@ describe('resolveProviderGenerate', () => {
       `Duplicate provider definition "${duplicated}".`,
     );
     expect(received).toEqual([]);
+  });
+
+  it('names a provider when the requested capability is unavailable', () => {
+    const definition = {
+      name: 'decision-only',
+      decide: () => ({
+        name: 'decision-only/model',
+        kinds: new Set(['boolean'] as const),
+        decide: async () => ({ value: true, provider: 'decision-only', model: 'model' }),
+      }),
+    };
+    expect(() =>
+      resolveProviderGenerate(
+        [definition],
+        { provider: 'decision-only', model: 'x' },
+        undefined,
+        undefined,
+      ),
+    ).toThrow('Provider "decision-only" does not provide generate capability.');
+    expect(() =>
+      resolveProviderGenerate(
+        [definition],
+        { provider: 'decision-only', model: 'x' },
+        new TypedEventTarget<StreamEventMap>(),
+        undefined,
+      ),
+    ).toThrow('Provider "decision-only" does not provide stream capability.');
+  });
+
+  it('resolves a native decision model and names providers without decide', () => {
+    const model = {
+      name: 'native/model',
+      kinds: new Set(['boolean'] as const),
+      decide: async () => ({ value: true, provider: 'native', model: 'model' }),
+    };
+    const definition = { name: 'native', decide: () => model };
+    expect(resolveProviderDecide([definition], { provider: 'native', model: 'model' })).toBe(model);
+    expect(() =>
+      resolveProviderDecide(
+        [{ name: 'generate-only', generate: () => async () => ({ content: '', toolCalls: [] }) }],
+        { provider: 'generate-only', model: 'model' },
+      ),
+    ).toThrow('Provider "generate-only" does not provide decide capability.');
   });
 });
