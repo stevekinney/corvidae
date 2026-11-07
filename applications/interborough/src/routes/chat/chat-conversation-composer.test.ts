@@ -9,8 +9,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CHAT_COPY } from '../../app/copy.ts';
+import { restartProbing } from '../../app/restart/host-restart-flow.svelte.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
+import { installFakePluginHost } from '../settings/plugins/plugins-host.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
@@ -274,5 +276,51 @@ describe('a blocked composer', () => {
     );
     // The composer stays read-only until the person confirms.
     expect(composer(container)).toBeNull();
+  });
+
+  test('Enable and restart keeps the conversation on screen under the shared restart banner, which offers Retry now once the host stopped answering', async () => {
+    const probing = { ...restartProbing };
+    restartProbing.delayMs = 0;
+    restartProbing.retryDelayMs = () => 60_000;
+    serve({
+      'bureau.agents.definitions.get': () => ({
+        id: 'demo:release-helper',
+        source: 'code',
+        state: 'unavailable',
+        unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+        name: 'Release helper',
+        description: null,
+        a2a: false,
+        hash: null,
+        problem: null,
+        definition: null,
+        codeDefinition: null,
+      }),
+      'bureau.contexts.get': () => ({
+        ...CONTEXT,
+        agentName: 'demo:release-helper',
+        configVersion: 1,
+      }),
+    });
+    const host = installFakePluginHost([{ name: 'demo', enabled: false, contributions: [] }], {
+      downFor: 1,
+    });
+    try {
+      const { container, findByRole, findByTestId } = mount('demo:release-helper');
+      await fireEvent.click(await findByRole('button', { name: COPY.enableAndRestart }));
+      const dialog = await findByRole('dialog');
+      await fireEvent.click(
+        [...dialog.querySelectorAll('button')].find(
+          (button) => button.textContent?.trim() === CHAT_COPY.composer.enableDialog.confirm,
+        )!,
+      );
+
+      const banner = await findByTestId('chat-restart-banner');
+      await waitFor(() => expect(banner.textContent).toContain('Retry now'));
+      expect(container.querySelector('.weft-chat-surface')).not.toBeNull();
+    } finally {
+      host.restore();
+      Object.assign(restartProbing, probing);
+    }
   });
 });
