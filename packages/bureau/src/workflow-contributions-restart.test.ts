@@ -52,6 +52,20 @@ const pipeline = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   });
 
+const branchPipeline = () =>
+  workflowFileText('branch-pipeline', {
+    trigger: { kind: 'schedule', spec: '1h' },
+    steps: [
+      { kind: 'await-signal', signal: 'go' },
+      {
+        kind: 'branch',
+        on: 'status',
+        cases: { ready: [{ kind: 'activity', handler: 'x:y', input: 'nested' }] },
+        otherwise: [{ kind: 'activity', handler: 'x:y', input: 'fallback' }],
+      },
+    ],
+  });
+
 /** A store and a workflow directory that outlive the Bureaus started over them. */
 async function storeAndFiles() {
   const root = await mkdtemp(join(tmpdir(), 'bureau-contributions-restart-'));
@@ -144,6 +158,28 @@ async function resumed(harness: WorkflowBureauHarness): Promise<unknown> {
 }
 
 describe('a run waiting across a restart, on a revision that pins x:y@1', () => {
+  it('pins contributed activities nested in cases and otherwise before restart recovery', async () => {
+    const { bureauOver } = await storeAndFiles();
+    const first = await bureauOver('1', false, true);
+    await first.put('branch-pipeline.json', branchPipeline());
+    await first.bureau.workflows?.refresh();
+    const firstEngine = first.bureau.durableEngine()!;
+    await firstEngine.start('branch-pipeline', null, { id: 'branch-waiting' });
+    await waitUntil(() => waitsForGo(firstEngine, 'branch-waiting'), {
+      message: 'the branch run to wait for its signal',
+    });
+    await first.dispose();
+
+    const second = await bureauOver('2', false, true);
+    const run = await second.bureau.workflows?.getRun('branch-waiting');
+    expect(run?.status).toBe('cancelled');
+    expect(run?.unresumable).toEqual({
+      reason: 'version-mismatch',
+      activity: 'x:y@1',
+      availableVersions: ['2'],
+    });
+  });
+
   it('resumes on version 1 when version 1 is loaded', async () => {
     const { bureauOver } = await storeAndFiles();
     await parkedAtVersionOne(bureauOver);
@@ -216,29 +252,6 @@ describe('a run waiting across a restart, on a revision that pins x:y@1', () => 
 });
 
 describe('a new run, with the file unchanged', () => {
-  it('registers and runs a contributed handler nested in a branch', async () => {
-    const { bureauOver } = await storeAndFiles();
-    const bureau = await bureauOver('1', false, true);
-    await bureau.put(
-      'nested.json',
-      pipeline({
-        name: 'nested',
-        steps: [
-          { kind: 'activity', handler: 'x:y', input: 'status' },
-          {
-            kind: 'branch',
-            on: 'status',
-            cases: { ready: [{ kind: 'activity', handler: 'x:y', input: 'nested' }] },
-          },
-        ],
-      }),
-    );
-    await bureau.bureau.workflows?.refresh();
-
-    const handle = await bureau.bureau.durableEngine()!.start('nested', null, { id: 'nested-run' });
-    expect(await handle.result()).toBe(activityAnswer('1', 'nested'));
-  });
-
   it('runs on the version that is loaded now, as a new revision', async () => {
     const { bureauOver } = await storeAndFiles();
     await parkedAtVersionOne(bureauOver);

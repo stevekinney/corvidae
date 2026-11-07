@@ -433,11 +433,18 @@ function pinActivityVersions(
   const loaded = host.activityVersions;
   if (loaded === undefined) return document;
   const pins: Record<string, string> = {};
-  for (const step of document.steps) {
-    if (step.kind !== 'activity') continue;
-    const weftName = weftNameOf(step.handler);
-    if (Object.hasOwn(loaded, weftName)) pins[step.handler] = loaded[weftName]!;
-  }
+  const visit = (steps: readonly WorkflowDocument['steps'][number][]): void => {
+    for (const step of steps) {
+      if (step.kind === 'activity') {
+        const weftName = weftNameOf(step.handler);
+        if (Object.hasOwn(loaded, weftName)) pins[step.handler] = loaded[weftName]!;
+      } else if (step.kind === 'branch') {
+        for (const literal of Object.keys(step.cases).toSorted()) visit(step.cases[literal]!);
+        if (step.otherwise !== undefined) visit(step.otherwise);
+      }
+    }
+  };
+  visit(document.steps);
   return Object.keys(pins).length === 0 ? document : { ...document, activityVersions: pins };
 }
 
