@@ -55,13 +55,15 @@ const SPECIFICATIONS = {
  * on the sample world, the shell's chrome in each form it takes and each width it is drawn at, its
  * search, its not-found and forbidden pages, the restart flow (the failed dialog and the back-up
  * confirmations), Home on a fresh installation (`first-run.spec.ts`, whose own host holds no
- * provider, agent or chat), the chat list in each of its states (`chat-list.spec.ts`), and an open chat with its approval,
+ * provider, agent or chat), Home on the sample world in each state the HomeAndShell board draws
+ * (`home.spec.ts`), the chat list in each of its states (`chat-list.spec.ts`), and an open chat with its approval,
  * details popover, Permissions select, and its loading, offline, denied and answered-in-Reviews states
  * (`chat-page.spec.ts`), Chat on a phone and a tablet and with no provider (`chat-responsive.spec.ts`), and a chat of
  * thirty tool calls (`chat-tool-call-turn.spec.ts`), and the chat states of the ChatStates board: ended by
  * a restart, no provider, held by a disabled plugin, failed partway, not found and ended on a tool call
  * (`chat-states.spec.ts`), and New chat with Assistant, with no provider and once Assistant is
- * chosen (`chat-new.spec.ts`), and choosing an agent, typing, sending the first message, starting
+ * chosen (`chat-new.spec.ts`), New chat loading, failing to load, with no agents and failing to start
+ * (`chat-new-states.spec.ts`), and choosing an agent, typing, sending the first message, starting
  * from Workflows and the chat that came of it (`chat-new-workflows.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
@@ -71,12 +73,14 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/shell-states.spec.ts',
   'tests/e2e/restart.spec.ts',
   'tests/e2e/first-run.spec.ts',
+  'tests/e2e/home.spec.ts',
   'tests/e2e/chat-list.spec.ts',
   'tests/e2e/chat-page.spec.ts',
   'tests/e2e/chat-responsive.spec.ts',
   'tests/e2e/chat-tool-call-turn.spec.ts',
   'tests/e2e/chat-states.spec.ts',
   'tests/e2e/chat-new.spec.ts',
+  'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
 ] as const;
 
