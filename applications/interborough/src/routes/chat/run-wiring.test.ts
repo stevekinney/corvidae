@@ -541,6 +541,37 @@ describe('a stop', () => {
     ]);
   });
 
+  test('still waits for the run to end when the cancel request cannot be made', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const controller = new AbortController();
+    const { wiring, sent } = wiringOver(
+      [
+        waiting,
+        () => {
+          throw new TypeError('network down');
+        },
+        stream([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]),
+      ],
+      () => conversation,
+    );
+    const turn = frames(wiring, conversation, controller.signal).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await expectEventually(() => sent.length === 1);
+    // The turn is reading within a few turns of this process, however busy the host is.
+    for (let turn = 0; turn < 3; turn += 1) await yieldEventLoopTurn();
+
+    controller.abort();
+    await turn;
+
+    expect(sent.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+      `POST ${AG_UI_PATH}/agents/assistant/run`,
+      `POST ${AG_UI_PATH}/runs/native-1/cancel`,
+      `GET ${AG_UI_PATH}/runs/native-1`,
+    ]);
+  });
+
   test('leaves the Bureau’s run going when the page detaches, as it does when its chat is left', async () => {
     const conversation = appendUserMessage(empty(), 'Hello');
     const controller = new AbortController();

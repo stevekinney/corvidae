@@ -216,6 +216,13 @@ describe('the stop note on the transcript', () => {
     expect(failedStopNoteId(plain)).toBeUndefined();
   });
 
+  test('reads a transcript whose order names a row it does not hold as having no failed stop', () => {
+    const base = calling('issue-refund');
+    const dangling = { ...base, ids: [...base.ids, 'missing'] };
+
+    expect(failedStopNoteId(dangling)).toBeUndefined();
+  });
+
   test('a transcript with no failed stop note is the very transcript it was', () => {
     const base = calling('issue-refund');
     expect(withStopLine(base, { tools })).toBe(base);
