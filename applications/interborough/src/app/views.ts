@@ -88,6 +88,30 @@ export type ViewDefinition = {
    * content for that location instead of the empty state it just came from.
    */
   readonly creating?: (search: URLSearchParams) => boolean;
+  /**
+   * Whether the page draws its own loading state. The frame then shows the page while its probe is
+   * still pending, instead of the generic loading heading, so the page's navigation and heading are
+   * real text and only its rows are placeholders (Settings, design row 48t). A failed or refused
+   * probe still replaces the page with the frame's forbidden state.
+   */
+  readonly pageOwnsLoading?: boolean;
+  /**
+   * Whether the page words its own failure. The frame then shows the page when its probe fails
+   * (not when it is refused), instead of replacing it with the generic error, so the page's
+   * navigation and heading stay and only its content is the error state; and a failed refresh
+   * of what the page already shows is the page's banner, not the frame's (Settings, design row
+   * 50m: "with nothing to show, the full error state replaces the section").
+   */
+  readonly pageOwnsFailure?: boolean;
+  /**
+   * Whether the page draws its own loading, empty, failed and refresh-failed states under its own
+   * header, which a list page needs (its heading, its filter bar and its "+" stay in every state).
+   * The frame still probes and still says what it learned in `data-state`, and it still refuses
+   * (forbidden, not found), but it renders the page in every other state instead of replacing it,
+   * and it draws no refresh error above it. The page reads its words from `VIEW_COPY`, so the
+   * frame and the page never say them two ways.
+   */
+  readonly ownsStates?: boolean;
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
@@ -117,19 +141,24 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   schedules: {
     scopes: ['schedules:read'],
     canBeEmpty: true,
+    ownsStates: true,
   },
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because
   // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau.
   reviews: { scopes: [], canBeEmpty: false },
-  workers: { scopes: ['system:read'], canBeEmpty: false },
+  // The Health tab keeps its heading, its tab bar and its Live indicator in every state, so the page
+  // draws its own loading, empty and failed states under them (`routes/workers/workers-states.svelte`).
+  workers: { scopes: ['system:read'], canBeEmpty: false, ownsStates: true },
   storage: { scopes: ['storage:admin'], canBeEmpty: false },
   // Holds no console scope: the Bureau shows each caller the records about what it owns, and a
-  // principal that may see none is answered with an empty page, so owner scoping is the gate.
-  audit: { scopes: [], canBeEmpty: true },
+  // principal that may see none is answered with an empty page, so owner scoping is the gate. The
+  // Health tab keeps its heading and tab bar, and the log its filters, in every state, so the page
+  // draws its own loading, empty, failed and refresh-failed states (`routes/audit/index.svelte`).
+  audit: { scopes: [], canBeEmpty: true, ownsStates: true },
   // The Bureau's runtime settings. They are deployment-wide, so no owner scopes them, and the view
   // holds no console scope: the Bureau answers the scopes it declares. It always has something to show.
-  settings: { scopes: [], canBeEmpty: false },
+  settings: { scopes: [], canBeEmpty: false, pageOwnsLoading: true, pageOwnsFailure: true },
   // In the sidebar after Schedules. Holds no console scope, as the audit trail holds none: a caller
   // sees the goals it owns. `/goals/new` is where the first goal is made, so it is never empty.
   goals: { scopes: [], canBeEmpty: true },

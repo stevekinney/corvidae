@@ -9,7 +9,16 @@
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
-import { afterEach, beforeAll, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { FIRST_RUN_SAID_HELLO_KEY } from '../../app/first-run.ts';
@@ -32,9 +41,17 @@ import {
 
 let installed: InstalledHome | undefined;
 
+// `bun test` runs in UTC without naming it in `TZ`, so the zone to give back is the one in effect.
+const zoneBefore = process.env['TZ'] ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 beforeAll(() => {
   // The date line and the times read the viewer's zone, which the board draws as Central time.
   process.env['TZ'] = 'America/Chicago';
+});
+
+afterAll(() => {
+  // The zone is the process's: another file in this worker reads its own.
+  process.env['TZ'] = zoneBefore;
 });
 
 beforeEach(() => {
@@ -416,7 +433,7 @@ describe('Home’s Start a chat card (01k)', () => {
 function freshInstallation(overrides: Partial<HomeWorld> = {}): HomeWorld {
   return sampleHomeWorld({
     chats: [],
-    attention: [{ kind: 'no-provider', at: null, provider: null }],
+    attention: [{ kind: 'no-provider', area: 'providers', at: null, provider: null }],
     world: emptyBureauWorld({ reviews: [] }),
     ...overrides,
   });

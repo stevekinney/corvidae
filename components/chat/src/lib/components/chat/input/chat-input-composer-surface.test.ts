@@ -174,6 +174,36 @@ describe('the formatting row', () => {
     elsewhere.remove();
   });
 
+  test('opens when the text box takes focus, not when a header control does, and stays while focus moves inside the composer', async () => {
+    // The row opens above the text and the composer grows upward, so a header control that opened
+    // it would move out from under the pointer before mouseup and its click would be lost.
+    const header = createRawSnippet(() => ({
+      render: () => '<button type="button" data-testid="agent-select">Assistant</button>',
+    }));
+    const { container, getByTestId } = render(ChatInput, {
+      id: 'surface-focus',
+      formattingToolbar: true,
+      header,
+    });
+    const form = container.querySelector('form.chat-input')!;
+    const select = getByTestId('agent-select');
+    const editor = container.querySelector('textarea')!;
+
+    await fireEvent.focusIn(select);
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+
+    await fireEvent.focusIn(editor);
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    // Focus moving to the header's control within the composer keeps the row, so nothing moves.
+    await fireEvent.focusOut(editor, { relatedTarget: select });
+    await fireEvent.focusIn(select);
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    await fireEvent.focusOut(select, { relatedTarget: document.body });
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+  });
+
   test('draws no row unless the toolbar is on', () => {
     const { container } = render(ChatInput, { id: 'surface-no-format' });
     expect(container.querySelector('.chat-input-format')).toBeNull();

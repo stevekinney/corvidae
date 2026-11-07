@@ -67,7 +67,7 @@ describe('WorkflowRevisionsPanel activation', () => {
     });
   });
 
-  test("a successful activation also invalidates the workflow's refresh diagnostics", async () => {
+  test("a successful activation invalidates the workflow's revisions, its active pointer and the registry", async () => {
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethod('weft.workflows.revisions.list', [
       revisionRecord('order-processing-rev-1'),
@@ -92,7 +92,9 @@ describe('WorkflowRevisionsPanel activation', () => {
     await findByText('Compatible');
 
     const keys = invalidate.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey));
-    expect(keys).toContain(JSON.stringify(queryKeys.catalog.refresh('order-processing')));
+    expect(keys).toContain(JSON.stringify(queryKeys.catalog.revisions('order-processing')));
+    expect(keys).toContain(JSON.stringify(queryKeys.catalog.active('order-processing')));
+    expect(keys).toContain(JSON.stringify(queryKeys.registry()));
   });
 
   test('a refusal carrying compatibilityReasons renders every reason as explicit text, never color alone', async () => {

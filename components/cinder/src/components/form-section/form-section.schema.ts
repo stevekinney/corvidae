@@ -17,6 +17,11 @@ const schema = {
       enum: [1, 2, 3, 4],
       description: 'Column ceiling. Container queries pick the actual rendered count. Default 2.',
     },
+    grouped: {
+      type: 'boolean',
+      description:
+        'Draws the children as one bordered card, each child separated from the next by a divider, under\na larger heading and description. For a page of settings: the children are `SettingRow`s, and a\ngrouped section is always one column.',
+    },
     class: {
       type: 'string',
       description: 'Additional class merged with `.cinder-form-section`.',
@@ -40,8 +45,8 @@ const schema = {
       {
         name: 'children',
         reason: 'function-or-snippet',
-        required: true,
-        description: 'Children (FormField instances or arbitrary content).',
+        description:
+          "Children (FormField instances or arbitrary content). Optional: a section with none draws its\nheading and description alone, for a list that is empty and says so in the page's own words.",
       },
     ],
   },

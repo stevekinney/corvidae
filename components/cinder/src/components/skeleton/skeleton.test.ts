@@ -3,6 +3,7 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { createRawSnippet, flushSync } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
@@ -331,6 +332,49 @@ describe('Skeleton list variant', () => {
     expect(band?.nextElementSibling?.classList.contains('cinder-skeleton-row')).toBe(true);
   });
 
+  test('statusColumn keeps the shared status column by default, and drops it for rows with no status', () => {
+    const kept = render(Skeleton, { props: { variant: 'list', rows: 2 } });
+    expect(
+      kept.container.querySelector('.cinder-skeleton-row[data-cinder-status-column]'),
+    ).toBeNull();
+    cleanup();
+    const dropped = render(Skeleton, {
+      props: { variant: 'list', rows: 2, statusMarker: 'dot', statusColumn: false },
+    });
+    const rows = dropped.container.querySelectorAll('.cinder-skeleton-row');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.getAttribute('data-cinder-status-column')).toBe('none');
+  });
+
+  test('framed keeps the list border by default, and drops it inside a card that frames its rows', () => {
+    const framed = render(Skeleton, { props: { variant: 'list', rows: 1 } });
+    expect(framed.container.querySelector('.cinder-skeleton-list[data-cinder-framed]')).toBeNull();
+    cleanup();
+    const bare = render(Skeleton, { props: { variant: 'list', rows: 1, framed: false } });
+    expect(
+      bare.container.querySelector('.cinder-skeleton-list')?.getAttribute('data-cinder-framed'),
+    ).toBe('false');
+  });
+
+  test('statusMarker is a bar by default, and a dot in the same column when asked', () => {
+    const plain = render(Skeleton, { props: { variant: 'list', rows: 2 } });
+    for (const bar of plain.container.querySelectorAll('.cinder-skeleton-status-bar')) {
+      expect(bar.hasAttribute('data-cinder-marker')).toBe(false);
+    }
+    cleanup();
+    const dotted = render(Skeleton, { props: { variant: 'list', rows: 2, statusMarker: 'dot' } });
+    const dots = dotted.container.querySelectorAll(
+      '.cinder-skeleton-row-status > .cinder-skeleton-status-bar[data-cinder-marker="dot"]',
+    );
+    expect(dots).toHaveLength(2);
+    const rule = declarationsFor(
+      skeletonCss,
+      ".cinder-skeleton-status-bar[data-cinder-marker='dot']",
+    );
+    expect(rule.get('width')).toBe('0.5rem');
+    expect(rule.get('border-radius')).toBe('var(--cinder-radius-full)');
+  });
+
   test('label is announced through a visually hidden polite status outside the hidden rows', () => {
     const { container } = render(Skeleton, { props: { variant: 'list', label: 'Loading agents' } });
     const status = container.querySelector('[role="status"]');
@@ -500,5 +544,35 @@ describe('Skeleton list variant timing', () => {
       getByRole('button', { name: 'Cancel' }).click();
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('Skeleton form variant', () => {
+  test('draws a label bar over a control bar for each of `rows` fields, and no list rows', () => {
+    const { container } = render(Skeleton, { props: { variant: 'form', rows: 2 } });
+    const group = container.querySelector('.cinder-skeleton-group');
+    expect(group?.getAttribute('data-cinder-variant')).toBe('form');
+    expect(container.querySelectorAll('.cinder-skeleton-field-label')).toHaveLength(2);
+    expect(container.querySelectorAll('.cinder-skeleton-field-control')).toHaveLength(2);
+    expect(container.querySelector('.cinder-skeleton-row')).toBeNull();
+    const bars = [...(container.querySelector('.cinder-skeleton-lines')?.children ?? [])];
+    expect(bars.map((bar) => bar.className.split(' ').at(-1))).toEqual([
+      'cinder-skeleton-field-label',
+      'cinder-skeleton-field-control',
+      'cinder-skeleton-field-label',
+      'cinder-skeleton-field-control',
+    ]);
+  });
+
+  test('keeps its own Still loading status with Cancel', () => {
+    const { container } = render(Skeleton, {
+      props: { variant: 'form', stillLoadingAfter: 0, onCancel: () => undefined },
+    });
+    expect(container.querySelector('.cinder-skeleton-status-label')?.textContent).toContain(
+      'Still loading',
+    );
+    expect(container.querySelector('.cinder-skeleton-status button')?.textContent).toContain(
+      'Cancel',
+    );
   });
 });

@@ -33,6 +33,11 @@
       "description": "Label of the retry button.",
       "default": "Try again"
     },
+    "retryVariant": {
+      "enum": ["primary", "secondary"],
+      "description": "How prominent the retry button is. `'primary'` suits a full-page failure, where retrying is\nthe one thing to do. `'secondary'` suits a section of a page that has other controls, such as\na tab's body under a tab bar, so the retry does not outrank them.",
+      "default": "primary"
+    },
     "headingLevel": {
       "enum": [1, 2, 3, 4, 5, 6],
       "description": "Heading level for the title element.",
@@ -47,6 +52,11 @@
       "enum": ["default", "compact"],
       "description": "Scale of the centred layout. `'compact'` tightens the padding, shrinks the disc to 40px and\ntints it neutral, sets the title in the base size, and makes the retry a small secondary\nbutton with no refresh glyph, so the state fits a list pane that failed to load without\nclaiming the page's one primary action. It has no effect on the `'flat'` and `'row'`\nvariants.",
       "default": "default"
+    },
+    "bordered": {
+      "type": "boolean",
+      "description": "Draws the state inside a bordered, rounded box, for a list or page body that has no\ncontainer of its own. Leave it off when a card or panel already surrounds the state. It\napplies to the centred layout; the `'flat'` variant has no box.",
+      "default": false
     },
     "class": {
       "type": "string",

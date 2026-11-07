@@ -11,6 +11,7 @@ import {
   holdsJson,
   inSection,
   MODEL_POLICY_KEY,
+  settingLabel,
 } from './settings-controls.ts';
 
 /** The schema the Bureau publishes, built as `bureau.settings.schema()` builds it. */
@@ -56,6 +57,8 @@ describe('the controls', () => {
       'decisions.maximumPerTask': 'number',
       'context.summarizerModel': 'choice',
       'retention.audit': 'form',
+      'retention.runs': 'form',
+      'retention.chats': 'form',
       'retention.events': 'form',
       'retention.tasks': 'form',
       'retention.receipts': 'form',
@@ -73,6 +76,7 @@ describe('the controls', () => {
       'engine.retentionSweepInterval': 'number',
       'engine.retentionSweepBatchSize': 'number',
       'engine.history': 'form',
+      'engine.maxConcurrentRuns': 'number',
       'engine.payloadSize': 'form',
       'engine.checkpointSizeWarningThreshold': 'number',
       'engine.schedulerPollIntervalMs': 'number',
@@ -84,6 +88,9 @@ describe('the controls', () => {
       maintenance: 'select',
       'durableOwnership.ownership': 'select',
       workflowVersion: 'text',
+      'a2a.enabled': 'toggle',
+      // A record of agent names to booleans: the A2A page draws its own switch per agent.
+      'a2a.agents': 'json',
       'a2a.push.enabled': 'toggle',
       'a2a.push.sweepIntervalMs': 'number',
     });
@@ -160,14 +167,28 @@ describe('the controls', () => {
 });
 
 describe('the sections', () => {
-  test('keep the model policy, the decisions and A2A out of General and nothing else out of it', () => {
-    expect(inSection(MODEL_POLICY_KEY, 'model-policy')).toBe(true);
+  test('hold the retention windows under Data and retention, and nowhere else', () => {
+    for (const key of SETTING_KEYS.filter((key) => key.startsWith('retention.'))) {
+      expect(inSection(key, 'retention'), key).toBe(true);
+      for (const other of ['general', 'allowed-models', 'decisions', 'a2a'] as const) {
+        expect(inSection(key, other), `${key} in ${other}`).toBe(false);
+      }
+    }
+  });
+
+  test('keep the model policy, the decisions, A2A and retention out of General and nothing else out of it', () => {
+    expect(inSection(MODEL_POLICY_KEY, 'allowed-models')).toBe(true);
     expect(inSection(MODEL_POLICY_KEY, 'general')).toBe(false);
     for (const key of SETTING_KEYS.filter(
-      (key) => key !== MODEL_POLICY_KEY && !key.startsWith('decisions.') && !key.startsWith('a2a.'),
+      (key) =>
+        key !== MODEL_POLICY_KEY &&
+        !key.startsWith('decisions.') &&
+        !key.startsWith('a2a.') &&
+        !key.startsWith('retention.'),
     )) {
       expect(inSection(key, 'general'), key).toBe(true);
-      expect(inSection(key, 'model-policy'), key).toBe(false);
+      expect(inSection(key, 'retention'), key).toBe(false);
+      expect(inSection(key, 'allowed-models'), key).toBe(false);
       expect(inSection(key, 'decisions'), key).toBe(false);
       expect(inSection(key, 'a2a'), key).toBe(false);
     }
@@ -175,11 +196,16 @@ describe('the sections', () => {
 
   test('give the A2A section exactly the a2a settings, and no other section any of them', () => {
     const a2a = SETTING_KEYS.filter((key) => key.startsWith('a2a.'));
-    expect(a2a.toSorted()).toEqual(['a2a.push.enabled', 'a2a.push.sweepIntervalMs']);
+    expect(a2a.toSorted()).toEqual([
+      'a2a.agents',
+      'a2a.enabled',
+      'a2a.push.enabled',
+      'a2a.push.sweepIntervalMs',
+    ]);
     for (const key of a2a) {
       expect(inSection(key, 'a2a'), key).toBe(true);
       expect(inSection(key, 'general'), key).toBe(false);
-      expect(inSection(key, 'model-policy'), key).toBe(false);
+      expect(inSection(key, 'allowed-models'), key).toBe(false);
       expect(inSection(key, 'decisions'), key).toBe(false);
     }
     expect(SETTING_KEYS.filter((key) => inSection(key, 'a2a'))).toEqual(a2a);
@@ -195,7 +221,7 @@ describe('the sections', () => {
     for (const key of decisions) {
       expect(inSection(key, 'decisions'), key).toBe(true);
       expect(inSection(key, 'general'), key).toBe(false);
-      expect(inSection(key, 'model-policy'), key).toBe(false);
+      expect(inSection(key, 'allowed-models'), key).toBe(false);
     }
     expect(SETTING_KEYS.filter((key) => inSection(key, 'decisions'))).toEqual(decisions);
   });
@@ -230,5 +256,14 @@ describe('the groups', () => {
 
   test('know how every key applies', () => {
     expect(Object.keys(SETTING_APPLY)).toEqual([...SETTING_KEYS]);
+  });
+});
+
+describe('the names of the A2A settings', () => {
+  test('say what each does, so the rows and the restart notice agree', () => {
+    expect(settingLabel('a2a.enabled')).toBe('Accept A2A calls');
+    expect(settingLabel('a2a.agents')).toBe('Shared agents');
+    expect(settingLabel('a2a.push.enabled')).toBe('Push notifications');
+    expect(settingLabel('a2a.push.sweepIntervalMs')).toBe('Sweep interval ms');
   });
 });

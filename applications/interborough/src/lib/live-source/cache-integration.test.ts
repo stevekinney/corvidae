@@ -15,6 +15,7 @@ import {
   applyScheduleFleetFrame,
   applyWorkflowTailFrame,
   createWorkflowCheckpointRefresher,
+  HEALTH_RUNNING_RUNS_KEY,
   mergeWorkflowCheckpointEvents,
   REVIEWS_LIST_KEY_PREFIX,
   SCHEDULES_DETAIL_KEY_PREFIX,
@@ -210,6 +211,31 @@ function fleetFrame(
 }
 
 describe('applyFleetEventFrame', () => {
+  test('a workflow lifecycle frame invalidates Health running workflows', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(HEALTH_RUNNING_RUNS_KEY, () => []);
+
+    applyFleetEventFrame(queryClient, fleetFrame({ kind: 'workflow:started' }));
+    expect(queryClient.getQueryState(HEALTH_RUNNING_RUNS_KEY)?.isInvalidated).toBe(true);
+  });
+
+  for (const kind of ['workflow:suspended', 'workflow:resumed'] as const) {
+    test(`${kind} invalidates Health running workflows`, () => {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(HEALTH_RUNNING_RUNS_KEY, () => []);
+
+      applyFleetEventFrame(queryClient, fleetFrame({ kind }));
+      expect(queryClient.getQueryState(HEALTH_RUNNING_RUNS_KEY)?.isInvalidated).toBe(true);
+    });
+  }
+
+  test('a fleet gap invalidates Health running workflows for catch-up', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(HEALTH_RUNNING_RUNS_KEY, () => []);
+
+    applyFleetEventFrame(queryClient, fleetFrame({ kind: 'fleet:gap' }));
+    expect(queryClient.getQueryState(HEALTH_RUNNING_RUNS_KEY)?.isInvalidated).toBe(true);
+  });
   test('a workflow-scoped frame invalidates the workflow detail — never the events append cache, or the list and aggregate a person reads at their own pace', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(WORKFLOWS_LIST_KEY_PREFIX, () => []);

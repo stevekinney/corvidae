@@ -78,6 +78,12 @@ const schema = {
   metadata: {
     unsupportedProps: [
       {
+        name: 'descriptionAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`.',
+      },
+      {
         name: 'inputAttachment',
         reason: 'function-or-snippet',
         description: 'Attachment for native input access and lifecycle-scoped listeners.',

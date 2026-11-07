@@ -32,6 +32,13 @@
     background: transparent;
   }
 
+  /* A bare payload sits in a pane that is already the card, so it keeps no frame of its own. */
+  .cinder-payload-inspector[data-cinder-bare] {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
   .cinder-payload-inspector__empty {
     margin: 0;
     color: var(--cinder-text-muted);
@@ -71,15 +78,26 @@
 
   /* The selected view is a quiet accent tint with accent text, not the control's solid fill: the
    * switch sits in every payload on a page, so it must not outshout the data. The hover rule is
-   * restated because the control darkens a selected segment on hover. */
-  .cinder-payload-inspector__header .cinder-segmented-control-option[data-cinder-selected],
-  .cinder-payload-inspector__header
+   * restated because the control darkens a selected segment on hover. A bare payload keeps the
+   * control's own selected look. */
+  .cinder-payload-inspector:not([data-cinder-bare])
+    .cinder-payload-inspector__header
+    .cinder-segmented-control-option[data-cinder-selected],
+  .cinder-payload-inspector:not([data-cinder-bare])
+    .cinder-payload-inspector__header
     .cinder-segmented-control-option[data-cinder-selected]:hover:not(:disabled):not(
       [aria-disabled='true']
     ) {
     background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
     color: var(--cinder-accent-text);
     box-shadow: none;
+  }
+
+  /* Bare: the header is the label at the start and the switch at the end, with no divider. */
+  .cinder-payload-inspector[data-cinder-bare] .cinder-payload-inspector__header {
+    justify-content: space-between;
+    padding-inline: 0;
+    border-block-end: 0;
   }
 
   /* Copy is a bare icon in the header; it only gets an edge back when it is focused. */
@@ -109,6 +127,33 @@
 
   .cinder-payload-inspector__panel > * {
     max-inline-size: 100%;
+  }
+
+  .cinder-payload-inspector[data-cinder-bare] .cinder-payload-inspector__panel {
+    padding-inline: 0;
+    padding-block-start: 0;
+  }
+
+  /* Bare: each row of the list ends in a quiet rule, its label in a column of one width and its
+   * value in the regular weight, as a record is read. */
+  .cinder-payload-inspector[data-cinder-bare]
+    .cinder-payload-inspector__fields[data-cinder-layout='rows'] {
+    grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  .cinder-payload-inspector[data-cinder-bare]
+    .cinder-payload-inspector__field-view[data-cinder-tree]
+    .cinder-payload-inspector__field:not([data-cinder-block])
+    > .cinder-payload-inspector__field-value {
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-payload-inspector[data-cinder-bare]
+    .cinder-payload-inspector__fields[data-cinder-layout='rows']
+    > .cinder-payload-inspector__field {
+    padding-block: var(--cinder-space-2);
+    border-block-end: 1px solid var(--cinder-border-muted);
   }
 
   /* A code field and the JSON tree take the card's whole width, under the divider. */

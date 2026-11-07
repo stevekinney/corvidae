@@ -344,14 +344,15 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
 }) => {
   await page.goto('/schedules');
   const file = page
-    .locator('tr[data-kind="workflow-file"]')
-    .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
+    .locator('li[data-kind="workflow-file"]')
+    .filter({ hasText: JOURNEY_WORKFLOW_ID });
   await expect(file).toContainText(describeCadence({ intervalMs: 5_000 }));
-  // A workflow file's schedule has no Edit of its own: its cadence is the trigger in the file.
-  await file.getByRole('button', { name: /^Actions for / }).click();
-  const workflowEditor = page.getByRole('menuitem', { name: SCHEDULE_COPY.editWorkflowAction });
+  // A workflow file's schedule has no Edit of its own: its cadence is the trigger in the file, so
+  // its page links to the workflow's editor instead.
+  await file.getByRole('link', { name: JOURNEY_WORKFLOW_ID }).click();
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  const workflowEditor = page.getByRole('link', { name: SCHEDULE_COPY.editWorkflowAction });
   await expect(workflowEditor).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toHaveCount(0);
   await workflowEditor.click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/edit$`));
 
@@ -368,8 +369,8 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   // The schedule follows the file, which also ends the fire every few seconds.
   await page.goto('/schedules');
   const hourly = page
-    .locator('tr[data-kind="workflow-file"]')
-    .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
+    .locator('li[data-kind="workflow-file"]')
+    .filter({ hasText: JOURNEY_WORKFLOW_ID });
   await expect(hourly).toContainText(describeCadence({ intervalMs: 3_600_000 }));
   await expect(hourly).not.toContainText(describeCadence({ intervalMs: 5_000 }));
 });

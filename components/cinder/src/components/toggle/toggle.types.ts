@@ -40,6 +40,20 @@ export type ToggleProps = {
    */
   description?: string;
   /**
+   * Whether `description` is drawn. Set `false` for a description that only a screen reader needs,
+   * such as the consequence of flipping a switch whose reason the page already says in words: it
+   * stays wired into `aria-describedby` and is visually hidden.
+   * @default true
+   */
+  descriptionVisible?: boolean;
+  /**
+   * Where `description` sits. `inline` is on the label's line, for a few words ("Defined in
+   * workflows/release-notes.json"). `below` stacks it under the label, with the switch beside both,
+   * for a sentence that explains what the switch does.
+   * @default "inline"
+   */
+  descriptionPlacement?: 'inline' | 'below';
+  /**
    * Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:
    * `aria-disabled`, still focusable, ignoring the press, and described by the region's reason.
    * It returns by itself when the region stops being stale.
@@ -47,11 +61,32 @@ export type ToggleProps = {
    */
   mutating?: boolean;
   /**
+   * Words that follow the visible label in the accessible name only, such as the thing the switch
+   * belongs to ("Daily summary schedule" makes the name "Active, Daily summary schedule"). The
+   * visible label stays first, so the name keeps WCAG 2.5.3 (Label in Name). The name is then the
+   * switch's `aria-label`, written as one string so every platform reads it alike.
+   */
+  nameDetail?: string;
+  /**
    * Whether the label is visibly rendered. Set `false` for icon-only or
    * inline contexts — it stays the accessible name.
    * @default true
    */
   labelVisible?: boolean;
+  /**
+   * Makes the switch its own field: it is named and labelled by its own `label` even inside a
+   * `<FormField>` or `<SettingRow>`, whose label would otherwise name it. Use it for one switch
+   * among several in a field, such as a list of agents in a setting.
+   * @default false
+   */
+  standalone?: boolean;
+  /**
+   * Which side of the switch the label sits on. `start` puts the label first and spreads the two
+   * across the switch's full width, the way a list of switches reads; `end` keeps them together.
+   * Applies to a visible label that the switch owns (outside a field, or `standalone`).
+   * @default 'end'
+   */
+  labelPosition?: 'start' | 'end';
   /**
    * Form field name. When set, a hidden checkbox mirrors `checked` so the toggle
    * participates in native form submission. Omit for purely client-side toggles

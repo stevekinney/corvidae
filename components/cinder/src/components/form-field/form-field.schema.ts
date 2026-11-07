@@ -88,6 +88,12 @@ const schema = {
         description: 'Control(s) rendered inside the field.',
       },
       {
+        name: 'descriptionAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`.',
+      },
+      {
         name: 'errorAction',
         reason: 'function-or-snippet',
         description:
@@ -98,6 +104,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           'Rendered beside the control on the same row, such as a Try again button after a failed test. The control takes the room the trailing content leaves.',
+      },
+      {
+        name: 'warningAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the warning inside the same paragraph, such as a link to fix what it says ("Connect a provider").',
       },
     ],
   },

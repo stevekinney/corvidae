@@ -35,7 +35,11 @@ import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from '../types.ts';
-import { A2A_PUSH_DEFAULTS } from './settings-options.ts';
+import {
+  A2A_DEFAULTS,
+  A2A_PUSH_DEFAULTS,
+  DEFAULT_MAX_CONCURRENT_RUNS,
+} from './settings-options.ts';
 import type { SettingKey, SettingsValues } from './settings-schema.ts';
 
 /** {@link BureauRetentionOptions.events}'s default window: 7 days. */
@@ -51,10 +55,11 @@ export const DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS = 60 * 60 * 1000;
  * The keys that have no one value while nothing sets them, because leaving them unset is itself
  * the behavior: no model policy, no summarizer, the memory policy's own windows, log lines and hook
  * deliveries kept with what owns them, notifications kept up to a count, and no workflow version
- * stamped. Each key's description in the schema says what unset means. `effective` omits them.
+ * stamped, and no agent named for A2A (each follows its own file). Each key's description in the schema says what unset means. `effective` omits them.
  */
 export const SETTINGS_WITHOUT_DEFAULT = [
   'modelPolicy',
+  'a2a.agents',
   'context.summarizerModel',
   'retention.memory',
   'retention.logs',
@@ -87,6 +92,8 @@ export function builtInSettingDefaults(context: BuiltInDefaultsContext): BuiltIn
     'decisions.fallbackModel': DEFAULT_DECISION_FALLBACK_MODEL,
     'decisions.maximumPerTask': DEFAULT_DECISIONS_PER_TASK,
     'retention.audit': 'forever',
+    'retention.runs': 'forever',
+    'retention.chats': 'forever',
     'retention.events': { olderThan: DEFAULT_EVENT_RETENTION_MS },
     'retention.tasks': { olderThan: DEFAULT_TASK_RETENTION_MS },
     'retention.receipts': { olderThan: COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS },
@@ -107,11 +114,13 @@ export function builtInSettingDefaults(context: BuiltInDefaultsContext): BuiltIn
     'engine.schedulerPollIntervalMs': DEFAULT_POLL_INTERVAL_MS,
     'engine.checkpointHistory': DEFAULT_CHECKPOINT_HISTORY,
     'engine.maxNestingDepth': DEFAULT_MAX_NESTING_DEPTH,
+    'engine.maxConcurrentRuns': DEFAULT_MAX_CONCURRENT_RUNS,
     'engine.workflowClaimTtl': DEFAULT_WORKFLOW_CLAIM_TTL_MS,
     'engine.workflowClaimRenewInterval': DEFAULT_WORKFLOW_CLAIM_RENEW_INTERVAL_MS,
     durable: context.persistentStorage,
     maintenance: 'automatic',
     'durableOwnership.ownership': 'workflow-lease',
+    'a2a.enabled': A2A_DEFAULTS.enabled,
     'a2a.push.enabled': A2A_PUSH_DEFAULTS.enabled,
     'a2a.push.sweepIntervalMs': A2A_PUSH_DEFAULTS.sweepIntervalMs,
   };

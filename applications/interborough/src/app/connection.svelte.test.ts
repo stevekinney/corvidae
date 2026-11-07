@@ -303,4 +303,14 @@ describe('ConnectionMonitor', () => {
     monitors.push(monitor);
     expect(monitor.browserOffline).toBe(true);
   });
+
+  test('a page that draws the banner claims it, and the claim ends with the page', () => {
+    const monitor = new ConnectionMonitor({ probe: async () => 1 });
+    monitors.push(monitor);
+    expect(monitor.bannerDrawnByPage).toBe(false);
+    const release = monitor.claimBanner();
+    expect(monitor.bannerDrawnByPage).toBe(true);
+    release();
+    expect(monitor.bannerDrawnByPage).toBe(false);
+  });
 });

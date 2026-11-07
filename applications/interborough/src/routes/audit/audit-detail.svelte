@@ -1,130 +1,254 @@
 <script lang="ts">
   /**
-   * One audit record: what happened, when, who did it, and what it is about, with a link to the
-   * thing it is about. A record that names a value before and after shows the two side by side; any
-   * other field it carries is listed as it is. The raw record is under a heading of its own.
+   * One audit event, open beside the table: its title (who did what), the line that says when and
+   * where, the facts of the record, the change an agent's version made to its instructions (a
+   * Cinder `SourceDiffViewer` clamped to six lines, with Show all), the links that open what the
+   * event is about, Copy as JSON, and the footer that says how long records are kept and what
+   * Export saves.
+   *
+   * A very long target (a storage key can be thousands of characters) is cut with an ellipsis in
+   * the table, and here it is whole: wrapped anywhere, in small monospace, under a heading that says
+   * how long it is, with Copy key.
    */
-  import { CodeBlock, DescriptionList, SectionHeading } from '@lostgradient/cinder';
+  import {
+    Button,
+    copyToClipboard,
+    DescriptionList,
+    Link,
+    SourceDiffViewer,
+    StatusDot,
+  } from '@lostgradient/cinder';
+  import { createQuery } from '@tanstack/svelte-query';
 
   import { AUDIT_COPY } from '../../app/copy.ts';
-  import type { AuditRecord } from '../../lib/bureau-audit.ts';
+  import { showToast } from '../../app/toast-host.svelte';
+  import { listAgentVersions } from '../../lib/agent-definitions.ts';
+  import { followLinks } from '../../lib/follow-links.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { changeOf, resourcePath } from './audit-filter.ts';
+  import { instructionPatch } from './audit-diff.ts';
+  import { LONG_TARGET_CHARACTERS, type AuditEvent, type AuditLookups } from './audit-events.ts';
+  import { detailOf } from './audit-facts.ts';
+  import { splitResource } from './audit-filter.ts';
 
   interface Props {
-    record: AuditRecord;
+    event: AuditEvent;
+    lookups: AuditLookups;
+    /** The reference time for "Today" and "Yesterday", in epoch milliseconds. */
+    now: number;
   }
 
-  let { record }: Props = $props();
+  let { event, lookups, now }: Props = $props();
+
+  /** The most lines of a long change the pane shows before Show all. */
+  const DIFF_LINES = 6;
 
   const copy = AUDIT_COPY;
-  const change = $derived(changeOf(record.detail));
-  const target = $derived(resourcePath(record.resource));
-  const facts = $derived([
-    { term: copy.fact.what, definition: whatText },
-    { term: copy.fact.when, definition: { type: 'timestamp' as const, value: record.timestamp } },
-    { term: copy.fact.who, definition: record.principal ?? copy.noActor },
-    { term: copy.fact.about, definition: aboutLink },
-  ]);
-  const detailItems = $derived(change.rest.map(([term, definition]) => ({ term, definition })));
+  const model = $derived(detailOf(event, lookups, now));
+  const json = $derived(JSON.stringify(event.record, null, 2));
+
+  // The change an agent's version made to its instructions: the Bureau keeps each saved version's
+  // definition, and the record names the version it made and the one before it.
+  const agentId = $derived(
+    event.record.type === 'agent.updated' ? splitResource(event.record.resource).id : undefined,
+  );
+  const revision = $derived(event.record.detail?.['revision']);
+  const previous = $derived(event.record.detail?.['previousRevision']);
+  const changedKeys = $derived(String(event.record.detail?.['changedKeys'] ?? ''));
+  const versions = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.versions(agentId ?? ''),
+      queryFn: ({ signal }) => listAgentVersions(agentId ?? '', { signal }),
+      enabled:
+        agentId !== undefined &&
+        typeof revision === 'number' &&
+        typeof previous === 'number' &&
+        changedKeys.split(',').includes('instructions'),
+      retry: false,
+      staleTime: 60_000,
+    }),
+    undefined,
+  );
+  const patch = $derived.by(() => {
+    const list = versions.data;
+    if (list === undefined) return undefined;
+    const before = list.find((version) => version.revision === previous)?.definition?.instructions;
+    const after = list.find((version) => version.revision === revision)?.definition?.instructions;
+    return before === undefined || after === undefined
+      ? undefined
+      : instructionPatch(before, after);
+  });
+
+  /** Copies `value` and says so in a toast, or says it could not. */
+  async function copyValue(value: string, done: string): Promise<void> {
+    const copied = await copyToClipboard(value);
+    showToast(copied ? done : copy.copyFailed, { variant: copied ? 'success' : 'danger' });
+  }
+
+  const longTarget = $derived(event.target.length > LONG_TARGET_CHARACTERS);
+  // The whole target, not the table's line: a storage key, which is the resource past its prefix.
+  const wholeTarget = $derived(
+    event.record.type === 'storage.key.deleted'
+      ? event.record.resource.replace(/^storage:/, '')
+      : event.target,
+  );
 </script>
 
-{#snippet whatText()}<span class="ib-audit__mono">{record.type}</span>{/snippet}
+<article
+  class="ib-audit-detail"
+  data-testid="audit-detail"
+  data-record={event.record.sequence ?? ''}
+>
+  <header class="ib-audit-detail__heading">
+    <h3 class="ib-audit-detail__title">{event.title}</h3>
+    <p class="ib-audit-detail__when">{model.whenLine}</p>
+  </header>
 
-{#snippet aboutLink()}
-  {#if target === undefined}
-    <span class="ib-audit__mono">{record.resource}</span>
-  {:else}
-    <a
-      class="ib-audit__mono"
-      href={target}
-      aria-label={copy.openResource(record.resource)}
-      onclick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-        event.preventDefault();
-        router.navigate(target);
-      }}>{record.resource}</a
-    >
+  {#if model.facts.length > 0}
+    <div class="ib-audit-detail__facts" data-testid="audit-facts" {@attach followLinks}>
+      {#each model.facts as fact (fact.term)}
+        {#snippet value()}
+          {#if fact.value.kind === 'text'}
+            <span class:ib-audit-detail__muted={fact.value.muted === true}>{fact.value.text}</span>
+          {:else if fact.value.kind === 'link'}
+            <Link href={router.href(fact.value.href)}>{fact.value.text}</Link>
+          {:else if fact.value.kind === 'tool'}
+            <span>{fact.value.title}</span>
+            <code class="ib-audit-detail__code">{fact.value.identifier}</code>
+          {:else}
+            <StatusDot word={fact.value.word} />
+          {/if}
+        {/snippet}
+        <DescriptionList variant="fields" items={[{ term: fact.term, definition: value }]} />
+      {/each}
+    </div>
   {/if}
-{/snippet}
 
-<article class="ib-audit__detail" data-testid="audit-detail" data-record={record.sequence ?? ''}>
-  <h3 class="ib-audit__detail-title ib-audit__mono">{record.type}</h3>
-  <DescriptionList items={facts} />
+  {#if patch !== undefined}
+    <div class="ib-audit-detail__diff" data-testid="audit-instruction-diff">
+      <SourceDiffViewer
+        {patch}
+        maxLines={DIFF_LINES}
+        lineNumbers={false}
+        headers={false}
+        ariaLabel={copy.instructionsLabel}
+      />
+    </div>
+  {/if}
 
-  {#if change.before !== undefined || change.after !== undefined}
-    <section class="ib-audit__section" data-testid="audit-change">
-      <SectionHeading level={4} title={copy.fact.beforeAfter} />
-      <div class="ib-audit__change">
-        <div>
-          <p class="ib-audit__change-label">{copy.fact.before}</p>
-          <p class="ib-audit__mono ib-audit__change-value" data-testid="audit-before">
-            {change.before ?? ''}
-          </p>
-        </div>
-        <div>
-          <p class="ib-audit__change-label">{copy.fact.after}</p>
-          <p class="ib-audit__mono ib-audit__change-value" data-testid="audit-after">
-            {change.after ?? ''}
-          </p>
-        </div>
+  {#if longTarget}
+    <section class="ib-audit-detail__target" data-testid="audit-target">
+      <p class="ib-audit-detail__target-heading">{copy.targetHeading(wholeTarget.length)}</p>
+      <p class="ib-audit-detail__target-value">{wholeTarget}</p>
+      <div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onclick={() => void copyValue(wholeTarget, copy.copiedKey)}>{copy.copyKey}</Button
+        >
       </div>
     </section>
   {/if}
 
-  {#if detailItems.length > 0}
-    <section class="ib-audit__section">
-      <SectionHeading level={4} title={copy.fact.details} />
-      <DescriptionList items={detailItems} />
-    </section>
-  {/if}
+  <div class="ib-audit-detail__actions" {@attach followLinks}>
+    {#each model.links as link (link.href)}
+      <Link href={router.href(link.href)}>{link.label} ›</Link>
+    {/each}
+    <Button variant="secondary" size="sm" onclick={() => void copyValue(json, copy.copiedAsJson)}
+      >{copy.copyAsJson}</Button
+    >
+  </div>
 
-  <section class="ib-audit__section">
-    <SectionHeading level={4} title={copy.rawRecord} />
-    <CodeBlock code={JSON.stringify(record, null, 2)} language="json" highlight={false} copyable />
-  </section>
+  <p class="ib-audit-detail__footer" {@attach followLinks}>
+    {copy.retention.before}<Link
+      underline="always"
+      href={router.href('/settings/data-and-retention')}>{copy.retention.link}</Link
+    >{copy.retention.after}
+  </p>
 </article>
 
 <style>
-  .ib-audit__detail {
+  .ib-audit-detail {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
     min-width: 0;
   }
 
-  .ib-audit__detail-title {
+  .ib-audit-detail__heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  .ib-audit-detail__title {
     margin: 0;
     font-size: var(--cinder-text-lg);
     font-weight: 600;
+    overflow-wrap: anywhere;
   }
 
-  .ib-audit__section {
+  .ib-audit-detail__when {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .ib-audit-detail__facts {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ib-audit-detail__muted {
+    color: var(--cinder-text-muted);
+  }
+
+  .ib-audit-detail__code {
+    margin-inline-start: var(--cinder-space-1);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .ib-audit-detail__diff {
+    min-width: 0;
+  }
+
+  .ib-audit-detail__target {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
     min-width: 0;
+    padding: var(--cinder-space-3);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
   }
 
-  .ib-audit__mono {
-    font-family: var(--cinder-font-mono);
+  .ib-audit-detail__target-heading {
+    margin: 0;
+    color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
   }
 
-  .ib-audit__change {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  /* Wrapped anywhere, so a value with no break in it never widens the pane or the page. */
+  .ib-audit-detail__target-value {
+    margin: 0;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+
+  .ib-audit-detail__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--cinder-space-3);
   }
 
-  .ib-audit__change-label {
+  .ib-audit-detail__footer {
     margin: 0;
     color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-  }
-
-  .ib-audit__change-value {
-    margin: 0;
+    font-size: var(--cinder-text-sm);
   }
 </style>

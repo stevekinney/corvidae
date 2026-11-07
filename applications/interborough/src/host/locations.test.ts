@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, storageStat } from '@lostgradient/storage';
 import {
   claimWorkspaceBinding,
   createHostStorage,
@@ -68,6 +68,7 @@ describe('the backend report', () => {
         workflows: { kind: 's3', bucket: 'state', prefix: 'prod/workflows/' },
       },
       [{ name: 'anthropic', secretKey: 'anthropic-api-key' }],
+      'https://agents.example.com/bureau/a2a/.well-known/agent-card.json',
     );
     expect(report).toEqual({
       mode: 'remote',
@@ -79,6 +80,7 @@ describe('the backend report', () => {
       providers: [
         { name: 'anthropic', secretFile: 'workspace:locations-fixture/anthropic-api-key' },
       ],
+      a2aDirectoryUrl: 'https://agents.example.com/bureau/a2a/.well-known/agent-card.json',
     });
     const text = JSON.stringify(report);
     for (const secret of ['app-user', 's3cret', 'p%40ss', 'sslmode']) {
@@ -103,6 +105,7 @@ describe('the backend report', () => {
           workflows: { kind: 'directory', path: '/home/workflows' },
         },
         [],
+        'http://127.0.0.1:4310/bureau/a2a/.well-known/agent-card.json',
       ),
     ).toMatchObject({
       mode: 'local',
@@ -124,6 +127,22 @@ describe('the storage for a database location', () => {
       await storage.put('key', new TextEncoder().encode('value'));
       const stored = await storage.get('key');
       expect(stored === null ? null : new TextDecoder().decode(stored)).toBe('value');
+      await disposeHostStorage(storage);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('a sqlite location records each key\u2019s write time from the clock the host gives it', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-locations-'));
+    try {
+      const written = Date.UTC(2026, 10, 2, 16, 44);
+      const storage = createHostStorage(
+        { kind: 'sqlite', path: join(directory, 'database.sqlite') },
+        () => written,
+      );
+      await storage.put('key', new TextEncoder().encode('value'));
+      expect(await storageStat(storage, 'key')).toEqual({ updatedAt: written });
       await disposeHostStorage(storage);
     } finally {
       await rm(directory, { recursive: true, force: true });

@@ -34,6 +34,7 @@ const removal = (removed: number): ExpiredRecordRemoval => ({
     logs: 0,
     notifications: 0,
     hookDeliveries: 0,
+    chats: 0,
   },
   failed: [],
 });

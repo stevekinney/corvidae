@@ -195,6 +195,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.schedules.cancel', 'administrator'],
       ['bureau.schedules.update', 'administrator'],
       ['bureau.schedules.skipnext', 'administrator'],
+      ['bureau.schedules.unskip', 'administrator'],
       ['bureau.schedules.runnow', 'owner'],
       ['bureau.schedules.missed', 'owner'],
     ],

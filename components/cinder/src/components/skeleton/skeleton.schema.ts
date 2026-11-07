@@ -31,16 +31,34 @@ const schema = {
       default: 1,
     },
     variant: {
-      enum: ['row', 'card', 'list'],
+      enum: ['row', 'card', 'list', 'form'],
       description:
-        "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card; `'list'` draws `rows` status-first list rows.",
+        "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws\n`rows` fields, a label bar over a control bar each.",
       default: 'row',
     },
     rows: {
       type: 'number',
       description:
-        "Number of list rows to draw when `variant` is `'list'`. Each row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
+        "Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
       default: 3,
+    },
+    statusMarker: {
+      enum: ['bar', 'dot'],
+      description:
+        "What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar\nwhere the status word reads; `'dot'` is a small circle where the status dot sits. The column\nkeeps its width either way, so nothing shifts when data arrives. Ignored by other variants.",
+      default: 'bar',
+    },
+    statusColumn: {
+      type: 'boolean',
+      description:
+        "Keep the 8rem status column that every status-first list shares when `variant` is `'list'`.\nTurn it off for a list whose rows do not lead with a status word, such as a card of problems\nwith a glyph and an action: the marker then sits right before the text, so the placeholder\nmatches the row it stands for. Ignored by other variants.",
+      default: true,
+    },
+    framed: {
+      type: 'boolean',
+      description:
+        "Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside\na card that already frames its rows, so the placeholder does not draw a box within the box.\nIgnored by other variants.",
+      default: true,
     },
     dayBand: {
       type: 'boolean',

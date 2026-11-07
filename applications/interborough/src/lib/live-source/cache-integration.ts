@@ -34,7 +34,7 @@
  * fleet feed observing the same event; writing it through two independent
  * paths risks visible duplicates the tail's own positional dedup can't see.
  * Fleet frames instead invalidate the detail, review, worker, schedule and
- * update-history queries they affect, and the worker, realm, lease, registry and dynamic-source
+ * update-history queries they affect, and the worker, realm, lease and registry
  * views the engine's state events name (`FLEET_KIND_INVALIDATION`), reusing the exact same key shapes plan
  * §4's mutation invalidation already uses, so live-event invalidation and
  * client-initiated-mutation invalidation stay one convention. The workflow
@@ -90,6 +90,8 @@ export function workflowEventsKey(workflowId: string): QueryKey {
 
 /** The query-key prefix of every workflow list. */
 export const WORKFLOWS_LIST_KEY_PREFIX: QueryKey = ['workflows', 'list'];
+/** The Health Overview's current running-workflows query. */
+export const HEALTH_RUNNING_RUNS_KEY: QueryKey = ['health', 'runs', 'running'];
 /** The query-key prefix of every workflow aggregate. */
 export const WORKFLOWS_AGGREGATE_KEY_PREFIX: QueryKey = ['workflows', 'aggregate'];
 /** The query-key prefix of every schedule list. */
@@ -116,6 +118,8 @@ export const WORKERS_REJECTIONS_KEY: QueryKey = ['workers', 'rejections'];
 export const WORKERS_DEPLOYMENTS_KEY: QueryKey = ['workers', 'deployments'];
 /** The query key of the queue list. */
 export const QUEUES_LIST_KEY: QueryKey = ['queues', 'list'];
+/** The query-key prefix of the tasks on every queue (`queryKeys.queues.tasks`). */
+export const QUEUES_TASKS_KEY_PREFIX: QueryKey = ['queues', 'tasks'];
 /** The query-key prefix of every task's detail. */
 export const TASKS_DETAIL_KEY_PREFIX: QueryKey = ['tasks', 'detail'];
 /** The query-key prefix of every task's deliveries. */
@@ -126,10 +130,6 @@ export const REGISTRY_KEY_PREFIX: QueryKey = ['registry'];
 export const REALMS_KEY: QueryKey = ['realms'];
 /** The query key of the system lease. */
 export const SYSTEM_LEASE_KEY: QueryKey = ['system', 'lease'];
-/** The query-key prefix of the catalog's sources. */
-export const CATALOG_SOURCES_KEY_PREFIX: QueryKey = ['catalog', 'sources'];
-/** The query-key prefix of the catalog's diagnostics. */
-export const CATALOG_DIAGNOSTICS_KEY_PREFIX: QueryKey = ['catalog', 'diagnostics'];
 
 /** Matches `updateHistoryQueryKey(id)` (`../../routes/workflows/detail/updates/updates-data.ts`) — a literal here for the same reason every other key in this module is, with a test that keeps the two equal. */
 export function workflowUpdatesKey(workflowId: string): QueryKey {
@@ -156,6 +156,14 @@ const WORKFLOW_UPDATE_KINDS: ReadonlySet<string> = new Set(['update:received', '
 /** The fleet kind of a run beginning: the first run of a type fills a runs page that was empty. */
 const WORKFLOW_STARTED_KIND = 'workflow:started';
 
+/** Lifecycle frames change the Health Overview's current running count. */
+const HEALTH_RUNNING_WORKFLOW_KINDS: readonly string[] = [
+  WORKFLOW_STARTED_KIND,
+  'workflow:suspended',
+  'workflow:resumed',
+  ...WORKFLOW_SETTLED_KINDS,
+];
+
 /** The kind of the retention notice a fleet feed sends when a cursor names events it no longer holds (`FleetEventGapEnvelope`). */
 const FLEET_GAP_KIND = 'fleet:gap';
 
@@ -168,7 +176,12 @@ const WORKER_FLEET_KEYS: readonly QueryKey[] = [
   WORKERS_DEPLOYMENTS_KEY,
   // A queue's connected workers are the workers on it, and its in-flight count is theirs.
   QUEUES_LIST_KEY,
+  // A worker leaving can leave tasks waiting for its queue.
+  QUEUES_TASKS_KEY_PREFIX,
 ];
+
+/** What a queue's depth, a task's attempt or its failing for good changes: the queue and the tasks listed on it. */
+const QUEUE_KEYS: readonly QueryKey[] = [QUEUES_LIST_KEY, QUEUES_TASKS_KEY_PREFIX];
 
 /**
  * The kinds that change the durable work a deployment build is bound to: each build reports the
@@ -200,11 +213,6 @@ const QUEUE_LOAD_KINDS: readonly string[] = [
   'task:dead-lettered',
 ];
 
-const CATALOG_SOURCE_FLEET_KEYS: readonly QueryKey[] = [
-  CATALOG_SOURCES_KEY_PREFIX,
-  CATALOG_DIAGNOSTICS_KEY_PREFIX,
-];
-
 /**
  * The entries one fleet kind makes stale, for the kinds that name no run and so map to a list or a
  * panel instead of a workflow (a schedule's own are `applyScheduleFleetFrame`'s, a review's are
@@ -219,29 +227,20 @@ const FLEET_KIND_INVALIDATION: ReadonlyMap<string, readonly QueryKey[]> = new Ma
   ['worker:disconnected', WORKER_FLEET_KEYS],
   ['worker:registration-rejected', [WORKERS_REJECTIONS_KEY]],
   ['worker:deployment-changed', [WORKERS_DEPLOYMENTS_KEY, WORKERS_LIST_KEY]],
-  ['queue:depth-changed', [QUEUES_LIST_KEY]],
+  ['queue:depth-changed', QUEUE_KEYS],
   // A kind may move both the deployments' references and a queue's in-flight count.
   ...[...new Set([...DEPLOYMENT_REFERENCE_KINDS, ...QUEUE_LOAD_KINDS])].map(
     (kind): [string, readonly QueryKey[]] => [
       kind,
       [
         ...(DEPLOYMENT_REFERENCE_KINDS.includes(kind) ? [WORKERS_DEPLOYMENTS_KEY] : []),
-        ...(QUEUE_LOAD_KINDS.includes(kind) ? [QUEUES_LIST_KEY] : []),
+        ...(QUEUE_LOAD_KINDS.includes(kind) ? QUEUE_KEYS : []),
       ],
     ],
   ),
   ['workflow:definition-registered', [REGISTRY_KEY_PREFIX]],
   ['realm:state-changed', [REALMS_KEY]],
   ['lease:health-changed', [SYSTEM_LEASE_KEY]],
-  ['workflow-source:load-started', CATALOG_SOURCE_FLEET_KEYS],
-  ['workflow-source:load-ready', CATALOG_SOURCE_FLEET_KEYS],
-  ['workflow-source:load-failed', CATALOG_SOURCE_FLEET_KEYS],
-  ['workflow-source:load-cancelled', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-installed', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-activated', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:activation-rejected', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-draining', CATALOG_SOURCE_FLEET_KEYS],
-  ['catalog:revision-removed', CATALOG_SOURCE_FLEET_KEYS],
 ]);
 
 // ---------------------------------------------------------------------------
@@ -435,6 +434,7 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
     WORKFLOWS_UPDATES_KEY_PREFIX,
     WORKFLOWS_LOGS_KEY_PREFIX,
     WORKFLOWS_RELATED_KEY_PREFIX,
+    HEALTH_RUNNING_RUNS_KEY,
     ...WORKER_FLEET_KEYS,
     WORKERS_REJECTIONS_KEY,
     WORKERS_DEPLOYMENTS_KEY,
@@ -442,7 +442,6 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
     TASKS_DELIVERIES_KEY_PREFIX,
     REALMS_KEY,
     SYSTEM_LEASE_KEY,
-    ...CATALOG_SOURCE_FLEET_KEYS,
   ]) {
     void queryClient.invalidateQueries({ queryKey });
   }
@@ -451,7 +450,7 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
 
 /**
  * Applies one `FleetEventSource` frame: invalidates the detail, finalizer, update-history, review,
- * worker, realm, lease, registry, dynamic-source and schedule queries it affects. The shell calls it for every frame, so none of it waits for a
+ * worker, realm, lease, registry and schedule queries it affects. The shell calls it for every frame, so none of it waits for a
  * page to be open on the workflow. The workflow list and aggregate are not invalidated here (see
  * {@link invalidateFleetDrivenQueries}). Never writes into the events append cache — see module doc.
  */
@@ -464,6 +463,9 @@ export function applyFleetEventFrame(queryClient: QueryClient, frame: FleetEvent
   // Before the run-scoped branch below, which returns: a kind that maps to a list is read by kind.
   for (const queryKey of FLEET_KIND_INVALIDATION.get(frame.kind) ?? []) {
     void queryClient.invalidateQueries({ queryKey });
+  }
+  if (HEALTH_RUNNING_WORKFLOW_KINDS.includes(frame.kind)) {
+    void queryClient.invalidateQueries({ queryKey: HEALTH_RUNNING_RUNS_KEY });
   }
   if (frame.kind === WORKFLOW_STARTED_KIND) invalidateEmptyViews(queryClient);
   if (isReviewFleetEventKind(frame.kind)) {

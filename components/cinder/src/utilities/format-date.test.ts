@@ -90,6 +90,15 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(NOW - 30_000, central)).toBe('just now');
   });
 
+  test('counts the first minute in seconds when asked, from the third second on', () => {
+    const seconds = { ...central, seconds: true };
+    expect(formatRelativeTime(NOW - 1_000, seconds)).toBe('just now');
+    expect(formatRelativeTime(NOW - 4_000, seconds)).toBe('4 s ago');
+    expect(formatRelativeTime(NOW - 59_000, seconds)).toBe('59 s ago');
+    expect(formatRelativeTime(NOW - 60_000, seconds)).toBe('1 min ago');
+    expect(formatRelativeTime(NOW + 9_000, seconds)).toBe('in 9 s');
+  });
+
   test('reads minutes as "4 min ago"', () => {
     expect(formatRelativeTime(NOW - 4 * 60_000, central)).toBe('4 min ago');
     expect(formatRelativeTime(NOW - 59 * 60_000, central)).toBe('59 min ago');
@@ -163,9 +172,15 @@ describe('localized calendar labels', () => {
     expect(formatDateTime(Date.UTC(2026, 10, 1, 22, 12), { ...central, locale: 'de' })).toMatch(
       /^Gestern, /,
     );
-    expect(formatDateTime(Date.UTC(2026, 9, 29, 9, 0), { ...central, locale: 'de' })).toMatch(
-      /^Do\. 29\. Okt\., /,
-    );
+    const date = Date.UTC(2026, 9, 29, 9, 0);
+    const formatted = formatDateTime(date, { ...central, locale: 'de' });
+    const localizedDay = new Intl.DateTimeFormat('de', {
+      timeZone: CENTRAL,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(date));
+    expect(formatted).toBe(`${localizedDay}, 4:00 AM`);
   });
 });
 

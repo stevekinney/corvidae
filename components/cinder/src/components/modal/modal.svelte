@@ -52,10 +52,12 @@
   }
 
   const titleId = $props.id();
+  const descriptionId = `${titleId}-description`;
 
   let {
     open = $bindable(false),
     title,
+    description,
     chrome = 'default',
     'aria-label': ariaLabel,
     role = 'dialog',
@@ -294,7 +296,11 @@
     data-cinder-chrome={isChromeless ? 'none' : undefined}
     data-cinder-sheet={sheet ? 'docked' : undefined}
     {...isChromeless ? { 'aria-label': ariaLabel } : { 'aria-labelledby': titleId }}
-    {...isNonEmptyString(describedById) ? { 'aria-describedby': describedById } : {}}
+    {...isNonEmptyString(describedById)
+      ? { 'aria-describedby': describedById }
+      : !isChromeless && isNonEmptyString(description)
+        ? { 'aria-describedby': descriptionId }
+        : {}}
     data-cinder-closing={dialogState.isClosing ? '' : undefined}
     onclose={() => dialogState.handleClose()}
     onclick={handleBackdropClick}
@@ -337,7 +343,14 @@
             data-cinder-closable={closeButtonVisible ? '' : undefined}
             data-cinder-trailing={headerTrailing ? '' : undefined}
           >
-            <h2 id={titleId} class="cinder-modal__title">{title}</h2>
+            {#if isNonEmptyString(description)}
+              <div class="cinder-modal__heading">
+                <h2 id={titleId} class="cinder-modal__title">{title}</h2>
+                <p id={descriptionId} class="cinder-modal__description">{description}</p>
+              </div>
+            {:else}
+              <h2 id={titleId} class="cinder-modal__title">{title}</h2>
+            {/if}
             {#if headerTrailing}
               <div class="cinder-modal__header-trailing">{@render headerTrailing()}</div>
             {/if}

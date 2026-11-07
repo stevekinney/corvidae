@@ -68,6 +68,12 @@ type DefaultChromeProps = {
   chrome?: 'default';
   /** Text rendered as the modal's visible heading and used as its accessible label. */
   title: string;
+  /**
+   * A line under the title that says what the dialog is for or what state it is in, such as
+   * "Paste an API key, then test it." Drawn muted in the header and wired to `aria-describedby`
+   * unless `describedById` names something else. Keep it to one short sentence.
+   */
+  description?: string;
   /** Not used in the default chrome — the visible title supplies the accessible name instead. */
   'aria-label'?: never;
 };
@@ -77,6 +83,8 @@ type ChromelessProps = {
   chrome: 'none';
   /** Optional in the chromeless chrome — no header renders, so this is never displayed. */
   title?: string;
+  /** Not used in the chromeless chrome, which draws no header. */
+  description?: never;
   /** Required in the chromeless chrome: since no visible title renders, this supplies the dialog's accessible name. */
   'aria-label': string;
 };

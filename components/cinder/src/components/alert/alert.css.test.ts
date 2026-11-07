@@ -263,3 +263,15 @@ describe('alert chrome — composed status-surface border', () => {
     expect(borderColor).toMatch(/oklch\(\s*from\s+var\(--_cinder-status-base\)/);
   });
 });
+
+describe('Alert actions', () => {
+  test('a row of buttons is never wider than the alert, so it wraps instead of running past the edge', () => {
+    let maximum: string | undefined;
+    root.walkRules('.cinder-alert__actions', (rule) => {
+      rule.walkDecls('max-inline-size', (declaration) => {
+        maximum = declaration.value;
+      });
+    });
+    expect(maximum).toBe('100%');
+  });
+});

@@ -6,6 +6,7 @@ import type { Interceptor } from '../interceptor.ts';
 import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import type { WorkflowLogStore } from '../workflow-log-store.ts';
 import type { ArchiveAdapter } from './archive-adapter.ts';
+import type { EngineRunConcurrencyOptions } from './engine-run-concurrency-options.ts';
 import type { EngineSchemaPolicyOptions } from './engine-schema-policy-options.ts';
 import type { HistoryPolicy } from './history-policy.ts';
 import type { PayloadSizePolicy } from './payload-size-policy.ts';
@@ -248,7 +249,7 @@ export interface ForkOptions {
  * ```
  */
 export interface EngineOptions<TServices = unknown>
-  extends WorkflowVisibilityIndexOptions, EngineSchemaPolicyOptions {
+  extends WorkflowVisibilityIndexOptions, EngineSchemaPolicyOptions, EngineRunConcurrencyOptions {
   storage?: WeftStorage;
   development?: boolean;
   workerStartOverrideSigningSecret?: string;

@@ -93,6 +93,7 @@
     titleLayout,
     icon,
     sticky = false,
+    stackActions = false,
     onRestart,
     onOpenHealth,
     healthHref,
@@ -262,7 +263,7 @@
     </div>
 
     {#if hasActions}
-      <div class="cinder-banner__actions">
+      <div class="cinder-banner__actions" data-cinder-stacked={stackActions ? 'true' : undefined}>
         {#if showsRetry}
           <Button
             variant={resolvedRetryVariant}

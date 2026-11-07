@@ -91,6 +91,7 @@ import { createA2APushProjector } from './a2a-push-projector.ts';
 import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
 import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
+import { a2aOptInOverridesOf, isOptedIntoA2A } from './a2a-opt-in.ts';
 import type {
   Bureau,
   BureauAgents,
@@ -329,10 +330,12 @@ export type BureauHandlerSource = Pick<
     | 'cancel'
     | 'update'
     | 'skipNext'
+    | 'unskip'
     | 'runNow'
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'continuesChat'
     | 'blocker'
   >;
 } & {
@@ -967,13 +970,15 @@ function readCodeToolNames(agent: object): readonly string[] | undefined {
 /**
  * The agents this deployment lists: every code-defined agent, and every persisted agent (COR-1526)
  * whose file is ready. An agent file that is invalid is not an agent, so it is not listed. `a2a`
- * says whether the agent opts into A2A: the `a2aAgents` allowlist for a code-defined agent, the
- * file's own `a2a` frontmatter for a persisted one.
+ * says whether the agent opts into A2A: the `a2a.agents` setting where it names the agent
+ * (`a2a-opt-in.ts`), else the `a2aAgents` allowlist for a code-defined agent, or the file's own
+ * `a2a` frontmatter for a persisted one.
  */
 function listedAgentsOf(
   bureau: BureauHandlerSource,
   a2aAgents: readonly string[],
 ): readonly ListedAgent[] {
+  const overrides = a2aOptInOverridesOf(bureau.settings);
   const code = bureau.agents.list().flatMap((listing): ListedAgent[] => {
     if (listing.source !== 'code') return [];
     const agent = bureau.agents.find(listing.id);
@@ -985,7 +990,7 @@ function listedAgentsOf(
         displayName: agent.name === '' || agent.name === '(agent)' ? listing.id : agent.name,
         description: agent.description ?? null,
         definitionRevision: readGenerationProfile(agent as never).revision,
-        a2a: a2aAgents.includes(listing.id),
+        a2a: isOptedIntoA2A(overrides, listing.id, a2aAgents.includes(listing.id)),
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
         ...toolsOf(readCodeToolNames(agent)),
         ...examplesOf(readCodeExamples(agent)),
@@ -1003,7 +1008,7 @@ function listedAgentsOf(
         displayName: listing.name,
         description: listing.description,
         definitionRevision: readGenerationProfile(agent as never).revision,
-        a2a: listing.a2a,
+        a2a: isOptedIntoA2A(overrides, listing.id, listing.a2a),
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
         ...toolsOf(readFileAgentBinding(agent)?.definition.tools),
         ...examplesOf(readFileAgentBinding(agent)?.definition.examples),
@@ -1036,20 +1041,29 @@ function createStartable(
 }
 
 /**
- * Whether the A2A mount serves `name`: it is in the `a2aAgents` allowlist, or it is a persisted
- * agent whose file says `a2a: true`. Read when asked, so a file that turns the opt-in on or off
- * takes effect on the next request without a restart.
+ * Whether the A2A mount serves `name`: the `a2a.agents` setting says so, or, where it does not
+ * name the agent, it is in the `a2aAgents` allowlist or is a persisted agent whose file says
+ * `a2a: true`. Read when asked, so a file or a setting that turns the opt-in on or off takes
+ * effect on the next request without a restart.
  */
 function createA2AOptIn(
   bureau: BureauHandlerSource,
   a2aAgents: readonly string[],
-): { readonly includes: (agentName: string) => boolean } {
+): { readonly includes: (agentName: string) => boolean; readonly ready: Promise<void> } {
+  const overrides = a2aOptInOverridesOf(bureau.settings);
   return {
+    ready: overrides.ready,
     includes: (agentName) =>
-      a2aAgents.includes(agentName) ||
-      bureau.agents
-        .list()
-        .some((listing) => listing.source === 'file' && listing.id === agentName && listing.a2a),
+      isOptedIntoA2A(
+        overrides,
+        agentName,
+        a2aAgents.includes(agentName) ||
+          bureau.agents
+            .list()
+            .some(
+              (listing) => listing.source === 'file' && listing.id === agentName && listing.a2a,
+            ),
+      ),
   };
 }
 
@@ -1123,6 +1137,14 @@ function createA2AMount(
     ...(options.signing === undefined ? {} : { signing: options.signing }),
     bureau,
     optedIn: createA2AOptIn(bureau, a2aAgents),
+    shared: () =>
+      listedAgentsOf(bureau, a2aAgents)
+        .filter((agent) => agent.a2a)
+        .map((agent) => ({
+          catalogName: agent.name,
+          displayName: agent.displayName,
+          description: agent.description ?? undefined,
+        })),
     // Only a task A2A served has a record, so an agent that never opted in, whose tasks came
     // through Bureau's other surfaces, never gets a tombstone.
     hasTasks: async (agentName) => {
@@ -1302,6 +1324,7 @@ export function buildBureauHandlerHost(
     agentDefinitions: {
       agents: bureau.agents,
       optsCodeAgentIntoA2A: (id) => a2aAgents.includes(id),
+      a2aOverride: (id) => a2aOptInOverridesOf(bureau.settings).of(id),
       models: () => bureau.models.catalog().descriptors,
       audit: async (entry) => {
         await bureau.internals.auditTrail?.record(entry);
@@ -1327,11 +1350,13 @@ export function buildBureauHandlerHost(
       cancel: bureau.schedules.cancel,
       update: bureau.schedules.update,
       skipNext: bureau.schedules.skipNext,
+      unskip: bureau.schedules.unskip,
       runNow: bureau.schedules.runNow,
       missed: bureau.schedules.missed,
       owner: (scheduleId) => bureau.ownerOf({ kind: 'schedule', id: scheduleId }),
       agentName: bureau.schedules.agentName,
       inputPreview: bureau.schedules.inputPreview,
+      continuesChat: bureau.schedules.continuesChat,
       blocker: bureau.schedules.blocker,
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },

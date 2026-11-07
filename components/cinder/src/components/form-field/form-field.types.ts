@@ -22,8 +22,12 @@ export type FormFieldProps = {
   labelVisible?: boolean | undefined;
   /** Helper text rendered below the control; wired into `aria-describedby`. */
   description?: string | undefined;
+  /** Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. */
+  descriptionAction?: Snippet | undefined;
   /** Advisory for a legal but potentially risky value; does not mark the control invalid. */
   warning?: string | undefined;
+  /** Rendered after the warning inside the same paragraph, such as a link to fix what it says ("Connect a provider"). */
+  warningAction?: Snippet | undefined;
   /** Validation error; sets `aria-invalid="true"` on opted-in controls via context. */
   error?: string | undefined;
   /**

@@ -1,11 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  changedChoices,
   committedPolicy,
+  defaultEffortOf,
   fieldOf,
+  isModelAllowed,
   LOCAL_PROFILE,
   policyOf,
+  preferenceOf,
   withField,
+  withModelAllowed,
+  withPreference,
 } from './model-policy-edit.ts';
 
 describe('the model policy', () => {
@@ -85,5 +91,58 @@ describe('the model policy', () => {
       withField(changed, 'allowed-models', 'deniedModels', ['x']),
     );
     expect(back).toBe(stored);
+  });
+});
+
+describe('the choices Allowed models draws', () => {
+  test('allows every model until the policy denies it, and writes a choice as deniedModels', () => {
+    const start = policyOf({ policyRevision: 3, deployment: { deniedRegions: ['eu'] } });
+    expect(isModelAllowed(start, 'claude-opus-5-5')).toBe(true);
+    const denied = withModelAllowed(start, 'claude-opus-5-5', false);
+    expect(isModelAllowed(denied, 'claude-opus-5-5')).toBe(false);
+    expect(denied.deployment).toEqual({ deniedRegions: ['eu'], deniedModels: ['claude-opus-5-5'] });
+    // Allowing it again leaves the policy as small as it was, and keeps the other fields.
+    expect(withModelAllowed(denied, 'claude-opus-5-5', true)).toEqual(start);
+    // Denying twice does not list a model twice, and allowing one leaves the others denied.
+    const two = withModelAllowed(withModelAllowed(denied, 'claude-opus-5-5', false), 'm2', false);
+    expect(two.deployment?.['deniedModels']).toEqual(['claude-opus-5-5', 'm2']);
+    expect(withModelAllowed(two, 'm2', true).deployment?.['deniedModels']).toEqual([
+      'claude-opus-5-5',
+    ]);
+  });
+
+  test('reads cost and speed as one choice, and writes the choice back as the two preferences', () => {
+    const start = policyOf({ policyRevision: 1 });
+    expect(preferenceOf(start)).toBe('neither');
+    const cost = withPreference(start, 'cost');
+    expect(fieldOf(cost, 'your-preferences', 'costPreference')).toBe('lowest-cost');
+    expect(fieldOf(cost, 'your-preferences', 'latencyPreference')).toBeUndefined();
+    expect(preferenceOf(cost)).toBe('cost');
+    const speed = withPreference(cost, 'speed');
+    expect(fieldOf(speed, 'your-preferences', 'costPreference')).toBeUndefined();
+    expect(preferenceOf(speed)).toBe('speed');
+    expect(preferenceOf(withPreference(speed, 'both'))).toBe('both');
+    // Neither removes both, and the entry that held nothing else goes with them.
+    expect(withPreference(speed, 'neither')).toEqual(start);
+    // A preference the page does not offer reads as neither.
+    expect(
+      preferenceOf(policyOf({ users: { [LOCAL_PROFILE]: { costPreference: 'balanced' } } })),
+    ).toBe('neither');
+  });
+
+  test('counts what the person changed: each model, the preference and the effort', () => {
+    const stored = policyOf({
+      policyRevision: 2,
+      deployment: { deniedModels: ['a'] },
+      users: { [LOCAL_PROFILE]: { defaultEffort: 'high' } },
+    });
+    expect(changedChoices(stored, stored)).toBe(0);
+    const edited = withPreference(withModelAllowed(stored, 'b', false), 'cost');
+    expect(changedChoices(stored, edited)).toBe(2);
+    expect(changedChoices(stored, withModelAllowed(edited, 'a', true))).toBe(3);
+    expect(defaultEffortOf(stored)).toBe('high');
+    expect(
+      changedChoices(stored, withField(stored, 'your-preferences', 'defaultEffort', 'low')),
+    ).toBe(1);
   });
 });

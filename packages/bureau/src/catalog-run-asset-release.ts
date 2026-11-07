@@ -114,6 +114,49 @@ export interface CatalogRunAssetReleaser {
   releaseEndedRun(run: RunClaims): Promise<void>;
 }
 
+/**
+ * The releases under way, so a shutdown can wait for them before the asset service and the
+ * storage under it close.
+ *
+ * A release starts once its run has ended, so what it waits on is storage work: reading where the
+ * run stands and its conversation, then letting each claim go. That is finite, but its duration is
+ * the database's under whatever load the host carries, not a count of turns or milliseconds. A
+ * shutdown that waited for it under a grace moved on while a release was still writing, closed the
+ * asset service and the pool, and the release then failed against them ("pool has been disposed").
+ * The drain therefore waits for every release however long it takes, as the catalog-settlement
+ * tracker waits for a settlement's committed work (`catalog-run-settlement.ts`, COR-2005).
+ */
+export interface CatalogAssetReleaseDrain {
+  /** Follows `release` until it settles, so {@link CatalogAssetReleaseDrain.drain} waits for it. Returns it. */
+  track(release: Promise<void>): Promise<void>;
+  /** Whether releases are closed; a release that starts once they are does nothing. */
+  isClosed(): boolean;
+  /**
+   * Waits for every release under way, a release that starts while it waits included, then closes
+   * releases in the same step that finds none left, so none can start between the two.
+   */
+  drain(): Promise<void>;
+}
+
+/** Creates the drain a shutdown waits on before the asset service closes. */
+export function createCatalogAssetReleaseDrain(): CatalogAssetReleaseDrain {
+  const pending = new Set<Promise<void>>();
+  let closed = false;
+  return {
+    track(release) {
+      pending.add(release);
+      const forget = (): void => void pending.delete(release);
+      void release.then(forget, forget);
+      return release;
+    },
+    isClosed: () => closed,
+    async drain() {
+      while (pending.size > 0) await Promise.allSettled(pending);
+      closed = true;
+    },
+  };
+}
+
 /** Creates the step. Every method resolves; none rejects, so no caller needs a guard. */
 export function createCatalogRunAssetReleaser(
   dependencies: CatalogRunAssetReleaserDependencies,

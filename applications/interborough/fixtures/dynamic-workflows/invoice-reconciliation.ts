@@ -6,10 +6,10 @@
  * `import(pathVariable)` is rejected at the type level.
  *
  * Nothing under `src/` imports this; only `fixtures/dynamic-sources.ts`
- * does, and only through the loader closure the dev harness registers. That
- * is the point: until an operator preloads it (or a run starts it), the
- * serving engine never evaluates this module at all — which is exactly the
- * `idle` load state the console's diagnostics surface reports.
+ * does, and only through the loader closure the end-to-end host registers.
+ * That is the point: until a preload (or a run) starts it, the serving
+ * engine never evaluates this module at all — which is exactly the `idle`
+ * load state `weft.catalog.diagnostics` reports.
  */
 import { activity, workflow } from '@lostgradient/weft';
 

@@ -48,7 +48,6 @@
     createBrowserSelectionLocation,
     clampListWidth,
     DETAIL_PANE_MINIMUM_WIDTH,
-    LIST_PANE_MAXIMUM_WIDTH,
     LIST_PANE_MINIMUM_WIDTH,
     moveCursor,
     ownsTypedKeys,
@@ -77,6 +76,7 @@
     empty,
     listEmpty,
     header,
+    openFirst = false,
     selectedKey = $bindable(null),
     onSelectedKeyChange,
     selectionParameter = 'selected',
@@ -84,7 +84,9 @@
     storageKey,
     storage,
     pushBelow = 600,
+    stackBelow = 0,
     defaultListWidth = 280,
+    maximumListWidth = 560,
     flushDetail = false,
     backLabel = 'Back',
     backVisible = true,
@@ -125,13 +127,19 @@
   // An unmeasured root (the server, the first paint) is treated as wide, so the stacked layout
   // never flashes before the width is known.
   const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
+  // Wide enough to show both panes, too narrow to put them side by side: the detail sits under the list.
+  const below = $derived(!narrow && rootWidth > 0 && rootWidth < stackBelow);
 
   // The divider starts where it was left. This is read when the panels mount, not on every render:
   // later drags are the person's, not a prop's, so a new `defaultListWidth` does not move a divider
   // that is already placed, and changing it while mounted would reset the layout mid-drag.
   let initialListWidth = $state(
     untrack(() =>
-      clampListWidth(readStoredListWidth(resolveStorage(storage), storageKey) ?? defaultListWidth),
+      clampListWidth(
+        readStoredListWidth(resolveStorage(storage), storageKey, maximumListWidth) ??
+          defaultListWidth,
+        maximumListWidth,
+      ),
     ),
   );
   // The last width the person dragged to, for a remount when there is no storage to read it from.
@@ -143,9 +151,9 @@
     const isNarrow = narrow;
     untrack(() => {
       if (wasNarrow && !isNarrow) {
-        const stored = readStoredListWidth(resolveStorage(storage), storageKey);
+        const stored = readStoredListWidth(resolveStorage(storage), storageKey, maximumListWidth);
         const width = stored ?? draggedListWidth;
-        if (width !== null) initialListWidth = clampListWidth(width);
+        if (width !== null) initialListWidth = clampListWidth(width, maximumListWidth);
       }
       wasNarrow = isNarrow;
     });
@@ -156,7 +164,7 @@
       label,
       defaultSize: { value: initialListWidth, unit: 'px' },
       minSize: { value: LIST_PANE_MINIMUM_WIDTH, unit: 'px' },
-      maxSize: { value: LIST_PANE_MAXIMUM_WIDTH, unit: 'px' },
+      maxSize: { value: Math.max(maximumListWidth, LIST_PANE_MINIMUM_WIDTH), unit: 'px' },
     },
     {
       id: 'detail',
@@ -213,6 +221,15 @@
       }
     }
     if (location.read(parameter) !== current) location.write(parameter, current);
+  });
+
+  // With `openFirst`, an empty selection beside a list becomes the first item, once the width is
+  // known to be wide. It follows the effect above, so a key the URL names has been read by then.
+  $effect(() => {
+    if (!openFirst || narrow || rootWidth === 0 || selectedKey !== null) return;
+    const first = keys[0];
+    if (first === undefined) return;
+    untrack(() => setSelection(first));
   });
 
   function rowElements(): HTMLElement[] {
@@ -387,7 +404,7 @@
   bind:this={rootElement}
   {@attach resizeAttachment}
   class={classNames('cinder-list-detail', className)}
-  data-cinder-layout={narrow ? 'stacked' : 'split'}
+  data-cinder-layout={narrow ? 'stacked' : below ? 'below' : 'split'}
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
 >
@@ -397,6 +414,11 @@
     {:else}
       {@render listPane()}
     {/if}
+  {:else if below}
+    <div class="cinder-list-detail__below">
+      {@render listPane()}
+      {@render detailPane()}
+    </div>
   {:else}
     <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
       {#snippet children(pane)}

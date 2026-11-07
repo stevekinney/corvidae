@@ -4,6 +4,7 @@ import { StartWorkflowValidationError } from '../../start-workflow-validation.ts
 import type { Checkpoint, StartOptions, WorkflowState } from '../../types.ts';
 import { completeExecutionAttemptLaunch } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
+import { takeRunSlot } from '../run-concurrency.ts';
 import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
 
 export function runWorkflowStartInterceptor(
@@ -70,6 +71,8 @@ export function startWorkflowExecution(
   // lookup on the dispatch hot path (WFT-19). Cleared on terminal cleanup
   // (see termination/cleanup.ts).
   internals.workflowTypeByWorkflowId.set(workflowId, { type: workflowType, revision });
+  // The first turn is driven now, so a counted run holds its slot from here (`runConcurrency`).
+  takeRunSlot(internals, workflowId, workflowType, nestingDepth === 0);
   internals.strategy.startWorkflow({
     workflowId,
     ...(workflowExecutionToken !== undefined && { workflowExecutionToken }),

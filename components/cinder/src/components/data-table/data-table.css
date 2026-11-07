@@ -79,8 +79,11 @@
     }
   }
 
+  /* A monospace column holds identifiers, keys and paths: data, in the regular weight even when it
+   * is the row header, which the browser would otherwise set bold. */
   .cinder-data-table [data-cinder-monospace] {
     font-family: var(--cinder-font-mono);
+    font-weight: var(--cinder-font-normal);
   }
 
   /* ----------------------------------------

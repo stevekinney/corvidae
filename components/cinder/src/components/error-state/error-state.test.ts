@@ -431,3 +431,72 @@ describe('compact size', () => {
     ).toBe(false);
   });
 });
+
+describe('ErrorState bordered', () => {
+  test('is off by default and marks the centred root when on', async () => {
+    const { container } = render(ErrorState, { props: { title: 'Failed', description: 'Nope.' } });
+    expect(
+      container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-bordered'),
+    ).toBe(false);
+    cleanup();
+    const bordered = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', bordered: true },
+    });
+    expect(
+      bordered.container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-bordered'),
+    ).toBe(true);
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const rule = declarationsFor(css, '.cinder-error-state[data-cinder-bordered]');
+    expect(rule.get('border')).toBe('1px solid var(--cinder-border)');
+    expect(rule.get('border-radius')).toBe('var(--cinder-radius-lg)');
+    expect(rule.get('padding-inline')).toBe('var(--cinder-space-8)');
+  });
+
+  test('draws no box on the flat variant, which sits inside a container of its own', () => {
+    const { container } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', bordered: true, variant: 'flat' },
+    });
+    expect(
+      container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-bordered'),
+    ).toBe(false);
+  });
+});
+
+describe('ErrorState retryVariant', () => {
+  test('is primary by default, the page’s one primary action', () => {
+    const { getByRole } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', onRetry: () => {} },
+    });
+    expect(getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant')).toBe(
+      'primary',
+    );
+  });
+
+  test('is secondary when a section of a page asks for it, and still calls onRetry', async () => {
+    const onRetry = mock(() => {});
+    const { getByRole } = render(ErrorState, {
+      props: {
+        title: 'Failed',
+        description: 'Nope.',
+        onRetry,
+        retryVariant: 'secondary',
+      },
+    });
+    const button = getByRole('button', { name: 'Try again' });
+    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    await fireEvent.click(button);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ErrorState retry glyph', () => {
+  test('is the 14px refresh glyph, the size of the glyph in every button, not the 24px icon default', () => {
+    const { getByRole } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', onRetry: () => {} },
+    });
+    const glyph = getByRole('button', { name: 'Try again' }).querySelector('svg');
+    expect(glyph?.getAttribute('width')).toBe('14');
+    expect(glyph?.getAttribute('height')).toBe('14');
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+  });
+});

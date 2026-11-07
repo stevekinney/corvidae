@@ -446,6 +446,7 @@ export type {
 export { default as ErrorState } from './components/error-state/index.ts';
 export type {
   ErrorStateProps,
+  ErrorStateRetryVariant,
   ErrorStateSize,
   ErrorStateTone,
   ErrorStateVariant,
@@ -646,7 +647,7 @@ export type {
 } from './components/list-detail/index.ts';
 
 export { default as LoadMore } from './components/load-more/index.ts';
-export type { LoadMoreProps } from './components/load-more/index.ts';
+export type { LoadMoreProps, LoadMoreVariant } from './components/load-more/index.ts';
 
 export { default as Marquee } from './components/marquee/index.ts';
 export type { MarqueeDirection, MarqueeProps } from './components/marquee/index.ts';
@@ -850,11 +851,17 @@ export {
 } from './components/restart-state/index.ts';
 export type { RestartStatePhase, RestartStateProps } from './components/restart-state/index.ts';
 
-export { default as ScheduleBuilder } from './components/schedule-builder/index.ts';
+export {
+  default as ScheduleBuilder,
+  describeScheduleFields,
+} from './components/schedule-builder/index.ts';
 export type {
   ScheduleBuilderProps,
+  ScheduleBuilderVariant,
+  ScheduleFieldSummary,
   ScheduleFire,
   ScheduleIntervalUnit,
+  SchedulePolicyOption,
   ScheduleRepeats,
   ScheduleValue,
 } from './components/schedule-builder/index.ts';
@@ -871,6 +878,7 @@ export type {
   SchemaFormProps,
   SchemaFormSchema,
   SchemaFormSubmitHandler,
+  SchemaFormVariant,
 } from './components/schema-form/index.ts';
 
 export { default as SchemaView } from './components/schema-view/index.ts';
@@ -962,7 +970,11 @@ export type {
 } from './utilities/sortable-controller.types.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
-export type { SkeletonProps, SkeletonVariant } from './components/skeleton/index.ts';
+export type {
+  SkeletonProps,
+  SkeletonStatusMarker,
+  SkeletonVariant,
+} from './components/skeleton/index.ts';
 
 export { default as SkipLink } from './components/skip-link/index.ts';
 export type { SkipLinkProps, SkipLinkSchemaProps } from './components/skip-link/index.ts';

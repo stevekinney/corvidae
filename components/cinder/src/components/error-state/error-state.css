@@ -20,6 +20,17 @@
     padding-inline: var(--cinder-space-6);
   }
 
+  /* A bordered state draws its own box, as the empty state does, for a body with no container,
+   * and pads itself the way the empty state does, so the two read as one family when the box is
+   * not in a region of known height. */
+  .cinder-error-state[data-cinder-bordered] {
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+    padding-block: var(--cinder-space-12) calc(var(--cinder-space-12) + var(--cinder-space-2));
+    padding-inline: var(--cinder-space-8);
+  }
+
   .cinder-error-state[data-cinder-variant='flat'] {
     align-items: flex-start;
     min-block-size: 0;

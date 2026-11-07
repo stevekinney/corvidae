@@ -1,6 +1,6 @@
 /**
  * The built-in agents and tools of the showcase sample world (`tmp/design-review/decisions.md`):
- * Assistant, Echo, Tool runner, Request human input, Model switcher and Workflow author, and the
+ * Assistant, Tool runner, Request human input, Workflow author, Echo and Model switcher, and the
  * Lookup order, Issue refund and Triage refunds tools Tool runner holds. Only the showcase host
  * registers them, as `HostOptions.extraAgents` (`showcase.ts`), so they are built in rather than a
  * plugin's: the Demo plugin keeps its own copies under `demo:`, and the sample world keeps it

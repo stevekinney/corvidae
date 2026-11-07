@@ -3,7 +3,8 @@
  * a sweep relies on, the narrowing a sign-off uses, and the refusals that keep a typo from
  * silently capturing the wrong thing.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,11 +28,29 @@ describe('parseArguments', () => {
     if (typeof options === 'string') throw new Error(options);
     expect(options.schemes).toEqual(['light', 'dark']);
     expect(options.specifications).toEqual([
-      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/00-showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
+      'tests/e2e/schedules-list.spec.ts',
+      'tests/e2e/schedules-states.spec.ts',
+      'tests/e2e/schedules-new.spec.ts',
+      'tests/e2e/schedules-edit.spec.ts',
+      'tests/e2e/schedules-detail.spec.ts',
+      'tests/e2e/health-overview.spec.ts',
+      'tests/e2e/health-states.spec.ts',
+      'tests/e2e/health-workers-states.spec.ts',
+      'tests/e2e/health-storage.spec.ts',
+      'tests/e2e/health-audit.spec.ts',
+      'tests/e2e/health-audit-states.spec.ts',
       'tests/e2e/restart.spec.ts',
+      'tests/e2e/settings-general.spec.ts',
+      'tests/e2e/settings-allowed-models.spec.ts',
+      'tests/e2e/settings-models.spec.ts',
+      'tests/e2e/settings-a2a.spec.ts',
+      'tests/e2e/settings-plugins.spec.ts',
+      'tests/e2e/settings-data-and-retention.spec.ts',
+      'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/home.spec.ts',
       'tests/e2e/chat-list.spec.ts',
@@ -68,11 +87,29 @@ describe('parseArguments', () => {
       return options.specifications;
     };
     expect(specificationsOf(['--data', 'showcase'])).toEqual([
-      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/00-showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
+      'tests/e2e/schedules-list.spec.ts',
+      'tests/e2e/schedules-states.spec.ts',
+      'tests/e2e/schedules-new.spec.ts',
+      'tests/e2e/schedules-edit.spec.ts',
+      'tests/e2e/schedules-detail.spec.ts',
+      'tests/e2e/health-overview.spec.ts',
+      'tests/e2e/health-states.spec.ts',
+      'tests/e2e/health-workers-states.spec.ts',
+      'tests/e2e/health-storage.spec.ts',
+      'tests/e2e/health-audit.spec.ts',
+      'tests/e2e/health-audit-states.spec.ts',
       'tests/e2e/restart.spec.ts',
+      'tests/e2e/settings-general.spec.ts',
+      'tests/e2e/settings-allowed-models.spec.ts',
+      'tests/e2e/settings-models.spec.ts',
+      'tests/e2e/settings-a2a.spec.ts',
+      'tests/e2e/settings-plugins.spec.ts',
+      'tests/e2e/settings-data-and-retention.spec.ts',
+      'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/home.spec.ts',
       'tests/e2e/chat-list.spec.ts',
@@ -93,11 +130,29 @@ describe('parseArguments', () => {
       'tests/e2e/15-view-states.spec.ts',
     ]);
     expect(specificationsOf(['--specs', 'responsive', '--data', 'both'])).toEqual([
-      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/00-showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
       'tests/e2e/shell-search.spec.ts',
       'tests/e2e/shell-states.spec.ts',
+      'tests/e2e/schedules-list.spec.ts',
+      'tests/e2e/schedules-states.spec.ts',
+      'tests/e2e/schedules-new.spec.ts',
+      'tests/e2e/schedules-edit.spec.ts',
+      'tests/e2e/schedules-detail.spec.ts',
+      'tests/e2e/health-overview.spec.ts',
+      'tests/e2e/health-states.spec.ts',
+      'tests/e2e/health-workers-states.spec.ts',
+      'tests/e2e/health-storage.spec.ts',
+      'tests/e2e/health-audit.spec.ts',
+      'tests/e2e/health-audit-states.spec.ts',
       'tests/e2e/restart.spec.ts',
+      'tests/e2e/settings-general.spec.ts',
+      'tests/e2e/settings-allowed-models.spec.ts',
+      'tests/e2e/settings-models.spec.ts',
+      'tests/e2e/settings-a2a.spec.ts',
+      'tests/e2e/settings-plugins.spec.ts',
+      'tests/e2e/settings-data-and-retention.spec.ts',
+      'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/home.spec.ts',
       'tests/e2e/chat-list.spec.ts',
@@ -330,4 +385,10 @@ describe('hostEnvironment', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+afterAll(() => {
+  // A spawned Bun child can leave the coverage loader resolving the next late import against the
+  // document origin. Keep the next UI test file from handing it a network origin.
+  if (window instanceof Window) window.happyDOM.setURL('about:blank');
 });

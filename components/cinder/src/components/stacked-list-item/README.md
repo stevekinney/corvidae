@@ -73,6 +73,21 @@ On a phone (a viewport narrower than 640px) the status moves to line two beside 
 
 The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a dot separator, then the preview (`Waiting on you · I found order 4471…`), and the title clamps at two lines (`titleLines={2}`).
 
+### A third line
+
+Line two ends in an ellipsis, so a reason that must never be cut cannot live there on a narrow screen. Pass `detail` for a third line that wraps and is never cut: a schedule's phone row says what it is on line two (`Active · Workflow · Order refund · Tool runner`) and the reason it will not run first on the third, with the cadence last (`Order refund can't load · won't run until a provider is connected · Mondays at 11:00 AM`). The line starts under the title, or at the left edge under the status on a phone, and a page passes it only where it wants it.
+
+```svelte
+<StackedListItem href="/schedules/weekly-refund-audit">
+  {#snippet status()}<StatusDot word="Active" />{/snippet}
+  {#snippet title()}Weekly refund audit{/snippet}
+  {#snippet time()}Next today 11:00 AM{/snippet}
+  {#snippet meta()}Workflow · Order refund · Tool runner{/snippet}
+  {#snippet detail()}Order refund can't load · won't run until a provider is connected · Mondays at
+    11:00 AM{/snippet}
+</StackedListItem>
+```
+
 ### The whole row is one link
 
 With `href` the title's anchor is stretched over the row, so one click anywhere follows it, hover tints the whole row, and the keyboard focus ring wraps the whole row rather than the title. Anything interactive in `trailing`, `actions`, or a button inside `meta` stays separately usable.
@@ -145,8 +160,10 @@ Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each i
 | `titleLines` | `1` \| `2` | no | — | How many lines the title may take before an ellipsis. Default `2`; the status and the time stay beside the first line, and the full title is the row's `tooltip`. A title never grows a row without bound, and an unbroken value (an identifier) wraps anywhere. |
 | `tone` | `"neutral"` \| `"warning"` | no | — | The tint of a group row. Default `neutral`, the inset tint every group row has; `warning` is the amber band of the missed runs. |
 | `tooltip` | `string` | no | — | The full title as text, shown as the row's tooltip when the title is clamped. Set it to the same text the `title` snippet renders. |
+| `wrapMeta` | `boolean` | no | — | Lets line two wrap onto more lines instead of ending in an ellipsis, so a control in it (a "View payload" link after a sentence about why a task failed) is never cut off and can always be pressed. Default `false`. |
 | `actions` | `(opaque)` | no | — | Text actions at the end of the row. On a tablet or desktop each is a secondary small button; on a phone (below 640px) they collapse into one menu button with the same actions, which is a 44px target under a coarse pointer. Not expressible in JSON Schema; see the component types for the signature. |
 | `description` | `(opaque)` | no | — | Secondary description below the title. Not expressible in JSON Schema; see the component types for the signature. |
+| `detail` | `(opaque)` | no | — | A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is ever cut. A schedule row on a phone puts the reason it won't run first and the cadence last on it; the cadence is the part a narrow screen can lose, so it is the last thing the line says. It starts under the title, and is not drawn on a row with `details`. Not expressible in JSON Schema; see the component types for the signature. |
 | `details` | `(opaque)` | no | — | Turns the row into a collapsed group row (the missed runs on Runs): a "Show" / "Hide" button at the right of line one reveals this snippet beneath the row, aligned with the title. A group row is not a link. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | Leading visual (avatar, icon, status dot). With a status column it follows the column. Not expressible in JSON Schema; see the component types for the signature. |
 | `meta` | `(opaque)` | no | — | Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts under the title (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a control (an error with its own "Try again") may put one in. Not expressible in JSON Schema; see the component types for the signature. |

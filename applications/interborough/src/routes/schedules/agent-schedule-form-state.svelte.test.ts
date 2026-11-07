@@ -69,3 +69,20 @@ describe('AgentScheduleFormState time zone', () => {
     expect(form.toUpdate()).toEqual({ spec: '0 9 * * *', timeZone: 'Asia/Tokyo' });
   });
 });
+
+describe('AgentScheduleFormState description', () => {
+  test('a description over the longest the Bureau takes is an error that names the limit', () => {
+    const form = new AgentScheduleFormState({
+      cadence: BUILDER_VALUE,
+      originalCadence: { intervalMs: 90_000 },
+      revision: 1,
+    });
+    expect(form.errors).toEqual({});
+    expect(form.isValid).toBe(true);
+
+    form.description = 'x'.repeat(2_001);
+
+    expect(form.errors.description).toContain('2000');
+    expect(form.isValid).toBe(false);
+  });
+});

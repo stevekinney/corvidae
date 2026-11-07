@@ -6,7 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { E2E_LONG_POLL_DEPLOYMENT_NAME, E2E_LONG_POLL_QUEUE } from './e2e-constants.ts';
+import { E2E_LONG_POLL_QUEUE } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 const VIEWPORTS = [
@@ -16,10 +16,10 @@ const VIEWPORTS = [
 ] as const;
 
 async function openLongPollWorker(page: Page): Promise<void> {
-  await page.goto('/health/workers');
-  const row = page.locator('[data-worker-row]').filter({ hasText: E2E_LONG_POLL_DEPLOYMENT_NAME });
-  await expect(row.getByText('HTTP long-poll')).toBeVisible();
-  await row.click();
+  await page.goto('/health/workers?tab=queues');
+  // A row names the worker's queue; the transport is among its technical details, behind Advanced.
+  const row = page.locator('[data-worker-row]').filter({ hasText: E2E_LONG_POLL_QUEUE });
+  await row.getByRole('link').click();
   await expect(page.getByRole('heading', { name: 'Session' })).toBeVisible();
 }
 
@@ -30,8 +30,9 @@ function session(page: Page) {
 test('the list shows both transports together', async ({ page, checkA11y }) => {
   await page.goto('/health/workers');
   const rows = page.locator('[data-worker-row]');
-  await expect(rows.filter({ hasText: 'WebSocket' }).first()).toBeVisible();
-  await expect(rows.filter({ hasText: 'HTTP long-poll' })).toHaveCount(1);
+  // Both workers are listed side by side; each opens to its own transport's session.
+  await expect(rows.filter({ hasText: E2E_LONG_POLL_QUEUE })).toHaveCount(1);
+  await expect(rows).not.toHaveCount(1);
   await checkA11y('workers—list with both transports');
 
   await openLongPollWorker(page);
@@ -56,7 +57,7 @@ test('a long-poll worker shows its lease, its queue, and the transport limit', a
 });
 
 test('a WebSocket worker has no lease deadline and says why', async ({ page }) => {
-  await page.goto('/health/workers?worker=e2e-fleet-worker-1');
+  await page.goto('/health/workers?worker=e2e-fleet-worker-1&tab=queues');
   const region = session(page);
   await expect(region.getByText('The WebSocket is connected.')).toBeVisible();
   await expect(region.getByText(/None\. A WebSocket session has no lease deadline/)).toBeVisible();

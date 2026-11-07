@@ -27,16 +27,15 @@ import { join } from 'node:path';
 
 import { seedDynamicSources } from '../../fixtures/dynamic-sources.ts';
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
-import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
-import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
+import { bindHome, enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
-import { startConnectHost } from './connect-host.ts';
+import { startConnectHost, type ConnectHost } from './connect-host.ts';
 import {
   E2E_BARRIER_PORT,
   E2E_BUREAU_PORT,
@@ -71,15 +70,50 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+let startupComplete = false;
+let startupCleanupPromise: Promise<void> | undefined;
+const startupCleanup: Array<() => Promise<void>> = [];
+const startupInFlight = new Set<Promise<unknown>>();
+const trackStartupPromise = <T>(promise: Promise<T>): Promise<T> => {
+  startupInFlight.add(promise);
+  return promise;
+};
+const cleanupStartup = (): Promise<void> => {
+  startupCleanupPromise ??= (async () => {
+    await Promise.allSettled(startupInFlight);
+    await Promise.allSettled(
+      startupCleanup
+        .slice()
+        .toReversed()
+        .map((cleanup) => cleanup()),
+    );
+  })();
+  return startupCleanupPromise;
+};
+const handleStartupSignal = (): void => {
+  if (startupComplete) return;
+  void cleanupStartup().then(() => process.exit(1));
+};
+process.on('SIGINT', handleStartupSignal);
+process.on('SIGTERM', handleStartupSignal);
+
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
+const startupStartedAt = performance.now();
+const reportStartupPhase = (phase: string): void => {
+  process.stderr.write(
+    `[e2e startup] ${phase} ${Math.round(performance.now() - startupStartedAt)}ms\n`,
+  );
+};
 const buildDirectory = join(scratch, 'build');
 await buildApplication({ outdir: buildDirectory });
+reportStartupPhase('application-built');
 
 // The host's model catalog holds a model, so the agent editor can save an agent: the home names the
 // `anthropic` provider with a fixture key in its secrets, and the provider path runs against a fake
 // client that answers with a fixed reply. No model is called and no real key is read.
 const home = join(scratch, 'home');
-await mkdir(home, { recursive: true });
+// A home that is written to before its host starts is given its deployment identity first.
+await bindHome(home);
 // Two models, so a spec can change an agent's model and save it.
 await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
 // Executable skills in two sources, one trusted and one not (`skills-support.ts`).
@@ -87,6 +121,7 @@ await seedSkills(home);
 // Saved tool sources (`tool-sources-seed.ts`): an MCP server and an OpenAPI service that load, one
 // behind OAuth that waits for a sign-in, and one that fails. They load when the host starts.
 const toolSourceServers = await startToolSourceServers();
+startupCleanup.push(() => toolSourceServers.stop());
 await seedToolSources(home, toolSourceServers);
 // The scripted agents the specs talk to (`demo:assistant`, `demo:tool-runner`, and the rest) come
 // from the demo plugin, which is off by default, so the home turns it on. It goes last because it
@@ -315,6 +350,15 @@ let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // (`text-echo-agent.ts`), answer with what they were sent, so a memory spec can store a memory that
 // is its own. Two more again (`question-agents.ts`) ask the person more than one thing.
 const barrier = createBarrier();
+const showcaseStartup = trackStartupPromise(
+  seedSampleWorld(join(scratch, 'showcase-home', '.interborough'), {
+    host: { port: E2E_SHOWCASE_PORT, buildDirectory },
+  }).then(({ host: started }) => {
+    startupCleanup.push(() => started.close());
+    reportStartupPhase('showcase-ready');
+    return started;
+  }),
+);
 const host = await startHost({
   extraAgents: {
     agents: {
@@ -336,11 +380,6 @@ const host = await startHost({
   buildDirectory,
   createConsoleEngine: async () => {
     fixtureEngine = await createFixtureEngine();
-    // One conditional-refresh source on each of three eager workflows (COR-166),
-    // registered before the host listens: the refresh panel reads its sources once,
-    // and the first spec loads it the moment the server answers. See
-    // `fixtures/workflow-refresh.ts`'s module doc.
-    await seedRefreshSources(fixtureEngine);
     return fixtureEngine;
   },
   engineServer: {
@@ -348,6 +387,7 @@ const host = await startHost({
     workerReconnectGracePeriodMs: E2E_RECONNECT_GRACE_PERIOD_MS,
   },
 });
+startupCleanup.push(() => host.close());
 if (fixtureEngine === undefined) throw new Error('The host did not create the console engine.');
 const engine = fixtureEngine;
 const { server } = host;
@@ -367,15 +407,8 @@ await seed(engine);
 await seedWorkflowRevisions(engine);
 
 // Two `registerSource()` revisions of `invoice-reconciliation`, neither
-// loaded (WFT-116/WFT-165) — `09-preload-dynamic-source.spec.ts` drives the
-// Workflow types → Workflow sources panel against the selectable source
-// list plus exact diagnostics/preload calls: preloading the loadable one moves
-// it idle -> ready, and preloading the unreachable one is refused with a
-// bounded failure category. Both transitions are per-`(name, revision)` and
-// touch nothing any other spec asserts against, but they are NOT idempotent
-// across specs the way a refused activation is: once a spec preloads the
-// loadable revision it stays installed, so the spec asserts on the
-// ready/failed end state rather than requiring a pristine idle one.
+// loaded (WFT-116/WFT-165): an engine source with no workflow file, which
+// `26-workflows.spec.ts` asserts the Workflows list leaves out.
 seedDynamicSources(engine);
 
 const fleetWorker = new RemoteWorker({
@@ -397,6 +430,10 @@ const fleetWorker = new RemoteWorker({
 });
 
 await fleetWorker.connect();
+startupCleanup.push(async () => {
+  await fleetWorker.disconnect();
+});
+reportStartupPhase('main-host-and-fleet-ready');
 
 // COR-160: one worker on the HTTP long-poll transport, so the Workers surfaces show both
 // transports in one fleet. It advertises no workflow and its queue has no task, so it only
@@ -411,6 +448,9 @@ const longPollWorker = new LongPollWorker({
   heartbeatIntervalMs: 2_000,
 });
 longPollWorker.start();
+startupCleanup.push(async () => {
+  await longPollWorker.stop();
+});
 for (let wait = 0; wait < 200 && !longPollWorker.ready; wait += 1) await Bun.sleep(25);
 if (!longPollWorker.ready) throw new Error('The E2E long-poll worker did not register.');
 
@@ -447,92 +487,143 @@ const ledgerWorkers = await seedLedgerEvidence(server);
 // finished run of each, plus a held run still bound to the first build. See `versioned-run-seed.ts`.
 const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 
-// The second host, whose console runs on the Bureau's own engine (the default), so the schedules the
-// Bureau holds are listed with the engine's (`28-schedule-owners.spec.ts`). It has a home of its own,
-// because a home is locked by the host that holds it, and one workflow file whose trigger is a
-// schedule, so the seeded agent run is not the only schedule it has.
-const bureauHome = join(scratch, 'bureau-home');
-// Establish the empty home's identity before adding workflow content.
-await enableDemoPlugin(bureauHome);
-const bureauWorkflowDirectory = join(bureauHome, 'workflows');
-await writeProviderHome(bureauHome);
-await mkdir(bureauWorkflowDirectory, { recursive: true });
-await writeFile(
-  join(bureauWorkflowDirectory, 'e2e-digest.json'),
-  `${JSON.stringify(SEEDED_WORKFLOW_FILES['e2e-digest'], null, 2)}\n`,
-);
-const bureauHost = await startHost({
-  extraAgents: {
-    agents: {
-      [CHAT_PROOF_PARENT]: chatProofParent,
-      [CHAT_PROOF_CHILD]: chatProofReviewer,
-    },
-  },
-  environment: { INTERBOROUGH_HOME: bureauHome },
-  port: E2E_BUREAU_PORT,
-  buildDirectory,
-});
-await bureauHost.bureau.plugins.ready();
-chatProofBureau = bureauHost.bureau;
-
-// The third host, which only the journey opens (`90-journey.spec.ts`). Its console is the Bureau's
-// own engine, because the journey follows an agent-authored workflow's schedule into the Workflows
-// area, and it has a home, agents, and a barrier of its own, so nothing another specification
-// leaves behind changes what the journey counts. Its provider resolver scripts the one agent the
-// journey defines in the editor, and answers every other with the stub the main host uses.
-const journeyHome = join(scratch, 'journey-home');
-await mkdir(journeyHome, { recursive: true });
-await writeProviderHome(journeyHome);
-await enableDemoPlugin(journeyHome);
+// These hosts have isolated homes and ports, so their startup work can proceed independently.
+// Keeping the real fixture behavior while removing the serial dependency avoids making the
+// browser harness wait for five unrelated plugin boot sequences in order.
 const journeyBarrier = createBarrier();
-const journeyHost = await startHost({
-  extraAgents: {
-    agents: {
-      ...createBarrierAgents(journeyBarrier),
-      ...createEchoAgents(),
-      ...createRecallAgents(),
-    },
+type SecondaryHost = Host | ConnectHost;
+const closeSecondaryHost = async (secondaryHost: SecondaryHost): Promise<void> => {
+  if ('close' in secondaryHost) {
+    await secondaryHost.close();
+  } else {
+    await secondaryHost.stop();
+  }
+};
+const trackStartupResource = (resource: SecondaryHost): void => {
+  startupCleanup.push(() => closeSecondaryHost(resource));
+};
+
+const secondaryResults = await Promise.allSettled([
+  (async () => {
+    const bureauHome = join(scratch, 'bureau-home');
+    await enableDemoPlugin(bureauHome);
+    const bureauWorkflowDirectory = join(bureauHome, 'workflows');
+    await writeProviderHome(bureauHome);
+    await mkdir(bureauWorkflowDirectory, { recursive: true });
+    await writeFile(
+      join(bureauWorkflowDirectory, 'e2e-digest.json'),
+      `${JSON.stringify(SEEDED_WORKFLOW_FILES['e2e-digest'], null, 2)}\n`,
+    );
+    let started: Host | undefined;
+    try {
+      started = await startHost({
+        extraAgents: {
+          agents: {
+            [CHAT_PROOF_PARENT]: chatProofParent,
+            [CHAT_PROOF_CHILD]: chatProofReviewer,
+          },
+        },
+        environment: { INTERBOROUGH_HOME: bureauHome },
+        port: E2E_BUREAU_PORT,
+        buildDirectory,
+      });
+      await started.bureau.plugins.ready();
+      chatProofBureau = started.bureau;
+      trackStartupResource(started);
+      reportStartupPhase('bureau-ready');
+      return started;
+    } catch (error) {
+      await started?.close();
+      throw error;
+    }
+  })(),
+  (async () => {
+    const journeyHome = join(scratch, 'journey-home');
+    await bindHome(journeyHome);
+    await writeProviderHome(journeyHome);
+    await enableDemoPlugin(journeyHome);
+    let started: Host | undefined;
+    try {
+      started = await startHost({
+        extraAgents: {
+          agents: {
+            ...createBarrierAgents(journeyBarrier),
+            ...createEchoAgents(),
+            ...createRecallAgents(),
+          },
+        },
+        environment: { INTERBOROUGH_HOME: journeyHome },
+        resolveProviderGenerate: createJourneyProviderResolver(
+          fakeProvider('This reply comes from the end-to-end provider stub.').resolver,
+        ),
+        port: E2E_JOURNEY_PORT,
+        buildDirectory,
+      });
+      await started.bureau.plugins.ready();
+      trackStartupResource(started);
+      reportStartupPhase('journey-ready');
+      return started;
+    } catch (error) {
+      await started?.close();
+      throw error;
+    }
+  })(),
+  (async () => {
+    const firstRunHome = join(scratch, 'first-run-home');
+    await mkdir(firstRunHome, { recursive: true });
+    let started: Host | undefined;
+    try {
+      started = await startHost({
+        environment: { INTERBOROUGH_HOME: firstRunHome },
+        resolveProviderGenerate: fakeProvider('Hello from the first-run provider stub.').resolver,
+        port: E2E_FIRST_RUN_PORT,
+        buildDirectory,
+      });
+      await started.bureau.plugins.ready();
+      trackStartupResource(started);
+      reportStartupPhase('first-run-ready');
+      return started;
+    } catch (error) {
+      await started?.close();
+      throw error;
+    }
+  })(),
+  (async () => {
+    const connectHome = join(scratch, 'connect-home');
+    await mkdir(connectHome, { recursive: true });
+    const started = await trackStartupPromise(
+      startConnectHost({
+        home: connectHome,
+        buildDirectory,
+        port: E2E_CONNECT_PORT,
+        onStartupResource: (stop) => startupCleanup.push(stop),
+      }),
+    );
+    reportStartupPhase('connect-ready');
+    return started;
+  })(),
+  (async () => {
+    return showcaseStartup;
+  })(),
+]);
+
+const failedSecondary = secondaryResults.find((result) => result.status === 'rejected');
+if (failedSecondary !== undefined) {
+  for (const result of secondaryResults) {
+    if (result.status === 'fulfilled') await closeSecondaryHost(result.value);
+  }
+  throw failedSecondary.reason;
+}
+
+const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost] = secondaryResults.map(
+  (result) => {
+    if (result.status === 'rejected') throw result.reason;
+    return result.value;
   },
-  environment: { INTERBOROUGH_HOME: journeyHome },
-  resolveProviderGenerate: createJourneyProviderResolver(
-    fakeProvider('This reply comes from the end-to-end provider stub.').resolver,
-  ),
-  port: E2E_JOURNEY_PORT,
-  buildDirectory,
-});
-await journeyHost.bureau.plugins.ready();
-
-// The fifth host, which only the first-run specification opens (`first-run.spec.ts`): a fresh
-// installation, with an empty home, no provider key, no agent file and no plugin that ships an
-// agent. The provider path is the fake client, so a key the specification saves calls nothing.
-const firstRunHome = join(scratch, 'first-run-home');
-await mkdir(firstRunHome, { recursive: true });
-const firstRunHost = await startHost({
-  environment: { INTERBOROUGH_HOME: firstRunHome },
-  resolveProviderGenerate: fakeProvider('Hello from the first-run provider stub.').resolver,
-  port: E2E_FIRST_RUN_PORT,
-  buildDirectory,
-});
-await firstRunHost.bureau.plugins.ready();
-
-// The sixth host, which only the connect specification opens (`connect-tools-restart.spec.ts`): the
-// production entry under the real supervisor, so a restart really stops and starts it, beside the
-// servers the dialog connects to. See `connect-host.ts`.
-const connectHome = join(scratch, 'connect-home');
-await mkdir(connectHome, { recursive: true });
-const connectHost = await startConnectHost({
-  home: connectHome,
-  buildDirectory,
-  port: E2E_CONNECT_PORT,
-});
-
-// The seventh host, which only the showcase specification opens (`showcase.spec.ts`): the shape of
-// `bun run dev -- --showcase`, the sample world's seed playing its story into a home of its own and
-// leaving the host running at Monday, Nov 2, a little after 10:45 AM on its offset clock.
-const showcaseHome = join(scratch, 'showcase-home');
-const { host: showcaseHost } = await seedSampleWorld(showcaseHome, {
-  host: { port: E2E_SHOWCASE_PORT, buildDirectory },
-});
+) as [Host, Host, Host, ConnectHost, Host];
+startupComplete = true;
+process.off('SIGINT', handleStartupSignal);
+process.off('SIGTERM', handleStartupSignal);
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
@@ -590,9 +681,9 @@ process.stdout.write(
     'Seeded COR-281 cross-build retry storm',
     'Seeded COR-164 pinned and auto-upgrade runs',
     'Registered dynamic workflow sources for invoice-reconciliation',
-    'Registered conditional-refresh sources',
   ].join('\n') + '\n',
 );
+reportStartupPhase('all-fixtures-ready');
 
 async function shutDown(): Promise<void> {
   await barrierControl.stop(true);

@@ -29,6 +29,8 @@ export const SETTING_VALUES: Record<string, unknown> = {
   'decisions.fallbackModel': 'anthropic/claude-haiku-5-5',
   'decisions.maximumPerTask': 20,
   'retention.audit': 'forever',
+  'retention.runs': 'forever',
+  'retention.chats': 'forever',
   'retention.events': { olderThan: 86_400_000 },
   'retention.tasks': 'forever',
   'retention.receipts': { olderThan: 604_800_000 },
@@ -45,12 +47,14 @@ export const SETTING_VALUES: Record<string, unknown> = {
   'engine.schedulerPollIntervalMs': 1_000,
   'engine.checkpointHistory': 5,
   'engine.maxNestingDepth': 8,
+  'engine.maxConcurrentRuns': 4,
   'engine.workflowClaimTtl': 30_000,
   'engine.workflowClaimRenewInterval': 10_000,
   durable: true,
   maintenance: 'automatic',
   'durableOwnership.ownership': 'none',
   workflowVersion: 'v1',
+  'a2a.enabled': true,
   'a2a.push.enabled': false,
   'a2a.push.sweepIntervalMs': 3_600_000,
 };
@@ -65,6 +69,13 @@ export type SettingsServed = {
   lockReasons: Record<string, 'deployment' | 'shared-storage'>;
   /** The restart keys a stored value waits on, which an update that sets one adds to. */
   pendingRestart: Set<string>;
+  /**
+   * What the host runs now, by key: a restart key's booted value. Unset, the values the fixture
+   * starts with. An update that puts a restart key back to its running value ends its wait.
+   */
+  running?: Record<string, unknown>;
+  /** What is in force for a key nothing stored a value for, such as a default window. */
+  effective?: Record<string, unknown>;
 };
 
 export function servedSettings(overrides: Partial<SettingsServed> = {}): SettingsServed {
@@ -100,7 +111,8 @@ export function settingsSnapshot(served: SettingsServed) {
   return {
     values: served.values,
     // What the page reads for an unset row; a fixture's values stand in for it.
-    effective: { ...served.values },
+    effective: { ...served.values, ...served.effective },
+    running: { ...(served.running ?? SETTING_VALUES) },
     revision: served.revision,
     persisted: served.persisted,
     keys: keyStates(served),
@@ -117,6 +129,8 @@ export function installSettingsBureau(
   extra: Record<string, (params: Record<string, unknown>) => unknown> = {},
   stream?: SettingsStream,
   hostMode?: 'local' | 'remote',
+  hostStorageSizeBytes?: number | null,
+  hostCleanUp?: (method: 'GET' | 'POST') => Response | Promise<Response>,
 ): BureauStub {
   return installBureauStub(
     {
@@ -136,12 +150,21 @@ export function installSettingsBureau(
             reason: 'locked',
           });
         }
-        served.values = { ...served.values, ...patch };
+        // `null` clears a stored value, as the Bureau does.
+        const values: Record<string, unknown> = { ...served.values, ...patch };
+        for (const [key, value] of Object.entries(patch)) if (value === null) delete values[key];
+        served.values = values;
         served.revision += 1;
-        const pendingRestart = Object.keys(patch).filter(
+        const running = served.running ?? SETTING_VALUES;
+        const restartKeys = Object.keys(patch).filter(
           (key) => SETTING_APPLY[key as never] === 'restart',
         );
-        for (const key of pendingRestart) served.pendingRestart.add(key);
+        for (const key of restartKeys) {
+          if (JSON.stringify(values[key]) === JSON.stringify(running[key])) {
+            served.pendingRestart.delete(key);
+          } else served.pendingRestart.add(key);
+        }
+        const pendingRestart = restartKeys.filter((key) => served.pendingRestart.has(key));
         return { revision: served.revision, pendingRestart };
       },
       ...extra,
@@ -151,6 +174,8 @@ export function installSettingsBureau(
         ? {}
         : { subscriptions: { 'bureau.settings.events': stream.handler } }),
       ...(hostMode === undefined ? {} : { hostMode }),
+      ...(hostStorageSizeBytes === undefined ? {} : { hostStorageSizeBytes }),
+      ...(hostCleanUp === undefined ? {} : { hostCleanUp }),
     },
   );
 }

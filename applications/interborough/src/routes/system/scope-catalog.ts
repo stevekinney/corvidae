@@ -1,8 +1,9 @@
 /**
  * Static one-line descriptions for every authorization scope (plan §9.7:
  * "Scope panel — granted/not-granted scopes with one-line descriptions and
- * the UI actions each unlocks"). Feeds both the Your scopes group and the
- * `PermissionMatrix` row axis on the Operations tab.
+ * the UI actions each unlocks"). Feeds the `PermissionMatrix` row axis. These
+ * are Weft's engine scopes; Settings › API reference › Your scopes lists
+ * Interborough's own API scopes instead (`src/lib/api-scopes.ts`).
  *
  * Descriptions are authored from `weft`'s scope vocabulary
  * (`src/lib/scopes.svelte.ts`'s `AUTHORIZATION_SCOPES`, itself mirroring

@@ -105,6 +105,7 @@ This conditional requirement is expressed in the generated JSON Schema below via
 | `class` | `string` | no | — | Additional class names merged with the component's root class. |
 | `closeButtonVisible` | `boolean` | no | — | When true, renders the close button in the upper corner of the modal panel. Default `true`. |
 | `describedById` | `string` | no | — | When set, applied as aria-describedby on the underlying <dialog>. Pass a short, plain description ID only. |
+| `description` | `string` | no | — | A line under the title that says what the dialog is for or what state it is in, such as "Paste an API key, then test it." Drawn muted in the header and wired to `aria-describedby` unless `describedById` names something else. Keep it to one short sentence. |
 | `dismissOnBackdropClick` | `boolean` | no | — | When true, clicking the backdrop outside the modal panel dismisses it. Default `true`. |
 | `dismissOnEscape` | `boolean` | no | — | When true, pressing Escape dismisses the modal. Default `true`. |
 | `open` | `boolean` | yes | — | Controls whether the modal is open; bindable for controlled usage. |

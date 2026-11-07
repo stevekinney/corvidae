@@ -20,10 +20,10 @@
 </script>
 
 <script lang="ts">
+  import Skeleton from '../skeleton/skeleton.svelte';
   import { resolveChartTheme } from '../../_internal/chart/chart-utilities.ts';
   import type { StatisticProps } from './statistic.types.ts';
   import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import Skeleton from '../skeleton/skeleton.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import { formatNumber } from '../../utilities/format-number.ts';
 
@@ -36,10 +36,10 @@
     label,
     value,
     attention = false,
+    loading = false,
     change,
     icon,
     caption,
-    loading = false,
     theme,
     valueFormatOptions,
     valueLocale,
@@ -54,7 +54,7 @@
   const labelId = $derived(`${stableId}-label`);
   const valueId = $derived(`${stableId}-value`);
   const captionId = $derived(`${stableId}-caption`);
-  const hasCaption = $derived(caption !== undefined && caption.trim() !== '');
+  const hasCaption = $derived(!loading && caption !== undefined && caption.trim() !== '');
 
   const displayValue = $derived(
     typeof value === 'number'
@@ -121,11 +121,11 @@
   {id}
   class={classNames('cinder-statistic', customClassName)}
   role="group"
-  aria-labelledby={`${labelId} ${valueId}`}
+  aria-labelledby={loading ? labelId : `${labelId} ${valueId}`}
+  aria-busy={loading ? 'true' : undefined}
   aria-describedby={hasCaption ? captionId : undefined}
   data-cinder-has-icon={icon ? '' : undefined}
   data-cinder-attention={attention ? '' : undefined}
-  aria-busy={loading ? 'true' : undefined}
   style:--_cinder-chart-foreground={resolvedTheme.foreground}
   style:--_cinder-chart-muted={resolvedTheme.muted}
   style:--_cinder-chart-background={resolvedTheme.background}
@@ -137,9 +137,13 @@
     >{#if attention}<span class="cinder-statistic__attention" aria-hidden="true"
       ></span>{/if}{label}</span
   >
-  <span id={valueId} class="cinder-statistic__value"
-    >{#if loading}<Skeleton width="2.25rem" height="1.1em" />{:else}{displayValue}{/if}</span
-  >
+  {#if loading}
+    <span id={valueId} class="cinder-statistic__value cinder-statistic__value--loading">
+      <Skeleton width="3rem" height="1.75rem" radius="var(--cinder-radius-md)" />
+    </span>
+  {:else}
+    <span id={valueId} class="cinder-statistic__value">{displayValue}</span>
+  {/if}
   {#if hasCaption}
     <span id={captionId} class="cinder-statistic__caption">{caption}</span>
   {/if}

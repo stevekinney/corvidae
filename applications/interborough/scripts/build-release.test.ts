@@ -84,7 +84,7 @@ async function releaseFixture(
       if (arguments_.includes('--compile')) {
         await writeFile(
           output,
-          `#!/opt/homebrew/bin/bun
+          `#!${process.execPath}
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home') + 1];
@@ -93,17 +93,18 @@ const root = dirname(dirname(process.argv[1]));
 const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
 const marker = ${JSON.stringify(options.markerPath ?? '')};
 const behavior = ${JSON.stringify(options.runtimeFailure ?? '')};
-if (behavior !== 'missing-link') {
-  await mkdir(join(home, 'plugins'), { recursive: true });
-  await symlink(${options.runtimeFailure === 'wrong-link' ? 'home' : 'runtime'}, join(home, 'plugins', 'node_modules'));
-}
-if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
 if (marker) {
-  await writeFile(marker, 'started');
   process.on('SIGTERM', async () => {
     await writeFile(marker, 'terminated');
     process.exit(0);
   });
+  await writeFile(marker, 'started');
+}
+if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
+// The verifier can stop this process as soon as it sees the link.
+if (behavior !== 'missing-link') {
+  await mkdir(join(home, 'plugins'), { recursive: true });
+  await symlink(${options.runtimeFailure === 'wrong-link' ? 'home' : 'runtime'}, join(home, 'plugins', 'node_modules'));
 }
 if (behavior === 'poll-error') await Bun.sleep(100);
 const server = Bun.serve({ port, fetch(request) {
@@ -161,6 +162,8 @@ await new Promise(() => {});
     }
   };
   const operations: ReleaseOperations = {
+    platform: 'darwin',
+    architecture: 'arm64',
     runCommand: command,
     buildApplication: async (options) => {
       const outdir = options?.outdir;
@@ -259,12 +262,16 @@ describe('release arguments', () => {
 
   // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects an existing release output before installing or staging', async () => {
-    if (process.platform !== 'darwin' || process.arch !== 'arm64') return;
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-collision-'));
     try {
       await writeFile(join(output, 'interborough-0.0.0-test-darwin-arm64.tar.gz'), 'sentinel');
       expect(
-        await throwingRejectionOf(buildRelease(['--version', '0.0.0-test', '--outdir', output])),
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+            platform: 'darwin',
+            architecture: 'arm64',
+          }),
+        ),
       ).toThrow('Release output already exists');
       expect(
         await Bun.file(join(output, 'interborough-0.0.0-test-darwin-arm64.tar.gz')).text(),
@@ -281,7 +288,10 @@ describe('release arguments', () => {
     try {
       expect(
         await throwingRejectionOf(
-          buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release']),
+          buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release'], {
+            platform: 'darwin',
+            architecture: 'arm64',
+          }),
         ),
       ).toThrow('Release inputs are dirty');
     } finally {

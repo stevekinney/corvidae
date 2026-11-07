@@ -55,7 +55,8 @@ test('the top bar names no principal and no scopes, and API reference’s Your s
   expect(topbarText).not.toContain('scopes');
 
   await page.goto('/settings/api-reference?group=scopes');
-  await expect(page.getByTestId('principal-subject')).toHaveText('anonymous:local');
+  await expect(page.getByTestId('api-scopes')).toContainText('Interborough is single-user for now');
+  await expect(page.getByTestId('api-scopes').locator('li code').first()).toBeVisible();
 });
 
 /**
@@ -399,26 +400,17 @@ test('the old paths are gone, and /reviews took the inbox’s place', async ({ r
   expect(reviews.status()).toBe(200);
 });
 
-test('the System view loads its Discovery documents through the relay', async ({ page }) => {
-  const documents = [
-    page.waitForResponse((response) => new URL(response.url()).pathname === '/openapi.json'),
-    page.waitForResponse((response) => new URL(response.url()).pathname === '/openrpc.json'),
-  ];
-  await page.goto('/settings/api-reference?group=discovery');
-  for (const response of await Promise.all(documents)) expect(response.status()).toBe(200);
-
-  const panel = page.locator('[data-group-panel="discovery"]');
-  await expect(panel.getByRole('status')).toHaveCount(0);
-  await expect(panel.getByRole('table').first()).toBeVisible();
-  await expect(panel.getByRole('alert')).toHaveCount(0);
-
-  // The MCP sub-view reads `/.well-known/mcp.json`, which the engine answers only for its own host.
-  const mcp = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/.well-known/mcp.json',
+test('API reference loads the host’s own OpenAPI description', async ({ page }) => {
+  const openapi = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/openapi.json',
   );
-  await panel.getByRole('radio', { name: 'MCP' }).click();
-  const mcpResponse = await mcp;
-  expect(mcpResponse.status()).toBe(200);
+  await page.goto('/settings/api-reference?group=operations');
+  const answered = await openapi;
+  expect(answered.status()).toBe(200);
+
+  const panel = page.getByTestId('api-operations');
+  await expect(panel.getByRole('table', { name: 'Operations' })).toBeVisible();
+  await expect(panel.getByRole('status')).toHaveCount(0);
   await expect(panel.getByRole('alert')).toHaveCount(0);
 });
 
@@ -526,14 +518,14 @@ test('clears the shell when a current host request rejects its credentials', asy
   pageErrors,
 }) => {
   pageErrors.expect({
-    pattern: loggedFailedResponse(401, /\/host\/integrations/),
+    pattern: loggedFailedResponse(401, /\/host\/mcp-apps/),
     reason: 'the test rejects this request to exercise expired credentials',
   });
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
-  await page.route('**/host/integrations', (route) => route.fulfill({ status: 401 }));
+  await page.route('**/host/mcp-apps', (route) => route.fulfill({ status: 401 }));
   await page.evaluate(async () => {
-    await fetch('/host/integrations');
+    await fetch('/host/mcp-apps');
   });
   await expect(page.locator('[data-view="boot"][data-state="error"]')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Search everything/ })).toHaveCount(0);

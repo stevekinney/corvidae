@@ -24,7 +24,7 @@ function schedule(id: string, description: string | null, agentName: string | nu
     revision: 1,
     timeZone: 'UTC',
     nextFireAt: null,
-    skipUntil: null,
+    skippedOccurrences: [],
     lastFireAt: null,
     missedFireCount: 0,
     skippedCount: 0,

@@ -182,17 +182,25 @@ export function viewerCadence(
  * set up and did not happen (a schedule's missed runs, a hook, a plugin), and last the one that is
  * about the whole host and is cleared by connecting a provider.
  */
-const KIND_ORDER: readonly AttentionItem['kind'][] = [
+const KIND_ORDER = [
   'alert',
   'missed-runs',
   'hook-failed',
   'plugin-not-loaded',
   'no-provider',
-];
+] as const satisfies readonly AttentionItem['kind'][];
+
+/** A problem of a kind Home has words for ({@link KIND_ORDER}). */
+type HomeAttentionItem = Extract<AttentionItem, { kind: (typeof KIND_ORDER)[number] }>;
+
+function isHomeKind(item: AttentionItem): item is HomeAttentionItem {
+  return (KIND_ORDER as readonly string[]).includes(item.kind);
+}
 
 /**
  * The problems as rows, by kind ({@link KIND_ORDER}) and, within a kind, in the order the Bureau
  * lists them (most recent first), so the order does not move when a different kind is the newest.
+ * A kind outside {@link KIND_ORDER} has no row here.
  */
 export function attentionRows(
   items: readonly AttentionItem[],
@@ -200,9 +208,10 @@ export function attentionRows(
 ): AttentionRow[] {
   const copy = HOME_COPY.attention;
   const zone = context.zone ?? viewerTimeZone();
-  const ordered = items.toSorted(
-    (left, right) => KIND_ORDER.indexOf(left.kind) - KIND_ORDER.indexOf(right.kind),
-  );
+  // A kind Home has no words for (a worker that disconnected) is left out; Health lists it.
+  const ordered = items
+    .filter(isHomeKind)
+    .toSorted((left, right) => KIND_ORDER.indexOf(left.kind) - KIND_ORDER.indexOf(right.kind));
   return ordered.map((item, index): AttentionRow => {
     const key = `${item.kind}:${String(index)}`;
     switch (item.kind) {

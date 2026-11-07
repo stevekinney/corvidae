@@ -18,7 +18,9 @@
     gap: var(--cinder-space-2);
   }
 
-  .cinder-setting-row__field {
+  /* Doubled with the form field's own class, so the grid wins over `.cinder-form-field`'s flex
+     column whichever stylesheet a bundle puts last. */
+  .cinder-form-field.cinder-setting-row__field {
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--cinder-setting-row-control-width, 15rem);
     column-gap: var(--cinder-space-6);
@@ -47,9 +49,10 @@
     ) {
     grid-column: 2;
     grid-row: 1 / span 8;
+    /* Aligned to the end, the control sizes to its content; a control that sets its own size,
+       such as a switch, keeps it. */
     justify-self: end;
     align-self: center;
-    inline-size: auto;
     max-inline-size: 100%;
   }
 
@@ -173,7 +176,7 @@
      managed line and the error sit directly under the control (row 50i). Order reads the lines
      into that sequence whatever the markup order is. */
   @container (inline-size < 30rem) {
-    .cinder-setting-row__field {
+    .cinder-form-field.cinder-setting-row__field {
       display: flex;
       flex-direction: column;
       align-items: stretch;

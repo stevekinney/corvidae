@@ -1,6 +1,6 @@
 /**
  * Edits to the `modelPolicy` setting, a field of one layer at a time. The setting is
- * `{ deployment?, bureau?, users?, policyRevision }`. Settings › Model policy edits two of the
+ * `{ deployment?, bureau?, users?, policyRevision }`. Settings › Allowed models edits two of the
  * layers: Allowed models is the first, `deployment`, which binds every run; Your preferences is the
  * entry for the one local caller under `users`. The third, `bureau`, is not shown in a
  * single-user installation, and an edit leaves it as it was. `policyRevision` is never typed: a
@@ -84,4 +84,80 @@ export function committedPolicy(stored: ModelPolicy, edited: ModelPolicy): Model
   return sameValue(withoutRevision(stored), withoutRevision(edited))
     ? stored
     : { ...edited, policyRevision: stored.policyRevision + 1 };
+}
+
+/** The models the deployment layer keeps agents from using, by the model name the catalog lists. */
+export function deniedModelsOf(policy: ModelPolicy): readonly string[] {
+  const denied = fieldOf(policy, 'allowed-models', 'deniedModels');
+  return Array.isArray(denied) ? denied.filter((model) => typeof model === 'string') : [];
+}
+
+/** The providers the deployment layer keeps agents from using, which this page shows but does not change. */
+export function deniedProvidersOf(policy: ModelPolicy): readonly string[] {
+  const denied = fieldOf(policy, 'allowed-models', 'deniedProviders');
+  return Array.isArray(denied) ? denied.filter((provider) => typeof provider === 'string') : [];
+}
+
+/** Whether the policy lets runs use the model: every model is allowed until the policy denies it. */
+export function isModelAllowed(policy: ModelPolicy, model: string): boolean {
+  return !deniedModelsOf(policy).includes(model);
+}
+
+/** The policy with the model allowed, or denied; the other fields of the policy stay as they were. */
+export function withModelAllowed(
+  policy: ModelPolicy,
+  model: string,
+  allowed: boolean,
+): ModelPolicy {
+  const others = deniedModelsOf(policy).filter((denied) => denied !== model);
+  return withField(policy, 'allowed-models', 'deniedModels', allowed ? others : [...others, model]);
+}
+
+/**
+ * What the caller prefers when more than one allowed model fits: the cheapest, the fastest, both,
+ * or neither. The policy keeps cost and speed as two preferences; the page offers them as one
+ * choice, so a policy that holds both is a choice of its own.
+ */
+export type PreferChoice = 'neither' | 'cost' | 'speed' | 'both';
+
+/** The caller's choice among the models allowed, read from the cost and speed preferences. */
+export function preferenceOf(policy: ModelPolicy): PreferChoice {
+  const cost = fieldOf(policy, 'your-preferences', 'costPreference') === 'lowest-cost';
+  const speed = fieldOf(policy, 'your-preferences', 'latencyPreference') === 'lowest-latency';
+  if (cost && speed) return 'both';
+  return cost ? 'cost' : speed ? 'speed' : 'neither';
+}
+
+/** The policy with the caller's choice written as the cost and speed preferences it stands for. */
+export function withPreference(policy: ModelPolicy, choice: PreferChoice): ModelPolicy {
+  const cost = choice === 'cost' || choice === 'both' ? 'lowest-cost' : undefined;
+  const speed = choice === 'speed' || choice === 'both' ? 'lowest-latency' : undefined;
+  return withField(
+    withField(policy, 'your-preferences', 'costPreference', cost),
+    'your-preferences',
+    'latencyPreference',
+    speed,
+  );
+}
+
+/** The effort a model thinks at when an agent does not say, or `undefined` when none is chosen. */
+export function defaultEffortOf(policy: ModelPolicy): string | undefined {
+  const effort = fieldOf(policy, 'your-preferences', 'defaultEffort');
+  return typeof effort === 'string' ? effort : undefined;
+}
+
+/**
+ * How many choices differ between the stored policy and the edited one: each model allowed or not
+ * allowed now, plus the preference and the default effort. This is the "N unsaved changes" the
+ * actions bar counts, which is what the person did rather than how many fields the policy holds.
+ */
+export function changedChoices(stored: ModelPolicy, edited: ModelPolicy): number {
+  const before = new Set(deniedModelsOf(stored));
+  const after = new Set(deniedModelsOf(edited));
+  let changes = 0;
+  for (const model of before) if (!after.has(model)) changes += 1;
+  for (const model of after) if (!before.has(model)) changes += 1;
+  if (preferenceOf(stored) !== preferenceOf(edited)) changes += 1;
+  if (defaultEffortOf(stored) !== defaultEffortOf(edited)) changes += 1;
+  return changes;
 }

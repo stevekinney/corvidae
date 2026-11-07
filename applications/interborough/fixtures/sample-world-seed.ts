@@ -31,6 +31,8 @@
 
 import { ANONYMOUS_LOCAL_OWNER } from '@lostgradient/bureau';
 import { createMemoryAuthority, type MemoryAuthority } from '@lostgradient/memory';
+import { createAgentSession, SESSION_OWNER_METADATA_KEY } from '@lostgradient/operative';
+import { Conversation } from 'conversationalist';
 import { mkdir, rm } from 'node:fs/promises';
 
 import { setPluginsEnabled } from '../src/host/demo-plugin-home.ts';
@@ -77,6 +79,8 @@ export const SAMPLE_WORLD_TIMES = {
   billingAsked: central('2026-10-29T11:04:00', '-05:00'),
   billingStopped: central('2026-10-29T11:05:00', '-05:00'),
   toolRunnerVersion4: central('2026-10-29T11:38:00', '-05:00'),
+  /** The nightly clean-up of Sunday, Nov 1, 3:00 AM, which Data and retention reports as the last one. */
+  cleanedUp: central('2026-11-01T03:00:00', '-06:00'),
   sayHello: central('2026-11-01T16:12:00', '-06:00'),
   serverStarted: central('2026-11-02T09:00:00', '-06:00'),
   releaseAsked: central('2026-11-02T09:46:00', '-06:00'),
@@ -395,6 +399,46 @@ async function sayHelloChat({ host, runtime, director }: SessionContext): Promis
 }
 
 /**
+ * The chat the person tries things in and deletes on Nov 1 at 4:12 PM: its title, which is its
+ * first message, and the twelve messages it held (six of yours, six of the agent's).
+ */
+export const SAMPLE_WORLD_SCRATCH_CHAT = {
+  threadId: 'sample-chat-scratch-test',
+  agent: 'assistant',
+  title: 'Scratch test',
+  messageCount: 12,
+} as const;
+
+/**
+ * Nov 1, 4:12 PM, as Say hello starts: you delete "Scratch test", a chat of twelve messages,
+ * the way the chat's menu does (`bureau.contexts.delete`, as the local caller), so the Bureau
+ * writes the deletion's audit record itself, with the title and the message count the chat had.
+ * The chat is saved to the store directly, as Tool runner's memory is, because twelve messages
+ * through runs would add runs to the story that the Runs page and the metrics would count.
+ */
+async function scratchChatDeleted({ host }: SessionContext): Promise<void> {
+  const chat = SAMPLE_WORLD_SCRATCH_CHAT;
+  const store = host.bureau.internals.sessionStore;
+  if (store === undefined) throw new Error('The host has no session store.');
+  const conversation = new Conversation();
+  for (let exchange = 1; exchange <= chat.messageCount / 2; exchange += 1) {
+    conversation.appendUserMessage(exchange === 1 ? chat.title : `Try number ${String(exchange)}`);
+    conversation.appendAssistantMessage(`Trying number ${String(exchange)}.`);
+  }
+  await store.save(
+    createAgentSession({
+      id: chat.threadId,
+      agentName: chat.agent,
+      conversationHistory: conversation.current,
+      metadata: { [SESSION_OWNER_METADATA_KEY]: ANONYMOUS_LOCAL_OWNER },
+      runs: [],
+    }),
+  );
+  await bureauCall(host, 'bureau.contexts.delete', { contextId: chat.threadId });
+  await host.bureau.maintain();
+}
+
+/**
  * The Nov 2 story on the host that started at 9:00 AM: the missed Daily summary runs it logs as it
  * starts, the storage alert at 9:05 AM, then
  * everything from 9:46 AM to 10:45 AM.
@@ -414,6 +458,13 @@ async function clearHookNotifications(host: Host): Promise<void> {
     .filter((notification) => notification.kind === 'hook')
     .map((notification) => notification.id);
   if (ids.length > 0) await bureauCall(host, 'bureau.notifications.dismiss', { ids });
+}
+
+/** Saves one setting through the Bureau, as the Settings page does, and fails the seed if it is refused. */
+async function saveSetting(host: SessionContext['host'], key: string, value: unknown) {
+  const { revision } = await host.bureau.settings.get();
+  const saved = await host.bureau.settings.update({ [key]: value }, { expectedRevision: revision });
+  if (saved.outcome !== 'applied') throw new Error(`Saving ${key} was refused: ${saved.message}`);
 }
 
 async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host' | 'runtime'>> {
@@ -467,6 +518,20 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
     throw new Error(`Removing the Anthropic key answered ${String(removed.status)}.`);
   await clearHookNotifications(host);
 
+  // Settings › General holds one saved change that waits for a restart: the claim renew interval
+  // at 15 seconds (board SettingsShell, "General · /settings", row 47f).
+  await saveSetting(host, 'engine.workflowClaimRenewInterval', 15_000);
+  // Settings › Models draws "Maximum per task" reading 10 while TypeSafe waits for its key (board
+  // SettingsShell, "Models · /settings/models", row 48g); the Bureau's own default is 20.
+  await saveSetting(host, 'decisions.maximumPerTask', 10);
+  // Settings › Allowed models draws the caller's default effort as High (board PageSettingsSections,
+  // "Allowed models · /settings/allowed-models", row 49e). The schema has no default for the policy,
+  // so the sample world stores one: nothing denied, and the one local caller's effort.
+  await saveSetting(host, 'modelPolicy', {
+    policyRevision: 1,
+    users: { 'anonymous:local': { defaultEffort: 'high' } },
+  });
+
   return {
     runs: { refund4472: refund4472.runId, refund4471: refund4471.runId },
     reviews: { refund4471: refund4471.id, release: releaseReview.id },
@@ -507,9 +572,14 @@ export async function seedSampleWorld(
   const history = SAMPLE_WORLD_HISTORY_TIMES;
   const [version1, version2, version3, version4] = TOOL_RUNNER_VERSIONS;
 
-  await session(story, times.toolRunnerVersion1, async ({ host }) =>
-    saveToolRunnerVersion(host, version1),
-  );
+  await session(story, times.toolRunnerVersion1, async ({ host }) => {
+    await saveToolRunnerVersion(host, version1);
+    // The claim timing the host runs: renewed every 30 seconds within a 90-second claim. A restart
+    // later in the story puts it in force, so on Monday only the 15-second interval it saves waits
+    // (board SettingsShell: "Saved, waiting for a restart", and Revert goes back to 30 seconds).
+    await saveSetting(host, 'engine.workflowClaimTtl', 90_000);
+    await saveSetting(host, 'engine.workflowClaimRenewInterval', 30_000);
+  });
   await session(story, times.toolRunnerVersion2, async ({ host }) => {
     await saveToolRunnerVersion(host, version2);
     runtime.setTime(times.neverShareEmails);
@@ -534,6 +604,13 @@ export async function seedSampleWorld(
   );
   await session(story, history.sayHelloGoal - 60_000, october30);
   await session(story, times.sayHello, async (context) => {
+    // The clean-up of that night ran at 3:00 AM, with this host's own clock, so its record is real.
+    // The host that starts on Monday finds it older than the 3:00 AM it was off for, which Data and
+    // retention words as "Skipped today while Interborough was off."
+    runtime.setTime(times.cleanedUp);
+    await context.host.cleanUp.cleanUpNow();
+    runtime.setTime(times.sayHello);
+    await scratchChatDeleted(context);
     await sayHelloChat(context);
     await november1Afternoon(context);
   });

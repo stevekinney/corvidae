@@ -115,6 +115,7 @@ import {
   humanInputSchemaOf,
   sessionOwnerOf,
   type ScheduleTick,
+  summarizeSession,
   TOOL_TIMING_METADATA_KEY,
   type ToolTiming,
 } from '@lostgradient/operative';
@@ -411,6 +412,7 @@ import {
   subordinateTaskAdmission,
 } from './catalog-task-settlement';
 import {
+  createCatalogAssetReleaseDrain,
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
   type ReleasableConversation,
@@ -1681,6 +1683,16 @@ function rejectReservedIdentifier(kind: string, id: string): void {
 function rejectUnopenableNewSessionIdentifier(kind: string, id: string, exists: boolean): void {
   const reason = exists ? undefined : unopenableNewSessionIdentifierReason(kind, id);
   if (reason !== undefined) toBadRequest(reason);
+}
+
+/**
+ * A schedule's stored input with its text replaced by `text` (COR-2018). A text input is replaced
+ * whole; an input of parts keeps its media, after the new text, so an edit of the message never
+ * drops an attachment the schedule sends.
+ */
+function replaceInputText(stored: SessionInputPayload, text: string): SessionInputPayload {
+  if (typeof stored === 'string') return text;
+  return [{ type: 'text', text }, ...stored.filter((part) => part.type !== 'text')];
 }
 
 /** The text of the last user row in `rows`, or `''` when there is none. */
@@ -5813,15 +5825,10 @@ async function constructBureau<const D extends AgentDefinitions>(
    * (`onCatalogRunEnded`), a recovered run by the settlement hook below, and a goal attempt by the
    * goal forwarder, after the goal's session holds its rows.
    */
-  let catalogAssetReleasesClosed = false;
-  const pendingCatalogAssetReleases = new Set<Promise<void>>();
+  const catalogAssetReleases = createCatalogAssetReleaseDrain();
   /** Follows a release so `shutdown()` can wait for the ones under way before the asset service closes. */
-  const trackCatalogAssetRelease = (pending: Promise<void>): Promise<void> => {
-    pendingCatalogAssetReleases.add(pending);
-    const forget = (): void => void pendingCatalogAssetReleases.delete(pending);
-    void pending.then(forget, forget);
-    return pending;
-  };
+  const trackCatalogAssetRelease = (pending: Promise<void>): Promise<void> =>
+    catalogAssetReleases.track(pending);
   const catalogRunAssets = createCatalogRunAssetReleaser({
     assets: () => assetServiceHolder.current,
     durableEnd: catalogDurableEnd,
@@ -5834,7 +5841,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       return { status: reading.status === 'missing' ? 'missing' : 'running' };
     },
-    isClosed: () => catalogAssetReleasesClosed,
+    isClosed: () => catalogAssetReleases.isClosed(),
     diagnose,
   });
   catalogRunSettlements.subscribe(
@@ -12465,6 +12472,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     return scheduleInputPreview(stored.input);
   }
 
+  /** Whether every fire of an agent schedule continues one session; only the boolean leaves here. */
+  async function getScheduleContinuesChat(scheduleId: string): Promise<boolean | undefined> {
+    const stored = await readScheduledAgentInput(scheduleId);
+    if (stored === undefined) return undefined;
+    return stored.sessionId !== undefined;
+  }
+
   async function sessionOwner(sessionId: string): Promise<string | undefined> {
     const session = await runtime.sessionStore?.load(sessionId);
     return session === undefined ? undefined : resolveSessionOwner(session.metadata);
@@ -14826,6 +14840,48 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   }
 
+  /** The most chats one maintenance pass deletes, so a first pass over a large backlog stays bounded. */
+  const CHAT_RETENTION_BATCH_SIZE = 100;
+
+  /**
+   * Deletes the chats whose last message is older than `retention.chats`, read per pass so a change
+   * applies to the next one, through the same deletion a person's delete runs (live runs cancelled,
+   * content purged, the deletion audited). A chat is a context no goal, schedule or try started, and
+   * its age is its `updatedAt`, which a rename does not move. With the setting `'forever'` nothing is
+   * deleted. A failure is reported and never stops the rest of a pass. Resolves how many chats it
+   * deleted, or `'failed'`.
+   */
+  async function pruneChats(pass: MaintenancePassName): Promise<number | 'failed'> {
+    const window = currentSettings()['retention.chats'];
+    if (window === undefined || window === 'forever' || !runtime.sessionStore) return 0;
+    try {
+      const cutoff = runtimeServices.clock.now() - window.olderThan;
+      const oldest = await listSessions({
+        origin: 'chat',
+        sortBy: 'updatedAt',
+        sortOrder: 'asc',
+        limit: CHAT_RETENTION_BATCH_SIZE,
+      });
+      let deleted = 0;
+      for (const chat of oldest) {
+        if (new Date(chat.updatedAt).getTime() >= cutoff) break;
+        // The listing is read before any chat's lease: a message sent since moves the chat inside
+        // the window, so the deletion checks again under the lease and keeps a chat that moved.
+        const report = await startSessionDeletion(chat.id, { idleBefore: cutoff });
+        if (report.deleted) deleted += 1;
+      }
+      return deleted;
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} chat retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+      return 'failed';
+    }
+  }
+
   /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
@@ -15044,6 +15100,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await pruneNotifications('Manual');
         // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
         await pruneHookDeliveries('Manual');
+        // Chats past `retention.chats`.
+        await pruneChats('Manual');
       }
       // COR-1898 — governed memory's embedder switch advances only when asked to.
       await memoryEmbedder?.reconcile();
@@ -15134,6 +15192,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         logs: await pruneWorkflowLogs('Requested'),
         notifications: await pruneNotifications('Requested'),
         hookDeliveries: await pruneHookDeliveries('Requested'),
+        chats: await pruneChats('Requested'),
       });
     })();
     manualDurableMaintenancePasses.add(pass);
@@ -15432,6 +15491,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           await pruneNotifications('Automatic');
           // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
           await pruneHookDeliveries('Automatic');
+          // Chats past `retention.chats`.
+          await pruneChats('Automatic');
         }
         // COR-1898 — governed memory's embedder switch advances only when asked to.
         await memoryEmbedder?.reconcile();
@@ -15728,19 +15789,48 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
-  async function deleteSession(
+  function deleteSession(
     id: string,
-    deleteOptions?: { readonly incarnation?: string | undefined },
+    deleteOptions?: {
+      readonly incarnation?: string | undefined;
+      readonly actor?: string | undefined;
+    },
+  ): Promise<ContextDeletionReport> {
+    return startSessionDeletion(id, {
+      incarnation: deleteOptions?.incarnation,
+      actor: deleteOptions?.actor,
+    });
+  }
+
+  /**
+   * {@link deleteSession}, and for a retention sweep `idleBefore`: the chat is deleted only if,
+   * read again under its thread lease, its last activity is still before that time and it has no
+   * live task, and the store delete is then fenced to the incarnation read there. A chat that was
+   * active since the sweep listed it is kept, with no tombstone, and deletes nothing.
+   */
+  async function startSessionDeletion(
+    id: string,
+    deleteOptions: {
+      readonly incarnation?: string | undefined;
+      readonly actor?: string | undefined;
+      readonly idleBefore?: number | undefined;
+    },
   ): Promise<ContextDeletionReport> {
     const existing = inFlightSessionDeletions.get(id);
     if (existing) return existing;
     let releaseCoalescing: (() => void) | undefined = () => {
       inFlightSessionDeletions.delete(id);
     };
-    const deletion = performDeleteSession(id, deleteOptions?.incarnation, () => {
-      releaseCoalescing?.();
-      releaseCoalescing = undefined;
-    }).finally(() => {
+    const deletion = performDeleteSession(
+      id,
+      deleteOptions.incarnation,
+      () => {
+        releaseCoalescing?.();
+        releaseCoalescing = undefined;
+      },
+      deleteOptions.actor,
+      deleteOptions.idleBefore,
+    ).finally(() => {
       releaseCoalescing?.();
       releaseCoalescing = undefined;
     });
@@ -15778,22 +15868,67 @@ async function constructBureau<const D extends AgentDefinitions>(
       (error as { code?: unknown }).code === 'ERR_ENCODING_INVALID_ENCODED_DATA'
     );
   }
-  const sessionDeletionOwners = new Map<string, string>();
+  /**
+   * What the record kept before a deletion holds (COR-2018): the owner, which the audit entry
+   * carries as `detail.owner`, and the chat's title and message count, which it carries so the log
+   * can say which chat was deleted. The value is stored as JSON; a record written before the
+   * summary was kept is the owner alone, as plain text, and reads as no summary.
+   */
+  type SessionDeletionRecord = {
+    readonly owner: string | undefined;
+    /** Who asked for the deletion, when somebody did: an expiry has no actor. */
+    readonly actor: string | undefined;
+    readonly summary: { readonly title: string | null; readonly messageCount: number } | undefined;
+  };
+  const sessionDeletionOwners = new Map<string, SessionDeletionRecord>();
+
+  function serializeSessionDeletionRecord(record: SessionDeletionRecord): string {
+    return JSON.stringify({
+      owner: record.owner ?? null,
+      actor: record.actor ?? null,
+      title: record.summary?.title ?? null,
+      messageCount: record.summary?.messageCount ?? null,
+    });
+  }
+
+  function parseSessionDeletionRecord(stored: string): SessionDeletionRecord {
+    if (!stored.startsWith('{')) return { owner: stored, actor: undefined, summary: undefined };
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      if (typeof parsed !== 'object' || parsed === null) {
+        return { owner: undefined, actor: undefined, summary: undefined };
+      }
+      const { owner, actor, title, messageCount } = parsed as Record<string, unknown>;
+      return {
+        owner: typeof owner === 'string' ? owner : undefined,
+        actor: typeof actor === 'string' ? actor : undefined,
+        summary:
+          typeof messageCount === 'number'
+            ? { title: typeof title === 'string' ? title : null, messageCount }
+            : undefined,
+      };
+    } catch {
+      return { owner: undefined, actor: undefined, summary: undefined };
+    }
+  }
 
   function sessionDeletionOwnerKey(sessionId: string, incarnation: string): string {
     return `${SESSION_DELETION_OWNER_PREFIX}${encodeURIComponent(sessionId)}:${incarnation}`;
   }
 
-  async function recordSessionDeletionOwner(session: AgentSession): Promise<void> {
+  async function recordSessionDeletionOwner(session: AgentSession, actor?: string): Promise<void> {
     const kvStore = runtime.kv;
     if (!auditTrailInstance || !kvStore) return;
-    const owner = resolveSessionOwner(session.metadata);
     // A malformed owner names no one, so the entry is left without one.
-    if (owner === undefined) return;
+    const owner = resolveSessionOwner(session.metadata);
+    // The title and the count are what the chat was while it existed (COR-2018): the body is gone
+    // by the time the entry is written, so they travel with the record the owner does.
+    const { title, messageCount } = summarizeSession(session);
+    const record: SessionDeletionRecord = { owner, actor, summary: { title, messageCount } };
     const key = sessionDeletionOwnerKey(session.id, session.incarnation);
-    sessionDeletionOwners.set(key, owner);
+    sessionDeletionOwners.set(key, record);
     try {
-      await kvStore.set(key, owner);
+      await kvStore.set(key, serializeSessionDeletionRecord(record));
     } catch (error: unknown) {
       // The deletion does not go ahead without its owner: once the session is gone,
       // nothing can supply the owner its audit entry needs, in this process or any
@@ -15816,8 +15951,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    *   task of the incarnation keeps its status and cleanup and loses its history. This runs
    *   before the removal commits, so a failure leaves the context in place and a retry finds it.
    */
-  async function prepareSessionsForRemoval(sessions: readonly AgentSession[]): Promise<void> {
-    for (const session of sessions) await recordSessionDeletionOwner(session);
+  async function prepareSessionsForRemoval(
+    sessions: readonly AgentSession[],
+    actor?: string,
+  ): Promise<void> {
+    for (const session of sessions) await recordSessionDeletionOwner(session, actor);
     for (const session of sessions) await tasks.clearHistory(session.id, session.incarnation);
   }
 
@@ -15837,8 +15975,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     const key = sessionDeletionOwnerKey(sessionId, incarnation);
     if (sessionDeletionOwners.has(key)) return true;
     try {
-      const owner = await kvStore.get(key);
-      if (owner !== null) sessionDeletionOwners.set(key, owner);
+      const stored = await kvStore.get(key);
+      if (stored !== null) sessionDeletionOwners.set(key, parseSessionDeletionRecord(stored));
       return true;
     } catch (error: unknown) {
       // A record that is present but not valid text is a definite miss, like one that
@@ -16130,7 +16268,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       const live = await runtime.sessionStore?.load(sessionId);
       return runtime.sessionStore === undefined || live?.incarnation === incarnation;
     },
-    isClosed: () => catalogAssetReleasesClosed,
+    isClosed: () => catalogAssetReleases.isClosed(),
     onReleased: (claim) => claimedRowAssets.delete(`${claim.holderId}\u0000${claim.assetId}`),
     diagnose,
   });
@@ -16167,6 +16305,19 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * Whether `session` is still past a retention cutoff: its last activity is before `idleBefore`
+   * and no task of it is live, so deleting it cancels nothing a person is waiting on.
+   */
+  async function isIdleBefore(session: AgentSession, idleBefore: number): Promise<boolean> {
+    if (Date.parse(session.updatedAt) >= idleBefore) return false;
+    const activity = await tasks.activityOf(
+      [session.id],
+      new Map([[session.id, session.incarnation]]),
+    );
+    return activity.get(session.id) === 'idle';
+  }
+
+  /**
    * COR-1986 — reads the session to delete and, when there is one to delete, records that its id
    * was deleted BEFORE anything is removed, under the thread's lease. A tombstone that cannot be
    * written refuses the delete, so nothing is removed; one that was written is never taken back,
@@ -16177,7 +16328,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function loadSessionAndTombstone(
     id: string,
     expectedIncarnation: string | undefined,
-  ): Promise<AgentSession | undefined> {
+    idleBefore: number | undefined,
+  ): Promise<AgentSession | 'active' | undefined> {
     const sessionStore = requireSessionStore();
     const lease = await acquireThreadLeaseForDeletion(id);
     try {
@@ -16186,6 +16338,15 @@ async function constructBureau<const D extends AgentDefinitions>(
       // another context, and nothing of it is cancelled or deleted here.
       if (expectedIncarnation !== undefined && session?.incarnation !== expectedIncarnation) {
         return undefined;
+      }
+      // A retention sweep's expiry is decided again here, under the lease a chat start takes
+      // before it adds a message, and before the tombstone, which is never taken back.
+      if (
+        session !== undefined &&
+        idleBefore !== undefined &&
+        !(await isIdleBefore(session, idleBefore))
+      ) {
+        return 'active';
       }
       if (session !== undefined && runtime.kv !== undefined) {
         await writeContextTombstone(runtime.kv, {
@@ -16205,14 +16366,22 @@ async function constructBureau<const D extends AgentDefinitions>(
     id: string,
     expectedIncarnation: string | undefined,
     onStoreDeletionCommitted: () => void,
+    actor?: string,
+    idleBefore?: number,
   ): Promise<ContextDeletionReport> {
     const sessionStore = requireSessionStore();
-    const session = await loadSessionAndTombstone(id, expectedIncarnation);
+    const loaded = await loadSessionAndTombstone(id, expectedIncarnation, idleBefore);
+    // A retention sweep's chat that was active since it was listed is kept.
+    if (loaded === 'active') return { deleted: false, tasks: [] };
+    const session = loaded;
     // A caller that named another incarnation than the stored one deletes nothing.
     if (expectedIncarnation !== undefined && session === undefined) {
       return { deleted: false, tasks: [] };
     }
     if (session) {
+      // A sweep deletes the incarnation it found idle, never one created under the id since.
+      const fencedIncarnation =
+        expectedIncarnation ?? (idleBefore === undefined ? undefined : session.incarnation);
       // COR-1934 — before anything is removed: the purge that follows the commit is owed from here,
       // and a delete that cannot record it is refused, so the chat is deleted again whole.
       const runIds = await chatRunIdsOf(session);
@@ -16224,7 +16393,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         memoryPlacements: chatMemoryPlacementsOf(session, runIds),
       };
       await chatContentPurge.record(deletedChat);
-      await prepareSessionsForRemoval([session]);
+      await prepareSessionsForRemoval([session], actor);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
           status: 'revoked',
@@ -16327,9 +16496,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       let removedLiveRecord: boolean;
       try {
         removedLiveRecord =
-          expectedIncarnation === undefined
+          fencedIncarnation === undefined
             ? await sessionStore.delete(id)
-            : await sessionStore.delete(id, { expectedIncarnation });
+            : await sessionStore.delete(id, { expectedIncarnation: fencedIncarnation });
       } catch (error) {
         if (triedAgent !== undefined) tryAgents.hold(triedAgent);
         // The delete did not commit: the purge is not owed.
@@ -20793,6 +20962,34 @@ async function constructBureau<const D extends AgentDefinitions>(
     return sweptCount;
   }
 
+  /**
+   * Under a workspace Bureau a schedule may continue only a chat its own owner holds, so a session
+   * that is another owner's, or that does not exist, is answered as not found. Creating and
+   * updating a schedule share this check, because every fire of one that fails it is `unavailable`.
+   */
+  async function refuseScheduleSessionOfAnotherOwner(
+    sessionId: string,
+    owner: string,
+  ): Promise<void> {
+    if (workspace !== undefined && (await sessionOwner(sessionId)) !== owner) {
+      throw new BureauError('Session not found', 'NOT_FOUND');
+    }
+  }
+
+  /**
+   * Whether the owner may keep a schedule's recurring chat. A chat that is not made yet is theirs
+   * to make, as the first fire of a schedule that Bureau named a chat for does; one that exists
+   * must be theirs.
+   */
+  async function mayContinueScheduleSession(
+    sessionId: string | undefined,
+    owner: string,
+  ): Promise<boolean> {
+    if (sessionId === undefined) return true;
+    const held = await sessionOwner(sessionId);
+    return held === undefined || held === owner;
+  }
+
   async function createSchedule(
     definition: DurableScheduleDefinition,
     scheduleOptions?: CreateScheduleOptions,
@@ -20800,6 +20997,15 @@ async function constructBureau<const D extends AgentDefinitions>(
     source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     definition = structuredClone(definition);
+    // A chat Bureau names itself is unguessable and not yet made, so it is not another owner's to
+    // refuse: the schedule's first fire makes it, owned by the schedule's owner.
+    const allocatedChat = definition.continueChat === true;
+    if (allocatedChat) {
+      if (definition.sessionId !== undefined) {
+        throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
+      }
+      definition.sessionId = runtimeServices.identifiers.next('session');
+    }
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
       // A schedule's session is made by its first fire when none exists yet. Only `.` and `..` are
@@ -20814,12 +21020,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
-    if (
-      workspace !== undefined &&
-      definition.sessionId !== undefined &&
-      (await sessionOwner(definition.sessionId.trim())) !== owner
-    ) {
-      throw new BureauError('Session not found', 'NOT_FOUND');
+    if (definition.sessionId !== undefined && !allocatedChat) {
+      await refuseScheduleSessionOfAnotherOwner(definition.sessionId.trim(), owner);
     }
     const workspaceAuthority =
       workspace === undefined ? undefined : await captureRunWorkspaceAuthority(workspace, owner);
@@ -21063,8 +21265,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const usableInput =
       !isScheduledAgentRunInput(input) ||
       (authority !== undefined &&
-        (input.sessionId === undefined ||
-          (await sessionOwner(input.sessionId)) === authority.authorizingOwner) &&
+        (await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) &&
         (await mayUseAutomationInput(
           input.input,
           runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
@@ -21128,8 +21329,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         snapshot === null ||
         input === undefined ||
         authority === undefined ||
-        (input.sessionId !== undefined &&
-          (await sessionOwner(input.sessionId)) !== authority.authorizingOwner) ||
+        !(await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) ||
         !(await mayUseAutomationInput(
           input.input,
           runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
@@ -21332,6 +21532,20 @@ async function constructBureau<const D extends AgentDefinitions>(
     return true;
   }
 
+  async function unskipSchedule(
+    scheduleId: string,
+    occurrence: number,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    await runtime.durable.engine.unskipScheduleOccurrence(scheduleId, {
+      ...scheduleTransitionOptions(guard),
+      occurrence,
+    });
+    return true;
+  }
+
   async function runScheduleNow(
     scheduleId: string,
   ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
@@ -21364,29 +21578,105 @@ async function constructBureau<const D extends AgentDefinitions>(
         'BAD_REQUEST',
       );
     }
-    if (update.overlap === 'allow') {
-      // A recurring session is sequential: overlapping fires would interleave its turns, which is
-      // why creating such a schedule refuses `allow` too.
-      const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
-      const stored: unknown = bytes ? decode(bytes) : undefined;
-      const input =
-        typeof stored === 'object' && stored !== null
-          ? (stored as { input?: unknown }).input
-          : undefined;
-      if (isScheduledAgentRunInput(input) && input.sessionId !== undefined) {
+    const engine = runtime.durable.engine;
+    if (update.continueChat === true && update.sessionId !== undefined) {
+      throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
+    }
+    const changesRun =
+      update.agentName !== undefined ||
+      update.input !== undefined ||
+      update.sessionId !== undefined ||
+      update.continueChat === true;
+    // The stored state is read for what an edit of the run needs (its input, the overlap and the
+    // revision it was written at), and for the check that a recurring session is never combined
+    // with overlapping fires.
+    const bytes =
+      changesRun || update.overlap === 'allow'
+        ? await engine.storage.get(KEYS.schedule(scheduleId))
+        : null;
+    const stored: unknown = bytes ? decode(bytes) : undefined;
+    const storedRecord =
+      typeof stored === 'object' && stored !== null
+        ? (stored as { input?: unknown; overlap?: unknown; revision?: unknown })
+        : undefined;
+    const storedInput = isScheduledAgentRunInput(storedRecord?.input)
+      ? storedRecord.input
+      : undefined;
+    if (changesRun && storedInput === undefined) {
+      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+    }
+    const nextOverlap = update.overlap ?? storedRecord?.overlap;
+    // A chat Bureau names itself is unguessable and not yet made (see `createSchedule`).
+    const allocatedChat =
+      update.continueChat === true ? runtimeServices.identifiers.next('session') : undefined;
+    const nextSession =
+      allocatedChat ??
+      (update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined));
+    if (update.sessionId !== undefined && update.sessionId !== null) {
+      const sessionId = update.sessionId.trim();
+      rejectReservedIdentifier('"sessionId"', sessionId);
+      if (unopenableNewSessionIdentifierReason('"sessionId"', sessionId)) {
+        const held = await runtime.sessionStore?.load(sessionId);
+        rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, held !== undefined);
+      }
+      // `changesRun` is true here, so the stored input was read and its principal is the owner.
+      await refuseScheduleSessionOfAnotherOwner(sessionId, ownerOrLocal(storedInput?.principal));
+    }
+    // COR-323: a fire runs as its named agent and refuses a chat another agent began, so an
+    // update that would leave the schedule's agent and its chat apart is refused now, not as an
+    // `unavailable` at every fire after it.
+    const nextAgent = update.agentName ?? storedInput?.agentName;
+    if (allocatedChat === undefined && nextSession !== undefined && nextAgent !== undefined) {
+      const held = await runtime.sessionStore?.load(nextSession);
+      if (held !== undefined && held.agentName !== nextAgent) {
         throw new BureauError(
-          "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
+          `Schedule "${scheduleId}" would run agent "${nextAgent}" in a chat that belongs to agent "${held.agentName}". Start a new chat with the change, or keep the agent.`,
           'BAD_REQUEST',
         );
       }
     }
-    await runtime.durable.engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
+    if (nextOverlap === 'allow' && nextSession !== undefined) {
+      // A recurring session is sequential: overlapping fires would interleave its turns, which is
+      // why creating such a schedule refuses `allow` too.
+      throw new BureauError(
+        "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
+        'BAD_REQUEST',
+      );
+    }
+    if (update.agentName !== undefined && agentCatalog.find(update.agentName) === undefined) {
+      throw new UnknownScheduleAgentError(update.agentName);
+    }
+    if (update.input !== undefined && update.input.trim() === '') {
+      throw new BureauError('"input" must be a non-empty string', 'BAD_REQUEST');
+    }
+    let nextInput: ScheduledAgentRunInput | undefined;
+    if (changesRun && storedInput !== undefined) {
+      const { sessionId: _kept, ...rest } = storedInput;
+      nextInput = {
+        ...rest,
+        ...(update.agentName === undefined ? {} : { agentName: update.agentName }),
+        ...(update.input === undefined
+          ? {}
+          : { input: replaceInputText(storedInput.input, update.input) }),
+        ...(nextSession === undefined ? {} : { sessionId: nextSession }),
+      };
+    }
+    // Whatever was read decided what this update may do (the input it rebuilds, and whether
+    // `overlap` and a recurring chat may be combined), so the write is fenced to the revision that
+    // was read when the caller named none: a change made since is refused, not overwritten. An
+    // update of the overlap alone is fenced as well, or it could land on a chat another update gave
+    // the schedule since, which leaves the combination that is refused above.
+    const expectedRevision =
+      guard?.expectedRevision ??
+      (bytes !== null && typeof storedRecord?.revision === 'number'
+        ? storedRecord.revision
+        : undefined);
+    await engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
       ...(update.description === undefined ? {} : { description: update.description }),
       ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
       ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
-      ...(guard?.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: guard.expectedRevision }),
+      ...(nextInput === undefined ? {} : { input: nextInput }),
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
     return true;
   }
@@ -21716,17 +22006,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       await sessionPersistence.drain();
       await drainSessionInputSettlements();
       // COR-1630 — a catalog run that ended releases its asset claims, shutdown or not. The
-      // aborted runs settle first, which starts their releases, then those releases are awaited,
-      // each under the same grace as the waits above, and only then are releases closed so none
-      // runs against the asset service that shuts down below. A run whose durable record still
-      // reads in flight is lost, not ended, and releases nothing (`catalog-run-asset-release.ts`).
+      // aborted runs settle first, under the grace above, which starts their releases. A release
+      // is storage work on a run that has ended, so it is awaited however long the database takes,
+      // not under that grace: a release the grace cut short wrote against the asset service and the
+      // pool after they closed below. Releases close in the step that finds none left
+      // (`createCatalogAssetReleaseDrain`). A run whose durable record still reads in flight is
+      // lost, not ended, and releases nothing (`catalog-run-asset-release.ts`).
       await awaitAbortedRunTerminals(abortedCatalogRunResults);
-      if (pendingCatalogAssetReleases.size > 0) {
-        await awaitAbortedRunTerminals([
-          Promise.allSettled(pendingCatalogAssetReleases).then(() => undefined),
-        ]);
-      }
-      catalogAssetReleasesClosed = true;
+      await catalogAssetReleases.drain();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;
@@ -22955,7 +23242,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         `Agent "${request.agent}" cannot run: this Bureau has no durable engine.`,
       );
     }
-    const runId = workflowStepRunId(request.workflowId, request.step);
+    const runId = workflowStepRunId(request.workflowId, request.stepAddress ?? request.step);
     if ((await engine.get(runId)) !== null) {
       // Adopt the run at this id only if it is this step's own: its recovery record carries the
       // step's marker. Anything else holding the id is not a run to take a result from.
@@ -22964,6 +23251,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         claim.status !== 'found' ||
         claim.record.workflowStep?.workflowId !== request.workflowId ||
         claim.record.workflowStep.step !== request.step ||
+        claim.record.workflowStep.stepAddress !== request.stepAddress ||
         claim.record.agentName !== request.agent ||
         claim.record.principal !== owner
       ) {
@@ -22988,7 +23276,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         agentName: request.agent,
         input: request.message,
         runId,
-        workflowStep: { workflowId: request.workflowId, step: request.step },
+        workflowStep: {
+          workflowId: request.workflowId,
+          step: request.step,
+          ...(request.stepAddress === undefined ? {} : { stepAddress: request.stepAddress }),
+        },
         principal: owner,
         ...(authority === undefined ? {} : { workspaceAuthority: authority }),
       });
@@ -23236,7 +23528,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1630 — an attempt's run lets go of its asset claims once the goal's session holds them.
     claimSessionAssets,
     releaseAssets: catalogRunAssets,
-    releasesClosed: () => catalogAssetReleasesClosed,
+    releasesClosed: () => catalogAssetReleases.isClosed(),
     // Not the memoized, audited step runs get: that records a run's cleanup
     // under a run id, and a goal's controller is not a run. An attempt's run is
     // one, but a goal prunes it at close, once its terminal checkpoint has been
@@ -23331,10 +23623,12 @@ async function constructBureau<const D extends AgentDefinitions>(
     cancel: cancelSchedule,
     update: updateSchedule,
     skipNext: skipNextSchedule,
+    unskip: unskipSchedule,
     runNow: runScheduleNow,
     missed: listScheduleMissed,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
+    continuesChat: getScheduleContinuesChat,
     blocker: getScheduleBlocker,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
@@ -23654,7 +23948,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         initialSequence: auditTrailInitialSequence,
         eventTimestamp,
         sessionDeletionOwner: (sessionId, incarnation) =>
-          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation)),
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.owner,
+        sessionDeletionActor: (sessionId, incarnation) =>
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.actor,
+        sessionDeletionSummary: (sessionId, incarnation) =>
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation))?.summary,
       },
       runtimeServices,
     );

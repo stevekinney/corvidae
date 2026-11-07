@@ -4,15 +4,100 @@
   min-width: 0;
 }
 
-.ib-schedule__sentence {
+/* A part of a row's second line in a tone: "can't load" is red, a schedule that won't start amber. */
+.ib-schedule-line__part[data-tone='danger'] {
+  color: var(--cinder-status-danger-text);
+}
+
+.ib-schedule-line__part[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
+/* The next run at the right of a row's first line; amber when the schedule is due and won't start. */
+.ib-schedule-next[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
+/* The sentence under the heading, and the line under it that says when the schedule runs next. */
+.ib-schedule__sentence,
+.ib-schedule__summary {
+  margin: 0;
+  color: var(--cinder-text-default);
+  font-size: var(--cinder-text-md);
+  overflow-wrap: anywhere;
+}
+
+/* A second line about the same schedule sits close under the sentence it adds to. */
+.ib-schedule__sentence + .ib-schedule__sentence {
+  margin-block-start: calc(-1 * var(--cinder-space-3));
+}
+
+.ib-schedule__summary {
+  margin-block: var(--cinder-space-1);
+}
+
+.ib-schedule__summary-part[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
+/* A run that is going: "Running now" leads the summary line in the info tone. */
+.ib-schedule__summary-part[data-tone='info'] {
+  color: var(--cinder-status-info-text);
+}
+
+/* The chip under the sentence of a schedule defined in a workflow's file: a lock, then the path, close under the sentence like a second one. */
+.ib-schedule__file {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
+  margin: calc(-1 * var(--cinder-space-3)) 0 0;
+  color: var(--cinder-text-default);
+  font-size: var(--cinder-text-md);
+  overflow-wrap: anywhere;
+}
+
+.ib-schedule__file > svg {
+  flex-shrink: 0;
+  color: var(--cinder-text-muted);
+}
+
+/* The header's actions in one column: the buttons, and under them a muted line about Run now. */
+.ib-schedule__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-schedule__action-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
+  justify-content: flex-end;
+  gap: var(--cinder-space-2);
+}
+
+.ib-schedule__action-note {
   margin: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-md);
-  overflow-wrap: anywhere;
+  max-inline-size: 22rem;
+  text-align: end;
+}
+
+/* In a narrow header the actions take their own row beneath the title, so they start at the left. */
+@container cinder-page-header (max-width: 32rem) {
+  .ib-schedule__actions {
+    align-items: flex-start;
+    inline-size: 100%;
+  }
+
+  .ib-schedule__action-row {
+    justify-content: flex-start;
+  }
+
+  .ib-schedule__action-note {
+    text-align: start;
+  }
 }
 
 .ib-schedule__alert {
@@ -20,10 +105,15 @@
   font-weight: 600;
 }
 
-/* The On switch is a control of the header, so it sits with the buttons and keeps its own height. */
+/* The Active switch sits in the heading row beside the status, with a hairline between them. */
 .ib-schedule__switch {
   display: inline-flex;
   align-items: center;
+}
+
+.ib-schedule__status-divider {
+  align-self: center;
+  block-size: 1rem;
 }
 
 /* The runs and the details beside them; below the wide breakpoint the details follow the runs. */
@@ -41,8 +131,7 @@
   }
 }
 
-.ib-schedule__main,
-.ib-schedule__rail {
+.ib-schedule__main {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-5);
@@ -67,47 +156,77 @@
   margin: 0;
 }
 
-.ib-schedule__fires,
-.ib-schedule__queue {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* The second line of the run that is due and will not start, in the warning tone. */
+.ib-schedule__fire-note {
+  color: var(--cinder-status-warning-text);
+  font-size: var(--cinder-text-sm);
 }
 
-.ib-schedule__fire {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
-  min-height: var(--cinder-control-height-sm, 2rem);
-  overflow-wrap: anywhere;
-}
-
-.ib-schedule__fire[data-skipped='true'] time {
-  color: var(--cinder-text-muted);
-  text-decoration: line-through;
-}
-
-/* The details: a label above its value, one fact to a row, as the page's facts are. */
-.ib-schedule__facts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
-  margin: 0;
-}
-
-.ib-schedule__facts .ib-facts__item dt {
+/* A skipped run says so where its Skip button was. */
+.ib-schedule__skipped {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
 }
 
-.ib-schedule__facts .ib-facts__item dd {
+/* Each fire the open band lists, under its "Run once now". */
+.ib-schedule__misses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  padding-block-start: var(--cinder-space-2);
+}
+
+.ib-schedule__run-once {
+  align-self: flex-start;
+}
+
+/* Why the schedule will not start: a bordered card of reasons, each with the link that fixes it. */
+.ib-schedule__blockers {
+  display: flex;
+  flex-direction: column;
   margin: 0;
-  min-width: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--cinder-border);
+  border-radius: var(--cinder-radius-lg);
+  background: var(--cinder-surface);
+}
+
+.ib-schedule__blocker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  font-size: var(--cinder-text-md);
+}
+
+.ib-schedule__blocker + .ib-schedule__blocker {
+  border-block-start: 1px solid var(--cinder-border-faint);
+}
+
+.ib-schedule__blocker-glyph {
+  display: inline-flex;
+  flex: none;
+}
+
+.ib-schedule__blocker-glyph[data-tone='danger'] {
+  color: var(--cinder-status-danger-text);
+}
+
+.ib-schedule__blocker-glyph[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
+.ib-schedule__blocker-text {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
   overflow-wrap: anywhere;
+}
+
+.ib-schedule__blocker-title[data-tone='danger'] {
+  color: var(--cinder-status-danger-text);
+  font-weight: var(--cinder-font-semibold);
 }
 
 /* A kind, an agent or a workflow, and the link to it, wrap instead of widening the page. */
@@ -154,63 +273,60 @@
   max-width: 28rem;
 }
 
-/* The page that makes a schedule: sections of fields, and a footer that holds the one-line summary and the action. */
+/*
+ * The page that makes a schedule (rows 74a–74i, 06i–06k): one reading column, at most 720px wide,
+ * of sections of fields and a footer that holds the one-line summary and the two actions.
+ */
 .ib-schedule-new {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-6);
   min-width: 0;
+  max-width: 45rem;
+}
+
+/* The form's fields are one fieldset, so a create in flight stops every one taking edits at once. */
+.ib-schedule-new__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .ib-schedule-new__section {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-3);
+  gap: var(--cinder-space-4);
   min-width: 0;
 }
 
-.ib-schedule-new__heading {
-  margin: 0;
-  font-size: var(--cinder-text-lg);
-  font-weight: 600;
-}
-
-.ib-schedule-new__note {
-  margin: 0;
+/* "No match? Create one": the picker's footer, a muted question and an accent link. */
+.ib-schedule-new__picker-footer {
   color: var(--cinder-text-muted);
-  overflow-wrap: anywhere;
 }
 
-.ib-schedule-new__alert-title {
-  margin: 0;
-  font-weight: 600;
-}
-
-.ib-schedule-new__alert-message {
-  margin: var(--cinder-space-1) 0 var(--cinder-space-2);
-  overflow-wrap: anywhere;
+.ib-schedule-new__picker-footer a {
+  color: var(--cinder-accent-text);
+  font-weight: var(--cinder-font-semibold);
+  text-decoration: none;
 }
 
 /* A workflow named by a word no line can break at wraps instead of widening the page. */
-.ib-schedule-new__section :where(p, label, legend, span) {
+.ib-schedule-new :where(p, label, legend, span) {
   overflow-wrap: anywhere;
 }
 
-/* It stays at the foot of the outlet while the form scrolls under it, so the action is always in reach. */
+/* The summary on the left, Cancel then Create schedule on the right. */
 .ib-schedule-new__footer {
-  position: sticky;
-  /* The outlet pads its own bottom edge; reach through it so nothing scrolls under the bar. */
-  bottom: calc(-1 * var(--cinder-space-6));
-  z-index: 1;
-  margin-block-end: calc(-1 * var(--cinder-space-6));
-  padding-block: var(--cinder-space-3);
-  background: var(--cinder-surface-canvas);
-  border-block-start: 1px solid var(--cinder-border);
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-3) var(--cinder-space-4);
   align-items: center;
   justify-content: space-between;
+  padding-block-start: var(--cinder-space-1);
 }
 
 .ib-schedule-new__summary {
@@ -218,13 +334,138 @@
   min-width: 0;
   flex: 1 1 16rem;
   color: var(--cinder-text-muted);
-  overflow-wrap: anywhere;
+  font-size: var(--cinder-text-sm);
+  line-height: var(--cinder-leading-normal);
 }
 
 .ib-schedule-new__actions {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--cinder-space-2);
   align-items: center;
   margin-inline-start: auto;
+}
+
+/* On a phone the summary takes its own line and the actions stack, Create schedule above Cancel. */
+@media (max-width: 639.98px) {
+  .ib-schedule-new__summary {
+    flex-basis: 100%;
+  }
+
+  .ib-schedule-new__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+}
+
+/* ── The details card beside a schedule's runs ───────────────────────────────── */
+
+.ib-schedule-card {
+  min-width: 0;
+}
+
+.ib-schedule-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-width: 0;
+}
+
+.ib-schedule-card__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-schedule-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cinder-space-2);
+}
+
+.ib-schedule-card__title {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  font-weight: var(--cinder-font-semibold);
+  color: var(--cinder-text-default);
+}
+
+.ib-schedule-card__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
+}
+
+/* One fact to a row: the label in muted text at the start, its value at the end, a hairline between rows. */
+.ib-schedule-card__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.ib-schedule-card__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--cinder-space-3);
+  padding-block: var(--cinder-space-2);
+  border-block-end: 1px solid var(--cinder-border-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-schedule-card__row:last-child {
+  border-block-end: 0;
+}
+
+.ib-schedule-card__row dt {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-1);
+  color: var(--cinder-text-muted);
+}
+
+.ib-schedule-card__row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-schedule-card__aside {
+  color: var(--cinder-text-muted);
+}
+
+.ib-schedule-card__note {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-schedule-card__created {
+  margin: 0;
+  padding-block-start: var(--cinder-space-3);
+  border-block-start: 1px solid var(--cinder-border-muted);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-schedule-card__queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The info icon beside a label: a button so the keyboard reaches the tooltip it carries. */
+.ib-schedule-card__info {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cinder-text-muted);
+  cursor: help;
 }

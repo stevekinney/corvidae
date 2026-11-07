@@ -137,7 +137,16 @@ describe('attentionRows', () => {
 
   test('states the storage reading and no capacity or threshold', () => {
     const [row] = attentionRows(
-      [{ kind: 'alert', at: 1, metric: 'storage.size', currentValue: 1.6 * 1024 ** 3 }],
+      [
+        {
+          kind: 'alert',
+          area: 'storage',
+          at: 1,
+          metric: 'storage.size',
+          currentValue: 1.6 * 1024 ** 3,
+          threshold: 0,
+        },
+      ],
       context,
     );
     expect(`${row?.title} ${row?.detail}`).not.toMatch(/threshold|capacity|limit|of /i);
@@ -146,9 +155,30 @@ describe('attentionRows', () => {
   test('words the rules this host measures besides storage, and one it has no sentence for', () => {
     const rows = attentionRows(
       [
-        { kind: 'alert', at: 1, metric: 'workflow.failure_rate', currentValue: 0.123 },
-        { kind: 'alert', at: 2, metric: 'activity.p99_duration', currentValue: 90_000 },
-        { kind: 'alert', at: 3, metric: 'queue.depth', currentValue: 5 },
+        {
+          kind: 'alert',
+          area: 'runs',
+          at: 1,
+          metric: 'workflow.failure_rate',
+          currentValue: 0.123,
+          threshold: 0,
+        },
+        {
+          kind: 'alert',
+          area: 'runs',
+          at: 2,
+          metric: 'activity.p99_duration',
+          currentValue: 90_000,
+          threshold: 0,
+        },
+        {
+          kind: 'alert',
+          area: 'runs',
+          at: 3,
+          metric: 'queue.depth',
+          currentValue: 5,
+          threshold: 0,
+        },
       ],
       context,
     );
@@ -166,25 +196,35 @@ describe('attentionRows', () => {
     const items: AttentionItem[] = [
       {
         kind: 'hook-failed',
+        area: 'hooks',
         at: 1,
         hookId: 'hook-1',
         hookName: 'Notify Slack',
         gaveUp: false,
         status: 410,
         host: 'hooks.slack.com',
+        attempts: 1,
         error: null,
       },
       {
         kind: 'hook-failed',
+        area: 'hooks',
         at: 2,
         hookId: 'hook-2',
         hookName: null,
         gaveUp: true,
         status: null,
         host: null,
+        attempts: 1,
         error: 'connection refused',
       },
-      { kind: 'plugin-not-loaded', at: null, plugin: 'voyage', problems: ['secret-missing'] },
+      {
+        kind: 'plugin-not-loaded',
+        area: 'plugins',
+        at: null,
+        plugin: 'voyage',
+        problems: ['secret-missing'],
+      },
     ];
     const rows = attentionRows(items, context);
     expect(rows.map((row) => [row.title, row.detail, row.action.label])).toEqual([
@@ -198,10 +238,24 @@ describe('attentionRows', () => {
   test('orders by kind and keeps the Bureau’s order within one', () => {
     const rows = attentionRows(
       [
-        { kind: 'no-provider', at: null, provider: null },
-        { kind: 'plugin-not-loaded', at: null, plugin: 'a', problems: [] },
-        { kind: 'alert', at: 2, metric: 'queue.depth', currentValue: 1 },
-        { kind: 'alert', at: 1, metric: 'storage.size', currentValue: 1 },
+        { kind: 'no-provider', area: 'providers', at: null, provider: null },
+        { kind: 'plugin-not-loaded', area: 'plugins', at: null, plugin: 'a', problems: [] },
+        {
+          kind: 'alert',
+          area: 'runs',
+          at: 2,
+          metric: 'queue.depth',
+          currentValue: 1,
+          threshold: 0,
+        },
+        {
+          kind: 'alert',
+          area: 'storage',
+          at: 1,
+          metric: 'storage.size',
+          currentValue: 1,
+          threshold: 0,
+        },
       ],
       context,
     );
@@ -224,11 +278,13 @@ describe('attentionRows', () => {
       [
         {
           kind: 'missed-runs',
+          area: 'schedules',
           at: 1,
           scheduleId: 'x',
           scheduleName: null,
           count: 1,
           since: Date.parse('2026-11-01T09:00:00-06:00'),
+          occurrences: [],
         },
       ],
       { ...context, schedules: [] },

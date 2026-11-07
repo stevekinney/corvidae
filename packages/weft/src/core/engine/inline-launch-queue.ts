@@ -13,6 +13,11 @@ import {
   settleEveryInlineWorkflowStart,
   settleInlineWorkflowStart,
 } from './local-execution.ts';
+import {
+  holdsForRunSlot,
+  queueHasLaunchableStart,
+  requeueStartsHeldForRunSlots,
+} from './run-concurrency.ts';
 import { loadWorkflowState } from './storage-io.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
 
@@ -69,6 +74,24 @@ export function isAnyEngineAwaitingScheduledInlineFlushForTesting(): boolean {
   return enginesAwaitingScheduledInlineFlush.size > 0;
 }
 
+/**
+ * Schedules a flush unless one is scheduled already, or `inlineLaunchSchedulingMode` is
+ * `'manual'` (COR-74), where only the caller's `flushInlineLaunches()` drives the queue.
+ */
+function scheduleInlineFlush(internals: EngineInternals, callbacks: InlineLaunchQueueCallbacks) {
+  if (internals.options.inlineLaunchSchedulingMode === 'manual') return;
+  if (internals.queuedInlineWorkflowStartFlushScheduled) return;
+  markInlineFlushScheduled(internals);
+  if (internals.queuedInlineWorkflowStartChannel !== null) {
+    internals.queuedInlineWorkflowStartChannel.port2.postMessage(undefined);
+    return;
+  }
+  setTimeout(() => {
+    clearInlineFlushScheduled(internals);
+    void callbacks.swallowPromiseRejection(flushQueuedInlineWorkflowStarts(internals, callbacks));
+  }, 0);
+}
+
 async function yieldQueuedShutdownAdvanceOpportunity(): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
@@ -107,23 +130,7 @@ export function queueInlineWorkflowExecutionStart(
     launch: recordInlineWorkflowStartQueued(internals, request.workflowId),
   };
   internals.queuedInlineWorkflowStarts.push(start);
-  if (internals.options.inlineLaunchSchedulingMode === 'manual') {
-    return;
-  }
-  if (internals.queuedInlineWorkflowStartFlushScheduled) {
-    return;
-  }
-
-  markInlineFlushScheduled(internals);
-  if (internals.queuedInlineWorkflowStartChannel !== null) {
-    internals.queuedInlineWorkflowStartChannel.port2.postMessage(undefined);
-    return;
-  }
-
-  setTimeout(() => {
-    clearInlineFlushScheduled(internals);
-    void callbacks.swallowPromiseRejection(flushQueuedInlineWorkflowStarts(internals, callbacks));
-  }, 0);
+  scheduleInlineFlush(internals, callbacks);
 }
 
 /**
@@ -165,8 +172,13 @@ export async function flushQueuedInlineWorkflowStarts(
 
   const pendingStarts = internals.queuedInlineWorkflowStarts;
   internals.queuedInlineWorkflowStarts = [];
+  const held: QueuedInlineWorkflowExecutionStart[] = [];
 
   for (const start of pendingStarts) {
+    if (holdsForRunSlot(internals, start, held.length)) {
+      held.push(start);
+      continue;
+    }
     // Isolate each start: a throw from one must not abandon the rest of the
     // batch. The batch was already removed from the queue above, so an escaping
     // throw would leave later starts' onStarted callbacks unfired forever —
@@ -178,6 +190,10 @@ export async function flushQueuedInlineWorkflowStarts(
       startQueuedInlineWorkflowExecution(internals, start, callbacks, options),
     );
   }
+  requeueStartsHeldForRunSlots(internals, held, () => {
+    if (internals.queuedInlineWorkflowStarts.length === 0) return;
+    if (!internals.abortController.signal.aborted) scheduleInlineFlush(internals, callbacks);
+  });
 }
 
 /** Used by scheduler-driven direct backfill flushes. Clears the scheduled flag first. */
@@ -217,7 +233,7 @@ export async function flushQueuedInlineWorkflowStartsUntilDrained(
 ): Promise<void> {
   let passes = 0;
   const maxPasses = 1000;
-  while (internals.queuedInlineWorkflowStarts.length > 0 && passes < maxPasses) {
+  while (queueHasLaunchableStart(internals) && passes < maxPasses) {
     passes += 1;
     await flushQueuedInlineWorkflowStartsDirectly(internals, callbacks);
   }
@@ -249,7 +265,7 @@ export async function drainQueuedInlineWorkflowStarts(
   let passes = 0;
   const maxPasses = 1000;
   while (
-    internals.queuedInlineWorkflowStarts.length > 0 &&
+    queueHasLaunchableStart(internals) &&
     !internals.abortController.signal.aborted &&
     passes < maxPasses
   ) {

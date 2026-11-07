@@ -37,6 +37,7 @@ Single-line text input with support for labels, addons, validation states, and h
 | `trailingInteractive` | `boolean` | no | — | When true, the trailing adornment is interactive and included in the accessibility tree. Default `false`. |
 | `type` | `"number"` \| `"date"` \| `"email"` \| `"password"` \| `"search"` \| `"tel"` \| `"text"` \| `"time"` \| `"url"` | no | — | Input type controlling the browser's built-in validation and keyboard. Default `"text"`. |
 | `variant` | `"default"` \| `"code"` | no | `"default"` | Visual style. `"code"` applies a shared monospace metric set (font-family, font-size, line-height, tab-size) for source-like values such as regular expressions, URIs, or identifiers. |
+| `descriptionAction` | `(opaque)` | no | — | Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. Not expressible in JSON Schema; see the component types for the signature. |
 | `inputAttachment` | `(opaque)` | no | — | Attachment for native input access and lifecycle-scoped listeners. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `onValueChange` | `(opaque)` | no | — | Notify after the bindable value has been committed. Not expressible in JSON Schema; see the component types for the signature. |

@@ -3,7 +3,7 @@
    * The tabs Health carries below its overview (plan §9.7, T7.2–T7.6), URL-owned via `?tab=` (plan
    * §4: "URL owns filter/pagination/tab state"): the metrics, alerts, lease and recovery, and Realms
    * when the engine runs them. The rest of what the System page held is Settings › API reference, a
-   * side list of groups. Each tab is named in words (COR-1658).
+   * row of tabs of its own. Each tab is named in words (COR-1658).
    */
   import { Tabs } from '@lostgradient/cinder';
 

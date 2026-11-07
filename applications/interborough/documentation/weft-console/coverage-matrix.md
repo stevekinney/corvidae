@@ -31,13 +31,13 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.activities.complete` | exposed | `src/routes/workflows/detail/async-activity/async-activity-drawer.svelte` | `activity.complete` | `src/routes/workflows/detail/async-activity/async-activity-drawer.test.ts` |  |  |
 | `weft.activities.fail` | exposed | `src/routes/workflows/detail/async-activity/async-activity-drawer.svelte` | `activity.completeExceptionally` | `src/routes/workflows/detail/async-activity/async-activity-drawer.test.ts` |  |  |
 | `weft.alerts.list` | exposed | `src/routes/system/alerts-tab.svelte` |  | `src/routes/system/alerts-tab.test.ts` |  |  |
-| `weft.catalog.diagnostics` | exposed | `src/routes/system/source-load-diagnostics.svelte` |  | `src/routes/system/source-load-diagnostics.test.ts` |  |  |
-| `weft.catalog.sources.list` | exposed | `src/routes/system/dynamic-source-list.svelte` |  | `src/routes/system/dynamic-source-list.test.ts` |  |  |
+| `weft.catalog.diagnostics` | not-in-dashboard |  |  |  |  | Settings › API reference lists where workflow files load from, and no page draws an engine source's load state since the registry's page went (COR-2019). |
+| `weft.catalog.sources.list` | not-in-dashboard |  |  |  |  | Settings › API reference lists where workflow files load from through the workflow files the Bureau reads, so no page lists the engine's registered sources since the registry's page went (COR-2019). |
 | `weft.conformance.report` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/conformance-panel.test.ts` | COR-160 |  |
 | `weft.conformance.targets` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/conformance-panel.test.ts` | COR-160 |  |
 | `weft.realms.diagnostics` | exposed | `src/routes/system/realms-view.ts` |  | `src/routes/system/realms-tab.test.ts` |  |  |
 | `weft.recover.all` | exposed | `src/routes/system/health-tab.svelte` |  | `src/routes/system/health-tab.test.ts` |  |  |
-| `weft.retention.get` | exposed | `src/routes/system/retention-panel.svelte` | `getRetentionOverview` | `src/routes/system/retention-panel.test.ts` |  |  |
+| `weft.retention.get` | not-in-dashboard |  |  |  |  | Settings › Data and retention edits each window through `bureau.settings` and reads the storage size from the host, so the page no longer renders Weft's retention overview. |
 | `weft.reviews.decision.submit` | exposed | `src/routes/reviews/reviews-data.ts` | `submitReview` | `src/routes/reviews/review-decision-form.test.ts` |  |  |
 | `weft.reviews.get` | not-in-dashboard |  |  |  |  | The reviews inbox reads every review record, artifact included, from `weft.reviews.list`, so fetching one review by workflow adds nothing it lacks. |
 | `weft.reviews.list` | exposed | `src/routes/reviews/reviews-data.ts` | `listReviews` | `src/routes/reviews/reviews.integration.test.ts` |  |  |
@@ -49,7 +49,8 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.schedules.pause` | exposed | `src/routes/schedules/schedule-queries.ts` | `pauseSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.resume` | exposed | `src/routes/schedules/schedule-queries.ts` | `resumeSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.runnow` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-queries.test.ts` |  | A schedule that runs an agent is run through `bureau.schedules.runnow`, which checks its owner. |
-| `weft.schedules.skipnext` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-queries.test.ts` |  | Sent as the REST call, because the JSON-RPC client reads its empty answer as invalid. The body names the run the page showed (`occurrence`, milliseconds since the epoch), and a run that is no longer the next one is refused as `ScheduleOccurrenceNotNextError`, which the page shows as a stale schedule. A schedule that runs an agent is skipped through `bureau.schedules.skipnext`, which checks its owner. |
+| `weft.schedules.skipnext` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-queries.test.ts` |  | Sent as the REST call, because the JSON-RPC client reads its empty answer as invalid. The body names the run the page showed (`occurrence`, milliseconds since the epoch), the next or any upcoming run after it, and a run that is no longer upcoming is refused as `ScheduleOccurrenceNotNextError`, which the page shows as a stale schedule. A schedule that runs an agent is skipped through `bureau.schedules.skipnext`, which checks its owner. |
+| `weft.schedules.unskip` | exposed | `src/routes/schedules/schedule-queries.ts` |  | `src/routes/schedules/schedule-time-engine.test.ts` |  | Undo on a skipped run. Sent as the REST call, for the reason `weft.schedules.skipnext` is; a run that has passed is refused as `ScheduleOccurrenceNotNextError`, which the page shows as a stale schedule. A schedule that runs an agent takes its skip back through `bureau.schedules.unskip`, which checks its owner. |
 | `weft.schedules.update` | exposed | `src/routes/schedules/schedule-queries.ts` | `updateSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.storage.capabilities` | exposed | `src/routes/storage/index.svelte` |  | `src/routes/storage/index.test.ts` | COR-1539 |  |
 | `weft.system.lease` | exposed | `src/lib/system-lease.ts` |  | `src/lib/system-lease.test.ts` | COR-124 |  |
@@ -57,6 +58,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.system.principal` | exposed | `src/lib/scopes.svelte.ts` |  | `src/lib/scopes.svelte.test.ts` |  |  |
 | `weft.system.registry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-registry-data.test.ts` | COR-162 |  |
 | `weft.task.queues.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
+| `weft.task.queues.tasks` | exposed | `src/routes/workers/queue-tasks-data.ts` |  | `src/routes/workers/index-tasks.test.ts` | COR-2018 |  |
 | `weft.tasks.deadletters.get` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-dead-letter-panel.test.ts` | COR-284 |  |
 | `weft.tasks.deadletters.retry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions-queues.additional.test.ts` | COR-1973 |  |
 | `weft.tasks.deliveries` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-delivery-history.test.ts` | COR-284 |  |
@@ -75,6 +77,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.worker.startoverrides.preview` | exposed | `src/routes/workflows/detail/restart-worker-override.svelte` |  | `src/routes/workflows/detail/restart-dialog-worker-override.test.ts` | COR-164 |  |
 | `weft.workers.diagnostics` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-manifest-data.test.ts` | COR-124, COR-162 |  |
 | `weft.workers.drain` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |
+| `weft.workers.forget` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` | COR-2018 |  |
 | `weft.workers.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
 | `weft.workers.rejections` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
 | `weft.workers.resume` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |
@@ -101,8 +104,8 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.logs.list` | exposed | `src/routes/workflows/runs/run-logs-data.ts` |  | `src/routes/workflows/detail/timeline-tab-logs.test.ts` | COR-1811, COR-1860, COR-1988 |  |
 | `weft.workflows.purge` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
 | `weft.workflows.query` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `query` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
-| `weft.workflows.refresh` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel-actions.test.ts` | COR-166 |  |
-| `weft.workflows.refresh.diagnostics` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel.test.ts` | COR-166 |  |
+| `weft.workflows.refresh` | not-in-dashboard |  |  |  |  | A refresh source is code the host supplies and no page operates it since the registry's page went (COR-2019). |
+| `weft.workflows.refresh.diagnostics` | not-in-dashboard |  |  |  |  | A refresh source is code the host supplies and no page reads its state since the registry's page went (COR-2019). |
 | `weft.workflows.replay` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` | `replayTo` | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.result.get` | not-in-dashboard |  |  |  |  | Workflow detail shows the result from the `weft.workflows.get` state it already loads, and this operation waits for the run to settle, which would hold a dashboard request open. |
 | `weft.workflows.resume` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `resume` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
@@ -110,7 +113,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.revisions.get` | exposed | `src/routes/system/revision-detail.svelte` |  | `src/routes/system/revision-detail.test.ts` | COR-1464 |  |
 | `weft.workflows.revisions.install` | exposed | `src/routes/system/revision-install-form.svelte` |  | `src/routes/system/revision-install-form.test.ts` | COR-1464 |  |
 | `weft.workflows.revisions.list` | exposed | `src/routes/system/workflow-revisions-panel.svelte` |  | `src/routes/system/workflow-revisions-panel-activation.test.ts` |  |  |
-| `weft.workflows.revisions.preload` | exposed | `src/routes/system/dynamic-source-panel.svelte` |  | `src/routes/system/dynamic-source-panel.test.ts` |  |  |
+| `weft.workflows.revisions.preload` | not-in-dashboard |  |  |  |  | Preloading a dynamic source is done from the command line; no page offers it since the registry's page went (COR-2019). |
 | `weft.workflows.scheduleprovenance.get` | exposed | `src/routes/workflows/detail/lineage-panel.svelte` |  | `src/routes/workflows/detail/lineage-panel.test.ts` |  |  |
 | `weft.workflows.signal` | exposed | `src/routes/workflows/detail/signals-tab.svelte` | `signal` | `src/routes/workflows/detail/signals-tab.test.ts` |  |  |
 | `weft.workflows.start` | exposed | `src/routes/workflow-definitions/run-setup-form.svelte` | `start` | `src/routes/workflow-definitions/run-setup.test.ts` | COR-164, COR-1855 |  |

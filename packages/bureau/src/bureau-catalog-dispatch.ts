@@ -281,6 +281,7 @@ export interface WorkflowStepStart {
 export interface WorkflowStepOwner {
   readonly workflowId: string;
   readonly step: number;
+  readonly stepAddress?: string;
 }
 
 /** Which goal attempt a run was started for; see `CatalogRunRecoveryRecord.goalAttempt`. */

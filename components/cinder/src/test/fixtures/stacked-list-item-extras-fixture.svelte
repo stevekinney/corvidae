@@ -1,13 +1,13 @@
 <script lang="ts" module>
   /**
-   * Test-only fixture: a StackedListItem that is a collapsed group row (`details`), or carries
-   * trailing `actions`, so the disclosure and the phone menu can be asserted through the real
+   * Test-only fixture: a StackedListItem that is a collapsed group row (`details`), carries
+   * trailing `actions`, or has a third line (`detail`), so the disclosure, the phone menu and the third line can be asserted through the real
    * component.
    */
   import type { StackedListItemAction } from '../../components/stacked-list-item/stacked-list-item.types.ts';
 
   export type StackedListItemExtrasFixtureProps = {
-    mode: 'group' | 'actions';
+    mode: 'group' | 'actions' | 'detail';
     actions?: StackedListItemAction[];
     expanded?: boolean;
     /** What the actions become on a phone; the component's own default when omitted. */
@@ -34,6 +34,16 @@
       {#snippet title()}Daily summary missed 4 times since Oct 30{/snippet}
       {#snippet meta()}Schedule · Assistant{/snippet}
       {#snippet details()}<div data-testid="missed">Mon, Nov 2 · 3:00 AM</div>{/snippet}
+    </StackedListItem>
+  {:else if mode === 'detail'}
+    <StackedListItem href="/schedules/refunds">
+      {#snippet status()}<StatusDot word="Active" />{/snippet}
+      {#snippet title()}Weekly refund audit{/snippet}
+      {#snippet time()}Next today 11:00 AM{/snippet}
+      {#snippet meta()}Workflow · Order refund · Tool runner{/snippet}
+      {#snippet detail()}<span data-testid="detail"
+          >Order refund can’t load · won’t run until a provider is connected · Mondays at 11:00 AM</span
+        >{/snippet}
     </StackedListItem>
   {:else}
     <StackedListItem {actions} {...phoneActions === undefined ? {} : { phoneActions }}>

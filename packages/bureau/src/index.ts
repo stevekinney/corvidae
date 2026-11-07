@@ -237,6 +237,7 @@ export type {
   MissedRunsAttentionItem,
   PluginAttentionItem,
   ProviderAttentionItem,
+  WorkerAttentionItem,
 } from './attention-feed';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
 export type {
@@ -577,6 +578,7 @@ export {
   type SettingLockReason,
   type SettingsValues,
 } from './settings/settings-schema';
+export { builtInSettingDefaults, SETTINGS_WITHOUT_DEFAULT } from './settings/setting-defaults';
 export type {
   BureauSettings,
   SettingKeyState,
@@ -899,6 +901,7 @@ export {
   A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
+export { startIdleTurn } from './http/ag-ui-thread-admission';
 export type { SkillSourceStanding, SkillsStanding } from './http/management/skills-operations';
 export {
   RESUME_ATTEMPT_FAILED_MESSAGES,

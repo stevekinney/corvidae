@@ -36,6 +36,14 @@ export interface SettingsSnapshot {
    * says what unset means.
    */
   readonly effective: SettingsValues;
+  /**
+   * Each key's value as this process runs it: its {@link SettingsSnapshot.values} entry for a
+   * `live` key, and for a `restart` key the value it booted with, which a saved change waits to
+   * replace. Like `values`, a key nothing set at boot is absent. A `restart` key whose saved value
+   * is reverted to this one (an update writing it, or `null` where it is absent) no longer waits for
+   * a restart.
+   */
+  readonly running: SettingsValues;
   /** How many times the stored record has changed; `0` before the first change. */
   readonly revision: number;
   /** Whether the record survives the process: `false` for a Bureau without persistent storage. */
@@ -88,7 +96,8 @@ export interface BureauSettings {
   /**
    * Changes the keys in `patch`, all or none. A `live` key takes effect at its next point of use
    * in this process, and in another process on the same store after its next maintenance pass; a
-   * `restart` key at the next `createBureau`.
+   * `restart` key at the next `createBureau`. A key patched to `null` loses its stored value, so its
+   * code option applies again.
    */
   update(
     patch: Readonly<Record<string, unknown>>,

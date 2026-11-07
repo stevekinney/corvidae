@@ -7,14 +7,14 @@ import { mapScheduleErrorToFault } from './schedule-faults.ts';
 import { parseOptionalScheduleRestBodyRecord } from './schedule-rest-body.ts';
 
 const skipNextScheduleInput = z.object({
-  scheduleId: z.string().min(1).describe('Id of the active schedule whose next run to skip.'),
+  scheduleId: z.string().min(1).describe('Id of the schedule whose run to skip.'),
   occurrence: z
     .number()
     .int()
     .nonnegative()
     .optional()
     .describe(
-      "The run to skip, as milliseconds since the epoch: the nextFireAt or skipUntil the caller read. Refused with Conflict when it is not the schedule's next real run.",
+      "The run to skip, as milliseconds since the epoch: the schedule's next run or any upcoming run after it. Refused with Conflict when it is not an upcoming run of the schedule. Omitted, the next run is skipped.",
     ),
   expectedRevision: z
     .number()
@@ -31,22 +31,25 @@ export type SkipNextScheduleOutput = z.infer<typeof skipNextScheduleOutput>;
 export const skipNextScheduleOperation = defineOperation({
   name: 'weft.schedules.skipnext',
   mcpExposable: false,
-  summary: 'Skip the next run of a recurring schedule',
+  summary: 'Skip an upcoming run of a recurring schedule',
   description:
-    'Skip the next run of an active recurring schedule by `scheduleId`: the next occurrence that ' +
-    'would start a workflow starts none, and the one after it runs as usual. In a time zone the ' +
-    'next wake-up can be the end of a daylight-saving gap that starts nothing, so the occurrence ' +
-    'skipped is the next real run, reported as `skipUntil` on the schedule. A run that is due but ' +
-    'has not started is the next run. The skip leaves `revision` and `nextFireAt` as they are; ' +
-    'skipping again before that run has passed ' +
-    'changes nothing. A fire moves neither `revision` nor `status`, so the run a caller read can ' +
-    'start before the skip is written: pass `occurrence`, the run to skip in milliseconds since the ' +
-    'epoch, and the skip is refused with Conflict (reason `occurrence-not-next`) when that is not ' +
-    "the schedule's next real run, or the run already skipped, as the write lands. Omitted, the " +
-    'next run is skipped, whichever it is. Pass `expectedRevision` to refuse the skip with ' +
+    'Skip one upcoming run of a recurring schedule by `scheduleId`: the occurrence named by ' +
+    '`occurrence` (milliseconds since the epoch), the next run or any after it, starts no ' +
+    'workflow, and the runs around it fire as usual. Omitted, the next run is skipped, whichever ' +
+    'it is. In a time zone the next wake-up can be the end of a daylight-saving gap that starts ' +
+    'nothing, so the next run is the next real one; a run that is due but has not started is the ' +
+    'next run. Skipped runs are listed as `skippedOccurrences` on the schedule until it moves past ' +
+    'them, and `weft.schedules.unskip` takes one back. The skip leaves `revision` and ' +
+    '`nextFireAt` as they are, and skipping a run already skipped changes nothing. A paused ' +
+    'schedule accepts a skip of its runs counted from the first after now, and keeps it for when ' +
+    'it is resumed. A fire moves neither `revision` nor `status`, so the run a caller read can ' +
+    'start before the skip is written: the skip is refused with Conflict (reason ' +
+    '`occurrence-not-next`) when `occurrence` is not an upcoming run as the write lands, whether ' +
+    'a fire passed it or the cadence starts no run then. A schedule keeps at most 100 skipped ' +
+    'runs, and one more is a Conflict. Pass `expectedRevision` to refuse the skip with ' +
     'StaleRevision when the schedule has changed since it was read; the revision is checked first. ' +
     'Faults with NotFound when no schedule with the given id exists, and with Conflict when the ' +
-    'schedule is paused or cancelled.',
+    'schedule is cancelled.',
   destructive: false,
   tags: ['Schedules'],
   inputSchema: skipNextScheduleInput,

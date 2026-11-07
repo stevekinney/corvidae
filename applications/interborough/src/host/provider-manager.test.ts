@@ -17,10 +17,12 @@ import { createHash } from 'node:crypto';
 import { contributedFixtures } from './provider-fixtures.test-support.ts';
 import {
   createProviderManager,
+  ProviderInputError,
   ProviderWriteLockedError,
   type ProviderAuditEntry,
 } from './provider-manager.ts';
 import { HOST_CATALOG_ROUTE, providerRoutes } from './provider-routes.ts';
+import { fakeProvider, STUB_PROVIDER_REJECTED_KEY_MARKER } from './stub-provider.ts';
 import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
 const KEY = 'fixture-key-manager-5d21';
@@ -794,5 +796,131 @@ describe('workspace provider mutation authority', () => {
     expect(await result).toMatchObject({ code: 'forbidden' });
     expect(home.writes).toEqual([]);
     expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
+  });
+});
+
+describe('testing a key', () => {
+  async function testingManager(home: FakeHome) {
+    const provider = fakeProvider('ok');
+    const manager = createProviderManager({
+      bungalow: home,
+      warn: () => undefined,
+      resolveProviderGenerate: provider.resolver,
+    });
+    await manager.adopt(contributedFixtures());
+    manager.attach((rows) => Promise.resolve(rows.length));
+    return { manager, provider };
+  }
+
+  test('says an accepted key works and how many models it would add, storing nothing', async () => {
+    const home = fakeHome('local');
+    home.secrets.clear();
+    const { manager, provider } = await testingManager(home);
+
+    const result = await manager.testKey({ provider: 'anthropic', apiKey: KEY });
+
+    expect(result).toEqual({ ok: true, models: 1 });
+    // The candidate key was the one the request used, one token was asked for, and nothing was kept.
+    expect(provider.handed.map((handed) => Reflect.get(handed, 'apiKey'))).toEqual([KEY]);
+    expect(home.writes).toEqual([]);
+    expect(home.secrets.size).toBe(0);
+    expect(manager.current().apiKeys.has('anthropic')).toBe(false);
+  });
+
+  test('says a refused key was refused, with the status and no message, storing nothing', async () => {
+    const home = fakeHome('local');
+    const { manager } = await testingManager(home);
+    const refused = `${KEY}-${STUB_PROVIDER_REJECTED_KEY_MARKER}`;
+
+    const result = await manager.testKey({ provider: 'anthropic', apiKey: refused });
+
+    expect(result).toEqual({ ok: false, status: 401 });
+    expect(JSON.stringify(result).includes(refused)).toBe(false);
+    expect(home.writes).toEqual([]);
+    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
+    expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
+  });
+
+  test('reaches a client for every provider the host offers, accepting and refusing alike', async () => {
+    const { manager } = await testingManager(fakeHome('local'));
+
+    for (const provider of ['anthropic', 'openai', 'gemini']) {
+      const accepted = await manager.testKey({ provider, apiKey: KEY });
+      const refused = await manager.testKey({
+        provider,
+        apiKey: `${KEY}-${STUB_PROVIDER_REJECTED_KEY_MARKER}`,
+      });
+      expect(accepted, provider).toMatchObject({ ok: true });
+      expect(refused, provider).toEqual({ ok: false, status: 401 });
+    }
+  });
+
+  test('tests a key even when the host cannot save one, since testing writes nothing', async () => {
+    const { manager } = await testingManager(fakeHome('remote'));
+
+    expect(await manager.testKey({ provider: 'anthropic', apiKey: KEY })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  test('refuses a request it cannot use, naming the field and never the key', async () => {
+    const { manager } = await testingManager(fakeHome('local'));
+
+    const empty = await failureOf(manager.testKey({ provider: 'anthropic', apiKey: '  ' }));
+    const unknown = await failureOf(manager.testKey({ provider: 'voyage', apiKey: KEY }));
+
+    expect(empty).toBeInstanceOf(ProviderInputError);
+    expect(empty).toMatchObject({ field: 'apiKey' });
+    expect(unknown).toMatchObject({ field: 'provider' });
+    expect(String(unknown).includes(KEY)).toBe(false);
+  });
+
+  test('rethrows when the caller stopped it, so a cancel is not reported as a refused key', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const abortingManager = createProviderManager({
+      bungalow: fakeHome('local'),
+      warn: () => undefined,
+      resolveProviderGenerate: () => () =>
+        Promise.reject(new DOMException('Stopped', 'AbortError')),
+    });
+    await abortingManager.adopt(contributedFixtures());
+
+    const failure = await failureOf(
+      abortingManager.testKey({ provider: 'anthropic', apiKey: KEY }, controller.signal),
+    );
+
+    expect(failure).toBeInstanceOf(DOMException);
+  });
+
+  test('answers POST with the result as JSON, and never repeats the key', async () => {
+    const home = fakeHome('local');
+    const { manager } = await testingManager(home);
+    using server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      routes: providerRoutes(manager, () => undefined, {
+        mutation: () => createLocalHostMutationContext(home),
+      }),
+    });
+    const post = (apiKey: string) =>
+      fetch(new URL('/host/providers/anthropic/test', server.url), {
+        method: 'POST',
+        body: JSON.stringify({ apiKey }),
+      });
+
+    const accepted = await post(KEY);
+    const refused = await post(`${KEY}-${STUB_PROVIDER_REJECTED_KEY_MARKER}`);
+    const invalid = await fetch(new URL('/host/providers/anthropic/test', server.url), {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ ok: true, models: 1 });
+    expect(refused.status).toBe(200);
+    expect(await refused.json()).toEqual({ ok: false, status: 401 });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({ error: 'invalid', field: 'apiKey' });
   });
 });

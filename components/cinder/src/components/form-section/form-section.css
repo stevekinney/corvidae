@@ -94,4 +94,36 @@
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
+
+  /* ----------------------------------------
+ * Grouped: one bordered card of rows (settings pages)
+ * ---------------------------------------- */
+
+  .cinder-form-section[data-grouped='true'] .cinder-form-section__heading,
+  .cinder-form-section[data-grouped='true'] .cinder-form-section__legend {
+    font-size: var(--cinder-text-base);
+    margin-block-end: var(--cinder-space-0-5);
+  }
+
+  .cinder-form-section[data-grouped='true'] .cinder-form-section__description {
+    font-size: var(--cinder-text-sm);
+    margin-block-end: var(--cinder-space-2);
+  }
+
+  .cinder-form-section[data-grouped='true'] .cinder-form-section__grid {
+    gap: 0;
+    margin-block-start: var(--cinder-space-2);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised);
+    overflow: hidden;
+  }
+
+  .cinder-form-section[data-grouped='true'] .cinder-form-section__grid > * {
+    padding: var(--cinder-space-3) var(--cinder-space-4);
+  }
+
+  .cinder-form-section[data-grouped='true'] .cinder-form-section__grid > * + * {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
 }

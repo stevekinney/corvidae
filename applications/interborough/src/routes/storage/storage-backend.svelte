@@ -1,80 +1,67 @@
 <script lang="ts">
   /**
-   * The storage line under the page's title: which backend the installation keeps its state in
-   * (SQLite, or Postgres and S3) and where, and, from that line, a popover with the six facts the
-   * storage reports about itself (`capabilities-panel.svelte`). The backend comes from the host
-   * (`/host/paths`); when the host cannot say, the line says only that this is storage.
+   * The storage line under Health's heading, the same on every tab: which backend the installation
+   * keeps its state in and where ("Running on SQLite in ~/.interborough"), then "Storage details"
+   * as a link-styled button that opens the storage's five facts (`storage-details.svelte`), its
+   * chevron turned up while they are open. The backend comes from the host (`/host/paths`); when the
+   * host cannot say, the line says only that this is storage. The line does not count keys: the
+   * count is in the popover and the table's footer.
    */
-  import { Popover } from '@lostgradient/cinder';
-  import type { StorageCapabilities } from '@lostgradient/storage';
-  import { ChevronDown } from '@lucide/svelte';
+  import { Button, Popover } from '@lostgradient/cinder';
+  import { ChevronDown, ChevronUp } from '@lucide/svelte';
 
-  import { STORAGE_COPY } from '../../app/copy.ts';
   import type { HostPaths } from '../../lib/host-paths.ts';
-  import CapabilitiesPanel from './capabilities-panel.svelte';
+  import { HEALTH_FRAME_COPY } from '../health/health-copy.ts';
+  import StorageDetails from './storage-details.svelte';
+  import { runningOnLine } from './storage-location.ts';
 
   interface Props {
     paths: HostPaths | undefined;
-    capabilities: StorageCapabilities | undefined;
-    loading: boolean;
-    error: unknown;
-    onRetry?: (() => void) | undefined;
   }
 
-  let { paths, capabilities, loading, error, onRetry = undefined }: Props = $props();
+  let { paths }: Props = $props();
 
-  const copy = STORAGE_COPY.backend;
   let open = $state(false);
-
-  const line = $derived.by(() => {
-    if (paths === undefined) return copy.unknown;
-    return paths.database.kind === 'sqlite'
-      ? copy.line(copy.sqlite, paths.database.path)
-      : copy.line(copy.postgres, paths.database.location);
-  });
+  const line = $derived(runningOnLine(paths));
 </script>
 
-<div class="ib-storage-backend" data-testid="storage-backend">
-  <Popover bind:open label={copy.popoverLabel} placement="bottom-start">
-    {#snippet trigger()}
-      <!-- A plain button, not Cinder's: a database path is one long word, and this one wraps it. -->
-      <button
-        type="button"
-        class="ib-storage-backend__trigger"
-        aria-label={`${line}. ${copy.popoverHint}`}
-        onclick={() => (open = !open)}
-      >
-        <span class="ib-storage-backend__line">{line}</span>
-        <ChevronDown aria-hidden="true" size={14} />
-      </button>
-    {/snippet}
-    <div class="ib-storage-backend__facts">
-      <CapabilitiesPanel {capabilities} {loading} {error} {onRetry} />
-    </div>
-  </Popover>
-</div>
+<span class="ib-storage-backend" data-testid="storage-backend">
+  <span class="ib-storage-backend__line">{line}</span>
+  <span class="ib-storage-backend__details">
+    <span class="ib-storage-backend__separator" aria-hidden="true">·</span>
+    <Popover bind:open label={HEALTH_FRAME_COPY.popoverLabel} placement="bottom-start">
+      {#snippet trigger()}
+        {#snippet chevron()}
+          {#if open}<ChevronUp aria-hidden="true" size={12} />{:else}<ChevronDown
+              aria-hidden="true"
+              size={12}
+            />{/if}
+        {/snippet}
+        <Button
+          variant="ghost-accent"
+          size="sm"
+          label={HEALTH_FRAME_COPY.storageDetails}
+          trailingIcon={chevron}
+          aria-expanded={open}
+          onclick={() => (open = !open)}
+        />
+      {/snippet}
+      <StorageDetails {paths} />
+    </Popover>
+  </span>
+</span>
 
 <style>
   .ib-storage-backend {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--cinder-space-2);
     min-width: 0;
     max-inline-size: 100%;
-  }
-
-  .ib-storage-backend__trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    max-inline-size: 100%;
-    padding: var(--cinder-space-1) var(--cinder-space-2);
+    margin: 0;
     color: var(--cinder-text-muted);
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    text-align: start;
-    background: transparent;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
-    cursor: pointer;
+    font-size: var(--cinder-text-md);
   }
 
   .ib-storage-backend__line {
@@ -82,8 +69,11 @@
     overflow-wrap: anywhere;
   }
 
-  .ib-storage-backend__facts {
-    min-inline-size: 16rem;
-    max-inline-size: min(26rem, 80vw);
+  /* The separator wraps with the button, so a long path never strands a "·" at the start of a line. */
+  .ib-storage-backend__details {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    white-space: nowrap;
   }
 </style>

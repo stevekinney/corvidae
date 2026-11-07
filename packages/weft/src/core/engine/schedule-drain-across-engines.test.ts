@@ -32,13 +32,13 @@ describe('the end of a run drains the queue while another engine changes the sch
     await hold.reached;
     await engineB.skipNextScheduleOccurrence(SCHEDULE_ID);
     const skippedState = await stateOf(shared);
-    const skipped = skippedState.skipUntil;
+    const skipped = skippedState.skippedOccurrences?.[0];
     expect(skipped).toBeDefined();
     hold.release();
     await drainEngine();
 
     const state = await stateOf(shared);
-    expect(state.skipUntil).toBe(skipped);
+    expect(state.skippedOccurrences).toEqual([skipped!]);
     expect(state.currentWorkflowId).toBe(queued.workflowId);
     expect(state.queuedRuns).toEqual([]);
     expect(await listRunningWorkflowIds(engineB)).toEqual([queued.workflowId]);
@@ -52,7 +52,7 @@ describe('a resumed backfill drains the queue while another engine changes the s
       const { shared, engineB, first, tickingA, draining } = await parkResumedSectionDrain();
       await engineB.skipNextScheduleOccurrence(SCHEDULE_ID);
       const skippedState = await stateOf(shared);
-      expect(skippedState.skipUntil).toBe(first + MINUTE);
+      expect(skippedState.skippedOccurrences).toEqual([first + MINUTE]);
       draining.release();
       await tickingA;
       await drainEngine();
@@ -62,7 +62,7 @@ describe('a resumed backfill drains the queue while another engine changes the s
       // so the second occurrence was skipped, the third queued, and the queued run started once.
       expect(state.status).toBe('active');
       expect(state.lastFireAt).toBe(first + 2 * MINUTE);
-      expect(state.skipUntil).toBeUndefined();
+      expect(state.skippedOccurrences).toBeUndefined();
       expect(state.skippedCount).toBe(0);
       expect(state.queuedRuns.map((run) => run.occurrence)).toEqual([first + 2 * MINUTE]);
       expect(await listRunningWorkflowIds(engineB)).toEqual([state.currentWorkflowId!]);

@@ -129,11 +129,13 @@ The open item's key is kept in the `selected` search parameter (`selectionParame
 
 ## Divider width
 
-Pass `storageKey` and the divider width is remembered under that key in `localStorage` (or in `storage`, any object with `getItem` and `setItem`). The key is yours, so two lists on a page do not share a width. A storage that is missing or throws is ignored, and the list pane starts at `defaultListWidth`. Resizing the container does not rewrite the stored width, only moving the divider does.
+Pass `storageKey` and the divider width is remembered under that key in `localStorage` (or in `storage`, any object with `getItem` and `setItem`). The key is yours, so two lists on a page do not share a width. A storage that is missing or throws is ignored, and the list pane starts at `defaultListWidth`. Resizing the container does not rewrite the stored width, only moving the divider does. The list pane stops growing at 560 pixels; a list that is a table, which needs wider columns, raises that with `maximumListWidth`.
 
 ## Narrow layout
 
 When the component is narrower than `pushBelow` (600 pixels by default, so a tablet shows both panes and a phone shows one), it shows one pane at a time: the list, then the detail with a Back button. The pane then follows the page instead of scrolling inside a box of its own. The width is the component's own, not the viewport's, so a ListDetail in a narrow column stacks inside a wide window. Back clears the selection and returns focus to the row that was open. A width that has not been measured yet counts as wide.
+
+A list that is a table can need more than the room beside a detail pane. Set `stackBelow` (0 by default, which never stacks) and between `pushBelow` and that width both panes still show, one above the other, the detail under the list with a rule between them, and the layout flows with the page.
 
 ## Grouped lists
 
@@ -172,9 +174,12 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `label` | `string` | yes | — | Accessible name of the list region, for example "Chats". |
 | `loading` | `boolean` | no | `false` | Shows a placeholder in place of the rows and the open item while the records load: five list rows in the list pane and a block in the detail pane. Nothing shows for the first 300 milliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after ten seconds. |
 | `loadingLabel` | `string` | no | `"Loading"` | What the loading region announces, politely, once the placeholder appears: "Loading memories". |
+| `maximumListWidth` | `number` | no | `560` | Widest width in pixels the divider can give the list pane, and the most a remembered or default width can be. Raise it for a list that is a table, whose columns need more than a list of rows. |
+| `openFirst` | `boolean` | no | `false` | Opens the first item when none is open and the panes sit side by side, so the detail beside the list is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while the component shows one pane at a time (below `pushBelow`): there the list is where it starts. |
 | `pushBelow` | `number` | no | `600` | Width in pixels of the component below which it shows one pane at a time: the list, then the detail with a Back button. It is measured on the component, not the viewport. |
 | `selectedKey` | `string` \| `null` | no | `null` | Key of the open item, or `null` when none is open. Bindable. When it is `null` on mount, the item named by the URL's search parameter opens. |
 | `selectionParameter` | `string` \| `null` | no | `"selected"` | Name of the search parameter that holds the open item's key. Pass `null` to keep the selection out of the URL. |
+| `stackBelow` | `number` | no | `0` | Width in pixels of the component below which, down to `pushBelow`, the two panes are shown one above the other, the detail under the list, instead of side by side. The default `0` never stacks them: the panes sit side by side until `pushBelow` and show one at a time under it. |
 | `storageKey` | `string` | no | — | Storage key under which the divider width is remembered. Omit to not remember it. The key is the caller's, so two ListDetails on one page do not share a width. |
 | `detail` | `(opaque)` | yes | — | Detail renderer for the open item. Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | Rendered in the detail pane while no item is open. A default message is shown when omitted. Not expressible in JSON Schema; see the component types for the signature. |

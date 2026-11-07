@@ -96,6 +96,12 @@ const schema = {
       description:
         'Keeps the banner at the top of its scroll container while the page scrolls under it.',
     },
+    stackActions: {
+      type: 'boolean',
+      description:
+        "Below 640px, puts the actions on a row of their own under the words, one above the next, each\na full-width 44px button. A phone's restart notice does this, so its buttons are targets\nwide enough to press; without it the actions stay at the right of their line, at 44px.",
+      default: false,
+    },
     healthHref: {
       type: 'string',
       description: 'Makes "Open Health" a link to this address instead of a button.',

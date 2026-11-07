@@ -206,6 +206,13 @@ export type ScheduleUpdateOptions = Pick<
   'description' | 'overlap' | 'backfill' | 'jitter' | 'timeZone' | 'revisionPolicy'
 > & {
   /**
+   * The workflow type each fire starts from now on; omitted, it is kept. A pinned schedule
+   * re-captures its pin against the new type, which need not be registered yet.
+   */
+  workflowType?: string;
+  /** The input each fire starts with from now on, replacing it whole; omitted, it is kept. */
+  input?: unknown;
+  /**
    * Apply the update only if the schedule's {@link ScheduleMetadata.revision} is still this
    * value. The comparison is made inside the schedule's serialized write, and the write is
    * conditioned on the exact bytes it read, so of two concurrent changes carrying the same
@@ -447,16 +454,18 @@ export interface ScheduleMetadata {
   lastSkippedAt?: number;
   nextFireAt: number | null;
   /**
-   * The occurrence a person asked to skip (see {@link Engine.skipNextScheduleOccurrence}): the
-   * schedule starts no run for the occurrence at this instant. It names the next
-   * occurrence that would actually have started a run, which is not always {@link nextFireAt}: in
-   * a time zone, `nextFireAt` can be the end of a daylight-saving gap that fires nothing. It is
-   * absent when nothing is skipped, and is cleared as soon as the schedule moves past it, by a
-   * pause, a cancel, or an update after which it is no longer the next occurrence. An update that
-   * leaves it the next occurrence (a new description or overlap policy, say) keeps it. A stored
-   * schedule that predates the field reads as absent.
+   * The occurrences a person asked to skip (see {@link Engine.skipNextScheduleOccurrence}), in
+   * milliseconds since the epoch, ascending and without repeats: the schedule starts no run at any
+   * of them. Each is an instant the cadence starts a run at, which is not always
+   * {@link nextFireAt}: in a time zone, `nextFireAt` can be the end of a daylight-saving gap that
+   * fires nothing. Any upcoming run can be skipped, of an active schedule or a paused one (a pause
+   * keeps them), and {@link Engine.unskipScheduleOccurrence} takes one back. An occurrence leaves
+   * the set once the schedule moves past it, and all go when it is cancelled or an update moves its
+   * cadence off them; an update that leaves one on the cadence keeps it. It holds at most
+   * {@link SCHEDULE_SKIPPED_OCCURRENCE_LIMIT} occurrences, and is absent when nothing is skipped. A
+   * stored schedule with the single `skipUntil` it replaced reads as a set of that one.
    */
-  skipUntil?: number;
+  skippedOccurrences?: number[];
   currentWorkflowId?: string;
   /** Ordered durable occurrences waiting behind `currentWorkflowId`. */
   queuedRuns: ScheduleQueuedRun[];

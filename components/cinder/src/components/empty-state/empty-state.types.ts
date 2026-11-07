@@ -20,15 +20,16 @@ export type EmptyStateAlign = 'center' | 'start';
 export type EmptyStateKind =
   'first-use' | 'filtered' | 'done' | 'blocked' | 'not-found' | 'disabled';
 
+/** Scale of an empty state: `'default'` fills a page region, `'compact'` fits a tab or panel. */
+export type EmptyStateSize = 'default' | 'compact';
 /**
  * How an empty state is laid out: `'stacked'` centres the disc, title, description and action one
  * under the other in the region; `'row'` puts them on one line, the disc and the words at the
- * start and the action at the end, for a state that sits inside a card or list in place of its rows.
+ * start and the action at the end, for a state that sits inside a card or list in place of its rows;
+ * `'inline'` puts a 32px disc beside one line of text, the title in bold followed by the sentence,
+ * at the inline start, for a state that sits among rows (the runs of a schedule below the Now marker).
  */
-export type EmptyStateLayout = 'stacked' | 'row';
-
-/** Scale of an empty state: `'default'` fills a page region, `'compact'` fits a tab or panel. */
-export type EmptyStateSize = 'default' | 'compact';
+export type EmptyStateLayout = 'stacked' | 'row' | 'inline';
 
 export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
@@ -64,10 +65,13 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   size?: EmptyStateSize;
   /**
-   * Whether the state stacks its parts and centres them (`'stacked'`), or lays them on one row,
-   * with the disc and the words at the start and the action at the end (`'row'`). A row reads as
-   * the line of a list, such as "Nothing is waiting on you" with its link to the page that holds
-   * the rest, so it is the layout for a state inside a card. On a phone the action drops under the words.
+   * Whether the state stacks its parts and centres them (`'stacked'`), lays them on one row,
+   * with the disc and the words at the start and the action at the end (`'row'`), or draws a 32px
+   * disc beside the title and the sentence on one line (`'inline'`). A row reads as the line of a
+   * list, such as "Nothing is waiting on you" with its link to the page that holds the rest, so it
+   * is the layout for a state inside a card; on a phone its action drops under the words. Inline
+   * sits among rows at the inline start, without the vertical padding of a region; use it with
+   * `size="compact"`.
    * @default 'stacked'
    */
   layout?: EmptyStateLayout;

@@ -67,6 +67,37 @@ describe('StackedListItem status-first row', () => {
     );
   });
 
+  test('wrapMeta lets line two wrap, so a control in it is never cut off, and the rule is in the stylesheet', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        status: textSnippet('Failed for good'),
+        title: textSnippet('collect-merged-changes'),
+        meta: textSnippet('Failed after 5 tries · GitHub didn’t answer (HTTP 503).'),
+        wrapMeta: true,
+      },
+    });
+    const root = container.querySelector('.cinder-stacked-list-item');
+    expect(root?.classList.contains('cinder-stacked-list-item--wrap-meta')).toBe(true);
+    expect(stylesheet).toMatch(
+      /--wrap-meta\s+\.cinder-stacked-list-item__meta\s*\{[^}]*white-space:\s*normal/u,
+    );
+  });
+
+  test('a row without wrapMeta keeps line two on one line', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        status: textSnippet('Done'),
+        title: textSnippet('Say hello'),
+        meta: textSnippet('x'),
+      },
+    });
+    expect(
+      container
+        .querySelector('.cinder-stacked-list-item')
+        ?.classList.contains('cinder-stacked-list-item--wrap-meta'),
+    ).toBe(false);
+  });
+
   test('a row with nothing to report keeps the column through statusColumn, with no status element', () => {
     const { container } = render(StackedListItem, {
       props: { statusColumn: true, title: textSnippet('Triage inbox') },

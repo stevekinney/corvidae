@@ -10,10 +10,46 @@ export type CliTarget = {
   readonly url: string;
   /** Headers attached to every request. */
   readonly headers: Record<string, string>;
+  /** Whether this target is an authenticated non-loopback management endpoint. */
+  readonly remote?: boolean;
+  /** Server-resolved authority for this connection. */
+  readonly authority?: {
+    readonly actor: string;
+    readonly workspace: string;
+    readonly capabilities: readonly string[];
+  };
 };
 
 function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): CliFailure {
   return Object.assign(new Error(message), properties);
+}
+
+function redactCredentials(target: CliTarget, message: string): string {
+  const candidates = Object.entries(target.headers).flatMap(([name, value]) => {
+    if (value === '') return [];
+    const authorization =
+      name.toLowerCase() === 'authorization' ? value.match(/^\S+\s+(.+)$/)?.[1] : undefined;
+    return authorization === undefined ? [value] : [value, authorization];
+  });
+  return candidates.reduce(
+    (redacted, credential) => redacted.split(credential).join('[redacted]'),
+    message,
+  );
+}
+
+function assertManagementBoundary(target: CliTarget, path: string): void {
+  if (
+    target.remote === true &&
+    (path === '/jsonrpc' ||
+      path.startsWith('/bureau/a2a') ||
+      (path.startsWith('/bureau/assets/') && path.endsWith('/content')))
+  )
+    throw makeCliFailure(
+      'Authenticated management credentials cannot be sent to this public route.',
+      {
+        exitCode: 3,
+      },
+    );
 }
 
 /** Send one request with the client deadline and decode JSON-RPC failures. */
@@ -24,6 +60,7 @@ export async function request(
   dependencies: CliClientDependencies,
   init?: RequestInit,
 ): Promise<CliCommandResult> {
+  assertManagementBoundary(target, path);
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
@@ -51,6 +88,13 @@ export async function request(
     try {
       body = text === '' ? undefined : JSON.parse(text);
     } catch {
+      if (!response.ok)
+        throw makeCliFailure(
+          redactCredentials(target, text === '' ? `HTTP ${response.status}` : text),
+          {
+            status: response.status,
+          },
+        );
       throw makeCliFailure(
         'The host returned malformed JSON.',
         init?.method === 'POST' ? { exitCode: 7 } : {},
@@ -59,14 +103,17 @@ export async function request(
     if (!response.ok)
       throw makeCliFailure(
         isRecord(body) && typeof body['message'] === 'string'
-          ? body['message']
+          ? redactCredentials(target, body['message'])
           : `HTTP ${response.status}`,
         { status: response.status },
       );
     if (isRecord(body) && isRecord(body['error'])) {
       const rpcError = body['error'];
       const code = typeof rpcError['code'] === 'number' ? rpcError['code'] : undefined;
-      const message = typeof rpcError['message'] === 'string' ? rpcError['message'] : 'RPC error';
+      const message = redactCredentials(
+        target,
+        typeof rpcError['message'] === 'string' ? rpcError['message'] : 'RPC error',
+      );
       const data = isRecord(rpcError['data']) ? rpcError['data'] : undefined;
       const httpStatus = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : undefined;
       throw makeCliFailure(message, {
@@ -93,6 +140,7 @@ export async function requestBytes(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<Response> {
+  assertManagementBoundary(target, path);
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
@@ -109,7 +157,7 @@ export async function requestBytes(
       try {
         const parsedBody: unknown = JSON.parse(body);
         if (isRecord(parsedBody) && typeof parsedBody['message'] === 'string')
-          message = parsedBody['message'];
+          message = redactCredentials(target, parsedBody['message']);
       } catch {
         // Keep the status when a failed binary response is not JSON.
       }
@@ -138,6 +186,7 @@ export async function stream(
   dependencies: CliClientDependencies,
   init: RequestInit = {},
 ): Promise<Response> {
+  assertManagementBoundary(target, path);
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
@@ -166,7 +215,7 @@ export async function stream(
       try {
         const parsedBody: unknown = JSON.parse(body);
         if (isRecord(parsedBody) && typeof parsedBody['message'] === 'string')
-          message = parsedBody['message'];
+          message = redactCredentials(target, parsedBody['message']);
       } catch {
         // Keep the status when a failed stream does not return JSON.
       }

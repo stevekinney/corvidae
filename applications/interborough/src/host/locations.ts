@@ -126,6 +126,12 @@ export type HostPathsReport = {
   readonly locked: HostWriteLocks;
   /** Each provider and where its API key lives (a file's path, or an environment variable's name), never the key. */
   readonly providers: readonly { readonly name: string; readonly secretFile: string }[];
+  /**
+   * The address of the A2A directory card, which lists the agents the host shares: under the
+   * public origin when the operator set one (COR-1904), else the host's own. The browser cannot
+   * know the public origin, so the host says.
+   */
+  readonly a2aDirectoryUrl: string;
 };
 
 /**
@@ -144,6 +150,7 @@ export function hostPathsReport(
   >,
   content: { readonly agents: ContentLocation; readonly workflows: ContentLocation },
   providers: readonly { readonly name: string; readonly secretKey: string }[],
+  a2aDirectoryUrl: string,
 ): HostPathsReport {
   return {
     mode: bungalow.mode,
@@ -156,17 +163,21 @@ export function hostPathsReport(
       name,
       secretFile: `workspace:${bungalow.workspaceId}/${secretKey}`,
     })),
+    a2aDirectoryUrl,
   };
 }
 
 /**
  * The storage for the host's database: a SQLite file on this machine, or a Postgres server. The
- * Postgres pool connects when first used, and it is the only place the URL is read.
+ * Postgres pool connects when first used, and it is the only place the URL is read. `now` is the
+ * clock each key's write time is read from, the host's own, so a host running on an injected
+ * runtime records the times its records carry; it defaults to the system clock.
  */
-export function createHostStorage(database: DatabaseLocation): Storage {
+export function createHostStorage(database: DatabaseLocation, now?: () => number): Storage {
+  const clock = now === undefined ? {} : { now };
   return database.kind === 'sqlite'
-    ? new BunSQLiteStorage(database.path)
-    : new PostgresStorage({ url: database.url });
+    ? new BunSQLiteStorage(database.path, clock)
+    : new PostgresStorage({ url: database.url, ...clock });
 }
 
 /** Release a storage the host opened, awaiting a pool's shutdown when the storage has one. */

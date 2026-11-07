@@ -3,7 +3,7 @@
   import type { HttpClient } from '@lostgradient/weft';
 
   import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';
-  import DashboardTestHarness from '../dashboard/dashboard-test-harness.test-harness.svelte';
+  import HomeRouteHarness from './home-route-harness.test-harness.svelte';
   import Home from './index.svelte';
 
   interface Props {
@@ -16,8 +16,8 @@
   let { client, scopes, workspace }: Props = $props();
 </script>
 
-<DashboardTestHarness {client} {scopes} {workspace}>
+<HomeRouteHarness {client} {scopes} {workspace}>
   {#snippet children()}
     <Home />
   {/snippet}
-</DashboardTestHarness>
+</HomeRouteHarness>

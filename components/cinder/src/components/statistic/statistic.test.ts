@@ -40,6 +40,34 @@ describe('Statistic loading', () => {
 });
 
 describe('Statistic', () => {
+  test('loading keeps the label, stands a placeholder where the value was, and leaves the caption out', () => {
+    const { container } = render(Statistic, {
+      label: 'Running now',
+      value: 0,
+      caption: 'Nothing is running',
+      attention: false,
+      loading: true,
+    });
+    const group = container.querySelector('.cinder-statistic');
+    expect(group?.getAttribute('aria-busy')).toBe('true');
+    expect(container.querySelector('.cinder-statistic__label')?.textContent).toBe('Running now');
+    expect(container.querySelectorAll('.cinder-statistic__value .cinder-skeleton')).toHaveLength(1);
+    // Never a zero while the figure is being read, and no caption describing one.
+    expect(container.querySelector('.cinder-statistic__value')?.textContent?.trim()).toBe('');
+    expect(container.querySelector('.cinder-statistic__caption')).toBeNull();
+    expect(group?.getAttribute('aria-describedby')).toBeNull();
+    // The group is named by its label alone while the value is a placeholder.
+    expect(group?.getAttribute('aria-labelledby')).toBe(
+      container.querySelector('.cinder-statistic__label')?.id,
+    );
+  });
+
+  test('is not busy by default, and a value shows as before', () => {
+    const { container } = render(Statistic, { label: 'Revenue', value: '$1,000' });
+    expect(container.querySelector('.cinder-statistic')?.hasAttribute('aria-busy')).toBe(false);
+    expect(container.querySelector('.cinder-statistic__value')?.textContent).toBe('$1,000');
+  });
+
   test('renders a .cinder-statistic element with role="group"', () => {
     const { container } = render(Statistic, { label: 'Revenue', value: '$1,000' });
     const el = container.querySelector('.cinder-statistic');

@@ -56,20 +56,24 @@ export const REFUND_APPROVAL: BureauReview = toolApprovalFixture({
 
 /** The three problems of the sample world, in the order the Bureau lists them. */
 export const SAMPLE_ATTENTION: readonly AttentionItem[] = [
-  { kind: 'no-provider', at: null, provider: null },
+  { kind: 'no-provider', area: 'providers', at: null, provider: null },
   {
     kind: 'alert',
+    area: 'storage',
     at: HOME_NOW - 100 * 60_000,
     metric: 'storage.size',
     currentValue: 1.6 * 1024 ** 3,
+    threshold: 1024 ** 3,
   },
   {
     kind: 'missed-runs',
+    area: 'schedules',
     at: HOME_NOW - 5 * 3_600_000,
     scheduleId: 'schedule-daily',
     scheduleName: 'Daily summary',
     count: 4,
     since: Date.parse('2026-10-30T03:00:00-05:00'),
+    occurrences: [{ occurrence: Date.parse('2026-10-30T03:00:00-05:00'), count: 4 }],
   },
 ];
 
@@ -79,6 +83,7 @@ export const DAILY_SUMMARY: BureauSchedule = {
   owner: 'anonymous:local',
   agentName: 'assistant',
   inputPreview: 'Summarize the open reviews.',
+  continuesChat: false,
   workflowType: 'agentRun',
   description: 'Daily summary',
   cronExpression: '0 9 * * *',
@@ -88,12 +93,13 @@ export const DAILY_SUMMARY: BureauSchedule = {
   revision: 1,
   timeZone: 'UTC',
   nextFireAt: '2026-11-03T09:00:00.000Z',
-  skipUntil: null,
+  skippedOccurrences: [],
   lastFireAt: '2026-10-29T09:00:00.000Z',
   missedFireCount: 4,
   skippedCount: null,
   createdAt: '2026-10-01T09:00:00.000Z',
   updatedAt: '2026-11-02T09:00:00.000Z',
+  blocker: null,
 };
 
 /** The three chats of the sample world, newest first. */

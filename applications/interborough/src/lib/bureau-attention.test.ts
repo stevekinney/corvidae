@@ -144,7 +144,7 @@ describe('listAttentionItems', () => {
     occurrences: [{ occurrence: 100, count: 4 }],
   };
 
-  test('lists every kind of problem with what a sentence about it needs, and nothing else', async () => {
+  test('lists every kind of problem it has a schema for', async () => {
     const items = await listAttentionItems({
       fetch: answering({
         items: [
@@ -190,16 +190,16 @@ describe('listAttentionItems', () => {
       'hook-failed',
       'plugin-not-loaded',
     ]);
-    // The threshold and the attempts are the Bureau's; Home states neither, so neither is kept.
-    expect(items[1]).toEqual({ kind: 'alert', at: 1_000, metric: 'storage.size', currentValue: 5 });
-    expect(items[2]).toEqual({
-      kind: 'missed-runs',
-      at: 900,
-      scheduleId: 's-1',
-      scheduleName: 'Daily summary',
-      count: 4,
-      since: 100,
+    // Each item is the Bureau's record as the shared schema reads it (`readAttention`).
+    expect(items[1]).toEqual({
+      kind: 'alert',
+      area: 'storage',
+      at: 1_000,
+      metric: 'storage.size',
+      currentValue: 5,
+      threshold: 4,
     });
+    expect(items[2]).toEqual({ ...missed, kind: 'missed-runs', area: 'schedules' } as const);
   });
 
   test('leaves out a kind it has no words for, which the Health dot still counts', async () => {

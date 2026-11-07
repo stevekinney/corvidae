@@ -22,6 +22,13 @@ export type RelativeTimeProps = Omit<HTMLTimeAttributes, 'class' | 'datetime'> &
    * names the calendar day. Defaults to `'today'` for `format="absolute"` and `true` for `relative`.
    */
   dayWords?: boolean | 'today';
+  /**
+   * Counts the first minute in seconds ("4 s ago", and "just now" before the third second), for a
+   * time that is a heartbeat or a pulse, such as a worker last heard from. The label then ticks every
+   * second during that minute. Applies to the `relative` format.
+   * @default false
+   */
+  seconds?: boolean;
   /** Recalculate the label on an interval. Set false to disable ticking. */
   tick?: boolean;
   children?: Snippet;

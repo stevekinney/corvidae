@@ -11,10 +11,36 @@ export interface StorageServerOptions {
   readonly mode?: 'local' | 'remote';
   /** Fails the scan with this status, for the error state. */
   readonly scanStatus?: number;
+  /** Starts with every scan unanswered, as `control.holdScan` does once a test sets it. */
+  readonly holdScan?: boolean;
+  /** Whether the host answers `/host/paths`. True by default; false leaves the paths unknown. */
+  readonly hostPaths?: boolean;
   /** Whether the storage reports `conditionalBatch`. True by default. */
   readonly conditionalBatch?: boolean;
   /** Fails the capabilities call with this status, so the page never learns what the storage can do. */
   readonly capabilitiesStatus?: number;
+  /** The size `/host/storage/summary` reports, or `null` for a backend that cannot say. Absent: 4,096. */
+  readonly sizeBytes?: number | null;
+  /** The size a firing storage alert reports through `bureau.health.attention`. Absent: no alert fires. */
+  readonly alertSizeBytes?: number;
+}
+
+/** What a test changes about the server while it runs. */
+export interface StorageServerControl {
+  /** Fails every scan with this status. */
+  scanStatus: number | undefined;
+  /** Refuses every write with a 403. */
+  refuseWrites: boolean;
+  /** Fails a scan that carries a cursor (`gt`), so the first page reads and the next does not. */
+  pageStatus: number | undefined;
+  /** Fails a read of one key's value with this status. */
+  valueStatus: number | undefined;
+  /** Never answers a scan of the keys, so the table stays loading until the read is cancelled. */
+  holdScan: boolean;
+  /** Never answers a read of one key's value, so the pane stays loading until the read is cancelled. */
+  holdValues: boolean;
+  /** When each key was last written, in epoch milliseconds, as a scan reports it. A key with no entry reports none. */
+  writtenAt: Map<string, number>;
 }
 
 /** The capabilities `weft.storage.capabilities` answers with. */
@@ -26,6 +52,15 @@ export const STORAGE_CAPABILITIES = {
   conditionalBatch: true,
   boundedRangeDelete: true,
 } as const;
+
+/** A read the server never answers: it ends only when the page aborts it, as a cancelled read does. */
+function heldRead(signal: AbortSignal | undefined): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+      once: true,
+    });
+  });
+}
 
 const bytesOf = (value: string | Uint8Array): Uint8Array =>
   typeof value === 'string' ? new TextEncoder().encode(value) : value;
@@ -59,19 +94,24 @@ function applyConditionalBatch(store: Map<string, Uint8Array>, body: string): Re
 
 /**
  * Installs a `fetch` that answers as the host does: the scan, a key's write and delete, the
- * capabilities call, `/host/storage` and `/host/paths`. A write changes what the next scan returns,
+ * capabilities call, `/host/storage`, `/host/storage/summary` and `/host/paths`. A write changes what the next scan returns,
  * as a real store would.
  */
 export function serveStorage(options: StorageServerOptions): {
   readonly calls: StubbedFetchCall[];
   readonly store: Map<string, Uint8Array>;
   /** Change what the server answers while a test runs. */
-  readonly control: { scanStatus: number | undefined; refuseWrites: boolean };
+  readonly control: StorageServerControl;
   readonly restore: () => void;
 } {
-  const control: { scanStatus: number | undefined; refuseWrites: boolean } = {
+  const control: StorageServerControl = {
     scanStatus: options.scanStatus,
     refuseWrites: false,
+    pageStatus: undefined,
+    valueStatus: undefined,
+    holdValues: false,
+    holdScan: options.holdScan ?? false,
+    writtenAt: new Map(),
   };
   const store = new Map<string, Uint8Array>(
     Object.entries(options.keys).map(([key, value]) => [key, bytesOf(value)]),
@@ -81,12 +121,44 @@ export function serveStorage(options: StorageServerOptions): {
     if (url.pathname === '/host/storage') {
       return options.bureauPrefixes === null
         ? new Response('no', { status: 500 })
-        : Response.json({ bureauKeyPrefixes: options.bureauPrefixes ?? [] });
+        : Response.json({ bureauKeyPrefixes: options.bureauPrefixes ?? [], sizeBytes: null });
+    }
+    if (url.pathname === '/host/storage/summary') {
+      const prefix = url.searchParams.get('prefix') ?? '';
+      return Response.json({
+        keyCount: [...store.keys()].filter((key) => key.startsWith(prefix)).length,
+        sizeBytes: options.sizeBytes === undefined ? 4096 : options.sizeBytes,
+      });
     }
     if (url.pathname === '/host/paths') {
+      if (options.hostPaths === false) return new Response('Not found', { status: 404 });
       return Response.json(
         stubHostPaths('/home/me/agents', '/home/me/workflows', options.mode ?? 'local'),
       );
+    }
+    if (call.body !== undefined && call.body.includes('bureau.health.attention')) {
+      const items =
+        options.alertSizeBytes === undefined
+          ? []
+          : [
+              {
+                kind: 'alert',
+                area: 'storage',
+                at: 1,
+                metric: 'storage.size',
+                currentValue: options.alertSizeBytes,
+                threshold: 1,
+              },
+            ];
+      return Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          items,
+          count: items.length,
+          checks: items.length === 0 ? [] : [{ area: 'storage', count: 1 }],
+        },
+      });
     }
     if (call.body !== undefined && call.body.includes('weft.storage.capabilities')) {
       if (options.capabilitiesStatus !== undefined) {
@@ -105,6 +177,7 @@ export function serveStorage(options: StorageServerOptions): {
       });
     }
     if (url.pathname === '/v1/storage' && call.method === 'GET') {
+      if (control.holdScan) return heldRead(call.signal);
       if (control.scanStatus !== undefined) {
         return Response.json(
           { error: 'The store is unavailable.' },
@@ -113,21 +186,50 @@ export function serveStorage(options: StorageServerOptions): {
       }
       const prefix = url.searchParams.get('prefix') ?? '';
       const gt = url.searchParams.get('gt');
+      if (gt !== null && control.pageStatus !== undefined) {
+        return Response.json(
+          { error: 'The store is unavailable.' },
+          { status: control.pageStatus },
+        );
+      }
       const gte = url.searchParams.get('gte');
+      const lt = url.searchParams.get('lt');
+      const lte = url.searchParams.get('lte');
       const limit = Number(url.searchParams.get('limit') ?? '100');
       const rows = [...store.entries()]
         .toSorted(([first], [second]) => (first < second ? -1 : first > second ? 1 : 0))
         .filter(
           ([key]) =>
-            key.startsWith(prefix) && (gt === null || key > gt) && (gte === null || key >= gte),
+            key.startsWith(prefix) &&
+            (gt === null || key > gt) &&
+            (gte === null || key >= gte) &&
+            (lt === null || key < lt) &&
+            (lte === null || key <= lte),
         )
         .slice(0, limit)
         .map(([key, value]) =>
-          JSON.stringify({ key, value: Buffer.from(value).toString('base64') }),
+          JSON.stringify({
+            key,
+            value: Buffer.from(value).toString('base64'),
+            ...(control.writtenAt.has(key) ? { updatedAt: control.writtenAt.get(key) } : {}),
+          }),
         );
       return new Response(rows.length > 0 ? `${rows.join('\n')}\n` : '', {
         headers: { 'Content-Type': 'application/x-ndjson' },
       });
+    }
+    if (call.method === 'GET' && url.pathname.startsWith('/v1/storage/')) {
+      if (control.holdValues) return heldRead(call.signal);
+      if (control.valueStatus !== undefined) {
+        return Response.json(
+          { error: 'The store is unavailable.' },
+          { status: control.valueStatus },
+        );
+      }
+      const stored = store.get(decodeURIComponent(url.pathname.replace('/v1/storage/', '')));
+      return stored === undefined
+        ? new Response(null, { status: 404 })
+        : new Response(new Blob([stored.slice()]));
     }
     if (control.refuseWrites && call.method !== 'GET') {
       return Response.json(

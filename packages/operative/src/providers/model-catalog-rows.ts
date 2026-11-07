@@ -153,12 +153,26 @@ export function pricingFor(model: string): BackendDescriptor['pricing'] {
     inputPerMillionTokens: pricing.promptCostPerMillionTokens,
     outputPerMillionTokens: pricing.completionCostPerMillionTokens,
     currency: 'USD',
+    ...(pricing.cacheReadCostPerMillionTokens === undefined
+      ? {}
+      : { cacheReadPerMillionTokens: pricing.cacheReadCostPerMillionTokens }),
+    ...(pricing.cacheWriteCostPerMillionTokens === undefined
+      ? {}
+      : { cacheWritePerMillionTokens: pricing.cacheWriteCostPerMillionTokens }),
     ...(pricing.longContext
       ? {
           longContext: {
             inputTokensAbove: pricing.longContext.inputTokensAbove,
             inputPerMillionTokens: pricing.longContext.promptCostPerMillionTokens,
             outputPerMillionTokens: pricing.longContext.completionCostPerMillionTokens,
+            ...(pricing.longContext.cacheReadCostPerMillionTokens === undefined
+              ? {}
+              : { cacheReadPerMillionTokens: pricing.longContext.cacheReadCostPerMillionTokens }),
+            ...(pricing.longContext.cacheWriteCostPerMillionTokens === undefined
+              ? {}
+              : {
+                  cacheWritePerMillionTokens: pricing.longContext.cacheWriteCostPerMillionTokens,
+                }),
           },
         }
       : {}),

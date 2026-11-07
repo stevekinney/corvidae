@@ -1,158 +1,81 @@
 import { describe, expect, test } from 'bun:test';
 
+import { AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';
 import {
-  byWho,
-  changeOf,
   draftFromSearch,
   EMPTY_AUDIT_DRAFT,
   filterOf,
-  joinResource,
+  isNarrowed,
   pathOf,
-  RESOURCE_KINDS,
+  periodStart,
   resourcePath,
-  sinceOf,
   splitResource,
 } from './audit-filter.ts';
 
-describe('the audit filter', () => {
-  test('reads a local time as epoch milliseconds, and nothing else as a time', () => {
-    expect(sinceOf('2026-10-19T08:30')).toBe(new Date('2026-10-19T08:30').getTime());
-    expect(sinceOf('2026-10-19T08:30:15')).toBe(new Date('2026-10-19T08:30:15').getTime());
-    for (const text of ['', 'yesterday', '2026-10-19', '2026-13-45T99:99']) {
-      expect(sinceOf(text), text).toBeUndefined();
-    }
+const NOW = new Date('2026-11-02T10:46:00').getTime();
+const DAY = 86_400_000;
+
+describe('the audit filters', () => {
+  test('a period starts at midnight today, or that many days back, or never', () => {
+    expect(periodStart('today', NOW)).toBe(new Date('2026-11-02T00:00:00').getTime());
+    expect(periodStart('7d', NOW)).toBe(NOW - 7 * DAY);
+    expect(periodStart('30d', NOW)).toBe(NOW - 30 * DAY);
+    expect(periodStart('90d', NOW)).toBe(NOW - 90 * DAY);
+    expect(periodStart('all', NOW)).toBeUndefined();
   });
 
-  test('sends only what is set, trimmed, and the resource under the name the Bureau takes it by', () => {
-    expect(filterOf(EMPTY_AUDIT_DRAFT)).toEqual({});
-    expect(
-      filterOf({ since: '', type: ' schedule.created ', resource: ' schedule:s-1 ', who: '' }),
-    ).toEqual({
-      type: 'schedule.created',
-      resource: 'schedule:s-1',
+  test('the Bureau is asked for the events of the action’s kind since the period began', () => {
+    expect(filterOf(EMPTY_AUDIT_DRAFT, NOW)).toEqual({
+      since: NOW - 7 * DAY,
+      types: [...AUDIT_EVENT_TYPES],
+    });
+    expect(filterOf({ ...EMPTY_AUDIT_DRAFT, period: 'all', action: 'removed' }, NOW)).toEqual({
+      types: ['tool.source.removed', 'provider.disconnected'],
     });
   });
 
-  test('round-trips through the address, and an empty search is the bare path', () => {
-    const draft = {
-      since: '2026-10-19T08:30',
-      type: 'run.completed',
-      resource: 'schedule:s 1',
-      who: 'alice',
-    };
-    const path = pathOf(draft);
-    expect(path.startsWith('/health/audit?')).toBe(true);
+  test('who and the search narrow nothing the Bureau is asked, and the default view is not a narrowing', () => {
+    expect(filterOf({ ...EMPTY_AUDIT_DRAFT, actor: 'you', text: 'x' }, NOW)).toEqual(
+      filterOf(EMPTY_AUDIT_DRAFT, NOW),
+    );
+    expect(isNarrowed(EMPTY_AUDIT_DRAFT)).toBe(false);
+    expect(isNarrowed({ ...EMPTY_AUDIT_DRAFT, period: '30d' })).toBe(true);
+    expect(isNarrowed({ ...EMPTY_AUDIT_DRAFT, text: ' ' })).toBe(false);
+    expect(isNarrowed({ ...EMPTY_AUDIT_DRAFT, actor: 'agents' })).toBe(true);
+  });
+
+  test('round-trips through the address, a default is left out of it, and a value not offered is the default', () => {
+    const draft = { actor: 'you', period: 'today', action: 'started', text: 'order 4471' } as const;
+    const path = pathOf(draft, 'abc#1');
+    expect(new URL(path, 'http://localhost').searchParams.get('record')).toBe('abc#1');
     expect(draftFromSearch(new URL(path, 'http://localhost').searchParams)).toEqual(draft);
     expect(pathOf(EMPTY_AUDIT_DRAFT)).toBe('/health/audit');
-  });
-});
-
-describe('the resource picker', () => {
-  test('builds the kind:<id> string, so the prefix is never typed', () => {
-    expect(joinResource({ kind: 'schedule', id: 's-1' })).toBe('schedule:s-1');
-    expect(joinResource({ kind: 'session', id: ' c-2 ' })).toBe('session:c-2');
-    expect(joinResource({ kind: 'agent', id: 'echo' })).toBe('agent:echo');
-    expect(joinResource({ kind: 'workflow', id: 'order-processing' })).toBe(
-      'workflow:order-processing',
-    );
-    expect(joinResource({ kind: 'run', id: 'run-7' })).toBe('run-7');
-  });
-
-  test('a kind with no id, or an id with no kind, narrows nothing', () => {
-    expect(joinResource({ kind: 'schedule', id: '  ' })).toBe('');
-    expect(joinResource({ kind: '', id: 's-1' })).toBe('');
-  });
-
-  test('reads a resource string back into the kind and id it was built from', () => {
-    for (const { kind } of RESOURCE_KINDS) {
-      expect(splitResource(joinResource({ kind, id: 'some-id' })), kind).toEqual({
-        kind,
-        id: 'some-id',
-      });
-    }
-    expect(splitResource('')).toEqual({ kind: '', id: '' });
-    expect(splitResource('  schedule:s-1 ')).toEqual({ kind: 'schedule', id: 's-1' });
-  });
-
-  test('keeps a resource the picker has no kind for, as a run id, so it still reads back unchanged', () => {
-    const odd = 'memory:m-1';
-    const choice = splitResource(odd);
-    expect(choice).toEqual({ kind: 'run', id: odd });
-    expect(joinResource(choice)).toBe(odd);
-  });
-});
-
-describe('Who', () => {
-  const record = (principal: string | null) => ({
-    sequence: 1,
-    timestamp: '2026-10-19T08:00:00.000Z',
-    type: 't',
-    resource: 'r',
-    principal,
-    detail: null,
-  });
-
-  test('is held by the address and never sent to the Bureau', () => {
-    const draft = { since: '', type: '', resource: '', who: ' alice ' };
-    expect(filterOf(draft)).toEqual({});
-    expect(pathOf(draft)).toBe('/health/audit?who=alice');
-    expect(draftFromSearch(new URLSearchParams('who=alice'))).toEqual({
-      ...EMPTY_AUDIT_DRAFT,
-      who: 'alice',
-    });
-  });
-
-  test('keeps the records one person did, all of them for no one, and none of the records with no actor', () => {
-    const alice = record('alice');
-    const records = [alice, record('bob'), record(null)];
-    expect(byWho(records, 'alice')).toEqual([alice]);
-    expect(byWho(records, ' ')).toEqual(records);
-    expect(byWho(records, 'carol')).toEqual([]);
-  });
-});
-
-describe('resourcePath', () => {
-  test('is the page of the thing a resource names', () => {
-    expect(resourcePath('session:abc')).toBe('/chats/abc');
-    expect(resourcePath('agent:helper')).toBe('/agents/helper');
-    expect(resourcePath('schedule:nightly')).toBe('/schedules/nightly');
-    expect(resourcePath('workflow:order-processing')).toBe('/workflows/order-processing');
-    expect(resourcePath('run-123')).toBe('/runs/run-123');
-  });
-
-  test('carries an identifier a path cannot, and names nothing for an empty resource or an empty id', () => {
-    expect(resourcePath('session:new')).toBe('/chats/_?__weft_session_id=new');
-    expect(resourcePath('')).toBeUndefined();
-    expect(resourcePath('agent:')).toBeUndefined();
-  });
-});
-
-describe('changeOf', () => {
-  test('reads a value before and after, and leaves the other fields as they are', () => {
     expect(
-      changeOf({ before: 'low', after: 'high', field: 'effort', attempts: 2, ok: true }),
-    ).toEqual({
-      before: 'low',
-      after: 'high',
-      rest: [
-        ['field', 'effort'],
-        ['attempts', '2'],
-        ['ok', 'true'],
-      ],
+      draftFromSearch(new URLSearchParams('actor=nobody&period=forever&action=exploded')),
+    ).toEqual(EMPTY_AUDIT_DRAFT);
+  });
+});
+
+describe('what a record is about', () => {
+  test('reads a prefix as a kind, a bare id as a run, and the rest as nothing a page exists for', () => {
+    expect(splitResource('schedule:s-1')).toEqual({ kind: 'schedule', id: 's-1' });
+    expect(splitResource('session:c-2')).toEqual({ kind: 'session', id: 'c-2' });
+    expect(splitResource('run-7')).toEqual({ kind: 'run', id: 'run-7' });
+    expect(splitResource('provider:anthropic')).toEqual({
+      kind: 'other',
+      id: 'provider:anthropic',
     });
+    expect(splitResource('host')).toEqual({ kind: 'other', id: 'host' });
+    expect(splitResource('')).toEqual({ kind: 'other', id: '' });
   });
 
-  test('has no change when the detail names neither, or there is no detail', () => {
-    expect(changeOf({ status: 'completed' })).toEqual({
-      before: undefined,
-      after: undefined,
-      rest: [['status', 'completed']],
-    });
-    expect(changeOf(null)).toEqual({ before: undefined, after: undefined, rest: [] });
-  });
-
-  test('reads one side alone', () => {
-    expect(changeOf({ after: 'created' }).before).toBeUndefined();
-    expect(changeOf({ after: 'created' }).after).toBe('created');
+  test('names the page of what it is about', () => {
+    expect(resourcePath('schedule:s-1')).toBe('/schedules/s-1');
+    expect(resourcePath('agent:tool-runner')).toBe('/agents/tool-runner');
+    expect(resourcePath('workflow:order-refund')).toBe('/workflows/order-refund');
+    expect(resourcePath('session:c-2')).toBe('/chats/c-2');
+    expect(resourcePath('run-abc')).toBe('/runs/run-abc');
+    expect(resourcePath('provider:anthropic')).toBeUndefined();
+    expect(resourcePath('')).toBeUndefined();
   });
 });

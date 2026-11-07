@@ -36,6 +36,7 @@ import {
   buildRevisionRealmExecutionStrategyBundle,
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
+import { resolveRunConcurrency } from './run-concurrency.ts';
 import { resolvePayloadValidation, resolveSchemaPolicy } from './schema-policy.ts';
 import { normalizeStorageSizeReportInterval } from './storage-size-report.ts';
 import { declaredMapFields } from './used-activities.ts';
@@ -322,6 +323,7 @@ export function resolveEngineOptions(
     ...resolveHistoryFields(options),
     ...resolveSecondInstanceFields(options),
     ...resolveOwnershipFields(options),
+    runConcurrency: resolveRunConcurrency(options),
   };
 }
 

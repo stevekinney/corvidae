@@ -9,6 +9,20 @@
     border-bottom: 1px solid var(--cinder-border);
   }
 
+  /* Flush: the page lays out its own column, so the header draws no rule and no padding, and its
+     title lines up with what is under it. */
+  .cinder-page-header[data-cinder-flush='true'] {
+    border-bottom: 0;
+  }
+
+  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__breadcrumbs {
+    padding-inline: 0;
+  }
+
+  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__row {
+    padding: 0;
+  }
+
   .cinder-page-header__breadcrumbs {
     padding: var(--cinder-space-3) var(--cinder-space-4) 0;
     color: var(--cinder-text-muted);
@@ -115,6 +129,23 @@
       flex-basis: 100%;
       flex-wrap: wrap;
       margin-inline-start: 0;
+    }
+  }
+
+  /* A header whose only action is the icon-only create "+" keeps it at the right of the title on a
+     phone: it is one small square, so it needs no row of its own. */
+  @container cinder-page-header (max-width: 32rem) {
+    .cinder-page-header--create-only .cinder-page-header__row {
+      flex-wrap: nowrap;
+    }
+
+    .cinder-page-header--create-only .cinder-page-header__heading-group {
+      flex-basis: auto;
+    }
+
+    .cinder-page-header--create-only .cinder-page-header__actions {
+      flex-basis: auto;
+      margin-inline-start: auto;
     }
   }
 }

@@ -14,6 +14,7 @@
   import type { Snippet } from 'svelte';
   import { onDestroy, untrack } from 'svelte';
 
+  import { provideConnection, type ConnectionMonitor } from '../../app/connection.svelte.ts';
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
   import ToastHost, { provideToastHost } from '../../app/toast-host.svelte';
   import {
@@ -45,6 +46,8 @@
     onFleetSource?: ((source: FleetEventSource) => void) | undefined;
     /** The test has installed its own stand-in for the Bureau, which answers every request for it. */
     externalBureau?: boolean | undefined;
+    /** The shell's connection monitor, for a test of how the page reads a server that does not answer. */
+    connection?: ConnectionMonitor | undefined;
   }
 
   let {
@@ -56,7 +59,11 @@
     onBureau,
     externalBureau,
     onFleetSource,
+    connection,
   }: Props = $props();
+
+  const monitor = untrack(() => connection);
+  if (monitor !== undefined) provideConnection(monitor);
 
   if (!untrack(() => externalBureau)) {
     const bureauStub = installBureauStub(

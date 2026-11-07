@@ -86,7 +86,8 @@ import {
   snapshotMessages,
   withDetectedMediaTypes,
 } from './ag-ui-messages.ts';
-import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
+import { releaseQuietly } from './ag-ui-lease.ts';
+import { createThreadAdmission, holdsPendingApproval } from './ag-ui-thread-admission.ts';
 import { settledOutcomeOf } from './ag-ui-peer-stream.ts';
 import { createResume } from './ag-ui-resume.ts';
 import { type OwnedSession, ownedSession, runIsOwnedBy } from './ag-ui-session-owner.ts';
@@ -274,11 +275,14 @@ export function createAgUiMount(
     return authorization.mayAccess({ principal, resourceOwner, operatorScope });
   }
 
-  const leases = createAgUiLeases({
-    kv: bureau.internals.kv!,
+  // The thread lease and the busy rule are shared with every other door that starts a turn on a
+  // chat (`ag-ui-thread-admission.ts`), so a run started through one is seen by the other.
+  const admission = createThreadAdmission({
+    bureau,
     runtime,
     leaseMs: options.leaseDurationMs,
   });
+  const { leases } = admission;
 
   /**
    * The thread's session, with the owner it names itself, when `principal` may use it with
@@ -328,7 +332,7 @@ export function createAgUiMount(
    * Whether `runId` is attachable by durable state alone, so a process that does not hold it
    * answers as the one that does: the session's last run is this one, the session says `running`,
    * and its durable run is unsettled; or the session holds an unexpired approval for it, by the
-   * rule {@link threadBusy} decides with. A read that fails is not attachable.
+   * rule `ThreadAdmission.threadBusy` decides with. A read that fails is not attachable.
    */
   async function attachableFromRecord(session: AgentSession, runId: string): Promise<boolean> {
     try {
@@ -342,50 +346,6 @@ export function createAgUiMount(
       return holdsPendingApproval(metadata, runId, runtime.clock.now());
     } catch {
       return false;
-    }
-  }
-
-  /**
-   * Whether the thread has an unsettled run, decided from durable state alone, so it
-   * is the same answer in every process and in every state. Process-local state (the
-   * runs and reviews this process holds) may choose what an attach streams, but it
-   * never decides this: a start in another process cannot see it.
-   *
-   * The thread is busy when the session's last run is unsettled:
-   *
-   * - live, starting, or parked on a human wait: the session says `running` and the
-   *   durable run is in Bureau's own non-terminal set (pending, running, suspended;
-   *   `pending` is a run whose inline launch has not flushed yet). A marker whose
-   *   durable run has settled, as a crash can leave, is not busy; a read that fails
-   *   is, because a start admitted on a guess forks the thread;
-   * - settled with an unresolved approval: the session still holds a
-   *   `pendingApprovalOverrides` entry for that run. Bureau persists the entry when an
-   *   approval is gated and removes it in the same write as the resolution, whichever
-   *   process resolves it and however (this mount, `bureau.reviews.resolve`, after a
-   *   restart); an entry whose binding has expired is not pending, by the rule
-   *   `reviews.list` uses, so an unanswerable approval cannot hold a thread.
-   *   (`lastRequestAuthorities` is not cleared when the resolving process does not
-   *   hold the run, and the conversation's `action_required` row is not rewritten by
-   *   an expiry, so neither can stand for this.)
-   */
-  async function threadBusy(session: AgentSession | undefined): Promise<boolean> {
-    try {
-      const metadata = session?.metadata;
-      const lastRunId = metadata?.['lastRunId'];
-      if (metadata === undefined || typeof lastRunId !== 'string') return false;
-      if (metadata['lastRunStatus'] === 'running') {
-        const durable = await bureau.tasks.workflow(lastRunId);
-        if (durable !== undefined && durable !== null && isDurableRunUnsettled(durable.status)) {
-          return true;
-        }
-      }
-      // `expiresAt` was issued by Armorer's clock, read here with the mount's: the same
-      // clock assumption the thread lease makes across processes (skew below the lease
-      // length minus its renewal interval). A fast clock here admits a start a slow
-      // holder could still approve.
-      return holdsPendingApproval(metadata, lastRunId, runtime.clock.now());
-    } catch {
-      return true;
     }
   }
 
@@ -780,33 +740,29 @@ export function createAgUiMount(
             ),
           };
         }
-        if (await threadBusy(session)) {
+        const started = await admission.admit(lease, session, async () => {
+          try {
+            const run = await bureau.tasks.start(
+              agentName,
+              { append: appendMessages },
+              {
+                contextId: input.threadId,
+                principal: owner,
+                commandId: input.runId,
+                origin: { kind: 'chat' },
+              },
+            );
+            return { runId: run.id };
+          } catch (error) {
+            return { response: refuse(...refusalFor(error, input.threadId)) };
+          }
+        });
+        if (!started.admitted) {
           return {
             response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
           };
         }
-        // A lease this start no longer holds was taken over: another start may have
-        // decided the thread is idle too.
-        if (!(await lease.renew())) {
-          return {
-            response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
-          };
-        }
-        try {
-          const run = await bureau.tasks.start(
-            agentName,
-            { append: appendMessages },
-            {
-              contextId: input.threadId,
-              principal: owner,
-              commandId: input.runId,
-              origin: { kind: 'chat' },
-            },
-          );
-          return { runId: run.id };
-        } catch (error) {
-          return { response: refuse(...refusalFor(error, input.threadId)) };
-        }
+        return started.value;
       })();
     } finally {
       await releaseQuietly(lease);
@@ -912,29 +868,6 @@ export function createAgUiMount(
     pathPrefix,
     fetch: (request, context) => route(request, context),
   };
-}
-
-/**
- * Whether a session holds an unexpired tool approval for `runId` in `pendingApprovalOverrides`.
- * Bureau persists the entry when an approval is gated and removes it in the same write as the
- * resolution; an entry whose binding has expired is not pending, by the rule `reviews.list`
- * uses.
- */
-function holdsPendingApproval(
-  metadata: AgentSession['metadata'],
-  runId: string,
-  asOf: number,
-): boolean {
-  const overrides = metadata['pendingApprovalOverrides'];
-  if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
-    return false;
-  }
-  return Object.entries(overrides).some(([reviewId, approval]) => {
-    if (!reviewId.startsWith(`approval:${runId}:`)) return false;
-    const expiresAt = (approval as { approvalBinding?: { expiresAt?: unknown } } | null)
-      ?.approvalBinding?.expiresAt;
-    return typeof expiresAt !== 'number' || expiresAt > asOf;
-  });
 }
 
 /**

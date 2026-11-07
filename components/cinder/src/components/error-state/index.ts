@@ -4,6 +4,7 @@ import ErrorState from './error-state.svelte';
 export default ErrorState;
 export type {
   ErrorStateProps,
+  ErrorStateRetryVariant,
   ErrorStateSize,
   ErrorStateTone,
   ErrorStateVariant,

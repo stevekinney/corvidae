@@ -68,9 +68,22 @@ export function isJsonSchemaObject(value: unknown): value is JsonSchemaObject {
   return isRecord(value);
 }
 
-export function createSchemaFormModel(schema: JsonSchemaObject): SchemaFormModel {
+/** How the model reads a schema. */
+export type SchemaFormModelOptions = {
+  /**
+   * Whether an array whose items are objects is one raw JSON field (`json`) instead of a list of
+   * item groups with Add and Remove. A page that asks for an input uses it, because rows of nested
+   * groups are harder to read and fill than the JSON they stand for.
+   */
+  readonly objectArraysAsJson?: boolean;
+};
+
+export function createSchemaFormModel(
+  schema: JsonSchemaObject,
+  options: SchemaFormModelOptions = {},
+): SchemaFormModel {
   return {
-    field: fieldFromJsonSchema(schema, [], 'value', true),
+    field: fieldFromJsonSchema(schema, [], 'value', true, options),
     sourceSchema: schema,
   };
 }
@@ -80,6 +93,7 @@ function fieldFromJsonSchema(
   path: string[],
   key: string,
   required: boolean,
+  modelOptions: SchemaFormModelOptions = {},
 ): SchemaFormField {
   if (!isRecord(schema)) {
     return baseField('json', {}, path, key, required);
@@ -104,6 +118,7 @@ function fieldFromJsonSchema(
         path,
         key,
         required,
+        modelOptions,
       );
     return {
       ...baseField('choice', normalizedSchema, path, key, required),
@@ -125,6 +140,7 @@ function fieldFromJsonSchema(
         [...path, propertyKey],
         propertyKey,
         requiredProperties.has(propertyKey),
+        modelOptions,
       ),
     );
     return { ...baseField('object', normalizedSchema, path, key, required), fields };
@@ -141,10 +157,19 @@ function fieldFromJsonSchema(
       };
     }
     if (schemaTypeOf(itemSchema) === 'string') {
-      const stringItem = fieldFromJsonSchema(itemSchema, [...path, '0'], 'item', true);
+      const stringItem = fieldFromJsonSchema(
+        itemSchema,
+        [...path, '0'],
+        'item',
+        true,
+        modelOptions,
+      );
       return { ...baseField('tags', normalizedSchema, path, key, required), item: stringItem };
     }
-    const item = fieldFromJsonSchema(itemSchema, [...path, '0'], 'item', true);
+    if (modelOptions.objectArraysAsJson === true && schemaTypeOf(itemSchema) === 'object') {
+      return baseField('json', normalizedSchema, path, key, required);
+    }
+    const item = fieldFromJsonSchema(itemSchema, [...path, '0'], 'item', true, modelOptions);
     return { ...baseField('array', normalizedSchema, path, key, required), item };
   }
 
@@ -398,7 +423,7 @@ export function defaultValueForField(field: SchemaFormField): unknown {
   if (field.kind === 'enum') return field.options.length > 0 ? field.options[0]!.value : '';
   if (field.kind === 'string')
     return isTemporalStringSchema(field.schema) ? blankMomentValue(field) : '';
-  if (field.kind === 'json') return null;
+  if (field.kind === 'json') return schemaTypeOf(field.schema) === 'array' ? [] : null;
   return undefined;
 }
 

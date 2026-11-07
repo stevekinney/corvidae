@@ -134,6 +134,23 @@ function holding(entries: Map<string, string>, needle: string): string[] {
     .map(([key]) => key);
 }
 
+/**
+ * Whether the only place `needle` is stored is a `session.deleted` audit entry: the record of a
+ * deleted chat keeps the chat's title, which is its first message cut to 80 characters (COR-2018).
+ */
+function heldOnlyAsDeletionTitle(entries: Map<string, string>, needle: string): boolean {
+  const keys = holding(entries, needle);
+  return (
+    keys.length > 0 &&
+    keys.every(
+      (key) =>
+        key.startsWith('audit:') &&
+        key.includes(':session:') &&
+        (JSON.parse(entries.get(key)!) as { type?: string }).type === 'session.deleted',
+    )
+  );
+}
+
 /** The key prefix of each family, so a failure names the family that kept a sentinel. */
 function familiesHolding(entries: Map<string, string>, needle: string): string[] {
   return [...new Set(holding(entries, needle).map((key) => key.split(':')[0]!))].toSorted();
@@ -768,6 +785,9 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
         .filter(
           ([name, value]) => name !== 'fileBytes' || value !== doomed[0]!.sentinels['fileBytes'],
         )
+        // The chat's first message is its title, which the deletion's own audit entry keeps
+        // (COR-2018, an owner decision): it may be held there, and nowhere else.
+        .filter(([name, value]) => name !== 'a2aMessage' || !heldOnlyAsDeletionTitle(after, value))
         .map(([name, value]) => [`${name}:${value}`, familiesHolding(after, value)] as const)
         .filter(([, families]) => families.length > 0),
     );

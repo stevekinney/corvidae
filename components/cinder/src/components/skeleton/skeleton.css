@@ -38,6 +38,22 @@
     width: 60%;
   }
 
+  /* Form variant: a short label bar over a control bar, once per field, in the control height. */
+  .cinder-skeleton-group[data-cinder-variant='form'] > .cinder-skeleton-lines {
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-skeleton-field-label {
+    inline-size: 20%;
+    block-size: var(--cinder-space-2-5);
+  }
+
+  .cinder-skeleton-field-control {
+    inline-size: 100%;
+    block-size: var(--cinder-control-height-md);
+    margin-block-end: var(--cinder-space-2);
+  }
+
   .cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-lines {
     padding: var(--cinder-space-4);
     gap: var(--cinder-space-3);
@@ -62,6 +78,13 @@
     background: var(--cinder-surface);
   }
 
+  /* Inside a card that already frames its rows. */
+  .cinder-skeleton-list[data-cinder-framed='false'] {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
   .cinder-skeleton-day-band {
     padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-3-5);
@@ -79,6 +102,11 @@
     column-gap: var(--cinder-space-3);
     padding-block: var(--cinder-space-2-5);
     padding-inline: var(--cinder-space-3-5);
+  }
+
+  /* Rows that do not lead with a status word: the marker's own width, then the text. */
+  .cinder-skeleton-row[data-cinder-status-column='none'] {
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .cinder-skeleton-row + .cinder-skeleton-row {
@@ -116,6 +144,15 @@
     width: 4rem;
   }
 
+  /* A list whose rows lead with a status dot: a dot in the same column, so the text lines up with
+   * the real rows. The 1px nudge centres it on the first line of the title. */
+  .cinder-skeleton-status-bar[data-cinder-marker='dot'] {
+    height: 0.5rem;
+    width: 0.5rem;
+    margin-block-start: 1px;
+    border-radius: var(--cinder-radius-full);
+  }
+
   .cinder-skeleton-title-bar {
     height: 0.625rem;
     width: 55%;
@@ -138,6 +175,13 @@
         'text time'
         'status .';
       row-gap: var(--cinder-space-2);
+    }
+
+    /* A row with no status word keeps its marker beside the text, as the real row does: the
+     * status drops under the text only for the status-first rows that lead with a word. */
+    .cinder-skeleton-row[data-cinder-status-column='none'] {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas: 'status text time';
     }
   }
 

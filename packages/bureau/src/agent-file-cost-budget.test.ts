@@ -6,6 +6,7 @@
  */
 import {
   createModelCatalog,
+  estimateCost,
   getModelPricing,
   providerModelPricingKey,
   type BackendDescriptor,
@@ -257,14 +258,59 @@ describe('a stored definition', () => {
 describe('prices from the catalog', () => {
   const opus = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5-5')!;
 
-  it('turns a catalog row into the prices a run counts at, keeping the cache rates it knows', () => {
+  it('turns a catalog row into the prices a run counts at, keeping the cache rates it carries', () => {
     const pricing = usdPricingOfRow(opus);
     expect(pricing).toMatchObject({
       promptCostPerMillionTokens: 4,
       completionCostPerMillionTokens: 20,
     });
-    // The catalog row says nothing of caching; Operative's table does, and a cache read is not free.
-    expect(pricing?.cacheReadCostPerMillionTokens).toBeGreaterThan(0);
+    expect(pricing?.cacheReadCostPerMillionTokens).toBe(0.2);
+    expect(pricing?.cacheWriteCostPerMillionTokens).toBe(5);
+  });
+
+  it('uses a plugin row’s cache rates when it shares a name with a core model', () => {
+    const plugin = {
+      ...opus,
+      provider: 'plugin',
+      pricing: {
+        ...opus.pricing!,
+        inputPerMillionTokens: 0.02,
+        outputPerMillionTokens: 0.1,
+        cacheReadPerMillionTokens: 0.01,
+        cacheWritePerMillionTokens: 0.02,
+      },
+    };
+    const pricing = usdPricingOfRow(plugin);
+    expect(pricing).toMatchObject({
+      promptCostPerMillionTokens: 0.02,
+      completionCostPerMillionTokens: 0.1,
+      cacheReadCostPerMillionTokens: 0.01,
+      cacheWriteCostPerMillionTokens: 0.02,
+    });
+  });
+
+  it('keeps tier cache rates when a legacy edit changes only long-context prices', () => {
+    const haiku = createModelCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
+    const edited = {
+      ...haiku,
+      pricing: {
+        ...haiku.pricing!,
+        longContext: {
+          inputTokensAbove: 50_000,
+          inputPerMillionTokens: 3,
+          outputPerMillionTokens: 4,
+          cacheReadPerMillionTokens: haiku.pricing!.longContext!.cacheReadPerMillionTokens,
+          cacheWritePerMillionTokens: haiku.pricing!.longContext!.cacheWritePerMillionTokens,
+        },
+      },
+    };
+    const pricing = usdPricingOfRow(edited)!;
+    const estimate = estimateCost(
+      { prompt: 0, completion: 0, cacheReadTokens: 100_000, total: 100_000 },
+      'edited-haiku',
+      { customPricing: { 'edited-haiku': pricing } },
+    );
+    expect(estimate.cacheReadCost).toBeCloseTo(0.005, 12);
   });
 
   it('prices nothing for a row with no price or a price in another currency', () => {

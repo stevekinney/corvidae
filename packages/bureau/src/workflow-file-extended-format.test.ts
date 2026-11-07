@@ -138,6 +138,30 @@ describe('reading the extended format', () => {
     );
   });
 
+  it('orders nested annotations by canonical branch preorder', () => {
+    const file = contentsOf({
+      ...MORNING_BRIEFING_PLAIN,
+      steps: [
+        {
+          kind: 'branch',
+          on: 'status',
+          cases: {
+            ready: [{ kind: 'await-signal', signal: 'ready', title: 'Ready', review: true }],
+          },
+          otherwise: [{ kind: 'sleep', duration: '1s', title: 'Fallback' }],
+        },
+        { kind: 'await-signal', signal: 'done', title: 'Done', review: true },
+      ],
+    });
+    expect(file.stepAnnotations).toEqual([
+      { title: null, review: false },
+      { title: 'Ready', review: true },
+      { title: 'Fallback', review: false },
+      { title: 'Done', review: true },
+    ]);
+    expect(JSON.stringify(file.document)).not.toContain('Ready');
+  });
+
   it('reads a file without any extended key as before, with no title and no annotations set', () => {
     const file = contentsOf(MORNING_BRIEFING_PLAIN);
     expect(file.title).toBeNull();

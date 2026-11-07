@@ -56,6 +56,8 @@
     description,
     meta,
     metaTooltip,
+    wrapMeta = false,
+    detail,
     error,
     onRetryClick,
     retryLabel = 'Try again',
@@ -188,11 +190,17 @@
     isLines && 'cinder-stacked-list-item--lines',
     isLines && reservesStatusColumn && 'cinder-stacked-list-item--status-column',
     isLines && status && 'cinder-stacked-list-item--has-status',
+    isLines &&
+      !description &&
+      !meta &&
+      error === undefined &&
+      'cinder-stacked-list-item--no-line-two',
     isBand && 'cinder-stacked-list-item--band',
     error !== undefined && 'cinder-stacked-list-item--failed',
     details !== undefined && 'cinder-stacked-list-item--group',
     details !== undefined && `cinder-stacked-list-item--tone-${tone}`,
     selected && 'cinder-stacked-list-item--selected',
+    wrapMeta && 'cinder-stacked-list-item--wrap-meta',
     isLines && `cinder-stacked-list-item--status-${statusPlacement}`,
     linkHref !== undefined && 'cinder-stacked-list-item--linked',
     actionsAsMenu && 'cinder-stacked-list-item--collapsed-actions',
@@ -317,6 +325,8 @@
             <div id={detailsId} class="cinder-stacked-list-item__details" hidden={!expanded}>
               {@render details()}
             </div>
+          {:else if detail && error === undefined}
+            <div class="cinder-stacked-list-item__detail">{@render detail()}</div>
           {/if}
         {:else}
           {#if description}

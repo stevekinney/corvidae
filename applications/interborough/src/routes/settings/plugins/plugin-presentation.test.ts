@@ -6,9 +6,14 @@ import type { PluginStanding } from '../../../lib/host-plugins.ts';
 import {
   contributionGroups,
   disableImpacts,
+  heldBackAgents,
+  humanizeName,
+  identifierOf,
   inUseSentence,
+  providerOf,
   referenceTotals,
   restartBackWords,
+  secretsDirectory,
   sourceKind,
   sourceWord,
   standingNames,
@@ -31,7 +36,8 @@ describe('statusOf', () => {
       label: PLUGINS_COPY.status.running,
       dot: 'success',
     });
-    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).dot).toBe('warning');
+    // Neutral: amber is for what waits on the person, and a plugin that needs a key is not that.
+    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).dot).toBe('neutral');
     expect(statusOf(standing({ name: 'a', enabled: false }), false).dot).toBe('neutral');
     expect(statusOf(standing({ name: 'a', status: 'skipped' }), true)).toEqual({
       label: PLUGINS_COPY.status.notLoaded,
@@ -72,23 +78,72 @@ describe('what a plugin adds and what names it', () => {
     ],
   });
 
-  test('groups by kind in order and keeps a kind it has no word for', () => {
+  test('groups by kind with tools, activities and skills first, and keeps a kind it has no word for', () => {
     expect(contributionGroups(plugin)).toEqual([
-      { kind: 'tool', label: 'Tools', ids: ['linear:a', 'linear:b'] },
-      { kind: 'mystery', label: 'mystery', ids: ['linear:c'] },
+      {
+        kind: 'tool',
+        label: 'Tools',
+        items: [
+          { id: 'linear:a', title: 'A' },
+          { id: 'linear:b', title: 'B' },
+        ],
+      },
+      { kind: 'mystery', label: 'mystery', items: [{ id: 'linear:c', title: 'C' }] },
+    ]);
+    const mixed = standing({
+      name: 'web-search',
+      contributions: [
+        contribution('trigger-kind', 'web-search:changed'),
+        contribution('activity', 'web-search:fetch-page'),
+        contribution('tool', 'web-search:search@1.0.0', {}, 'Search the web'),
+      ],
+    });
+    expect(
+      contributionGroups(mixed, [{ name: 'tips' }]).map((group) => [group.label, group.items]),
+    ).toEqual([
+      ['Tools', [{ id: 'web-search:search', title: 'Search the web' }]],
+      ['Activities', [{ id: 'web-search:fetch-page', title: 'Fetch page' }]],
+      ['Skills', [{ id: 'web-search:tips', title: 'Tips' }]],
+      ['Triggers', [{ id: 'web-search:changed', title: 'Changed' }]],
     ]);
   });
 
-  test('sums the references and says them', () => {
+  test('words a name as a person reads it and drops a tool’s version from its identifier', () => {
+    expect(humanizeName('fetch-page')).toBe('Fetch page');
+    expect(humanizeName('')).toBe('');
+    expect(identifierOf('web-search:search@1.2.0')).toBe('web-search:search');
+    expect(identifierOf('web-search:search')).toBe('web-search:search');
+  });
+
+  test('sums the references and says what uses a running plugin, and nothing for one that is not running', () => {
     expect(referenceTotals(plugin)).toEqual({ agents: 3, schedules: 1, waitingRuns: 4 });
-    expect(inUseSentence(plugin)).toBe('3 agents, 1 schedule, 4 waiting runs name what it adds.');
-    expect(inUseSentence(standing({ name: 'a' }))).toBe(PLUGINS_COPY.inUse.nothing);
-    expect(inUseSentence(standing({ name: 'a', enabled: false }))).toBe(
-      PLUGINS_COPY.inUse.disabled,
+    expect(inUseSentence(plugin)).toBe('3 agents, 1 schedule and 4 waiting runs use linear.');
+    expect(
+      inUseSentence(
+        standing({ name: 'a', contributions: [contribution('tool', 'a:x', { agents: 1 })] }),
+      ),
+    ).toBe('1 agent uses a.');
+    expect(inUseSentence(standing({ name: 'a' }))).toBe(PLUGINS_COPY.inUse.nothing('a'));
+    expect(inUseSentence(standing({ name: 'a', enabled: false }))).toBeUndefined();
+    expect(inUseSentence(standing({ name: 'a', status: 'skipped' }))).toBeUndefined();
+    expect(inUseSentence(standing({ name: 'a', status: 'needs-setup' }))).toBeUndefined();
+  });
+
+  test('says where a secret is kept and which model provider a plugin is', () => {
+    expect(secretsDirectory('/Users/steve/.interborough/secrets/anthropic-api-key')).toBe(
+      '~/.interborough/secrets',
     );
-    expect(inUseSentence(standing({ name: 'a', status: 'skipped' }))).toBe(
-      PLUGINS_COPY.inUse.notRunning,
-    );
+    expect(secretsDirectory('/srv/state/secrets/key')).toBe('/srv/state/secrets');
+    expect(secretsDirectory('ANTHROPIC_API_KEY')).toBe('ANTHROPIC_API_KEY');
+    expect(
+      providerOf(
+        standing({
+          name: 'anthropic',
+          contributions: [contribution('provider', 'anthropic:claude')],
+        }),
+      ),
+    ).toBe('claude');
+    expect(providerOf(standing({ name: 'linear' }))).toBeUndefined();
   });
 
   test('lists what depends on it for the disable dialog, naming only the contributions that count', () => {
@@ -192,14 +247,79 @@ describe('unavailableAfterDisable', () => {
   });
 });
 
+describe('heldBackAgents', () => {
+  const listing = (id: string, name: string, state: 'ready' | 'unavailable') => ({
+    id,
+    name,
+    state,
+  });
+
+  test('names the plugin’s own unavailable agents as a person reads them', () => {
+    expect(
+      heldBackAgents('demo', [
+        listing('demo:release-helper', 'release-helper', 'unavailable'),
+        listing('demo:changelog-writer', 'changelog-writer', 'unavailable'),
+        listing('other:thing', 'thing', 'unavailable'),
+        listing('demo:echo', 'echo', 'ready'),
+      ]),
+    ).toEqual(['Release helper', 'Changelog writer']);
+  });
+
+  test('leaves out an agent that an available agent of the same name stands in for', () => {
+    expect(
+      heldBackAgents('demo', [
+        listing('demo:echo', 'echo', 'unavailable'),
+        listing('echo', 'echo', 'ready'),
+      ]),
+    ).toEqual([]);
+  });
+});
+
 describe('problemView', () => {
+  test('names what waits for a missing secret as a person reads it, given the plugin', () => {
+    const gemini = standing({
+      name: 'gemini',
+      title: 'Gemini',
+      status: 'needs-setup',
+      contributions: [
+        contribution('provider', 'gemini:gemini'),
+        contribution('embedder', 'gemini:embedder'),
+      ],
+    });
+    const view = problemView(
+      {
+        code: 'secret-missing',
+        key: 'gemini-api-key',
+        contributions: ['gemini:gemini', 'gemini:embedder'],
+      },
+      gemini,
+    );
+    expect(view.body).toBe(
+      'gemini-api-key isn’t saved, so Gemini models and embeddings are unavailable. Save it and they work at once, with no restart.',
+    );
+    expect(view.status).toEqual({ label: 'Needs setup', dot: 'neutral' });
+    const typesafe = standing({
+      name: 'typesafe',
+      title: 'TypeSafe',
+      contributions: [contribution('decision-router', 'typesafe:jev', {}, 'Jev')],
+    });
+    expect(
+      problemView(
+        { code: 'secret-missing', key: 'typesafe-api-key', contributions: ['typesafe:jev'] },
+        typesafe,
+      ).body,
+    ).toBe(
+      'typesafe-api-key isn’t saved, so Jev is unavailable. Save it and it works at once, with no restart.',
+    );
+  });
+
   test('gives each code its status, title, body and action', () => {
     expect(
       problemView({ code: 'secret-missing', key: 'k-api-key', contributions: ['k:a'] }),
     ).toEqual({
-      status: { label: 'Needs setup', dot: 'warning' },
+      status: { label: 'Needs setup', dot: 'neutral' },
       title: 'A secret isn’t saved yet',
-      body: 'k-api-key isn’t saved, so k:a is unavailable. Save it and it works at once; no restart.',
+      body: 'k-api-key isn’t saved, so k:a is unavailable. Save it and it works at once, with no restart.',
       action: { kind: 'secret', label: 'Add the key', key: 'k-api-key' },
     });
     expect(problemView({ code: 'reference-unresolved', file: 'x:t', id: 'x:y' })).toMatchObject({
@@ -232,6 +352,18 @@ describe('problemView', () => {
     expect(problemView({ code: 'configuration-invalid', field: '', message: 'bad' }).body).toBe(
       'bad',
     );
+    // A message with no name in it gets the field's, as the form words it, for a path as well as a key.
+    expect(
+      problemView({ code: 'configuration-invalid', field: 'models[2]', message: 'Not offered' })
+        .body,
+    ).toBe('Models: Not offered');
+    expect(
+      problemView({
+        code: 'configuration-invalid',
+        field: 'search.address',
+        message: 'Address must be https.',
+      }).body,
+    ).toBe('Address must be https.');
     expect(
       problemView({ code: 'configuration-invalid', field: 'models', message: 'bad' }).title,
     ).toBe('A model list names a model nobody offers');
@@ -252,7 +384,7 @@ describe('problemView', () => {
       'The built-in x plugin and the built-in x plugin are both named x. The built-in x plugin loaded; rename the other.',
     );
     expect(problemView({ code: 'secret-missing', key: 'k' }).body).toBe(
-      'k isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.',
+      'k isn’t saved, so what this plugin adds is unavailable. Save it and it works at once, with no restart.',
     );
   });
 });

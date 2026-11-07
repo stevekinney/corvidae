@@ -110,6 +110,12 @@ export function routeHappyPaths(
     items: overrides.diagnosticsItems ?? [],
     summary: overrides.diagnosticsSummary ?? EMPTY_DIAGNOSTICS_SUMMARY,
   });
+  scripted.routeJsonRpcMethodBy('weft.task.queues.tasks', (params) => ({
+    queue: params['queue'],
+    counts: { waiting: 0, failed: 0 },
+    items: [],
+    nextCursor: null,
+  }));
   scripted.routeJsonRpcMethod('weft.workers.diagnostics', { worker: null });
   scripted.routeJsonRpcMethod('weft.workers.rejections', { items: [], limit: 25 });
 }

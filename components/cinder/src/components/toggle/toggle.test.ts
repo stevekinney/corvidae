@@ -571,6 +571,65 @@ describe('Toggle — FormField context', () => {
   });
 });
 
+describe('Toggle — standalone and label position', () => {
+  test('a standalone Toggle in a FormField is named by its own visible label, not the field’s', async () => {
+    const { default: FormFieldToggleFixture } =
+      await import('../../test/fixtures/form-field-toggle-fixture.svelte');
+    const { container } = render(FormFieldToggleFixture, {
+      props: {
+        fieldId: 'ctx-standalone',
+        fieldLabel: 'Shared agents',
+        toggleLabel: 'Assistant',
+        standalone: true,
+      },
+    });
+    const button = requiredInstance(
+      container.querySelector('button[role="switch"]'),
+      HTMLButtonElement,
+    );
+    const label = requiredInstance(
+      container.querySelector('.cinder-toggle-field__label'),
+      HTMLElement,
+    );
+    expect(label.textContent).toContain('Assistant');
+    expect(button.getAttribute('aria-labelledby')).toBe(label.id);
+    expect(screen.getByRole('switch', { name: 'Assistant' })).toBe(button);
+  });
+
+  test('a Toggle in a FormField that is not standalone keeps the field’s label as its name', async () => {
+    const { default: FormFieldToggleFixture } =
+      await import('../../test/fixtures/form-field-toggle-fixture.svelte');
+    const { container } = render(FormFieldToggleFixture, {
+      props: { fieldId: 'ctx-owned', fieldLabel: 'Shared agents', toggleLabel: 'Assistant' },
+    });
+    expect(container.querySelector('.cinder-toggle-field__label')).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Shared agents' })).toBeTruthy();
+  });
+
+  test('labelPosition start puts the label before the switch, and end after it', () => {
+    const start = render(Toggle, {
+      props: { id: 't-start', label: 'Assistant', labelPosition: 'start' },
+    });
+    const startField = requiredInstance(
+      start.container.querySelector('.cinder-toggle-field'),
+      HTMLElement,
+    );
+    expect(startField.getAttribute('data-label-position')).toBe('start');
+    expect(startField.firstElementChild?.classList.contains('cinder-toggle-field__label')).toBe(
+      true,
+    );
+    expect(startField.lastElementChild?.getAttribute('role')).toBe('switch');
+    cleanup();
+    const end = render(Toggle, { props: { id: 't-end', label: 'Assistant' } });
+    const endField = requiredInstance(
+      end.container.querySelector('.cinder-toggle-field'),
+      HTMLElement,
+    );
+    expect(endField.getAttribute('data-label-position')).toBe('end');
+    expect(endField.firstElementChild?.getAttribute('role')).toBe('switch');
+  });
+});
+
 // happy-dom cannot measure layout, so the rendered sizes are asserted in
 // `scripts/browser-fixtures/tests/toggle-size.playwright.ts`. These cases read the stylesheet and
 // assert only the values that hold whatever mechanism draws the track inside the hit area.
@@ -600,5 +659,79 @@ describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
     expect(coarse, 'no (any-pointer: coarse) block').not.toBe('');
     expect(coarse).toContain('.cinder-toggle');
     expect(coarse.match(/2\.75rem/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Toggle description placement', () => {
+  test('stacks a description under the label, with the switch beside both, when it is `below`', () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'continue',
+        label: 'Continue one chat',
+        description: 'Each run adds to the same chat.',
+        descriptionPlacement: 'below',
+      },
+    });
+    const field = container.querySelector('.cinder-toggle-field');
+    expect(field?.getAttribute('data-cinder-description')).toBe('below');
+    const text = container.querySelector('.cinder-toggle-field__text');
+    expect(text?.children[0]?.textContent?.trim()).toBe('Continue one chat');
+    expect(text?.children[1]?.textContent).toBe('Each run adds to the same chat.');
+    const toggle = container.querySelector('button[role="switch"]');
+    expect(toggle?.getAttribute('aria-describedby')).toBe(text?.children[1]?.id);
+    expect(field?.firstElementChild).toBe(toggle);
+  });
+
+  test('keeps the description on the label’s line by default', () => {
+    const { container } = render(Toggle, {
+      props: { id: 'file', label: 'Active', description: 'Defined in release-notes.json' },
+    });
+    expect(container.querySelector('.cinder-toggle-field__text')).toBeNull();
+    expect(
+      container.querySelector('.cinder-toggle-field')?.hasAttribute('data-cinder-description'),
+    ).toBe(false);
+  });
+});
+
+describe('Toggle name detail and hidden description', () => {
+  test('nameDetail follows the visible label in the accessible name, which starts with the visible label', () => {
+    const { container } = render(Toggle, {
+      props: { id: 'active', label: 'Active', nameDetail: 'Daily summary schedule' },
+    });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+    const label = requiredInstance(container.querySelector('#active-label'), HTMLElement);
+
+    expect(control.getAttribute('aria-label')).toBe('Active, Daily summary schedule');
+    expect(control.hasAttribute('aria-labelledby')).toBe(false);
+    // Only the visible label is drawn: the detail is for the name.
+    expect(label.textContent?.trim()).toBe('Active');
+  });
+
+  test('without nameDetail the visible label names the switch', () => {
+    const { container } = render(Toggle, { props: { id: 'plain', label: 'Active' } });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+
+    expect(control.getAttribute('aria-labelledby')).toBe('plain-label');
+    expect(control.hasAttribute('aria-label')).toBe(false);
+  });
+
+  test('descriptionVisible false keeps the description in aria-describedby and hides it', () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'paused',
+        label: 'Active',
+        description: 'Resuming would schedule runs that will not start.',
+        descriptionVisible: false,
+      },
+    });
+    const control = requiredInstance(container.querySelector('[role="switch"]'), HTMLElement);
+    const description = requiredInstance(
+      container.querySelector('#paused-description'),
+      HTMLElement,
+    );
+
+    expect(control.getAttribute('aria-describedby')).toBe('paused-description');
+    expect(description.classList.contains('cinder-sr-only')).toBe(true);
+    expect(description.classList.contains('cinder-toggle-field__description')).toBe(false);
   });
 });

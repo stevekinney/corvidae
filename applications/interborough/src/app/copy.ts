@@ -1124,7 +1124,16 @@ export const SCHEDULE_COPY = {
   /** The name of a Bureau schedule that has no description and whose agent the caller may not read. */
   unnamedAgentRun: 'Scheduled agent run',
   title: 'Schedules',
+  /** The line under the heading; the zone is the viewer's, as "Central time". */
+  subtitle: (zone: string): string => `Runs that start on a timetable. Times are in ${zone}.`,
   newAction: 'New schedule',
+  /** The segments of the filter bar, which partition the list. */
+  segments: { all: 'All', active: 'Active', paused: 'Paused' },
+  /** The chip beside the segments that narrows to schedules that missed runs, which are also Active. */
+  missedRunsFilter: 'Missed runs',
+  workflowLabel: 'Workflow',
+  /** The accessible name of the list of schedules. */
+  rowsLabel: 'Schedules',
   filtersLabel: 'Filter schedules',
   statusLabel: 'Status',
   anyStatus: 'Any status',
@@ -1145,10 +1154,23 @@ export const SCHEDULE_COPY = {
     status: 'Status',
     actions: 'Actions',
   },
-  noMatch: {
-    title: 'No matching schedules',
-    description: 'No schedule matches the current filters. Clear a filter to see more.',
+  /** Nothing has been scheduled yet: the empty state that is the whole page. */
+  empty: {
+    title: 'No schedules yet',
+    description:
+      'A schedule starts a chat or a workflow on a timetable, such as every weekday at 9:00 AM. Create one and its next runs show here.',
   },
+  /** The schedules could not be read, and there are none from before to show. */
+  loadFailed: {
+    title: 'Couldn’t load schedules',
+    description:
+      'Interborough didn’t answer, so nothing changed. Schedules keep their timetable while Interborough is off, and missed runs are listed when it returns. New schedule is off until it answers.',
+  },
+  noMatch: { title: 'No schedules match these filters' },
+  /** Why the header's "+" does nothing while the list could not be read at all. */
+  newActionOffReason: 'New schedule is off until Interborough answers.',
+  /** The status line under the placeholders when the list is slow to load. */
+  stillLoading: 'Still loading schedules. This is taking longer than usual.',
   actionsFor: (name: string): string => `Actions for ${name}`,
   copyId: 'Copy ID',
   idCopied: 'Schedule ID copied',
@@ -1184,7 +1206,8 @@ export const SCHEDULE_COPY = {
   pauseFailed: 'The schedule was not paused',
   resumeFailed: 'The schedule was not resumed',
   cancelFailed: 'The schedule was not cancelled',
-  skipFailed: 'The next run was not skipped',
+  skipFailed: 'The run was not skipped',
+  unskipFailed: 'The skip was not undone',
   runNowFailed: 'The schedule was not run',
   cancelDialog: {
     title: 'Cancel this schedule?',
@@ -1201,59 +1224,161 @@ export const SCHEDULE_COPY = {
       title: 'This schedule doesn’t exist',
       description: NOT_FOUND_COPY.description,
     },
-    onSwitch: 'On',
-    onSwitchLabel: 'Schedule on',
+    /** The switch's visible label; its accessible name adds the schedule after it ("Active, Daily summary schedule"). */
+    onSwitch: 'Active',
+    onSwitchName: (name: string): string => `${name} schedule`,
+    /** Why flipping the switch of a schedule whose workflow is paused would not start anything. */
+    pausedWorkflowSwitch: (workflow: string): string =>
+      `Resuming this schedule would schedule runs that won’t start, because ${workflow} is paused. Resume workflow, beside the status, resumes it.`,
+    /** The line under the heading of a schedule whose workflow is paused, and the link that resumes the workflow. */
+    workflowPaused: {
+      text: (workflow: string): string => `${workflow} is paused, so this schedule won’t run it.`,
+      resume: 'Resume workflow',
+      failed: 'The workflow was not resumed',
+    },
+    /** The sentence under the heading: what the schedule runs, with which agent, and when. */
+    sentence: { runs: 'Runs', with: 'with' },
+    /** The line that says when it runs next and when it last ran. */
+    summary: {
+      next: (day: string, relative: string): string => `Next ${day} (${relative})`,
+      due: (day: string, relative: string): string => `Due ${day} (${relative})`,
+      /** The same lines while the page shows old data: no relative time, which would be a claim it cannot keep. */
+      nextStale: (day: string): string => `Next ${day}`,
+      dueStale: (day: string): string => `Due ${day}`,
+      wontStart: 'won’t start',
+      pausedNext: 'No next run while paused',
+      noNext: 'No next run',
+      neverRun: 'Never run',
+      /** The start of the line while a run is going, in the info tone, then when it started and a link to it. */
+      runningNow: 'Running now',
+      startedAgo: (ago: string): string => `: started ${ago}`,
+      /** The summary line's own words for how the last run ended, with the step a failed run stopped at. */
+      failedAtStep: (step: number): string => `, failed at step ${String(step)}`,
+    },
+    /** The chip under the sentence of a schedule that is the trigger in a workflow's file. */
+    definedIn: 'Defined in',
+    /** Said beside Run now while a run is going, because Run now then starts a second one. */
+    runNowSecond: 'Another run is going; this starts a second one.',
+    runsHeading: 'Runs',
+    runsNote: (zone: string): string => `Upcoming above, past below · times in ${zone}`,
+    /** The Runs list: upcoming runs, the Now marker, the missed runs, and what the schedule started. */
+    runs: {
+      label: 'Runs',
+      skip: 'Skip',
+      skipLabel: (when: string): string => `Skip ${when}`,
+      skipped: 'Skipped',
+      undo: 'Undo',
+      undoLabel: (when: string): string => `Undo skipping ${when}`,
+      now: 'Now',
+      wontStart: 'won’t start',
+      noteCannotLoad: (workflow: string): string => `${workflow} can’t load`,
+      noteDeleted: (workflow: string): string => `${workflow} was deleted`,
+      noteProvider: 'no provider',
+      pausedNote: 'No upcoming runs while the schedule is paused.',
+      soFar: (duration: string): string => `${duration} so far`,
+      missedTitle: (count: number, since: string): string =>
+        count === 1 ? `Missed once on ${since}` : `Missed ${String(count)} times since ${since}`,
+      /** Why a fire was missed, in the short words the band and each row say. */
+      missedReason: {
+        late: 'Interborough was off',
+        'dst-gap': 'The clock skipped this time',
+      },
+      missedRow: (count: number, reason: string): string =>
+        count > 1 ? `Missed ${String(count)} times · ${reason}` : `Missed · ${reason}`,
+      showEach: 'Show each',
+      hide: 'Hide',
+      runOnce: 'Run once now',
+      dstEnded: (day: string): string => `Daylight saving time ended ${day}`,
+      dstStarted: (day: string): string => `Daylight saving time started ${day}`,
+      startedWith: (how: string): string => `Started with ${how}`,
+      failedAtStep: (step: number): string => `Failed at step ${String(step)}`,
+      stepsLabel: (step: number): string => `Step ${String(step)}`,
+      loadFailed: 'The runs could not be loaded',
+      /** The compact empty state below Now when the schedule has not run. */
+      empty: {
+        title: 'No runs yet.',
+        blocked: (reasons: string): string => `It won’t start until ${reasons}.`,
+        loads: (workflow: string): string => `${workflow} loads`,
+        workflowBack: 'its workflow is back',
+        providerConnected: 'a provider is connected',
+        first: (when: string): string => `The first run starts ${when}.`,
+        paused: 'It runs again when the schedule is turned on.',
+      },
+      /** Why the schedule will not start, as the card above the summary line lists it. */
+      blockers: {
+        label: 'Why this schedule will not start',
+        cannotLoad: (workflow: string): string => `${workflow} can’t load`,
+        deleted: (workflow: string): string => `${workflow} was deleted`,
+        openWorkflow: 'Open workflow',
+        provider: 'No model provider is connected.',
+        connectProvider: 'Connect a provider',
+        providersPath: '/settings/models',
+      },
+    },
+    /** Why Run now is off, said as the description of the disabled button. */
+    runNowOff: {
+      cannotLoad: (workflow: string): string => `${workflow} can’t load.`,
+      deleted: (workflow: string): string => `${workflow} was deleted.`,
+      provider: 'No model provider is connected.',
+    },
+    openFile: 'Open file',
+    deleteAction: 'Delete schedule',
+    /** Why Delete schedule is off for a schedule that is the trigger in a workflow's file. */
+    deleteInFile: 'This schedule is the trigger in its workflow’s file. Remove the trigger there.',
+    deleteDialog: {
+      title: (name: string): string => `Delete ${name}?`,
+      description:
+        'It stops running and its upcoming runs are removed. Past runs stay on Runs. This can’t be undone.',
+      confirm: 'Delete schedule',
+    },
+    runNowStarted: (name: string): string => `Started ${name}.`,
+    openRun: 'Open run',
+    /** The details card beside the runs. */
+    card: {
+      label: 'Schedule details',
+      whatRuns: 'What runs',
+      workflow: 'Workflow',
+      builtIn: '(built in)',
+      agent: 'Agent',
+      agents: 'Agents',
+      input: 'Input',
+      inputView: 'Input view',
+      fields: 'Fields',
+      json: 'JSON',
+      copyInput: 'Copy input',
+      messageLabel: 'Message',
+      when: 'When',
+      whenEdit: 'Edit',
+      viewerClock: (time: string, zone: string): string => `That is ${time} in ${zone}.`,
+      behaviour: 'Behaviour',
+      overlap: 'If a run is still going',
+      /** What each policy is called, as the New schedule form words it. */
+      overlapValue: {
+        skip: 'Skip this one',
+        queue: 'Queue this one',
+        'cancel-running': 'Cancel the run that is going',
+        allow: 'Start another run',
+      },
+      catchUp: 'If Interborough was off',
+      catchUpOn: 'Catch up on missed runs',
+      catchUpOff: 'Don’t catch up on missed runs',
+      revision: 'Workflow version',
+      revisionLatest: 'Latest',
+      revisionPinned: (revision: string): string => `Pinned to ${revision}`,
+      revisionInfoLabel: 'About the workflow version',
+      revisionInfo:
+        'Scheduled runs start on the latest version of the workflow. A run that is already going keeps the version it started on.',
+      revisionInfoPinned:
+        'Every scheduled run starts on the version this schedule was pinned to. A run that is already going keeps the version it started on.',
+      runningNow: 'Running now',
+      queued: 'Queued',
+      created: (date: string): string => `Created ${date}`,
+    },
     runNow: 'Run now',
     edit: 'Edit',
     sends: 'Sends',
-    /** The verb and the zone of the sentence under the title. */
-    nextRunsHeading: 'Next runs',
-    nextRunsCaption: (zone: string): string => `Shown in ${zone}`,
-    skipNext: 'Skip the next one',
-    skipped: 'Skipped',
-    skippedNote: 'This run is skipped. The one after it runs as usual.',
-    noNextRuns: {
-      title: 'Nothing is coming up',
-      description: (status: string): string =>
-        `This schedule is ${status}, so it has no next runs. Turn it on to schedule them again.`,
-    },
-    pastRunsHeading: 'Past runs',
-    pastRunsCaption: 'Runs this schedule started, and the fires it missed, newest first',
-    pastColumns: { when: 'When', outcome: 'Outcome', took: 'Took' },
-    noPastRuns: {
-      title: 'No runs yet',
-      description: 'This schedule has not fired. Its runs and any fires it missed are listed here.',
-    },
-    runLink: (when: string): string => `Run ${when}`,
-    manual: 'Run now',
-    missedOutcome: 'Missed',
-    missedReason: {
-      late: 'The host was not running, or was too slow, when it was due.',
-      'dst-gap': 'The clock skipped this time when it moved forward.',
-    },
-    missedCount: (count: number): string => `${String(count)} missed`,
     runsFailed: 'Past runs could not be loaded',
     missedFailed: 'Missed fires could not be loaded',
-    railHeading: 'Details',
-    rail: {
-      workflow: 'Workflow',
-      agent: 'Agent',
-      input: 'Input',
-      noInput: 'None',
-      repeats: 'Repeats',
-      zone: 'Time zone',
-      overlap: 'If a run is still going',
-      catchUp: 'Catch up after downtime',
-      catchUpOn: 'Runs the fires it missed',
-      catchUpOff: 'Skips the fires it missed',
-      jitter: 'Jitter',
-      noJitter: 'None',
-      revision: 'Workflow version',
-      runningNow: 'Running now',
-      queued: 'Queued',
-      nothingRunning: 'Nothing is running',
-      created: 'Created',
-    },
     runNowOutcome: {
       started: 'Started a run.',
       queued: 'A run is going, so this one is queued behind it.',
@@ -1261,24 +1386,56 @@ export const SCHEDULE_COPY = {
       viewRun: 'View the run',
     },
   },
-  /** The cadence editor's page (`/schedules/:id/edit`). */
+  /**
+   * The page that edits a schedule (`/schedules/:id/edit`; COR-2018, rows 74r, 74t, 75p, 75q): the
+   * form that makes one, opened on the schedule as it is.
+   */
   edit: {
+    /** The label of the region while the page loads or fails, before the schedule has a name. */
     title: 'Edit schedule',
+    heading: (name: string): string => `Edit ${name}`,
+    /** The note under the heading: where the page is opened from and where focus lands. */
+    description:
+      'Opened from When › Edit on the schedule page. Focus lands on Repeats, the first field in that group, and the page scrolls to it.',
     save: 'Save changes',
+    saving: 'Saving…',
     cancel: 'Cancel',
     loading: 'Loading schedule',
     startOver: 'Start over from the current schedule',
-    invalidCadence: 'The cadence is not valid. Fix the highlighted field, then save.',
     skipPending:
-      'The next run is skipped. Saving this change to the cadence or time zone restores that run, and it starts as usual.',
-    saveFailed: 'The schedule was not saved',
-  },
-  /** One line that says what happens when a fire is due while a run is still going. */
-  overlapLine: {
-    skip: 'Skips a fire if the previous run is still going',
-    queue: 'Queues a fire if the previous run is still going',
-    'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
-    allow: 'Starts a fire even if the previous run is still going',
+      'An upcoming run is skipped. After this change to the cadence or time zone, a skip stays only on a run the new cadence still has.',
+    /** The footer line: what the page does, then what it is doing. */
+    footer: {
+      saves: (name: string): string => `Saves changes to ${name}.`,
+      saving: 'Saving the changes…',
+      slow: 'Taking longer than usual.',
+      cancelStops: 'Cancel stops the request and keeps the form.',
+      /** Said while a field shows a problem, so the person knows what pressing Save does. */
+      stillEnabled: (field: string): string =>
+        `Save changes stays enabled; on submit, focus moves to ${field}.`,
+    },
+    /** Said under the builder of a schedule that runs more often than a minute, which the builder shows rounded. */
+    exactCadence: (cadence: string): string =>
+      `This schedule runs ${cadence.toLowerCase()}, which the builder counts in whole minutes. Saving without changing Repeats keeps it exactly.`,
+    /** A schedule starts the workflow it was made for: the Bureau and the engine keep that fixed. */
+    fixedInput: 'Set when the schedule was made, and kept as it was.',
+    /** The Workflow field of a schedule whose workflow was deleted. */
+    workflowGone: {
+      option: (name: string): string => `${name} · can’t find this workflow`,
+      message:
+        'That workflow was deleted. Pick another to keep this schedule; it stays paused until then.',
+      /** Said when another workflow is picked, because a schedule cannot be moved to one. */
+      cannotChange:
+        'A schedule keeps the workflow it was made for, so this one cannot be moved to another. Make a new schedule for it.',
+    },
+    failed: {
+      title: 'Couldn’t save the changes.',
+      message: 'Interborough didn’t answer. What you changed is still here.',
+    },
+    discard: {
+      title: 'Discard these changes?',
+      description: 'You have changed this schedule. If you leave now, what you changed is lost.',
+    },
   },
   /** The answer to making a schedule was lost, so it may exist. */
   lost: {
@@ -1287,73 +1444,104 @@ export const SCHEDULE_COPY = {
       'The answer did not come back, so the schedule may exist. Check the list before you create it again.',
     check: 'Check the schedules',
   },
-  /** The page that makes a schedule (`/schedules/new`). */
+  /**
+   * The page that makes a schedule (`/schedules/new`; COR-2018, rows 74a–75o, 06i–06k). It asks in
+   * the order the sentence does: what runs, its input, when, the two policy selects, then a name.
+   */
   create: {
     title: 'New schedule',
-    description:
-      'A schedule runs a workflow on a timer. Choose the workflow, give it its input, then say when.',
-    workflowHeading: 'Workflow',
+    /** The subtitle names the zone the next runs are shown in (the viewer's), as the list's does. */
+    description: (zone: string): string =>
+      `Pick what runs, then when, then name it. Next runs show in ${zone} before you save.`,
+    whatRunsHeading: 'What runs',
     workflowLabel: 'Workflow',
-    workflowPlaceholder: 'Search workflows',
+    workflowPlaceholder: 'Pick a workflow',
+    workflowSearchPlaceholder: 'Search workflows',
+    workflowLoading: 'Loading workflows…',
     groups: { builtIn: 'Built in', recent: 'Recent', all: 'All workflows' },
     chat: {
       label: 'Chat with an agent',
-      description: 'Sends a message to one of your agents on every run.',
+      description: 'Send a message to an agent each time it runs.',
     },
-    /** The reason an agent-authored workflow is listed but cannot be chosen. */
-    inFile: 'Its schedule is the trigger in its file. Change it in the workflow.',
-    noMatch: 'No workflow matches.',
-    createOne: 'Create a workflow',
+    /** The reason a workflow is listed but cannot be chosen: its file does not load, or it is paused. */
+    cannotLoad: 'Can’t load this workflow',
+    paused: 'Paused. Resume it to schedule it.',
+    /** The list's text when a search finds nothing, which keeps the footer's link. */
+    noMatch: (query: string): string => `No workflows match “${query}”.`,
+    noMatchFooter: 'No match?',
+    createOne: 'Create one',
     catalogFailed: {
-      title: 'The workflows could not be listed',
-      description: 'Only the built-in choice is available until they can. Try again.',
+      title: 'Couldn’t load workflows.',
+      description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',
     },
+    required: 'Choose a workflow.',
     checking: 'Reading the workflow',
     workflowFailed: 'The workflow’s input could not be read',
     workflowGone:
       'This workflow no longer exists, or cannot be scheduled from here. Choose another.',
     inputHeading: 'Input',
-    noInput: 'Takes no input.',
-    chatLabel: 'Continue one chat',
-    chatDescription:
-      'Optional. Every run continues this chat. Without one, each run starts a chat.',
-    chatPlaceholder: 'A new chat for each run',
-    chatClear: 'Start a new chat each run',
-    chatUnavailable: 'Chats could not be listed, so each run starts a new chat.',
-    chatUntitled: 'Untitled chat',
-    chatAgent: (agent: string): string => `Agent: ${agent}`,
-    chatFixesAgent: (agent: string): string => `This chat is with ${agent}, so every run is too.`,
-    whenHeading: 'When',
-    whenLabel: 'Schedule',
-    optionsHeading: 'Options',
-    descriptionLabel: 'Description',
-    descriptionDescription: 'Optional. It names the schedule in the list.',
-    overlapLabel: 'If a run is still going when the next one is due',
-    catchUpLabel: 'Run the fires it missed while the host was down',
-    startPausedLabel: 'Start turned off',
-    startPausedDescription: 'Nothing runs until you turn it on.',
-    jitterLabel: 'Jitter',
-    jitterDescription: 'A random delay added to each run.',
-    jitterPlaceholder: '30s',
-    revisionLabel: 'Which version of the workflow each run uses',
-    /** An interval counts elapsed time, so it names no zone. */
-    summaryChat: (agent: string, cadence: string, timeZone: string | undefined): string => {
-      const who = agent === '' ? 'an agent' : agent;
-      return timeZone === undefined
-        ? `Chats with ${who}: ${cadence}.`
-        : `Chats with ${who}: ${cadence}, in ${timeZone}.`;
-    },
-    summaryNothing: 'Choose a workflow to schedule.',
-    submit: 'Create schedule',
-    cancel: 'Cancel',
-    pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
-    invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
+    /** The lead under the Input heading, which names the workflow. */
+    inputLead: (name: string): string => `What ${name} needs each time it runs.`,
+    noInput: (name: string): string => `${name} takes no input.`,
+    messageLabel: 'Message',
+    messageDescription: 'Sent as the first message of each run.',
+    continueLabel: 'Continue one chat',
+    continueDescription:
+      'Each run adds to the same chat, so the agent remembers earlier runs. Off: every run starts a new chat.',
+    /** Shown in place of the description when another agent is chosen for a schedule that keeps continuing its chat. */
+    continueNewChatDescription:
+      'Another agent cannot continue the chat the first one began, so saving starts a new chat. Earlier runs stay in the old one.',
     noAgents: {
       title: 'No agents to chat with',
       description: 'A scheduled chat runs one of your agents. Make an agent first.',
       action: 'New agent',
     },
-    workflowRequired: 'Choose a workflow.',
+    /** The agent needs a model and no provider is connected: the warning, then the link that fixes it. */
+    needsProvider: 'Won’t run until a provider is connected ·',
+    connectProvider: 'Connect a provider',
+    whenHeading: 'When',
+    whenLabel: 'Schedule',
+    catchUpLabel: 'If Interborough was off',
+    nameLabel: 'Name',
+    namePlaceholder: 'For example, Daily summary',
+    nameDescription:
+      'Starts as the workflow’s name (the agent’s name for Chat with an agent); change it if you like. Shown in Schedules and on every run it starts.',
+    nameRequired: 'Give the schedule a name.',
+    nameTooLong: (most: number): string =>
+      `The name is too long: it can be at most ${String(most)} characters.`,
+    nameTaken: 'A schedule with this name already exists.',
+    openSchedule: (name: string): string => `Open ${name}`,
+    /** The footer line, by what the page is waiting for or what it will do. */
+    footer: {
+      nothing: 'Pick a workflow to see what it will start.',
+      chat: (agent: string): string =>
+        `Creates a schedule that starts a chat with ${agent === '' ? 'an agent' : agent}.`,
+      workflow: (workflow: string): string => `Creates a schedule that starts ${workflow}.`,
+      waitingForWorkflows: 'Waiting for the workflow list',
+      waitingForInput: 'Waiting for the workflow’s input fields',
+      blocked: 'Won’t run until a provider is connected.',
+      creating: 'Creating the schedule…',
+      slow: 'Taking longer than usual.',
+      cancelStops: 'Cancel stops the request and keeps the form.',
+      /** Said while a field shows a problem, so the person knows what pressing Create does. */
+      stillEnabled: (field: string): string =>
+        `Create schedule stays enabled; on submit, focus moves to ${field}.`,
+    },
+    submit: 'Create schedule',
+    creating: 'Creating…',
+    cancel: 'Cancel',
+    failed: {
+      title: 'Couldn’t create the schedule.',
+      message: 'Interborough didn’t answer. What you typed is still here.',
+    },
+    pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
+    invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
+    discard: {
+      title: 'Discard this schedule?',
+      description: 'You have started a schedule. If you leave now, what you typed is lost.',
+      keep: 'Keep editing',
+      confirm: 'Discard and leave',
+    },
   },
   form: {
     agentLabel: 'Agent',
@@ -1386,102 +1574,264 @@ export const SETTINGS_SECTION_COPY = {
   navigation: 'Settings sections',
   general: 'General',
   models: 'Models',
-  modelPolicy: 'Model policy',
+  modelPolicy: 'Allowed models',
   a2a: 'A2A',
   plugins: 'Plugins',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',
 } as const;
 
+/** The numbers a sentence about the agents says in words; a larger count says its digits. */
+const COUNT_WORDS = [
+  'no',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+] as const;
+
 /**
- * The words of Settings › A2A: the agents that opt in to being found and called by other agents,
- * the address of each one's Agent Card, and (under them) the push-notification settings.
+ * The words of Settings › Data and retention: how long each kind of record is kept, and how much
+ * space the records take (board PageSettingsSections, "Data and retention"; rows 50d to 50g).
  */
-export const A2A_COPY = {
-  intro:
-    'Other agents and A2A clients can find and call the agents you opt in. Each one publishes an Agent Card at the address below.',
-  agentsHeading: 'Agents reachable over A2A',
-  agentsDescription:
-    'Opt an agent in from its editor, with Available over A2A. Chats with an agent work either way.',
-  listLabel: 'Agents reachable over A2A',
-  loading: 'Loading the agents reachable over A2A',
-  loadFailed: {
-    title: 'The agents could not be listed',
-    description: 'The host did not answer. Check that it is running, then try again.',
+export const DATA_RETENTION_COPY = {
+  title: 'Data and retention',
+  intro: 'How long Interborough keeps what it records. Settings save as you leave a field.',
+  /** The status at the right of the heading once any row has saved. */
+  saved: 'Saved just now',
+  /** The names of the four retention rows; the raw key sits small beside each. */
+  labels: {
+    'retention.audit': 'Audit records',
+    'retention.runs': 'Run history',
+    'retention.chats': 'Chats',
+    'retention.memory': 'Memory',
+  } as Readonly<Record<string, string>>,
+  retention: {
+    heading: 'Retention',
+    keepForever: 'Keep forever',
+    deleteAfter: 'Delete after',
+    days: 'days',
+    /** The accessible name of a row's choice between keeping and deleting. */
+    choiceLabel: (name: string): string => `${name}: how long to keep`,
+    /** The accessible name of a row's days field. */
+    daysLabel: (name: string): string => `${name}: days before deleting`,
+    daysProblem: 'Enter a number from 1 to 3650.',
   },
-  empty: {
-    title: 'No agent is reachable over A2A',
-    description: 'Turn on Available over A2A in an agent’s editor and its Agent Card appears here.',
-    action: { label: 'Open agents', href: '/agents' },
+  /** The section of the retention windows the board draws no row for: events, tasks, receipts and the rest. */
+  otherRetention: {
+    heading: 'Other retention',
+    description: 'How long the rest of what Interborough records is kept.',
   },
-  cardLabel: 'Agent Card address',
-  copyCard: 'Copy address',
-  copiedCard: 'Copied',
-  editAction: 'Edit',
-  editAgent: (name: string): string => `Edit ${name}`,
-  fromCode: 'Defined in code',
-  needsKey: 'Needs an API key',
-  cardLoading: 'Reading the card',
-  cardUnavailable: 'Card unavailable',
-  cardRetry: 'Try again',
+  storage: {
+    heading: 'Storage',
+    label: 'Space used',
+    description: 'What Interborough’s records take up on this machine.',
+    firingDescription: 'Health lists this under Needs attention.',
+    openHealth: 'Open Health',
+    overWarning: (size: string): string => `Storage is over its warning level · ${size}`,
+    notReported: 'Not reported yet',
+  },
+  /** The Clean-up section: the nightly removal of expired records, and "Clean up now" (rows 50h and 50j). */
+  cleanUp: {
+    heading: 'Clean-up',
+    label: 'Remove expired records',
+    action: 'Clean up now',
+    /** The row's description: when it happens each night, in the host's zone. */
+    schedule: (time: string, zone: string): string =>
+      `Interborough does this every night at ${time} ${zone}.`,
+    /** When it last ran, said after the schedule; `when` already names the day ("Sun Nov 1, 3:00 AM"). */
+    last: (when: string): string => `Last cleaned up ${when}.`,
+    /** A night it did not run, said after the schedule; `day` is "today" or a day and time. */
+    skipped: (day: string): string => `Skipped ${day} while Interborough was off.`,
+    working: 'Cleaning up…',
+    /** What a clean-up that finished says on the row, with how many records it removed. */
+    done: (removed: number): string =>
+      removed === 0
+        ? 'Cleaned up just now. Nothing was past its retention window.'
+        : `Cleaned up just now. Removed ${String(removed)} ${removed === 1 ? 'record' : 'records'}.`,
+    /** A clean-up that finished but could not remove some kinds of record; `kinds` names them. */
+    partial: (removed: number, kinds: string): string =>
+      `Cleaned up just now, but ${kinds} could not be removed. Removed ${String(removed)} ${removed === 1 ? 'record' : 'records'}.`,
+    failed: 'Couldn’t clean up. Nothing was removed.',
+    retry: 'Try again',
+    /** The kinds of record a clean-up removes, as a sentence names them. */
+    kinds: {
+      audit: 'audit records',
+      reviews: 'reviews',
+      memories: 'memories',
+      logs: 'logs',
+      notifications: 'notifications',
+      hookDeliveries: 'hook deliveries',
+      chats: 'chats',
+    } as Readonly<Record<string, string>>,
+  },
 } as const;
 
 /**
- * The words of Settings › API reference: the side list that names the four groups, and the states
- * of the groups that have none of their own (`routes/settings/api-reference.svelte`).
+ * The words of Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with
+ * Accept A2A calls off"): the switch that accepts remote calls, the address of the agent card, the
+ * agents that answer, push notifications, and the calls that were made. The rows save as they are
+ * left, like the rest of Settings.
+ */
+export const A2A_COPY = {
+  intro:
+    'Let other agents and tools call yours over the Agent2Agent protocol. Settings save as you leave a field.',
+  heading: 'Agent2Agent',
+  enabled: {
+    label: 'Accept A2A calls',
+    description: 'Let other agents and tools call your agents over the Agent2Agent protocol.',
+    /** Said under the switch while it is off and nothing waits for a restart. */
+    off: 'Off. No remote call is answered. Turning it on applies after a restart.',
+  },
+  cardUrl: {
+    label: 'Agent card URL',
+    description: 'Share this address with a caller so it can discover which agents you offer.',
+    copy: 'Copy the agent card URL',
+    copied: 'Copied',
+    unavailable: 'Not known yet',
+  },
+  agents: {
+    label: 'Shared agents',
+    /** The row's words: how many agents it lists, and where else the same choice is made. */
+    description: (count: number): string => {
+      const listed =
+        count === 0
+          ? 'Agents you add are listed here'
+          : count === 1
+            ? 'The one agent is listed'
+            : `All ${COUNT_WORDS[count] ?? String(count)} agents are listed`;
+      return `${listed}; only the ones you turn on here answer remote calls. You can also set this on each agent’s Settings tab.`;
+    },
+    listLabel: 'Agents that answer remote calls',
+    loading: 'Loading the agents',
+    loadFailed: 'The agents could not be listed.',
+    retry: 'Try again',
+    none: 'No agents yet.',
+  },
+  pushNotifications: {
+    label: 'Push notifications',
+    description: 'Let a remote caller register a webhook to be told when its task finishes.',
+  },
+  /** The line under the rows while Accept A2A calls is off. */
+  readOnly: 'Agent card URL, Shared agents and Push notifications are read-only while this is off.',
+  recent: {
+    heading: 'Recent calls',
+    empty: {
+      title: 'No remote calls yet',
+      description:
+        'When another agent or tool calls yours, each call appears here with who made it and which agent answered.',
+    },
+    /** Who made a call: the name the caller gave itself, else its principal, else nothing to name. */
+    caller: (call: {
+      readonly callerName: string | undefined;
+      readonly principal: string | undefined;
+    }): string => {
+      const name = call.callerName ?? call.principal;
+      return name === undefined ? 'Remote agent' : `Remote agent “${name}”`;
+    },
+    /** Which agent answered, named as the Agents list names it. */
+    answeredBy: (agent: string): string => `answered by ${agent}`,
+    loading: 'Loading the recent calls',
+    loadFailed: {
+      title: 'The recent calls could not be loaded',
+      description: 'The host did not answer. Check that it is running, then try again.',
+    },
+    retry: 'Try again',
+  },
+} as const;
+
+/**
+ * The words of Settings › API reference: the tabs that name the four groups, what each tab says,
+ * and the states a tab with nothing to show is in (`routes/settings/api-reference`).
  */
 export const API_REFERENCE_COPY = {
-  groupsLabel: 'API reference groups',
+  title: 'API reference',
+  intro: 'What other programs can do with Interborough, and what this session may do.',
+  /** The tab row's accessible name. */
+  tabsLabel: 'API reference',
   groups: {
     operations: 'Operations',
     discovery: 'Discovery documents',
     scopes: 'Your scopes',
     sources: 'Workflow sources',
   },
-  /** Said in place of a part the caller's scopes do not reach. */
-  notAvailable: (what: string): string => `${what} is not available to you`,
-  requiresScope: (scope: string, action: string): string => `Requires ${scope} to ${action}.`,
+  /** The loading rule every page shares (board PageSettingsSections, "API reference loading"). */
   loading: {
-    operations: 'Loading the operation catalog',
-    discovery: 'Loading the discovery document',
-    diagnostics: 'Loading the diagnostics',
-    refreshSources: 'Loading the refresh sources',
-    mcp: 'Loading the MCP discovery document',
+    label: 'Loading the API reference',
+    stillLoading: 'Still loading. This is taking longer than usual.',
+    canceled: 'Loading was canceled.',
+    tryAgain: 'Try again',
+  },
+  /** A read that failed with nothing to show; `status` is the HTTP status the server answered, if it answered. */
+  loadFailed: {
+    title: 'Couldn’t load the API reference.',
+    description: (status: number | undefined): string =>
+      status === undefined
+        ? 'Interborough didn’t answer.'
+        : `The server answered with an error (${String(status)}).`,
   },
   operations: {
-    searchLabel: 'Search operations',
-    searchPlaceholder: 'Search operations…',
-    noMatchTitle: 'No operations match',
-    noMatchDescription: (search: string) => `No operation matches "${search}".`,
-    clearSearch: 'Show all operations',
+    groupLabel: 'Group',
+    allGroups: 'All groups',
+    count: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'operation' : 'operations'}`,
+    caption: 'Operations',
+    columns: {
+      method: 'Method',
+      path: 'Path',
+      summary: 'What it does',
+      scope: 'Scope',
+      /** The column of the button that opens a row, named for a screen reader only. */
+      details: 'Details',
+    },
+    /** The accessible name of the button that opens a row's request and response. */
+    toggleLabel: (method: string, path: string): string =>
+      `Request and response for ${method} ${path}`,
+    requestBody: 'Request body',
+    noRequestBody: 'No request body.',
+    response: (status: string): string => `Response, ${status}`,
+    noResponseBody: 'No response body.',
+    noScope: 'Any caller',
+    empty: 'The server lists no operations.',
   },
   discovery: {
-    documentLabel: 'Discovery document',
-    rawJson: 'Raw JSON',
-    emptyTitle: 'This document lists nothing',
-    emptyDescription: 'The server returned the document with no entries to show.',
-    scopeNote:
-      "These documents don't list the scope each operation needs yet. Your scopes shows what each granted scope unlocks.",
+    documents: {
+      openapi: {
+        title: 'OpenAPI description',
+        description: 'Every operation, for generating a client.',
+      },
+      agentCard: {
+        title: 'Agent card',
+        description: 'How other agents discover yours (A2A).',
+      },
+      tools: { title: 'Tool server', description: 'The same tools, over MCP.' },
+    },
+    copy: (title: string): string => `Copy ${title}`,
+    copied: (title: string): string => `Copied ${title}`,
   },
-  mcp: {
-    unavailableTitle: "MCP discovery isn't available",
-    unavailableDescription:
-      "This server has no public origin or trusted hosts configured, so it can't safely give out absolute discovery addresses. Set one in the server's configuration to turn it on.",
+  scopes: {
+    intro:
+      'This session can do the following. Interborough is single-user for now, so these are the scopes of the person at the keyboard, including everything this page’s own boards do: create schedules, edit agents and hooks, and change settings.',
+    listLabel: 'Scopes this session holds',
+    none: 'This session holds no scopes.',
   },
   sources: {
-    noRegistryTitle: 'No workflow types are registered',
-    noRegistryDescription:
-      'No eagerly registered workflow or activity definitions appear in this server. Dynamic sources never appear here; they are listed above.',
-    noActivitiesTitle: 'No activities are registered',
-    noActivitiesDescription: 'No activity definitions are registered with this server.',
-    staleRegistry: 'Refresh failed. Showing the last registry snapshot.',
-    loadingRegistry: 'Loading the registry',
-    loadingSources: 'Loading the registered sources',
-    sourceListEmptyTitle: 'No dynamic sources registered',
-    sourceListEmptyDescription: 'This server has no registered dynamic workflow sources to select.',
-    sourcePageEmptyTitle: 'No sources on this page',
-    sourcePageEmptyDescription: 'Go back to the previous page or use the manual lookup below.',
-    previousPage: 'Previous page',
+    intro:
+      'Where Interborough reads workflow files from. Edit a workflow in its file; changes load on the next start or reload.',
+    listLabel: 'Workflow files',
+    workflows: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
+    schedules: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
+    empty: 'No workflow files yet. Add one to the workflows folder and it loads on the next start.',
   },
 } as const;
 
@@ -1491,8 +1841,7 @@ export const API_REFERENCE_COPY = {
  */
 export const MODELS_COPY = {
   title: 'Models',
-  intro:
-    'Connect the providers your agents call, choose which of their models are on, and set how decisions are made.',
+  intro: 'Agents run on a model. Connect a provider to make its models available.',
   loading: 'Loading providers and models',
   /** The notice shown when a page sent the person here to connect a provider, with the way back. */
   returnNotice: {
@@ -1509,137 +1858,173 @@ export const MODELS_COPY = {
   providerNames: { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Gemini' } as Readonly<
     Record<string, string>
   >,
+  /** What each provider's models are called, under its name. A provider not listed here shows nothing. */
+  providerTaglines: {
+    anthropic: 'Claude models',
+    openai: 'GPT models',
+    gemini: 'Gemini models',
+  } as Readonly<Record<string, string>>,
+  /** The order the providers are listed in; one the host adds follows them. */
+  providerOrder: ['anthropic', 'openai', 'gemini'] as readonly string[],
   locked:
     'This host keeps its providers and keys in its deployment, so they cannot be changed here.',
   providers: {
     heading: 'Providers',
-    description: 'A provider is connected once its API key is saved on this machine.',
+    /** The reason there is no provider banner: while none is connected this says why agents can't answer. */
+    description:
+      'Agents can’t answer until one is connected. Connect one to make its models available.',
+    connectedDescription: 'Connected providers show Manage.',
     listLabel: 'Providers',
     connected: 'Connected',
-    /** A provider whose plugin is waiting for its key (`needs-setup` in `GET /host/plugins`). */
-    needsSetup: 'Needs setup',
-    pluginLink: (name: string): string => `Open the ${name} plugin`,
     connect: 'Connect',
     manage: 'Manage',
     connectLabel: (name: string): string => `Connect ${name}`,
     manageLabel: (name: string): string => `Manage ${name}`,
-    disconnect: 'Disconnect',
-    disconnectLabel: (name: string): string => `Disconnect ${name}`,
-    reload: 'Reload from files',
-    reloaded: 'Providers read again from the configuration file',
-    reloadFailed: 'The configuration could not be read again',
-    modelCount: (count: number): string => `${String(count)} ${count === 1 ? 'model' : 'models'}`,
   },
+  /** Connect (board SettingsShell, "Connect · empty", "testing", "invalid key" and "connected"). */
   connectDialog: {
-    connectTitle: (name: string): string => `Connect ${name}`,
-    manageTitle: (name: string): string => `Manage ${name}`,
-    description: (name: string): string =>
-      `Saving a key connects ${name} and adds its models without a restart. The key is kept in a file only you can read, and it is never shown again.`,
+    title: (name: string): string => `Connect ${name}`,
+    /** The line under the title, which says where the dialog is. */
+    subtitle: {
+      idle: 'Paste an API key, then test it.',
+      testing: 'Testing the key.',
+      failed: 'The test failed.',
+      tested: 'The key works.',
+      saveFailed: 'The key could not be saved.',
+      connected: 'Connected.',
+    },
     keyLabel: 'API key',
-    keyDescription: 'Paste the key from the provider. Saving again replaces the key in use.',
+    keyPlaceholder: 'Paste your API key',
+    keyHelp: 'Saved to ~/.interborough/secrets when you connect, readable only by you.',
+    getKey: 'Where do I get one?',
     keyRequired: 'Enter the key.',
+    /** Under the field while Connect, or Test, asks the provider. */
+    testing: 'Testing the connection…',
+    test: 'Test',
     connect: 'Connect',
-    replace: 'Replace key',
+    /** The primary button while it tests, disabled. */
+    connecting: 'Testing…',
     cancel: 'Cancel',
-    connectedToast: (name: string): string => `${name} connected`,
-    replacedToast: (name: string): string => `${name} key replaced`,
-    failed: 'The key could not be saved.',
+    done: 'Done',
+    /** The success banner: after Connect, and after Test on its own. */
+    connectedTitle: 'Connected',
+    testedTitle: 'The key works',
+    models: (count: number): string =>
+      count === 1 ? '1 model is available.' : `${String(count)} models are available.`,
     locked: 'This host keeps its keys in its deployment, so it cannot save one.',
     partial: 'The key was stored, but the configuration could not be written.',
+    saveFailed: 'The key could not be saved.',
   },
-  disconnectDialog: {
-    title: (name: string): string => `Disconnect ${name}`,
-    description: (name: string): string =>
-      `Disconnecting removes the saved ${name} key from this machine and takes its models out of the catalog. Connect it again with a key to bring them back.`,
-    checking: (name: string): string => `Looking for agents that use ${name} models`,
-    invalidHeading: (name: string, count: number): string =>
-      `${String(count)} ${count === 1 ? 'agent has' : 'agents have'} a ${name} model as ${count === 1 ? 'its' : 'their'} default`,
-    invalidConsequence:
-      'Without the provider, they become invalid and move to the Invalid list on the Agents page until you connect it again or give them another default model.',
-    trimmedHeading: (name: string, count: number): string =>
-      `${String(count)} ${count === 1 ? 'agent lists' : 'agents list'} ${name} models to switch to`,
-    trimmedConsequence:
-      'They stay ready and lose those models from the ones they can be switched to.',
+  /** Why a test did not pass, worded at the field. Never carries the key. */
+  keyTest: {
+    rejected: (provider: string, status: number | undefined): string =>
+      `${provider} didn’t accept this key${status === undefined ? '' : ` (${String(status)})`}. Check that you copied all of it.`,
+    unfinished: (provider: string, status: number | undefined): string =>
+      `Couldn’t finish testing the key with ${provider}${status === undefined ? '' : ` (${String(status)})`}. Check your connection and try again.`,
+    failed: 'The key could not be tested.',
+  },
+  /** Replace key (board SettingsShell, "Replace key · in progress"). */
+  replaceDialog: {
+    title: (name: string): string => `Replace the ${name === '' ? 'provider' : name} key`,
+    subtitle: 'The old key stays in use until the new one passes.',
+    keyLabel: 'New API key',
+    testing: 'Testing the new key…',
+    replace: 'Replace key',
+    cancel: 'Cancel',
+    toast: (name: string): string => `${name} key replaced`,
+  },
+  /** Manage (board SettingsShell, "Manage · a connected provider"). The saved key is never shown. */
+  manageDialog: {
+    /** The title while no provider is chosen, which a closed dialog still carries. */
+    fallbackTitle: 'Provider',
+    subtitle: 'Connected',
+    connected: 'Connected',
+    models: (count: number): string => `${String(count)} ${count === 1 ? 'model' : 'models'}`,
+    removeKey: 'Remove key',
+    replaceKey: 'Replace key',
+    done: 'Done',
+  },
+  /** Remove key (board SettingsShell, "Remove key · confirm"). */
+  removeDialog: {
+    title: (name: string): string => `Remove the ${name} key?`,
+    /** Names the agents that stop answering. Run now on their schedules is disabled with them. */
+    description: (agents: readonly string[]): string =>
+      `${nameList(agents)} ${agents.length === 1 ? 'stops' : 'stop'} answering until you add a key. Run now on ${agents.length === 1 ? 'its' : 'their'} schedules is disabled too. Chats and runs stay.`,
+    /** When no agent uses the provider's models, so nothing stops answering. */
+    descriptionNoAgents: (name: string): string =>
+      `No agent uses ${name} models, so none stops answering. Chats and runs stay.`,
+    checking: (name: string): string => `Looking for agents that use ${name} models…`,
+    agentsUnknown: (name: string): string =>
+      `The agents could not be read, so which ones use ${name} models is not known. Chats and runs stay.`,
+    trimmedNote: (agents: readonly string[], name: string): string =>
+      `${nameList(agents)} still ${agents.length === 1 ? 'answers' : 'answer'}, but ${agents.length === 1 ? 'loses' : 'lose'} ${name} models from the ones ${agents.length === 1 ? 'it' : 'they'} can be switched to.`,
     embedderNote:
       'If a memory embedder from this provider is selected, memory needs setup again until you connect it or choose another.',
-    noAgents: (name: string): string => `No agent names a ${name} model.`,
-    agentsUnknown: (name: string): string =>
-      `The agents could not be read, so which ones use ${name} models is not known.`,
-    confirm: 'Disconnect',
+    confirm: 'Remove key',
+    busy: 'Removing…',
     cancel: 'Cancel',
-    toast: (name: string): string => `${name} disconnected`,
-    failed: 'The key could not be removed.',
+    toast: (name: string): string => `${name} key removed`,
+    failedTitle: 'Couldn’t remove the key.',
+    failed: 'The key is still saved.',
     locked: 'This host keeps its keys in its deployment, so it cannot remove one.',
   },
+  /** The catalog (board SettingsShell, "Models · /settings/models" and "Models · provider connected"). */
   models: {
     heading: 'Models',
+    /** With no model to list, the catalog says only what it is. */
+    emptyDescription: 'Every model your connected providers offer.',
     description:
-      'Every model your connected providers offer. Turn one off to keep it from agents and plans, or correct what a row says.',
+      'Every model your connected providers offer. Which models agents may use is set under Allowed models.',
     tableLabel: 'Models',
     columns: {
       model: 'Model',
-      context: 'Context',
       abilities: 'Abilities',
-      price: 'Price per million tokens',
-      on: 'On',
-      actions: 'Actions',
+      context: 'Context',
+      allowed: 'Allowed',
     },
-    onLabel: (model: string): string => `${model} is on`,
-    abilities: {
-      tools: 'Tools',
-      images: 'Images',
-      structuredOutput: 'Structured output',
-    },
-    noAbilities: 'Text only',
-    noPrice: 'No price',
-    price: (input: string, output: string): string => `${input} in, ${output} out`,
-    contextTokens: (count: string): string => `${count} tokens`,
-    added: 'Added',
-    edit: 'Edit',
-    editLabel: (model: string): string => `Edit ${model}`,
-    add: 'Add a model',
-    save: 'Save models',
-    discard: 'Discard model changes',
-    saved: 'Models saved',
-    unsaved: 'You have unsaved changes to the models.',
-    saveFailed: 'The models were not saved',
-    /** The catalog changed under a working copy: another tab saved, or the files were edited and read again. */
-    changedElsewhere: {
-      title: 'The models changed while you were editing',
-      description:
-        'Another tab, or a change to the configuration file, changed them. Reload to see what they are now. Reloading discards your changes, and saving them would overwrite the change, so Save is held until you reload.',
-      action: 'Reload models',
-    },
+    allowed: 'Allowed',
+    notAllowed: 'Not allowed',
     empty: {
       title: 'No models yet',
-      description: 'Connect a provider and the models it offers appear here.',
-      action: 'Connect a provider',
+      description: 'Models appear here once you connect a provider.',
+      action: 'Go to Providers',
+    },
+    /** The catalog failed to load after the key was saved: the error sits here, not on the provider row. */
+    loadFailed: {
+      title: 'Couldn’t load the models',
+      description: (providers: readonly string[], status: number | undefined): string => {
+        const code = status === undefined ? '' : ` (${String(status)})`;
+        if (providers.length === 0) return `The model list didn’t come back${code}.`;
+        const subject =
+          providers.length === 1
+            ? `${providers.join('')} is connected, but its model list`
+            : `${nameList(providers)} are connected, but their model lists`;
+        return `${subject} didn’t come back${code}.`;
+      },
+      retry: 'Try again',
     },
   },
-  rowDialog: {
-    editTitle: (model: string): string => `Edit ${model}`,
-    addTitle: 'Add a model',
-    addDescription:
-      'Add a model the built-in list lacks. It copies the abilities of the model you base it on.',
-    provider: 'Provider',
-    model: 'Model name',
-    modelDescription: 'The name the provider calls it.',
-    basedOn: 'Based on',
-    basedOnDescription: 'A model of the same provider with the same abilities.',
-    contextWindow: 'Context window (tokens)',
-    maxOutput: 'Largest answer (tokens)',
-    inputPrice: 'Input price per million tokens',
-    outputPrice: 'Output price per million tokens',
-    apply: 'Apply',
-    add: 'Add model',
-    cancel: 'Cancel',
-    modelRequired: 'Enter the model name.',
-    modelExists: 'That provider already lists this model.',
-    modelNotAllowed: 'That provider’s model list in the configuration does not include this model.',
-    basedOnRequired: 'Choose the model it is based on.',
-    wholeNumber: 'Enter a whole number above zero.',
-    price: 'Enter a price that is not negative.',
-    outputTooLarge: 'The largest answer cannot be bigger than the context window.',
+  /** The Decisions section (board SettingsShell, "Models · /settings/models"). */
+  decisions: {
+    heading: 'Decisions',
+    description:
+      'The model that makes quick judgments for the app, apart from the models agents chat with.',
+    model: {
+      label: 'Decision model',
+      description:
+        'TypeSafe answers yes-or-no and classification questions for Interborough. It isn’t a chat provider.',
+      connect: 'Connect TypeSafe',
+    },
+    fallbackModel: {
+      label: 'Fallback model',
+      description: 'Used when the decision model can’t answer.',
+      connectFirst: 'Connect TypeSafe first',
+    },
+    maximumPerTask: {
+      label: 'Maximum per task',
+      description: 'The most decision calls one task may make.',
+      connectFirst: 'The most decision calls one task may make. Connect TypeSafe first.',
+    },
   },
 } as const;
 
@@ -1749,18 +2134,35 @@ export const RESTART_COPY = {
  */
 export const PLUGINS_COPY = {
   title: 'Plugins',
-  intro:
-    'What Interborough loaded at startup and what each plugin adds. Plugin code loads when Interborough starts, so most changes wait for a restart.',
-  loading: 'Loading plugins',
+  intro: 'Code that adds tools, agents and workflows. Plugins load at startup.',
+  /** The loading rule every page shares: skeleton rows after 300 ms, then a status line with a Cancel (board PageSettingsSections, "Plugins loading"). */
+  loading: {
+    label: 'Loading plugins',
+    stillLoading: 'Still loading. This is taking longer than usual.',
+    cancel: 'Cancel',
+    canceled: 'Loading was canceled.',
+    tryAgain: 'Try again',
+  },
+  /** A read that failed with nothing to show; `status` is the HTTP status the host answered, if it answered. */
   loadFailed: {
-    title: 'Plugins are unavailable',
-    description: 'The host did not answer. Check that it is running, then try again.',
+    title: 'Couldn’t load plugins.',
+    description: (status: number | undefined): string =>
+      status === undefined
+        ? 'Interborough didn’t answer. Nothing you did caused it.'
+        : `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+    openHealth: 'Open Health',
   },
   locked:
     'This host keeps its plugin choices and secrets in its deployment, so they cannot be changed here.',
   listLabel: 'Plugins',
   detailLabel: 'Plugin details',
-  count: (total: number): string => `${String(total)} ${total === 1 ? 'plugin' : 'plugins'}`,
+  /** The list's header: the word, the number of plugins beside it, and a link to how a plugin is written. */
+  listHeader: {
+    heading: 'Plugins',
+    howToAdd: 'How to add one',
+    howToAddHref:
+      'https://github.com/stevekinney/corvidae/blob/main/packages/interborough-plugin/README.md#where-a-plugin-lives',
+  },
   empty: {
     title: 'No plugins loaded',
     description:
@@ -1771,7 +2173,18 @@ export const PLUGINS_COPY = {
     description: 'Its status, what it adds and its choices show here.',
   },
   alwaysOn: 'Always on',
+  /** The switch's label tracks its state, so a disabled plugin's switch reads Disabled. */
   enabled: 'Enabled',
+  disabled: 'Disabled',
+  /** Under a disabled plugin's switch: turning it on is a restart. */
+  enableNote: 'Enabling it asks to restart, because plugins load at startup.',
+  /** What a disabled plugin holds back: the agents it ships, unavailable until it is on. */
+  holdingBack: {
+    lead: 'Holding back.',
+    body: (names: readonly string[], title: string): string =>
+      `${nameList(names)} ${names.length === 1 ? 'is' : 'are'} unavailable until ${title} is enabled.`,
+  },
+  /** A status word. Needs setup is neutral: amber is for what waits on the person (a restart, an attention). */
   status: {
     running: 'Running',
     needsSetup: 'Needs setup',
@@ -1783,22 +2196,20 @@ export const PLUGINS_COPY = {
   },
   source: { package: 'Package', folder: 'Folder', builtIn: 'Built in' },
   sourceKind: {
-    package: 'Workspace package',
+    package: 'Package plugin, loaded at startup',
     folder: 'Folder plugin, loaded at startup',
-    builtIn: 'Part of Interborough',
+    builtIn: 'Part of Interborough, loaded at startup',
   },
   sections: {
     source: 'Source',
-    kind: 'Kind',
     adds: 'What it adds',
-    nothingAdded: 'Nothing while it is not running.',
     configuration: 'Configuration',
     secrets: 'Secrets',
-    inUse: 'In use',
   },
   contributionKinds: {
     tool: 'Tools',
     activity: 'Activities',
+    skill: 'Skills',
     'trigger-kind': 'Triggers',
     validator: 'Validators',
     guardrail: 'Guardrails',
@@ -1813,22 +2224,39 @@ export const PLUGINS_COPY = {
     'event-formatter': 'Event formatters',
     'code-agent': 'Code agents',
   } as Readonly<Record<string, string>>,
+  /** The configuration form, built from the plugin's own schema. */
   configuration: {
-    label: (name: string): string => `Configuration of ${name}`,
-    description:
-      'The plugin’s own choices, as JSON. The host checks them when it starts, and a plugin that refuses them is not loaded.',
-    invalid: 'This is not valid JSON, so it cannot be applied.',
-    notAnObject: 'The configuration is an object, such as {}.',
-    rejected: (plugin: string, field: string, message: string): string =>
-      `The host rejected ${field === '' ? 'the change' : field} for ${plugin}.${message === '' ? '' : ` ${message}`}`,
+    description: 'These fields come from the plugin’s own schema.',
+    save: 'Save configuration',
+    saving: 'Saving',
+    /** Beside Save: what saving does and does not do. */
+    note: 'Applies after restart. Saving doesn’t restart.',
+    saved: 'Saved. Applies after restart.',
+    savedNow: 'Saved. It applies at once.',
+    /** The bold lead of a failed save; what follows says why. */
+    failureLead: 'Couldn’t save the configuration.',
+    failed: 'Interborough didn’t answer.',
+    rejected: (message: string): string => (message === '' ? 'The host refused it.' : message),
+    locked:
+      'This host keeps its plugin choices in its deployment, so the configuration cannot be saved here.',
+    notSet: 'Not set',
+    addTag: 'Add a value',
+    tagsLabel: (label: string): string => label,
+    json: (label: string): string => `${label}, as JSON`,
+    invalidJson: 'This is not valid JSON.',
   },
   secrets: {
     set: 'Set',
     missing: 'Missing',
-    add: 'Add',
+    add: 'Add the key',
     replace: 'Replace',
-    addLabel: (key: string): string => `Add ${key}`,
+    addLabel: (key: string): string => `Add the key for ${key}`,
     replaceLabel: (key: string): string => `Replace ${key}`,
+    /** Under a missing key: where it is saved, and what happens once it is. */
+    note: (directory: string, title: string, provider: boolean): string =>
+      provider
+        ? `Saved to ${directory}, readable only by you. The models appear as soon as the key passes a test.`
+        : `Saved to ${directory}, readable only by you. ${title} works as soon as the key is saved; no restart.`,
     dialog: {
       title: (key: string): string => `Save ${key}`,
       description: (plugin: string): string =>
@@ -1843,11 +2271,12 @@ export const PLUGINS_COPY = {
       failed: 'The secret could not be saved.',
     },
   },
+  /** The line at the foot of a running plugin: what uses it. */
   inUse: {
-    disabled: 'Nothing while it is disabled.',
-    notRunning: 'Nothing while it is not loaded.',
-    nothing: 'Nothing names what it adds yet.',
-    some: (parts: readonly string[]): string => `${parts.join(', ')} name what it adds.`,
+    lead: 'In use.',
+    nothing: (title: string): string => `Nothing uses ${title} yet.`,
+    some: (title: string, parts: readonly string[], singular: boolean): string =>
+      `${nameList(parts)} ${singular ? 'uses' : 'use'} ${title}.`,
   },
   counts: {
     agents: (count: number): string => `${String(count)} ${count === 1 ? 'agent' : 'agents'}`,
@@ -1864,7 +2293,6 @@ export const PLUGINS_COPY = {
     explanation: 'Plugin code loads when Interborough starts. Runs pick up where they stopped.',
     discard: 'Discard',
     restartNow: 'Restart now',
-    invalid: 'Fix the configuration that is not valid before restarting.',
     failed: 'The changes could not be saved, so Interborough was not restarted.',
     rejected: (plugin: string): string =>
       `${plugin} was not saved, so Interborough was not restarted. Open it to see what the host rejected.`,
@@ -1872,10 +2300,13 @@ export const PLUGINS_COPY = {
     refused: 'This host cannot restart itself. Restart it where it runs.',
     unreachable: 'Interborough did not answer, so it was not asked to restart. Try again.',
   },
+  /** The question before a plugin is turned off (row 49x): a Cinder confirm dialog that lists what depends on it. */
   disable: {
     title: (name: string): string => `Disable ${name}?`,
-    intro: 'Interborough restarts to unload it. These depend on it now:',
-    nothing: 'Nothing depends on it now.',
+    intro: 'Interborough restarts to unload it. What depends on it:',
+    /** The bold word that leads the sentence when nothing depends on the plugin. */
+    nothingLead: 'Nothing',
+    nothing: (title: string): string => ` uses ${title} yet, so nothing becomes unavailable.`,
     agents: (count: number, ids: string): string =>
       count === 1 ? `uses ${ids} and shows as unavailable.` : `use ${ids} and show as unavailable.`,
     schedules: (count: number, ids: string): string =>
@@ -1887,10 +2318,23 @@ export const PLUGINS_COPY = {
     alsoWrites: 'Restarting also saves these changes, which are waiting:',
     alsoSwitchedOn: 'switched on',
     alsoSwitchedOff: 'switched off',
-    alsoConfiguration: 'configuration edited',
     reassurance: 'Nothing is deleted. Enable it again and restart, and it works as before.',
     cancel: 'Cancel',
     confirm: 'Disable and restart',
+  },
+  /** The question before a disabled plugin is turned on (row 51b): what becomes available again, and that it restarts. */
+  enable: {
+    title: (name: string): string => `Enable ${name}?`,
+    /** The sentence before what comes back; with nothing to name, it stands alone. */
+    intro: 'Interborough restarts to load it.',
+    /** What the plugin's agents do once it is on: "Release helper and Changelog writer become available again." */
+    available: (names: readonly string[]): string =>
+      `${nameList(names)} ${names.length === 1 ? 'becomes' : 'become'} available again.`,
+    /** What a restart does to running work, which every restart says. */
+    work: 'Running work picks up where it stopped; reviews stay waiting.',
+    alsoWrites: 'Restarting also saves these changes, which are waiting:',
+    cancel: 'Cancel',
+    confirm: 'Enable and restart',
   },
   /**
    * One card per problem code (COR-1895). The table of the first six is the owner's wording
@@ -1898,6 +2342,8 @@ export const PLUGINS_COPY = {
    * host added later, in the same voice. A body is a function of the fields its code carries.
    */
   problems: {
+    /** The accessible name of the list the Plugins page opens with after a startup with problems. */
+    listLabel: 'Plugins that need attention',
     title: 'Needs attention',
     unknown: (code: string): string => `Reported as ${code}.`,
     /** The status of a problem whose code this page has no words for. */
@@ -1905,18 +2351,22 @@ export const PLUGINS_COPY = {
     secretMissing: {
       status: 'Needs setup',
       title: 'A secret isn’t saved yet',
-      body: (key: string, what: string): string =>
-        `${key} isn’t saved, so ${what} is unavailable. Save it and it works at once; no restart.`,
+      /** `plural` is whether what waits reads as more than one thing ("Gemini models and embeddings"). */
+      body: (key: string, what: string, plural: boolean): string =>
+        plural
+          ? `${key} isn’t saved, so ${what} are unavailable. Save it and they work at once, with no restart.`
+          : `${key} isn’t saved, so ${what} is unavailable. Save it and it works at once, with no restart.`,
       /** The body when the host lists nothing that waits for the secret. */
       bodyWithoutContributions: (key: string): string =>
-        `${key} isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.`,
+        `${key} isn’t saved, so what this plugin adds is unavailable. Save it and it works at once, with no restart.`,
       action: 'Add the key',
     },
     configurationInvalid: {
       status: 'Not loaded',
       title: 'A setting is invalid',
-      body: (field: string, message: string): string =>
-        field === '' ? message : `${field}: ${message}`,
+      /** `label` is the field as a person reads it ("Grounding threshold"), never its key; `message` is what the plugin said. */
+      body: (label: string, message: string): string =>
+        label === '' ? message : `${label}: ${message}`,
       action: 'Fix the setting',
     },
     /** A provider plugin's `models` allowlist names a model nobody offers: `configuration-invalid` at `models[<index>]`. */
@@ -1996,20 +2446,19 @@ export const PLUGINS_COPY = {
     label: 'Plugins that did not load',
     message: (count: number): string =>
       count === 1
-        ? '1 plugin didn’t load at startup. Agents and workflows that use it show as unavailable.'
-        : `${String(count)} plugins didn’t load at startup. Agents and workflows that use them show as unavailable.`,
+        ? '1 plugin needs attention after a startup with problems'
+        : `${String(count)} plugins need attention after a startup with problems`,
+    /** The second line, which says what the problems mean for the work that uses the plugins. */
+    consequence: (count: number): string =>
+      count === 1
+        ? 'Agents and workflows that use it show as unavailable.'
+        : 'Agents and workflows that use them show as unavailable.',
     action: 'Open Plugins',
   },
   unloaded: {
     heading: 'Folders that did not load',
     description: 'These folders hold no plugin Interborough could use.',
   },
-} as const;
-
-/** The words of the diagnostics the Health page carries below the engine overview. */
-export const HEALTH_DIAGNOSTICS_COPY = {
-  title: 'Diagnostics',
-  sections: 'Diagnostic sections',
 } as const;
 
 /**
@@ -2218,109 +2667,167 @@ export const HOME_COPY = {
   },
 } as const;
 
-/** The words of the Health overview: its health line, its four counts, and the recent-activity window. */
-export const HEALTH_OVERVIEW_COPY = {
-  /** The accessible name of the four counts. */
-  countsLabel: 'Health counts',
-  workingNow: 'Working now',
-  needsYou: 'Needs you',
-  failedIn24Hours: 'Failed in 24h',
-  schedules: 'Schedules',
-  /** The value of a count that could not be read. */
-  unavailable: '—',
-  /** The health line when nothing needs attention. */
-  allClear: 'All clear. Nothing needs attention.',
-  /**
-   * The health line when a read it depends on failed and nothing it could read needs attention:
-   * the line cannot say all is clear about what it never saw.
-   */
-  lineUnavailable:
-    'Health could not be fully read. Nothing was reported, but that is not all clear.',
-  /** The note beside the chips when one of the line's reads failed. */
-  lineReadFailed: 'Some checks could not be read',
-  /** The chip for each alert rule that is firing now: what crossed its warning level, and the reading. */
-  firingAlert: {
-    storage: (size: string): string => `Storage is over its warning level · ${size}`,
-    failureRate: (rate: string): string =>
-      `Workflow failure rate is over its warning level · ${rate}`,
-    activityDuration: (duration: string): string =>
-      `Slowest steps are over their warning level · ${duration}`,
-    /** A rule this app has no sentence for yet: the metric's own name, which is still true. */
-    other: (metric: string): string => `${metric} is over its warning level`,
-  },
-  /** The health line when something does: how many things, and each one below it. */
-  needsAttention: (count: number): string =>
-    count === 1 ? '1 thing needs attention' : `${String(count)} things need attention`,
-  activity: {
-    title: 'Recent activity',
-    /** What the empty window says: the engine has not reported anything yet. */
-    emptyTitle: 'Nothing has happened yet',
-    emptyDescription: 'Events from runs, schedules and reviews appear here as they happen.',
-    /** The footer link to the whole trail. */
-    auditLink: 'Open the audit log',
-    /** The accessible name of the live window. */
-    windowLabel: 'Recent activity. Updates pause while you are reading.',
-    /** A line that stands for several in a row, such as `Workflow completed ×3`. */
-    repeated: (title: string, count: number): string => `${title} ×${String(count)}`,
-  },
-} as const;
-
-/** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
-export const MODEL_POLICY_COPY = {
-  intro:
-    'Choose which providers and models agent files and plans may use. Everything not ruled out here stays allowed.',
-  allowedModels: {
-    title: 'Allowed models',
+/**
+ * The words of Settings › Allowed models (board PageSettingsSections, "Allowed models ·
+ * /settings/allowed-models"): which models agents may use, and the caller's own preferences among
+ * them. Saving is explicit, because it raises the policy revision.
+ */
+export const ALLOWED_MODELS_COPY = {
+  intro: 'Which models agents may use, and what to prefer among them.',
+  models: {
+    title: 'Models',
     description:
-      'Nothing listed here can be used by an agent file or a plan, whoever starts it. Leave a list empty to allow everything in it.',
+      'Every model your connected providers offer; untick one to keep agents from using it.',
+    empty: 'No models yet. Connect a provider and its models appear here to allow.',
+    goToProviders: 'Go to Providers',
+    /** The name of a provider's group of models. */
+    groupLabel: (provider: string): string => `${provider} models`,
+    loading: 'Loading models…',
+    loadFailed: 'Couldn’t load the models.',
+    tryAgain: 'Try again',
+    /** Said under a model whose whole provider the policy keeps agents from using. */
+    providerDenied: 'Its provider is not allowed by the host.',
+    /** What a model that has none of the abilities below says in their place. */
+    noAbilities: 'Text only',
+    abilities: { tools: 'tools', images: 'images' },
   },
-  yourPreferences: {
-    title: 'Your preferences',
-    description:
-      'What your own chats and plans should choose from, among what is allowed above. Anything left empty makes no choice for you.',
+  preferences: {
+    title: 'Preferences',
+    description: 'Cost, speed and effort, among the models allowed above.',
+    prefer: {
+      label: 'Prefer',
+      identifier: 'preferences.prefer',
+      description: 'Which to favour when more than one allowed model fits.',
+      options: {
+        neither: 'Neither',
+        cost: 'Lowest cost',
+        speed: 'Fastest',
+        both: 'Lowest cost and fastest',
+      },
+    },
+    effort: {
+      label: 'Default effort',
+      identifier: 'preferences.effort',
+      description: 'How hard a model thinks when an agent doesn’t say.',
+      notSet: 'Not set',
+    },
+  },
+  /** The effect of saving, under the preferences and beside the buttons. */
+  note: 'Saving raises the policy revision, so plans made under the old policy are re-checked.',
+  effect: 'Saving raises the policy revision.',
+  reset: 'Reset to default',
+  save: 'Save',
+  saveFailed: {
+    title: 'Couldn’t save.',
+    didNotAnswer: 'Interborough didn’t answer.',
+    stillHere: 'Your choices are still here.',
   },
   lockedNote: 'The host sets the model policy, and it cannot be changed here.',
-  /** Said under a list of providers when a name is not the form a provider takes. */
-  providerName: 'A provider is lowercase letters, numbers and hyphens, such as anthropic.',
-  /** Said while a list holds text that has not been added, which Save would leave out. */
-  pendingEntry: 'Press Enter to add the text you typed to its list, or clear it, before saving.',
-  notRequired: 'Not required',
-  noPreference: 'No preference',
-  fields: {
-    deniedProviders: 'Providers not allowed',
-    deniedModels: 'Models not allowed',
-    deniedRoutes: 'Routes not allowed',
-    deniedRegions: 'Regions not allowed',
-    requireDataPolicy: 'Data retention required',
-    allowedProviders: 'Only these providers',
-    preferredDeniedProviders: 'Never these providers',
-    allowedModels: 'Only these models',
-    preferredDeniedModels: 'Never these models',
-    dataPolicy: 'Data retention',
-    defaultEffort: 'Default effort',
-    costPreference: 'Cost',
-    latencyPreference: 'Speed',
-    effortFallbackMode: 'When the effort is not available',
-  },
-  options: {
-    dataPolicy: {
-      'no-retention': 'No retention',
-      'zero-day-retention': 'Zero-day retention',
-      standard: 'Standard',
-    },
-    effort: EFFORT_LABELS,
-    cost: { 'lowest-cost': 'Lowest cost', balanced: 'Balanced', 'no-preference': 'No preference' },
-    latency: {
-      'lowest-latency': 'Fastest',
-      balanced: 'Balanced',
-      'no-preference': 'No preference',
-    },
-    effortFallback: { reject: 'Refuse the request', degrade: 'Use a lower effort' },
-  },
 } as const;
 
 /** The words the settings page (`/settings`) uses outside its view states. */
 export const SETTINGS_COPY = {
+  /** The General page (board SettingsShell, "General · /settings"). */
+  general: {
+    intro: 'Tools, runs and your own preferences. Settings save as you leave a field.',
+    /** The heading narrow widths show over the section select, which names the section. */
+    narrowTitle: 'Settings',
+    sections: {
+      tools: { title: 'Tools' },
+      runs: {
+        title: 'Runs',
+        description: 'Settings that apply after a restart say so, and a saved one waits for it.',
+      },
+      storage: { title: 'Storage' },
+      remote: { title: 'Remote deployment' },
+      preferences: {
+        title: 'Your preferences',
+        description:
+          'Only you see these. They live in this browser and in quick settings, apart from the settings above that belong to this installation.',
+      },
+    },
+    /** The row of the storage backend, which the host reports rather than the Bureau holding a setting. */
+    storageBackend: {
+      label: 'Storage backend',
+      identifier: 'storage.backend',
+      description: 'Where Interborough keeps runs, chats and memories. Chosen when it was set up.',
+      remoteDescription: 'Where Interborough keeps runs, chats and memories.',
+      local: 'SQLite · on this machine',
+      remote: 'Postgres and S3',
+      setByDeployment: 'Set by the deployment',
+    },
+    preferences: {
+      theme: {
+        label: 'Theme',
+        identifier: 'theme',
+        description: 'Matches your system by default.',
+        options: { system: 'System', light: 'Light', dark: 'Dark' },
+      },
+      sidebar: {
+        label: 'Sidebar',
+        identifier: 'sidebar',
+        description: 'Whether the sidebar starts expanded on this browser.',
+        options: { expanded: 'Expanded', collapsed: 'Collapsed' },
+      },
+      defaultAgent: {
+        label: 'Default agent for new chats',
+        identifier: 'chat.defaultAgent',
+        description: 'The agent a new chat starts with.',
+        none: 'First agent that can run',
+      },
+      singleKey: {
+        label: 'Use single-key shortcuts',
+        identifier: 'shortcuts.singleKey',
+        description:
+          'Press G then a letter to go somewhere, or C for a new chat. They never act while you type in a field.',
+      },
+    },
+    /** The sticky banner over the page while saved settings wait for a restart. */
+    restartBanner: {
+      title: (count: number): string =>
+        count === 1
+          ? '1 change waits for a restart'
+          : `${String(count)} changes wait for a restart`,
+      detail: (names: readonly string[]): string =>
+        `${names.join(', ')}. Running work picks up where it stopped; reviews stay waiting.`,
+      /** Puts every waiting setting back to the value the host runs now (board SettingsShell, "More states"). */
+      revert: (count: number): string =>
+        count === 1 ? 'Revert 1 change' : `Revert ${String(count)} changes`,
+    },
+    /** The Undo toast after Revert, and what the page says when Revert or Undo does not go through. */
+    reverted: {
+      toast: (count: number): string =>
+        `Reverted ${count === 1 ? '1 change' : `${String(count)} changes`}. Nothing needs a restart.`,
+      revertFailed: 'Couldn’t revert. The changes still wait for a restart.',
+      undoFailed: 'Couldn’t undo. The settings stay reverted.',
+    },
+    /**
+     * A setting's own words where the Remote deployment card shows it, in place of the Bureau's
+     * description (board SettingsShell, "Locked settings · remote mode"): a remote deployment's
+     * runs are not on this machine.
+     */
+    remoteDescriptions: {
+      'engine.maxConcurrentRuns': 'The most workflow runs that execute at the same time.',
+    } as Readonly<Record<string, string>>,
+    /** The status of a row a restart just applied. */
+    inEffectSince: (time: string): string => `In effect since ${time}`,
+    /** Loading, and giving up on it. */
+    loading: {
+      label: 'Loading settings',
+      stillLoading: 'Still loading. This is taking longer than usual.',
+      canceled: 'Loading was canceled.',
+      tryAgain: 'Try again',
+    },
+  },
+  /** The label of the section select that replaces the navigation below 640px. */
+  sectionSelect: 'Section',
+  /** A value that failed its check was not saved. */
+  nothingSaved: 'Nothing was saved.',
+  /** A save that did not go through; the typed value is still in the field. */
+  couldNotSave: 'Couldn’t save. Your value is still in the field.',
+  /** A locked setting (board SettingsShell, "Locked settings · remote mode"). */
+  lockedMessage:
+    'Locked by your deployment (remote mode). Change it in the deployment’s configuration.',
   /**
    * The keyboard preference on the General page (design row 03f): it lives in this browser, so it is
    * not one of the deployment's settings above it.
@@ -2330,13 +2837,6 @@ export const SETTINGS_COPY = {
     singleKeyLabel: 'Use single-key shortcuts',
     singleKeyDescription:
       'Press G then a letter to go somewhere, or C for a new chat. They never act while you type in a field. Shortcuts held with ⌘ and the ? map always work. This applies to this browser only.',
-  },
-  /** What the A2A section asks before it saves. */
-  confirmA2a: {
-    title: 'Save the A2A settings?',
-    description:
-      'Push notifications make this host send requests to servers other people run. The change applies when the host restarts.',
-    confirm: 'Save settings',
   },
   intro:
     'These apply to the whole deployment. A setting that applies live takes effect at its next use, and one that needs a restart is kept and applies when the host starts again.',
@@ -2392,11 +2892,12 @@ export const SETTINGS_COPY = {
     description:
       'Reload to see what they are now. Reloading discards your changes, and saving them first would overwrite the change.',
   },
-  /** The settings could not be read again while the page already holds them. */
-  refreshFailed: {
-    title: 'The settings could not be refreshed',
-    description: 'What you see may be out of date. Your edits are kept.',
-  },
+  /**
+   * The settings could not be read again while the page already holds them: the banner over the old
+   * values (board PageSettingsSections, "Error · old data on screen"). Cinder's `refresh-failed`
+   * preset writes the rest: when what is shown loaded, and the way to try again.
+   */
+  refreshFailed: { title: 'Couldn’t refresh these settings.' },
   saveFailed: 'The settings were not saved',
   forbidden: 'You may read the settings but not change them.',
   hostPaths: {
@@ -2526,91 +3027,258 @@ export const GOALS_COPY = {
   },
 } as const;
 
-/** The words the audit trail (`/health/audit`) uses outside its view states. */
+/** The words the audit log (`/health/audit`) uses: its filters, its table, and the pane of one event. */
 export const AUDIT_COPY = {
-  /** The line under the page's title. */
-  description: 'Who changed what, and when.',
-  /** The accessible name of the search form. */
-  searchLabel: 'Search the audit trail',
-  sinceLabel: 'Since',
-  /** Shown in the time field while it is empty, so the field names what it narrows without a label above it. */
-  sincePlaceholder: 'Any time',
-  typeLabel: 'Type',
-  /** The select's first option: no narrowing by type. */
-  anyType: 'Any type',
-  /** The select's last option, which brings a field for a type the trail has not shown yet. */
-  otherType: 'Other…',
-  otherTypeLabel: 'Other type',
-  otherTypePlaceholder: 'Type, such as run.completed',
-  resourceLabel: 'Resource',
-  /** The first option of the resource picker: no narrowing by what a record is about. */
-  anyResource: 'Any resource',
-  resourceIdLabel: 'Resource ID',
-  resourceIdPlaceholder: 'ID',
-  searchAction: 'Search',
-  clearAction: 'Clear',
-  loadMore: 'Load more',
-  /** The name of the list of records, which also says how it is ordered. */
-  caption: 'Audit records, oldest first',
-  /** The name of the open record's pane. */
-  detailLabel: 'Record',
-  whoLabel: 'Who',
-  /** The Who select's first option: no narrowing by actor. */
+  /** The accessible name of the filter row. */
+  searchLabel: 'Filter the audit log',
+  actorLabel: 'Who',
+  /** The Who select's first option: no narrowing by who did it. */
   anyone: 'Anyone',
-  noActor: 'None',
-  /** The small heading above a record's raw JSON. */
-  rawRecord: 'Raw record',
-  emptyDetailTitle: 'Choose a record',
-  emptyDetailDescription: 'Pick one from the list to see what changed, who did it, and when.',
-  /** How many records are loaded, as a sentence. */
-  count: (count: number, more: boolean): string =>
-    `${String(count)} ${count === 1 ? 'record' : 'records'}${more ? ' so far' : ''}`,
-  /** The facts of one record. */
-  fact: {
-    what: 'What',
-    when: 'When',
-    who: 'Who',
-    about: 'About',
-    details: 'Details',
-    before: 'Before',
-    after: 'After',
-    beforeAfter: 'Before and after',
+  actors: { you: 'You', agents: 'Agents', interborough: 'Interborough' },
+  periodLabel: 'Period',
+  periods: {
+    today: 'Today',
+    '7d': 'Last 7 days',
+    '30d': 'Last 30 days',
+    '90d': 'Last 90 days',
+    all: 'All time',
   },
-  /** The link to the thing a record is about. */
-  openResource: (resource: string): string => `Open ${resource}`,
-  exportAction: 'Export JSON Lines',
+  actionLabel: 'Action',
+  /** The action select's first option: no narrowing by what was done. */
+  anyAction: 'Any action',
+  actions: {
+    approved: 'Approved',
+    deleted: 'Deleted',
+    edited: 'Edited',
+    removed: 'Removed',
+    started: 'Started',
+  },
+  textLabel: 'Search the audit log',
+  textPlaceholder: 'Search by actor, action or target',
+  /** The count at the right of the search box. */
+  count: (count: number, more: boolean): string =>
+    `${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'}${more ? ' so far' : ''}`,
+  /** The footer of the table. */
+  footer: (loaded: number, total: number | undefined, more: boolean): string =>
+    total === undefined || !more
+      ? `${loaded.toLocaleString('en-US')} ${loaded === 1 ? 'event' : 'events'}, newest first.`
+      : `Showing ${loaded.toLocaleString('en-US')} of ${Math.max(total, loaded).toLocaleString('en-US')} events, newest first. Scroll to load more.`,
+  /** The name of the table, which also says how it is ordered. */
+  caption: 'Audit events, newest first',
+  /** The name of the open event's pane. */
+  detailLabel: 'Event',
+  columns: { when: 'When', who: 'Who', what: 'What', target: 'Target' },
+  /** A day group's header: the day, then the zone the times are read in. */
+  dayHeading: {
+    today: (date: string): string => `Today, ${date}`,
+    yesterday: (date: string): string => `Yesterday, ${date}`,
+  },
+  /** The pane while no event is open. */
+  emptyDetailTitle: 'Select an event to see what changed',
+  emptyDetailDescription: 'Each event shows who did it, when, and the before and after.',
+  /** The line under an event's title. `when` reads "Today at 10:45:12 AM". */
+  whenLine: (when: string, context: string | null): string =>
+    context === null ? when : `${when} · ${context}`,
+  fromThisBrowser: 'from this browser',
+  inTheChat: (title: string): string => `in the chat “${title}”`,
+  fact: {
+    provider: 'Provider',
+    effect: 'Effect',
+    agent: 'Agent',
+    chat: 'Chat',
+    version: 'Version',
+    changed: 'Changed',
+    tool: 'Tool',
+    risk: 'Risk',
+    amount: 'Amount',
+    status: 'Status',
+    schedule: 'Schedule',
+    workflow: 'Workflow',
+    run: 'Run',
+    about: 'About',
+    detail: 'Details',
+  },
+  /** What removing a provider's key does, which is the same whichever provider it was. */
+  providerRemovedEffect: 'Agents that use a model can’t run until a provider is connected',
+  riskDangerous: 'Dangerous · Can’t be undone',
+  riskChanges: 'Changes things',
+  riskReadOnly: 'Only reads',
+  changedWords: {
+    instructions: 'Instructions',
+    tools: 'Tools',
+    toolApproval: 'Tool approvals',
+    model: 'Model',
+    description: 'Description',
+    skills: 'Skills',
+  },
+  toolsAdded: (names: string): string => `added ${names}`,
+  toolsRemoved: (names: string): string => `removed ${names}`,
+  /** The footer of the diff of an agent's instructions, in Cinder's own words. */
+  instructionsLabel: 'What changed in the instructions',
+  links: {
+    providers: 'Open Providers',
+    review: 'Open review',
+    agent: 'Open agent',
+    run: 'Open run',
+    chat: 'Open chat',
+    schedule: 'Open schedule',
+    workflow: 'Open workflow',
+    storage: 'Open storage',
+  },
+  copyAsJson: 'Copy as JSON',
+  copiedAsJson: 'Copied as JSON',
+  copyKey: 'Copy key',
+  copiedKey: 'Copied the key',
+  copyFailed: 'Couldn’t copy. Select the text and copy it yourself.',
+  /** The heading of a target too long for a table cell, with how many characters it has. */
+  targetHeading: (length: number): string =>
+    `Target · ${length.toLocaleString('en-US')} characters`,
+  /** The footer of every event's pane: how long records are kept, and what Export saves. */
+  retention: {
+    before: 'Audit records are kept 90 days (',
+    link: 'Settings › Data and retention',
+    after: '). Export downloads the filtered list as JSON Lines.',
+  },
+  exportAction: 'Export',
   exporting: 'Exporting…',
+  /** Why Export is off while the log on screen is old: the same word the page's other held controls use. */
+  exportOff: 'Off until the audit log loads again',
+  /** The line under the filter row while Export reads the log: how many events it prepares, and the way out. */
+  exportProgress: (count: number): string =>
+    `Preparing ${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'} as JSON Lines…`,
+  exportCancel: 'Cancel',
   exported: (count: number): string =>
-    `Exported ${String(count)} ${count === 1 ? 'record' : 'records'}`,
+    `Exported ${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'}`,
   nothingToExport: 'There is nothing to export for these filters.',
+  /** A danger alert at the page: the lead, then why, then that the filters and the download are as they were. */
   exportFailed: {
-    title: 'The export failed',
-    description:
-      'The server did not answer. Check that the host is running, then try the export again.',
+    lead: 'Couldn’t export.',
+    answered:
+      'The server stopped while writing the file. Your filters are unchanged; nothing was downloaded.',
+    noAnswer: 'The server didn’t answer. Your filters are unchanged; nothing was downloaded.',
+    again: 'Export again',
   },
   loadingLabel: 'Loading the audit log',
+  /**
+   * Filters that match nothing. A search names itself in the title and says how to search; filters
+   * say what was not recorded ("Nothing by agents was recorded today.") and what to try.
+   */
   noMatches: {
-    title: 'No records match',
-    description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
+    title: 'No events match these filters',
+    titleForSearch: (text: string): string => `No events match “${text}”`,
+    searchHint: 'Check the spelling, or search by actor, action or target.',
     clear: 'Clear filters',
+    /** "Nothing", then the action and who when they are set, then when. */
+    nothing: 'Nothing',
+    byActor: { you: 'by you', agents: 'by agents', interborough: 'by Interborough' },
+    actionWords: {
+      approved: 'approved',
+      deleted: 'deleted',
+      edited: 'edited',
+      removed: 'removed',
+      started: 'started',
+    },
+    wasRecorded: {
+      today: 'was recorded today.',
+      '7d': 'was recorded in the last 7 days.',
+      '30d': 'was recorded in the last 30 days.',
+      '90d': 'was recorded in the last 90 days.',
+      all: 'has been recorded.',
+    },
+    /** What to try, by how far back the period already reaches. */
+    tryLongerPeriod: 'Try a longer period.',
+    tryAllTime: 'Try all time, or change a filter.',
+    tryAnotherFilter: 'Change or clear a filter.',
   },
-  /** An address that names a record the page could not show: the bounded read of the trail did not reach it. */
-  recordNotFound: {
-    more: 'That record was not found in the recent trail. Load more to keep looking.',
-    end: 'That record is not in the trail.',
+  /** What the log says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+  stopped: {
+    title: 'Stopped loading the audit log',
+    description: 'You stopped the read, so the log is not shown. Nothing in it was changed.',
   },
-  /** A list with more pages to read, where none of the records read so far matches the search. */
+  /** A list with more pages to read, where none of the events read so far matches the search. */
   noLoadedMatches: {
-    title: 'No loaded record matches',
+    title: 'No loaded event matches',
     description:
-      'None of the records read so far matches this search, and the trail has more. Load more to keep looking, or change or clear a filter.',
+      'None of the events read so far matches this search, and the log has more. Change or clear a filter.',
     clear: 'Clear filters',
   },
-  failed: {
-    title: 'The search failed',
-    description:
-      'The server did not answer this search. Check that the host is running, then try again.',
+  /** An address that names an event the page could not show. */
+  recordNotFound: {
+    more: 'That event was not found in the recent log. Load more to keep looking.',
+    end: 'That event is not in the log.',
   },
+  loadMore: 'Load more',
+  /** A read that did not give the page its events, with the status the server answered with. */
+  failed: {
+    title: 'Couldn’t load the audit log',
+    answered: (status: number): string =>
+      `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+    /** A refusal (401 or 403) is something to fix, so it carries the server's own words. */
+    refused: (status: number, message: string): string =>
+      `The server answered with an error (${String(status)}): ${message.replace(/[.\s]+$/, '')}.`,
+    noAnswer: 'The server didn’t answer. Nothing you did caused it.',
+    unknown: 'Something went wrong reading the audit log. Nothing you did caused it.',
+    /** The second action: this page is already inside Health, so it says Open Health. */
+    openHealth: 'Open Health',
+    openHealthPath: '/health',
+  },
+} as const;
+
+/** The sentences that say what an audit event was, in the order the table reads them: who, what, target. */
+export const AUDIT_EVENT_COPY = {
+  /** The actor of what the host itself did or noticed. */
+  host: 'Interborough',
+  you: 'You',
+  serverStarted: 'Server started',
+  serverStartedTarget: 'Interborough',
+  /** The target of a start that recorded its version: "Interborough 2.4.1". */
+  serverStartedVersionTarget: (version: string): string => `Interborough ${version}`,
+  removedProviderKey: (provider: string): string => `Removed the ${provider} key`,
+  providerTarget: (provider: string): string => `${provider} provider`,
+  startedRun: 'Started a run',
+  stoppedRun: 'Stopped a run',
+  runFailed: 'A run failed',
+  chatTarget: (title: string): string => `Chat › ${title}`,
+  scheduleRan: 'Started a scheduled run',
+  createdSchedule: 'Created a schedule',
+  pausedSchedule: 'Paused a schedule',
+  resumedSchedule: 'Resumed a schedule',
+  canceledSchedule: 'Canceled a schedule',
+  missedRuns: (count: number): string =>
+    `Noticed ${count.toLocaleString('en-US')} missed ${count === 1 ? 'run' : 'runs'}`,
+  /** A tool asked before running: `request` is the tool's own sentence, lower-cased, such as "refund order 4471". */
+  askedTo: (request: string): string => `Asked to ${request}`,
+  askedToUse: (tool: string): string => `Asked to use ${tool}`,
+  approvedToolCall: 'Approved a tool call',
+  deniedToolCall: 'Denied a tool call',
+  ranTool: (tool: string): string => `Ran ${tool}`,
+  correctedMemory: 'Corrected a memory',
+  forgotMemory: 'Forgot a memory',
+  editedAgent: 'Edited an agent',
+  createdWorkflow: 'Created a workflow',
+  editedWorkflow: 'Edited a workflow',
+  createdHook: 'Created a hook',
+  editedHook: 'Edited a hook',
+  deletedChat: 'Deleted a chat',
+  chatTargetDeleted: 'Chat',
+  /** The target of a deleted chat whose record kept its title: "“Scratch test” · 12 messages". */
+  deletedChatTarget: (title: string, messages: number | undefined): string =>
+    messages === undefined
+      ? `“${title}”`
+      : `“${title}” · ${messages.toLocaleString('en-US')} ${messages === 1 ? 'message' : 'messages'}`,
+  deletedStorageKey: 'Deleted a storage key',
+  storageTarget: (key: string): string => `Storage › ${key}`,
+  connectedToolSource: 'Connected a tool source',
+  removedToolSource: 'Removed a tool source',
+  trustedSkillSource: 'Changed what a skill source may do',
+  changedSettings: 'Changed a setting',
+  webhookGaveUp: 'Gave up delivering a hook',
+  /** An event the page has no sentence for: the record's own type, in words. */
+  other: (type: string): string => type,
+  anAgent: 'An agent',
+  aSchedule: 'A schedule',
+  versionRange: (from: number | undefined, to: number | undefined): string =>
+    from === undefined ? `version ${to ?? ''}` : `version ${from} → ${to ?? ''}`,
 } as const;
 
 /**
@@ -4949,15 +5617,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   schedules: {
     label: 'Schedules',
     loading: { title: 'Loading schedules', description: 'Reading the schedules.' },
-    empty: {
-      title: 'No schedules yet',
-      description: 'Create a schedule to start a workflow on a timetable.',
-      action: { label: 'Create a schedule', href: '/schedules/new' },
-    },
-    error: {
-      title: 'Schedules are unavailable',
-      description: 'The server did not answer. Check that the host is running, then try again.',
-    },
+    // The page draws its own empty and failed states under its own header (`ownsStates` in
+    // `views.ts`) in the words `SCHEDULE_COPY` holds, so the frame and the page never say them two
+    // ways.
+    empty: { ...SCHEDULE_COPY.empty, action: { label: 'New schedule', href: '/schedules/new' } },
+    error: SCHEDULE_COPY.loadFailed,
     forbidden: { title: FORBIDDEN_COPY.title('Schedules') },
   },
   reviews: {
@@ -5003,8 +5667,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'Reading the record of what changed.',
     },
     empty: {
-      title: 'No audit entries yet',
-      description: 'The record of who changed what appears here once something has been done.',
+      title: 'Nothing recorded yet',
+      description:
+        'Changes you and your agents make show up here, newest first, with who made them and what changed.',
     },
     error: {
       title: 'The audit trail is unavailable',
@@ -5093,36 +5758,91 @@ const UNCHECKED_WRITE_NOTE =
 export const STORAGE_COPY = {
   title: 'Storage',
   description: 'The keys this installation stores, and the value of each.',
-  /** The accessible name of the group and search controls. */
+  /** The accessible name of the controls that narrow the table. */
   filtersLabel: 'Find a key',
   groupLabel: 'Group',
   allGroups: 'All groups',
-  searchLabel: 'Search keys',
-  searchPlaceholder: 'Search keys',
+  /** The accessible name of the segmented control that picks how keys are narrowed. */
+  modeLabel: 'Search mode',
+  modeStartsWith: 'Starts with',
+  modeRange: 'Range',
+  searchLabel: 'Keys starting with',
+  searchPlaceholder: 'Keys starting with',
+  /** The accessible name of the two fields of a range, and of each. */
+  range: {
+    label: 'Range',
+    startLabel: 'Range start',
+    endLabel: 'Range end',
+    startPlaceholder: 'First key',
+    endPlaceholder: 'Last key',
+    /** The word between the two fields. */
+    to: 'to',
+    /** What a range whose last key sorts before its first says, under the fields. */
+    reversed: 'The end comes before the start. Swap them, or pick a later end.',
+    /** The note under a reversed range: the table still shows the last range that was a range. */
+    lastResult: (count: number, start: string, end: string): string => {
+      const keys = `${String(count)} ${count === 1 ? 'key' : 'keys'}`;
+      if (start !== '' && end !== '')
+        return `Showing the last result: ${keys} from ${start} to ${end}.`;
+      if (start !== '') return `Showing the last result: ${keys} from ${start}.`;
+      if (end !== '') return `Showing the last result: ${keys} up to ${end}.`;
+      return `Showing the last result: ${keys}.`;
+    },
+  },
   /** The accessible name of the table of keys. */
   tableLabel: 'Keys',
-  columns: { key: 'Key', group: 'Group', size: 'Size' },
+  columns: {
+    key: 'Key',
+    group: 'Group',
+    size: 'Size',
+    /** The column of write times, which names the zone they are read in. */
+    updated: (zone: string): string => `Updated (${zone})`,
+  },
   /** A key that is in no group, because its name has no prefix. */
   noGroup: 'None',
-  /** How many keys are loaded, as a sentence. */
-  count: (count: number, more: boolean): string =>
-    `${String(count)} ${count === 1 ? 'key' : 'keys'}${more ? ' so far' : ''}`,
-  loadMore: 'Load more',
+  /** The Updated column of a key whose backend records no write time. */
+  noUpdated: '—',
+  /**
+   * The table's footer: how many keys are loaded, of how many there are when storage can count them
+   * (it cannot for a range), and what loads the rest.
+   */
+  footer: (loaded: number, total: number | undefined, more: boolean): string => {
+    const count = (value: number): string => value.toLocaleString('en-US');
+    const keys =
+      total === undefined
+        ? `Showing ${count(loaded)} ${loaded === 1 ? 'key' : 'keys'}.`
+        : `Showing ${count(loaded)} of ${count(Math.max(total, loaded))} ${total === 1 ? 'key' : 'keys'}.`;
+    return more ? `${keys} Scroll to load more.` : keys;
+  },
   loadingLabel: 'Loading keys',
+  /** What the table says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+  stopped: {
+    title: 'Stopped loading keys',
+    description:
+      'You stopped the read, so the keys are not shown. Nothing stored was changed by it.',
+    tryAgain: 'Try again',
+  },
+  /**
+   * The footer after "Scroll to load more" failed: the keys already loaded stay, and Cinder's load
+   * more says what failed and retries.
+   */
+  loadMore: {
+    itemLabel: 'keys',
+    retry: 'Load more',
+  },
   empty: {
     title: 'No keys stored yet',
     description: 'Keys appear here once the application stores something.',
   },
   noMatches: {
     title: 'No keys match',
-    description: 'Nothing here contains this text. Choose another group or clear the search.',
+    description: 'No key starts with this text. Choose another group or clear the search.',
     clear: 'Clear filters',
   },
-  /** A search that has read keys and found none yet, with more to read. */
-  keepSearching: {
-    title: 'No match among the keys read so far',
-    description: (scanned: number): string =>
-      `${String(scanned)} ${scanned === 1 ? 'key was' : 'keys were'} read and none contains this text. Load more to keep looking.`,
+  /** A range in which no key falls. */
+  noKeysInRange: {
+    title: 'No keys in this range',
+    description: 'Nothing is stored between these two keys. Change either end.',
   },
   failed: {
     title: 'The keys could not be read',
@@ -5132,29 +5852,89 @@ export const STORAGE_COPY = {
   managedBadge: 'Managed',
   detail: {
     label: 'Selected key',
-    emptyTitle: 'Choose a key',
-    emptyDescription: 'Pick a key from the table to see its value.',
-    group: 'Group',
-    size: 'Size',
-    key: 'Key',
+    emptyTitle: 'Select a key to see its value',
+    emptyDescription:
+      'Pick a row to read what is stored. Keys Interborough doesn’t manage can also be edited and deleted.',
+    /** The accessible name of the region that holds the pane. */
+    paneLabel: 'Key',
+    /** The name of the menu at the end of the header row, which holds Delete. */
+    moreActions: 'More actions',
+    /** The pane's line while the key is being read: only what the row already says. */
+    groupOnly: (group: string): string => group,
+    /** The line over the key while its value is being edited after a failed save. */
+    editingSummary: (group: string, size: string, key: string): string =>
+      `${group} · ${size} · ${key}`,
+    /** What the pane says while the value is read: nothing for the first 300 ms, then a skeleton. */
+    valueLoadingLabel: 'Loading the value',
+    /** What the pane says after "Cancel" in the "Still loading" line. */
+    valueStopped: 'You stopped loading this value.',
+    /** What the pane says when the value could not be read. */
+    valueFailed: 'Couldn’t read the value.',
+    valueRetry: 'Try again',
+    /** What the pane says when the key was removed after the row was listed. */
+    valueGone: 'This key is no longer stored. Another writer removed it.',
+    /** The line over the key: its group, size and when it was written. */
+    summary: (group: string, size: string, updated: string | null): string =>
+      updated === null ? `${group} · ${size}` : `${group} · ${size} · updated ${updated}`,
+    /** How long a very long key is, said after it. */
+    characters: (count: number): string => `(${count.toLocaleString('en-US')} characters)`,
     copyKey: 'Copy key',
     copyValue: 'Copy value',
     edit: 'Edit',
     delete: 'Delete',
-    save: 'Save',
+    save: 'Save value',
     cancel: 'Cancel',
     jsonSwitch: 'JSON',
     valueLabel: 'Value',
-    editLabel: 'Edit the value',
-    /** Why a key has no Edit or Delete. */
+    editLabel: 'Value',
+    /** The lock line of a managed key, around its prefix, which the pane sets in monospace. */
+    locked: {
+      before: 'Locked: Interborough manages keys that start with ',
+      after: ' and needs them to recover runs.',
+    },
+    /** Why a key has no Edit or Delete, in one string: what a refused write says. */
     managedNote: (prefix: string): string =>
-      `The application manages keys that start with ${prefix}, so this one cannot be edited or deleted here.`,
+      `Locked: Interborough manages keys that start with ${prefix} and needs them to recover runs.`,
     /** Why no key has Edit or Delete while the managed prefixes are not known. */
     unknownManaged:
-      'The application could not say which keys it manages, so no key can be edited or deleted here.',
+      'Locked: Interborough could not say which keys it manages, so no key can be edited or deleted here.',
     binaryNote: 'This value is not text, so it cannot be edited here.',
     notJson: 'The value was JSON and this is not, so it cannot be saved.',
-    saveFailed: 'The value was not saved.',
+    /**
+     * The danger alert over the editor after a failed save: a bold lead, the cause, and what became
+     * of the edit.
+     */
+    saveFailed: {
+      lead: 'Couldn’t save the value.',
+      noAnswer: 'Interborough didn’t answer.',
+      kept: 'Your edit is still here.',
+    },
+    /**
+     * The heading over a value shown as text, which says what it is and how big: "Value · text, 2.1 MB".
+     */
+    textValueLabel: (size: string): string => `Value · text, ${size}`,
+    /**
+     * The note under a value shown as text. Each part is said only when it is true: that only the
+     * start is shown (and Copy value still copies it all), and why there is no Fields or JSON switch.
+     */
+    textNote: {
+      shownStart: (shown: string, size: string): string =>
+        `Showing the first ${shown}. Copy value copies all ${size}.`,
+      notJson: 'This value isn’t JSON, so there is no Fields or JSON switch.',
+      tooLarge: 'This value is too large for the Fields and JSON switch.',
+    },
+    /**
+     * The warning over the editor when the key was written while it was open: a bold lead, then who
+     * wrote it and when. The time is left out when the storage records none.
+     */
+    rewritten: {
+      lead: 'This key changed while you were editing.',
+      detail: (time: string | null): string =>
+        time === null ? 'The app wrote a new value.' : `The app wrote a new value at ${time}.`,
+      discard: 'Discard my edit',
+      saveOver: 'Save over it…',
+      showNew: 'Show new value',
+    },
     capabilityUnknown:
       'The storage has not said whether it can check that a value is unchanged, so nothing was written. Try again in a moment.',
     changedUnderYou:
@@ -5169,11 +5949,19 @@ export const STORAGE_COPY = {
       `This replaces the value of ${key}.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
     confirm: 'Save',
   },
+  /** The confirmation of Save over it, which replaces the value the application wrote while the editor was open. */
+  confirmSaveOver: {
+    title: 'Overwrite the app’s newer value?',
+    description: (key: string, time: string | null, unchecked = false): string =>
+      `${key} was written${time === null ? '' : ` at ${time}`} while you were editing. Saving replaces that value with yours. This can’t be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Save over it',
+  },
   confirmDelete: {
     title: 'Delete this key?',
-    description: (key: string, unchecked = false): string =>
-      `This removes ${key} from storage. It cannot be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
-    confirm: 'Delete',
+    /** The sentence after the key, which the dialog sets in monospace: its size and that it cannot be undone. */
+    afterKey: (size: string, unchecked = false): string =>
+      ` and its ${size} value are removed from storage. This can’t be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Delete key',
   },
   backend: {
     sqlite: 'SQLite',

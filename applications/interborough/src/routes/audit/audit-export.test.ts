@@ -17,12 +17,12 @@ afterEach(() => {
   stub = undefined;
 });
 
-const record = (sequence: number, principal: string | null = 'alice') => ({
+const record = (sequence: number) => ({
   sequence,
   timestamp: `2026-10-19T08:0${String(sequence)}:00.000Z`,
   type: 'run.completed',
   resource: `run-${String(sequence)}`,
-  principal,
+  principal: 'alice',
   detail: null,
 });
 
@@ -37,32 +37,24 @@ describe('readAuditExport', () => {
             : { records: [record(4)], nextCursor: null },
     });
 
-    const records = await readAuditExport({ type: 'run.completed', since: 5 }, '');
+    const records = await readAuditExport({ types: ['run.completed', 'run.started'], since: 5 });
 
     expect(records.map((entry) => entry.sequence)).toEqual([1, 2, 3, 4]);
     const calls = stub.callsTo('bureau.audit.query').map((call) => call.params);
     expect(calls.map((params) => params['cursor'])).toEqual([undefined, 'c1', 'c2']);
     for (const params of calls) {
-      expect(params).toMatchObject({ limit: EXPORT_PAGE_SIZE, type: 'run.completed', since: 5 });
+      expect(params).toMatchObject({
+        limit: EXPORT_PAGE_SIZE,
+        order: 'newest',
+        types: ['run.completed', 'run.started'],
+        since: 5,
+      });
     }
-  });
-
-  test('keeps only what the person asked for, across every page', async () => {
-    stub = installBureauStub({
-      'bureau.audit.query': (params) =>
-        params['cursor'] === undefined
-          ? { records: [record(1, 'alice'), record(2, 'bob')], nextCursor: 'c1' }
-          : { records: [record(3, 'alice'), record(4, null)], nextCursor: null },
-    });
-
-    const records = await readAuditExport({}, 'alice');
-
-    expect(records.map((entry) => entry.sequence)).toEqual([1, 3]);
   });
 
   test('is empty for an empty trail', async () => {
     stub = installBureauStub({ 'bureau.audit.query': () => ({ records: [], nextCursor: null }) });
-    expect(await readAuditExport({}, '')).toEqual([]);
+    expect(await readAuditExport({})).toEqual([]);
   });
 });
 

@@ -19,7 +19,7 @@ Wraps an input, label, and helper or error text into a cohesive accessible field
 
 ## Errors, notes and trailing content
 
-An `error` leads with a warning glyph (a triangle) and sits under the control in a polite live region; `errorGlyph="error"` draws a circle instead, for a conflict such as a URL that is already connected. `errorAction` renders after the message in the same region, for a link ("Open GitHub") or a quiet Retry. `trailing` shares the control's row, so a Try again button sits beside a field whose test failed. `note` is neutral text under the helper text, wired into `aria-describedby`, for why a field is cleared. `managed` leads with a lock glyph, and `managed.message` replaces the "Managed by" wording with a whole sentence. A label that wraps keeps its lines apart.
+An `error` leads with a warning glyph (a triangle) and sits under the control in a polite live region; `errorGlyph="error"` draws a circle instead, for a conflict such as a URL that is already connected. `errorAction` renders after the message in the same region, for a link ("Open GitHub") or a quiet Retry. `warningAction` does the same for a `warning`, after its words in the same paragraph ("Won’t run until a provider is connected · Connect a provider"). `trailing` shares the control's row, so a Try again button sits beside a field whose test failed. `note` is neutral text under the helper text, wired into `aria-describedby`, for why a field is cleared. `managed` leads with a lock glyph, and `managed.message` replaces the "Managed by" wording with a whole sentence. A label that wraps keeps its lines apart.
 
 ## Props
 
@@ -40,8 +40,10 @@ An `error` leads with a warning glyph (a triangle) and sits under the control in
 | `required` | `boolean` | no | — | Renders a visual required marker and exposes `required: true` on the context. |
 | `warning` | `string` | no | — | Advisory for a legal but potentially risky value; does not mark the control invalid. |
 | `children` | `(opaque)` | yes | — | Control(s) rendered inside the field. Not expressible in JSON Schema; see the component types for the signature. |
+| `descriptionAction` | `(opaque)` | no | — | Rendered after the helper text inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Where do I get one?". Shown only with `description`. Not expressible in JSON Schema; see the component types for the signature. |
 | `errorAction` | `(opaque)` | no | — | Rendered after the error message inside the same live region, such as a link to the record that conflicts ("Open GitHub") or a quiet Retry. Not expressible in JSON Schema; see the component types for the signature. |
 | `trailing` | `(opaque)` | no | — | Rendered beside the control on the same row, such as a Try again button after a failed test. The control takes the room the trailing content leaves. Not expressible in JSON Schema; see the component types for the signature. |
+| `warningAction` | `(opaque)` | no | — | Rendered after the warning inside the same paragraph, such as a link to fix what it says ("Connect a provider"). Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

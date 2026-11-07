@@ -44,6 +44,8 @@ import {
   type BackendDescriptor,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 
 import { parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -69,6 +71,9 @@ import {
   SecretPublicationError,
   type WorkspaceSecrets,
 } from './workspace-secrets.ts';
+
+/** How long a key test waits for the provider before it reports that it could not finish. */
+const KEY_TEST_TIMEOUT_MILLISECONDS = 20_000;
 
 /** The longest API key the host stores. Real keys are far shorter; the limit bounds a request. */
 const MAXIMUM_KEY_LENGTH = 4096;
@@ -132,6 +137,25 @@ export type ProviderConnection = {
   readonly models?: unknown;
 };
 
+/** What a provider's answer to a candidate key means for the person who pasted it. */
+export type ProviderKeyTest =
+  | {
+      /** The provider accepted the key. */
+      readonly ok: true;
+      /** How many models the catalog would offer for the provider once the key is saved. */
+      readonly models: number;
+    }
+  | {
+      /** The provider refused the key, or the test could not finish. */
+      readonly ok: false;
+      /**
+       * The HTTP status the provider answered with, when it answered: 401 for a key it does not
+       * accept. Absent when the test could not reach the provider or timed out. Never a message,
+       * because a provider's message may repeat part of the key.
+       */
+      readonly status?: number;
+    };
+
 /** What the host reports after a change: the providers it now offers and the catalog's revision. */
 export type ProviderChange = {
   /** The providers the host holds a key for, each with its models. */
@@ -180,6 +204,15 @@ export type ProviderModelRow = {
     readonly inputPerMillionTokens: number;
     readonly outputPerMillionTokens: number;
     readonly currency: string;
+    readonly cacheWritePerMillionTokens?: number;
+    readonly cacheReadPerMillionTokens?: number;
+    readonly longContext?: {
+      readonly inputTokensAbove: number;
+      readonly inputPerMillionTokens: number;
+      readonly outputPerMillionTokens: number;
+      readonly cacheWritePerMillionTokens?: number;
+      readonly cacheReadPerMillionTokens?: number;
+    };
   };
   /** Whether a catalog edit turned the model off, which keeps it from agents and plans. */
   readonly off: boolean;
@@ -215,6 +248,17 @@ export type ProviderManager = {
   snapshot(): Promise<ProviderSnapshot>;
   /** Store a provider's key, list it in the configuration, and apply both. */
   connect(connection: ProviderConnection, mutation?: HostMutationContext): Promise<ProviderChange>;
+  /**
+   * Ask the provider whether it accepts `apiKey`, without storing it or changing what the host
+   * serves: one request of one token, made with the candidate key. A refused key is an answer
+   * ({@link ProviderKeyTest} with `ok: false`), not an error; only a request that cannot be used
+   * is refused with a {@link ProviderInputError}. The key lives in this call and nowhere else.
+   * `signal` stops the request, which the caller does when the person cancels.
+   */
+  testKey(
+    request: { readonly provider: unknown; readonly apiKey: unknown },
+    signal?: AbortSignal,
+  ): Promise<ProviderKeyTest>;
   /**
    * Replace the catalog edits in the configuration and apply them. `base` is the list of edits the
    * caller started from, as {@link ProviderManager.snapshot} reported it. When it is given, the
@@ -338,6 +382,33 @@ function modelRowOf(row: BackendDescriptor): ProviderModelRow {
             inputPerMillionTokens: row.pricing.inputPerMillionTokens,
             outputPerMillionTokens: row.pricing.outputPerMillionTokens,
             currency: row.pricing.currency,
+            ...(row.pricing.cacheWritePerMillionTokens === undefined
+              ? {}
+              : { cacheWritePerMillionTokens: row.pricing.cacheWritePerMillionTokens }),
+            ...(row.pricing.cacheReadPerMillionTokens === undefined
+              ? {}
+              : { cacheReadPerMillionTokens: row.pricing.cacheReadPerMillionTokens }),
+            ...(row.pricing.longContext === undefined
+              ? {}
+              : {
+                  longContext: {
+                    inputTokensAbove: row.pricing.longContext.inputTokensAbove,
+                    inputPerMillionTokens: row.pricing.longContext.inputPerMillionTokens,
+                    outputPerMillionTokens: row.pricing.longContext.outputPerMillionTokens,
+                    ...(row.pricing.longContext.cacheWritePerMillionTokens === undefined
+                      ? {}
+                      : {
+                          cacheWritePerMillionTokens:
+                            row.pricing.longContext.cacheWritePerMillionTokens,
+                        }),
+                    ...(row.pricing.longContext.cacheReadPerMillionTokens === undefined
+                      ? {}
+                      : {
+                          cacheReadPerMillionTokens:
+                            row.pricing.longContext.cacheReadPerMillionTokens,
+                        }),
+                  },
+                }),
           },
         }),
     off: row.availability === 'unavailable',
@@ -662,6 +733,55 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           .catch(() => undefined);
         return apply();
       });
+    },
+    async testKey(request, signal) {
+      if (closed) throw new Error('The host is shutting down.');
+      const contributed = checkedProvider(request.provider, loaded.providers);
+      const key = checkedKey(request.apiKey);
+      const { document } = await readDocument();
+      const configuration = parseProviderConfiguration(JSON.stringify(document), location);
+      // The rows the catalog would hold with the key saved, so the count is what Connect would add.
+      const offered = selectCatalogRows({
+        configuration,
+        allowlists: readAllowlists(
+          document,
+          location,
+          loaded.providers.map((provider) => provider.plugin),
+        ),
+        path: location,
+        available: new Set([...loaded.apiKeys.keys(), contributed.name]),
+        providers: loaded.providers,
+      }).filter((row) => row.provider === contributed.name && row.availability !== 'unavailable');
+      const probe =
+        offered[0] ?? contributed.rows.find((row) => row.lifecycle !== 'retired') ?? undefined;
+      if (probe === undefined) return { ok: false };
+      const conversation = new Conversation();
+      conversation.appendUserMessage('Reply with one word: ok.');
+      const timeout = AbortSignal.timeout(KEY_TEST_TIMEOUT_MILLISECONDS);
+      try {
+        const generate = options.resolveProviderGenerate(
+          loaded.providers.map((provider) => provider.definition),
+          { provider: contributed.name, model: probe.model, apiKey: key },
+          undefined,
+          undefined,
+        );
+        await generate({
+          conversation,
+          step: 0,
+          toolbox: createToolbox([]),
+          maximumTokens: 1,
+          signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
+        });
+        return { ok: true, models: offered.length };
+      } catch (error) {
+        // A person who cancelled is not told the key failed.
+        if (signal?.aborted === true) throw error;
+        const status: unknown =
+          typeof error === 'object' && error !== null
+            ? Reflect.get(error, 'statusCode')
+            : undefined;
+        return typeof status === 'number' ? { ok: false, status } : { ok: false };
+      }
     },
     async editCatalog(edits, base, mutation) {
       assertWritable();

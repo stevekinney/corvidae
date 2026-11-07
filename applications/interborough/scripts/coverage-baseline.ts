@@ -174,12 +174,6 @@ const DARWIN_BASELINE: CoverageBaseline = {
     // COR-1493, measured on darwin: the audit search.
     'src/routes/audit': { linesFound: 642, linesHit: 642, functionsFound: 152, functionsHit: 152 },
     'src/routes/chat': { linesFound: 1887, linesHit: 1876, functionsFound: 398, functionsHit: 393 },
-    'src/routes/dashboard': {
-      linesFound: 1472,
-      linesHit: 1236,
-      functionsFound: 254,
-      functionsHit: 230,
-    },
     // COR-1494, measured on darwin: the goals list, its create drawer, and its cancel.
     'src/routes/goals': {
       linesFound: 1222,
@@ -265,12 +259,6 @@ const LINUX_BASELINE: CoverageBaseline = {
     },
     'src/routes/agents': { linesFound: 641, linesHit: 641, functionsFound: 139, functionsHit: 138 },
     'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
-    'src/routes/dashboard': {
-      linesFound: 1472,
-      linesHit: 1236,
-      functionsFound: 254,
-      functionsHit: 230,
-    },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
       linesFound: 2204,

@@ -116,10 +116,21 @@ describe('the breadcrumb trail', () => {
       const path = route.pattern.replaceAll(/:([A-Za-z]+)/g, 'sample');
       const trail = breadcrumbTrail(path, NONE);
       const last = trail.at(-1);
-      const crumb = route.crumb;
+      const crumb = route.leafCrumb ?? route.crumb;
       expect(last?.label, route.pattern).toBe(typeof crumb === 'string' ? crumb : 'sample');
       expect(last?.href, route.pattern).toBeUndefined();
     }
+  });
+
+  test('General is the last crumb of the one-segment settings path', () => {
+    expect(breadcrumbTrail('/settings', NONE)).toEqual([
+      { label: 'Settings', href: '/settings' },
+      { label: 'General' },
+    ]);
+    expect(breadcrumbTrail('/settings/models', NONE).map((crumb) => crumb.label)).toEqual([
+      'Settings',
+      'Models',
+    ]);
   });
 
   test('a mounted page supplies its label, and the parameter returns when it unmounts', async () => {

@@ -11,14 +11,23 @@
     client: HttpClient;
     scheduleId: string;
     lastFireAt: number | undefined;
+    phone?: boolean;
+    summary?: boolean;
     onQueryClient?: ((queryClient: QueryClient) => void) | undefined;
   }
 
-  let { client, scheduleId, lastFireAt, onQueryClient }: Props = $props();
+  let {
+    client,
+    scheduleId,
+    lastFireAt,
+    phone = false,
+    summary = false,
+    onQueryClient,
+  }: Props = $props();
 </script>
 
 <SchedulesTestHarness {client} {onQueryClient}>
   {#snippet children()}
-    <ScheduleLastFire {scheduleId} {lastFireAt} />
+    <ScheduleLastFire {scheduleId} {lastFireAt} {phone} {summary} />
   {/snippet}
 </SchedulesTestHarness>

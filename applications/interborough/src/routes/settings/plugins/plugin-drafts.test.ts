@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { PluginStanding, PluginsSnapshot } from '../../../lib/host-plugins.ts';
-import { PluginDrafts, parseConfiguration } from './plugin-drafts.svelte.ts';
+import { PluginDrafts } from './plugin-drafts.svelte.ts';
 import { installFakePluginHost, snapshotOf } from './plugins-host.test-support.ts';
 
 function snapshot(): PluginsSnapshot {
@@ -19,6 +19,13 @@ function snapshot(): PluginsSnapshot {
 const plugin = (state: PluginsSnapshot, name: string): PluginStanding =>
   state.plugins.find((entry) => entry.descriptor.name === name)!;
 
+const waiting = (state: PluginsSnapshot, name: string): PluginsSnapshot => ({
+  ...state,
+  plugins: state.plugins.map((entry) =>
+    entry.descriptor.name === name ? { ...entry, restartRequired: true } : entry,
+  ),
+});
+
 describe('the switch', () => {
   test('is a change only while it differs from what is stored', () => {
     const state = snapshot();
@@ -27,57 +34,26 @@ describe('the switch', () => {
 
     drafts.setEnabled(demo, true);
     expect(drafts.enabledOf(demo)).toBe(true);
-    expect(drafts.changeCount(state)).toBe(1);
+    expect(drafts.changed(state).map((entry) => entry.descriptor.name)).toEqual(['demo']);
 
     drafts.setEnabled(demo, false);
     expect(drafts.enabledOf(demo)).toBe(false);
     expect(drafts.hasDrafts).toBe(false);
-    expect(drafts.changeCount(state)).toBe(0);
-  });
-});
-
-describe('the configuration', () => {
-  test('means the same object whatever its key order or spacing', () => {
-    const state = snapshot();
-    const drafts = new PluginDrafts();
-    const linear = plugin(state, 'linear');
-
-    drafts.setConfiguration(linear, '{"labels":["a","b"],"teamKey":"COR"}');
-    expect(drafts.hasDrafts).toBe(false);
-
-    drafts.setConfiguration(linear, '{"labels":["b","a"],"teamKey":"COR"}');
-    expect(drafts.changeCount(state)).toBe(1);
-  });
-
-  test('is held but never written when it is not an object, and says why', () => {
-    const state = snapshot();
-    const drafts = new PluginDrafts();
-    const linear = plugin(state, 'linear');
-
-    drafts.setConfiguration(linear, '{');
-    expect(drafts.invalid(linear)).toBe('syntax');
-    expect(drafts.hasInvalid(state)).toBe(true);
-    drafts.setConfiguration(linear, '[1]');
-    expect(drafts.invalid(linear)).toBe('shape');
-    expect(drafts.writes(state)).toEqual([]);
-    expect(parseConfiguration('null')).toEqual({ error: 'shape' });
-    expect(parseConfiguration('{"a":1}')).toEqual({ value: { a: 1 } });
+    expect(drafts.changed(state)).toEqual([]);
   });
 });
 
 describe('writes', () => {
-  test('lists one write per changed plugin with only the fields that changed, in the host’s order', () => {
+  test('lists one write per switched plugin, in the host’s order', () => {
     const state = snapshot();
     const drafts = new PluginDrafts();
     drafts.setEnabled(plugin(state, 'demo'), true);
-    drafts.setConfiguration(plugin(state, 'linear'), '{"teamKey":"ENG"}');
     drafts.setEnabled(plugin(state, 'linear'), false);
 
-    expect(drafts.writes(state)).toEqual([
-      { name: 'linear', enabled: false, configuration: { teamKey: 'ENG' } },
+    expect(drafts.pendingWrites(state)).toEqual([
+      { name: 'linear', enabled: false },
       { name: 'demo', enabled: true },
     ]);
-    expect(drafts.changeCount(state)).toBe(3);
   });
 
   test('discard drops every draft', () => {
@@ -86,7 +62,7 @@ describe('writes', () => {
     drafts.setEnabled(plugin(state, 'demo'), true);
     drafts.discard();
     expect(drafts.hasDrafts).toBe(false);
-    expect(drafts.writes(state)).toEqual([]);
+    expect(drafts.pendingWrites(state)).toEqual([]);
   });
 });
 
@@ -95,7 +71,7 @@ describe('reconcile', () => {
     const state = snapshot();
     const drafts = new PluginDrafts();
     drafts.setEnabled(plugin(state, 'demo'), true);
-    drafts.setConfiguration(plugin(state, 'linear'), '{"teamKey":"ENG"}');
+    drafts.setEnabled(plugin(state, 'linear'), false);
 
     const stored: PluginsSnapshot = {
       ...state,
@@ -105,23 +81,24 @@ describe('reconcile', () => {
     };
     drafts.reconcile(stored);
 
-    expect(drafts.writes(stored)).toEqual([{ name: 'linear', configuration: { teamKey: 'ENG' } }]);
+    expect(drafts.pendingWrites(stored)).toEqual([{ name: 'linear', enabled: false }]);
   });
 });
 
 describe('a change the host already holds', () => {
-  test('counts once for a plugin the page has no draft for', () => {
-    const state = snapshot();
-    const demo = plugin(state, 'demo');
-    const pending: PluginsSnapshot = {
-      ...state,
-      plugins: state.plugins.map((entry) =>
-        entry === demo ? { ...entry, restartRequired: true } : entry,
-      ),
-    };
+  test('lists a plugin once when it also has a draft', () => {
+    const pending = waiting(snapshot(), 'demo');
     const drafts = new PluginDrafts();
-    expect(drafts.changeCount(pending)).toBe(1);
+    expect(drafts.changed(pending).map((entry) => entry.descriptor.name)).toEqual(['demo']);
     drafts.setEnabled(plugin(pending, 'demo'), true);
-    expect(drafts.changeCount(pending)).toBe(1);
+    expect(drafts.changed(pending).map((entry) => entry.descriptor.name)).toEqual(['demo']);
+  });
+
+  test('lists a plugin a saved configuration waits for, with no draft at all', () => {
+    const drafts = new PluginDrafts();
+    expect(
+      drafts.changed(waiting(snapshot(), 'linear')).map((entry) => entry.descriptor.name),
+    ).toEqual(['linear']);
+    expect(drafts.hasDrafts).toBe(false);
   });
 });

@@ -198,6 +198,52 @@
     }
   }
 
+  /* Inline: a 32px disc beside one line, the title in bold and the sentence after it, at the inline
+   * start. It sits among rows, so it takes no region padding and the sentence has no measure. */
+  .cinder-empty-state[data-cinder-layout='inline'] {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--cinder-space-3);
+    min-block-size: 0;
+    padding-block: var(--cinder-space-3);
+    padding-inline: 0;
+    text-align: start;
+  }
+
+  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-icon {
+    inline-size: var(--cinder-space-8);
+    block-size: var(--cinder-space-8);
+  }
+
+  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-icon > svg {
+    inline-size: var(--cinder-space-4);
+    block-size: var(--cinder-space-4);
+  }
+
+  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-text {
+    min-inline-size: 0;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-title,
+  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-description {
+    display: inline;
+    max-inline-size: none;
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-title {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-action {
+    margin-block-start: 0;
+  }
+
   @media (forced-colors: active) {
     .cinder-empty-state-icon {
       border: 1px solid CanvasText;

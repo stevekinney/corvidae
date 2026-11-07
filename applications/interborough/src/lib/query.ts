@@ -151,11 +151,15 @@ export const queryKeys = {
     /** The event kinds a hook can listen to (`bureau.events.catalog`). */
     events: () => ['hooks', 'events'] as const,
   },
-  /** The audit trail, narrowed by a search (`bureau.audit.query`). */
+  /** The audit log, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
-    /** The first page of the whole trail, read for the types the Type select offers. */
-    types: () => ['audit', 'types'] as const,
+    /** How many events a filter matches, read once beside the first page. */
+    total: (filter: AuditFilter) => ['audit', 'total', filter] as const,
+    /** Whether the log holds any event at all, asked once a filtered read finds none. */
+    anyEvent: () => ['audit', 'any-event'] as const,
+    /** The schedules' names, which the events of a schedule are worded with. */
+    schedules: () => ['audit', 'schedules'] as const,
   },
   /** The Bureau's runtime settings: their values (`bureau.settings.get`) and their schema (`bureau.settings.schema`). */
   settings: {
@@ -179,6 +183,17 @@ export const queryKeys = {
     missedFires: () => ['schedules', 'list', 'missed-fires'] as const,
     /** The Bureau's own view of every schedule (`bureau.schedules.list`), for Home's missed-runs row and for the name of a scheduled run in Running now. Under `list`, so a fleet event reads it again. */
     bureau: () => ['schedules', 'list', 'bureau'] as const,
+    /** What the schedule rows read besides the schedules: the engine's workflow types, the agents, and what needs attention. Under `list`, so a fleet event that changes the schedules reads it again. */
+    rowContext: () => ['schedules', 'list', 'row-context'] as const,
+    /** The agents each workflow ran in its last saved version, for the rows of workflows that cannot load. Under `list` for the same reason. */
+    workflowAgents: (workflowTypes: readonly string[]) =>
+      ['schedules', 'list', 'workflow-agents', workflowTypes] as const,
+    /** Which of the agents the rows name need a model, read from each agent's definition. Under `list` for the same reason. */
+    modelAgents: (agentIds: readonly string[]) =>
+      ['schedules', 'list', 'model-agents', agentIds] as const,
+    /** Whether the agent the new schedule page has chosen needs a model while no provider is connected. */
+    providerBlocked: (agentName: string) =>
+      ['schedules', 'new', 'provider-blocked', agentName] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,
@@ -190,6 +205,8 @@ export const queryKeys = {
   },
   queues: {
     list: () => ['queues', 'list'] as const,
+    /** The waiting and failed-for-good tasks of one queue, for one tab of the Workers page. */
+    tasks: (queue: string, tab: string) => ['queues', 'tasks', queue, tab] as const,
   },
   diagnostics: () => ['diagnostics'] as const,
   /** `weft.alerts.list`: the alert rules firing now, read by the Alerts tab and the Health line. */
@@ -245,6 +262,8 @@ export const queryKeys = {
      * the count row must read as it did when the Needs attention card could not be read.
      */
     homeCounts: () => ['bureau-attention', 'home-counts'] as const,
+    /** The whole list and its checks, for the Health page. */
+    list: () => ['bureau-attention', 'list'] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {
@@ -274,10 +293,17 @@ export const queryKeys = {
   principal: () => ['principal'] as const,
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
-  /** One agent's public A2A Agent Card (`/bureau/a2a/<agent>/.well-known/agent-card.json`). */
-  a2aCard: (agent: string) => ['a2a', 'card', agent] as const,
+  /** Who this session is and the scopes of Interborough's API it holds (`/host/session`). */
+  hostSession: () => ['host', 'session'] as const,
+  /** The remote A2A calls the audit trail kept, newest first (`bureau.audit.query`, type `a2a.call`). */
+  a2aCalls: () => ['a2a', 'calls'] as const,
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
   hostStorage: () => ['host', 'storage'] as const,
+  /** When the host cleans up, and how the last clean-up went (`/host/clean-up`). */
+  hostCleanUp: () => ['host', 'clean-up'] as const,
+  /** How many keys storage holds under a prefix, and its size (`/host/storage/summary`). */
+  hostStorageSummaries: () => ['host', 'storage', 'summary'] as const,
+  hostStorageSummary: (prefix: string) => ['host', 'storage', 'summary', prefix] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */
   hostProviders: () => ['host', 'providers'] as const,
   /** The agents that name a model of one provider, read before the provider is disconnected. */
@@ -290,25 +316,12 @@ export const queryKeys = {
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
   /** `weft.system.lease` (COR-124), read only by the Health page's Health tab. */
   systemLease: () => ['system', 'lease'] as const,
-  /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
+  /** The `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {
     revisions: (name: string) => ['catalog', 'revisions', name] as const,
     /** `weft.workflows.revisions.get` (COR-1464) — extends `revisions(name)`, so invalidating the list invalidates every open detail too. */
     revision: (name: string, revision: string) => ['catalog', 'revisions', name, revision] as const,
     active: (name: string) => ['catalog', 'active', name] as const,
-    /** `weft.workflows.refresh.diagnostics` (COR-166) — one workflow's refresh source. */
-    refresh: (name: string) => ['catalog', 'refresh', name] as const,
-    sources: (pagination: { readonly limit: number; readonly offset: number }) =>
-      ['catalog', 'sources', pagination] as const,
-    /**
-     * `weft.catalog.diagnostics` (WFT-116) — per-`(name, revision)`, since
-     * that operation answers for one exact key. The `name` segment sits
-     * before `revision` so a mutation touching one workflow can invalidate
-     * every revision's diagnostics at once with the
-     * `['catalog', 'diagnostics', name]` prefix.
-     */
-    diagnostics: (name: string, revision: string) =>
-      ['catalog', 'diagnostics', name, revision] as const,
   },
 } as const;
 
@@ -371,7 +384,6 @@ const LIST_QUERY_KEY_PREFIXES: readonly QueryKey[] = [
   ['workflows', 'list'],
   ['schedules', 'list'],
   ['reviews', 'list'],
-  ['catalog', 'sources'],
 ];
 
 const MAX_QUERY_RETRIES = 3;

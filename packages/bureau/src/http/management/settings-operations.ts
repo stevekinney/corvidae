@@ -65,6 +65,8 @@ const snapshotSchema = z.object({
   values: z.record(z.string(), z.unknown()),
   /** Each key's value as it applies: its `values` entry, or the value it applies by when unset. */
   effective: z.record(z.string(), z.unknown()),
+  /** Each key's value as this process runs it: a `restart` key's booted value, which a saved change waits to replace. */
+  running: z.record(z.string(), z.unknown()),
   revision: z.number().int(),
   persisted: z.boolean(),
   keys: z.record(z.string(), keyStateSchema),
@@ -82,7 +84,7 @@ export const settingsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read the runtime settings',
   description:
-    'Returns every setting’s value by dotted key (the stored value, or the code option where none is stored or the key is locked), `effective`: each key’s value as it applies (its value, or where it has none, the value it applies by when nothing sets it; absent for a key whose unset state has no one value), the record’s `revision` to pass back as `expectedRevision`, whether the record is `persisted` beyond the process, and per key how it applies (`live` or `restart`), whether the deployment `locked` it and, if so, the `lockReason` (`deployment`, or `shared-storage` for a key that processes sharing one store must agree on), and whether a stored `restart` value is `pendingRestart`. Requires `bureau.settings:read`.',
+    'Returns every setting’s value by dotted key (the stored value, or the code option where none is stored or the key is locked), `effective`: each key’s value as it applies (its value, or where it has none, the value it applies by when nothing sets it; absent for a key whose unset state has no one value), `running`: each key’s value as this process runs it (a `restart` key’s booted value, which a saved change waits to replace; absent where nothing set it at boot), the record’s `revision` to pass back as `expectedRevision`, whether the record is `persisted` beyond the process, and per key how it applies (`live` or `restart`), whether the deployment `locked` it and, if so, the `lockReason` (`deployment`, or `shared-storage` for a key that processes sharing one store must agree on), and whether a stored `restart` value is `pendingRestart`. Requires `bureau.settings:read`.',
   destructive: false,
   tags: ['Settings'],
   inputSchema: getInput,
@@ -98,6 +100,7 @@ export const settingsGetOperation = defineOperation<
       ...snapshot,
       values: { ...snapshot.values },
       effective: { ...snapshot.effective },
+      running: { ...snapshot.running },
       keys: { ...snapshot.keys },
     };
   },
@@ -129,7 +132,11 @@ export const settingsSchemaOperation = defineOperation<
 });
 
 const updateInput = z.object({
-  patch: z.record(z.string(), z.unknown()).describe('The keys to change, by dotted key.'),
+  patch: z
+    .record(z.string(), z.unknown())
+    .describe(
+      'The keys to change, by dotted key. A key set to `null` loses its stored value, so its code option applies again.',
+    ),
   expectedRevision: z
     .number()
     .int()
@@ -167,7 +174,7 @@ export const settingsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Change runtime settings',
   description:
-    'Changes the keys in `patch`, all or none, and returns the new `revision` and the `restart` keys it set. A `live` key takes effect at its next point of use; a `restart` key at the next start. `expectedRevision` is compared with the stored record inside the write: a record that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. A key the deployment locked is `Unprocessable` with reason `locked`; an unknown key or an invalid value is `InvalidParams`. The change is recorded as a `settings.changed` audit entry naming the keys and the revision, never a value. Requires `bureau.settings:write`.',
+    'Changes the keys in `patch`, all or none, and returns the new `revision` and the `restart` keys it set. A `live` key takes effect at its next point of use; a `restart` key at the next start. A key set to `null` loses its stored value, and its code option applies again. `expectedRevision` is compared with the stored record inside the write: a record that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. A key the deployment locked is `Unprocessable` with reason `locked`; an unknown key or an invalid value is `InvalidParams`. The change is recorded as a `settings.changed` audit entry naming the keys and the revision, never a value. Requires `bureau.settings:write`.',
   destructive: true,
   tags: ['Settings'],
   inputSchema: updateInput,

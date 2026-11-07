@@ -323,6 +323,36 @@ describe('what needs attention', () => {
     expect(attention.count).toBe(4);
   });
 
+  it('lists a worker the host reports as disconnected, counted under workers, most recent first', async () => {
+    const reports: BureauAttentionItem = {
+      kind: 'worker-disconnected',
+      area: 'workers',
+      at: today(9, 41),
+      workerId: 'reports-worker',
+      workerName: 'Reports worker',
+      queue: 'reports',
+      waiting: 12,
+      failedForGood: 2,
+    };
+    const attention = await readAttention(
+      sampleWorld({ contributed: () => [NO_PROVIDER, reports] }),
+    );
+
+    // The provider was removed at 10:45, the worker was last heard from at 9:41, the storage alert
+    // fired at 9:05, and Daily summary's misses were recorded when the server started at 9:00.
+    expect(attention.items.map((item) => item.kind)).toEqual([
+      'no-provider',
+      'worker-disconnected',
+      'alert',
+      'missed-runs',
+    ]);
+    expect(attention.items[1]).toEqual(reports);
+    expect(attention.checks.find((check) => check.area === 'workers')).toEqual({
+      area: 'workers',
+      count: 1,
+    });
+  });
+
   it('drops missed runs once the schedule has run since, or once they are a week old', async () => {
     const ranSince = await readAttention(
       sampleWorld({ schedules: () => Promise.resolve([dailySummary(today(10, 0))]) }),

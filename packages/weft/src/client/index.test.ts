@@ -254,6 +254,8 @@ async function exerciseWorkflowClientRequests(httpClient: HttpClient): Promise<v
     backfill: true,
     jitter: '30s',
     timeZone: 'Europe/Berlin',
+    workflowType: 'report',
+    input: { text: 'moved' },
   });
   await httpClient.cancelSchedule('schedule-1');
   await httpClient.signal('wf/1', 'status', { ok: true });
@@ -473,6 +475,8 @@ function assertFilterAndFollowupCalls(fetchCalls: FetchCall[]): void {
     backfill: true,
     jitter: '30s',
     timeZone: 'Europe/Berlin',
+    workflowType: 'report',
+    input: { text: 'moved' },
   });
   expect(fetchCalls[7]?.init?.method).toBe('DELETE');
   expect(fetchCalls[8]?.init?.method).toBe('DELETE');

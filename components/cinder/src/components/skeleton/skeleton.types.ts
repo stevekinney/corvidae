@@ -4,9 +4,16 @@ import type { Snippet } from 'svelte';
  * Shape of a multi-line skeleton group: `'row'` stacks `lines` bars on the surrounding surface,
  * `'card'` draws them inside a bordered card beneath a heading bar, and `'list'` draws `rows`
  * rows of a status-first list (a status column, two text bars and a time bar) in a bordered
- * surface, the shape of a list of stacked list items.
+ * surface, the shape of a list of stacked list items, and `'form'` draws `rows` fields, each a
+ * short label bar above a full-width control bar, the shape of a form that is still loading.
  */
-export type SkeletonVariant = 'row' | 'card' | 'list';
+export type SkeletonVariant = 'row' | 'card' | 'list' | 'form';
+
+/**
+ * What stands in for a list row's status in the reserved status column: a short `'bar'` for a
+ * status word ("Running"), or a small `'dot'` for a list whose rows lead with a status dot.
+ */
+export type SkeletonStatusMarker = 'bar' | 'dot';
 
 /** Props for the Skeleton component. */
 export type SkeletonProps = {
@@ -26,17 +33,40 @@ export type SkeletonProps = {
   lines?: number;
   /**
    * Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the
-   * `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows.
+   * `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws
+   * `rows` fields, a label bar over a control bar each.
    * @default 'row'
    */
   variant?: SkeletonVariant;
   /**
-   * Number of list rows to draw when `variant` is `'list'`. Each row keeps the 8rem status
+   * Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status
    * column reserved, then shows two text bars and a time bar, with no leading circle, so
    * nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.
    * @default 3
    */
   rows?: number;
+  /**
+   * What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar
+   * where the status word reads; `'dot'` is a small circle where the status dot sits. The column
+   * keeps its width either way, so nothing shifts when data arrives. Ignored by other variants.
+   * @default 'bar'
+   */
+  statusMarker?: SkeletonStatusMarker;
+  /**
+   * Keep the 8rem status column that every status-first list shares when `variant` is `'list'`.
+   * Turn it off for a list whose rows do not lead with a status word, such as a card of problems
+   * with a glyph and an action: the marker then sits right before the text, so the placeholder
+   * matches the row it stands for. Ignored by other variants.
+   * @default true
+   */
+  statusColumn?: boolean;
+  /**
+   * Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside
+   * a card that already frames its rows, so the placeholder does not draw a box within the box.
+   * Ignored by other variants.
+   * @default true
+   */
+  framed?: boolean;
   /**
    * Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`,
    * the placeholder for a list that groups its rows by day. Ignored by other variants.

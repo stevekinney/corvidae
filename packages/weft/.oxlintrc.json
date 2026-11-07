@@ -118,7 +118,6 @@
         "src/core/engine/lifecycle/start.ts",
         "src/core/engine/handles.ts",
         "src/core/engine/workflow-claim-registry.ts",
-        "src/core/engine/construction.ts",
         "src/server/runtime/task-reconciliation.ts"
       ],
       "rules": {
@@ -126,9 +125,15 @@
       }
     },
     {
+      "files": ["src/core/engine/construction.ts"],
+      "rules": {
+        "max-lines": ["error", { "max": 601, "skipBlankLines": false, "skipComments": false }]
+      }
+    },
+    {
       "files": ["src/core/types/options.ts"],
       "rules": {
-        "max-lines": ["error", { "max": 617, "skipBlankLines": false, "skipComments": false }]
+        "max-lines": ["error", { "max": 618, "skipBlankLines": false, "skipComments": false }]
       }
     },
     {

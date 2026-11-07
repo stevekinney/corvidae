@@ -1,7 +1,7 @@
 /**
  * A stand-in for the host's provider routes, for the Models page tests: it answers
  * `GET /host/providers`, `PUT /host/providers/<name>`, `PUT /host/catalog` and
- * `POST /host/providers/reload`, and `DELETE /host/providers/<name>` from state a test holds, records what it was sent, and sends every
+ * `DELETE /host/providers/<name>` from state a test holds, records what it was sent, and sends every
  * other request on to the fetch underneath. The real routes are exercised against a real host in
  * `src/host/host-provider-changes.test.ts` and the Playwright suite.
  */
@@ -22,6 +22,23 @@ export type FakeHost = {
   lockReason?: 'deployment';
   /** Makes the next write answer with this response instead of making the change. */
   refuseNext?: Response;
+  /**
+   * Holds the next key test until it is called, so a test can see the dialog while the test runs.
+   * The test then answers as it would have.
+   */
+  holdTests?: boolean;
+  /** Answers every key test with this result instead of judging the key. */
+  testAnswer?: { ok: false; status?: number };
+  /** Called with a held test's release function, in the order the tests arrived. */
+  readonly heldTests: (() => void)[];
+  /** Answers every read with this status and no body while set, as a host that is failing does. */
+  readStatus?: number;
+  /**
+   * Answers every read after the first write with this status and no body while set: a host that
+   * saved a key and then could not list its models. A save reads the committed revision first, so
+   * that read has to be answered.
+   */
+  readStatusAfterWrite?: number;
   readonly requests: HostRequest[];
   restore(): void;
 };
@@ -94,6 +111,7 @@ export function installFakeHost(initial: {
     catalog: initial.catalog ?? [],
     ...(initial.lockReason === undefined ? {} : { lockReason: initial.lockReason }),
     requests: [],
+    heldTests: [],
     restore: () => undefined,
   };
   const restore = installFetchImplementation(async (input, init) => {
@@ -105,6 +123,14 @@ export function installFakeHost(initial: {
     const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
     host.requests.push({ method, path, body });
     if (method === 'GET') {
+      const failing =
+        host.readStatus ??
+        (host.requests.some((request) => request.method === 'PUT')
+          ? host.readStatusAfterWrite
+          : undefined);
+      if (failing !== undefined) {
+        return Response.json({ error: 'failed', message: '' }, { status: failing });
+      }
       return Response.json({
         configurationRevision: JSON.stringify([host.keys, host.catalog]),
         providers: Object.entries(host.keys).map(([name, hasKey]) => ({
@@ -116,6 +142,19 @@ export function installFakeHost(initial: {
         models: modelsOf(host),
         ...(host.lockReason === undefined ? {} : { lockReason: host.lockReason }),
       });
+    }
+    if (method === 'POST' && path.endsWith('/test')) {
+      const name = decodeURIComponent(path.slice('/host/providers/'.length, -'/test'.length));
+      const apiKey = String(
+        Reflect.get(typeof body === 'object' && body !== null ? body : {}, 'apiKey'),
+      );
+      if (host.holdTests === true) {
+        await new Promise<void>((resolve) => host.heldTests.push(resolve));
+      }
+      if (init?.signal?.aborted === true) throw new DOMException('Stopped', 'AbortError');
+      if (host.testAnswer !== undefined) return Response.json(host.testAnswer);
+      if (apiKey.includes('rejected-key')) return Response.json({ ok: false, status: 401 });
+      return Response.json({ ok: true, models: (host.offered[name] ?? []).length });
     }
     if (host.refuseNext !== undefined) {
       const refusal = host.refuseNext;

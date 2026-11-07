@@ -24,6 +24,19 @@ import {
 } from './testing/workflow-bureau.test-support';
 import { AGENT_STEP } from './testing/workflow-file-fixtures.test-support';
 import type { PendingHumanWaitReview } from './types';
+import { workflowReviewId } from './workflow-review-waits';
+
+describe('workflowReviewId', () => {
+  it('keeps flat ids and distinguishes encoded iteration addresses', () => {
+    expect(workflowReviewId('run', 'approve', 2)).toBe('human-wait:run:approve:2');
+    expect(workflowReviewId('run', 'approve', 2, '2#summaries.0')).not.toBe(
+      workflowReviewId('run', 'approve', 2, '2#summaries.1'),
+    );
+    expect(workflowReviewId('run', 'approve', 2, '2#a%2Eb')).not.toBe(
+      workflowReviewId('run', 'approve', 2, '2#a.b'),
+    );
+  });
+});
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -120,6 +133,76 @@ async function atReview(harness: WorkflowBureauHarness): Promise<{
 }
 
 describe('a workflow review step', () => {
+  it('matches reviewed waits after a branch against canonical preorder indexes', async () => {
+    const harness = await start();
+    await harness.putWorkflow('branched-reviews', {
+      trigger: { kind: 'manual' },
+      steps: [
+        {
+          kind: 'branch',
+          on: 'status',
+          cases: {
+            undefined: [
+              {
+                kind: 'await-signal',
+                signal: 'branch-done',
+                title: 'Branch approval',
+                review: true,
+              },
+            ],
+          },
+          otherwise: [{ kind: 'await-signal', signal: 'unused' }],
+        },
+        { kind: 'await-signal', signal: 'approve', title: 'First approval', review: true },
+        { kind: 'await-signal', signal: 'approve', title: 'Second approval', review: true },
+      ],
+    });
+    const { runId } = await harness.bureau.workflows!.start('branched-reviews', {
+      owner: 'person:test',
+    });
+    await waitUntil(() => workflowReviews(harness).length === 1);
+
+    const branchReview = workflowReviews(harness)[0]!;
+    expect(branchReview).toMatchObject({
+      id: `human-wait:${runId}:branch-done:1`,
+      prompt: 'Branch approval',
+      workflow: { step: 2, stepTitle: 'Branch approval' },
+    });
+    await harness.bureau.reviews.resolve({
+      id: branchReview.id,
+      decision: 'approve',
+      principal: 'person:test',
+    });
+    await waitUntil(() => workflowReviews(harness).length === 1);
+
+    const first = workflowReviews(harness)[0]!;
+    expect(first).toMatchObject({
+      id: `human-wait:${runId}:approve:3`,
+      prompt: 'First approval',
+      workflow: { step: 4, stepTitle: 'First approval' },
+    });
+    await harness.bureau.reviews.resolve({
+      id: first.id,
+      decision: 'approve',
+      principal: 'person:test',
+    });
+    await waitUntil(() => workflowReviews(harness).length === 1);
+
+    const second = workflowReviews(harness)[0]!;
+    expect(second).toMatchObject({
+      id: `human-wait:${runId}:approve:4`,
+      prompt: 'Second approval',
+      workflow: { step: 5, stepTitle: 'Second approval' },
+    });
+    expect(second.id).not.toBe(first.id);
+    await harness.bureau.reviews.resolve({
+      id: second.id,
+      decision: 'approve',
+      principal: 'person:test',
+    });
+    await waitUntil(async () => (await statusOf(harness, runId)) === 'completed');
+  });
+
   it('tells a review step from a signal wait on the same signal by the step the instance is at', async () => {
     const harness = await start();
     await harness.putWorkflow('twice', {
@@ -219,6 +302,7 @@ describe('a workflow review step', () => {
     // The step after the review was handed the answer.
     expect(harness.calls.at(-1)).toMatchObject({ agent: 'editor' });
     expect(harness.calls.at(-1)?.message).toContain('"note": "Ship it"');
+    expect(harness.calls.at(-1)?.message).toContain('"content": "Release 2.4"');
     expect(await harness.bureau.reviews.get(review.id)).toMatchObject({
       id: review.id,
       status: 'approved',

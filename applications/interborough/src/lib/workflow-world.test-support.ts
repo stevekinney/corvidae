@@ -46,6 +46,8 @@ export type FileFixture = {
   state: 'ready' | 'invalid';
   owner: string;
   hash: string | null;
+  /** The name a person reads, when the file gives one. Left out, the listing sends none. */
+  title?: string | null;
   description: string | null;
   agent: string | null;
   paused: boolean;
@@ -53,6 +55,8 @@ export type FileFixture = {
   outputSchema: Record<string, unknown> | null;
   version: string | null;
   trigger: Record<string, unknown> | null;
+  /** The steps as written, for a file that loaded. Left out, the listing sends none. */
+  steps?: Array<Record<string, unknown>> | null;
   /** What `bureau.workflows.list` counts for the file, or `null` for one the Bureau cannot use. */
   runs: { active: number; last24Hours: number; lastRunAt: string | null } | null;
   problem: {
@@ -84,10 +88,14 @@ export type ScheduleFixture = {
   createdAt: number;
   updatedAt: number;
   missedFireCount: number;
+  /** When the schedule last started a run, in milliseconds. */
+  lastFireAt?: number;
+  /** When the schedule last missed a fire, in milliseconds. */
+  lastMissedFireAt?: number;
   skippedCount: number;
   nextFireAt: number | null;
-  /** The fire a person asked to skip, set by the Bureau's skip next. */
-  skipUntil?: number;
+  /** The fires a person asked to skip, set by the Bureau's skip and unskip, soonest first. */
+  skippedOccurrences?: number[];
   queuedRuns: unknown[];
 };
 
@@ -275,6 +283,19 @@ export const workflowFaults = {
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
   unavailable: () => new StubFault('Unavailable', 503, 'The engine did not answer.'),
+  /**
+   * A chat a caller named that the Bureau does not hold for it: under a workspace the Bureau
+   * answers a chat that is missing and one that is another owner's the same way, so a page that
+   * makes up a chat's identifier is always refused.
+   */
+  sessionNotFound: () => new StubFault('NotFound', 404, 'No session.'),
+  /** An agent apart from the chat its schedule continues, as the Bureau's update refuses it. */
+  agentApartFromChat: () =>
+    new StubFault(
+      'InvalidParams',
+      400,
+      'The schedule would run another agent in a chat that belongs to the agent that began it. Start a new chat with the change, or keep the agent.',
+    ),
   /** An identifier the Bureau will not take for a new file, as its create answers. */
   conflict: (reason: string) =>
     new StubFault('Conflict', 409, 'That identifier is already used.', { reason }),
@@ -325,6 +346,8 @@ export type World = {
   scheduleAgents: Record<string, string>;
   /** The text each Bureau schedule sends its agent, by schedule id. */
   scheduleInputs: Record<string, string>;
+  /** The Bureau schedules whose every fire continues one chat, by schedule id. */
+  scheduleContinuing: string[];
   /** The fires each Bureau schedule missed, by schedule id, as `bureau.schedules.missed` lists them. */
   missedFires: Record<string, { occurrence: number; reason: 'late' | 'dst-gap'; count: number }[]>;
   /** What `bureau.agents.list` answers. */
@@ -337,6 +360,17 @@ export type World = {
   failBureauSchedules: boolean;
   /** Makes `bureau.workflows.list` answer with a fault, as a Bureau that is down would. */
   failBureauFiles: boolean;
+  /** What `bureau.health.attention` lists: the problems that need a person, such as `no-provider` and `missed-runs`. */
+  attention: Array<Record<string, unknown>>;
+  /** Why a Bureau schedule will not start, by schedule id, and the status the Bureau reads it as then. */
+  scheduleBlockers: Record<
+    string,
+    { workflow: string; message: string; status: 'active' | 'paused' }
+  >;
+  /** The steps of the newest saved version of a workflow's file, by identifier, as `bureau.workflows.history` lists them. */
+  savedSteps: Record<string, Array<Record<string, unknown>>>;
+  /** The model each code agent names, by identifier (`provider/model`), or `null` for a scripted one. */
+  agentModels: Record<string, string | null>;
 };
 
 export function emptyWorld(overrides: Partial<World> = {}): World {
@@ -355,12 +389,17 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     failSchedules: false,
     scheduleAgents: {},
     scheduleInputs: {},
+    scheduleContinuing: [],
     missedFires: {},
     agents: [],
     contexts: [],
     failContexts: false,
     failBureauSchedules: false,
     failBureauFiles: false,
+    attention: [],
+    scheduleBlockers: {},
+    savedSteps: {},
+    agentModels: {},
     ...overrides,
   };
 }
@@ -439,21 +478,30 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     owner: 'anonymous:local',
     agentName: world.scheduleAgents[schedule.id] ?? null,
     inputPreview: world.scheduleInputs[schedule.id] ?? null,
+    continuesChat: world.scheduleContinuing.includes(schedule.id),
     workflowType: schedule.workflowType,
     description: schedule.description ?? null,
     cronExpression: schedule.cronExpression ?? null,
     intervalMs: schedule.intervalMs ?? null,
     timeZone: schedule.timeZone,
-    status: schedule.status,
+    status: world.scheduleBlockers[schedule.id]?.status ?? schedule.status,
     overlap: schedule.overlap,
     revision: schedule.revision,
     nextFireAt: iso(schedule.nextFireAt),
-    skipUntil: iso(schedule.skipUntil ?? null),
-    lastFireAt: null,
+    skippedOccurrences: (schedule.skippedOccurrences ?? []).map((at) => iso(at)),
+    lastFireAt: iso(schedule.lastFireAt ?? null),
     missedFireCount: schedule.missedFireCount,
     skippedCount: schedule.skippedCount,
     createdAt: iso(schedule.createdAt),
     updatedAt: iso(schedule.updatedAt),
+    blocker:
+      world.scheduleBlockers[schedule.id] === undefined
+        ? null
+        : {
+            kind: 'workflow-cannot-load',
+            workflow: world.scheduleBlockers[schedule.id]?.workflow,
+            message: world.scheduleBlockers[schedule.id]?.message,
+          },
   });
   const receipt = (schedule: ScheduleFixture) => ({
     id: schedule.id,
@@ -475,6 +523,42 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
 
   const bureauHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
     'bureau.agents.list': () => ({ agents: world.agents }),
+    'bureau.health.attention': () => ({
+      items: world.attention,
+      count: world.attention.length,
+      checks: [],
+    }),
+    'bureau.workflows.history': (params) => {
+      const steps = world.savedSteps[String(params['id'])];
+      if (steps === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
+      return { revisions: [{ current: false, steps }] };
+    },
+    'bureau.agents.definitions.get': (params) => {
+      const id = String(params['id']);
+      if (!(id in world.agentModels)) throw workflowFaults.notFound(`agent ${id}`);
+      return {
+        id,
+        source: 'code',
+        state: 'ready',
+        name: id,
+        description: null,
+        a2a: false,
+        hash: null,
+        problem: null,
+        definition: null,
+        codeDefinition: {
+          name: id,
+          description: null,
+          model: world.agentModels[id] ?? null,
+          models: [],
+          tools: [],
+          skills: [],
+          skillDescriptors: [],
+          instructions: null,
+        },
+      };
+    },
+    'bureau.agents.overrides.get': () => ({ overrides: { model: null } }),
     'bureau.contexts.list': () => {
       if (world.failContexts) throw workflowFaults.unavailable();
       return { contexts: world.contexts, nextOffset: null };
@@ -484,6 +568,8 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       return { schedules: world.schedules.filter(bureauKnows).map(bureauView), nextOffset: null };
     },
     'bureau.schedules.create': (params) => {
+      // Refused before anything is written, as the Bureau refuses a chat that is not its caller's.
+      if (typeof params['sessionId'] === 'string') throw workflowFaults.sessionNotFound();
       counter += 1;
       const spec = String(params['spec']);
       const schedule = scheduleFixture(`schedule-created-${String(counter)}`, 'agentRun', {
@@ -501,6 +587,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       world.schedules.push(schedule);
       world.scheduleAgents[schedule.id] = String(params['agentName']);
       world.scheduleInputs[schedule.id] = String(params['input']);
+      if (params['continueChat'] === true) world.scheduleContinuing.push(schedule.id);
       return bureauView(schedule);
     },
     'bureau.schedules.pause': (params) => {
@@ -529,17 +616,28 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     },
     'bureau.schedules.skipnext': (params) => {
       const schedule = bureauGuarded(params);
-      if (schedule.status !== 'active') throw workflowFaults.notFound('an active schedule');
-      // A skip that names a run is refused when it is neither the next run nor the one already
-      // skipped, as the Bureau does inside its write.
-      const occurrence = params['occurrence'];
-      if (
-        typeof occurrence === 'string' &&
-        Date.parse(occurrence) !== (schedule.skipUntil ?? schedule.nextFireAt)
-      ) {
+      if (schedule.status === 'cancelled') throw workflowFaults.notFound('a schedule to skip');
+      // A skip that names a run is refused when it is before the next run, as the Bureau does
+      // inside its write; any upcoming run after it can be skipped.
+      const named = params['occurrence'];
+      const occurrence = typeof named === 'string' ? Date.parse(named) : schedule.nextFireAt;
+      if (occurrence === null) return receipt(schedule);
+      if (schedule.nextFireAt !== null && occurrence < schedule.nextFireAt) {
         throw workflowFaults.occurrenceNotNext();
       }
-      if (schedule.nextFireAt !== null) schedule.skipUntil = schedule.nextFireAt;
+      const skipped = new Set([...(schedule.skippedOccurrences ?? []), occurrence]);
+      schedule.skippedOccurrences = [...skipped].toSorted((left, right) => left - right);
+      return receipt(schedule);
+    },
+    'bureau.schedules.unskip': (params) => {
+      const schedule = bureauGuarded(params);
+      const occurrence = Date.parse(String(params['occurrence']));
+      if (schedule.nextFireAt !== null && occurrence < schedule.nextFireAt) {
+        throw workflowFaults.occurrenceNotNext();
+      }
+      const kept = (schedule.skippedOccurrences ?? []).filter((at) => at !== occurrence);
+      if (kept.length === 0) delete schedule.skippedOccurrences;
+      else schedule.skippedOccurrences = kept;
       return receipt(schedule);
     },
     'bureau.schedules.runnow': (params) => {
@@ -561,6 +659,16 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     },
     'bureau.schedules.update': (params) => {
       const schedule = bureauGuarded(params);
+      if (typeof params['sessionId'] === 'string') throw workflowFaults.sessionNotFound();
+      if (
+        typeof params['agentName'] === 'string' &&
+        params['agentName'] !== world.scheduleAgents[schedule.id] &&
+        world.scheduleContinuing.includes(schedule.id) &&
+        params['continueChat'] !== true &&
+        params['sessionId'] !== null
+      ) {
+        throw workflowFaults.agentApartFromChat();
+      }
       const spec = String(params['spec']);
       if (/^\d+(?:ms|s|m|h|d)$/.test(spec)) {
         delete schedule.cronExpression;
@@ -571,6 +679,17 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       }
       if (typeof params['description'] === 'string') schedule.description = params['description'];
       if (typeof params['overlap'] === 'string') schedule.overlap = params['overlap'];
+      if (typeof params['agentName'] === 'string') {
+        world.scheduleAgents[schedule.id] = params['agentName'];
+      }
+      if (typeof params['input'] === 'string') world.scheduleInputs[schedule.id] = params['input'];
+      if (params['continueChat'] === true) {
+        if (!world.scheduleContinuing.includes(schedule.id)) {
+          world.scheduleContinuing.push(schedule.id);
+        }
+      } else if (params['sessionId'] === null) {
+        world.scheduleContinuing = world.scheduleContinuing.filter((id) => id !== schedule.id);
+      }
       touch(schedule);
       return receipt(schedule);
     },
@@ -731,16 +850,23 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       const createdAt = params['createdAt'];
       const since =
         isRecord(createdAt) && typeof createdAt['gte'] === 'number' ? createdAt['gte'] : 0;
+      const before =
+        isRecord(createdAt) && typeof createdAt['lt'] === 'number'
+          ? createdAt['lt']
+          : Number.POSITIVE_INFINITY;
       const matching = world.runs
         .filter(
           (run) =>
             (params['type'] === undefined || run.type === params['type']) &&
             (statuses.length === 0 || statuses.includes(run.status)) &&
-            run.createdAt >= since,
+            run.createdAt >= since &&
+            run.createdAt < before,
         )
         .toSorted((left, right) => right.createdAt - left.createdAt);
+      // A page is `limit` runs from `offset`, and the total counts every match, as the engine does.
+      const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
       const limit = typeof params['limit'] === 'number' ? params['limit'] : matching.length;
-      return { items: matching.slice(0, limit), total: matching.length };
+      return { items: matching.slice(offset, offset + limit), total: matching.length };
     },
     'weft.workflows.revisions.list': (params) =>
       world.installedRevisions[String(params['name'])] ?? [],

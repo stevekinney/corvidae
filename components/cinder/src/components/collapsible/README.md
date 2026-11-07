@@ -64,6 +64,7 @@ For multiple coordinated sections where opening one may close others, use [`Acco
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `animated` | `boolean` | no | `true` | Whether opening and closing uses the slide transition. |
+| `chevron` | `"start"` \| `"end"` | no | `"end"` | Where the chevron sits. `'end'` is at the trailing edge and points down, turning over when the disclosure opens. `'start'` is before the label and points right, turning down when it opens. |
 | `class` | `string` | no | — | Additional classes merged onto the root element. |
 | `disabled` | `boolean` | no | `false` | When true, the trigger cannot be toggled. |
 | `idBase` | `string` | no | — | Base used to derive the trigger, label, and panel ARIA ids. Auto-generated when omitted. |

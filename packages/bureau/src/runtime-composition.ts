@@ -198,6 +198,7 @@ import type {
   SkillRuntimeConfiguration,
 } from './types';
 import { ownEntry } from './own-entry';
+import { DEFAULT_MAX_CONCURRENT_RUNS } from './settings/settings-options';
 import { holdGenerateToModelPolicy, type ModelPolicySource } from './code-agent-model-policy';
 
 export type BureauToolbox = AnyToolbox;
@@ -1022,6 +1023,7 @@ export interface CatalogRunRecoveryRecord {
   readonly workflowStep?: {
     readonly workflowId: string;
     readonly step: number;
+    readonly stepAddress?: string;
   };
   /**
    * COR-1524 — set only when the run is of a file-based agent: the SHA-256 of the agent file's
@@ -1129,7 +1131,8 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
       typeof workflowStep['workflowId'] === 'string' &&
       typeof workflowStep['step'] === 'number' &&
       Number.isSafeInteger(workflowStep['step']) &&
-      workflowStep['step'] >= 0
+      workflowStep['step'] >= 0 &&
+      (workflowStep['stepAddress'] === undefined || typeof workflowStep['stepAddress'] === 'string')
     )
   ) {
     return false;
@@ -3056,6 +3059,9 @@ async function buildRuntimeComposition(
       // it spreads straight through; createRunEngine guards each one internally, so
       // passing `undefined` members is harmless.
       ...options.durableGuardrails,
+      // The one guardrail Bureau defaults itself: Weft caps nothing unless asked.
+      maxConcurrentRuns:
+        options.durableGuardrails?.maxConcurrentRuns ?? DEFAULT_MAX_CONCURRENT_RUNS,
       // durableOwnership (AB-178) is the same Pick pattern — createRunEngine
       // defaults `ownership` to 'workflow-lease' when this is omitted entirely.
       ...options.durableOwnership,

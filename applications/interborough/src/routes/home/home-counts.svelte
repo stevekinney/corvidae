@@ -10,7 +10,7 @@
    * placeholder where the number goes; one that cannot be read, or that this caller may not read,
    * shows a dash; a number that was read stays when a later read fails. None touches the other three. Running now counts the Bureau's runs that are going
    * (`useRunningTasks`, the read the Running now card lists), never one parked on a review; Failed in 24 hours is made with the filter
-   * Health's count uses (`routes/dashboard/health-counts.ts`), so the number agrees with its rows.
+   * Health's count uses (`routes/health/health-counts.ts`), so the number agrees with its rows.
    */
   import { Statistic, StatisticGroup } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
@@ -20,8 +20,8 @@
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
-  import { parseWorkflowAggregateResult } from '../dashboard/aggregate-output.ts';
-  import { aggregateInputFor, failedRecentlyFilter } from '../dashboard/health-counts.ts';
+  import { parseWorkflowAggregateResult } from '../health/aggregate-output.ts';
+  import { aggregateInputFor, failedRecentlyFilter } from '../health/health-counts.ts';
   import { usePendingReviewsCount } from '../reviews/pending-reviews-count.svelte.ts';
   import { missedRunCount } from './home-rows.ts';
   import { useAttentionCountItems, useRunningTasks } from './home-queries.svelte.ts';

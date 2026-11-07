@@ -8,9 +8,11 @@
  */
 import type { StatusDotStatus } from '@lostgradient/cinder';
 
-import { PLUGINS_COPY } from '../../../app/copy.ts';
+import { nameList, PLUGINS_COPY } from '../../../app/copy.ts';
 import { agentEditPath } from '../../../lib/agent-paths.ts';
-import type { PluginProblem } from '../../../lib/host-plugins.ts';
+import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';
+import { fieldWords } from './plugin-configuration.ts';
+import { identifierOf } from './plugin-presentation.ts';
 
 /** What a problem's button does. */
 export type ProblemAction =
@@ -35,6 +37,8 @@ export type ProblemView = {
 };
 
 const WARNING = 'warning';
+/** A plugin that needs a secret is not failing, so its word is neutral: amber is for what waits on the person. */
+const NEUTRAL = 'neutral';
 const NOT_LOADED = 'danger';
 
 function text(problem: PluginProblem, field: string): string {
@@ -52,6 +56,38 @@ function list(problem: PluginProblem, field: string): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string')
     : [];
+}
+
+/**
+ * What waits for a missing secret, as a person reads it. Given the plugin the problem belongs to,
+ * a model provider reads `Gemini models`, an embedder `embeddings` and a contribution its own
+ * title; without it, or for one the plugin does not list, the identifier the host reported stands.
+ * `plural` is whether the phrase reads as more than one thing.
+ */
+function waitingOnSecret(
+  problem: PluginProblem,
+  plugin: PluginStanding | undefined,
+): { readonly what: string; readonly plural: boolean } {
+  const ids = list(problem, 'contributions');
+  if (plugin === undefined) return { what: ids.join(', '), plural: ids.length > 1 };
+  const phrases: string[] = [];
+  let plural = false;
+  for (const id of ids) {
+    const entry = plugin.contributions.find(
+      (candidate) => candidate.id === id || identifierOf(candidate.id) === identifierOf(id),
+    );
+    const phrase =
+      entry === undefined
+        ? id
+        : entry.kind === 'provider'
+          ? `${plugin.descriptor.title} models`
+          : entry.kind === 'embedder'
+            ? 'embeddings'
+            : (entry.title ?? id);
+    if (entry?.kind === 'provider' || entry?.kind === 'embedder') plural = true;
+    if (!phrases.includes(phrase)) phrases.push(phrase);
+  }
+  return { what: nameList(phrases), plural: plural || phrases.length > 1 };
 }
 
 /**
@@ -84,6 +120,23 @@ function isAllowlistField(field: string): boolean {
   return /^models(\[\d+\])?$/.test(field);
 }
 
+/**
+ * A configuration problem's sentence, which names the field the way the form does ("Grounding
+ * threshold"), never by its key. A message that already opens with the field's name is left as the
+ * plugin wrote it; any other gets the name put in front, so the person can tell which field it is.
+ * A key is a path (`models[2]`, `search.address`), so the name is its last segment's.
+ */
+export function configurationBody(field: string, message: string): string {
+  const last =
+    field
+      .replaceAll(/\[\d+\]/g, '')
+      .split('.')
+      .pop() ?? '';
+  const label = last === '' ? '' : fieldWords(last);
+  const named = label !== '' && message.toLowerCase().startsWith(label.toLowerCase());
+  return PLUGINS_COPY.problems.configurationInvalid.body(named ? '' : label, message);
+}
+
 function configurationView(problem: PluginProblem): ProblemView {
   const words = PLUGINS_COPY.problems;
   const field = text(problem, 'field');
@@ -92,7 +145,7 @@ function configurationView(problem: PluginProblem): ProblemView {
   return {
     status: { label: set.status, dot: NOT_LOADED },
     title: set.title,
-    body: words.configurationInvalid.body(field, text(problem, 'message')),
+    body: configurationBody(field, text(problem, 'message')),
     action: { kind: 'setting', label: set.action },
   };
 }
@@ -110,20 +163,23 @@ function nameClashView(problem: PluginProblem): ProblemView {
   };
 }
 
-/** The words for one problem. */
-export function problemView(problem: PluginProblem): ProblemView {
+/**
+ * The words for one problem. `plugin` is the plugin it belongs to, which lets a body name what the
+ * plugin adds as a person reads it instead of by identifier.
+ */
+export function problemView(problem: PluginProblem, plugin?: PluginStanding): ProblemView {
   const words = PLUGINS_COPY.problems;
   switch (problem.code) {
     case 'secret-missing': {
       const key = text(problem, 'key');
-      const what = list(problem, 'contributions').join(', ');
+      const { what, plural } = waitingOnSecret(problem, plugin);
       return {
-        status: { label: words.secretMissing.status, dot: WARNING },
+        status: { label: words.secretMissing.status, dot: NEUTRAL },
         title: words.secretMissing.title,
         body:
           what === ''
             ? words.secretMissing.bodyWithoutContributions(key)
-            : words.secretMissing.body(key, what),
+            : words.secretMissing.body(key, what, plural),
         ...(key === ''
           ? {}
           : { action: { kind: 'secret', label: words.secretMissing.action, key } }),

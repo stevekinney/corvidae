@@ -5,7 +5,7 @@
  * unfiltered, each with the abilities it declares. Three things narrow it for a person choosing a
  * model for an agent file:
  *
- * - The model policy (Settings › Model policy). Its `deployment` and `bureau` layers are the
+ * - The model policy (Settings › Allowed models). Its `deployment` and `bureau` layers are the
  *   operator's rules, so a provider or model they deny is not offered. The Bureau also refuses a
  *   save that names such a model (`model-policy-denied`) and fails a run step on it, so the field
  *   marks in advance what a save would be refused for. Operative's selector matches a denied

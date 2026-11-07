@@ -226,6 +226,8 @@ export type WorkflowTimelineEntry = {
   stepIndex?: number;
   /** Optional document step identity for file-workflow lifecycle history. */
   documentStep?: number;
+  /** Stable document step address, including an optional iteration path. */
+  documentStepAddress?: string;
   operationType: string;
   operationLabel: string;
   inputSummary: string;

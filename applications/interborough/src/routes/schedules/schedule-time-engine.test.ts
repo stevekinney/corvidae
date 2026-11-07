@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import { HttpClient, isWeftFault } from '@lostgradient/weft';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
-import { skipNextSchedule } from './schedule-queries.ts';
+import { skipNextSchedule, unskipSchedule } from './schedule-queries.ts';
 import { upcomingFires } from './schedule-time.ts';
 
 const iso = (at: number | undefined): string | undefined =>
@@ -38,7 +38,7 @@ describe('the next runs against the engine', () => {
       expect(before?.nextFireAt).toBe(due);
       await server.engine.skipNextScheduleOccurrence('jittered');
       const after = await client.getSchedule('jittered');
-      expect(after?.skipUntil).toBe(due);
+      expect(after?.skippedOccurrences).toEqual([due]);
       if (!after) throw new Error('The schedule is gone.');
 
       const fires = upcomingFires(after, 3, clock);
@@ -71,7 +71,7 @@ describe('the next runs against the engine', () => {
       await server.engine.skipNextScheduleOccurrence('gap');
       const schedule = await client.getSchedule('gap');
       if (!schedule) throw new Error('The schedule is gone.');
-      expect(iso(schedule.skipUntil)).toBe('2027-03-15T06:30:00.000Z');
+      expect(schedule.skippedOccurrences?.map(iso)).toEqual(['2027-03-15T06:30:00.000Z']);
 
       const fires = upcomingFires(schedule, 3, clock);
       expect(fires.map((fire) => iso(fire.at))).toEqual([
@@ -109,8 +109,8 @@ describe('the next runs against the engine', () => {
   });
 });
 
-describe('skipping the run the page names, against the engine', () => {
-  test('skips the run that is next, refuses one that is not, and writes nothing for the refusal', async () => {
+describe('skipping the run the page names, and taking it back, against the engine', () => {
+  test('skips the run that is next or one after it, refuses one that is not upcoming, and writes nothing for the refusal', async () => {
     const clock = Date.UTC(2026, 10, 2, 12, 0, 0);
     const server = await startLiveSourceTestServer({ getNow: () => clock });
     try {
@@ -124,19 +124,26 @@ describe('skipping the run the page names, against the engine', () => {
       const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
       const next = Date.UTC(2026, 10, 3, 9, 0, 0);
 
-      // The run after the one the page showed is not the next run: a fire in between moved it.
-      const refused = await rejectionOf(skipNextSchedule(client, 'named', next + 86_400_000));
+      // The run before the one the page showed has passed: a fire moved the schedule on.
+      const refused = await rejectionOf(skipNextSchedule(client, 'named', next - 86_400_000));
       expect(isWeftFault(refused, 'ScheduleOccurrenceNotNextError')).toBe(true);
       const unchanged = await client.getSchedule('named');
-      expect(unchanged?.skipUntil).toBeUndefined();
+      expect(unchanged?.skippedOccurrences).toBeUndefined();
 
       await skipNextSchedule(client, 'named', next);
+      await skipNextSchedule(client, 'named', next + 86_400_000);
       const skipped = await client.getSchedule('named');
-      expect(skipped?.skipUntil).toBe(next);
+      expect(skipped?.skippedOccurrences).toEqual([next, next + 86_400_000]);
       // The same run again changes nothing.
       await skipNextSchedule(client, 'named', next);
       const again = await client.getSchedule('named');
-      expect(again?.skipUntil).toBe(next);
+      expect(again?.skippedOccurrences).toEqual([next, next + 86_400_000]);
+
+      await unskipSchedule(client, 'named', next);
+      const taken = await client.getSchedule('named');
+      expect(taken?.skippedOccurrences).toEqual([next + 86_400_000]);
+      const passed = await rejectionOf(unskipSchedule(client, 'named', next - 86_400_000));
+      expect(isWeftFault(passed, 'ScheduleOccurrenceNotNextError')).toBe(true);
     } finally {
       await server.stop();
     }

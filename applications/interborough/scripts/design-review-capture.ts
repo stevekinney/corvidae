@@ -1,6 +1,6 @@
 /**
  * Captures every page of Interborough for the design review (`.agents/skills/design-review`): every
- * route holding believable content (`tests/e2e/showcase.spec.ts`, at 375, 768 and 1280 pixels, the
+ * route holding believable content (`tests/e2e/00-showcase.spec.ts`, at 375, 768 and 1280 pixels, the
  * data for layout, hierarchy and density) and the shell's chrome in each form it takes
  * (`tests/e2e/shell-chrome.spec.ts`: the sidebar, the rail, the drawer, 320 pixels, 200% text; `tests/e2e/shell-search.spec.ts`: the search palette), Home on a
  * fresh installation (`tests/e2e/first-run.spec.ts`), every route on every tab holding the stress seed's
@@ -67,11 +67,29 @@ const SPECIFICATIONS = {
  * from Workflows and the chat that came of it (`chat-new-workflows.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
-  'tests/e2e/showcase.spec.ts',
+  'tests/e2e/00-showcase.spec.ts',
   'tests/e2e/shell-chrome.spec.ts',
   'tests/e2e/shell-search.spec.ts',
   'tests/e2e/shell-states.spec.ts',
+  'tests/e2e/schedules-list.spec.ts',
+  'tests/e2e/schedules-states.spec.ts',
+  'tests/e2e/schedules-new.spec.ts',
+  'tests/e2e/schedules-edit.spec.ts',
+  'tests/e2e/schedules-detail.spec.ts',
+  'tests/e2e/health-overview.spec.ts',
+  'tests/e2e/health-states.spec.ts',
+  'tests/e2e/health-workers-states.spec.ts',
+  'tests/e2e/health-storage.spec.ts',
+  'tests/e2e/health-audit.spec.ts',
+  'tests/e2e/health-audit-states.spec.ts',
   'tests/e2e/restart.spec.ts',
+  'tests/e2e/settings-general.spec.ts',
+  'tests/e2e/settings-allowed-models.spec.ts',
+  'tests/e2e/settings-models.spec.ts',
+  'tests/e2e/settings-a2a.spec.ts',
+  'tests/e2e/settings-plugins.spec.ts',
+  'tests/e2e/settings-data-and-retention.spec.ts',
+  'tests/e2e/api-reference.spec.ts',
   'tests/e2e/first-run.spec.ts',
   'tests/e2e/home.spec.ts',
   'tests/e2e/chat-list.spec.ts',

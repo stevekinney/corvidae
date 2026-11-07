@@ -632,7 +632,9 @@ export function createSlidingDialogState(options: SlidingDialogStateOptions): Sl
  * DOM property (Svelte 5's `$.autofocus()` helper sets `element.autofocus`
  * rather than the attribute) — the attribute selector alone misses the Svelte
  * case. When focus already sits INSIDE the dialog (the native `showModal()`
- * honoured an autofocused child on a fresh open), leave it alone. When it
+ * honoured an autofocused child on a fresh open), leave it alone; focus on the dialog element
+ * itself is not inside it, because a browser that cannot see the autofocus attribute focuses the
+ * dialog and not the child. When it
  * does not — a quick reopen never re-runs `showModal()`, and the closing
  * panel's `inert` blurred focus to `document.body` — re-place it: on the
  * autofocused child when one exists, otherwise on the body container.
@@ -666,7 +668,10 @@ export function focusDialogBodyUnlessAutofocused(options: {
       // closing panel's `inert` blurred focus OUT to `document.body` —
       // re-place it on the autofocused child.
       const active = activeElementInRoot();
-      const focusInsideDialog = active instanceof HTMLElement && dialogElement.contains(active);
+      // The dialog element itself does not count: a browser that sees the DOM property and no
+      // attribute focuses the dialog, not the child that asked for focus.
+      const focusInsideDialog =
+        active instanceof HTMLElement && active !== dialogElement && dialogElement.contains(active);
       if (!focusInsideDialog) {
         autofocusTarget.focus();
         // An unfocusable autofocus target (disabled, hidden) makes focus()

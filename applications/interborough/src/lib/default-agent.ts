@@ -8,6 +8,7 @@
  */
 import { listAgents, type AgentSummary, type Fetcher } from './bureau-client.ts';
 import { getPlugins, type PluginsSnapshot } from './host-plugins.ts';
+import { readPreferredAgent } from './preferred-agent.ts';
 import { queryKeys } from './query.ts';
 
 /** An agent as the Bureau lists it, with whether a run of it can start now. */
@@ -45,9 +46,16 @@ export async function listAgentsWithReadiness(
   return agents.map((agent) => ({ ...agent, ready: !unready.has(agent.name) }));
 }
 
-/** The first listed agent that can run, or `null` when there is none. */
+/**
+ * The agent a new chat starts with: the one the person chose in Settings when it can run, else the
+ * first listed agent that can, or `null` when there is none.
+ */
 export async function findDefaultAgent(options: Options = {}): Promise<string | null> {
   const agents = await listAgentsWithReadiness(options);
+  const preferred = readPreferredAgent();
+  if (preferred !== undefined && agents.some((agent) => agent.name === preferred && agent.ready)) {
+    return preferred;
+  }
   return agents.find((agent) => agent.ready)?.name ?? null;
 }
 

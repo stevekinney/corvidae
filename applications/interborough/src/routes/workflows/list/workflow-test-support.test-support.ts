@@ -1,13 +1,11 @@
 /**
  * Test-only support for this track's component tests (list/start/aggregate).
  * Mirrors the `ScriptedFetch`/`realClient` pattern already established in
- * `src/routes/dashboard/dashboard-test-support.test-support.ts` and
  * `src/routes/system/system-test-support.test-support.ts` (T1.4's
- * `fleet-event-source.test.ts` is the original convention all three
- * follow) — kept as a small local copy rather than a cross-track import,
- * since `.test-support.ts` files stay inside their track's owned path
- * (PROJECT-BRIEF: "own your paths only"; the dashboard track's own copy
- * carries the identical note).
+ * `fleet-event-source.test.ts` is the original convention both follow)
+ * — kept as a small local copy rather than a cross-track import, since
+ * `.test-support.ts` files stay inside their track's owned path
+ * (PROJECT-BRIEF: "own your paths only").
  *
  * Scripts `globalThis.fetch` so a REAL `HttpClient` (and therefore real
  * REST/JSON-RPC-over-HTTP request encoding) can be exercised in a
