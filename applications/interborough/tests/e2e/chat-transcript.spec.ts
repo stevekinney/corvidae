@@ -199,7 +199,10 @@ test('shows a durable specialist child while held, then restores its completed c
     const childLink = conversation(page).getByRole('link', { name: 'View run' });
     await expect(childLink).toHaveCount(1);
     await expect(conversation(page).getByText(CHAT_PROOF_CHILD, { exact: true })).toHaveCount(1);
-    await expect(conversation(page).getByText('Running', { exact: true })).toHaveCount(1);
+    // The child's card says Running once; the heading above the transcript says it too, for the chat.
+    await expect(
+      page.getByRole('region', { name: 'Chat conversation' }).getByText('Running', { exact: true }),
+    ).toHaveCount(1);
     const childHref = await childLink.getAttribute('href');
     expect(childHref).toMatch(/^\/runs\/[^/]+$/);
     childRunId = childHref?.slice('/runs/'.length);
