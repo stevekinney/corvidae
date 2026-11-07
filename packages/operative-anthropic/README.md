@@ -32,7 +32,7 @@ const definitions: ProviderDefinition[] = [anthropicProvider];
 
 const generate = definitions
   .find((definition) => definition.name === 'anthropic')
-  ?.generate({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
+  ?.generate?.({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.
