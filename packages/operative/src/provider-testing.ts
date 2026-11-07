@@ -111,6 +111,11 @@ export function runProviderContract<Call extends object>(
     client,
     ...(maximumTokens === undefined ? {} : { maximumTokens }),
   });
+  const generateFactory = definition.generate;
+  const streamFactory = definition.stream;
+  if (generateFactory === undefined || streamFactory === undefined) {
+    throw new TypeError(`${fixtures.name} provider contract requires generate and stream`);
+  }
 
   describe(`${fixtures.name} provider contract`, () => {
     it('names the definition after its provider and fits the string-keyed ProviderDefinition', () => {
@@ -121,7 +126,7 @@ export function runProviderContract<Call extends object>(
 
     it('passes the whole configuration, including client, to the generate factory', async () => {
       const mock = subject.createMockClient('generate');
-      const generate = definition.generate(configure(fixtures.model, mock.client, MAXIMUM_TOKENS));
+      const generate = generateFactory(configure(fixtures.model, mock.client, MAXIMUM_TOKENS));
 
       const response = await generate(makeContext());
 
@@ -133,7 +138,7 @@ export function runProviderContract<Call extends object>(
 
     it('passes the whole configuration, including client, to the stream factory', async () => {
       const mock = subject.createMockClient('stream');
-      const stream = definition.stream(configure(fixtures.model, mock.client, MAXIMUM_TOKENS));
+      const stream = streamFactory(configure(fixtures.model, mock.client, MAXIMUM_TOKENS));
 
       await stream({ ...makeContext(), streaming: makeStreamingHandle() });
 
@@ -144,7 +149,7 @@ export function runProviderContract<Call extends object>(
 
     it('attaches exactly the backend descriptor matching the resolved model', () => {
       const mock = subject.createMockClient('generate');
-      const generate = definition.generate(configure(fixtures.model, mock.client));
+      const generate = generateFactory(configure(fixtures.model, mock.client));
       const expected = createModelCatalog().descriptors.find(
         (descriptor) =>
           descriptor.provider === fixtures.name && descriptor.model === fixtures.model,
@@ -161,14 +166,14 @@ export function runProviderContract<Call extends object>(
 
     it('attaches no backend descriptor for a model with no catalog row', () => {
       const mock = subject.createMockClient('generate');
-      const generate = definition.generate(configure(fixtures.unknownModel, mock.client));
+      const generate = generateFactory(configure(fixtures.unknownModel, mock.client));
 
       expect(readBackendDescriptors(generate)).toEqual([]);
     });
 
     it('omits tools the toolbox marks unavailable from the request payload', async () => {
       const mock = subject.createMockClient('generate');
-      const generate = definition.generate(configure(fixtures.model, mock.client));
+      const generate = generateFactory(configure(fixtures.model, mock.client));
       const toolbox = createToolbox([
         createTool({
           name: 'available-tool',

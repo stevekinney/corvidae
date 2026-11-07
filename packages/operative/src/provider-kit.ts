@@ -32,6 +32,7 @@ export {
 export type { SamplingParameterField } from './providers/fallover/classify-error.ts';
 export { createModelCatalog } from './providers/model-catalog.ts';
 export type {
+  BackendDecisions,
   BackendDescriptor,
   BackendLifecycleState,
   CatalogProjection,

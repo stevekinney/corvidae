@@ -22,7 +22,7 @@
  * @module catalog-edits
  */
 
-import type { BackendDescriptor } from '@lostgradient/operative';
+import type { BackendDescriptor, DecisionKind } from '@lostgradient/operative';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
@@ -59,6 +59,11 @@ export type CatalogLongContextPricing = {
   readonly cacheReadPerMillionTokens?: number;
 };
 
+export type CatalogDecisions = {
+  readonly kinds: readonly DecisionKind[];
+  readonly only: boolean;
+};
+
 /** One edit to the catalog. `provider` and `model` identify the row; every other field is optional. */
 export type CatalogEdit = {
   /** The provider of the row: `anthropic`, `openai`, or `gemini`. */
@@ -75,6 +80,7 @@ export type CatalogEdit = {
   readonly maxOutputTokens?: number;
   /** An added row only: a current model of the same provider whose capabilities it copies. */
   readonly basedOn?: string;
+  readonly decisions?: CatalogDecisions;
 };
 
 const EDIT_FIELDS = [
@@ -85,7 +91,14 @@ const EDIT_FIELDS = [
   'contextWindowTokens',
   'maxOutputTokens',
   'basedOn',
+  'decisions',
 ] as const;
+const DECISION_KINDS = [
+  'boolean',
+  'choice',
+  'scale',
+  'structured',
+] as const satisfies readonly DecisionKind[];
 const PRICING_FIELDS = [
   'inputPerMillionTokens',
   'outputPerMillionTokens',
@@ -220,6 +233,28 @@ function parsePricing(value: unknown, path: string, field: string): CatalogPrici
   };
 }
 
+function parseDecisions(value: unknown, path: string, field: string): CatalogDecisions {
+  if (!isPlainObject(value)) throw problem(path, field, 'expected an object.');
+  for (const key of Object.keys(value)) {
+    if (key !== 'kinds' && key !== 'only')
+      throw problem(path, `${field}.${key}`, 'not a known field.');
+  }
+  if (!Array.isArray(value['kinds']) || value['kinds'].length === 0) {
+    throw problem(path, `${field}.kinds`, 'expected a non-empty list of decision kinds.');
+  }
+  const kinds = value['kinds'].map((kind: unknown, index: number): DecisionKind => {
+    if (typeof kind !== 'string' || !(DECISION_KINDS as readonly string[]).includes(kind)) {
+      throw problem(path, `${field}.kinds[${index}]`, 'expected a known decision kind.');
+    }
+    return kind as DecisionKind;
+  });
+  if (new Set(kinds).size !== kinds.length)
+    throw problem(path, `${field}.kinds`, 'must not contain duplicates.');
+  if (typeof value['only'] !== 'boolean')
+    throw problem(path, `${field}.only`, 'expected true or false.');
+  return { kinds, only: value['only'] };
+}
+
 /**
  * Parse the `catalog` list of `configuration.json`. `providerNames`, when given, are the providers an
  * edit may name. Two edits for one provider and model are refused, so the list says one thing about a row.
@@ -281,6 +316,8 @@ export function parseCatalogEdits(
     if (entry['basedOn'] !== undefined) {
       edit.basedOn = nonEmptyText(entry['basedOn'], path, `${field}.basedOn`);
     }
+    if (entry['decisions'] !== undefined)
+      edit.decisions = parseDecisions(entry['decisions'], path, `${field}.decisions`);
     return edit;
   });
 }
@@ -337,6 +374,7 @@ function patched(row: BackendDescriptor, edit: CatalogEdit): BackendDescriptor {
       ? {}
       : { contextWindowTokens: edit.contextWindowTokens }),
     ...(edit.maxOutputTokens === undefined ? {} : { maxOutputTokens: edit.maxOutputTokens }),
+    ...(edit.decisions === undefined ? {} : { decisions: edit.decisions }),
   };
 }
 
