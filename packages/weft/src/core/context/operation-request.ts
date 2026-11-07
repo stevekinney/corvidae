@@ -46,6 +46,7 @@ export type ContextOperationRequest =
       step?: number;
       /** Optional document step identity used by file-workflow lifecycle history. */
       documentStep?: number;
+      documentStepAddress?: string;
       /**
        * Optional deterministic state key for activity sub-operations that are
        * owned by another workflow step. Plain `ctx.run()` leaves this unset and
@@ -65,6 +66,7 @@ export type ContextOperationRequest =
       callerStack?: string;
       /** Optional document step identity used by file-workflow lifecycle history. */
       documentStep?: number;
+      documentStepAddress?: string;
     }
   | {
       type: 'wait-signal';
@@ -73,6 +75,7 @@ export type ContextOperationRequest =
       callerStack?: string;
       /** Optional document step identity used by file-workflow lifecycle history. */
       documentStep?: number;
+      documentStepAddress?: string;
     }
   | {
       type: 'wait-update';

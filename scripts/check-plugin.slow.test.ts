@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
 
 import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
+import { normalizePluginDiagnostics } from './check-plugin.ts';
 
 const root = await mkdtemp(join(tmpdir(), 'check-plugin-'));
 afterAll(() => rm(root, { recursive: true, force: true }));
@@ -49,6 +50,30 @@ await writeFile(agentPath, agent);
 const missing = await run('check-plugin.ts', join(root, 'nothing-here'));
 
 describe('create-plugin then check-plugin', () => {
+  test('normalizes absolute, resolved, and compiler-cwd-relative diagnostics to the source folder', () => {
+    expect(
+      normalizePluginDiagnostics(
+        '/tmp/corvidae-check-plugin-123/plugin/plugin.ts(23,14): error',
+        '/original/example',
+        '/tmp/corvidae-check-plugin-123',
+      ),
+    ).toBe('/original/example/plugin.ts(23,14): error');
+    expect(
+      normalizePluginDiagnostics(
+        '../tmp/corvidae-check-plugin-123/plugin/plugin.ts(23,14): error',
+        '/original/example',
+        '/tmp/corvidae-check-plugin-123',
+      ),
+    ).toBe('/original/example/plugin.ts(23,14): error');
+    expect(
+      normalizePluginDiagnostics(
+        'plugin/plugin.ts(23,14): error',
+        '/original/example',
+        '/tmp/corvidae-check-plugin-123',
+      ),
+    ).toBe('/original/example/plugin.ts(23,14): error');
+  });
+
   test('the scaffold is written, with its workflow and skill, and passes the check', async () => {
     expect(created.exitCode).toBe(0);
     expect(await Bun.file(join(folder, 'content/workflows/digest.json')).exists()).toBe(true);

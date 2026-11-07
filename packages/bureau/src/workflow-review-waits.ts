@@ -85,6 +85,7 @@ interface Wait {
   readonly workflow: string;
   readonly title: string | null;
   readonly stepIndex: number;
+  readonly stepAddress: string | undefined;
   readonly stepTitle: string | null;
   readonly signalName: string;
   readonly requestedAt: number;
@@ -103,8 +104,13 @@ const TERMINAL_EVENTS = [
 ] as const;
 
 /** The id of the review a wait at `stepIndex` on `signalName` of `runId` is. */
-export function workflowReviewId(runId: string, signalName: string, stepIndex: number): string {
-  return `human-wait:${runId}:${signalName}:${String(stepIndex)}`;
+export function workflowReviewId(
+  runId: string,
+  signalName: string,
+  stepIndex: number,
+  stepAddress?: string,
+): string {
+  return `human-wait:${runId}:${signalName}:${stepAddress ?? String(stepIndex)}`;
 }
 
 function stringOf(value: unknown): string | null {
@@ -126,7 +132,14 @@ function waitingStep(
   state: WorkflowState,
   timeline: readonly WorkflowTimelineEntry[],
   steps: readonly WorkflowFileStep[],
-): { readonly stepIndex: number; readonly signalName: string; readonly since: number } | undefined {
+):
+  | {
+      readonly stepIndex: number;
+      readonly signalName: string;
+      readonly since: number;
+      readonly stepAddress: string | undefined;
+    }
+  | undefined {
   const waiting = state.waitingForSignals ?? [];
   const entry = timeline.findLast(
     (candidate) =>
@@ -139,12 +152,18 @@ function waitingStep(
       stepIndex: entry.stepIndex,
       signalName: entry.operationLabel,
       since: entry.timestamp,
+      stepAddress: entry.documentStepAddress,
     };
   }
   for (const signalName of waiting) {
     const indices = steps.flatMap((step, index) => (awaits(step, signalName) ? [index] : []));
     if (indices.length === 1) {
-      return { stepIndex: indices[0]!, signalName, since: entry?.timestamp ?? state.updatedAt };
+      return {
+        stepIndex: indices[0]!,
+        signalName,
+        since: entry?.timestamp ?? state.updatedAt,
+        stepAddress: entry?.documentStepAddress,
+      };
     }
   }
   return undefined;
@@ -165,7 +184,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
   function reviewOf(wait: Wait): PendingHumanWaitReview {
     return {
       kind: 'human-wait',
-      id: workflowReviewId(wait.runId, wait.signalName, wait.stepIndex),
+      id: workflowReviewId(wait.runId, wait.signalName, wait.stepIndex, wait.stepAddress),
       runId: wait.runId,
       agentName: undefined,
       signalName: wait.signalName,
@@ -183,7 +202,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
   }
 
   function idOf(wait: Wait): string {
-    return workflowReviewId(wait.runId, wait.signalName, wait.stepIndex);
+    return workflowReviewId(wait.runId, wait.signalName, wait.stepIndex, wait.stepAddress);
   }
 
   function drop(runId: string): void {
@@ -220,6 +239,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
       stepTitle: stringOf(written['title']),
       signalName: step.signalName,
       requestedAt: step.since,
+      stepAddress: step.stepAddress,
     };
   }
 

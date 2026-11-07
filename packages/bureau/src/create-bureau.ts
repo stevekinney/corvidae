@@ -23213,7 +23213,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         `Agent "${request.agent}" cannot run: this Bureau has no durable engine.`,
       );
     }
-    const runId = workflowStepRunId(request.workflowId, request.step);
+    const runId = workflowStepRunId(request.workflowId, request.stepAddress ?? request.step);
     if ((await engine.get(runId)) !== null) {
       // Adopt the run at this id only if it is this step's own: its recovery record carries the
       // step's marker. Anything else holding the id is not a run to take a result from.
@@ -23222,6 +23222,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         claim.status !== 'found' ||
         claim.record.workflowStep?.workflowId !== request.workflowId ||
         claim.record.workflowStep.step !== request.step ||
+        claim.record.workflowStep.stepAddress !== request.stepAddress ||
         claim.record.agentName !== request.agent ||
         claim.record.principal !== owner
       ) {
@@ -23246,7 +23247,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         agentName: request.agent,
         input: request.message,
         runId,
-        workflowStep: { workflowId: request.workflowId, step: request.step },
+        workflowStep: {
+          workflowId: request.workflowId,
+          step: request.step,
+          ...(request.stepAddress === undefined ? {} : { stepAddress: request.stepAddress }),
+        },
         principal: owner,
         ...(authority === undefined ? {} : { workspaceAuthority: authority }),
       });

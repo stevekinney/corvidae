@@ -144,6 +144,14 @@ export function appendTimelineBatchOperations(
           documentStep: (operation as ContextOperationRequest & { documentStep?: number })
             .documentStep,
         }),
+    ...((operation as ContextOperationRequest & { documentStepAddress?: string })
+      .documentStepAddress === undefined
+      ? {}
+      : {
+          documentStepAddress: (
+            operation as ContextOperationRequest & { documentStepAddress: string }
+          ).documentStepAddress,
+        }),
     operationType: operation.type,
     operationLabel: getTimelineOperationLabel(operation),
     inputSummary: getTimelineInputSummary(operation),

@@ -39,7 +39,20 @@ export type DocumentActivityArgument = Readonly<{
   signal?: unknown;
   workflowId: string;
   step: number;
+  /** Stable iteration path for this step; absent for flat documents. */
+  iteration?: readonly (string | number)[];
+  /** Canonical address combining the preorder step and iteration path. */
+  stepAddress?: string;
 }>;
+
+/** Canonical address for a document step. Dots are encoded to preserve path boundaries. */
+export function documentStepAddress(
+  step: number,
+  iteration?: readonly (string | number)[],
+): string {
+  if (iteration === undefined || iteration.length === 0) return String(step);
+  return `${String(step)}#${iteration.map((segment) => encodeURIComponent(String(segment)).replaceAll('.', '%2E')).join('.')}`;
+}
 
 /**
  * A host-registered activity handler a document names by key. A thrown error

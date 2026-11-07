@@ -3,12 +3,22 @@ import { describe, expect, it } from 'bun:test';
 import {
   WorkflowDocumentValidationError,
   canonicalWorkflowDocumentJson,
+  documentStepAddress,
   validateWorkflowDocument,
   workflowDocumentSchema,
   workflowDocumentVersion,
   type DocumentWorkflowHost,
   type WorkflowDocument,
 } from './document.ts';
+
+describe('documentStepAddress', () => {
+  it('keeps flat addresses and separates encoded iteration paths', () => {
+    expect(documentStepAddress(2)).toBe('2');
+    expect(documentStepAddress(2, ['summaries', 0])).toBe('2#summaries.0');
+    expect(documentStepAddress(2, ['a.b'])).toBe('2#a%2Eb');
+    expect(documentStepAddress(2, ['a', 'b'])).toBe('2#a.b');
+  });
+});
 
 const host: DocumentWorkflowHost = {
   activities: {

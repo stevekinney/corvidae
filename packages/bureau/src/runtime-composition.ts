@@ -1023,6 +1023,7 @@ export interface CatalogRunRecoveryRecord {
   readonly workflowStep?: {
     readonly workflowId: string;
     readonly step: number;
+    readonly stepAddress?: string;
   };
   /**
    * COR-1524 — set only when the run is of a file-based agent: the SHA-256 of the agent file's
@@ -1130,7 +1131,8 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
       typeof workflowStep['workflowId'] === 'string' &&
       typeof workflowStep['step'] === 'number' &&
       Number.isSafeInteger(workflowStep['step']) &&
-      workflowStep['step'] >= 0
+      workflowStep['step'] >= 0 &&
+      (workflowStep['stepAddress'] === undefined || typeof workflowStep['stepAddress'] === 'string')
     )
   ) {
     return false;

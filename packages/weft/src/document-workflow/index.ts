@@ -12,6 +12,7 @@ export {
   WorkflowDocumentSchemaError,
   WorkflowDocumentValidationError,
   canonicalWorkflowDocumentJson,
+  documentStepAddress,
   validateWorkflowDocument,
   workflowDocumentSchema,
   workflowDocumentStepSchema,

@@ -47,7 +47,10 @@ export function memoryFootprintUncoveredOutsideDarwin(
   platform: string,
 ): Pick<CoverageAllowance, 'functions' | 'lines'> {
   if (platform === 'darwin') return { lines: new Set() };
-  return { functions: 3, lines: new Set([36, 37, 38, 39, 40, 41, 45, 46, 47, 54, 79]) };
+  return {
+    functions: 3,
+    lines: new Set([36, 37, 38, 39, 40, 41, 42, 45, 46, 48, 54, 55, 79]),
+  };
 }
 
 type DocumentedCoverageAllowance = CoverageAllowance & { reason: string };

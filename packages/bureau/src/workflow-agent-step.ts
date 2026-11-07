@@ -24,9 +24,9 @@ import { type AgentStepResult, WorkflowAgentStepError } from './workflow-host';
  * a step a restart re-executes finds its own run. A hash and not a concatenation, because a
  * workflow id can already be close to Weft's 128 characters.
  */
-export function workflowStepRunId(workflowId: string, step: number): string {
+export function workflowStepRunId(workflowId: string, stepAddress: number | string): string {
   const digest = createHash('sha256')
-    .update(`${workflowId}:${String(step)}`)
+    .update(`${workflowId}:${String(stepAddress)}`)
     .digest('hex');
   return `workflow-agent-${digest.slice(0, 32)}`;
 }

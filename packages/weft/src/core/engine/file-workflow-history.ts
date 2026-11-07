@@ -145,7 +145,7 @@ function sameFileWorkflowRun(
 
 function eventKey(event: FileWorkflowEvent): string {
   if (event.type === 'file-workflow:run-terminal') return event.type;
-  return `${event.type}:${String(event.payload['step'])}`;
+  return `${event.type}:${String(event.payload['stepAddress'] ?? event.payload['step'])}`;
 }
 
 function stepKind(
@@ -169,6 +169,17 @@ function stepIndex(operation: ContextOperationRequest, fallback: number): number
     (operation.type === 'activity' ? operation.step : undefined) ??
     fallback
   );
+}
+
+function stepAddress(operation: ContextOperationRequest, fallback: number): string {
+  return (
+    (operation as ContextOperationRequest & { documentStepAddress?: string }).documentStepAddress ??
+    String(stepIndex(operation, fallback))
+  );
+}
+
+function addressPayload(address: string, step: number): Record<string, unknown> {
+  return address === String(step) ? {} : { stepAddress: address };
 }
 
 async function existingFileWorkflowEvents(
@@ -217,6 +228,7 @@ function completionEvents(
         operationLabel: string;
         stepIndex?: number;
         documentStep?: number;
+        documentStepAddress?: string;
         status: string;
       }
     | undefined,
@@ -224,15 +236,27 @@ function completionEvents(
   if (pending?.status !== 'completed') return [];
   if (pending.documentStep === undefined && pending.operationType !== 'activity') return [];
   const step = pending.documentStep ?? pending.stepIndex ?? 0;
+  const addressFields = addressPayload(String(pending.documentStepAddress ?? step), step);
   const events = new Map<string, FileWorkflowEvent[]>([
     [
       'activity',
       [
         {
           type: 'file-workflow:activity-completed',
-          payload: { step, handler: pending.operationLabel },
+          payload: {
+            step,
+            ...addressFields,
+            handler: pending.operationLabel,
+          },
         },
-        { type: 'file-workflow:step-completed', payload: { step, kind: 'activity' } },
+        {
+          type: 'file-workflow:step-completed',
+          payload: {
+            step,
+            ...addressFields,
+            kind: 'activity',
+          },
+        },
       ],
     ],
     [
@@ -240,12 +264,35 @@ function completionEvents(
       [
         {
           type: 'file-workflow:signal-received',
-          payload: { step, signal: pending.operationLabel },
+          payload: {
+            step,
+            ...addressFields,
+            signal: pending.operationLabel,
+          },
         },
-        { type: 'file-workflow:step-completed', payload: { step, kind: 'await-signal' } },
+        {
+          type: 'file-workflow:step-completed',
+          payload: {
+            step,
+            ...addressFields,
+            kind: 'await-signal',
+          },
+        },
       ],
     ],
-    ['sleep', [{ type: 'file-workflow:step-completed', payload: { step, kind: 'sleep' } }]],
+    [
+      'sleep',
+      [
+        {
+          type: 'file-workflow:step-completed',
+          payload: {
+            step,
+            ...addressFields,
+            kind: 'sleep',
+          },
+        },
+      ],
+    ],
   ]);
   return events.get(pending.operationType) ?? [];
 }
@@ -257,17 +304,28 @@ function startEvents(operation: ContextOperationRequest, step: number): FileWork
   const kind = stepKind(operation);
   if (kind === undefined) return [];
   const events: FileWorkflowEvent[] = [
-    { type: 'file-workflow:step-started', payload: { step, kind } },
+    {
+      type: 'file-workflow:step-started',
+      payload: { step, ...addressPayload(stepAddress(operation, step), step), kind },
+    },
   ];
   if (kind === 'activity') {
     events.push({
       type: 'file-workflow:activity-started',
-      payload: { step, handler: operation.type === 'activity' ? operation.activityName : '' },
+      payload: {
+        step,
+        ...addressPayload(stepAddress(operation, step), step),
+        handler: operation.type === 'activity' ? operation.activityName : '',
+      },
     });
   } else if (kind === 'await-signal') {
     events.push({
       type: 'file-workflow:signal-waiting',
-      payload: { step, signal: operation.type === 'wait-signal' ? operation.signalName : '' },
+      payload: {
+        step,
+        ...addressPayload(stepAddress(operation, step), step),
+        signal: operation.type === 'wait-signal' ? operation.signalName : '',
+      },
     });
   }
   return events;

@@ -46,6 +46,13 @@ describe('workflowStepRunId', () => {
   it('does not start with the prefix of a task’s run', () => {
     expect(workflowStepRunId('run-1', 0).startsWith('agent-run-')).toBe(false);
   });
+
+  it('distinguishes stable iteration addresses, including encoded dots', () => {
+    expect(workflowStepRunId('run-1', '2#summaries.0')).not.toBe(
+      workflowStepRunId('run-1', '2#summaries.1'),
+    );
+    expect(workflowStepRunId('run-1', '2#a%2Eb')).not.toBe(workflowStepRunId('run-1', '2#a.b'));
+  });
 });
 
 describe('agentStepResultFromRun', () => {
