@@ -1,6 +1,7 @@
 /** The shared provider contract, run against the OpenAI definition. */
+import type { ProviderDefinition } from '@lostgradient/operative/provider-kit';
 import { runProviderContract } from '@lostgradient/operative/provider-testing';
-import { openaiProvider } from '../src/openai-definition.ts';
+import { openaiProvider, type OpenAIProviderConfiguration } from '../src/openai-definition.ts';
 import type { OpenAIChatCompletionCreateRequest } from '../src/openai-types.ts';
 import { openAIStreamTextChunks, openAITextResponse } from '../src/test/openai-fixtures.ts';
 import {
@@ -8,8 +9,26 @@ import {
   createMockOpenAIStreamingClient,
 } from '../src/test/openai-mock-clients.ts';
 
+type StatefulProvider = ProviderDefinition<'openai', OpenAIProviderConfiguration> & {
+  readonly delegate: typeof openaiProvider;
+};
+
+/** Exercises the shared contract with real methods, whose receiver must survive factory calls. */
+const statefulProvider: StatefulProvider = {
+  name: 'openai',
+  delegate: openaiProvider,
+  generate(configuration) {
+    if (this.delegate !== openaiProvider) throw new Error('lost provider receiver');
+    return this.delegate.generate!(configuration);
+  },
+  stream(configuration) {
+    if (this.delegate !== openaiProvider) throw new Error('lost provider receiver');
+    return this.delegate.stream!(configuration);
+  },
+};
+
 runProviderContract<OpenAIChatCompletionCreateRequest>({
-  definition: openaiProvider,
+  definition: statefulProvider,
   createMockClient(shape) {
     const mock =
       shape === 'stream'
