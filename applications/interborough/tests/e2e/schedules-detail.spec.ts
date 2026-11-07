@@ -24,6 +24,13 @@ import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
+// The showcase host's engine runs on the sample world's clock (Monday, Nov 2, 10:46 AM Central), and
+// the page tells every time against the browser's own. Only a design-review capture pins the browser
+// to the same instant, so an ordinary run pins it here, or "in 16 hours" reads "4 days ago".
+test.beforeEach(async ({ context }) => {
+  await context.clock.setFixedTime(SAMPLE_NOW);
+});
+
 const SOURCE = 'schedules-detail.spec.ts';
 const WIDTHS = [1280, 768, 375] as const;
 
