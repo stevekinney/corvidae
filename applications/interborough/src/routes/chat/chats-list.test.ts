@@ -330,7 +330,8 @@ describe('the list on a phone and a modified click', () => {
     try {
       const { findByRole, queryByRole } = mount();
 
-      expect((await findByRole('heading', { level: 1 })).textContent?.trim()).toBe('Chat');
+      const heading = await findByRole('heading', { level: 1 });
+      expect(heading.textContent?.trim()).toBe('Chat');
       expect(queryByRole('searchbox', { name: 'Search chats' })).toBeNull();
     } finally {
       window.matchMedia = original;
