@@ -1221,7 +1221,7 @@ describe('memoryFootprintUncoveredOutsideDarwin', () => {
     expect(memoryFootprintUncoveredOutsideDarwin('darwin')).toEqual({ lines: new Set() });
     expect(memoryFootprintUncoveredOutsideDarwin('linux')).toEqual({
       functions: 3,
-      lines: new Set([36, 37, 38, 39, 40, 41, 45, 46, 47, 54, 79]),
+      lines: new Set([36, 37, 38, 39, 40, 41, 42, 45, 46, 48, 54, 55, 79]),
     });
   });
 });
