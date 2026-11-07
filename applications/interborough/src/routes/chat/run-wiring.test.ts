@@ -1704,7 +1704,11 @@ describe('a resume the mount refused', () => {
           conversation: () => conversation,
         });
         await frames(wiring, conversation);
-        await wiring.resolveToolApproval('call-refund', { decision: 'approve', reason });
+        await wiring.resolveToolApproval('call-refund', {
+          decision: 'approve',
+          reason,
+          remember: false,
+        });
         await frames(wiring, conversation);
 
         expect(inputOf(stubbed.sent[1]).resume?.[0]?.payload).toEqual(expected);

@@ -16,7 +16,6 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
-import { connectProvider } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';

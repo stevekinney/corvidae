@@ -38,7 +38,7 @@ describe('a thread read with rows the Bureau recorded no time for', () => {
       ...message,
       metadata: { 'conversationalist:createdAt': RECORDED },
     }));
-    const merged = mergeAGUIMessages(createConversationHistory({ id: 'thread' }), stamped as never);
+    const merged = mergeAGUIMessages(createConversationHistory({ id: 'thread' }), stamped);
 
     expect(withoutImportTimes(merged, stamped)).toBe(merged);
   });
