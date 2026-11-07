@@ -229,6 +229,7 @@ import { purgeChatMemories, type RunMemoryPlacement } from './chat-memory-purge'
 import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_HOOK_OWNER_PREFIX,
+  AUDIT_HOST_OWNER_ID,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
@@ -12500,6 +12501,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         const { runId, detail } = resource;
         if (runId.startsWith(AUDIT_SCHEDULE_OWNER_PREFIX)) {
           return scheduleOwner(runId.slice(AUDIT_SCHEDULE_OWNER_PREFIX.length));
+        }
+        if (runId === AUDIT_HOST_OWNER_ID) {
+          // COR-2009 — the host has no owner field: its own records (`host.started`) belong to the
+          // deployment's owner, so the owner's audit log lists "Server started".
+          return ownerOrLocal(undefined);
         }
         if (runId.startsWith(AUDIT_AGENT_OWNER_PREFIX)) {
           // COR-1526 — an agent file has no owner field: it belongs to the deployment's owner.

@@ -10,7 +10,7 @@ import type { Page } from '@playwright/test';
 
 import { TASK_COPY } from '../../src/app/copy.ts';
 import { STATUS_WORDS } from '../../src/lib/status.ts';
-import { STARTED_BY_LABELS } from '../../src/routes/workflows/runs/started-by.ts';
+import { STARTED_BY_KINDS, STARTED_BY_LABELS } from '../../src/routes/workflows/runs/started-by.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -74,13 +74,16 @@ test.describe('the records pages', () => {
   }) => {
     await page.goto('/runs');
     await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
-    const startedBy = page.getByLabel(TASK_COPY.startedByLabel);
-    await expect(startedBy.locator('option')).toHaveText([
+    // The filter is a Cinder select in the filter bar: its options are in the open list, and they
+    // are the origins a run can be filtered by (an agent's tool call is read from the run itself).
+    const startedBy = page.getByRole('combobox', { name: TASK_COPY.startedByLabel });
+    await startedBy.click();
+    await expect(page.getByRole('option')).toHaveText([
       TASK_COPY.anyOrigin,
-      ...Object.values(STARTED_BY_LABELS),
+      ...STARTED_BY_KINDS.map((kind) => STARTED_BY_LABELS[kind]),
     ]);
 
-    await startedBy.selectOption('schedule');
+    await page.getByRole('option', { name: STARTED_BY_LABELS.schedule, exact: true }).click();
     await expect(page).toHaveURL(/startedBy=schedule/);
     for (const row of await page.locator('tr[data-run] .ib-run-origin').all()) {
       await expect(row).toHaveAttribute('data-origin', 'schedule');

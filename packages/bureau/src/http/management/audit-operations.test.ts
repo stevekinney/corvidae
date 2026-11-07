@@ -18,6 +18,7 @@ import { z } from 'zod';
 
 import { waitForCondition } from '../../test';
 import { createBureau } from '../../create-bureau.ts';
+import { ANONYMOUS_LOCAL_OWNER } from '../../owner-of-record.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import { auditQueryOperation } from './audit-operations.ts';
 import {
@@ -401,6 +402,63 @@ describe('bureau.audit.query in process (COR-1705)', () => {
 
     expect(owned.records.map((record) => record.resource)).not.toContain('run-that-is-gone');
     expect(host.records.map((record) => record.resource)).toContain('run-that-is-gone');
+  });
+
+  it('lists the host’s own start to the local caller over the wire, and to no other owner (COR-2009)', async () => {
+    // The shipped host's workspace: one local owner who may use and manage it.
+    const localOwner = {
+      version: 1 as const,
+      workspaceId: 'local-workspace',
+      actorId: 'local-owner',
+      actorKind: 'local' as const,
+      owner: ANONYMOUS_LOCAL_OWNER,
+      membershipRevision: 'local-owner-v1',
+      capabilities: ['workspace:use' as const, 'workspace:manage' as const],
+    };
+    const workspace = {
+      workspaceId: 'local-workspace',
+      resolveMembership: async ({ method }: { method: string }) =>
+        method === 'unauthenticated-local' ? localOwner : null,
+      resolveOwnerMembership: async (owner: string) =>
+        owner === ANONYMOUS_LOCAL_OWNER ? localOwner : null,
+    };
+    const opened = await openBureau({
+      localAccess: true,
+      bureauOptions: { workspace },
+      handlerOptions: { workspace },
+    });
+    cleanups.push(() => opened.dispose());
+    await opened.bureau.internals.auditTrail?.record({
+      runId: 'host',
+      type: 'host.started',
+      principal: 'system:host',
+      detail: { version: '2.4.1', environment: SECRET },
+    });
+
+    // A request with no credential is the local caller, as the browser's is on a single-user host.
+    const response = await opened.handler(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'bureau.audit.query',
+          params: { types: ['host.started'] },
+        }),
+      }),
+    );
+    const local = (await response.json()) as RpcBody;
+    expect(local.result?.['records']).toMatchObject([
+      { type: 'host.started', resource: 'host', detail: { version: '2.4.1' } },
+    ]);
+    expect(JSON.stringify(local)).not.toContain(SECRET);
+
+    const other = await opened.bureau.audit.query(
+      { types: ['host.started'] },
+      { owner: OWNER.alice },
+    );
+    expect(other.records).toEqual([]);
   });
 
   it('refuses a cursor it did not issue and a filter outside the operation’s bounds as BAD_REQUEST', async () => {

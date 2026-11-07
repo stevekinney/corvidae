@@ -39,6 +39,8 @@ const PLUGINS: readonly Fixture[] = [
 /** What `GET /host/plugins` answers: the sample world's plugins, with `changed` waiting for a restart. */
 function snapshotOf(options: { readonly applied: boolean; readonly changed?: string }) {
   return {
+    // The revision a write is checked against (`mutationInput`): the page refuses a snapshot without one.
+    configurationRevision: 'e2e-configuration-revision',
     plugins: PLUGINS.map((plugin) => {
       const turnedOff = plugin.name === options.changed && options.applied;
       const status = turnedOff ? 'disabled' : plugin.status;
@@ -206,7 +208,7 @@ test.describe('Restart', () => {
     await page.goto(`${E2E_SHOWCASE_URL}/settings/plugins?plugin=web-search`);
 
     await page.getByRole('switch', { name: PLUGINS_COPY.enabled }).click();
-    const question = page.getByRole('dialog', { name: PLUGINS_COPY.disable.title('web-search') });
+    const question = page.getByRole('dialog', { name: PLUGINS_COPY.disable.title('Web search') });
     await question.getByRole('button', { name: PLUGINS_COPY.disable.confirm }).click();
 
     // The host stops answering: the attempts count, then give up after 8.

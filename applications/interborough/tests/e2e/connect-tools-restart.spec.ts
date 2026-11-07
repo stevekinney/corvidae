@@ -3,12 +3,13 @@
  * (`E2E_CONNECT_PORT`, `connect-host.ts`: the production entry under the real supervisor, with an
  * empty home). A failed test says why in words that hold no token and no address; an MCP server with
  * a bearer token, an OpenAPI service from a URL and an MCP server behind OAuth are connected from
- * the dialog; the OAuth sign-in completes against a mock authorization server; and after Restart
- * Interborough the page lists their tools in Capabilities.
+ * the dialog; the tools of a source added to a live host are in Capabilities at once, with no
+ * restart (COR-2009); the OAuth sign-in completes against a mock authorization server; and after the
+ * host restarts the page lists the tools of every source it loaded at boot.
  *
  * The cases run in file order and each builds on the host the one before left: the first four leave
- * it empty, then three sources are saved, signed in and restarted into. Nothing else opens this
- * host. The OAuth sign-in of a seeded source on the main host is `connect-tools.spec.ts`.
+ * it empty, then three sources are saved and signed in to, and the host is restarted into. Nothing
+ * else opens this host. The OAuth sign-in of a seeded source on the main host is `connect-tools.spec.ts`.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
@@ -24,6 +25,7 @@ const copy = CAPABILITIES_COPY.source;
 const SOURCES = '/capabilities?tab=sources';
 
 const escapeForPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const dialog = (page: Page) => page.getByTestId('connect-form');
 /** Connect, in the dialog's footer; its name is exact because the page's own button is Connect a source. */
 const saveButton = (page: Page) =>
@@ -146,7 +148,7 @@ test('tests a server with its token, and lists the tools it offers before anythi
   expect(saved).toMatchObject({ sources: [] });
 });
 
-test('connects an MCP server and an OpenAPI service, which wait for a restart', async ({
+test('connects an MCP server and an OpenAPI service, whose tools are listed at once', async ({
   page,
   request,
 }) => {
@@ -157,8 +159,9 @@ test('connects an MCP server and an OpenAPI service, which wait for a restart', 
   await bearer(page, E2E_CONNECT_TOKEN);
   await saveButton(page).click();
 
+  // A source added to a live host is loaded at once (COR-2009): it is Connected, not waiting.
   await expect(detail(page)).toHaveAttribute('data-source', 'notes');
-  await expect(detail(page)).toHaveAttribute('data-state', 'pending-restart');
+  await expect(detail(page)).toHaveAttribute('data-state', 'loaded');
   expect(await page.content()).not.toContain(E2E_CONNECT_TOKEN);
 
   await page.getByRole('button', { name: copy.connect.action }).click();
@@ -173,11 +176,15 @@ test('connects an MCP server and an OpenAPI service, which wait for a restart', 
   await saveButton(page).click();
 
   await expect(detail(page)).toHaveAttribute('data-source', 'pets');
-  await expect(page.getByTestId('sources-restart')).toContainText(copy.restart.title(2));
-  // The running host has not loaded them: Capabilities does not list their tools yet.
+  await expect(detail(page)).toHaveAttribute('data-state', 'loaded');
+  // Nothing is saved and not running, so there is nothing to restart for.
+  await expect(page.getByTestId('sources-restart')).toHaveCount(0);
+  // The running host has loaded them: Capabilities lists their tools now.
   await page.goto('/capabilities');
   await expect(page.locator('[data-view="capabilities"]')).toHaveAttribute('data-state', 'ready');
-  await expect(page.locator('[data-tool-row="notes__lookup"]')).toHaveCount(0);
+  for (const name of ['notes__lookup', 'notes__wipe', 'pets__list-pets', 'pets__create-pet']) {
+    await expect(page.locator(`[data-tool-row="${name}"]`)).toHaveCount(1);
+  }
   const stored = await snapshotOf(request);
   expect(JSON.stringify(stored)).not.toContain(E2E_CONNECT_TOKEN);
 });
@@ -193,7 +200,11 @@ test('connects an MCP server behind OAuth, and signing in completes', async ({ p
   await saveButton(page).click();
 
   await expect(detail(page)).toHaveAttribute('data-source', 'ledger');
-  await expect(page.getByTestId('source-state-description')).toHaveText(copy.signIn.savedFirst);
+  // It is saved and waits for the sign-in that lets it list its tools.
+  await expect(detail(page)).toHaveAttribute('data-state', 'needs-authorization');
+  await expect(page.getByTestId('source-state-description')).toHaveText(
+    copy.stateDescriptions['needs-authorization'],
+  );
   const popup = page.waitForEvent('popup');
   await page.getByRole('button', { name: copy.signIn.action }).click();
   const signIn = await popup;
@@ -203,22 +214,42 @@ test('connects an MCP server behind OAuth, and signing in completes', async ({ p
   expect(await signIn.content()).not.toMatch(/access-|refresh-/);
   await signIn.close();
 
+  // The first sign-in completing loads the source at once (COR-2009): its tools are listed.
   await page.reload();
-  await expect(page.getByTestId('source-state-description')).toHaveText(copy.signIn.signedIn);
+  await expect(detail(page)).toHaveAttribute('data-state', 'loaded');
+  await expect(page.getByTestId('source-state-description')).toHaveText(
+    copy.stateDescriptions.loaded,
+  );
   expect(await page.content()).not.toMatch(/access-|refresh-/);
   const after = await snapshotOf(request);
   expect(after.sources.find((source) => source.id === 'ledger')).toMatchObject({
     authorized: true,
+    state: 'loaded',
   });
 });
+
+/** How many times this host has started: its `host.started` events, the audit log's "Server started". */
+async function hostStartsOf(request: APIRequestContext): Promise<number> {
+  const response = await request.post('/bureau/jsonrpc', {
+    data: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'bureau.audit.query',
+      params: { types: ['host.started'], includeTotal: true, limit: 1 },
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as { result: { total: number } };
+  return body.result.total;
+}
 
 test('restarts the host, and the tools of every source it loaded are in Capabilities', async ({
   page,
   request,
   pageErrors,
 }) => {
-  // While the host is stopped, every request the page makes to it dies: the restart watch, the
-  // health probe and the event streams. How many depends on how long the supervisor takes.
+  // While the host is stopped, every request the open page makes to it dies: the health probe, the
+  // event streams and the reads. How many depends on how long the supervisor takes.
   const connection =
     '(CONNECTION_REFUSED|CONNECTION_RESET|EMPTY_RESPONSE|INCOMPLETE_CHUNKED_ENCODING)';
   pageErrors.expectEvery({
@@ -234,12 +265,29 @@ test('restarts the host, and the tools of every source it loaded are in Capabili
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(SOURCES);
-  await expect(page.getByTestId('sources-restart')).toContainText(copy.restart.title(3));
+  // The three sources are running, so nothing is saved and waiting, and the page offers no restart.
+  await expect(page.getByTestId('sources-restart')).toHaveCount(0);
 
-  await page.getByRole('button', { name: copy.restart.action }).click();
+  // Ask the host to restart, as the page's restart does (`POST /host/restart`, answered 202 before
+  // it stops). The supervisor starts it again, which the audit log records as one more start.
+  const starts = await hostStartsOf(request);
+  const asked = await request.post('/host/restart');
+  expect(asked.status()).toBe(202);
+  await expect
+    .poll(
+      async () => {
+        // While the host is stopped no request is answered: that is the restart under way.
+        try {
+          return await hostStartsOf(request);
+        } catch {
+          return starts;
+        }
+      },
+      { message: 'the supervisor starts the host again, and it records its start' },
+    )
+    .toBe(starts + 1);
 
-  // The host stopped and the supervisor started it again: the page waited for the answer.
-  await expect(page.getByTestId('sources-restart-back')).toBeVisible();
+  await page.goto(SOURCES);
   for (const [id, state] of [
     ['notes', 'loaded'],
     ['pets', 'loaded'],
@@ -247,10 +295,6 @@ test('restarts the host, and the tools of every source it loaded are in Capabili
   ] as const) {
     await expect(page.locator(`[data-source-row="${id}"]`)).toHaveAttribute('data-state', state);
   }
-  await page
-    .getByTestId('sources-restart-back')
-    .getByRole('button', { name: /dismiss/i })
-    .click();
 
   await page.goto('/capabilities');
   for (const name of ['notes__lookup', 'notes__wipe', 'pets__list-pets', 'pets__create-pet']) {

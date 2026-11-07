@@ -191,7 +191,7 @@ test.describe('the Sources tab', () => {
     ).toHaveCount(0);
   });
 
-  test('signs in to an OAuth server, and the page then says to restart to list its tools', async ({
+  test('signs in to an OAuth server, and the page then says its tools are listed', async ({
     page,
     request,
   }) => {
@@ -215,9 +215,11 @@ test.describe('the Sources tab', () => {
       await signIn.close();
     }
 
+    // The first sign-in loads the source at once (COR-2009), so no restart is needed to list its tools.
     await page.reload();
+    await expect(detail(page)).toHaveAttribute('data-state', 'loaded');
     await expect(page.getByTestId('source-state-description')).toHaveText(
-      copy.source.signIn.signedIn,
+      copy.source.stateDescriptions.loaded,
     );
     const content = await page.content();
     expect(content).not.toMatch(/access-|refresh-/);
