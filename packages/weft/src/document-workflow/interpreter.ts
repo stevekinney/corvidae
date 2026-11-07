@@ -62,7 +62,8 @@ function* documentOperation<T>(
  * the activity dispatches yielded by the retry generator so a retry does not
  * create a file-workflow sleep event or inherit the engine's step counter.
  */
-function* documentActivityOperation<T>(
+/** Applies stable document identity to each activity dispatch, including retry replays. */
+export function* documentActivityOperation<T>(
   operation: Generator<unknown, T, unknown>,
   documentStep: number,
   stepAddress: string,

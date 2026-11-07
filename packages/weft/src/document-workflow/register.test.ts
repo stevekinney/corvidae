@@ -15,6 +15,7 @@ import {
 import { workflow } from '../core/types.ts';
 import { KEYS } from '../storage/keys.ts';
 import { WorkflowDocumentValidationError, type DocumentWorkflowHost } from './document.ts';
+import { documentActivityOperation } from './interpreter.ts';
 import { registerWorkflowDocuments } from './register.ts';
 
 const handlerCalls: string[] = [];
@@ -705,5 +706,25 @@ describe('the identity every activity handler receives', () => {
       { workflowId: 'identity-restart-run', step: 1, stepAddress: '1' },
       { workflowId: 'identity-restart-run', step: 1, stepAddress: '1' },
     ]);
+  });
+});
+
+describe('document activity retry addressing', () => {
+  it('restamps an activity yielded after a retry operation throws', () => {
+    const operation = (function* () {
+      try {
+        yield { type: 'activity' };
+      } catch {
+        yield { type: 'activity' };
+      }
+    })();
+    const wrapped = documentActivityOperation(operation, 4, '4#summaries.0');
+    wrapped.next();
+    const retry = wrapped.throw(new Error('retry'));
+    expect(retry.value).toMatchObject({
+      type: 'activity',
+      documentStep: 4,
+      documentStepAddress: '4#summaries.0',
+    });
   });
 });
