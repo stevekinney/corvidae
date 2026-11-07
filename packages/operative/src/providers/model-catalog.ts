@@ -119,6 +119,10 @@ export interface BackendDescriptor {
         readonly inputPerMillionTokens: number;
         readonly outputPerMillionTokens: number;
         readonly currency: string;
+        /** Price for tokens written to the prompt cache, when the provider publishes one. */
+        readonly cacheWritePerMillionTokens?: number | undefined;
+        /** Price for tokens served from the prompt cache, when the provider publishes one. */
+        readonly cacheReadPerMillionTokens?: number | undefined;
         /**
          * Rates that replace the two above for a request whose input exceeds
          * `inputTokensAbove` tokens, mirroring `ModelPricing.longContext`.
@@ -129,6 +133,8 @@ export interface BackendDescriptor {
               readonly inputTokensAbove: number;
               readonly inputPerMillionTokens: number;
               readonly outputPerMillionTokens: number;
+              readonly cacheWritePerMillionTokens?: number | undefined;
+              readonly cacheReadPerMillionTokens?: number | undefined;
             }
           | undefined;
       }

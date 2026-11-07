@@ -5,9 +5,8 @@
  * The budget is measured against Operative's per-run cost estimate, which prices each request at
  * its model's rate. The rates come from the catalog's own price rows, so the budget follows the
  * deployment's catalog and not Operative's built-in table. A row prices a model in US dollars per
- * million input and output tokens, and says nothing about prompt caching; where Operative's table
- * knows the model, its cache rates are kept, so a run that reads a cache is not priced as if the
- * cache were free.
+ * million input and output tokens, and may carry prompt-cache rates, so a run that reads a cache is
+ * not priced as if the cache were free.
  *
  * @module file-agent-cost-budget
  */
@@ -15,7 +14,6 @@
 import {
   type BackendDescriptor,
   type CostEstimationOptions,
-  getModelPricing,
   providerModelPricingKey,
   type ModelPricing,
   type RunCostBudget,
@@ -32,30 +30,28 @@ import type { AgentCostBudget, AgentToolBudget } from './agent-file';
 export function usdPricingOfRow(row: BackendDescriptor): ModelPricing | undefined {
   const price = row.pricing;
   if (price === undefined || price.currency.toUpperCase() !== 'USD') return undefined;
-  // Operative's table, when it knows the model, supplies the cache rates the catalog row lacks.
-  const known = getModelPricing(row.model);
   const longContext = price.longContext;
   return {
-    ...(known?.cacheWriteCostPerMillionTokens === undefined
+    ...(price.cacheWritePerMillionTokens === undefined
       ? {}
-      : { cacheWriteCostPerMillionTokens: known.cacheWriteCostPerMillionTokens }),
-    ...(known?.cacheReadCostPerMillionTokens === undefined
+      : { cacheWriteCostPerMillionTokens: price.cacheWritePerMillionTokens }),
+    ...(price.cacheReadPerMillionTokens === undefined
       ? {}
-      : { cacheReadCostPerMillionTokens: known.cacheReadCostPerMillionTokens }),
+      : { cacheReadCostPerMillionTokens: price.cacheReadPerMillionTokens }),
     promptCostPerMillionTokens: price.inputPerMillionTokens,
     completionCostPerMillionTokens: price.outputPerMillionTokens,
     ...(longContext === undefined
       ? {}
       : {
           longContext: {
-            ...(known?.longContext?.cacheWriteCostPerMillionTokens === undefined
+            ...(longContext.cacheWritePerMillionTokens === undefined
               ? {}
               : {
-                  cacheWriteCostPerMillionTokens: known.longContext.cacheWriteCostPerMillionTokens,
+                  cacheWriteCostPerMillionTokens: longContext.cacheWritePerMillionTokens,
                 }),
-            ...(known?.longContext?.cacheReadCostPerMillionTokens === undefined
+            ...(longContext.cacheReadPerMillionTokens === undefined
               ? {}
-              : { cacheReadCostPerMillionTokens: known.longContext.cacheReadCostPerMillionTokens }),
+              : { cacheReadCostPerMillionTokens: longContext.cacheReadPerMillionTokens }),
             inputTokensAbove: longContext.inputTokensAbove,
             promptCostPerMillionTokens: longContext.inputPerMillionTokens,
             completionCostPerMillionTokens: longContext.outputPerMillionTokens,

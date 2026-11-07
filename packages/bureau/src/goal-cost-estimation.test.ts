@@ -122,6 +122,8 @@ describe('the estimator a budgeted file agent is built with (COR-1914)', () => {
           inputTokensAbove: 200_000,
           inputPerMillionTokens: 8,
           outputPerMillionTokens: 30,
+          cacheReadPerMillionTokens: 0.8,
+          cacheWritePerMillionTokens: 1.2,
         },
       },
     };
@@ -129,6 +131,13 @@ describe('the estimator a budgeted file agent is built with (COR-1914)', () => {
       const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, row, []);
       expect(isGoalAttemptCostEstimation(JSON.parse(JSON.stringify(costEstimation)))).toBe(true);
     }
+    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, withLongContext, []);
+    expect(
+      getModelPricing(withLongContext.model, costEstimation?.pricing)?.longContext,
+    ).toMatchObject({
+      cacheReadCostPerMillionTokens: 0.8,
+      cacheWriteCostPerMillionTokens: 1.2,
+    });
   });
 
   it('accepts, and keeps through JSON, a budgeted agent’s estimator that lists a model as unpriced (COR-1921)', () => {
