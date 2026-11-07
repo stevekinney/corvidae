@@ -15,8 +15,10 @@ import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
+  expectTabOpen,
   listWorkflowRuns,
   openJsonTab,
+  openTab,
   readWorkflow,
   removeWorkflow,
   workflowFaultCode,
@@ -57,10 +59,7 @@ test.describe('a workflow built from rows', () => {
       await page.goto('/workflows/new');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       const root = creator(page);
-      await expect(root.getByRole('tab', { name: BUILDER.builderTab })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
+      await expectTabOpen(root, BUILDER.builderTab);
       await checkA11y(`the builder at ${width}px`);
 
       await root.getByLabel(BUILDER.nameLabel, { exact: true }).fill(id);
@@ -114,7 +113,7 @@ test.describe('a workflow built from rows', () => {
 
     document.steps = [{ kind: 'sleep', duration: '45s' }];
     await json.fill(JSON.stringify(document, null, 2));
-    await root.getByRole('tab', { name: BUILDER.builderTab }).click();
+    await openTab(root, BUILDER.builderTab);
     await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('45s');
     await expect(root.getByLabel(BUILDER.agentLabel(1))).toHaveCount(0);
   });

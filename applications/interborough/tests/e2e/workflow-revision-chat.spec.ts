@@ -67,7 +67,7 @@ test.describe('workflow revision review in Chat', () => {
     ).toBe(true);
     await expect(
       page
-        .locator('.ib-tool')
+        .locator('.cinder-tool-call-rail__item')
         .filter({ has: page.locator('iframe[title="Review workflow revision"]') }),
     ).toHaveCount(1);
     await expect(
@@ -365,11 +365,11 @@ test.describe('workflow revision review in Chat', () => {
       `invalid proposal for ${WORKFLOW_ID}`,
     );
     await page.goto(`/chats/${invalidThread}`);
-    const invalidTool = page.locator('.ib-tool[data-tool-call-row="cor-2034-workflow-proposal"]');
+    const invalidTool = page
+      .locator('.cinder-tool-call-rail__item')
+      .filter({ has: page.locator('[data-cinder-tool-call-row="cor-2034-workflow-proposal"]') });
     await expect(invalidTool).toBeVisible();
-    await invalidTool
-      .getByRole('button', { name: /Details for bureau__workflows-propose-update/ })
-      .click();
+    await invalidTool.getByRole('button', { name: /Bureau workflows propose update/ }).click();
     await expect(invalidTool.locator('.ib-tool__details')).toContainText('expectedHash');
     await expect(page.locator('iframe[title="Review workflow revision"]')).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -470,7 +470,10 @@ test.describe('workflow revision review in Chat', () => {
     );
     await page.goto(`/chats/${staleThread}`);
     await expect(page.locator('iframe[title="Review workflow revision"]')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Show tool calls' }).click();
+    // The rail lists the call without a panel, says it conflicted, and names the tool on hover.
+    const staleRow = page.locator('[data-cinder-tool-call-row="cor-2034-workflow-proposal"]');
+    await expect(staleRow).toContainText('status conflict');
+    await staleRow.hover();
     await expect(page.getByText('bureau__workflows-propose-update', { exact: true })).toBeVisible();
   });
 
