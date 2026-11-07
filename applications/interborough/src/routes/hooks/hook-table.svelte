@@ -78,7 +78,7 @@
   </Alert>
 {/if}
 
-<Table caption={HOOKS_COPY.caption} density="condensed">
+<Table caption={HOOKS_COPY.caption} density="condensed" class="ib-records__table">
   <Table.Header>
     <Table.Row>
       <Table.HeaderCell>{HOOKS_COPY.hookColumn}</Table.HeaderCell>

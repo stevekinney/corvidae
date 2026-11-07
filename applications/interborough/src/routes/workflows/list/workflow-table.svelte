@@ -123,14 +123,14 @@
 
 <Table caption="Workflows" selectable={selectionEnabled} scrollable class="weft-workflows-table">
   <colgroup>
-    {#if selectionEnabled}<col style="width: 36px" />{/if}
-    <col style="width: 116px" />
-    <col style="width: 220px" />
-    <col style="width: 150px" />
-    <col style="width: 120px" />
-    <col />
-    <col style="width: 92px" />
-    <col style="width: 92px" />
+    {#if selectionEnabled}<col class="weft-workflows-table__col-select" />{/if}
+    <col class="weft-workflows-table__col-status" />
+    <col class="weft-workflows-table__col-id" />
+    <col class="weft-workflows-table__col-type" />
+    <col class="weft-workflows-table__col-revision" />
+    <col class="weft-workflows-table__col-tags" />
+    <col class="weft-workflows-table__col-time" />
+    <col class="weft-workflows-table__col-time" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>
@@ -138,7 +138,7 @@
       <Table.HeaderCell>Workflow ID</Table.HeaderCell>
       <Table.HeaderCell>Type</Table.HeaderCell>
       <Table.HeaderCell>Revision</Table.HeaderCell>
-      <Table.HeaderCell>Tags</Table.HeaderCell>
+      <Table.HeaderCell class="weft-workflows-table__col-tags">Tags</Table.HeaderCell>
       <Table.HeaderCell align="right">Created</Table.HeaderCell>
       <Table.HeaderCell align="right">Updated</Table.HeaderCell>
     </Table.Row>
@@ -208,7 +208,7 @@
             <Badge variant="neutral" size="xs">Unpinned</Badge>
           {/if}
         </Table.Cell>
-        <Table.Cell>
+        <Table.Cell class="weft-workflows-table__col-tags">
           {#if row.tags && row.tags.filter((tag) => tag !== 'origin:agent-run').length > 0}
             <span class="weft-workflows-table__tags">
               {#each row.tags.filter((tag) => tag !== 'origin:agent-run') as tag (tag)}

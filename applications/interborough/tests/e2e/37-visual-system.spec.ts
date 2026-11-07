@@ -141,20 +141,32 @@ test.describe('each route says what kind of page it is, and every page has one d
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
-    // Settings is a form, which keeps the reading width: the outlet pads its content into the
-    // column, so the column is the outlet's width less its padding.
-    await page.goto('/settings');
-    await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
-    const column = await page.locator('main.weft-shell-outlet').evaluate((outlet) => {
-      const style = getComputedStyle(outlet);
+    // The new-workflow builder is a form, which keeps the reading width: the outlet pads its content
+    // into the column, so the column is the outlet's width less its padding.
+    await page.goto('/workflows/new');
+    const outlet = page.locator('main.weft-shell-outlet');
+    await expect(outlet).toHaveAttribute('data-width', 'reading');
+    await expect(outlet.getByRole('heading', { level: 1 })).toBeVisible();
+    const column = await outlet.evaluate((element) => {
+      const style = getComputedStyle(element);
       return (
-        outlet.clientWidth -
+        element.clientWidth -
         Number.parseFloat(style.paddingLeft) -
         Number.parseFloat(style.paddingRight)
       );
     });
     expect(column).toBeLessThanOrEqual(720);
     expect(column).toBeGreaterThanOrEqual(700);
+    // Settings is a full-width page whose section navigation sits beside one reading column of at
+    // most 46rem (design rows 05f and 47a), which the page header and the content share.
+    await page.goto('/settings');
+    await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
+    await expect(outlet).toHaveAttribute('data-width', 'full');
+    const settingsColumn = await page
+      .locator('.weft-settings__title-area')
+      .evaluate((element) => element.getBoundingClientRect().width);
+    expect(settingsColumn).toBeLessThanOrEqual(46 * 16);
+    expect(settingsColumn).toBeGreaterThanOrEqual(700);
     await page.goto('/runs');
     // The loading skeleton is already wider than 900px, so a width read before the frame has swapped
     // it for the page measures nothing about the page. Wait for the page, then read its width.
