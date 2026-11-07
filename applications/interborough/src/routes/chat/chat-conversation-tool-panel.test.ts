@@ -42,6 +42,20 @@ function lookupRun(url: string, init?: RequestInit): Response | undefined {
       content: '{"total":"$42.00"}',
       role: 'tool',
     },
+    { type: 'TOOL_CALL_START', toolCallId: 'call-missing', toolCallName: 'lookup-order' },
+    { type: 'TOOL_CALL_ARGS', toolCallId: 'call-missing', delta: '{"orderId":"0000"}' },
+    { type: 'TOOL_CALL_END', toolCallId: 'call-missing' },
+    {
+      type: 'TOOL_CALL_RESULT',
+      messageId: 'result-2',
+      toolCallId: 'call-missing',
+      content: JSON.stringify({
+        outcome: 'error',
+        content: null,
+        error: { message: 'No such order', code: 'not_found' },
+      }),
+      role: 'tool',
+    },
     { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
     { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Order 4471 is $42.00.' },
     { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
@@ -88,6 +102,28 @@ describe('a tool call’s side panel', () => {
 
     await fireEvent.click(row);
     await waitFor(() => expect(container.querySelector('.ib-chat-panel')).toBeNull());
+  });
+
+  test('shows what a call answered, and why a failed one failed', async () => {
+    const { container, row } = await lookedUp();
+
+    await fireEvent.click(row);
+    await waitFor(() => expect(container.querySelector('.ib-chat-panel')).not.toBeNull());
+    await waitFor(() =>
+      expect(container.querySelector('.ib-chat-panel')?.textContent).toContain('$42.00'),
+    );
+
+    const failed = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>(
+        '[data-cinder-tool-call-row="call-missing"]',
+      );
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    await fireEvent.click(failed);
+    await waitFor(() =>
+      expect(container.querySelector('.ib-chat-panel')?.textContent).toContain('No such order'),
+    );
   });
 
   test('closing it hands focus back to the row that opened it', async () => {

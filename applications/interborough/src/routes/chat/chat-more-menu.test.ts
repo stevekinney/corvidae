@@ -374,4 +374,22 @@ describe('Export', () => {
     expect(text).toContain('## You\n\nFirst question');
     expect(text).toContain('## Assistant\n\nSecond answer');
   });
+
+  test('says it could not save when the browser refuses the file, and the chat stays as it was', async () => {
+    serve();
+    const originalCreate = URL.createObjectURL;
+    URL.createObjectURL = () => {
+      throw new Error('The browser refused the file.');
+    };
+    try {
+      const view = mount();
+      await openMenu(view);
+
+      await fireEvent.click(view.getByRole('menuitem', { name: MORE.export }));
+
+      expect(await view.findByText(MORE.exportFault)).not.toBeNull();
+    } finally {
+      URL.createObjectURL = originalCreate;
+    }
+  });
 });
