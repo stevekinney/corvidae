@@ -33,16 +33,25 @@ export async function executeConnection(
   const name = parsed.arguments[1];
   if (action === 'add') {
     const url = String(parsed.options.get('url') ?? '');
-    if (!name || loopbackUrl(url) === undefined)
-      throw Object.assign(new Error('connection add requires a loopback --url.'), { usage: true });
+    const credentialReference = parsed.options.get('credential-reference');
+    const parsedUrl = loopbackUrl(url);
+    if (
+      !name ||
+      parsedUrl === undefined ||
+      (parsedUrl.protocol === 'https:' && typeof credentialReference !== 'string')
+    )
+      throw Object.assign(
+        new Error(
+          'connection add requires a loopback URL, or an HTTPS URL with --credential-reference.',
+        ),
+        { usage: true },
+      );
     const next = preferences.connections
       .filter((entry) => entry.name !== name)
       .concat({
         name,
         url,
-        ...(typeof parsed.options.get('credential-reference') === 'string'
-          ? { credentialReference: String(parsed.options.get('credential-reference')) }
-          : {}),
+        ...(typeof credentialReference === 'string' ? { credentialReference } : {}),
       });
     await writePreferences(
       {
