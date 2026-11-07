@@ -57,7 +57,8 @@ export const E2E_JOURNEY_URL = `http://127.0.0.1:${E2E_JOURNEY_PORT}`;
  * (`first-run.spec.ts`) opens. It is a fresh installation: an empty state directory, with no
  * provider, no agent file, no chat and no plugin that ships an agent, so the checklist on Chat has
  * every step to do. The specification connects a provider and creates an agent on it, so nothing
- * else may open this host.
+ * else may change this host. Specifications that only read it as a fresh installation run before it
+ * (`24-define-agents.spec.ts` for the form with no provider, and the first-run Health case).
  */
 export const E2E_FIRST_RUN_PORT = E2E_PORT + 4;
 export const E2E_FIRST_RUN_URL = `http://127.0.0.1:${E2E_FIRST_RUN_PORT}`;
