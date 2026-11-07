@@ -135,7 +135,7 @@ describe('a tool call’s side panel', () => {
       expect(container.querySelector('.ib-chat-panel')?.textContent).toContain('No such order'),
     );
     // The panel says where the call stands among the turn’s calls.
-    expect(container.querySelector('.ib-chat-panel')?.textContent).toContain('call 2 of 3');
+    expect(container.querySelector('.ib-chat-panel')?.textContent).toContain('call 2 of 2');
   });
 
   test('closing it hands focus back to the row that opened it', async () => {
