@@ -29,6 +29,7 @@ const identities: { workflowId: string; step: number; stepAddress?: string }[] =
 let hangIdentify = false;
 let mapActive = 0;
 let mapMaximum = 0;
+const retryMapAttempts: number[] = [];
 
 const host: DocumentWorkflowHost = {
   activities: {
@@ -60,6 +61,17 @@ const host: DocumentWorkflowHost = {
     },
     mapAfter: ({ previous, stepAddress }) => ({ previous, stepAddress }),
     mapUndefined: () => undefined,
+    retryMap: {
+      retry: { maxAttempts: 2, initialBackoff: 0, backoffMultiplier: 1, maxBackoff: 0 },
+      execute: ({ previous }) => {
+        const item = previous as number;
+        retryMapAttempts.push(item);
+        if (item === 1 && retryMapAttempts.filter((value) => value === 1).length === 1) {
+          throw new Error('retry mapped item');
+        }
+        return item * 10;
+      },
+    },
     mapFail: async ({ previous }) => {
       mapActive++;
       mapMaximum = Math.max(mapMaximum, mapActive);
@@ -194,6 +206,24 @@ describe('registerWorkflowDocuments()', () => {
     await registerWorkflowDocuments(engine, host, { active: [document] });
     const run = await engine.start('map-undefined', null, { id: 'map-undefined-run' });
     expect(await run.result()).toEqual([undefined]);
+  });
+
+  it('retries a mapped activity through its originating item and does not duplicate siblings', async () => {
+    retryMapAttempts.length = 0;
+    const document = createDocument('map-retry', [
+      { kind: 'activity', handler: 'version', input: { items: [1, 2] } },
+      {
+        kind: 'map',
+        over: 'items',
+        concurrency: 2,
+        steps: [{ kind: 'activity', handler: 'retryMap' }],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-retry', null, { id: 'map-retry-run' });
+    expect(await run.result()).toEqual([10, 20]);
+    expect(retryMapAttempts).toEqual([1, 1, 2]);
   });
 
   it('rejects non-array and over-limit map inputs with named errors', async () => {
