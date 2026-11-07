@@ -21,6 +21,7 @@ function snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return {
     values: { ...SETTING_VALUES },
     effective: { ...SETTING_VALUES },
+    running: { ...SETTING_VALUES },
     revision: 3,
     persisted: true,
     keys: {},
@@ -340,5 +341,54 @@ describe('a draft’s problem', () => {
 
   test('ignores a pattern JavaScript cannot read', () => {
     expect(problemWith({ kind: 'text', pattern: '(?<' }, 'anything', true)).toBeUndefined();
+  });
+});
+
+describe('rebasing onto a newer snapshot', () => {
+  test('takes what the settings now hold for every key that is not being edited, and keeps an edit', () => {
+    const form = loaded();
+    form.set('tools.wakeup', false);
+    form.rebase(
+      snapshot({
+        revision: 4,
+        values: { ...SETTING_VALUES, 'tools.decide': false, 'tools.wakeup': true },
+      }),
+    );
+    expect(form.revision).toBe(4);
+    expect(form.draft('tools.decide')).toBe(false);
+    expect(form.isDirty('tools.decide')).toBe(false);
+    // The edit stays, now compared with the new value.
+    expect(form.draft('tools.wakeup')).toBe(false);
+    expect(form.isDirty('tools.wakeup')).toBe(true);
+  });
+
+  test('puts a saved key to what the settings hold, and keeps a key it is told to keep', () => {
+    const form = loaded();
+    form.set('tools.wakeup', false);
+    form.set('tools.decide', false);
+    form.rebase(snapshot({ revision: 5 }), ['tools.wakeup'], ['tools.decide']);
+    expect(form.draft('tools.wakeup')).toBe(SETTING_VALUES['tools.wakeup']);
+    expect(form.isDirty('tools.wakeup')).toBe(false);
+    expect(form.draft('tools.decide')).toBe(false);
+    expect(form.isDirty('tools.decide')).toBe(true);
+  });
+
+  test('makes a form again only when a setting it draws changed under it', () => {
+    const form = loaded();
+    const before = form.generation;
+    form.rebase(snapshot({ revision: 4 }));
+    expect(form.generation).toBe(before);
+    form.rebase(
+      snapshot({ revision: 5, values: { ...SETTING_VALUES, 'engine.history': { maxEvents: 5 } } }),
+    );
+    expect(form.generation).toBe(before + 1);
+  });
+
+  test('answers canSaveKey for one key whatever the others hold', () => {
+    const form = loaded();
+    expect(form.canSaveKey('tools.wakeup')).toBe(false);
+    form.set('tools.wakeup', false);
+    expect(form.canSaveKey('tools.wakeup')).toBe(true);
+    expect(form.canSaveKey('tools.decide')).toBe(false);
   });
 });

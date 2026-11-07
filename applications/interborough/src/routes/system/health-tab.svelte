@@ -3,7 +3,7 @@
    * Health tab (plan §9.7 T7.5; design `Weft UI.dc.html`
    * "System" § HEALTH & LEASE). Lease status, recover-all (Tier-2
    * confirm), a codegen preview, and the CLI-only conformance panel. The retention overview moved
-   * to Settings › Data and retention (`retention-panel.svelte`).
+   * to Settings › Data and retention, which edits the windows instead of listing them.
    *
    * ## Recover-all is `ConfirmDialog`, not `AlertDialog` (plan §13/§10.6
    * tier sweep)

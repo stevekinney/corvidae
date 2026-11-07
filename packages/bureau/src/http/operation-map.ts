@@ -139,6 +139,7 @@ export const OPERATION_MAP = {
     workspaceClass: 'administrator-shared',
     member: 'schedules.skipNext',
   },
+  'bureau.schedules.unskip': { workspaceClass: 'administrator-shared', member: 'schedules.unskip' },
   'bureau.schedules.runnow': { workspaceClass: 'private-owned', member: 'schedules.runNow' },
   'bureau.schedules.missed': { workspaceClass: 'private-owned', member: 'schedules.missed' },
 

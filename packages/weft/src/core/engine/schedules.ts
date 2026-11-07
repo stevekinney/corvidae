@@ -11,21 +11,24 @@ import type {
   ScheduleUpdateOptions,
   WorkflowState,
 } from '../types.ts';
-import type { Engine } from './index.ts';
 import type { EngineInternals } from './internals.ts';
 import type { StartTransientState } from './lifecycle/start-transient-state.ts';
 import {
   buildPinnedRevisionWriteOptions,
   resolveScheduleCreationRevision,
-  resolveScheduleRevisionForPin,
+  updatedRevisionFields,
 } from './pinned-schedule-revision.ts';
 import { withoutSkip } from './schedule-controls.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
 import type { OccurrenceCommit } from './schedule-occurrence-commit.ts';
-import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
+import {
+  getNextScheduleOccurrence,
+  withSkippedOccurrences,
+  withSkipsFrom,
+} from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { runScheduleTransition } from './schedule-state-operations.ts';
-import { survivingSkip, updatedNextFireAt } from './schedule-update-cadence.ts';
+import { survivingSkips, updatedNextFireAt } from './schedule-update-cadence.ts';
 import { matchesScheduleFilter, paginateScheduleSummaries } from './state-utilities.ts';
 import { writeScheduleState } from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
@@ -286,8 +289,10 @@ export async function pauseSchedule(
     async (state, readConditions) => {
       if (state.status !== 'active') return;
       const now = internals.options.getNow();
+      // A pause keeps the occurrences a person skipped (COR-2018): they are runs of the cadence,
+      // and a resume that reaches them honors them.
       const updatedState: ScheduleState = {
-        ...withoutSkip(state),
+        ...state,
         status: 'paused',
         revision: state.revision + 1,
         updatedAt: now,
@@ -326,12 +331,14 @@ export async function resumeSchedule(
       }
       if (state.status === 'active') return;
       const now = internals.options.getNow();
+      const nextFireAt = getNextScheduleOccurrence(state, now);
+      // The skips the pause kept that are still ahead stay; those it slept through are spent.
       const updatedState: ScheduleState = {
-        ...state,
+        ...withSkipsFrom(state, nextFireAt),
         status: 'active',
         revision: state.revision + 1,
         updatedAt: now,
-        nextFireAt: getNextScheduleOccurrence(state, now),
+        nextFireAt,
       };
       await writeScheduleState(internals, updatedState, {
         ...scheduleTransitionWriteOptions(options, readConditions),
@@ -403,8 +410,8 @@ export async function updateSchedule(
         cronExpression: _droppedCron,
         intervalMs: _droppedInterval,
         pinnedRevision: _droppedPinnedRevision,
-        // Kept below only when it is still the next occurrence on the updated cadence.
-        skipUntil: _droppedSkip,
+        // Kept below only where they are still upcoming runs of the updated cadence.
+        skippedOccurrences: _droppedSkips,
         ...stateWithoutCadenceOrPin
       } = state;
       const cadenceFields =
@@ -431,28 +438,13 @@ export async function updateSchedule(
       const anchor = keepsIntervalGrid ? state.createdAt : now;
       const anchorFields =
         normalizedSpec.kind === 'interval' && !keepsIntervalGrid ? { createdAt: now } : {};
-      // Omitting `revisionPolicy` preserves the schedule's current policy AND
-      // its captured pin unchanged. Passing `'pinned'` — even when already
-      // pinned — always RE-resolves and re-captures against the revision
-      // active RIGHT NOW; it is never a no-op. Passing `'active-at-fire'`
-      // clears any previously captured pin.
-      let pinnedRevision: string | undefined;
-      let revisionFields: Pick<ScheduleState, 'revisionPolicy' | 'pinnedRevision'>;
-      if (normalizedOptions.revisionPolicy === undefined) {
-        revisionFields = {
-          revisionPolicy: state.revisionPolicy,
-          ...(state.pinnedRevision !== undefined && { pinnedRevision: state.pinnedRevision }),
-        };
-      } else if (normalizedOptions.revisionPolicy === 'pinned') {
-        pinnedRevision = await resolveScheduleRevisionForPin(
-          internals.engine as unknown as Engine,
-          internals,
-          state.workflowType,
-        );
-        revisionFields = { revisionPolicy: 'pinned', pinnedRevision };
-      } else {
-        revisionFields = { revisionPolicy: 'active-at-fire' };
-      }
+      const workflowType = normalizedOptions.workflowType ?? state.workflowType;
+      const { revisionFields, pinnedRevision } = await updatedRevisionFields(
+        internals,
+        state,
+        workflowType,
+        normalizedOptions.revisionPolicy,
+      );
       const updatedState: ScheduleState = {
         ...stateWithoutCadenceOrPin,
         ...normalizedOptions,
@@ -466,14 +458,13 @@ export async function updateSchedule(
           getNextScheduleOccurrence({ ...cadenceFields, timeZone, createdAt: anchor }, now),
         ),
       };
-      const skipUntil = survivingSkip(internals, state, updatedState, now);
-      if (skipUntil !== undefined) updatedState.skipUntil = skipUntil;
-      await writeScheduleState(internals, updatedState, {
+      const skipped = survivingSkips(internals, state, updatedState, now);
+      await writeScheduleState(internals, withSkippedOccurrences(updatedState, skipped), {
         includeTimer: state.status === 'active',
         replaceTimerFrom: state,
         ...withReadConditions(
           readConditions,
-          await buildPinnedRevisionWriteOptions(internals, state.workflowType, pinnedRevision),
+          await buildPinnedRevisionWriteOptions(internals, workflowType, pinnedRevision),
         ),
       });
     },

@@ -53,6 +53,7 @@
   import { LayoutPreferences, provideLayoutPreferences } from '../layout-preferences.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
+  import { provideTheme } from '../theme-context.ts';
   import { ThemeStore } from '../theme.svelte.ts';
   import AuthModeBanner from './auth-mode-banner.svelte';
   import { holdChangingActions } from './changing-actions.ts';
@@ -196,7 +197,7 @@
     });
   });
 
-  const theme = new ThemeStore();
+  const theme = provideTheme(new ThemeStore());
   const layout = provideLayoutPreferences(new LayoutPreferences());
   const keyboard = provideKeyboardPreferences(new KeyboardPreferences());
   const notifications = new NotificationStore({
@@ -335,10 +336,11 @@
   <Sidebar {client} />
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen />
-    {#if connection.unreachable && !restartActivity.active}
+    {#if connection.unreachable && !restartActivity.active && !connection.bannerDrawnByPage}
       <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet.
            The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
-           answering with its countdown, or the retries stopped. Retry now is always there. -->
+           answering with its countdown, or the retries stopped. Retry now is always there. A page
+           that draws it under its own header (`claimBanner`) leaves it to the page. -->
       <Banner
         preset={connectionBannerPreset(connection)}
         dataUpdatedAt={connection.lastHealthyAt}

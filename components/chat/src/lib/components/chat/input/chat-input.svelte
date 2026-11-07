@@ -367,6 +367,25 @@
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);
   let isDragOver = $state(false);
+
+  /**
+   * Whether the formatting row is drawn: from the moment the text box takes focus until focus
+   * leaves the composer. A control in the header (the agent select) taking focus does not draw it:
+   * the row opens above the text, the composer grows upward from its bottom edge, and the header
+   * would move out from under the pointer between mousedown and mouseup, which swallows the click
+   * that opens the select. Once the text box has had focus the row stays while focus moves between
+   * the composer's own controls, so a click on one of them never moves it either.
+   */
+  let formattingShown = $state(false);
+
+  function trackFormattingFocus(event: FocusEvent): void {
+    if (event.target === editorElement) formattingShown = true;
+  }
+
+  function trackFormattingBlur(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node) || !formElement?.contains(next)) formattingShown = false;
+  }
   let dragEnterDepth = 0;
   let isComposing = $state(false);
 
@@ -1232,6 +1251,9 @@
       ondragleave={handleDragLeave}
       oncompositionstart={handleCompositionStart}
       oncompositionend={handleCompositionEnd}
+      onfocusin={trackFormattingFocus}
+      onfocusout={trackFormattingBlur}
+      data-formatting={formattingShown || undefined}
       aria-label="Chat message composer"
       aria-busy={sending || undefined}
       {...rest}
@@ -1773,7 +1795,8 @@
   }
 
   /* The formatting row: the toolbar at the left, the words of its shortcuts at the right. It is
-   * there only while the composer has focus, so an idle composer stays quiet. */
+   * there only while the composer has focus from its text box (`formattingShown`), so an idle
+   * composer stays quiet and a click on the header's agent select is not moved by it. */
   .chat-input-format {
     display: none;
     align-items: center;
@@ -1783,7 +1806,7 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
-  .chat-input:focus-within .chat-input-format {
+  .chat-input[data-formatting] .chat-input-format {
     display: flex;
   }
 

@@ -63,7 +63,7 @@ type ScheduleRuntimeFields = Pick<
   | 'lastFireAt'
   | 'lastMissedFireAt'
   | 'nextFireAt'
-  | 'skipUntil'
+  | 'skippedOccurrences'
   | 'currentWorkflowId'
   | 'missedFireCount'
   | 'skippedCount'
@@ -179,21 +179,28 @@ function decodeScheduleNextFireAt(
 }
 
 /**
- * The occurrence a person asked to skip. Absent on every record written before COR-1829 and on
- * every schedule nothing is skipped on, and then reads as absent; any other value must be a valid
- * timestamp.
+ * The occurrences a person asked to skip (COR-2018), ascending and without repeats. Absent on every
+ * schedule nothing is skipped on, and then reads as absent. A record written before the set
+ * replaced the single skipped occurrence (COR-1829's `skipUntil`) reads as a set of that one. Every
+ * value must be a valid timestamp.
  */
-function decodeScheduleSkipUntil(
+function decodeScheduleSkippedOccurrences(
   decoded: Record<string, unknown>,
   scheduleId: string,
-): { ok: true; value: number | undefined } | { ok: false } {
-  const skipUntil = decoded['skipUntil'];
-  if (skipUntil === undefined) return { ok: true, value: undefined };
-  if (!isValidScheduleTimestamp(skipUntil)) {
-    rejectInvalidScheduleRecord(scheduleId, 'with invalid skipUntil');
+): { ok: true; value: number[] | undefined } | { ok: false } {
+  const skipped = decoded['skippedOccurrences'];
+  const legacy = decoded['skipUntil'];
+  const values = skipped ?? (legacy === undefined ? undefined : [legacy]);
+  if (values === undefined) return { ok: true, value: undefined };
+  if (!Array.isArray(values) || !values.every((value) => isValidScheduleTimestamp(value))) {
+    rejectInvalidScheduleRecord(
+      scheduleId,
+      skipped === undefined ? 'with invalid skipUntil' : 'with invalid skippedOccurrences',
+    );
     return { ok: false };
   }
-  return { ok: true, value: skipUntil };
+  const sorted = [...new Set(values)].toSorted((left, right) => left - right);
+  return { ok: true, value: sorted.length === 0 ? undefined : sorted };
 }
 
 function decodeScheduleCurrentWorkflowId(
@@ -327,17 +334,22 @@ function decodeScheduleRevision(
 function decodeScheduleCounterFields(
   decoded: Record<string, unknown>,
   scheduleId: string,
-): Pick<ScheduleRuntimeFields, 'skippedCount' | 'lastSkippedAt' | 'revision' | 'skipUntil'> | null {
+): Pick<
+  ScheduleRuntimeFields,
+  'skippedCount' | 'lastSkippedAt' | 'revision' | 'skippedOccurrences'
+> | null {
   const skipFields = decodeScheduleSkipFields(decoded, scheduleId);
   if (skipFields === null) return null;
   const revision = decodeScheduleRevision(decoded, scheduleId);
   if (revision === null) return null;
-  const skipUntil = decodeScheduleSkipUntil(decoded, scheduleId);
-  if (!skipUntil.ok) return null;
+  const skippedOccurrences = decodeScheduleSkippedOccurrences(decoded, scheduleId);
+  if (!skippedOccurrences.ok) return null;
   return {
     ...skipFields,
     revision,
-    ...(skipUntil.value !== undefined && { skipUntil: skipUntil.value }),
+    ...(skippedOccurrences.value !== undefined && {
+      skippedOccurrences: skippedOccurrences.value,
+    }),
   };
 }
 

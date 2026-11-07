@@ -34,8 +34,13 @@
     disabled,
     readonly = false,
     description,
+    descriptionVisible = true,
+    descriptionPlacement = 'inline',
     mutating = false,
+    nameDetail,
     labelVisible = true,
+    standalone = false,
+    labelPosition = 'end',
     name,
     value = 'on',
     form,
@@ -47,7 +52,10 @@
   // a submit form should use Checkbox instead (see the module docstring). It
   // does, however, inherit `disabled` from a wrapping FormField so a disabled
   // field group greys out the switch alongside its peers.
-  const context = getFormFieldContext();
+  // A standalone switch is its own field: it is named and labelled by its own label even inside a
+  // `<FormField>`, so it is one of several switches in a field rather than the field's one control.
+  const fieldContext = getFormFieldContext();
+  const context = $derived(standalone ? undefined : fieldContext);
   const generatedId = $props.id();
   const resolvedDisabled = $derived(disabled ?? context?.disabled ?? false);
 
@@ -90,7 +98,8 @@
     type="button"
     role="switch"
     aria-checked={checked}
-    aria-labelledby={labelId}
+    aria-labelledby={nameDetail ? undefined : labelId}
+    aria-label={nameDetail ? `${label}, ${nameDetail}` : undefined}
     aria-describedby={describedBy}
     aria-readonly={readonly ? 'true' : undefined}
     disabled={resolvedDisabled}
@@ -120,8 +129,25 @@
 
 {#snippet descriptionText()}
   {#if description}
-    <span id={descriptionId} class="cinder-toggle-field__description">{description}</span>
+    <span
+      id={descriptionId}
+      class={descriptionVisible ? 'cinder-toggle-field__description' : 'cinder-sr-only'}
+      >{description}</span
+    >
   {/if}
+{/snippet}
+
+{#snippet fieldLabel()}
+  <span
+    id={labelId}
+    class="cinder-toggle-field__label"
+    role="presentation"
+    data-hidden={!labelVisible || undefined}
+    data-disabled={resolvedDisabled || staleInert || undefined}
+    onclick={toggle}
+  >
+    {label}
+  </span>
 {/snippet}
 
 {#if context}
@@ -142,19 +168,32 @@
     {@render control()}
     {@render descriptionText()}
   {/if}
-{:else}
-  <span class="cinder-toggle-field">
+{:else if descriptionPlacement === 'below' && description}
+  <span class="cinder-toggle-field" data-cinder-description="below">
     {@render control()}
-    <span
-      id={labelId}
-      class="cinder-toggle-field__label"
-      role="presentation"
-      data-hidden={!labelVisible || undefined}
-      data-disabled={resolvedDisabled || staleInert || undefined}
-      onclick={toggle}
-    >
-      {label}
+    <span class="cinder-toggle-field__text">
+      <span
+        id={labelId}
+        class="cinder-toggle-field__label"
+        role="presentation"
+        data-hidden={!labelVisible || undefined}
+        data-disabled={resolvedDisabled || staleInert || undefined}
+        onclick={toggle}
+      >
+        {label}
+      </span>
+      {@render descriptionText()}
     </span>
+  </span>
+{:else}
+  <span class="cinder-toggle-field" data-label-position={labelPosition}>
+    {#if labelPosition === 'start'}
+      {@render fieldLabel()}
+      {@render control()}
+    {:else}
+      {@render control()}
+      {@render fieldLabel()}
+    {/if}
     {@render descriptionText()}
   </span>
 {/if}

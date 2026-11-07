@@ -1,11 +1,11 @@
 import { definePlugin, type PluginDescriptor } from '@lostgradient/interborough-plugin';
 
-import { createDemoAgents } from './agents.ts';
+import { createDemoAgents, type DemoAgentName } from './agents.ts';
 import { seedDemo } from './seed.ts';
 import { createIssueRefundTool, createLookupOrderTool } from './tools.ts';
 import { createDemoValidators } from './validators.ts';
 
-export { DEMO_AGENT_NAMES } from './agents.ts';
+export { DEMO_AGENT_NAMES, type DemoAgentName } from './agents.ts';
 export {
   HUMAN_INPUT_PROMPT,
   HUMAN_INPUT_SIGNAL,
@@ -30,6 +30,12 @@ export interface DemoPluginOptions {
    * off to control when {@link seedDemo} runs.
    */
   readonly seedOnStart?: boolean;
+  /**
+   * Which of the eight agents the plugin provides, by their names inside it. Defaults to all of
+   * them. The showcase leaves out `internal`, which is not part of the sample world, so a disabled
+   * Demo holds back exactly the agents the design names.
+   */
+  readonly agents?: readonly DemoAgentName[];
 }
 
 /**
@@ -40,12 +46,12 @@ export interface DemoPluginOptions {
  */
 export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescriptor {
   const seedOnStart = options.seedOnStart ?? true;
+  const provided = options.agents === undefined ? undefined : new Set<string>(options.agents);
   return definePlugin({
     name: 'demo',
     title: 'Demo',
     version: '1.0.0',
-    description:
-      'Scripted agents, tools, validators, a goal, and a schedule that run without a model provider, for trying Interborough out.',
+    description: 'Sample tools and agents for trying Interborough.',
     enabledByDefault: false,
     secrets: [{ key: DEMO_APPROVAL_SECRET, generated: true }],
     async setup({ secrets, toolApprovalHooks }) {
@@ -53,7 +59,9 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
       // a secret saved after the start applies on the next one.
       const approvalSecret = (await secrets.get(DEMO_APPROVAL_SECRET)) || undefined;
       return {
-        codeAgents: createDemoAgents(approvalSecret, toolApprovalHooks),
+        codeAgents: createDemoAgents(approvalSecret, toolApprovalHooks).filter(
+          ({ name }) => provided === undefined || provided.has(name),
+        ),
         tools: [createLookupOrderTool(), createIssueRefundTool()],
         validators: createDemoValidators(),
         ...(seedOnStart

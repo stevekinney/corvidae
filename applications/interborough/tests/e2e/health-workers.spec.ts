@@ -1,9 +1,11 @@
 /**
  * COR-1971: Workers as a list with the open worker beside it (design rows 20c and 19a). The page is
  * `/health/workers`, reached from Health or with `g` then `o`; its counts are one line under the
- * title; a worker opens beside the list and is the `worker` parameter of the address; and the
- * worker's detail drains and resumes it, shows the deployment it belongs to, and promotes or rolls
- * back that deployment's builds with the routing generation checked.
+ * title; a worker opens beside the list and is the `worker` parameter of the address; its detail
+ * drains it (after asking), and, behind the page's Advanced disclosure, shows the deployment it
+ * belongs to and promotes or rolls back that deployment's builds with the routing generation
+ * checked. The states a sample world does not have (a worker that went away, failed tasks) are
+ * `health-workers-states.spec.ts`.
  *
  * The seeded fleet is `e2e-fleet-worker-1` (a WebSocket worker, `e2e-server.ts`) and the ledger
  * deployment's workers (`ledger-evidence-seed.ts`), which have two real builds.
@@ -60,42 +62,46 @@ test('the counts are one line under the list, and a worker opens beside it', asy
   await expect(page.getByText('Utilization')).toHaveCount(0);
   await checkA11y('workers—list with its summary line');
 
-  await row(page, E2E_FLEET_WORKER_ID).click();
+  await row(page, E2E_FLEET_WORKER_ID).getByRole('link').click();
   await expect(page).toHaveURL(new RegExp(`worker=${E2E_FLEET_WORKER_ID}`));
   await expect(detail(page)).toBeVisible();
-  await expect(detail(page).getByText('Last heard from')).toBeVisible();
-  await expect(detail(page).getByText('Running tasks')).toBeVisible();
+  await expect(detail(page).getByTestId('worker-status-line')).toContainText('Last heard from');
+  await expect(detail(page).getByText('Running now')).toBeVisible();
   await expect(detail(page).getByText('Version', { exact: true })).toBeVisible();
   // The list stays beside the detail at a desktop width.
   await expect(row(page, E2E_FLEET_WORKER_ID)).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Worker diagnostics' })).toBeVisible();
   await checkA11y('workers—a worker open beside the list');
+
+  // The worker's technical details are behind Advanced, closed until it is opened.
+  const advanced = page.getByTestId('workers-advanced');
+  await advanced.getByRole('button', { name: /Advanced/ }).click();
+  await expect(page.getByRole('region', { name: 'Worker diagnostics' })).toBeVisible();
 });
 
-test('a worker drains with a reason and resumes from its detail', async ({ page, checkA11y }) => {
+test('a worker drains after a confirmation that says what happens, and then reads Stopped', async ({
+  page,
+  checkA11y,
+}) => {
   await page.goto(`/health/workers?worker=${E2E_FLEET_WORKER_ID}`);
   await expect(detail(page)).toBeVisible();
-  await expect(detail(page).getByTestId('worker-health')).toHaveText('Healthy');
+  await expect(detail(page).locator('.cinder-status-dot').first()).toContainText('Connected');
 
-  await detail(page)
-    .locator('.cinder-page-header')
-    .getByRole('button', { name: 'Drain', exact: true })
-    .click();
-  const dialog = page.getByRole('dialog', { name: 'Drain worker' });
+  await detail(page).getByRole('button', { name: 'Drain this worker' }).click();
+  const dialog = page.getByRole('dialog', { name: /^Drain .*\?$/ });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('textbox', { name: 'Reason' }).fill('e2e worker drain');
-  await checkA11y('workers—drain worker dialog');
+  await expect(dialog).toContainText('and then stops.');
+  await checkA11y('workers—drain confirmation');
   await dialog.getByRole('button', { name: 'Drain worker' }).click();
   await expect(dialog).toBeHidden();
-  // The worker holds no task, so there is nothing to wait out.
-  await expect(detail(page).getByTestId('worker-health')).toHaveText('Drained');
+  // The worker holds no task, so there is nothing to wait out: it has stopped, and Forget is all
+  // there is to do with it.
+  await expect(detail(page).locator('.cinder-status-dot').first()).toContainText('Stopped');
+  await expect(detail(page).getByRole('button', { name: 'Forget this worker' })).toBeVisible();
+  await expect(detail(page).getByRole('button', { name: 'Drain this worker' })).toHaveCount(0);
 
-  // The builds table below has a Resume of its own; this one is the worker's, in its header.
-  await detail(page)
-    .locator('.cinder-page-header')
-    .getByRole('button', { name: 'Resume', exact: true })
-    .click();
-  await expect(detail(page).getByTestId('worker-health')).toHaveText('Healthy');
+  // Put the fleet back for the specifications that follow.
+  const resumed = await page.request.delete(`/v1/workers/${E2E_FLEET_WORKER_ID}/drain`);
+  expect(resumed.ok()).toBe(true);
 });
 
 test('a worker the server does not list reads as closed, with the way back', async ({ page }) => {
@@ -110,7 +116,7 @@ test('a worker’s detail promotes and rolls back its deployment’s builds', as
   page,
   checkA11y,
 }) => {
-  await page.goto(`/health/workers?worker=${E2E_LEDGER_WORKER_ID}`);
+  await page.goto(`/health/workers?worker=${E2E_LEDGER_WORKER_ID}&tab=queues`);
   const deployment = page.getByRole('region', { name: E2E_LEDGER_DEPLOYMENT_NAME, exact: true });
   await expect(deployment).toBeVisible();
 

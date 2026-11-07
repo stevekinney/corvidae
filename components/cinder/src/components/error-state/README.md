@@ -78,6 +78,7 @@ Flat — no disc and no padding of its own, for a card or tab whose container al
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `bordered` | `boolean` | no | `false` | Draws the state inside a bordered, rounded box, for a list or page body that has no container of its own. Leave it off when a card or panel already surrounds the state. It applies to the centred layout; the `'flat'` variant has no box. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-error-state` root element. |
 | `description` | `string` | yes | — | Secondary descriptive text rendered as a paragraph below the title. |
 | `detail` | `string` | no | — | Optional technical detail, such as a fault code. It sits behind a disclosure labelled `detailsLabel`, so the plain-words description stays the first thing a person reads. |
@@ -85,6 +86,7 @@ Flat — no disc and no padding of its own, for a card or tab whose container al
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `2` | Heading level for the title element. |
 | `retryLabel` | `string` | no | `"Try again"` | Label of the retry button. |
 | `retryStatus` | `string` | no | — | A line of progress under the description, such as "Retrying in 8 s (attempt 3 of 8)". It renders in tabular figures and is not a live region, so a countdown never announces itself every second. |
+| `retryVariant` | `"primary"` \| `"secondary"` | no | `"primary"` | How prominent the retry button is. `'primary'` suits a full-page failure, where retrying is the one thing to do. `'secondary'` suits a section of a page that has other controls, such as a tab's body under a tab bar, so the retry does not outrank them. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
 | `tone` | `"danger"` \| `"neutral"` | no | `"danger"` | What kind of problem this reports. `'danger'` is a failure and is announced as an alert; `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group. |
 | `variant` | `"default"` \| `"flat"` | no | `"default"` | Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title, the description, the progress line, then the actions, centred in the region it fills. `'flat'` renders the same text as a start-aligned block with no disc and no padding of its own, for a card or tab whose container already pads it. |

@@ -38,6 +38,11 @@
       "description": "Whether opening and closing uses the slide transition.",
       "default": true
     },
+    "chevron": {
+      "enum": ["start", "end"],
+      "description": "Where the chevron sits. `'end'` is at the trailing edge and points down, turning over when the\ndisclosure opens. `'start'` is before the label and points right, turning down when it opens.",
+      "default": "end"
+    },
     "idBase": {
       "type": "string",
       "description": "Base used to derive the trigger, label, and panel ARIA ids. Auto-generated when omitted."

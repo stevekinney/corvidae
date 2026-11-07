@@ -199,11 +199,11 @@ describe('buildApplication stylesheets', () => {
   it('still injects component style blocks into the JavaScript of the component that owns them', async () => {
     const result = sharedBuild();
     const component = readFileSync(
-      join(PACKAGE_DIRECTORY, 'src', 'routes', 'settings', 'setting-row.svelte'),
+      join(PACKAGE_DIRECTORY, 'src', 'routes', 'settings', 'setting-field.svelte'),
       'utf8',
     );
     const selector = /<style>\s*(\.[\w-]+)/.exec(component)?.[1];
-    if (selector === undefined) throw new Error('setting-row.svelte has no leading style rule');
+    if (selector === undefined) throw new Error('setting-field.svelte has no leading style rule');
 
     let injected = false;
     for (const file of result.files.filter((name) => name.endsWith('.js'))) {

@@ -19,6 +19,12 @@ const schema = {
       description:
         'Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet.',
     },
+    flush: {
+      type: 'boolean',
+      description:
+        'Draws the header with no rule under it and no padding around it, so its title lines up with the\ncontent beneath it. A page that lays out its own column, such as a page of settings with a\nsection navigation beside it, uses this; a header across the top of a page keeps its rule.',
+      default: false,
+    },
     error: {
       type: 'boolean',
       description:

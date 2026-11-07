@@ -22,6 +22,11 @@ import { join } from 'node:path';
 
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
 import type { GateReport } from './check-static-playground.ts';
+import {
+  livingProcesses,
+  reapRecordedProcesses,
+  waitUntilGone,
+} from './fixtures/static-playground/stand-ins/stand-in-record.ts';
 import { createCaseList } from './static-playground-cases.ts';
 import { fetchWithin } from './static-playground-preflight.ts';
 import {
@@ -58,6 +63,12 @@ type RunningCase = {
 };
 
 const cleanups: (() => Promise<void>)[] = [];
+
+/** Every PID a stand-in recorded in a case that has been torn down, oldest first. */
+const reapedProcessIds: number[] = [];
+
+/** What a teardown threw, which a scenario that failed on purpose would otherwise hide. */
+const cleanupFailures: unknown[] = [];
 
 /**
  * Every wait in these cases is bounded, so a stuck step fails the case with a named reason. The
@@ -103,6 +114,9 @@ async function startCase(
       record,
       '--output',
       output,
+      // Every stand-in exits once this process is gone, so none outlives a run that is killed.
+      '--owner-pid',
+      String(process.pid),
       ...extraArguments,
     ],
     {
@@ -116,15 +130,26 @@ async function startCase(
     for await (const chunk of driver.stdout) stdout += new TextDecoder().decode(chunk);
   })();
   cleanups.push(async () => {
-    // A case that failed before its runner exited must not leave it, or what it owns, behind.
-    if (driver.exitCode === null && driver.signalCode === null) {
-      const runDirectory = /run directory (\S+)/.exec(stdout)?.[1];
-      await interruptRunner(driver, runDirectory, { graceMilliseconds: WAIT_MILLISECONDS });
+    try {
+      // A case that failed before its runner exited must not leave it, or what it owns, behind.
+      if (driver.exitCode === null && driver.signalCode === null) {
+        const runDirectory = /run directory (\S+)/.exec(stdout)?.[1];
+        await interruptRunner(driver, runDirectory, { graceMilliseconds: WAIT_MILLISECONDS });
+      }
+    } finally {
+      try {
+        // Whatever the runner did or did not manage, stop every stand-in by the PID it recorded,
+        // and prove none is left: a runner that died uncleanly takes its cleanup with it.
+        const reaped = reapRecordedProcesses(record);
+        reapedProcessIds.push(...reaped);
+        await waitUntilGone(reaped, WAIT_MILLISECONDS, requireReaped);
+      } finally {
+        sentinel.kill('SIGKILL');
+        await exitedWithin(sentinel, WAIT_MILLISECONDS);
+        await rm(record, { recursive: true, force: true });
+        await rm(output, { recursive: true, force: true });
+      }
     }
-    sentinel.kill('SIGKILL');
-    await exitedWithin(sentinel, WAIT_MILLISECONDS);
-    await rm(record, { recursive: true, force: true });
-    await rm(output, { recursive: true, force: true });
   });
   return {
     driver,
@@ -189,11 +214,16 @@ async function expectEverythingGone(running: RunningCase, capture: Capture): Pro
  */
 function lifecycleOutcome(scenario: () => Promise<void>): Promise<unknown> {
   return outcomeOf(async () => {
-    try {
-      await scenario();
-    } finally {
-      for (const cleanup of cleanups.splice(0)) await cleanup();
+    // The scenario's own failure comes first, then any cleanup's; every cleanup runs regardless.
+    const failures: unknown[] = [];
+    await scenario().catch((error: unknown) => failures.push(error));
+    for (const cleanup of cleanups.splice(0)) {
+      await cleanup().catch((error: unknown) => {
+        failures.push(error);
+        cleanupFailures.push(error);
+      });
     }
+    if (failures.length > 0) throw failures[0];
   });
 }
 
@@ -291,6 +321,25 @@ const serverDeathIsDiagnosed = await lifecycleOutcome(async () => {
   );
   await expectEverythingGone(running, capture);
 });
+
+/**
+ * The leak this guards against: the runner dies without cleaning up (a hang guard, an out-of-memory
+ * kill) and the test body then fails, so the stand-ins it owned are orphaned with no parent. The
+ * test's own cleanup must still stop each of them by its recorded PID.
+ */
+const deliberateFailure = new Error('deliberate failure after the gate runner was killed');
+const reapedBeforeDeliberateFailure = reapedProcessIds.length;
+const cleanupFailuresBeforeDeliberateFailure = cleanupFailures.length;
+const throwingBodyOutcome = await lifecycleOutcome(async () => {
+  const running = await startCase('hang');
+  await captureAndSpawnLate(running);
+  running.driver.kill('SIGKILL');
+  await running.driver.exited;
+  throw deliberateFailure;
+});
+const throwingBodyCleanupFailures = cleanupFailures.slice(cleanupFailuresBeforeDeliberateFailure);
+const throwingBodyProcessIds = reapedProcessIds.slice(reapedBeforeDeliberateFailure);
+const throwingBodySurvivors = livingProcesses(throwingBodyProcessIds, requireReaped);
 
 const cleanupRunsOnce = await lifecycleOutcome(async () => {
   const marker = await mkdtemp(join(tmpdir(), 'static-owner-'));
@@ -430,6 +479,14 @@ describe('static gate runner lifecycle with stand-in children', () => {
 
   it('diagnoses static-server death during active test-runner work', () =>
     rethrow(serverDeathIsDiagnosed));
+
+  it('leaves no recorded stand-in running when the body throws after the runner is killed', () => {
+    expect(throwingBodyOutcome).toBe(deliberateFailure);
+    expect(throwingBodyCleanupFailures).toEqual([]);
+    // The server, the test runner, their three sleepers, and the two started late.
+    expect(throwingBodyProcessIds.length).toBeGreaterThanOrEqual(7);
+    expect(throwingBodySurvivors).toEqual([]);
+  });
 });
 
 describe('process ownership', () => {

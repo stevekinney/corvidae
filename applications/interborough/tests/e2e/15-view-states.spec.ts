@@ -14,8 +14,9 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import { HEALTH_OVERVIEW_COPY, NOT_FOUND_ROUTE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { NOT_FOUND_ROUTE_COPY, SETTINGS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
+import { HEALTH_ATTENTION_COPY, HEALTH_COUNTS_COPY } from '../../src/routes/health/health-copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
@@ -124,6 +125,7 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   settings: bureauProbe('bureau.settings.get', {
     values: {},
     effective: {},
+    running: {},
     revision: 0,
     persisted: true,
     keys: {},
@@ -264,6 +266,9 @@ function statesOf(view: ViewName): Outcome[] {
   if (view === 'health') return ['forbidden', 'ready'];
   // Home has no probe either: each of its cards reads on its own, so the view is only ever ready.
   if (view === 'home') return ['ready'];
+  // A view that owns its states keeps its header in each, so its page says them and not the frame:
+  // its own specification drives them (`schedules-states.spec.ts`). The frame still refuses it.
+  if (VIEWS[view].ownsStates === true) return ['forbidden', 'ready'];
   // The reviews probe swallows a Bureau failure such as a 5xx, and the page shows it in a banner
   // beside the engine's reviews (`31-reviews.spec.ts`), so the view is not in the error state for
   // it. A 401 does reach the error state (`view-frame.test.ts`, "the Reviews view").
@@ -305,7 +310,20 @@ for (const view of VIEW_NAMES) {
         if (outcome !== 'ready') {
           const copy = VIEW_COPY[view];
           const title = outcome === 'empty' ? copy.empty?.title : copy[outcome]?.title;
-          await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
+          if (outcome === 'loading' && VIEWS[view].pageOwnsLoading === true) {
+            // The page draws its own loading: its heading and navigation are real text, and only the
+            // rows are placeholders (Settings, row 48t). Nothing here is the frame's generic words.
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+              width < 640 ? SETTINGS_COPY.general.narrowTitle : 'General',
+            );
+            await expect(
+              width < 640
+                ? frame.getByRole('combobox', { name: SETTINGS_COPY.sectionSelect })
+                : frame.getByRole('navigation', { name: 'Settings sections' }),
+            ).toBeVisible();
+          } else {
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
+          }
         }
         await captureForDesignReview(page, {
           route: PATHS[view],
@@ -346,20 +364,18 @@ test('a view the principal lacks the scopes for is forbidden without a probe req
   await expect(frame).toContainText('requires storage:admin');
 });
 
-/** The engine reads behind Health's two engine counts and its health line, which the faulted case refuses. */
-const HEALTH_ENGINE_READS = ['"weft.workflows.aggregate"', '"weft.tasks.diagnostics"'] as const;
+/** The engine reads behind Health's runs counts and cards, which the faulted case refuses. */
+const HEALTH_ENGINE_READS = ['"weft.workflows.aggregate"', '"weft.workflows.list"'] as const;
 
-/** One of Health's four counts, by its label: its link holds the label and the number or dash. */
+/** One of Health's four counts, by its label: its card holds the label, the number or dash, and its line. */
 function healthCount(page: Page, label: string) {
-  return page
-    .getByRole('navigation', { name: HEALTH_OVERVIEW_COPY.countsLabel })
-    .getByRole('link', {
-      name: new RegExp(`^${label}\\s`),
-    });
+  return page.getByRole('group', { name: HEALTH_COUNTS_COPY.label }).locator('.cinder-statistic', {
+    has: page.locator('.cinder-statistic__label', { hasText: label }),
+  });
 }
 
 for (const width of WIDTHS) {
-  test(`health reads each band on its own: a read the engine refuses shows a dash and a line that is not all clear at ${width} pixels`, async ({
+  test(`health reads each band on its own: a read the engine refuses shows a dash in the counts and the cards at ${width} pixels`, async ({
     page,
     checkA11y,
     pageErrors,
@@ -370,7 +386,7 @@ for (const width of WIDTHS) {
     // asks, so the status is declared and not the count.
     pageErrors.expectEvery({
       pattern: loggedFailedResponse(400, /\/jsonrpc/),
-      reason: 'the test refuses the engine reads behind the runs counts and the health line',
+      reason: 'the test refuses the engine reads behind the runs counts and the metric cards',
     });
     await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postData() ?? '';
@@ -385,15 +401,16 @@ for (const width of WIDTHS) {
     const frame = page.locator('[data-view="health"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
     // Only the counts that read the refused operation lose their number.
-    await expect(healthCount(page, HEALTH_OVERVIEW_COPY.workingNow)).toContainText(
-      HEALTH_OVERVIEW_COPY.unavailable,
+    await expect(healthCount(page, HEALTH_COUNTS_COPY.runningNow)).toContainText(
+      HEALTH_COUNTS_COPY.unavailable,
     );
-    await expect(healthCount(page, HEALTH_OVERVIEW_COPY.failedIn24Hours)).toContainText(
-      HEALTH_OVERVIEW_COPY.unavailable,
+    await expect(healthCount(page, HEALTH_COUNTS_COPY.failedIn24Hours)).toContainText(
+      HEALTH_COUNTS_COPY.unavailable,
     );
-    await expect(healthCount(page, HEALTH_OVERVIEW_COPY.schedules)).toHaveText(/\d/);
-    await expect(frame.getByText(HEALTH_OVERVIEW_COPY.lineUnavailable)).toBeVisible();
-    await expect(frame.getByText(HEALTH_OVERVIEW_COPY.allClear)).toHaveCount(0);
+    await expect(healthCount(page, HEALTH_COUNTS_COPY.missedRuns)).toHaveText(/\d/);
+    // The Bureau's list still says what needs attention, and the cards that came from the engine say they could not be read.
+    await expect(frame.getByTestId('needs-attention')).toBeVisible();
+    await expect(frame.getByTestId('metric-cards')).toContainText('Couldn’t be read');
     await captureForDesignReview(page, {
       route: '/health',
       state: 'refused-reads',
@@ -402,25 +419,21 @@ for (const width of WIDTHS) {
     await checkA11y(`health with refused reads at ${width}px`);
   });
 
-  test(`health locks the reads a principal lacks the scope for, and reads the rest, at ${width} pixels`, async ({
+  test(`health reads what a principal's scopes allow, and the rest of the page stays, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    // The runs scope alone opens the page: the counts that need another scope show a dash.
+    // The runs scope alone opens the page: Needs you also counts the Bureau's reviews, which the
+    // principal owns and no console scope gates, so it still has a number.
     await holdOnlyScopes(page, ['workflows:read']);
     await page.goto('/health');
 
     const frame = page.locator('[data-view="health"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
-    await expect(healthCount(page, HEALTH_OVERVIEW_COPY.workingNow)).toHaveText(/\d/);
-    // Needs you also counts the Bureau's reviews, which the principal owns and no scope gates, so
-    // it still has a number.
-    await expect(healthCount(page, HEALTH_OVERVIEW_COPY.needsYou)).toHaveText(/\d/);
-    await expect(healthCount(page, HEALTH_OVERVIEW_COPY.schedules)).toContainText(
-      HEALTH_OVERVIEW_COPY.unavailable,
-    );
-    await expect(frame).toContainText('Requires system:read');
+    await expect(healthCount(page, HEALTH_COUNTS_COPY.runningNow)).toHaveText(/\d/);
+    await expect(healthCount(page, HEALTH_COUNTS_COPY.needsYou)).toHaveText(/\d/);
+    await expect(frame.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
     await captureForDesignReview(page, {
       route: '/health',
       state: 'locked-reads',
@@ -429,27 +442,32 @@ for (const width of WIDTHS) {
     await checkA11y(`health with locked reads at ${width}px`);
   });
 
-  test(`health waits on the engine's first answer before it shows its bands at ${width} pixels`, async ({
+  test(`health shows its heading and tabs while the list of what needs attention is still being read at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    // Never answered: the page stays on its gate for as long as it is open.
-    await page.route('**/v1/health', () => {});
+    // Never answered: the list stays a skeleton for as long as the page is open.
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      if ((route.request().postData() ?? '').includes('"bureau.health.attention"')) return;
+      await route.fallback();
+    });
     await page.goto('/health');
 
     const frame = page.locator('[data-view="health"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
-    await expect(frame.getByRole('status', { name: 'Loading the health overview' })).toBeVisible();
-    await expect(
-      frame.getByRole('navigation', { name: HEALTH_OVERVIEW_COPY.countsLabel }),
-    ).toHaveCount(0);
+    await expect(frame.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
+    // The skeleton rows show once the first 300 ms have gone, under the card's own heading.
+    await expect(frame.getByTestId('needs-attention')).toContainText(HEALTH_ATTENTION_COPY.title);
+    await expect(frame.getByTestId('needs-attention').locator('.cinder-skeleton-row')).toHaveCount(
+      3,
+    );
     await captureForDesignReview(page, {
       route: '/health',
-      state: 'waiting-on-engine',
+      state: 'waiting-on-attention',
       source: '15-view-states.spec.ts',
     });
-    await checkA11y(`health waiting on the engine at ${width}px`);
+    await checkA11y(`health waiting on what needs attention at ${width}px`);
   });
 }
 

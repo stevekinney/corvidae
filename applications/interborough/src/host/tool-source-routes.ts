@@ -57,6 +57,7 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  * @module tool-source-routes
  */
 
+import { unexpectedJsonRouteFailure } from './json-route-failure.ts';
 import {
   inspectOpenApiAddress,
   inspectOpenApiSpec,
@@ -201,17 +202,24 @@ function refusalOf(error: unknown): Response | undefined {
 }
 
 /** Run `work` and answer with its result, or with the refusal its error stands for. */
-async function respond(work: () => Promise<unknown>): Promise<Response> {
+async function respond(
+  work: () => Promise<unknown>,
+  method: string,
+  route: string,
+  log?: (message: string) => void,
+): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
     // Nothing from an unknown failure is repeated: it may hold a path, a URL, or a value.
     return (
       refusalOf(error) ??
-      Response.json(
-        { error: 'failed', message: 'The tool source configuration could not be changed.' },
-        { status: 500 },
-      )
+      unexpectedJsonRouteFailure({
+        log,
+        method,
+        route,
+        message: 'The tool source configuration could not be changed.',
+      })
     );
   }
 }
@@ -276,84 +284,121 @@ export function toolSourceRoutes(
   manager: ToolSourceManager,
   refuse: Refuse,
   options: ToolSourceRoutesOptions,
+  log?: (message: string) => void,
 ) {
   return {
     [HOST_TOOL_SOURCES_ROUTE]: {
-      GET: (request: Request) => refuse(request) ?? respond(() => manager.snapshot()),
+      GET: (request: Request) =>
+        refuse(request) ?? respond(() => manager.snapshot(), 'GET', HOST_TOOL_SOURCES_ROUTE, log),
     },
     [HOST_TOOL_SOURCE_ROUTE]: {
       PUT: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          const mutation = await options.mutation(request, body);
-          return manager.connect(
-            {
-              id: request.params.id,
-              source: body['source'],
-              credentials: body['credentials'],
-              principal: mutation.owner,
-              createOnly: body['create'] === true,
-              tools: body['tools'],
-            },
-            mutation,
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            const mutation = await options.mutation(request, body);
+            return manager.connect(
+              {
+                id: request.params.id,
+                source: body['source'],
+                credentials: body['credentials'],
+                principal: mutation.owner,
+                createOnly: body['create'] === true,
+                tools: body['tools'],
+              },
+              mutation,
+            );
+          },
+          'PUT',
+          HOST_TOOL_SOURCE_ROUTE,
+          log,
+        ),
       DELETE: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const mutation = await options.mutation(request, await readObject(request));
-          return manager.remove({ id: request.params.id, principal: mutation.owner }, mutation);
-        }),
+        respond(
+          async () => {
+            const mutation = await options.mutation(request, await readObject(request));
+            return manager.remove({ id: request.params.id, principal: mutation.owner }, mutation);
+          },
+          'DELETE',
+          HOST_TOOL_SOURCE_ROUTE,
+          log,
+        ),
     },
     [HOST_TOOL_SOURCE_PROBE_ROUTE]: {
       POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_PROBE_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          const mutation = await options.mutation(request, {
-            operationId: 'probe',
-            expectedRevision: null,
-          });
-          return manager.probe(
-            {
-              id: request.params.id,
-              source: body['source'],
-              credentials: body['credentials'],
-              principal: mutation.owner,
-            },
-            mutation,
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            const mutation = await options.mutation(request, {
+              operationId: 'probe',
+              expectedRevision: null,
+            });
+            return manager.probe(
+              {
+                id: request.params.id,
+                source: body['source'],
+                credentials: body['credentials'],
+                principal: mutation.owner,
+              },
+              mutation,
+            );
+          },
+          'POST',
+          HOST_TOOL_SOURCE_PROBE_ROUTE,
+          log,
+        ),
     },
     [HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE]: {
       GET: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE>) =>
-        refuse(request) ?? respond(() => manager.affectedAgents(request.params.id)),
+        refuse(request) ??
+        respond(
+          () => manager.affectedAgents(request.params.id),
+          'GET',
+          HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE,
+          log,
+        ),
     },
     [HOST_TOOL_SOURCE_TOOLS_ROUTE]: {
       PUT: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_TOOLS_ROUTE>) =>
         refuse(request) ??
-        respond(async () => {
-          const body = await readObject(request);
-          return manager.configureTools(
-            { id: request.params.id, tools: body['tools'] },
-            await options.mutation(request, body),
-          );
-        }),
+        respond(
+          async () => {
+            const body = await readObject(request);
+            return manager.configureTools(
+              { id: request.params.id, tools: body['tools'] },
+              await options.mutation(request, body),
+            );
+          },
+          'PUT',
+          HOST_TOOL_SOURCE_TOOLS_ROUTE,
+          log,
+        ),
     },
     [HOST_OPENAPI_INSPECTION_ROUTE]: {
       POST: (request: Request) =>
         refuse(request) ??
-        respond(async () => inspectRequestedSpec(await readObject(request), options.fetch)),
+        respond(
+          async () => inspectRequestedSpec(await readObject(request), options.fetch),
+          'POST',
+          HOST_OPENAPI_INSPECTION_ROUTE,
+          log,
+        ),
     },
     [HOST_TOOL_SOURCE_AUTHORIZE_ROUTE]: {
       POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AUTHORIZE_ROUTE>) =>
         refuse(request) ??
-        respond(async () =>
-          manager.authorize(
-            request.params.id,
-            await options.mutation(request, await readObject(request)),
-          ),
+        respond(
+          async () =>
+            manager.authorize(
+              request.params.id,
+              await options.mutation(request, await readObject(request)),
+            ),
+          'POST',
+          HOST_TOOL_SOURCE_AUTHORIZE_ROUTE,
+          log,
         ),
     },
     [HOST_OAUTH_CALLBACK_ROUTE]: {

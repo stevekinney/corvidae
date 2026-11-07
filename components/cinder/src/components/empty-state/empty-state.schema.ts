@@ -40,6 +40,12 @@ const schema = {
         "Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a\ntab or a panel rather than a whole page region.",
       default: 'default',
     },
+    layout: {
+      enum: ['stacked', 'inline'],
+      description:
+        '`\'inline\'` draws a 32px disc beside the title and the sentence on one line, at the inline\nstart, without the vertical padding of a region. Use it with `size="compact"`.',
+      default: 'stacked',
+    },
     bordered: {
       type: 'boolean',
       description:

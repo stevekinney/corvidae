@@ -10,6 +10,7 @@
  * `--environment-record <file>` writes the names of the credential-shaped variables it inherited.
  * `--stubborn` (with `--record`) also starts a sleeper that ignores SIGTERM.
  * `--unmarked-detached` (with `--record`) also starts a detached sleeper with no run-directory marker.
+ * `--owner-pid <pid>` ends it, and every sleeper it starts, once that process is gone.
  * `--late-diagnostic` records the first case as passed but with a browser diagnostic.
  *
  * With `--record <dir>` it behaves like a browser run under lifecycle test: it starts a sleeper in
@@ -28,11 +29,13 @@ import {
 import type { StaticCase } from '../../../static-playground-cases.ts';
 import {
   argumentValue,
+  exitWhenOwnerIsGone,
   startSleeper,
   waitForFile,
   waitMilliseconds,
 } from './stand-in-processes.ts';
 
+exitWhenOwnerIsGone();
 const mode = argumentValue('--mode') ?? 'pass';
 const record = argumentValue('--record');
 const environment = readEnvironmentConfiguration();

@@ -18,6 +18,8 @@ export type HostRequest = { method: string; path: string; body: unknown };
 /** A plugin as a test states it; everything it leaves out takes a plain default. */
 export type PluginFixture = {
   name: string;
+  /** The name as a person reads it; the identifier when a test leaves it out. */
+  title?: string;
   version?: string;
   description?: string;
   required?: boolean;
@@ -26,8 +28,10 @@ export type PluginFixture = {
   status?: PluginStanding['status'];
   enabled?: boolean;
   configuration?: unknown;
+  /** The configuration's JSON Schema, or `null` (the default) for a plugin that takes none. */
+  configurationSchema?: Record<string, unknown> | null;
   contributions?: PluginStanding['contributions'];
-  secrets?: { key: string; set: boolean }[];
+  secrets?: { key: string; set: boolean; generated?: boolean }[];
   problems?: PluginStanding['problems'];
   /** Whether the plugin applies a configuration change at once, so it never waits for a restart. */
   liveConfiguration?: boolean;
@@ -43,6 +47,12 @@ export type FakePluginHost = {
   downFor: number;
   /** Whether a restart request makes the host stop. */
   restartApplies: boolean;
+  /** How many reads the host still answers after it accepted a restart, before it stops. */
+  answersBeforeStopping: number;
+  /** How many times the host started again: a restart that really happened. */
+  restarts: number;
+  /** Called each time the host starts again, for the other services a test stands in for. */
+  onRestarted?: () => void;
   /** Makes the restart request answer with this response instead of accepting it. */
   refuseRestart?: Response;
   /** Makes the restart request fail the way a request that gets no answer does. */
@@ -65,10 +75,12 @@ export function contribution(
   kind: string,
   id: string,
   references: { agents?: number; schedules?: number; waitingRuns?: number } = {},
+  title?: string,
 ): PluginStanding['contributions'][number] {
   return {
     kind,
     id,
+    ...(title === undefined ? {} : { title }),
     references: {
       agents: references.agents ?? 0,
       schedules: references.schedules ?? 0,
@@ -90,14 +102,14 @@ function standingOf(host: FakePluginHost, plugin: PluginFixture): PluginStanding
   const loadedConfiguration = plugin.configuration ?? {};
   const secrets = (plugin.secrets ?? []).map((secret) => ({
     key: secret.key,
-    generated: false,
+    generated: secret.generated === true,
     set: secret.set,
     location: `/home/.bungalow/secrets/${secret.key}`,
   }));
   return {
     descriptor: {
       name: plugin.name,
-      title: plugin.name,
+      title: plugin.title ?? plugin.name,
       version: plugin.version ?? '1.0.0',
       description: plugin.description ?? `The ${plugin.name} plugin.`,
       required: plugin.required === true,
@@ -110,6 +122,8 @@ function standingOf(host: FakePluginHost, plugin: PluginFixture): PluginStanding
     contributions: plugin.contributions ?? [],
     enabled: stored.enabled,
     configuration: stored.configuration,
+    configurationSchema: plugin.configurationSchema ?? null,
+    running: { enabled: loadedEnabled, configuration: loadedConfiguration },
     secrets,
     restartRequired:
       stored.enabled !== loadedEnabled ||
@@ -130,6 +144,8 @@ export function snapshotOf(host: FakePluginHost): PluginsSnapshot {
 
 /** The host starting again: what was stored is what runs. */
 function restarted(host: FakePluginHost): void {
+  host.restarts += 1;
+  host.onRestarted?.();
   host.plugins = host.plugins.map((plugin) => {
     const stored = host.stored[plugin.name];
     if (stored === undefined) return plugin;
@@ -150,7 +166,13 @@ function restarted(host: FakePluginHost): void {
 /** Installs the stand-in over the current `fetch`. Call `restore` before the layer underneath is restored. */
 export function installFakePluginHost(
   plugins: PluginFixture[],
-  options: { lockReason?: 'deployment'; restartApplies?: boolean; downFor?: number } = {},
+  options: {
+    lockReason?: 'deployment';
+    restartApplies?: boolean;
+    downFor?: number;
+    answersBeforeStopping?: number;
+    onRestarted?: () => void;
+  } = {},
 ): FakePluginHost {
   const underneath = globalThis.fetch;
   const host: FakePluginHost = {
@@ -158,6 +180,9 @@ export function installFakePluginHost(
     stored: {},
     downFor: options.downFor ?? 2,
     restartApplies: options.restartApplies ?? true,
+    answersBeforeStopping: options.answersBeforeStopping ?? 0,
+    restarts: 0,
+    ...(options.onRestarted === undefined ? {} : { onRestarted: options.onRestarted }),
     failReads: 0,
     launch: 'bun run start',
     unloaded: [],
@@ -167,6 +192,7 @@ export function installFakePluginHost(
   };
   let stopped = 0;
   let stopping = false;
+  let answeredWhileStopping = 0;
   const restore = installFetchImplementation(async (input, init) => {
     const path = new URL(urlOf(input), 'http://localhost').pathname;
     if (!path.startsWith('/host/plugins') && path !== '/host/restart') {
@@ -182,7 +208,10 @@ export function installFakePluginHost(
           host.launch === null ? null : { command: host.launch, directory: '/home/steve/app' },
       });
     }
-    if (method === 'GET' && stopping) {
+    if (method === 'GET' && stopping && answeredWhileStopping < host.answersBeforeStopping) {
+      // The host accepted the restart and has not stopped yet: it still answers as it was.
+      answeredWhileStopping += 1;
+    } else if (method === 'GET' && stopping) {
       if (stopped < host.downFor) {
         stopped += 1;
         throw new TypeError('Failed to fetch');
@@ -204,6 +233,7 @@ export function installFakePluginHost(
       if (host.restartApplies) {
         stopping = true;
         stopped = 0;
+        answeredWhileStopping = 0;
       }
       return Response.json({ restarting: true }, { status: 202 });
     }

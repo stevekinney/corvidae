@@ -70,6 +70,7 @@ function open(served: SettingsServed, behaviour: Partial<HostBehaviour> = {}) {
       return {
         values: served.values,
         effective: { ...served.values },
+        running: { ...served.values },
         revision: served.revision,
         persisted: served.persisted,
         keys: Object.fromEntries(
@@ -167,6 +168,12 @@ describe('Restart now on Settings', () => {
       ).toBe(true),
     );
     expect(document.body.querySelector('dialog[open]')).toBeNull();
+    // The row that waited now says since when it has been in effect (row 48b).
+    const status = () =>
+      view.container
+        .querySelector(`[data-setting="${KEY}"] .cinder-setting-row__status`)
+        ?.textContent?.trim() ?? '';
+    await waitFor(() => expect(status()).toMatch(/^In effect since \d{1,2}:\d{2} (AM|PM)$/));
 
     await fireEvent.click(within(back).getByRole('button', { name: RESTART_COPY.back.dismiss }));
     await waitFor(() =>

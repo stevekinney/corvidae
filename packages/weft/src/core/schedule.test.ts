@@ -361,6 +361,14 @@ describe('schedule validation helpers', () => {
       jitterMs: 1_000,
     });
 
+    expect(
+      normalizeScheduleUpdateOptions({ workflowType: 'other', input: { text: 'hi' } }),
+    ).toEqual({ workflowType: 'other', input: { text: 'hi' } });
+    expect(normalizeScheduleUpdateOptions({ input: null })).toEqual({ input: null });
+    expect(() => normalizeScheduleUpdateOptions({ workflowType: ' ' })).toThrow(
+      'options.workflowType must be a non-empty string when provided',
+    );
+
     expect(() => normalizeScheduleUpdateOptions(null as never)).toThrow(
       'options must be an object when provided',
     );

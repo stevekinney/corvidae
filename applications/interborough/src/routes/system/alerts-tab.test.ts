@@ -26,7 +26,7 @@ function happyDomAPI(): DetachedWindowAPI {
 // `window.location` has no origin, and `history.pushState` is a silent
 // no-op from `about:blank` — give the window a real origin before any test
 // here drives `router.navigate`.
-function resetLocation(path = '/health?tab=alerts'): void {
+function resetLocation(path = '/health?advanced=alerts'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -156,9 +156,9 @@ describe('AlertsTab — session activity log', () => {
     expect(await findByText('Firing')).not.toBeNull();
 
     // No `workflowId` on this frame's payload — `detailsHref` falls back to
-    // `/health?tab=alerts` (`alerts-tab.svelte`'s own `detailsHref`).
+    // `/health?advanced=alerts` (`alerts-tab.svelte`'s own `detailsHref`).
     const detailsLink = await findByRole('link', { name: 'Details' });
-    expect(detailsLink.getAttribute('href')).toBe('/health?tab=alerts');
+    expect(detailsLink.getAttribute('href')).toBe('/health?advanced=alerts');
     await fireEvent.click(detailsLink);
     expect(router.pathname).toBe('/health');
   });

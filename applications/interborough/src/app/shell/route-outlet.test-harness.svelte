@@ -5,7 +5,7 @@
    * applies them to the cache as the shell does. Never imported by production code.
    */
   import type { HttpClient } from '@lostgradient/weft';
-  import { QueryClientProvider } from '@tanstack/svelte-query';
+  import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
@@ -36,9 +36,18 @@
     fleetEvents?: FleetEventSource;
     /** The keyboard preference Settings changes, which the shell provides; a fresh one when omitted. */
     keyboard?: KeyboardPreferences;
+    /** Handed the query client the views share, so a test can invalidate what a view reads. */
+    onQueryClient?: (queryClient: QueryClient) => void;
   }
 
-  let { client, scopes, bureauEvents, fleetEvents, keyboard }: RouteOutletHarnessProps = $props();
+  let {
+    client,
+    scopes,
+    bureauEvents,
+    fleetEvents,
+    keyboard,
+    onQueryClient,
+  }: RouteOutletHarnessProps = $props();
 
   void routeComponents;
 
@@ -55,6 +64,7 @@
     unauthenticatedAccess: null,
   });
   const queryClient = createQueryClient();
+  untrack(() => onQueryClient)?.(queryClient);
   const feeds = untrack(() => ({ bureauEvents, fleetEvents }));
   if (feeds.bureauEvents !== undefined) {
     const source = feeds.bureauEvents;

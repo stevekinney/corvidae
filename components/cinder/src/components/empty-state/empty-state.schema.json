@@ -34,6 +34,11 @@
       "description": "Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a\ntab or a panel rather than a whole page region.",
       "default": "default"
     },
+    "layout": {
+      "enum": ["stacked", "inline"],
+      "description": "`'inline'` draws a 32px disc beside the title and the sentence on one line, at the inline\nstart, without the vertical padding of a region. Use it with `size=\"compact\"`.",
+      "default": "stacked"
+    },
     "bordered": {
       "type": "boolean",
       "description": "Draws the state inside a bordered, rounded box, for a list or page body that has no\ncontainer of its own. Leave it off when a card or panel already surrounds the state.",

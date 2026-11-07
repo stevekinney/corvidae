@@ -307,13 +307,6 @@ test('two authenticated workspaces share definition names without sharing privat
     [b, 'workspace-b'],
   ] as const) {
     expect(await fixture.pluginContext!.secrets.get('shared-secret')).toBe(`${name}-secret`);
-    const integrations = await fetch(new URL('/host/integrations', fixture.host.url), {
-      headers: { 'x-api-key': 'alice' },
-    });
-    const integrationBody = await integrations.text();
-    expect(integrations.status).toBe(200);
-    expect(integrationBody).toContain('shared-integration');
-    expect(integrationBody).not.toContain(`${name}-secret`);
     const workflow = await fixture.host.bureau.workflows!.create('shared-workflow', {
       agent: 'shared',
       trigger: { kind: 'schedule', spec: '1h' },

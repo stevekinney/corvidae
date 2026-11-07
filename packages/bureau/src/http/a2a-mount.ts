@@ -32,6 +32,11 @@ import {
 
 import { type A2AAgentCardSource, createBureauAgentCard } from './a2a-agent-card.ts';
 import {
+  A2A_DIRECTORY_PATH,
+  type A2ADirectoryAgent,
+  createA2ADirectoryCard,
+} from './a2a-directory-card.ts';
+import {
   type A2ABureau,
   type A2ASendLedger,
   type BureauA2ARequestHandlerOptions,
@@ -62,7 +67,11 @@ export type BureauA2AOptions = {
 export type BureauA2AMountOptions = BureauWorkspaceHost &
   BureauA2AOptions & {
     readonly bureau: A2ABureau & { readonly id: string };
-    readonly optedIn: { readonly includes: (agentName: string) => boolean };
+    readonly optedIn: {
+      readonly includes: (agentName: string) => boolean;
+      /** Settles once the opt-in can be answered; a request waits on it before asking. */
+      readonly ready?: Promise<void>;
+    };
     /**
      * Whether any task of the agent is still addressable. An agent that opted out and has one keeps a
      * tombstone at its path until the last has passed its retention.
@@ -78,6 +87,11 @@ export type BureauA2AMountOptions = BureauWorkspaceHost &
      * and the local caller is refused.
      */
     readonly security: A2ASecurityDeclaration | undefined;
+    /**
+     * The agents the deployment shares, in listing order: the directory at
+     * `/a2a/.well-known/agent-card.json` names them. Omitted, the directory is not served.
+     */
+    readonly shared?: () => readonly A2ADirectoryAgent[];
     readonly records: A2ATaskRecords;
     readonly ledger: A2ASendLedger;
     /**
@@ -266,11 +280,32 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
 
   return {
     pathPrefix: A2A_MOUNT_PREFIX,
-    isPublicPath: (pathname) => PUBLIC_ROUTE.test(pathname),
+    isPublicPath: (pathname) => PUBLIC_ROUTE.test(pathname) || pathname === A2A_DIRECTORY_PATH,
     async fetch(request, context) {
       const pathname = new URL(request.url).pathname;
+      if (pathname === A2A_DIRECTORY_PATH) {
+        if (
+          options.shared === undefined ||
+          (request.method !== 'GET' && request.method !== 'HEAD')
+        ) {
+          return notFound();
+        }
+        await options.optedIn.ready;
+        const keepsHistory = await keepsDurableHistory();
+        return Response.json(
+          createA2ADirectoryCard({
+            publicUrl,
+            tenant: options.bureau.id,
+            pushNotifications: keepsHistory && options.push !== undefined,
+            agents: options.shared(),
+          }),
+          // The agents shared change live, so a copy of the directory is never reused unchecked.
+          { headers: { 'Cache-Control': 'no-cache' } },
+        );
+      }
       const agentName = agentOf(pathname);
       if (agentName === undefined) return notFound();
+      await options.optedIn.ready;
       const optedIn = options.optedIn.includes(agentName);
       // An opted-out agent's tombstone serves its remaining tasks, never its card.
       if (!optedIn && (PUBLIC_ROUTE.test(pathname) || !(await options.hasTasks(agentName)))) {

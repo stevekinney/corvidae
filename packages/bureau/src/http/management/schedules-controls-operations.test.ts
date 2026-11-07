@@ -1,5 +1,5 @@
 /**
- * COR-1829 — `bureau.schedules.skipnext`, `bureau.schedules.runnow`, and `bureau.schedules.missed`
+ * COR-1829, COR-2018 — `bureau.schedules.skipnext`, `bureau.schedules.unskip`, `bureau.schedules.runnow`, and `bureau.schedules.missed`
  * over a real Bureau and its handler: what each does to a schedule, who may call it, and the
  * origin of the task a run-now starts. Schedules here are hourly and nothing waits for them.
  */
@@ -83,7 +83,7 @@ describe('bureau.schedules.skipnext', () => {
     const opened = await serve();
     const id = await createdBy(opened, 'alice-key');
     const before = await viewOf(opened, id);
-    expect(before['skipUntil']).toBeNull();
+    expect(before['skippedOccurrences']).toEqual([]);
 
     const skipped = await rpc(
       opened.handler,
@@ -93,7 +93,7 @@ describe('bureau.schedules.skipnext', () => {
     );
     expect(skipped.result).toEqual({ id, status: 'active', revision: 1 });
     const after = await viewOf(opened, id);
-    expect(after['skipUntil']).toBe(after['nextFireAt']);
+    expect(after['skippedOccurrences']).toEqual([after['nextFireAt']]);
     expect(after['revision']).toBe(1);
 
     const again = await rpc(
@@ -119,7 +119,7 @@ describe('bureau.schedules.skipnext', () => {
     expect(status(stale)).toBe(409);
     expect(stale.error?.data).toMatchObject({ currentRevision: 1, expectedRevision: 9 });
     const unchanged = await viewOf(opened, id);
-    expect(unchanged['skipUntil']).toBeNull();
+    expect(unchanged['skippedOccurrences']).toEqual([]);
   });
 
   it('skips the occurrence it names, and a repeat naming the same one changes nothing', async () => {
@@ -136,7 +136,7 @@ describe('bureau.schedules.skipnext', () => {
     );
     expect(skipped.result).toEqual({ id, status: 'active', revision: 1 });
     const after = await viewOf(opened, id);
-    expect(after['skipUntil']).toBe(occurrence);
+    expect(after['skippedOccurrences']).toEqual([occurrence]);
 
     const again = await rpc(
       opened.handler,
@@ -147,13 +147,13 @@ describe('bureau.schedules.skipnext', () => {
     expect(again.result).toEqual({ id, status: 'active', revision: 1 });
   });
 
-  it('refuses an occurrence that is not the next run as Conflict occurrence-not-next, and writes nothing', async () => {
+  it('skips a later fire it names, and refuses one that is not an upcoming fire as Conflict occurrence-not-next', async () => {
     const opened = await serve();
     const id = await createdBy(opened, 'alice-key');
     const seen = await viewOf(opened, id);
     const next = Date.parse(seen['nextFireAt'] as string);
 
-    for (const moved of [next - 1, next + 3_600_000]) {
+    for (const moved of [next - 3_600_000, next + 1]) {
       const refused = await rpc(
         opened.handler,
         'bureau.schedules.skipnext',
@@ -164,7 +164,18 @@ describe('bureau.schedules.skipnext', () => {
       expect(refused.error?.data?.['reason']).toBe('occurrence-not-next');
     }
     const unchanged = await viewOf(opened, id);
-    expect(unchanged['skipUntil']).toBeNull();
+    expect(unchanged['skippedOccurrences']).toEqual([]);
+
+    const later = new Date(next + 2 * 3_600_000).toISOString();
+    const skipped = await rpc(
+      opened.handler,
+      'bureau.schedules.skipnext',
+      { scheduleId: id, occurrence: later },
+      'alice-key',
+    );
+    expect(skipped.result).toEqual({ id, status: 'active', revision: 1 });
+    const after = await viewOf(opened, id);
+    expect(after['skippedOccurrences']).toEqual([later]);
   });
 
   it('checks the revision before the occurrence', async () => {
@@ -197,25 +208,64 @@ describe('bureau.schedules.skipnext', () => {
       expect([occurrence, status(refused)]).toEqual([occurrence, 400]);
     }
     const unchanged = await viewOf(opened, id);
-    expect(unchanged['skipUntil']).toBeNull();
+    expect(unchanged['skippedOccurrences']).toEqual([]);
   });
 
-  it('answers a paused or cancelled schedule as a Conflict, and ends a skip when the schedule is paused', async () => {
+  it('keeps the skips of a paused schedule and skips its fires, and answers a cancelled one as a Conflict', async () => {
     const opened = await serve();
     const id = await createdBy(opened, 'alice-key');
     await rpc(opened.handler, 'bureau.schedules.skipnext', { scheduleId: id }, 'alice-key');
     await rpc(opened.handler, 'bureau.schedules.pause', { scheduleId: id }, 'alice-key');
-    const ended = await viewOf(opened, id);
-    expect(ended['skipUntil']).toBeNull();
+    const kept = await viewOf(opened, id);
+    expect(kept['skippedOccurrences']).toEqual([kept['nextFireAt']]);
 
+    const later = new Date(Date.parse(kept['nextFireAt'] as string) + 3_600_000).toISOString();
     const paused = await rpc(
+      opened.handler,
+      'bureau.schedules.skipnext',
+      { scheduleId: id, occurrence: later },
+      'alice-key',
+    );
+    expect(paused.result).toMatchObject({ id, status: 'paused' });
+    const both = await viewOf(opened, id);
+    expect(both['skippedOccurrences']).toEqual([kept['nextFireAt'], later]);
+
+    await rpc(opened.handler, 'bureau.schedules.cancel', { scheduleId: id }, 'alice-key');
+    const cancelled = await rpc(
       opened.handler,
       'bureau.schedules.skipnext',
       { scheduleId: id },
       'alice-key',
     );
-    expect(status(paused)).toBe(409);
-    expect(paused.error?.data?.['reason']).toBe('schedule-not-active');
+    expect(status(cancelled)).toBe(409);
+    expect(cancelled.error?.data?.['reason']).toBe('schedule-not-active');
+  });
+
+  it('answers a skip past the 100 a schedule keeps as Conflict too-many-skips', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+    const seen = await viewOf(opened, id);
+    const next = Date.parse(seen['nextFireAt'] as string);
+    const fire = (index: number) => new Date(next + index * 3_600_000).toISOString();
+    for (let index = 0; index < 100; index += 1) {
+      const skipped = await rpc(
+        opened.handler,
+        'bureau.schedules.skipnext',
+        { scheduleId: id, occurrence: fire(index) },
+        'alice-key',
+      );
+      expect(skipped.error).toBeUndefined();
+    }
+
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.skipnext',
+      { scheduleId: id, occurrence: fire(100) },
+      'alice-key',
+    );
+
+    expect(status(refused)).toBe(409);
+    expect(refused.error?.data?.['reason']).toBe('too-many-skips');
   });
 
   it('lets another principal skip only with bureau.schedules:write, and answers anyone else as a missing schedule', async () => {
@@ -232,7 +282,7 @@ describe('bureau.schedules.skipnext', () => {
       expect([key, status(denied)]).toEqual([key, 404]);
     }
     const untouched = await viewOf(opened, id);
-    expect(untouched['skipUntil']).toBeNull();
+    expect(untouched['skippedOccurrences']).toEqual([]);
     const allowed = await rpc(
       opened.handler,
       'bureau.schedules.skipnext',
@@ -241,7 +291,59 @@ describe('bureau.schedules.skipnext', () => {
     );
     expect(allowed.result).toMatchObject({ revision: 1 });
     const skipped = await viewOf(opened, id);
-    expect(skipped['skipUntil']).not.toBeNull();
+    expect(skipped['skippedOccurrences']).toHaveLength(1);
+  });
+});
+
+describe('bureau.schedules.unskip', () => {
+  it('takes a skip back, leaves the revision, and changes nothing for a fire that is not skipped', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+    await rpc(opened.handler, 'bureau.schedules.skipnext', { scheduleId: id }, 'alice-key');
+    const skipped = await viewOf(opened, id);
+    const occurrence = skipped['nextFireAt'] as string;
+    expect(skipped['skippedOccurrences']).toEqual([occurrence]);
+
+    const taken = await rpc(
+      opened.handler,
+      'bureau.schedules.unskip',
+      { scheduleId: id, occurrence },
+      'alice-key',
+    );
+    expect(taken.result).toEqual({ id, status: 'active', revision: 1 });
+    const after = await viewOf(opened, id);
+    expect(after['skippedOccurrences']).toEqual([]);
+
+    const again = await rpc(
+      opened.handler,
+      'bureau.schedules.unskip',
+      { scheduleId: id, occurrence },
+      'alice-key',
+    );
+    expect(again.result).toEqual({ id, status: 'active', revision: 1 });
+  });
+
+  it('refuses a fire that has passed, a stale revision, a bad occurrence, and a caller without the scope', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+    await rpc(opened.handler, 'bureau.schedules.skipnext', { scheduleId: id }, 'alice-key');
+    const seen = await viewOf(opened, id);
+    const occurrence = seen['nextFireAt'] as string;
+    const passed = new Date(Date.parse(occurrence) - 3_600_000).toISOString();
+
+    const refusals = [
+      [{ scheduleId: id, occurrence: passed }, 'alice-key', 409],
+      [{ scheduleId: id, occurrence, expectedRevision: 9 }, 'alice-key', 409],
+      [{ scheduleId: id, occurrence: 'soon' }, 'alice-key', 400],
+      [{ scheduleId: id }, 'alice-key', 400],
+      [{ scheduleId: id, occurrence }, 'bob-key', 404],
+    ] as const;
+    for (const [params, key, expected] of refusals) {
+      const refused = await rpc(opened.handler, 'bureau.schedules.unskip', params, key);
+      expect([params, status(refused)]).toEqual([params, expected]);
+    }
+    const unchanged = await viewOf(opened, id);
+    expect(unchanged['skippedOccurrences']).toEqual([occurrence]);
   });
 });
 

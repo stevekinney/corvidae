@@ -112,6 +112,22 @@ export type WorkerSummary = {
   startedAt: number;
   capabilities: RemoteWorkerCapabilities;
   health: WorkerHealth;
+  /**
+   * The worker's name as a person reads it, advertised as the string capability `name` when it
+   * registered; absent when it advertised none.
+   */
+  name?: string | undefined;
+  /**
+   * When the worker's session ended. Present only for a worker that went away: it stays listed
+   * until an operator forgets it or it registers again, and its `lastHeartbeatAt` is when it was
+   * last heard from.
+   */
+  disconnectedAt?: number | undefined;
+  /**
+   * The workflow types the worker's accepted manifest says it can execute, sorted; absent when it
+   * declared none. Kept with a worker that went away, whose manifest is no longer readable.
+   */
+  workflows?: string[] | undefined;
   deploymentName?: string | undefined;
   buildId?: string | undefined;
   runtimeVersion?: string | undefined;

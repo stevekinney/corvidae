@@ -21,6 +21,32 @@ function textSnippet(text: string) {
   }));
 }
 
+describe('StackedListItem status on a phone (COR-2018)', () => {
+  test('puts a middle dot after the status only when line two follows it', () => {
+    const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+    expect(stylesheet).toMatch(
+      /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status::after/,
+    );
+    const status = textSnippet('Done');
+    const title = textSnippet('Thu Oct 29');
+    const bare = render(StackedListItem, { props: { status, title } });
+    expect(
+      bare.container
+        .querySelector('li')
+        ?.classList.contains('cinder-stacked-list-item--no-line-two'),
+    ).toBe(true);
+    bare.unmount();
+    const withMeta = render(StackedListItem, {
+      props: { status, title, meta: textSnippet('Chat') },
+    });
+    expect(
+      withMeta.container
+        .querySelector('li')
+        ?.classList.contains('cinder-stacked-list-item--no-line-two'),
+    ).toBe(false);
+  });
+});
+
 describe('StackedListItem', () => {
   test('aligns leading and body to the first line while centering trailing content', () => {
     const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');

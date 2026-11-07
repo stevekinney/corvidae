@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { DescriptionListDefinition } from './description-list.types.ts';
@@ -88,6 +89,31 @@ describe('DescriptionList', () => {
 
     const firstDd = dl?.querySelector('dd');
     expect(firstDd?.classList.contains('cinder-sr-only')).toBe(false);
+  });
+
+  test('fields variant sets data-cinder-variant, keeps each term before its value, and rules each row', () => {
+    const { container } = render(DescriptionList, { items: sampleItems, variant: 'fields' });
+    const dl = container.querySelector('dl');
+    expect(dl?.getAttribute('data-cinder-variant')).toBe('fields');
+    const row = container.querySelector('.cinder-description-list__row');
+    expect(row?.firstElementChild?.tagName).toBe('DT');
+    expect(row?.lastElementChild?.tagName).toBe('DD');
+    const css = readFileSync(new URL('./description-list.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{[^}]*border-block-end: 1px solid/s,
+    );
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-weight: var\(--cinder-font-normal\)/s,
+    );
+  });
+
+  test('facts variant sets data-cinder-variant and keeps each term before its value', () => {
+    const { container } = render(DescriptionList, { items: sampleItems, variant: 'facts' });
+    const dl = container.querySelector('.cinder-description-list');
+    expect(dl?.getAttribute('data-cinder-variant')).toBe('facts');
+    expect(dl?.querySelectorAll('.cinder-description-list__row').length).toBe(2);
+    expect(dl?.querySelector('dt')?.classList.contains('cinder-sr-only')).toBe(false);
+    expect(dl?.querySelector('dt')?.nextElementSibling?.tagName).toBe('DD');
   });
 
   test('actions snippet renders inside <dd> wrapped in .cinder-description-list__actions', () => {

@@ -1,5 +1,5 @@
 /**
- * The unit-lane guard for the showcase specification (`tests/e2e/showcase.spec.ts`), which runs in
+ * The unit-lane guard for the showcase specification (`tests/e2e/00-showcase.spec.ts`), which runs in
  * a browser outside `check`: every route in the table has an address to open, every address opens
  * the route it is named for, and no word of the showcase content is a run of more than 40
  * characters that no line can break at (the stress seed, `responsive.spec.ts`, is where those are).

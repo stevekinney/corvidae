@@ -38,6 +38,7 @@
     align = 'center',
     kind = 'first-use',
     size = 'default',
+    layout = 'stacked',
     bordered = false,
     onClearFilters,
     clearFiltersLabel = 'Clear filters',
@@ -71,6 +72,7 @@
       : 'first-use',
   );
   const safeSize = $derived(size === 'compact' ? 'compact' : 'default');
+  const isInline = $derived(layout === 'inline');
   const showClearFilters = $derived(safeKind === 'filtered' && onClearFilters !== undefined);
   const showAction = $derived(action !== undefined);
   // First use shows the view's own icon, so it has no default glyph; every other kind is a state
@@ -85,6 +87,7 @@
   data-cinder-align={align === 'start' ? 'start' : undefined}
   data-cinder-kind={safeKind}
   data-cinder-size={safeSize}
+  data-cinder-layout={isInline ? 'inline' : undefined}
   data-cinder-bordered={bordered ? '' : undefined}
   aria-labelledby={titleId}
 >
@@ -105,11 +108,22 @@
       {/if}
     </div>
   {/if}
-  <svelte:element this={tag} id={titleId} class="cinder-empty-state-title">
-    {title}
-  </svelte:element>
-  {#if description}
-    <p class="cinder-empty-state-description">{description}</p>
+  {#if isInline}
+    <div class="cinder-empty-state-text">
+      <svelte:element this={tag} id={titleId} class="cinder-empty-state-title">
+        {title}
+      </svelte:element>
+      {#if description}
+        <p class="cinder-empty-state-description">{description}</p>
+      {/if}
+    </div>
+  {:else}
+    <svelte:element this={tag} id={titleId} class="cinder-empty-state-title">
+      {title}
+    </svelte:element>
+    {#if description}
+      <p class="cinder-empty-state-description">{description}</p>
+    {/if}
   {/if}
   {#if showClearFilters || showAction}
     <div class="cinder-empty-state-action">

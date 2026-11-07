@@ -295,10 +295,15 @@ function block(label: string, value: unknown): string {
 
 /**
  * The user message an `agent` step sends: `message`, then one fenced JSON block for the
- * instance's trigger and one for the previous step's result, each only when it is neither absent
- * nor `null`.
+ * instance's trigger, the previous activity's result, and any awaited signal payload.
+ * Absent and null values are omitted.
  */
-export function composeAgentMessage(message: string, trigger: unknown, previous: unknown): string {
+export function composeAgentMessage(
+  message: string,
+  trigger: unknown,
+  previous: unknown,
+  signal?: unknown,
+): string {
   let composed = message;
   if (trigger !== undefined && trigger !== null) {
     const visibleTrigger =
@@ -312,6 +317,7 @@ export function composeAgentMessage(message: string, trigger: unknown, previous:
     composed += block('Trigger:', visibleTrigger);
   }
   if (previous !== undefined && previous !== null) composed += block('Previous step:', previous);
+  if (signal !== undefined && signal !== null) composed += block('Signal:', signal);
   return composed;
 }
 
@@ -332,7 +338,7 @@ export function createWorkflowDocumentHost(
       );
       return dependencies.runAgentStep({
         agent,
-        message: composeAgentMessage(message, argument.trigger, argument.previous),
+        message: composeAgentMessage(message, argument.trigger, argument.previous, argument.signal),
         workflowId: argument.workflowId,
         step: argument.step,
         ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),

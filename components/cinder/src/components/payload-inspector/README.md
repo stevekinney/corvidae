@@ -100,12 +100,21 @@ Pass a `parse` function to support alternative serialization formats:
 <PayloadInspector value={encodedString} parse={(raw) => myDecoder.decode(raw)} />
 ```
 
+### Showing a value as text
+
+Set `plain` to show a string as it is: text in a code block under the label, with no Fields / JSON switch, no parsing and no invalid-JSON notice. Use it for a value that is not JSON, or one too long to lay out as fields, and say what it is in the label.
+
+```svelte
+<PayloadInspector value={firstPartOfTheLog} label="Value · text, 2.1 MB" bare plain />
+```
+
 ## Props
 
 <!-- generated:props:start -->
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `bare` | `boolean` | no | `false` | Draws the payload without its card, for a pane that already is one: no border, no divider under the header, and no count or Copy button, since the pane carries its own Copy. The Fields view is always one label and value per row with a quiet rule between rows, never the inline or grid layouts, so a person reads a record as a list. The Fields / JSON switch sits at the end of the header row, across from the label. |
 | `class` | `string` | no | — | Additional CSS classes applied to the root element. |
 | `downloadFilename` | `string` | no | — | The file name Download JSON saves a payload over `maxBytes` as. Defaults to "payload.json". |
 | `emptyLabel` | `string` | no | — | The muted line shown when there is no payload. Defaults to "No payload". |
@@ -115,6 +124,7 @@ Pass a `parse` function to support alternative serialization formats:
 | `label` | `string` | no | — | A heading drawn at the left of the header row, before the Fields / JSON switch, such as "Input" or "Output". It also names the card for assistive technology; without one the card is named "Payload". |
 | `maxBytes` | `number` | no | — | Maximum serialized size before nothing is rendered. A payload over it shows only its size, a Copy button and a Download JSON button. Defaults to 1,048,576 (1 MB). |
 | `maxDepth` | `number` | no | — | Hard depth cap. Nodes deeper than this never render their children. Defaults to 50. |
+| `plain` | `boolean` | no | `false` | Shows a string `value` as it is, as text in a code block under the label, whatever it holds: the Fields / JSON switch is not drawn, nothing is parsed and no invalid-JSON notice appears. Use it for a value that is not JSON, or one too long to lay out as fields, and say so beside it. A value that is not a string is shown as usual. |
 | `redact` | `string`[] | no | — | Secret paths: values to hide in both views and in Copy, before anything is laid out. Each path is dot-separated property names from the root, array positions count from 1, and `*` stands for any one name or position (`headers.authorization`, `attachments.*.token`). Read them from a JSON Schema with `readSecretPaths`. When this is not passed, a property whose name reads as a secret (token, key, password, authorization) is hidden as a fallback; pass `[]` to hide nothing. |
 | `streaming` | `boolean` | no | — | True while the payload is still arriving. `value` is the JSON text received so far: fields appear as they complete, the last one shows "Receiving…", the count reads "so far", and Copy waits until the stream ends. |
 | `truncated` | `boolean` | no | — | When true, the payload has been truncated by the producer (e.g. because it exceeded a wire size limit). The inspector renders a truncation badge in the header. |

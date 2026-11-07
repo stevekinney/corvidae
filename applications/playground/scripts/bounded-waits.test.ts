@@ -3,20 +3,22 @@
  * Each case here races the code under test against a watchdog, so a regression shows up as a
  * failure instead of a stalled test process.
  */
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing';
 
-import { interruptRunner, readProcessTable, signalTarget } from './static-playground-processes.ts';
-
-function signalGroupOf(pid: number): void {
-  const group = readProcessTable().find((row) => row.pid === pid)?.pgid;
-  if (group !== undefined) signalTarget(-group, 'SIGKILL');
-}
+import {
+  livingProcesses,
+  reapRecordedProcesses,
+  recordedProcessIds,
+  waitUntilGone,
+} from './fixtures/static-playground/stand-ins/stand-in-record.ts';
+import { interruptRunner, waitUntil } from './static-playground-processes.ts';
 
 const STAND_IN_RUNNER = join(
   import.meta.dirname,
@@ -40,6 +42,8 @@ const standInRunnerEndsAtItsWaitBudget = await outcomeOf(async () => {
         record,
         '--wait-milliseconds',
         '300',
+        '--owner-pid',
+        String(process.pid),
       ],
       {
         env: { PATH: '/usr/bin:/bin' },
@@ -56,13 +60,84 @@ const standInRunnerEndsAtItsWaitBudget = await outcomeOf(async () => {
     expect(exitCode).toBe(1);
     expect(await new Response(standIn.stderr).text()).toContain('timed out waiting for');
   } finally {
-    // The stand-in's sleepers: one in its own group, one detached into a group of its own.
-    for (const label of ['runner-grandchild', 'runner-detached']) {
-      const file = Bun.file(join(record, `${label}.pid`));
-      if (!(await file.exists())) continue;
-      const pid = await file.text();
-      signalGroupOf(Number(pid.trim()));
+    // The stand-in's sleepers: one in its own group, one detached into a group of its own. Stop
+    // each by the PID it recorded, and prove none is left, whatever the body did.
+    const recorded = reapRecordedProcesses(record);
+    try {
+      await waitUntilGone(recorded, HANG_GUARD_MILLISECONDS);
+    } finally {
+      await rm(record, { recursive: true, force: true });
     }
+  }
+});
+
+/**
+ * A test killed by the hang guard or from outside never reaches its `finally`, which once left a
+ * runner's three sleepers and the server running for hours. Every stand-in names its owner and
+ * exits once that process is gone, so killing the owner here, with nothing else, must end them.
+ */
+const standInsEndWithTheirOwner = await outcomeOf(async () => {
+  const record = await mkdtemp(join(tmpdir(), 'bounded-wait-record-'));
+  const owner = spawnWithHangGuard(['/bin/sh', '-c', 'while :; do sleep 1; done'], {
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  try {
+    spawnWithHangGuard(
+      [
+        process.execPath,
+        STAND_IN_RUNNER,
+        '--mode',
+        'hang',
+        '--record',
+        record,
+        '--owner-pid',
+        String(owner.pid),
+      ],
+      { env: { PATH: '/usr/bin:/bin' }, stdio: ['ignore', 'ignore', 'ignore'], detached: true },
+    );
+    const labels = ['test-runner', 'runner-grandchild', 'runner-detached'];
+    await waitUntil(
+      () => labels.every((label) => existsSync(join(record, `${label}.pid`))),
+      HANG_GUARD_MILLISECONDS,
+      'the stand-in runner and its sleepers to record their PIDs',
+    );
+    const recorded = recordedProcessIds(record);
+
+    expect(recorded).toHaveLength(labels.length);
+    expect(livingProcesses(recorded)).toHaveLength(labels.length);
+
+    owner.kill('SIGKILL');
+    await waitUntilGone(recorded, HANG_GUARD_MILLISECONDS);
+  } finally {
+    owner.kill('SIGKILL');
+    reapRecordedProcesses(record);
+    await rm(record, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A recorded PID the operating system has given to another process is neither killed nor waited on.
+ * The "recorded" process here is a `sleep` this test starts, which no stand-in's command line names.
+ */
+const reusedPidIsLeftAlone = await outcomeOf(async () => {
+  const record = await mkdtemp(join(tmpdir(), 'bounded-wait-record-'));
+  const foreign = spawnWithHangGuard(['/bin/sleep', '600'], {
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  try {
+    await Bun.write(join(record, 'reused.pid'), `${foreign.pid}\n`);
+
+    expect(recordedProcessIds(record)).toEqual([foreign.pid]);
+    expect(reapRecordedProcesses(record)).toEqual([foreign.pid]);
+    // It was seen as a process that is not a stand-in, so it was not signalled...
+    expect(foreign.exitCode).toBeNull();
+    expect(foreign.signalCode).toBeNull();
+    expect(livingProcesses([foreign.pid])).toEqual([]);
+    // ...and waiting for it to go does not wait on it.
+    await waitUntilGone([foreign.pid], HANG_GUARD_MILLISECONDS);
+  } finally {
+    foreign.kill('SIGKILL');
+    await foreign.exited;
     await rm(record, { recursive: true, force: true });
   }
 });
@@ -87,4 +162,10 @@ describe('bounded waits', () => {
 
   it('ends a stand-in test runner that never receives its proceed file', () =>
     rethrow(standInRunnerEndsAtItsWaitBudget));
+
+  it('neither kills nor waits on a recorded PID that another process now holds', () =>
+    rethrow(reusedPidIsLeftAlone));
+
+  it('ends every stand-in, sleepers included, once the test that owns them is gone', () =>
+    rethrow(standInsEndWithTheirOwner));
 });

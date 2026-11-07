@@ -7,7 +7,7 @@ import { executeAutomation } from './cli-automation.ts';
 import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
-import { request } from './cli-client-transport.ts';
+import { request, type CliTarget } from './cli-client-transport.ts';
 import { executeDefinitions } from './cli-definitions.ts';
 import { executeMemory } from './cli-memory.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
@@ -196,11 +196,11 @@ const commandOptions: Record<string, readonly string[]> = {
     'cursor',
     'all',
   ],
-  whoami: ['help', 'output', 'no-input', 'connection', 'url', 'timeout'],
-  status: ['help', 'output', 'no-input', 'connection', 'url', 'timeout'],
-  doctor: ['help', 'output', 'no-input', 'connection', 'url', 'timeout'],
-  open: ['help', 'output', 'no-input', 'connection', 'url', 'timeout'],
-  restart: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'yes'],
+  whoami: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  status: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  doctor: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  open: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  restart: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace', 'yes'],
   api: [
     'help',
     'output',
@@ -208,6 +208,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'all',
     'cursor',
     'describe',
@@ -224,6 +225,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'agent',
     'message-file',
     'message',
@@ -239,6 +241,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'context',
     'message',
     'input-id',
@@ -261,6 +264,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'review-id',
     'round',
     'reason',
@@ -273,6 +277,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'task-id',
     'message-id',
     'answer',
@@ -292,7 +297,17 @@ const commandOptions: Record<string, readonly string[]> = {
     'step',
     'status',
   ],
-  events: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'kind', 'cursor'],
+  events: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'workspace',
+    'kind',
+    'cursor',
+  ],
   audit: [
     'help',
     'output',
@@ -300,6 +315,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'run-id',
     'type',
     'principal',
@@ -316,6 +332,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'input',
     'input-file',
@@ -333,6 +350,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'input',
     'input-file',
@@ -353,6 +371,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'agent',
     'query',
     'content',
@@ -368,6 +387,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'media-type',
     'output-file',
@@ -380,6 +400,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'if-revision',
     'expected-revision',
@@ -394,6 +415,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'if-revision',
     'expected-revision',
@@ -407,6 +429,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'connection',
     'url',
     'timeout',
+    'workspace',
     'file',
     'if-revision',
     'expected-revision',
@@ -542,10 +565,40 @@ export function loopbackUrl(raw: string): URL | undefined {
   }
 }
 
+function remoteUrl(raw: string): URL | undefined {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && url.username === '' && url.password === ''
+      ? url
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function authorityFrom(value: unknown): CliTarget['authority'] | undefined {
+  if (!isRecord(value)) return undefined;
+  const result = isRecord(value['result']) ? value['result'] : value;
+  const workspace = isRecord(result['workspace']) ? result['workspace'] : undefined;
+  if (
+    workspace === undefined ||
+    typeof workspace['actorId'] !== 'string' ||
+    typeof workspace['workspaceId'] !== 'string' ||
+    !Array.isArray(workspace['capabilities']) ||
+    workspace['capabilities'].some((capability) => typeof capability !== 'string')
+  )
+    return undefined;
+  return {
+    actor: workspace['actorId'],
+    workspace: workspace['workspaceId'],
+    capabilities: workspace['capabilities'],
+  };
+}
+
 async function resolveTarget(
   parsed: Parsed,
   dependencies: CliClientDependencies,
-): Promise<{ url: string; headers: Record<string, string> } | CliResult> {
+): Promise<CliTarget | CliResult> {
   const environment = { ...dependencies.environment };
   const preferences = await readPreferences(dependencies);
   const connection =
@@ -565,16 +618,42 @@ async function resolveTarget(
       stderr: `Credential environment variable ${connection.credentialReference} is not set.`,
       exitCode: 3,
     };
-  if (loopbackUrl(raw) === undefined)
+  const local = loopbackUrl(raw);
+  const remote = remoteUrl(raw);
+  if (local === undefined && remote === undefined)
     return {
       stdout: '',
-      stderr: 'Management endpoints must be http://localhost or http://127.0.0.1.',
+      stderr:
+        'Management endpoints must be loopback HTTP or non-loopback HTTPS with --credential-reference.',
       exitCode: 3,
     };
-  return {
+  if (remote !== undefined && connection?.credentialReference === undefined)
+    return {
+      stdout: '',
+      stderr: 'Non-loopback management endpoints require --credential-reference.',
+      exitCode: 3,
+    };
+  const target: CliTarget = {
     url: raw.replace(/\/$/, ''),
-    headers: credential === undefined ? {} : { authorization: `Bearer ${credential}` },
+    headers:
+      credential === undefined
+        ? {}
+        : remote === undefined
+          ? { authorization: `Bearer ${credential}` }
+          : { 'x-api-key': credential },
+    ...(remote === undefined ? {} : { remote: true }),
   };
+  if (remote === undefined) return target;
+  const authorityResponse = await request(target, '/api/v1/principal', parsed, dependencies);
+  const authority = authorityFrom(authorityResponse.data);
+  if (authority === undefined)
+    throw makeCliFailure('The management server returned no workspace authority.', { exitCode: 3 });
+  const expectedWorkspace = parsed.options.get('workspace');
+  if (typeof expectedWorkspace === 'string' && expectedWorkspace !== authority.workspace)
+    throw makeCliFailure('The authenticated workspace does not match --workspace.', {
+      status: 403,
+    });
+  return { ...target, authority };
 }
 
 function envelope(result: CliCommandResult): Record<string, unknown> {
@@ -614,7 +693,12 @@ async function execute(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
-  if (parsed.command === 'connection') return executeConnection(parsed, dependencies, loopbackUrl);
+  if (parsed.command === 'connection')
+    return executeConnection(
+      parsed,
+      dependencies,
+      (value) => loopbackUrl(value) ?? remoteUrl(value),
+    );
   const resolved = await resolveTarget(parsed, dependencies);
   if ('exitCode' in resolved) return { data: undefined, metadata: { error: resolved.stderr } };
   if (parsed.command === 'open') {
@@ -692,9 +776,9 @@ async function execute(
     };
   }
   if (parsed.command === 'whoami')
-    return {
-      data: { actor: 'anonymous:local', workspace: null, capabilities: ['local-loopback'] },
-    };
+    return resolved.authority === undefined
+      ? { data: { actor: 'anonymous:local', workspace: null, capabilities: ['local-loopback'] } }
+      : { data: resolved.authority };
   if (parsed.command === 'status' || parsed.command === 'doctor') {
     const status = await request(resolved, '/host/status', parsed, dependencies);
     const statusData = isRecord(status.data) ? status.data : undefined;

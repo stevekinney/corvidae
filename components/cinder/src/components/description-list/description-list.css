@@ -118,6 +118,63 @@
     gap: var(--cinder-space-2);
   }
 
+  /* Fields variant: a record read as a list. The term is regular weight and muted at the start, the
+   * value beside it in the default color, and a quiet rule ends each row. It stacks below 28rem. */
+  .cinder-description-list[data-cinder-variant='fields'] {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: baseline;
+    gap: var(--cinder-space-3);
+    padding-inline: 0;
+    border-block-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] dt {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] dd {
+    color: var(--cinder-text-default);
+  }
+
+  @container (max-width: 28rem) {
+    .cinder-description-list[data-cinder-variant='fields'] {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
+      gap: var(--cinder-space-1);
+    }
+  }
+
+  /* Facts variant: one row of equal columns, each a muted term above its value, between two quiet
+   * rules. The columns wrap as the container narrows, so a phone stacks them two to a row. */
+  .cinder-description-list[data-cinder-variant='facts'] {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: var(--cinder-space-3) var(--cinder-space-4);
+    padding-block: var(--cinder-space-3);
+    border-block: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-description-list[data-cinder-variant='facts'] .cinder-description-list__row {
+    padding: 0;
+    min-width: 0;
+  }
+
+  .cinder-description-list[data-cinder-variant='facts'] dt {
+    color: var(--cinder-text-muted);
+  }
+
   /* ----------------------------------------
    * Formatted values
    * ---------------------------------------- */

@@ -107,7 +107,39 @@ describe('the formatting row', () => {
   test('is drawn only while the composer has focus', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(/\.chat-input-format\s*\{[^}]*display:\s*none;/);
-    expect(source).toMatch(/\.chat-input:focus-within \.chat-input-format\s*\{\s*display:\s*flex;/);
+    expect(source).toMatch(
+      /\.chat-input\[data-formatting\] \.chat-input-format\s*\{\s*display:\s*flex;/,
+    );
+  });
+
+  test('opens when the text box takes focus, not when a header control does, and stays while focus moves inside the composer', async () => {
+    // The row opens above the text and the composer grows upward, so a header control that opened
+    // it would move out from under the pointer before mouseup and its click would be lost.
+    const header = createRawSnippet(() => ({
+      render: () => '<button type="button" data-testid="agent-select">Assistant</button>',
+    }));
+    const { container, getByTestId } = render(ChatInput, {
+      id: 'surface-focus',
+      formattingToolbar: true,
+      header,
+    });
+    const form = container.querySelector('form.chat-input')!;
+    const select = getByTestId('agent-select');
+    const editor = container.querySelector('textarea')!;
+
+    await fireEvent.focusIn(select);
+    expect(form.hasAttribute('data-formatting')).toBe(false);
+
+    await fireEvent.focusIn(editor);
+    expect(form.hasAttribute('data-formatting')).toBe(true);
+
+    // Focus moving to the header's control within the composer keeps the row, so nothing moves.
+    await fireEvent.focusOut(editor, { relatedTarget: select });
+    await fireEvent.focusIn(select);
+    expect(form.hasAttribute('data-formatting')).toBe(true);
+
+    await fireEvent.focusOut(select, { relatedTarget: document.body });
+    expect(form.hasAttribute('data-formatting')).toBe(false);
   });
 
   test('draws no row unless the toolbar is on', () => {

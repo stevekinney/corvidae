@@ -97,6 +97,23 @@ const item = z.discriminatedUnion('kind', [
     at: at.nullable().describe('When the last provider was removed, or `null` when none ever was.'),
     provider: z.string().nullable().describe('The provider removed last, such as `anthropic`.'),
   }),
+  z.object({
+    kind: z.literal('worker-disconnected'),
+    area,
+    at: at.describe('When the worker was last heard from, in epoch milliseconds.'),
+    workerId: z.string().describe('The worker’s identifier, such as `reports-worker`.'),
+    workerName: z
+      .string()
+      .nullable()
+      .describe('The worker’s name as a person reads it, or `null`.'),
+    queue: z.string().describe('The task queue the worker served.'),
+    waiting: z.number().int().nonnegative().describe('How many tasks wait on that queue.'),
+    failedForGood: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe('How many tasks on that queue failed for good.'),
+  }),
 ]);
 
 /** One item as the wire carries it: its own copy of every list. */

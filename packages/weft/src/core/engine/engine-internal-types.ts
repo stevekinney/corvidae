@@ -74,6 +74,14 @@ export interface RegistrationEntry {
   workerVersioningPolicy?: WorkflowWorkerVersioningPolicy;
 }
 
+/** Resolved form of `EngineOptions.runConcurrency`: the cap and which top-level runs count. */
+export interface ResolvedRunConcurrency {
+  /** The most counted runs executing at once. */
+  readonly max: number;
+  /** Whether a top-level run of `workflowType` counts; every one does when the option omits it. */
+  readonly counts: (workflowType: string) => boolean;
+}
+
 export interface ResolvedOptions {
   storage: WeftStorage;
   development: boolean;
@@ -87,6 +95,11 @@ export interface ResolvedOptions {
   checkpointHistory: number;
   checkpointSizeWarningThreshold: number;
   maxNestingDepth: number;
+  /**
+   * Resolved form of `EngineOptions.runConcurrency`: the cap and which workflow types count, or
+   * `null` for no cap. Optional so hand-built test internals without it read as no cap.
+   */
+  runConcurrency?: ResolvedRunConcurrency | null;
   /** Durable-timer scheduler poll interval (ms). */
   schedulerPollIntervalMs: number;
   /** Storage-size report interval (ms); zero disables reporting. */

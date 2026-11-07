@@ -41,6 +41,7 @@ function renderRoute() {
 
 describe('Workers route — transports', () => {
   test('a long-poll worker in the fleet brings the long-poll limitation notice; a WebSocket-only fleet does not', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       workers: [
@@ -68,12 +69,13 @@ describe('Workers route — transports', () => {
     const { findByText, getByRole } = renderRoute();
 
     expect(await findByText('Worker closed')).not.toBeNull();
-    expect(await findByText(/No worker with the ID wkr_gone is registered/)).not.toBeNull();
+    expect(await findByText(/No worker with the ID wkr_gone is listed/)).not.toBeNull();
     await fireEvent.click(getByRole('button', { name: 'Back to all workers' }));
     expect(router.search.get('worker')).toBeNull();
   });
 
   test('conformance is its own tab with its own target list', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
     scripted.routeJsonRpcMethod('weft.conformance.targets', { targets: [] });
@@ -86,6 +88,7 @@ describe('Workers route — transports', () => {
   });
 
   test('deployments are their own tab, fed the fleet list so builds show their workers', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       workers: [worker({ id: 'wkr_b1', deploymentName: 'billing', buildId: 'build-1' })],

@@ -185,6 +185,21 @@
     app-region: drag;
   }
 
+  /* The title with the line that says what the dialog is for under it. */
+  .cinder-modal__heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  .cinder-modal__description {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+  }
+
   .cinder-modal__title {
     margin: 0;
     font-size: var(--cinder-text-lg);

@@ -52,10 +52,17 @@ import {
  *
  * The routes on the public origin:
  *
- * - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents: Weft's engine
- *   operations, relayed to its server.
+ * - `/api/runs`, `/api/runs/<run>`, `/api/chats/<chat>/messages`, `/api/agents`, `/api/schedules`,
+ *   `/api/reviews/<review>/decision`, their description at `/api/openapi.json`, and `/host/session`:
+ *   Interborough's own API over the Bureau, each operation checked against the session's scopes
+ *   (`api-routes.ts`, `api-description.ts`).
+ * - The rest of `/api/*` (`/api/v1/*` and so on), `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery
+ *   documents: Weft's engine operations, relayed to its server.
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
- *   served by `createBureauHandler` with the `/bureau` prefix removed. A WebSocket upgrade there
+ *   served by `createBureauHandler` with the `/bureau` prefix removed. A request that needs a scope
+ *   of Interborough's API the session does not hold is refused before it reaches Bureau
+ *   (`scope-gate.ts`), as a write to `/host/plugins` or `/host/providers` is without
+ *   `settings:write`. A WebSocket upgrade there
  *   (`bureau.events` at `/bureau/jsonrpc`) goes to the same handler's `upgrade`, and
  *   `host-websocket.ts` dispatches the upgraded socket to Bureau beside the engine relay's. They
  *   do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
@@ -112,11 +119,13 @@ import {
   type SecretProviderFactory,
 } from '@lostgradient/bungalow';
 import {
+  ANONYMOUS_LOCAL_OWNER,
   BUREAU_PLUGIN_ENTRY,
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
   resolveProviderGenerate,
+  startIdleTurn,
   type AgentDefinitions,
   type AgentWithBureauTools,
   type Bureau,
@@ -144,11 +153,13 @@ import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lost
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
-import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
+import { HOST_STORAGE_ROUTE, HOST_STORAGE_SUMMARY_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, A2A_SUBJECT, resolveA2aExposure } from './a2a-authentication.ts';
 import { createA2APeerTools, readA2APeersConfiguration } from './a2a-peers.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
+import { API_DESCRIPTION_ROUTE, apiDescription } from './api-description.ts';
+import { apiRoutes, localApiPrincipal, type ApiPrincipal } from './api-routes.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
@@ -177,7 +188,7 @@ import {
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
 import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
-import { hostStorageReport } from './host-storage.ts';
+import { hostStorageReport, hostStorageSummary } from './host-storage.ts';
 import {
   bureauUpgradeServer,
   hostWebSocketHandlers,
@@ -213,9 +224,11 @@ import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
+import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
+import { storageDeletionApplied, storageDeletionOf, storageResourceOf } from './storage-audit.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
@@ -241,7 +254,9 @@ export const DELEGATION_SECRET_KEY = 'delegation-secret';
  * The restart-applied settings a remote host holds to their code options (COR-1797): ownership,
  * maintenance, the durable engine, and the claim TTL and renew interval, whose code defaults keep
  * renew below TTL. Hosts that share a database must all run the same overlap-safe configuration,
- * so the Bureau reports each as locked for the reason `shared-storage`.
+ * so the Bureau reports each as locked for the reason `shared-storage`. The cap on workflow runs
+ * executing at once is the deployment's to size (board SettingsShell, "Locked settings · remote
+ * mode"), so it is locked for the reason `deployment`.
  */
 const REMOTE_LOCKED_SETTINGS = {
   'durableOwnership.ownership': 'shared-storage',
@@ -249,6 +264,7 @@ const REMOTE_LOCKED_SETTINGS = {
   durable: 'shared-storage',
   'engine.workflowClaimTtl': 'shared-storage',
   'engine.workflowClaimRenewInterval': 'shared-storage',
+  'engine.maxConcurrentRuns': 'deployment',
 } as const satisfies NonNullable<SettingsOptions['locked']>;
 
 /**
@@ -387,6 +403,13 @@ export type HostOptions = {
    */
   readonly plugins?: readonly BureauPluginEntry[];
   /**
+   * Leaves the built-in `bureau` plugin out of Settings › Plugins. The Bureau still supplies its
+   * tools; only the listing and the manager's entry for it go. The showcase host sets it, because the
+   * sample world's plugin list (decisions.md, "Plugins: the sample world uses real plugins") holds
+   * the plugins a person adds, never Interborough's own.
+   */
+  readonly omitBuiltInPlugin?: boolean;
+  /**
    * Plugin folders to load as well, each marked `development-source` (`--plugin <path>` on the
    * development entry). They load like the folders in Bungalow's `plugins/`. Copied before the host
    * opens anything.
@@ -410,6 +433,12 @@ export type HostOptions = {
   ) => typeof resolveProviderGenerate;
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
+  /**
+   * The version this host runs, recorded with its `host.started` audit event so the audit log can
+   * say "Server started · Interborough 2.4.1". Left out, the event carries no version and the log
+   * names the host alone. The showcase host passes the sample world's (`showcase.ts`).
+   */
+  readonly version?: string;
   /**
    * Which runtime settings the Bureau holds to their code options (`settings.locked`, each with
    * the reason it is held), so the settings page shows them read-only and says why. A person's
@@ -476,6 +505,14 @@ export type HostOptions = {
     /** The clock the clean-up reads, in milliseconds since the epoch. */
     readonly now?: () => number;
   };
+  /**
+   * Who a request to Interborough's own operations acts as, and the scopes of Interborough's API it
+   * holds (`src/lib/api-scopes.ts`): the seven `/api` operations, the Bureau operations and AG-UI
+   * runs the pages call, and the plugin and provider settings check them (`scope-gate.ts`).
+   * Omitted, every request is the local person holding every scope, because Interborough is
+   * single-user for now.
+   */
+  readonly apiPrincipal?: (request: Request) => ApiPrincipal;
 };
 
 /**
@@ -766,7 +803,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }
         }
         const storage =
-          claimedRemoteStorage ?? createHostStorage({ kind: 'postgres', url: databaseUrl });
+          claimedRemoteStorage ??
+          createHostStorage({ kind: 'postgres', url: databaseUrl }, clock.now);
         claimedRemoteStorage = storage;
         await claimWorkspaceBinding(storage, prefix, workspaceId);
       },
@@ -803,7 +841,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
-    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database);
+    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now);
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
@@ -822,7 +860,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     // The built-in `bureau` plugin (COR-1890) is listed first so the Plugins page shows it and the
     // manager refuses to turn it off. Bureau supplies the plugin itself, so it is not given to it again.
-    const plugins = [BUREAU_PLUGIN_ENTRY, ...packagePlugins, ...folderPlugins.entries];
+    const plugins = [
+      ...(options.omitBuiltInPlugin === true ? [] : [BUREAU_PLUGIN_ENTRY]),
+      ...packagePlugins,
+      ...folderPlugins.entries,
+    ];
     // The plugins read their choices from the same file, before the Bureau composes them. A secret
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const isProviderPlugin = (plugin: string): boolean =>
@@ -1235,6 +1277,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       a2aExposure.publicOrigin === undefined
         ? refuse
         : createRequestGuard(() => listening?.port ?? 0, a2aExposure.publicOrigin);
+    // Who a request to Interborough's own operations acts as: the local person, holding every scope
+    // of Interborough's API, unless the host was started with another (`scope-gate.ts`).
+    const apiPrincipal = options.apiPrincipal ?? (() => localApiPrincipal(ANONYMOUS_LOCAL_OWNER));
+    // Changing a provider or a plugin is changing settings, which needs `settings:write`.
+    const refuseSettingsWrites = refuseWritesWithoutScope(refuse, 'settings:write', apiPrincipal);
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
@@ -1280,6 +1327,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return new Response('The Bureau is not serving yet.', { status: 503 });
         }
         const bureauRequest = withoutBureauPrefix(request);
+        // The scopes of Interborough's API, on the operations its pages call (`scope-gate.ts`).
+        const forbidden = await bureauScopeRefusal(bureauRequest, apiPrincipal(request));
+        if (forbidden !== undefined) return forbidden;
         if (
           isWebSocketUpgrade(request) &&
           (await bureauHandler.upgrade(bureauRequest, bureauUpgradeServer(listener, request)))
@@ -1322,39 +1372,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             },
           } satisfies HostStatus),
       },
-      // Where a person edits what the host keeps by hand. The pages show an agent's file path and
-      // a workflow's.
-      '/host/integrations': {
-        GET: async () => {
-          const [providerSnapshot, pluginSnapshot, sourceSnapshot] = await Promise.all([
-            providers.snapshot(),
-            pluginManager.snapshot(),
-            toolSources.snapshot(),
-          ]);
-          // Explicit shared projection: never forward configuration, locations, credentials or diagnostics.
-          return Response.json({
-            providers: providerSnapshot.providers.map(({ name }) => ({
-              id: name,
-              name,
-              available: providerSnapshot.models.some(
-                (model) => model.provider === name && !model.off,
-              ),
-            })),
-            plugins: pluginSnapshot.plugins.map(({ descriptor, status }) => ({
-              id: descriptor.name,
-              name: descriptor.title,
-              available: status === 'running',
-            })),
-            toolSources: sourceSnapshot.sources.map(({ id, state }) => ({
-              id,
-              name: id,
-              available: state === 'loaded',
-            })),
-          });
-        },
-      },
-      ...providerRoutes(providers, refuse, authority),
-      ...pluginRoutes(pluginManager, refuse, authority),
+      ...providerRoutes(providers, refuseSettingsWrites, authority, log),
+      ...pluginRoutes(pluginManager, refuseSettingsWrites, authority, log),
       // The nightly clean-up's standing, and "Clean up now" (COR-2009).
       ...cleanUpRoutes(nightlyCleanUp, refuse),
       // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
@@ -1362,16 +1381,57 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         mcpMounts.apps,
         refuse,
         async (request) =>
+          (await bureauScopeRefusal(request, apiPrincipal(request))) ??
           (await bureauHandler?.(request)) ??
           new Response('The Bureau is not serving yet.', { status: 503 }),
       ),
-      ...skillRoutes(skills, refuse, authority),
-      ...toolSourceRoutes(toolSources, refuse, {
-        mutation: (request, input) => authority.mutation(request, input),
-      }),
+      ...skillRoutes(skills, refuse, authority, log),
+      ...toolSourceRoutes(
+        toolSources,
+        refuse,
+        {
+          mutation: (request, input) => authority.mutation(request, input),
+        },
+        log,
+      ),
+      // Interborough's own API over the Bureau (COR-2019), checked against the session's scopes.
+      // Interborough is single-user for now, so every request is the local person, who holds
+      // every scope. Weft's engine operations under `/api/v1` are relayed below, as before.
+      ...apiRoutes(
+        {
+          bureau,
+          timeline: (runId) => engine.getTimeline(runId),
+          principal: apiPrincipal,
+          log,
+          // A message sent through the API takes the admission Chat's own send takes.
+          startTurn: (input) => startIdleTurn(bureau, input),
+        },
+        refuse,
+      ),
+      [API_DESCRIPTION_ROUTE]: {
+        GET: (request: Request) =>
+          refuse(request) ??
+          Response.json(
+            // The API answers only the host's own address, not an A2A public origin.
+            apiDescription(hostOrigin ?? `http://${LOOPBACK}:${startPort}`),
+          ),
+      },
       // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
       [HOST_STORAGE_ROUTE]: {
-        GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
+        GET: async (request: Request) =>
+          refuse(request) ?? Response.json(await hostStorageReport(storage)),
+      },
+      // How many keys storage holds under a prefix, and how large it is, for the storage page's
+      // footer and its "Storage details".
+      [HOST_STORAGE_SUMMARY_ROUTE]: {
+        GET: async (request: Request) =>
+          refuse(request) ??
+          Response.json(
+            await hostStorageSummary(
+              storage,
+              new URL(request.url).searchParams.get('prefix') ?? '',
+            ),
+          ),
       },
       [HOST_PATHS_ROUTE]: {
         GET: async (request: Request) =>
@@ -1385,6 +1445,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
                 .providers.flatMap(({ name, secretKey }) =>
                   secretKey === undefined ? [] : [{ name, secretKey }],
                 ),
+              // The directory of the agents shared over A2A, at the address a caller reaches: the
+              // public origin when one is set (COR-1904), else this host's own.
+              `${a2aExposure.publicOrigin?.origin ?? hostOrigin ?? `http://${LOOPBACK}:${startPort}`}${BUREAU_PATH_PREFIX}/a2a/.well-known/agent-card.json`,
             ),
           ),
       },
@@ -1418,7 +1481,27 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           if (data !== undefined && listener.upgrade(request, { data })) return undefined;
           return new Response('WebSocket upgrade failed', { status: 500 });
         }
-        return relayRequest(request, url, key);
+        // A storage key deleted through the relay is recorded once the engine says it is gone.
+        const deletion = await storageDeletionOf(request);
+        const relayed = await relayRequest(request, url, key);
+        if (deletion !== undefined && (await storageDeletionApplied(deletion, relayed))) {
+          const actor = await authority.authenticate(request);
+          const principal =
+            actor instanceof Response
+              ? ANONYMOUS_LOCAL_OWNER
+              : (actor.principal?.subject ?? ANONYMOUS_LOCAL_OWNER);
+          for (const deleted of deletion.keys) {
+            await held.bureau?.internals.auditTrail
+              ?.record({
+                runId: storageResourceOf(deleted),
+                type: 'storage.key.deleted',
+                principal,
+                detail: null,
+              })
+              .catch(() => undefined);
+          }
+        }
+        return relayed;
       },
       websocket: hostWebSocketHandlers(bureauSockets),
     });
@@ -1431,12 +1514,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // A2A push delivery is a restart-applied setting: the values read here are the ones this
     // process booted with (COR-1819).
     const { values: bootedSettings } = await bureau.settings.get();
-    const pushDelivery = startHostPushDelivery(
-      storage,
-      bungalow.deploymentId,
-      bootedSettings,
-      options.warn ?? ((message) => console.warn(message)),
-    );
+    // `a2a.enabled` is a restart-applied setting too: off, no A2A mount is built, so no remote
+    // call is answered and there is no push delivery to run (COR-2019).
+    const a2aEnabled = bootedSettings['a2a.enabled'] !== false;
+    const pushDelivery = a2aEnabled
+      ? startHostPushDelivery(
+          storage,
+          bungalow.deploymentId,
+          bootedSettings,
+          options.warn ?? ((message) => console.warn(message)),
+        )
+      : undefined;
     if (pushDelivery !== undefined) held.pushDelivery = pushDelivery;
     // COR-2009 — the audit log's "Server started", recorded once the listener is up. The missed
     // schedule occurrences this start finds are recorded by the Bureau as `schedule.missed`.
@@ -1444,7 +1532,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       runId: 'host',
       type: 'host.started',
       principal: HOST_ACTOR,
-      detail: {},
+      detail: options.version === undefined ? {} : { version: options.version },
     });
     bureauHandler = createBureauHandler(bureau, {
       workspace,
@@ -1470,8 +1558,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // the listener is loopback-only behind the request guard and every call acts as the owner,
       // so A2A is no more reachable than the rest of the host. With a public origin (COR-1904) the
       // cards name it, because that is the address a remote caller reaches.
-      publicUrl: `${a2aExposure.publicOrigin?.origin ?? publicOrigin}${BUREAU_PATH_PREFIX}`,
-      ...(a2aAgents === undefined ? {} : { a2aAgents }),
+      ...(a2aEnabled
+        ? {
+            publicUrl: `${a2aExposure.publicOrigin?.origin ?? publicOrigin}${BUREAU_PATH_PREFIX}`,
+            ...(a2aAgents === undefined ? {} : { a2aAgents }),
+          }
+        : {}),
       // `bureau.skills.list` reads the host's standing on every request, so a trust change shows
       // on the next call.
       skills: { standing: () => skills.standing() },

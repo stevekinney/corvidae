@@ -9,13 +9,13 @@
  * plays its story into it on every start, and a home set for everyday use must never be rewritten by
  * a flag. The seed leaves the host running at Monday, Nov 2, a little after 10:45 AM on its offset
  * clock, with real timers. The sample world's built-in agents and tools (`showcase-agents.ts`:
- * Assistant, Echo, Tool runner, Request human input, Model switcher and Workflow author) are
+ * Assistant, Tool runner, Request human input, Echo, Model switcher and Workflow author) are
  * registered by this host alone, as `HostOptions.extraAgents`; the Demo plugin is off. The model
  * catalog holds the stub provider's models (`stub-provider.ts`), whose client answers every model
  * call with a fixed reply and whose key is a fixture, so no real provider key is ever used or read;
  * a built-in agent's step that a model override sends to that provider answers from the agent's
  * script instead ({@link showcaseProviderResolver}).
- * The end-to-end showcase specification (`tests/e2e/showcase.spec.ts`) opens a host seeded the same
+ * The end-to-end showcase specification (`tests/e2e/00-showcase.spec.ts`) opens a host seeded the same
  * way.
  *
  * @module showcase
@@ -28,6 +28,7 @@ import {
   withBackendDescriptors,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { createDemoPlugin, DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import guardrails from '@lostgradient/plugin-guardrails';
 import ollama from '@lostgradient/plugin-ollama';
 import voyage from '@lostgradient/plugin-voyage';
@@ -125,17 +126,49 @@ export function showcaseProviderResolver(
   };
 }
 
+/** The version the sample world shows every plugin at: the board lists each at 1.0.0. */
+const SAMPLE_PLUGIN_VERSION = '1.0.0';
+
 /**
- * The plugins the showcase host loads: the workspace's own, and the Guardrails, Ollama and Voyage
- * plugins, which the sample world lists on Settings › Plugins (decisions.md, "Owner answers during
- * B01": Guardrails runs, Ollama and Voyage are disabled).
+ * The entry with its descriptor at {@link SAMPLE_PLUGIN_VERSION}. The provider plugins ship at their
+ * own version, and the sample world shows all nine alike; a showcase home is seeded afresh on every
+ * start, so no record pins the version it was given here.
+ */
+function atSampleVersion(entry: BureauPluginEntry): BureauPluginEntry {
+  return { ...entry, descriptor: { ...entry.descriptor, version: SAMPLE_PLUGIN_VERSION } };
+}
+
+/**
+ * The plugins the showcase host loads, in the order Settings › Plugins lists them (decisions.md,
+ * "Owner answers during B01" and the board's list): Inspectors and Guardrails run, Anthropic,
+ * OpenAI, Gemini and TypeSafe need setup, and Voyage, Demo and Ollama are disabled. Where the board
+ * names Web search or Files it is Inspectors or Guardrails, and where it names Linear it is Voyage.
+ * The Workspace plugin is not part of the sample world, so it is left out.
  */
 export function showcasePlugins(): readonly BureauPluginEntry[] {
+  const shipped = new Map(workspacePlugins().map((entry) => [entry.descriptor.name, entry]));
+  const shippedEntry = (name: string): BureauPluginEntry => {
+    const entry = shipped.get(name);
+    if (entry === undefined) throw new Error(`The workspace ships no plugin named ${name}.`);
+    return entry;
+  };
   return [
-    ...workspacePlugins(),
+    shippedEntry('inspectors'),
+    atSampleVersion(shippedEntry('anthropic')),
+    atSampleVersion(shippedEntry('openai')),
+    atSampleVersion(shippedEntry('gemini')),
+    atSampleVersion(shippedEntry('typesafe')),
     { descriptor: guardrails, source: 'package', location: '@lostgradient/plugin-guardrails' },
-    { descriptor: ollama, source: 'package', location: '@lostgradient/plugin-ollama' },
     { descriptor: voyage, source: 'package', location: '@lostgradient/plugin-voyage' },
+    {
+      // Without `internal`, so the agents a disabled Demo holds back are the two the design names.
+      descriptor: createDemoPlugin({
+        agents: DEMO_AGENT_NAMES.filter((name) => name !== 'internal'),
+      }),
+      source: 'package',
+      location: '@lostgradient/plugin-demo',
+    },
+    { descriptor: ollama, source: 'package', location: '@lostgradient/plugin-ollama' },
   ];
 }
 
@@ -149,6 +182,9 @@ export const showcaseHookFetch: typeof fetch = Object.assign(
   { preconnect: fetch.preconnect },
 );
 
+/** The version the sample world's host reports in its audit log ("Interborough 2.4.1", decisions.md row 82h). */
+export const SHOWCASE_VERSION = '2.4.1';
+
 /** The showcase's storage warning level: the threshold of its `storage.size` alert rule, 1 GB. */
 export const SHOWCASE_STORAGE_WARNING_BYTES = 1024 ** 3;
 
@@ -161,6 +197,9 @@ export const SHOWCASE_STORAGE_WARNING_BYTES = 1024 ** 3;
 export const SHOWCASE_ALERTS: AlertingOptions = {
   rules: [{ metric: 'storage.size', threshold: SHOWCASE_STORAGE_WARNING_BYTES, action: 'webhook' }],
 };
+
+/** The built-in agents the sample world shares over A2A, as the board draws Settings › A2A. */
+const SHOWCASE_A2A_AGENTS = ['assistant', 'tool-runner'] as const;
 
 /**
  * What a showcase host is started with beside its environment: the stub provider's resolver (built
@@ -176,24 +215,32 @@ export function showcaseHostOptions(
 ): Pick<
   HostOptions,
   | 'extraAgents'
+  | 'a2aAgents'
   | 'resolveProviderGenerateFor'
   | 'nightlyCleanUp'
   | 'plugins'
+  | 'omitBuiltInPlugin'
   | 'hookFetch'
   | 'alerts'
   | 'storageSizeReportIntervalMilliseconds'
+  | 'version'
 > {
   const scripts = showcaseAgentScripts(pacing);
   return {
     extraAgents: showcaseBuiltInAgents(pacing, scripts),
+    // Settings › A2A shows Assistant and Tool runner shared and the rest not (board
+    // PageSettingsSections, "A2A · /settings/a2a").
+    a2aAgents: SHOWCASE_A2A_AGENTS,
     resolveProviderGenerateFor: (agentOfRun) => showcaseProviderResolver(agentOfRun, scripts),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
     plugins: showcasePlugins(),
+    omitBuiltInPlugin: true,
     hookFetch: showcaseHookFetch,
     alerts: SHOWCASE_ALERTS,
     // The sample world's storage holds 1.6 GB (its seed reports it at 9:05 AM on Nov 2); the
     // engine's own report of the real database's few megabytes would resolve the alert a minute
     // later, so it is off.
     storageSizeReportIntervalMilliseconds: 0,
+    version: SHOWCASE_VERSION,
   };
 }

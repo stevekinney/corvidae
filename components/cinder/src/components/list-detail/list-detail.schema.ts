@@ -20,6 +20,12 @@ const schema = {
         'What the loading region announces, politely, once the placeholder appears: "Loading memories".',
       default: 'Loading',
     },
+    openFirst: {
+      type: 'boolean',
+      description:
+        'Opens the first item when none is open and the panes sit side by side, so the detail beside the\nlist is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while\nthe component shows one pane at a time (below `pushBelow`): there the list is where it starts.',
+      default: false,
+    },
     selectedKey: {
       anyOf: [
         {
@@ -57,6 +63,12 @@ const schema = {
         'Width in pixels of the component below which it shows one pane at a time: the list, then the\ndetail with a Back button. It is measured on the component, not the viewport.',
       default: 600,
     },
+    stackBelow: {
+      type: 'number',
+      description:
+        'Width in pixels of the component below which, down to `pushBelow`, the two panes are shown one\nabove the other, the detail under the list, instead of side by side. The default `0` never\nstacks them: the panes sit side by side until `pushBelow` and show one at a time under it.',
+      default: 0,
+    },
     flushDetail: {
       type: 'boolean',
       description:
@@ -67,6 +79,12 @@ const schema = {
       type: 'number',
       description: 'Width in pixels of the list pane before the divider is moved.',
       default: 280,
+    },
+    maximumListWidth: {
+      type: 'number',
+      description:
+        'Widest width in pixels the divider can give the list pane, and the most a remembered or default\nwidth can be. Raise it for a list that is a table, whose columns need more than a list of rows.',
+      default: 560,
     },
     backLabel: {
       type: 'string',

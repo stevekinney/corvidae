@@ -81,7 +81,7 @@ describe('skipping the next run, wherever the cadence stands', () => {
 
     await engine.skipNextScheduleOccurrence('daily');
     const skipped = await stored(storage, 'daily');
-    expect(skipped.skipUntil).toBe(at('2026-01-01T09:00:00.000Z'));
+    expect(skipped.skippedOccurrences).toEqual([at('2026-01-01T09:00:00.000Z')]);
     expect(skipped.nextFireAt).toBe(at('2026-01-01T09:00:00.000Z'));
 
     await tickEngine(engine, clock, at('2026-01-01T09:00:00.000Z'));
@@ -108,7 +108,7 @@ describe('skipping the next run, wherever the cadence stands', () => {
       await engine.skipNextScheduleOccurrence('daily');
       const skipped = await stored(storage, 'daily');
       expect(skipped.nextFireAt).toBe(at('2026-01-01T09:00:00.000Z'));
-      expect(skipped.skipUntil).toBe(at('2026-01-01T09:00:00.000Z'));
+      expect(skipped.skippedOccurrences).toEqual([at('2026-01-01T09:00:00.000Z')]);
 
       for (const day of ['2026-01-01', '2026-01-02', '2026-01-03']) {
         await tickEngine(engine, clock, effective(`${day}T09:00:00.000Z`));
@@ -145,7 +145,9 @@ describe('skipping the next run, wherever the cadence stands', () => {
     // The engine was not ticking: two days are overdue, and the next tick counts them missed.
     clock.now = at('2026-01-03T08:00:00.000Z');
     await engine.skipNextScheduleOccurrence('daily');
-    expect(await fieldOf(storage, 'daily', 'skipUntil')).toBe(at('2026-01-03T09:00:00.000Z'));
+    expect(await fieldOf(storage, 'daily', 'skippedOccurrences')).toEqual([
+      at('2026-01-03T09:00:00.000Z'),
+    ]);
 
     await tickEngine(engine, clock, at('2026-01-03T08:00:00.000Z'));
     await tickEngine(engine, clock, at('2026-01-03T09:00:00.000Z'));
@@ -165,7 +167,7 @@ describe('skipping the next run, wherever the cadence stands', () => {
 
     const state = await stored(storage, 'daily');
     expect(state.missedFireCount).toBe(1);
-    expect(state.skipUntil).toBeUndefined();
+    expect(state.skippedOccurrences).toBeUndefined();
     const rows = await engine.listScheduleMissedFires('daily');
     expect(rows?.map((row) => row.occurrence)).toEqual([at('2026-01-02T09:00:00.000Z')]);
     expect(runs).toEqual([]);
@@ -197,7 +199,7 @@ describe('skipping the next run, wherever the cadence stands', () => {
     const afterCatchUp = await stored(storage, 'backfill');
     expect(afterCatchUp.lastFireAt).toBe(first + 2 * MINUTE);
     expect(afterCatchUp.nextFireAt).toBe(first + 3 * MINUTE);
-    expect(afterCatchUp.skipUntil).toBeUndefined();
+    expect(afterCatchUp.skippedOccurrences).toBeUndefined();
     expect(afterCatchUp.skippedCount).toBe(0);
 
     for (const minute of [3, 4, 5]) {

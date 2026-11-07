@@ -16,8 +16,7 @@
    * diagnostic use) — a `Select` of installed revisions
    * (`weft.workflows.revisions.list`) when `workflows:read` is granted,
    * degrading to a free-text `Input` (with a note that the server still
-   * validates it) when denied, mirroring `schedule-form-fields.svelte`'s
-   * identical registry-picker degrade. `weft.workflows.fork` itself
+   * validates it) when denied. `weft.workflows.fork` itself
    * requires `workflows:write` (the Create fork button is disabled without
    * it); only the LISTING read needs `workflows:read`, so an operator who
    * holds `workflows:write` but not `workflows:read` can still fork against

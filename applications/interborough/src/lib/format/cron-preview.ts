@@ -64,16 +64,31 @@ function nextIntervalFires(
   return fires;
 }
 
-/** Formats a fire in the schedule's own zone, so "Weekdays at 9:00 AM Pacific Time" previews 9:00 AM. */
-function fireLabelFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat(undefined, {
+/**
+ * Formats a fire in the schedule's own zone, so "Weekdays at 9:00 AM Pacific Time" previews 9:00 AM:
+ * "Tue Nov 3, 9:00 AM", the weekday, month and day without a comma between them and the hour
+ * without a leading zero (rows 74e and 74q).
+ */
+function fireLabelFormatter(timeZone: string): { format(date: Date): string } {
+  const day = new Intl.DateTimeFormat(undefined, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
+    timeZone,
+  });
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
     minute: '2-digit',
     timeZone,
   });
+  return {
+    format: (date) =>
+      `${day
+        .formatToParts(date)
+        .filter((part) => part.type !== 'literal')
+        .map((part) => part.value)
+        .join(' ')}, ${time.format(date)}`,
+  };
 }
 
 /**

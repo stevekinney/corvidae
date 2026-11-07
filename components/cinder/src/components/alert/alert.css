@@ -80,6 +80,32 @@
   }
 
   /* ----------------------------------------
+ * Actions
+ * ---------------------------------------- */
+
+  /* Beside the message at the trailing edge, centred on it, and under it where the alert is too
+ * narrow for both: the message keeps a readable measure, so the actions wrap before it shrinks. */
+  .cinder-alert:has(> .cinder-alert__actions) {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .cinder-alert__actions {
+    display: flex;
+    flex: 0 0 auto;
+    /* Never wider than the alert, so a row of buttons wider than it wraps its buttons rather than
+ * running past the edge and being clipped. */
+    max-inline-size: 100%;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+    align-items: center;
+  }
+
+  .cinder-alert:has(> .cinder-alert__actions) > .cinder-alert__content {
+    flex: 1 1 16rem;
+  }
+
+  /* ----------------------------------------
  * Dismiss button
  * ---------------------------------------- */
 

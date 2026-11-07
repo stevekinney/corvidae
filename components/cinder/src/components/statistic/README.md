@@ -43,6 +43,18 @@ Set `attention` to draw an amber dot before the label when the value is a non-ze
 <Statistic label="Failed in 24 hours" value={0} />
 ```
 
+## Loading
+
+Set `loading` while the figure is still being read. The label stays real text, a placeholder block holds the place of the value, and the caption is left out, so a count never reads as zero while it waits for its data. The group is marked busy and is named by its label alone. Inside a [`StatisticGroup`](../statistic-group/README.md) the tiles keep their card chrome, so the layout does not move when the numbers arrive.
+
+```svelte
+<script lang="ts">
+  import { Statistic } from '@lostgradient/cinder';
+</script>
+
+<Statistic label="Running now" value={0} loading />
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -53,6 +65,7 @@ Set `attention` to draw an amber dot before the label when the value is a non-ze
 | `caption` | `string` | no | — | A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-statistic`. |
 | `label` | `string` | yes | — | Short label describing the metric, e.g. "Monthly Revenue". |
+| `loading` | `boolean` | no | — | Whether the figure is still being read. The label stays real text, a placeholder block stands where the value will be and the caption is left out, so a count never reads as zero while it waits for its data. The group is marked busy and says nothing of a value. |
 | `style` | `string` | no | — | Inline style string applied to the `.cinder-statistic` root. |
 | `theme` | { background?: `string`; foreground?: `string`; grid?: `string`; muted?: `string`; palette?: `string`[] } | no | — | Partial visual theme override. Omitted fields inherit the surrounding application. |
 | `value` | `string` \| `number` | yes | — | The statistic. Strings rendered verbatim; numbers formatted via formatNumber. |

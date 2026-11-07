@@ -256,4 +256,34 @@ describe('WorkflowRevisionsPanel', () => {
     // No row can honestly claim to be the active one either.
     expect(queryByText('Active')).toBeNull();
   });
+
+  test("copying a revision puts that row's revision id on the clipboard", async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod('weft.workflows.revisions.list', [
+      revisionRecord('order-processing-rev-1'),
+      revisionRecord('order-processing-rev-2'),
+    ]);
+    scripted.routeJsonRpcMethod(
+      'weft.workflows.active.get',
+      activePointer('order-processing-rev-1'),
+    );
+    const written: string[] = [];
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void written.push(text) },
+    });
+    try {
+      const { findByRole } = await renderPanel();
+      await fireEvent.click(
+        await findByRole('button', { name: 'Copy revision order-processing-rev-2' }),
+      );
+      await waitFor(() => {
+        expect(written).toEqual(['order-processing-rev-2']);
+      });
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
 });

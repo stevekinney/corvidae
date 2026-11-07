@@ -1,88 +1,98 @@
 <script lang="ts">
   /**
-   * `/schedules`: every schedule as a table, whichever way it was made: the Bureau's schedules that
-   * run an agent, the engine's that start a workflow defined in code, and the trigger in an
-   * agent-authored workflow's file. A row says what the schedule is called (its description, or what
-   * it starts), the workflow it runs (an agent, or the workflow with the kind it is), how often in
-   * words with the zone a cron is read in, when it fires next, how the last run ended, and one of
-   * the seven status words. The status and the agent are the address's, so a filtered list can be
-   * shared. The identifier is "Copy ID" in a row's actions menu. Actions are gated on
-   * `schedules:write`, and cancelling asks first with the revision of the schedule the row showed.
+   * `/schedules`: every schedule, whichever way it was made (the Bureau's schedules that run an
+   * agent, the engine's that start a workflow defined in code, and the trigger in an agent-authored
+   * workflow's file), as Cinder's status-first two-line rows. A row is a status word, a bold title
+   * and the next run on line one, and line two kind first (`Workflow · Chat with an agent ·
+   * Assistant · Every day at 3:00 AM (9:00 AM UTC) · Last run Oct 29`). A schedule that missed runs
+   * sorts first, and a reason a schedule will not start comes straight after the kind. The segments
+   * (All, Active, Paused) partition the list, and "Missed runs" is a chip beside them, because a
+   * schedule can be both Active and missed. The address owns the filters, so a filtered list can be
+   * shared. A row is one link to the schedule, whose own page pauses, edits and deletes it, so the
+   * rows carry no actions. The header's "+" makes a schedule, and is gated on `schedules:write`.
    *
-   * Whether there is nothing to list, or the server is failing or refusing, is the view frame's to
-   * say (`app/view-probes.ts`).
+   * The page keeps its header in every state, so it draws its own (`ownsStates` in `app/views.ts`):
+   * nothing yet is an empty state that is the page, with no filter bar and the one primary "New
+   * schedule"; filters that match nothing keep the filter bar over a "Clear filters" state; a read
+   * in progress shows placeholders after 300 ms; a read that failed with nothing to show is a full
+   * error state with the header's "+" inert, and one that failed over old data is a banner under
+   * the header (the shared unreachable preset, with its countdown, in place of the shell's, which
+   * leaves it to this page: `claimBanner`). The frame still says whether the caller may see the
+   * view at all, forbidden or not.
    */
   import {
-    Badge,
+    Banner,
     Button,
-    ConfirmDialog,
-    Dropdown,
     EmptyState,
+    ErrorState,
     FilterBar,
+    formatTimeZoneLabel,
     PageHeader,
-    Skeleton,
-    Table,
-    VisuallyHidden,
+    DataList,
+    StaleRegion,
+    type AppliedFilter,
+    type FacetDefinition,
   } from '@lostgradient/cinder';
-  import { CalendarClock, CircleX, Copy, Ellipsis, Pause, Pencil, Play } from '@lucide/svelte';
+  import { Calendar, Plus, Search } from '@lucide/svelte';
+  import { untrack } from 'svelte';
 
-  import type { ScheduleFilter, ScheduleStatus, ScheduleSummary } from '@lostgradient/weft';
+  import type { ScheduleSummary } from '@lostgradient/weft';
 
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
-  import RecordsToolbar from '../../app/records/records-toolbar.svelte';
-  import { getClient } from '../../lib/client.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
-  import { formatRelativeTime } from '../../lib/format/index.ts';
-  import IdentifierText from '../../lib/identifier-text.svelte';
-  import { queryKeys } from '../../lib/query.ts';
   import {
-    router,
-    scheduleCreatePath,
-    scheduleDetailPath,
-    scheduleEditPath,
-  } from '../../lib/router.svelte.ts';
-  import { kindOf } from '../../lib/schedule-kinds.ts';
+    CONNECTION_MAX_ATTEMPTS,
+    ConnectionMonitor,
+    connectionBannerPreset,
+    getConnection,
+  } from '../../app/connection.svelte.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
+  import { getClient } from '../../lib/client.ts';
+  import { followLinks } from '../../lib/follow-links.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
+  import { queryKeys } from '../../lib/query.ts';
+  import { router, scheduleCreatePath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
-  import { scheduleStatusWord } from '../../lib/status.ts';
-  import StatusLabel from '../../lib/status-label.svelte';
-  import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
-  import { describeCadence } from './cadence.ts';
-  import { copyScheduleId } from './copy-schedule-id.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
-  import { scheduleOverlayOptions } from './overlay-query.ts';
-  import { createScheduleActions } from './schedule-actions.svelte.ts';
-  import ScheduleLastFire from './schedule-last-fire.svelte';
-  import ScheduleNotice from './schedule-notice.svelte';
+  import { useScheduleOverlay } from './overlay-query.svelte.ts';
+  import ScheduleListLoading from './schedule-list-loading.svelte';
+  import ScheduleListRow from './schedule-list-row.svelte';
   import {
-    cadenceIdentifiers,
-    scheduleName,
-    scheduleNameIdentifiers,
-  } from './schedule-presentation.ts';
+    countRows,
+    filtersFromSearch,
+    narrowByFacets,
+    noMatchDescription,
+    narrowByView,
+    type ScheduleSegment,
+  } from './schedule-list-filters.ts';
   import { fetchScheduleList } from './schedule-queries.ts';
-  import ScheduleTarget from './schedule-target.svelte';
-  import { formatInZone, scheduleZone, sentenceZone } from './schedule-time.ts';
-  import { actionsOf, type ScheduleTarget as Target } from './schedule-writes.ts';
+  import {
+    loadModelAgents,
+    loadScheduleRowSources,
+    loadWorkflowAgents,
+  } from './schedule-row-context.ts';
+  import {
+    scheduleRowOf,
+    sortScheduleRows,
+    typesNeedingSavedSteps,
+    type ScheduleRow,
+  } from './schedule-row-model.ts';
 
   const client = getClient();
+  const queryClient = useQueryClient();
   const principal = getPrincipalStore();
+  const connection = getConnection();
 
-  const SCHEDULE_STATUSES: readonly ScheduleStatus[] = ['active', 'paused', 'cancelled'];
+  const filters = $derived(filtersFromSearch(router.current.search));
+  const phone = $derived(phoneViewport.current);
 
-  /**
-   * The URL owns the filters: the status (the Health overview's Schedules count deep-links here via
-   * `/schedules?status=active`) and the agent.
-   */
-  const statusFilter = $derived<ScheduleStatus | undefined>(
-    SCHEDULE_STATUSES.find((status) => status === router.current.search.get('status')),
-  );
-  const agentFilter = $derived(router.current.search.get('agent') ?? undefined);
-
-  function changeFilter(key: string, value: string): void {
+  /** Writes one filter into the address, and takes it out when it has no value. */
+  function setFilter(key: string, value: string | undefined): void {
     const params = new URLSearchParams(router.current.search);
-    if (value === '' || value === 'all') params.delete(key);
+    if (value === undefined || value === '' || value === 'all') params.delete(key);
     else params.set(key, value);
     const query = params.toString();
     router.navigate(query ? `/schedules?${query}` : '/schedules', { replace: true });
@@ -92,314 +102,336 @@
     router.navigate('/schedules', { replace: true });
   }
 
-  const filter = $derived<ScheduleFilter>(
-    statusFilter === undefined ? {} : { status: statusFilter },
-  );
-
   const readGate = $derived(scopeGate(principal, ['schedules:read']));
   const writeGate = $derived(scopeGate(principal, ['schedules:write']));
+  // Every schedule is read once and narrowed here, because each segment carries a count of its own.
   const listQuery = createQuery(() => ({
-    queryKey: queryKeys.schedules.list(filter),
-    queryFn: () => fetchScheduleList(client, filter),
+    queryKey: queryKeys.schedules.list({}),
+    queryFn: () => fetchScheduleList(client, {}),
     enabled: !readGate.disabled,
   }));
 
-  // What the Bureau knows of these schedules: which start an agent, which agent, and the start of
-  // what they send. Until it answers a schedule is of no known kind, and nothing is written to it.
-  const overlay = createQuery(() => scheduleOverlayOptions(client));
+  // A read that failed with nothing to show replaces the list; one that failed over schedules
+  // already read leaves them in place under a banner, which counts down to the next try the way the
+  // shell's does for a server that gives no answer.
+  const failedFirstLoad = $derived(listQuery.isError && listQuery.data === undefined);
+  const refetchFailed = $derived(listQuery.isRefetchError && listQuery.data !== undefined);
 
-  const allItems = $derived(listQuery.data?.items ?? []);
-
-  const agentNames = $derived(
-    [
-      ...new Set([
-        ...(overlay.data?.agents?.values() ?? []),
-        ...(agentFilter === undefined ? [] : [agentFilter]),
-      ]),
-    ].toSorted(),
-  );
-  const facets = $derived([
-    {
-      type: 'select' as const,
-      key: 'status',
-      label: SCHEDULE_COPY.statusLabel,
-      placeholder: SCHEDULE_COPY.anyStatus,
-      options: SCHEDULE_STATUSES.map((status) => ({
-        value: status,
-        label: scheduleStatusWord(status),
-      })),
-    },
-    {
-      type: 'select' as const,
-      key: 'agent',
-      label: SCHEDULE_COPY.agentLabel,
-      placeholder: SCHEDULE_COPY.anyAgent,
-      options: agentNames.map((name) => ({ value: name, label: name })),
-    },
-  ]);
-  const appliedFilters = $derived([
-    ...(statusFilter === undefined
-      ? []
-      : [
-          {
-            key: 'status',
-            value: statusFilter,
-            label: SCHEDULE_COPY.statusLabel,
-          },
-        ]),
-    ...(agentFilter === undefined
-      ? []
-      : [
-          {
-            key: 'agent',
-            value: agentFilter,
-            label: SCHEDULE_COPY.agentLabel,
-          },
-        ]),
-  ]);
-
-  const visibleItems = $derived(
-    agentFilter === undefined
-      ? allItems
-      : allItems.filter((schedule) => overlay.data?.agents?.get(schedule.id) === agentFilter),
-  );
-
-  const actions = createScheduleActions();
-
-  /** A row's schedule with the service that owns it, as a write needs both. */
-  function targetOf(schedule: ScheduleSummary): Target {
-    return { schedule, kind: kindOf(schedule, overlay.data) };
+  /** Reads the list again, and the frame's own probe of it, so what the frame says follows. */
+  function retry(): void {
+    void listQuery.refetch();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('schedules', null) });
   }
 
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+  // The tries after a failed refresh back off and count, as the connection's do (rows 70u, 15k).
+  const refreshTries = new ConnectionMonitor({
+    probe: async () => {
+      const result = await listQuery.refetch();
+      if (result.isError) throw result.error;
+    },
+    browserOffline: false,
+  });
+  $effect(() => {
+    if (refetchFailed) untrack(() => refreshTries.reportUnreachable());
+    else untrack(() => refreshTries.reportReachable());
+  });
+  $effect(() => () => refreshTries.dispose());
+  // The shell leaves its banner to this page while it is on screen.
+  $effect(() => connection.claimBanner());
+
+  /** Banner's Retry now: the connection's own tries again, or this read's, and the frame's probe of it. */
+  function retryNow(): void {
+    if (connection.unreachable) {
+      void connection.retryNow();
       return;
     }
-    event.preventDefault();
-    router.navigate(path);
+    void refreshTries.retryNow();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('schedules', null) });
   }
 
-  function togglePause(schedule: ScheduleSummary): void {
-    const target = targetOf(schedule);
-    if (schedule.status === 'paused') actions.resume.mutate(target);
-    else actions.pause.mutate(target);
+  /** The server gives no answer, or this read failed after it had shown schedules. */
+  const stale = $derived(!failedFirstLoad && (connection.unreachable || refetchFailed));
+  /** What counts the banner: the connection's own tries, or the refresh's. */
+  const tries = $derived(connection.unreachable ? connection : refreshTries);
+
+  // What the Bureau knows of these schedules: which start an agent, which agent, and the workflow
+  // files. Until it answers a schedule is of no known kind.
+  const overlay = useScheduleOverlay(client, connection);
+  const sources = createQuery(() => ({
+    queryKey: queryKeys.schedules.rowContext(),
+    queryFn: ({ signal }) => loadScheduleRowSources(client, { signal }),
+    retry: false,
+  }));
+
+  const schedules = $derived<readonly ScheduleSummary[]>(listQuery.data?.items ?? []);
+
+  // The workflows whose file cannot load or is gone have no steps of their own to say which agent
+  // they run, so the last saved version does.
+  const savedStepTypes = $derived(
+    typesNeedingSavedSteps(schedules, {
+      overlay: overlay.data,
+      definitionNames: sources.data?.definitionNames,
+    }),
+  );
+  const workflowAgents = createQuery(() => ({
+    queryKey: queryKeys.schedules.workflowAgents(savedStepTypes),
+    queryFn: ({ signal }) => loadWorkflowAgents(savedStepTypes, { signal }),
+    enabled: savedStepTypes.length > 0,
+    // The agents read so far stay while the next set loads, so a row never loses a reason it had.
+    placeholderData: keepPreviousData,
+    retry: false,
+  }));
+
+  // The clock the next runs are counted from, read again whenever the schedules are.
+  const now = $derived.by(() => {
+    void listQuery.dataUpdatedAt;
+    return Date.now();
+  });
+  /** One row of each schedule, from everything read so far. */
+  function rowsOf(modelAgents: ReadonlySet<string> | undefined): ScheduleRow[] {
+    return schedules.map((schedule) =>
+      scheduleRowOf(schedule, {
+        overlay: overlay.data,
+        agents: sources.data?.agents,
+        attention: sources.data?.attention,
+        definitionNames: sources.data?.definitionNames,
+        modelAgents,
+        workflowAgents: workflowAgents.data ?? new Map(),
+        now,
+      }),
+    );
   }
 
-  let cancelDialogOpen = $state(false);
-  /**
-   * What the operator was shown when they asked to cancel, revision included. The list reads itself
-   * again while the confirmation is open, so confirming looks nothing up: cancel sends this
-   * snapshot, and a schedule that moved on is refused as stale instead of a version the operator
-   * never saw being cancelled.
-   */
-  let cancelTarget = $state.raw<Target | null>(null);
-  /** The name the operator was shown, which the confirmation uses to say which schedule it is. */
-  let cancelName = $state('');
+  // The agents the rows name are known once the rows are, and which of them need a model is read
+  // from their definitions, so the rows are made twice: once to learn the agents, and again with
+  // what is known of them.
+  const usedAgentIds = $derived(
+    [...new Set(rowsOf(undefined).flatMap((row) => row.agentIds))].toSorted(),
+  );
+  const modelAgents = createQuery(() => ({
+    queryKey: queryKeys.schedules.modelAgents(usedAgentIds),
+    queryFn: ({ signal }) => loadModelAgents(usedAgentIds, { signal }),
+    enabled: usedAgentIds.length > 0,
+    placeholderData: keepPreviousData,
+    retry: false,
+  }));
+  // A cancelled schedule has no segment, so it is not listed.
+  const allRows = $derived(
+    sortScheduleRows(
+      rowsOf(modelAgents.data).filter((row) => row.status !== 'cancelled'),
+      { phone },
+    ),
+  );
 
-  function requestCancel(schedule: ScheduleSummary, name: string): void {
-    cancelTarget = targetOf(schedule);
-    cancelName = name;
-    cancelDialogOpen = true;
+  const facetRows = $derived(narrowByFacets(allRows, filters));
+  const counts = $derived(countRows(facetRows));
+  const visibleRows = $derived(narrowByView(facetRows, filters));
+
+  const segments = $derived([
+    { value: 'all', label: SCHEDULE_COPY.segments.all, count: counts.all },
+    { value: 'active', label: SCHEDULE_COPY.segments.active, count: counts.active },
+    { value: 'paused', label: SCHEDULE_COPY.segments.paused, count: counts.paused },
+  ]);
+
+  const agentOptions = $derived(
+    [
+      ...new Set([
+        ...allRows.flatMap((row) => row.agentIds),
+        ...(filters.agent === undefined ? [] : [filters.agent]),
+      ]),
+    ]
+      .map((id) => ({ value: id, label: agentLabel(id, sources.data?.agents) }))
+      .toSorted((a, b) => a.label.localeCompare(b.label)),
+  );
+  const workflowOptions = $derived.by(() => {
+    const types = new Map<string, string>();
+    for (const row of allRows) types.set(row.workflowType, row.workflowLabel);
+    if (filters.workflow !== undefined && !types.has(filters.workflow)) {
+      types.set(filters.workflow, filters.workflow);
+    }
+    return [...types]
+      .map(([value, label]) => ({ value, label }))
+      .toSorted((a, b) => a.label.localeCompare(b.label));
+  });
+
+  const facets = $derived<FacetDefinition[]>([
+    {
+      type: 'toggle',
+      key: 'missed',
+      label: SCHEDULE_COPY.missedRunsFilter,
+      count: counts.missed,
+      tone: 'warning',
+    },
+    {
+      type: 'choice',
+      key: 'agent',
+      label: SCHEDULE_COPY.agentLabel,
+      multiple: false,
+      options: agentOptions,
+    },
+    {
+      type: 'choice',
+      key: 'workflow',
+      label: SCHEDULE_COPY.workflowLabel,
+      multiple: false,
+      options: workflowOptions,
+    },
+  ]);
+  const appliedFilters = $derived<AppliedFilter[]>([
+    ...(filters.missed
+      ? [{ key: 'missed', value: 'On', label: SCHEDULE_COPY.missedRunsFilter }]
+      : []),
+    ...(filters.agent === undefined
+      ? []
+      : [{ key: 'agent', value: filters.agent, label: SCHEDULE_COPY.agentLabel }]),
+    ...(filters.workflow === undefined
+      ? []
+      : [{ key: 'workflow', value: filters.workflow, label: SCHEDULE_COPY.workflowLabel }]),
+  ]);
+
+  function changeFacet(key: string, value: string): void {
+    if (key === 'missed') setFilter('missed', value === '' ? undefined : '1');
+    else setFilter(key, value);
   }
 
-  function confirmCancel(): void {
-    if (cancelTarget !== null) actions.cancel.mutate(cancelTarget);
-    cancelDialogOpen = false;
+  function rowKey(row: ScheduleRow): string {
+    return row.id;
   }
+
+  // Nothing to list at all, as opposed to filters that match nothing. A cancelled schedule is not
+  // listed, so a list of only those is as empty as one with none.
+  const nothingYet = $derived(allRows.length === 0);
+  const noMatchSentence = $derived(
+    noMatchDescription(filters, {
+      agent:
+        filters.agent === undefined ? undefined : agentLabel(filters.agent, sources.data?.agents),
+      workflow:
+        filters.workflow === undefined
+          ? undefined
+          : workflowOptions.find((option) => option.value === filters.workflow)?.label,
+    }),
+  );
+  const newActionReason = $derived(
+    failedFirstLoad ? SCHEDULE_COPY.newActionOffReason : writeGate.title,
+  );
+
+  const zone = $derived(formatTimeZoneLabel(now, { style: 'long' }));
 </script>
 
 <section class="ib-records" aria-label={SCHEDULE_COPY.title} data-page="schedules">
-  <PageHeader title={SCHEDULE_COPY.title} headingLevel={1} />
-
-  {#snippet filterBar()}
-    <FilterBar
-      aria-label={SCHEDULE_COPY.filtersLabel}
-      searchVisible={false}
-      {facets}
-      {appliedFilters}
-      onFacetChange={changeFilter}
-      onFilterRemove={(key) => changeFilter(key, '')}
+  <!-- While the server gives no answer the shell holds every control that changes something; this
+       region is how the header's "+" (and the empty state's button) join them. -->
+  <StaleRegion stale={stale || connection.unreachable} reason={CONNECTION_COPY.changesOff}>
+    <PageHeader
+      title={SCHEDULE_COPY.title}
+      description={SCHEDULE_COPY.subtitle(zone)}
+      headingLevel={1}
+      error={failedFirstLoad}
+      createAction={{
+        label: SCHEDULE_COPY.newAction,
+        onclick: () => router.navigate(scheduleCreatePath()),
+        ...((writeGate.disabled || failedFirstLoad) && newActionReason !== undefined
+          ? { inertReason: newActionReason }
+          : {}),
+      }}
     />
-  {/snippet}
-  {#snippet newSchedule()}
-    <Button
-      variant="primary"
-      size="sm"
-      disabled={writeGate.disabled}
-      title={writeGate.title}
-      onclick={() => router.navigate(scheduleCreatePath())}
-    >
-      <CalendarClock aria-hidden="true" size={14} />
-      {SCHEDULE_COPY.newAction}
-    </Button>
-  {/snippet}
-  <RecordsToolbar
-    count={SCHEDULE_COPY.count(visibleItems.length)}
-    filters={filterBar}
-    action={newSchedule}
-  />
 
-  {#if actions.notice !== null}
-    <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
-  {/if}
+    <!-- While the host restarts, the restart dialog is the one account of it, as in the shell. -->
+    {#if stale && !restartActivity.active}
+      <Banner
+        preset={connectionBannerPreset(tries)}
+        dataUpdatedAt={connection.unreachable ? connection.lastHealthyAt : listQuery.dataUpdatedAt}
+        retryInSeconds={tries.retryInSeconds}
+        attempt={tries.browserOffline || tries.attempt === 0 ? undefined : tries.attempt}
+        maxAttempts={CONNECTION_MAX_ATTEMPTS}
+        onRetry={retryNow}
+      />
+    {/if}
 
-  {#if overlay.data?.failed}
-    <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
-  {/if}
-
-  {#if listQuery.isPending}
-    <div role="status" aria-busy="true" aria-label={SCHEDULE_COPY.loading}>
-      <Skeleton height="3.5rem" />
-      <Skeleton height="3.5rem" />
-    </div>
-  {:else if listQuery.isError}
-    <FaultBanner
-      treatment={faultTreatment(listQuery.error)}
-      onRetry={() => void listQuery.refetch()}
-    />
-  {:else if visibleItems.length === 0}
-    <EmptyState
-      kind="filtered"
-      title={SCHEDULE_COPY.noMatch.title}
-      description={SCHEDULE_COPY.noMatch.description}
-      headingLevel={2}
-      clearFiltersLabel={SCHEDULE_COPY.clearFilters}
-      onClearFilters={clearFilters}
-    />
-  {:else}
-    <Table caption={SCHEDULE_COPY.caption} density="condensed">
-      <Table.Header>
-        <Table.Row>
-          <Table.HeaderCell>{SCHEDULE_COPY.columns.schedule}</Table.HeaderCell>
-          <Table.HeaderCell>{SCHEDULE_COPY.columns.runs}</Table.HeaderCell>
-          <Table.HeaderCell>{SCHEDULE_COPY.columns.repeats}</Table.HeaderCell>
-          <Table.HeaderCell>{SCHEDULE_COPY.columns.next}</Table.HeaderCell>
-          <Table.HeaderCell>{SCHEDULE_COPY.columns.last}</Table.HeaderCell>
-          <Table.HeaderCell>{SCHEDULE_COPY.columns.status}</Table.HeaderCell>
-          <Table.HeaderCell
-            ><VisuallyHidden>{SCHEDULE_COPY.columns.actions}</VisuallyHidden></Table.HeaderCell
+    {#if failedFirstLoad}
+      <ErrorState
+        bordered
+        title={SCHEDULE_COPY.loadFailed.title}
+        description={SCHEDULE_COPY.loadFailed.description}
+        headingLevel={2}
+        retryLabel={RETRY_LABEL}
+        onRetry={retry}
+      />
+    {:else if listQuery.isPending}
+      <ScheduleListLoading
+        {segments}
+        segmentValue={filters.status}
+        {facets}
+        {appliedFilters}
+        onSegmentChange={(value) => setFilter('status', value as ScheduleSegment)}
+        onFacetChange={changeFacet}
+        onFilterRemove={(key) => setFilter(key, undefined)}
+      />
+    {:else if nothingYet}
+      <EmptyState
+        bordered
+        kind="first-use"
+        title={SCHEDULE_COPY.empty.title}
+        description={SCHEDULE_COPY.empty.description}
+        headingLevel={2}
+      >
+        {#snippet icon()}<Calendar aria-hidden="true" />{/snippet}
+        {#snippet action()}
+          <Button
+            variant="primary"
+            label={SCHEDULE_COPY.newAction}
+            aria-disabled={writeGate.disabled ? 'true' : undefined}
+            title={writeGate.title}
+            onclick={() => router.navigate(scheduleCreatePath())}
+            mutating
           >
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {#each visibleItems as schedule (schedule.id)}
-          {@const target = targetOf(schedule)}
-          {@const allowed = actionsOf(target)}
-          {@const name = scheduleName(schedule, target.kind)}
-          {@const zone = sentenceZone(schedule)}
-          {@const input = overlay.data?.inputs?.get(schedule.id)}
-          <Table.Row
-            data-schedule={schedule.id}
-            data-kind={target.kind.kind}
-            data-status={schedule.status}
-            data-status-word={scheduleStatusWord(schedule.status)}
+            {#snippet leadingIcon()}<Plus />{/snippet}
+          </Button>
+        {/snippet}
+      </EmptyState>
+    {:else}
+      <FilterBar
+        aria-label={SCHEDULE_COPY.filtersLabel}
+        searchVisible={false}
+        {segments}
+        segmentValue={filters.status}
+        {facets}
+        {appliedFilters}
+        onSegmentChange={(value) => setFilter('status', value as ScheduleSegment)}
+        onFacetChange={changeFacet}
+        onFilterRemove={(key) => setFilter(key, undefined)}
+      />
+
+      {#if overlay.failed}
+        <FaultBanner treatment={OVERLAY_FAILURE} onRetry={overlay.refetch} />
+      {/if}
+
+      {#if visibleRows.length === 0}
+        <EmptyState
+          bordered
+          kind="filtered"
+          title={SCHEDULE_COPY.noMatch.title}
+          description={noMatchSentence}
+          headingLevel={2}
+          clearFiltersLabel={SCHEDULE_COPY.clearFilters}
+          onClearFilters={clearFilters}
+        >
+          {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+        </EmptyState>
+      {:else}
+        <div {@attach followLinks}>
+          <DataList
+            items={visibleRows}
+            key={rowKey}
+            statusColumn
+            aria-label={SCHEDULE_COPY.rowsLabel}
           >
-            <Table.Cell class="ib-records__wrap">
-              <a
-                href={router.href(scheduleDetailPath(schedule.id))}
-                onclick={(event) => go(event, scheduleDetailPath(schedule.id))}
-                ><IdentifierText
-                  text={name}
-                  identifiers={scheduleNameIdentifiers(schedule, target.kind)}
-                /></a
-              >
-              {#if schedule.missedFireCount > 0}
-                <Badge variant="warning">{SCHEDULE_COPY.missed(schedule.missedFireCount)}</Badge>
-              {/if}
-              {#if input !== undefined}
-                <p class="ib-schedule__input" data-testid="schedule-input">{`“${input}”`}</p>
-              {/if}
-            </Table.Cell>
-            <Table.Cell class="ib-records__wrap">
-              <ScheduleTarget {schedule} kind={target.kind} />
-            </Table.Cell>
-            <Table.Cell class="ib-records__wrap">
-              <IdentifierText
-                text={describeCadence(schedule)}
-                identifiers={cadenceIdentifiers(schedule)}
-              />
-              {#if zone !== null}
-                <span class="ib-records__muted">{SCHEDULE_COPY.inZone(zone)}</span>
-              {/if}
-            </Table.Cell>
-            <Table.Cell class="ib-records__muted">
-              {#if schedule.status === 'active' && schedule.nextFireAt !== null}
-                <span title={formatInZone(schedule.nextFireAt, scheduleZone(schedule))}
-                  >{formatRelativeTime(schedule.nextFireAt)}</span
-                >
-              {/if}
-            </Table.Cell>
-            <Table.Cell class="ib-records__muted">
-              <ScheduleLastFire scheduleId={schedule.id} lastFireAt={schedule.lastFireAt} />
-            </Table.Cell>
-            <Table.Cell>
-              <StatusLabel word={scheduleStatusWord(schedule.status)} />
-            </Table.Cell>
-            <Table.Cell align="right">
-              <Dropdown id={`ib-schedule-actions-${schedule.id}`} placement="bottom-end">
-                <Dropdown.Trigger caretVisible={false}>
-                  <Ellipsis aria-hidden="true" size={16} />
-                  <VisuallyHidden>{SCHEDULE_COPY.actionsFor(name)}</VisuallyHidden>
-                </Dropdown.Trigger>
-                <Dropdown.Menu>
-                  {#if allowed.pause || allowed.resume}
-                    <Dropdown.Item
-                      data-changes
-                      disabled={writeGate.disabled || actions.busy}
-                      onclick={() => togglePause(schedule)}
-                    >
-                      {#if schedule.status === 'paused'}
-                        <Play aria-hidden="true" size={14} /> Resume
-                      {:else}
-                        <Pause aria-hidden="true" size={14} /> Pause
-                      {/if}
-                    </Dropdown.Item>
-                  {/if}
-                  {#if allowed.edit}
-                    <Dropdown.Item
-                      disabled={writeGate.disabled}
-                      onclick={() => router.navigate(scheduleEditPath(schedule.id))}
-                    >
-                      <Pencil aria-hidden="true" size={14} /> Edit
-                    </Dropdown.Item>
-                  {/if}
-                  {#if allowed.editInWorkflow}
-                    <Dropdown.Item
-                      onclick={() => router.navigate(workflowEditPath(schedule.workflowType))}
-                    >
-                      <Pencil aria-hidden="true" size={14} />
-                      {SCHEDULE_COPY.editWorkflowAction}
-                    </Dropdown.Item>
-                  {/if}
-                  <Dropdown.Item onclick={() => void copyScheduleId(schedule.id)}>
-                    <Copy aria-hidden="true" size={14} />
-                    {SCHEDULE_COPY.copyId}
-                  </Dropdown.Item>
-                  {#if allowed.cancel}
-                    <Dropdown.Item
-                      data-changes
-                      variant="danger"
-                      disabled={writeGate.disabled || actions.busy}
-                      onclick={() => requestCancel(schedule, name)}
-                    >
-                      <CircleX aria-hidden="true" size={14} /> Cancel
-                    </Dropdown.Item>
-                  {/if}
-                </Dropdown.Menu>
-              </Dropdown>
-            </Table.Cell>
-          </Table.Row>
-        {/each}
-      </Table.Body>
-    </Table>
-  {/if}
+            {#snippet children(row)}
+              <ScheduleListRow {row} {phone} />
+            {/snippet}
+          </DataList>
+        </div>
+      {/if}
+    {/if}
+  </StaleRegion>
 </section>
-
-<ConfirmDialog
-  bind:open={cancelDialogOpen}
-  title={SCHEDULE_COPY.cancelDialog.title}
-  description={cancelTarget ? SCHEDULE_COPY.cancelDialog.description(cancelName) : ''}
-  confirmLabel={SCHEDULE_COPY.cancelDialog.confirm}
-  destructive
-  onConfirm={confirmCancel}
-/>

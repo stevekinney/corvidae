@@ -1,8 +1,8 @@
 /**
- * `/settings/a2a` (COR-1862): the agents that opt in to A2A, each with the address of its Agent
- * Card as the host serves it, and the push-notification settings, which are read from the Bureau
- * and written through `bureau.settings.update` like the rest of Settings. The Bureau and the
- * host's cards are stubs.
+ * `/settings/a2a` (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with Accept A2A calls
+ * off"): the switch that accepts remote calls, the address of the agent card, a switch per agent,
+ * push notifications, and the recent calls. Every row saves as it is left, through
+ * `bureau.settings.update`. The Bureau is a stub.
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
@@ -11,59 +11,44 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { A2A_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
-import { agentCardPath } from '../../../lib/a2a-card.ts';
-import type { BureauStub } from '../../../lib/bureau-stub.test-support.ts';
-import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
-import { router } from '../../../lib/router.svelte.ts';
+import { STUB_A2A_DIRECTORY_URL, type BureauStub } from '../../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { AGENT, landAt } from '../../chat/pages.test-support.ts';
 import { installSettingsBureau, servedSettings } from '../settings-fixtures.test-support.ts';
 
 let stub: BureauStub | undefined;
-let restoreCards: (() => void) | undefined;
 afterEach(() => {
   cleanup();
-  restoreCards?.();
-  restoreCards = undefined;
   stub?.restore();
   stub = undefined;
 });
 
-const FILE_AGENT = {
+/** The eight agents of the sample world, in the order the Agents page lists them. */
+const NAMES: readonly [string, string, boolean][] = [
+  ['Assistant', 'assistant', true],
+  ['Tool runner', 'tool-runner', true],
+  ['Request human input', 'request-human-input', false],
+  ['Echo', 'echo', false],
+  ['Model switcher', 'model-switcher', false],
+  ['Workflow author', 'workflow-author', false],
+  ['Release helper', 'release-helper', false],
+  ['Changelog writer', 'changelog-writer', false],
+];
+const SAMPLE_AGENTS = NAMES.map(([displayName, name, a2a]) => ({
   ...AGENT,
-  name: 'researcher',
-  displayName: 'Researcher',
-  kind: 'file',
-  a2a: true,
-};
-const CODE_AGENT = {
-  ...AGENT,
-  name: 'dispatcher',
-  displayName: 'dispatcher',
+  name,
+  displayName,
   kind: 'code',
-  a2a: true,
-};
-const CLOSED_AGENT = {
-  ...AGENT,
-  name: 'private',
-  displayName: 'Private',
-  kind: 'file',
-  a2a: false,
-};
-
-/** A card as the host serves it: the interface address, and the security schemes when a key is set. */
-const card = (url: string, secured = false) => ({
-  supportedInterfaces: [{ url, protocolBinding: 'JSONRPC' }],
-  ...(secured ? { securitySchemes: { apiKey: { type: 'apiKey' } } } : {}),
-});
+  a2a,
+}));
 
 type Open = {
-  agents: readonly object[] | 'fail';
-  cards?: Record<string, () => Response>;
+  agents?: readonly object[] | 'fail';
   values?: Record<string, unknown>;
+  calls?: readonly object[];
 };
 
-function open({ agents, cards = {}, values }: Open) {
+function open({ agents = SAMPLE_AGENTS, values, calls = [] }: Open = {}) {
   const served = servedSettings(
     values === undefined ? {} : { values: { ...servedSettings().values, ...values } },
   );
@@ -72,17 +57,7 @@ function open({ agents, cards = {}, values }: Open) {
       if (agents === 'fail') throw new Error('The Bureau is down.');
       return { agents };
     },
-  });
-  // The cards are the host's own route, not the Bureau's operation: layer them over the stub.
-  const bureauFetch = globalThis.fetch;
-  restoreCards = installFetchImplementation(async (input, init) => {
-    const url = new URL(
-      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
-      'http://localhost',
-    );
-    const answer = cards[url.pathname];
-    if (answer !== undefined) return answer();
-    return bureauFetch(input, init);
+    'bureau.audit.query': () => ({ records: calls, nextCursor: null }),
   });
   landAt('/settings/a2a');
   return {
@@ -96,173 +71,382 @@ function open({ agents, cards = {}, values }: Open) {
   };
 }
 
-const cardOf = (agent: string, url: string, secured = false) => ({
-  [agentCardPath(agent)]: () => Response.json(card(url, secured)),
-});
+const row = (container: HTMLElement, key: string) =>
+  container.querySelector<HTMLElement>(`[data-setting="${key}"]`);
 
-describe('the agents reachable over A2A', () => {
-  test('are the agents that opt in, each with the address of its card as the card names it', async () => {
-    const { view } = open({
-      agents: [FILE_AGENT, CLOSED_AGENT, CODE_AGENT],
-      cards: {
-        ...cardOf('researcher', 'https://agents.example.com/bureau/a2a/researcher'),
-        ...cardOf('dispatcher', 'http://127.0.0.1:7234/bureau/a2a/dispatcher'),
-      },
-    });
+const switchOf = (container: HTMLElement, label: string) =>
+  within(container).getByRole('switch', { name: label });
 
-    const list = await view.findByRole('list', { name: A2A_COPY.listLabel });
-    await waitFor(() => expect(list.querySelectorAll('[data-testid="a2a-card"]')).toHaveLength(2));
-    const rows = [...list.querySelectorAll<HTMLElement>('[data-agent]')];
-    // The agent that did not opt in is not listed.
-    expect(rows.map((row) => row.dataset['agent'])).toEqual(['researcher', 'dispatcher']);
-    expect(rows[0]?.querySelector('[data-testid="a2a-card"] code')?.textContent).toBe(
-      'https://agents.example.com/bureau/a2a/researcher/.well-known/agent-card.json',
-    );
-    expect(rows[1]?.querySelector('[data-testid="a2a-card"] code')?.textContent).toBe(
-      'http://127.0.0.1:7234/bureau/a2a/dispatcher/.well-known/agent-card.json',
-    );
-    // Each address has a button that copies it.
-    expect(within(rows[0]!).getByRole('button', { name: A2A_COPY.copyCard })).not.toBeNull();
-  });
+describe('the Agent2Agent section', () => {
+  test('is the heading and the intro, then the four rows in the order the board draws them', async () => {
+    const { view } = open();
 
-  test('link a file agent to its editor, where it opts in or out, and a code agent to none', async () => {
-    const { view } = open({
-      agents: [FILE_AGENT, CODE_AGENT],
-      cards: {
-        ...cardOf('researcher', 'http://localhost/bureau/a2a/researcher'),
-        ...cardOf('dispatcher', 'http://localhost/bureau/a2a/dispatcher'),
-      },
-    });
-
-    const list = await view.findByRole('list', { name: A2A_COPY.listLabel });
-    const [file, code] = [...list.querySelectorAll<HTMLElement>('[data-agent]')];
-    const edit = within(file!).getByRole('link', { name: A2A_COPY.editAgent('Researcher') });
-    expect(edit.getAttribute('href')).toBe('/agents/researcher/edit');
-    expect(code?.textContent).toContain(A2A_COPY.fromCode);
-    expect(within(code!).queryByRole('link', { name: /^Edit/ })).toBeNull();
-    await fireEvent.click(edit);
-    expect(router.pathname).toBe('/agents/researcher/edit');
-  });
-
-  test('say when a caller needs the operator’s key', async () => {
-    const { view } = open({
-      agents: [FILE_AGENT],
-      cards: cardOf('researcher', 'https://agents.example.com/bureau/a2a/researcher', true),
-    });
-
-    await view.findByRole('list', { name: A2A_COPY.listLabel });
-
-    expect(await view.findByText(A2A_COPY.needsKey)).not.toBeNull();
-  });
-
-  test('keep an agent in the list when its card cannot be read, and read it again on request', async () => {
-    let healthy = false;
-    const { view } = open({
-      agents: [FILE_AGENT],
-      cards: {
-        [agentCardPath('researcher')]: () =>
-          healthy
-            ? Response.json(card('http://localhost/bureau/a2a/researcher'))
-            : new Response('no', { status: 503 }),
-      },
-    });
-
-    const unavailable = await view.findByTestId('a2a-card-unavailable');
-    expect(unavailable.textContent).toContain(A2A_COPY.cardUnavailable);
-    healthy = true;
-    await fireEvent.click(within(unavailable).getByRole('button', { name: A2A_COPY.cardRetry }));
-
-    const loaded = await view.findByTestId('a2a-card');
-    expect(loaded.textContent).toContain('/bureau/a2a/researcher');
-  });
-
-  test('are an empty state with a way to the agents when none opts in', async () => {
-    const { view } = open({ agents: [CLOSED_AGENT] });
-
-    const empty = await view.findByTestId('a2a-empty');
-
-    expect(empty.textContent).toContain(A2A_COPY.empty.title);
-    // The push settings are still there to read and write.
-    expect(await view.findByRole('group', { name: SETTINGS_COPY.formLabel })).not.toBeNull();
-    const link = within(empty).getByRole('link', { name: A2A_COPY.empty.action.label });
-    expect(link.getAttribute('href')).toBe('/agents');
-    await fireEvent.click(link);
-    expect(router.pathname).toBe('/agents');
-  });
-
-  test('say so, with a way to try again, when the agents cannot be listed', async () => {
-    const { view } = open({ agents: 'fail' });
-
-    const failed = await view.findByTestId('a2a-agents-failed');
-
-    expect(failed.textContent).toContain(A2A_COPY.loadFailed.title);
-    expect(within(failed).getByRole('button', { name: 'Try again' })).not.toBeNull();
-  });
-});
-
-describe('the push settings', () => {
-  const row = (container: HTMLElement, key: string) =>
-    container.querySelector<HTMLElement>(`[data-setting="${key}"]`);
-
-  test('are the a2a settings and no others, with the values the Bureau holds', async () => {
-    const { view } = open({ agents: [], values: { 'a2a.push.enabled': true } });
-
-    const form = await view.findByRole('group', { name: SETTINGS_COPY.formLabel });
-
+    expect(await view.findByRole('heading', { level: 1, name: 'A2A' })).not.toBeNull();
+    expect(view.getByText(A2A_COPY.intro)).not.toBeNull();
+    const group = await view.findByRole('group', { name: SETTINGS_COPY.formLabel });
     expect(
-      [...form.querySelectorAll<HTMLElement>('[data-setting]')].map(
+      within(group)
+        .getAllByRole('heading', { level: 2 })
+        .map((heading) => heading.textContent),
+    ).toEqual(['Agent2Agent', 'Recent calls']);
+    expect(
+      [...group.querySelectorAll<HTMLElement>('[data-setting]')].map(
         (entry) => entry.dataset['setting'],
       ),
-    ).toEqual(['a2a.push.enabled', 'a2a.push.sweepIntervalMs']);
+    ).toEqual([
+      'a2a.enabled',
+      'agent-card-url',
+      'a2a.agents',
+      'a2a.push.enabled',
+      'a2a.push.sweepIntervalMs',
+    ]);
+  });
+
+  test('Accept A2A calls is a switch that is on and says it applies after a restart', async () => {
+    const { view } = open();
+    const enabled = await waitFor(() => {
+      const found = row(view.container, 'a2a.enabled');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+
+    expect(enabled.textContent).toContain(A2A_COPY.enabled.label);
+    expect(enabled.textContent).toContain('a2a.enabled');
+    expect(enabled.textContent).toContain(A2A_COPY.enabled.description);
+    expect(enabled.textContent).toContain('Applies after restart');
+    expect(switchOf(enabled, A2A_COPY.enabled.label).getAttribute('aria-checked')).toBe('true');
+  });
+
+  test('Agent card URL shows the address the host reports in monospace, with a button that copies it', async () => {
+    const { view } = open();
+
+    const card = await waitFor(() => {
+      const found = row(view.container, 'agent-card-url');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(card.textContent).toContain(A2A_COPY.cardUrl.label);
+    expect(card.textContent).toContain(A2A_COPY.cardUrl.description);
+    await waitFor(() =>
+      expect((within(card).getByTestId('a2a-card-url') as HTMLInputElement).value).toBe(
+        STUB_A2A_DIRECTORY_URL,
+      ),
+    );
+    expect(within(card).getByRole('button', { name: A2A_COPY.cardUrl.copy })).not.toBeNull();
+  });
+
+  test('Shared agents lists all eight agents in the Agents order, with a switch each', async () => {
+    const { view } = open();
+
+    const agents = await waitFor(() => {
+      const found = row(view.container, 'a2a.agents');
+      expect(found?.querySelectorAll('[data-agent]').length).toBe(8);
+      return found!;
+    });
+    expect(agents.textContent).toContain(A2A_COPY.agents.label);
+    expect(agents.textContent).toContain('a2a.agents');
+    expect(agents.textContent).toContain(A2A_COPY.agents.description(8));
+    expect(A2A_COPY.agents.description(8)).toBe(
+      'All eight agents are listed; only the ones you turn on here answer remote calls. You can also set this on each agent’s Settings tab.',
+    );
+    // Each switch is named by its own agent, never by the row's label.
+    for (const [displayName] of NAMES) {
+      expect(within(agents).getByRole('switch', { name: displayName })).not.toBeNull();
+    }
+    expect(within(agents).queryByRole('switch', { name: A2A_COPY.agents.label })).toBeNull();
     expect(
-      row(view.container, 'a2a.push.enabled')
-        ?.querySelector('button[role="switch"]')
-        ?.getAttribute('aria-checked'),
-    ).toBe('true');
+      [...agents.querySelectorAll<HTMLElement>('[data-agent]')].map((item) => [
+        item.textContent?.trim(),
+        item.querySelector('[role="switch"]')?.getAttribute('aria-checked'),
+      ]),
+    ).toEqual(NAMES.map(([displayName, , on]) => [displayName, on ? 'true' : 'false']));
   });
 
-  test('are not written until the person confirms, and cancelling keeps the edit', async () => {
-    const { view } = open({ agents: [] });
-    await view.findByRole('group', { name: SETTINGS_COPY.formLabel });
-    const toggle = row(view.container, 'a2a.push.enabled')?.querySelector(
-      'button[role="switch"]',
-    ) as HTMLElement;
+  test('Push notifications is a switch with the board’s words', async () => {
+    const { view } = open();
 
-    await fireEvent.click(toggle);
-    await fireEvent.click(view.getByRole('button', { name: SETTINGS_COPY.saveAction }));
-    const dialog = await view.findByRole('dialog', { name: SETTINGS_COPY.confirmA2a.title });
-    await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-
-    await waitUntil(() => view.queryByRole('dialog') === null);
-    expect(stub?.callsTo('bureau.settings.update')).toEqual([]);
-    // The edit is still in the form, ready to save.
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
-    const save = view.getByRole('button', { name: SETTINGS_COPY.saveAction });
-    expect((save as HTMLButtonElement).disabled).toBe(false);
+    const push = await waitFor(() => {
+      const found = row(view.container, 'a2a.push.enabled');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(push.textContent).toContain(A2A_COPY.pushNotifications.label);
+    expect(push.textContent).toContain(A2A_COPY.pushNotifications.description);
+    expect(switchOf(push, A2A_COPY.pushNotifications.label).getAttribute('aria-checked')).toBe(
+      'false',
+    );
   });
+});
 
-  test('are written with one update against the revision read, and the restart they wait for is said', async () => {
-    const { view, served } = open({ agents: [] });
-    await view.findByRole('group', { name: SETTINGS_COPY.formLabel });
+describe('saving a row', () => {
+  test('sharing an agent writes the record with the agent in it, and the row says Saved', async () => {
+    const { view, served } = open();
+    const agents = await waitFor(() => {
+      const found = row(view.container, 'a2a.agents');
+      expect(found?.querySelectorAll('[data-agent]').length).toBe(8);
+      return found!;
+    });
 
-    await fireEvent.click(
-      row(view.container, 'a2a.push.enabled')?.querySelector(
-        'button[role="switch"]',
-      ) as HTMLElement,
-    );
-    await fireEvent.click(view.getByRole('button', { name: SETTINGS_COPY.saveAction }));
-    const dialog = await view.findByRole('dialog', { name: SETTINGS_COPY.confirmA2a.title });
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: SETTINGS_COPY.confirmA2a.confirm }),
-    );
+    await fireEvent.click(switchOf(agents, 'Echo'));
 
     await waitUntil(() => (stub?.callsTo('bureau.settings.update').length ?? 0) === 1);
     expect(stub?.callsTo('bureau.settings.update')[0]?.params).toEqual({
-      patch: { 'a2a.push.enabled': true },
+      patch: { 'a2a.agents': { echo: true } },
       expectedRevision: 3,
     });
-    expect(served.values['a2a.push.enabled']).toBe(true);
+    expect(served.values['a2a.agents']).toEqual({ echo: true });
+    await waitFor(() => expect(agents.textContent).toContain('Saved just now'));
+    expect(switchOf(agents, 'Echo').getAttribute('aria-checked')).toBe('true');
+  });
+
+  test('withdrawing an agent the record already names changes only that agent’s entry', async () => {
+    const { view } = open({ values: { 'a2a.agents': { echo: true, assistant: true } } });
+    const agents = await waitFor(() => {
+      const found = row(view.container, 'a2a.agents');
+      expect(found?.querySelectorAll('[data-agent]').length).toBe(8);
+      return found!;
+    });
+    expect(switchOf(agents, 'Echo').getAttribute('aria-checked')).toBe('true');
+
+    await fireEvent.click(switchOf(agents, 'Echo'));
+
+    await waitUntil(() => (stub?.callsTo('bureau.settings.update').length ?? 0) === 1);
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params).toMatchObject({
+      patch: { 'a2a.agents': { echo: false, assistant: true } },
+    });
+  });
+
+  test('turning Accept A2A calls off writes it and says the save waits for a restart', async () => {
+    const { view, served } = open();
+    const enabled = await waitFor(() => {
+      const found = row(view.container, 'a2a.enabled');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+
+    await fireEvent.click(switchOf(enabled, A2A_COPY.enabled.label));
+
+    await waitUntil(() => (stub?.callsTo('bureau.settings.update').length ?? 0) === 1);
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params).toEqual({
+      patch: { 'a2a.enabled': false },
+      expectedRevision: 3,
+    });
+    expect(served.values['a2a.enabled']).toBe(false);
+    await waitFor(() => expect(enabled.textContent).toContain('Saved, waiting for a restart'));
     const summary = await view.findByTestId('settings-restart-summary');
-    expect(summary.textContent).toContain('a2a.push.enabled');
+    expect(summary.textContent).toContain(A2A_COPY.enabled.label);
+  });
+
+  test('push notifications save as the switch changes', async () => {
+    const { view } = open();
+    const push = await waitFor(() => {
+      const found = row(view.container, 'a2a.push.enabled');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+
+    await fireEvent.click(switchOf(push, A2A_COPY.pushNotifications.label));
+
+    await waitUntil(() => (stub?.callsTo('bureau.settings.update').length ?? 0) === 1);
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params).toMatchObject({
+      patch: { 'a2a.push.enabled': true },
+    });
+  });
+});
+
+describe('with Accept A2A calls off', () => {
+  test('the switch says what off means, and the other rows stay visible but cannot be changed', async () => {
+    const { view } = open({ values: { 'a2a.enabled': false } });
+
+    const enabled = await waitFor(() => {
+      const found = row(view.container, 'a2a.enabled');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(enabled.textContent).toContain(A2A_COPY.enabled.off);
+    expect(switchOf(enabled, A2A_COPY.enabled.label).getAttribute('aria-checked')).toBe('false');
+    expect((switchOf(enabled, A2A_COPY.enabled.label) as HTMLButtonElement).disabled).toBe(false);
+
+    const agents = await waitFor(() => {
+      const found = row(view.container, 'a2a.agents');
+      expect(found?.querySelectorAll('[data-agent]').length).toBe(8);
+      return found!;
+    });
+    for (const entry of within(agents).getAllByRole('switch')) {
+      expect((entry as HTMLButtonElement).disabled).toBe(true);
+    }
+    const push = row(view.container, 'a2a.push.enabled')!;
+    expect((switchOf(push, A2A_COPY.pushNotifications.label) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(view.getByTestId('a2a-read-only').textContent).toBe(A2A_COPY.readOnly);
+    // The address is still there to read and copy.
+    expect(row(view.container, 'agent-card-url')?.textContent).toContain(A2A_COPY.cardUrl.label);
+  });
+
+  test('a switch that is on has no read-only line', async () => {
+    const { view } = open();
+
+    await view.findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    expect(view.queryByTestId('a2a-read-only')).toBeNull();
+  });
+});
+
+describe('the agents that cannot be listed', () => {
+  test('say so on the row, with a way to try again', async () => {
+    const { view } = open({ agents: 'fail' });
+
+    const agents = await waitFor(() => {
+      const found = row(view.container, 'a2a.agents');
+      expect(found?.textContent).toContain(A2A_COPY.agents.loadFailed);
+      return found!;
+    });
+
+    expect(within(agents).getByRole('button', { name: A2A_COPY.agents.retry })).not.toBeNull();
+    expect(within(agents).queryAllByRole('switch')).toHaveLength(0);
+  });
+});
+
+describe('Recent calls', () => {
+  test('are a compact empty state when no remote call was made', async () => {
+    const { view } = open();
+
+    const empty = await view.findByTestId('a2a-calls-empty');
+
+    expect(empty.textContent).toContain(A2A_COPY.recent.empty.title);
+    expect(empty.textContent).toContain(A2A_COPY.recent.empty.description);
+    expect(empty.getAttribute('data-cinder-size')).toBe('compact');
+  });
+
+  test('are a list of when, who and which agent answered, newest first, once calls were made', async () => {
+    const at = (offset: number) => new Date(Date.now() - offset).toISOString();
+    const { view } = open({
+      calls: [
+        {
+          sequence: 1,
+          timestamp: at(7_200_000),
+          type: 'a2a.call',
+          resource: 'task-1',
+          principal: 'api-key:planner',
+          detail: { agentName: 'tool-runner', taskId: 'task-1', callerName: 'planner' },
+        },
+        {
+          sequence: 2,
+          timestamp: at(60_000),
+          type: 'a2a.call',
+          resource: 'task-2',
+          principal: 'api-key:alice',
+          detail: { agentName: 'assistant', taskId: 'task-2' },
+        },
+      ],
+    });
+
+    await view.findAllByTestId('a2a-call');
+
+    const rows = [...view.container.querySelectorAll<HTMLElement>('[data-testid="a2a-call"]')];
+    expect(rows.map((entry) => entry.dataset['task'])).toEqual(['task-2', 'task-1']);
+    // Who made it is the name the caller gave, else its principal; the principal is the tooltip.
+    expect(rows[0]?.textContent).toContain('Remote agent “api-key:alice”');
+    expect(rows[0]?.textContent).toContain('answered by Assistant');
+    expect(rows[1]?.textContent).toContain('Remote agent “planner”');
+    expect(rows[1]?.textContent).toContain('answered by Tool runner');
+    expect(rows[1]?.querySelector('[title="api-key:planner"]')).not.toBeNull();
+    // The time reads as the clock ("Today, 7:48 AM"), not as "2 h ago".
+    expect(rows[1]?.querySelector('time')?.textContent).toMatch(/\d{1,2}:\d{2}/);
+    expect(view.queryByTestId('a2a-calls-empty')).toBeNull();
+  });
+
+  test('say so, with a way to try again, when the trail cannot be read', async () => {
+    const served = servedSettings();
+    stub = installSettingsBureau(served, {
+      'bureau.agents.list': () => ({ agents: SAMPLE_AGENTS }),
+      'bureau.audit.query': () => {
+        throw new Error('The Bureau is down.');
+      },
+    });
+    landAt('/settings/a2a');
+    const view = render(RouteOutletHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+
+    const failed = await view.findByTestId('a2a-calls-failed');
+
+    expect(failed.textContent).toContain(A2A_COPY.recent.loadFailed.title);
+  });
+});
+
+describe('the agents a disabled plugin holds back', () => {
+  test('are listed after the agents that can run, each with a switch, and counted', async () => {
+    const running = SAMPLE_AGENTS.slice(0, 6);
+    const held = [
+      ['demo:release-helper', 'release-helper'],
+      ['demo:changelog-writer', 'changelog-writer'],
+    ] as const;
+    const served = servedSettings();
+    stub = installSettingsBureau(served, {
+      'bureau.agents.list': () => ({ agents: running }),
+      'bureau.agents.definitions.list': () => ({
+        agents: [
+          ...running.map((agent) => ({
+            id: agent.name,
+            source: 'code',
+            state: 'ready',
+            unavailable: null,
+            name: agent.displayName,
+            description: null,
+            a2a: false,
+            hash: null,
+            problem: null,
+          })),
+          ...held.map(([id, name]) => ({
+            id,
+            source: 'code',
+            state: 'unavailable',
+            unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+            name,
+            description: null,
+            a2a: false,
+            hash: null,
+            problem: null,
+          })),
+        ],
+        nextOffset: null,
+      }),
+      'bureau.audit.query': () => ({ records: [], nextCursor: null }),
+    });
+    landAt('/settings/a2a');
+    const view = render(RouteOutletHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+
+    const switches = await view.findByTestId('a2a-agent-switches');
+    await waitFor(() => expect(switches.querySelectorAll('li')).toHaveLength(8));
+    expect([...switches.querySelectorAll('li')].map((item) => item.textContent?.trim())).toEqual([
+      'Assistant',
+      'Tool runner',
+      'Request human input',
+      'Echo',
+      'Model switcher',
+      'Workflow author',
+      'Release helper',
+      'Changelog writer',
+    ]);
+    expect(view.container.textContent).toContain('All eight agents are listed');
+
+    // Sharing one is saved under the identifier the plugin's agent has once it is enabled.
+    const releaseHelper = within(switches).getByRole('switch', { name: 'Release helper' });
+    expect(releaseHelper.getAttribute('aria-disabled')).not.toBe('true');
+    await fireEvent.click(releaseHelper);
+    await waitUntil(() => (stub?.callsTo('bureau.settings.update').length ?? 0) === 1);
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params).toMatchObject({
+      patch: { 'a2a.agents': { 'demo:release-helper': true } },
+    });
   });
 });

@@ -75,6 +75,10 @@ export const STUB_REMOTE_PROVIDERS: { name: string; secretFile: string }[] = [
   { name: 'gemini', secretFile: 'INTERBOROUGH_SECRET_GEMINI_API_KEY' },
 ];
 
+/** The address of the A2A directory card the stubbed host reports. */
+export const STUB_A2A_DIRECTORY_URL =
+  'http://127.0.0.1:4310/bureau/a2a/.well-known/agent-card.json';
+
 /** The body `/host/paths` answers with for a host that keeps its state in Postgres and a bucket. */
 export function stubRemoteHostPaths() {
   return {
@@ -85,6 +89,7 @@ export function stubRemoteHostPaths() {
     configurationFile: STUB_REMOTE_CONFIGURATION_FILE,
     locked: { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_REMOTE_PROVIDERS,
+    a2aDirectoryUrl: STUB_A2A_DIRECTORY_URL,
   };
 }
 
@@ -108,6 +113,7 @@ export function stubHostPaths(
         ? {}
         : { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_PROVIDERS,
+    a2aDirectoryUrl: STUB_A2A_DIRECTORY_URL,
   };
 }
 
@@ -147,6 +153,13 @@ export function installBureauStub(
     readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
     /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
     readonly hostMode?: 'local' | 'remote';
+    /** The size `/host/storage` reports (`null` for a backend that cannot say). Left out, the route answers `Not found`. */
+    readonly hostStorageSizeBytes?: number | null;
+    /**
+     * Answers `/host/clean-up`: `GET` is the standing and `POST` is "Clean up now". Left out, the route
+     * answers `Not found`, as a host that does not clean up would.
+     */
+    readonly hostCleanUp?: (method: 'GET' | 'POST') => Response | Promise<Response>;
     readonly passThrough?: boolean;
     /** Answers the subscriptions it names, by operation name; any other one is `Not found`. */
     readonly subscriptions?: Readonly<Record<string, StubSubscriptionHandler>>;
@@ -181,6 +194,12 @@ export function installBureauStub(
           ? stubRemoteHostPaths()
           : stubHostPaths(directory, STUB_WORKFLOW_DIRECTORY),
       );
+    }
+    if (url.pathname === '/host/storage' && options.hostStorageSizeBytes !== undefined) {
+      return Response.json({ bureauKeyPrefixes: [], sizeBytes: options.hostStorageSizeBytes });
+    }
+    if (url.pathname === '/host/clean-up' && options.hostCleanUp !== undefined) {
+      return options.hostCleanUp(init?.method === 'POST' ? 'POST' : 'GET');
     }
     if (url.pathname === '/host/providers' && options.hostProviders !== undefined) {
       return Response.json({

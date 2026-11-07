@@ -42,6 +42,7 @@
     actions,
     createAction,
     error = false,
+    flush = false,
     status,
     statusPlacement = 'below',
     titleText,
@@ -139,7 +140,15 @@
   {/if}
 {/snippet}
 
-<div class={classNames('cinder-page-header', className)} {...rest}>
+<div
+  class={classNames(
+    'cinder-page-header',
+    createAction && !actions && 'cinder-page-header--create-only',
+    className,
+  )}
+  data-cinder-flush={flush ? 'true' : undefined}
+  {...rest}
+>
   {#if breadcrumbs}
     <div class="cinder-page-header__breadcrumbs">
       {@render breadcrumbs()}

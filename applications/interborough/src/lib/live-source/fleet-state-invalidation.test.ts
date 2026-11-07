@@ -19,11 +19,10 @@ const entries = {
   manifests: queryKeys.workers.manifests(['worker-1']),
   rejections: queryKeys.workers.rejections(),
   deployments: queryKeys.workers.deployments(),
-  sources: queryKeys.catalog.sources({ limit: 10, offset: 0 }),
-  diagnostics: queryKeys.catalog.diagnostics('checkout', 'revision-a'),
   taskDetail: queryKeys.tasks.detail('operation-1'),
   taskDeliveries: queryKeys.tasks.deliveries('operation-1'),
   queues: queryKeys.queues.list(),
+  queueTasks: queryKeys.queues.tasks('reports', 'all'),
   conformance: queryKeys.conformance.targets(),
 } satisfies Record<string, QueryKey>;
 
@@ -52,14 +51,15 @@ function invalidated(queryClient: QueryClient): EntryName[] {
   );
 }
 
-const sourceEntries: EntryName[] = ['sources', 'diagnostics'];
+/** A queue's depth and the tasks listed on it move together. */
+const queueEntries: EntryName[] = ['queues', 'queueTasks'];
 const workerEntries: EntryName[] = [
   'workers',
   'manifests',
   'registry',
   'registrySnapshot',
   'deployments',
-  'queues',
+  ...queueEntries,
 ];
 
 const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
@@ -73,25 +73,16 @@ const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
   ['workflow:cancelled', ['deployments']],
   ['workflow:timed-out', ['deployments']],
   ['activity:remote-queued', ['deployments']],
-  ['activity:completed', ['deployments', 'queues']],
-  ['activity:failed', ['deployments', 'queues']],
-  ['task:dead-lettered', ['deployments', 'queues']],
+  ['activity:completed', ['deployments', ...queueEntries]],
+  ['activity:failed', ['deployments', ...queueEntries]],
+  ['task:dead-lettered', ['deployments', ...queueEntries]],
   // A queue's in-flight count is the tasks its workers hold: an attempt starting moves it.
-  ['activity:started', ['queues']],
+  ['activity:started', queueEntries],
   ['worker:deployment-changed', ['deployments', 'workers']],
-  ['queue:depth-changed', ['queues']],
+  ['queue:depth-changed', queueEntries],
   ['workflow:definition-registered', ['registry', 'registrySnapshot']],
   ['realm:state-changed', ['realms']],
   ['lease:health-changed', ['lease']],
-  ['workflow-source:load-started', sourceEntries],
-  ['workflow-source:load-ready', sourceEntries],
-  ['workflow-source:load-failed', sourceEntries],
-  ['workflow-source:load-cancelled', sourceEntries],
-  ['catalog:revision-installed', sourceEntries],
-  ['catalog:revision-activated', sourceEntries],
-  ['catalog:activation-rejected', sourceEntries],
-  ['catalog:revision-draining', sourceEntries],
-  ['catalog:revision-removed', sourceEntries],
 ];
 
 describe('the engine’s state events', () => {
@@ -105,8 +96,8 @@ describe('the engine’s state events', () => {
 
   test('a frame that also names a run is still read by its kind', () => {
     const queryClient = seeded();
-    applyFleetEventFrame(queryClient, frame('catalog:revision-activated', 'workflow-1'));
-    expect(invalidated(queryClient).toSorted()).toEqual([...sourceEntries].toSorted());
+    applyFleetEventFrame(queryClient, frame('realm:state-changed', 'workflow-1'));
+    expect(invalidated(queryClient)).toEqual(['realms']);
   });
 
   test('a retention gap asks again for every one of them, and the task evidence', () => {

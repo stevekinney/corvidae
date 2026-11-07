@@ -13,6 +13,7 @@ import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { callBureau } from '../lib/bureau-client.ts';
+import { goalFixture } from '../lib/bureau-fixtures.test-support.ts';
 import { settle } from '../lib/fake-timers.test-support.ts';
 import { ServerUnreachableError } from '../lib/faults.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
@@ -35,8 +36,10 @@ afterEach(() => {
 type HostMode = 'answers' | 'stopped' | 'fails';
 
 /**
- * A host whose schedules list answers, is stopped (no answer at all), or answers with a 500.
- * `empty` makes the list answer with nothing in it. `writes` counts the writes that reached it.
+ * A host whose schedules and goals lists answer, is stopped (no answer at all), or answers with a
+ * 500. The schedules list is the view that owns its states (`ownsStates` in `views.ts`), so the
+ * frame's own refresh error and unreachable page are driven through Goals, which does not.
+ * `empty` makes a list answer with nothing in it. `writes` counts the writes that reached it.
  */
 function host(initial: HostMode) {
   const state = { mode: initial, schedulesRequests: 0, writes: 0, empty: false };
@@ -49,6 +52,12 @@ function host(initial: HostMode) {
     state.schedulesRequests += 1;
     if (state.mode === 'fails') {
       return Response.json({ error: 'The server broke.' }, { status: 500 });
+    }
+    // The Bureau's list of goals is a JSON-RPC call, and answers its own shape.
+    if (typeof init?.body === 'string' && init.body.includes('"bureau.goals.list"')) {
+      const id: unknown = Reflect.get(JSON.parse(init.body) as object, 'id');
+      const goals = state.empty ? [] : [goalFixture('goal-1')];
+      return Response.json({ jsonrpc: '2.0', id, result: { goals, nextOffset: null } });
     }
     return state.empty
       ? Response.json({ items: [], total: 0 })
@@ -78,11 +87,20 @@ function mountSchedules(view: ViewName = 'schedules') {
   return { ...result, frame, queryClient: () => queryClient!, monitor: () => monitor! };
 }
 
+/**
+ * Waits until the view has what it shows. A view that owns its states renders its page at once, so
+ * its content is there before the probe has answered.
+ */
+async function loaded(page: ReturnType<typeof mountSchedules>): Promise<void> {
+  await page.findByTestId('content');
+  await waitFor(() => expect(page.frame().dataset['state']).toBe('ready'));
+}
+
 describe('the view frame and the connection monitor', () => {
   test('host stops while a loaded page is open: the data stays at full contrast, and the host is unreachable', async () => {
     const state = host('answers');
     const page = mountSchedules();
-    await page.findByTestId('content');
+    await loaded(page);
     expect(page.frame().dataset['stale']).toBeUndefined();
 
     state.mode = 'stopped';
@@ -97,24 +115,40 @@ describe('the view frame and the connection monitor', () => {
 
   test('a refetch gets a 5xx while the server answers: the error says what failed, the host stays reachable', async () => {
     const state = host('answers');
-    const page = mountSchedules();
-    await page.findByTestId('content');
+    const page = mountSchedules('goals');
+    await loaded(page);
 
     state.mode = 'fails';
     await page.queryClient().refetchQueries({ queryKey: ['view'] });
 
     await waitFor(() => expect(page.frame().dataset['stale']).toBe('true'));
     expect(
-      page.getByRole('heading', { level: 2, name: VIEW_COPY.schedules.error.title }),
+      page.getByRole('heading', { level: 2, name: VIEW_COPY.goals.error.title }),
     ).not.toBeNull();
     expect(page.getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
     expect(page.getByTestId('content')).not.toBeNull();
     expect(page.monitor().unreachable).toBe(false);
   });
 
+  test('a view that owns its states gets no refresh error from the frame, only the stale mark', async () => {
+    const state = host('answers');
+    const page = mountSchedules();
+    await loaded(page);
+
+    state.mode = 'fails';
+    await page.queryClient().refetchQueries({ queryKey: ['view'] });
+
+    await waitFor(() => expect(page.frame().dataset['stale']).toBe('true'));
+    expect(page.queryByRole('heading', { name: VIEW_COPY.schedules.error.title })).toBeNull();
+    expect(page.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+    expect(page.frame().textContent).not.toContain(STALE_DATA_LABEL);
+    expect(page.getByTestId('content')).not.toBeNull();
+    expect(page.monitor().unreachable).toBe(false);
+  });
+
   test('the network fails on first load with nothing to show: a full-page unreachable state', async () => {
     host('stopped');
-    const page = mountSchedules();
+    const page = mountSchedules('goals');
     expect(
       await page.findByRole('heading', { level: 1, name: CONNECTION_COPY.page.title }),
     ).not.toBeNull();
@@ -123,10 +157,19 @@ describe('the view frame and the connection monitor', () => {
     expect(page.monitor().unreachable).toBe(true);
   });
 
+  test('a view that owns its states shows its page when the network fails on first load, and says unreachable in data-state', async () => {
+    host('stopped');
+    const page = mountSchedules();
+    expect(await page.findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(page.frame().dataset['state']).toBe('unreachable'));
+    expect(page.queryByRole('heading', { name: CONNECTION_COPY.page.title })).toBeNull();
+    expect(page.monitor().unreachable).toBe(true);
+  });
+
   test('the host returns: the stale mark clears and the data is fetched again', async () => {
     const state = host('answers');
     const page = mountSchedules();
-    await page.findByTestId('content');
+    await loaded(page);
     state.mode = 'stopped';
     await page.queryClient().refetchQueries({ queryKey: ['view'] });
     await waitFor(() => expect(page.frame().dataset['stale']).toBe('true'));
@@ -142,7 +185,7 @@ describe('the view frame and the connection monitor', () => {
   test('a write is refused at the request while the host is unreachable, and allowed again once it answers', async () => {
     const state = host('answers');
     const page = mountSchedules();
-    await page.findByTestId('content');
+    await loaded(page);
     state.mode = 'stopped';
     await page.queryClient().refetchQueries({ queryKey: ['view'] });
     await waitFor(() => expect(page.monitor().unreachable).toBe(true));
@@ -164,7 +207,7 @@ describe('the view frame and the connection monitor', () => {
   test('a view that swallows its failure succeeds against a stopped host: the host stays unreachable', async () => {
     const state = host('answers');
     const page = mountSchedules();
-    await page.findByTestId('content');
+    await loaded(page);
     state.mode = 'stopped';
     await page.queryClient().refetchQueries({ queryKey: ['view'] });
     await waitFor(() => expect(page.monitor().unreachable).toBe(true));
@@ -188,7 +231,7 @@ describe('the view frame and the connection monitor', () => {
   test('a 5xx refetch on an empty view says what failed, with Retry and the age of what is shown', async () => {
     const state = host('answers');
     state.empty = true;
-    const page = mountSchedules();
+    const page = mountSchedules('goals');
     await waitFor(() => expect(page.frame().dataset['state']).toBe('empty'));
 
     state.mode = 'fails';
@@ -197,7 +240,7 @@ describe('the view frame and the connection monitor', () => {
     await waitFor(() => expect(page.frame().dataset['stale']).toBe('true'));
     expect(page.frame().dataset['state']).toBe('empty');
     expect(
-      page.getByRole('heading', { level: 2, name: VIEW_COPY.schedules.error.title }),
+      page.getByRole('heading', { level: 2, name: VIEW_COPY.goals.error.title }),
     ).not.toBeNull();
     expect(page.getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
     expect(page.frame().textContent).toContain(STALE_DATA_LABEL);
@@ -206,8 +249,8 @@ describe('the view frame and the connection monitor', () => {
 
   test('a 5xx refetch shows the age as text on a view that has data too', async () => {
     const state = host('answers');
-    const page = mountSchedules();
-    await page.findByTestId('content');
+    const page = mountSchedules('goals');
+    await loaded(page);
     state.mode = 'fails';
     await page.queryClient().refetchQueries({ queryKey: ['view'] });
     await waitFor(() => expect(page.frame().dataset['stale']).toBe('true'));

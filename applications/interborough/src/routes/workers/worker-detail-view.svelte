@@ -1,201 +1,238 @@
 <script lang="ts">
   /**
-   * Worker detail (plan §9.4 T5.2), the open worker of the Workers list: its status, when it last
-   * spoke, the queue it serves, the tasks it is running, and its version; Drain or Resume; the
-   * deployment it belongs to with the ramp and Promote or Roll back; the diagnostics the server
-   * reports for it; and the server-reported session, manifest and contract verification
-   * (`weft.workers.diagnostics`, COR-124).
+   * The open worker (rows 78k to 78m, 78w, 79g, 79i): its name with its id small and monospaced
+   * beside it, a status line (the status dot and word, then when it was last heard from), and the
+   * one action it has: Drain for a worker that takes work, Resume for one that is draining, Forget
+   * for one that went away or stopped. A worker that went away and left its queue with nobody
+   * under a warning notice, a facts row (the queue, what it runs now, what it serves, its
+   * version), and the tasks on its queue, which the route supplies.
+   *
+   * An id too long to sit beside the heading (a generated one) wraps on its own line under it with
+   * a Copy button, and the list shows its end, which is what tells such workers apart.
    */
   import {
     Alert,
-    Badge,
     Button,
+    CopyButton,
     DescriptionList,
-    PageHeader,
-    SectionHeading,
+    StatusDot,
     Tooltip,
+    type DescriptionListItem,
   } from '@lostgradient/cinder';
+  import { Droplets, Trash2, TriangleAlert } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
 
-  import { formatDuration } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
-  import type { RegistrySnapshotSource } from '../system/registry-view.ts';
   import type { WorkerSummary } from './worker-catalog-types.ts';
-  import WorkerContractVerificationPanel from './worker-contract-verification-panel.svelte';
-  import WorkerManifestPanel from './worker-manifest-panel.svelte';
-  import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
+  import { WORKER_COPY } from './worker-copy.ts';
   import {
-    LONG_POLL_LIMITATION,
-    TRANSPORT_LABEL,
-    workerHealthPresentation,
-  } from './worker-presentation.ts';
-  import WorkerSessionPanel from './worker-session-panel.svelte';
+    hasLongId,
+    humanizeWorkflowType,
+    queueHasNoRunner,
+    workerName,
+    workerStatusLine,
+    workerStatusOf,
+    workerVersion,
+  } from './worker-model.ts';
 
-  interface WorkerDetailViewProps {
+  interface Props {
     readonly worker: WorkerSummary;
+    /** Every worker the server lists, for whether anything else runs this worker's queue. */
+    readonly workers: readonly WorkerSummary[];
     readonly adminGate: ScopeGate;
+    /** How many tasks wait on the worker's queue and failed for good there; `undefined` until read. */
+    readonly counts: { readonly waiting: number; readonly failed: number } | undefined;
     readonly onDrain: () => void;
     readonly onResume: () => void;
-    /** Drains every worker of the worker's deployment. */
-    readonly onDrainDeployment?: (deploymentName: string) => void;
-    /** Resumes the worker's deployment. */
-    readonly onResumeDeployment?: (deploymentName: string) => void;
-    /** The worker's deployment: its ramp, its builds, Promote and Roll back. Rendered under the deployment's name. */
-    readonly deployment?: Snippet<[deploymentName: string]>;
-    /** The diagnostics the server reports for this worker. */
-    readonly diagnostics?: Snippet;
-    readonly manifestDiagnostics?: WorkerManifestDiagnostics | null | undefined;
-    readonly manifestLoading?: boolean;
-    readonly manifestRefreshing?: boolean;
-    readonly manifestError?: unknown;
+    readonly onForget: () => void;
+    /** The tasks on the worker's queue. */
+    readonly tasks: Snippet;
     /** Reference instant for relative times; defaults to render time. */
     readonly now?: number;
-    /** Active registry snapshot for contract verification (COR-162). */
-    readonly registry?: RegistrySnapshotSource | undefined;
-    readonly registryLoading?: boolean;
-    readonly registryRefreshing?: boolean;
-    readonly registryError?: unknown;
   }
 
   let {
     worker,
+    workers,
     adminGate,
+    counts,
     onDrain,
     onResume,
-    onDrainDeployment = undefined,
-    onResumeDeployment = undefined,
-    deployment = undefined,
-    diagnostics = undefined,
-    manifestDiagnostics = undefined,
-    manifestLoading = false,
-    manifestRefreshing = false,
-    manifestError = null,
+    onForget,
+    tasks,
     now = Date.now(),
-    registry = undefined,
-    registryLoading = false,
-    registryRefreshing = false,
-    registryError = null,
-  }: WorkerDetailViewProps = $props();
+  }: Props = $props();
 
-  const presentation = $derived(workerHealthPresentation(worker));
-  const draining = $derived(worker.health === 'draining');
-  // A draining worker is finishing its tasks, a drained one has finished them: Resume undoes either.
-  const drainMarked = $derived(worker.health !== 'active');
+  const copy = WORKER_COPY.detail;
+  const status = $derived(workerStatusOf(worker));
+  const longId = $derived(hasLongId(worker));
+  const version = $derived(workerVersion(worker));
+  const serves = $derived(
+    (worker.workflows ?? []).map((type) => humanizeWorkflowType(type)).join(', '),
+  );
+  // Only a worker that went away leaves its queue with nobody; one that was told to stop did not.
+  const showNotice = $derived(status === 'Disconnected' && queueHasNoRunner(workers, worker));
 
-  const connectionItems = $derived([
-    { term: 'Queue', definition: worker.queue },
-    { term: 'Last heard from', definition: `${formatDuration(worker.heartbeatAgeMs)} ago` },
-    { term: 'Running tasks', definition: `${worker.inFlight} of ${worker.concurrency}` },
+  const facts = $derived<DescriptionListItem[]>([
+    { id: 'queues', term: copy.facts.queues, definition: worker.queue },
     {
-      term: 'Version',
-      definition: [worker.buildId, worker.runtimeVersion].filter(Boolean).join(' · ') || '—',
+      id: 'running',
+      term: copy.facts.running,
+      definition: copy.facts.runningValue(worker.inFlight),
     },
-    { term: 'Transport', definition: TRANSPORT_LABEL[worker.transport] },
-    { term: 'Connected', definition: formatDuration(Date.now() - worker.connectedAt) + ' ago' },
+    { id: 'serves', term: copy.facts.serves, definition: serves === '' ? copy.facts.none : serves },
+    {
+      id: 'version',
+      term: copy.facts.version,
+      definition: version === undefined ? copy.facts.none : versionValue,
+    },
   ]);
 </script>
 
-<div class="weft-worker-detail" data-testid="worker-detail">
-  <PageHeader headingLevel={2}>
-    {#snippet title()}<span class="weft-workers-id" title={worker.id}>{worker.id}</span>{/snippet}
-    {#snippet actions()}
-      <Badge variant={presentation.variant} data-testid="worker-health">{presentation.label}</Badge>
-      {#if adminGate.disabled}
-        <Tooltip text={adminGate.title ?? ''}>
-          <Button variant="secondary" size="sm" disabled label={drainMarked ? 'Resume' : 'Drain'} />
-        </Tooltip>
-      {:else if drainMarked}
-        <Button data-changes variant="secondary" size="sm" label="Resume" onclick={onResume} />
-      {:else}
-        <Button data-changes variant="secondary" size="sm" label="Drain" onclick={onDrain} />
-      {/if}
-    {/snippet}
-  </PageHeader>
+{#snippet versionValue()}<code class="ib-worker-detail__version">{version}</code>{/snippet}
 
-  {#if draining}
-    <Alert variant="warning">
-      Draining: finishing {worker.inFlight} in-flight task{worker.inFlight === 1 ? '' : 's'},
-      accepting no new work.
+{#snippet action()}
+  {#if adminGate.disabled}
+    <Tooltip text={adminGate.title ?? ''}>
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled
+        label={status === 'Connected'
+          ? copy.drain
+          : status === 'Draining'
+            ? copy.resume
+            : copy.forget}
+      />
+    </Tooltip>
+  {:else if status === 'Connected'}
+    <Button data-changes variant="secondary" size="sm" label={copy.drain} onclick={onDrain}>
+      {#snippet leadingIcon()}<Droplets size={14} aria-hidden="true" />{/snippet}
+    </Button>
+  {:else if status === 'Draining'}
+    <Button data-changes variant="secondary" size="sm" label={copy.resume} onclick={onResume} />
+  {:else}
+    <Button data-changes variant="secondary" size="sm" label={copy.forget} onclick={onForget}>
+      {#snippet leadingIcon()}<Trash2 size={14} aria-hidden="true" />{/snippet}
+    </Button>
+  {/if}
+{/snippet}
+
+<div class="ib-worker-detail" data-testid="worker-detail" data-status={status}>
+  <header class="ib-worker-detail__top">
+    <div class="ib-worker-detail__identity">
+      <div class="ib-worker-detail__title-row">
+        <h2 class="ib-worker-detail__name">{workerName(worker)}</h2>
+        {#if !longId}
+          <code class="ib-worker-detail__id" data-testid="worker-id">{worker.id}</code>
+        {/if}
+      </div>
+      {#if longId}
+        <div class="ib-worker-detail__long-id">
+          <code class="ib-worker-detail__id" data-testid="worker-id">{worker.id}</code>
+          <span class="ib-worker-detail__copy">
+            <CopyButton value={worker.id} label={copy.copyLabel} copiedLabel={copy.copied}>
+              {copy.copy}
+              {#snippet confirmation()}{copy.copied}{/snippet}
+            </CopyButton>
+          </span>
+        </div>
+      {/if}
+      <p class="ib-worker-detail__status">
+        <StatusDot word={status} size="sm" />
+        <span data-testid="worker-status-line">{workerStatusLine(worker, now)}</span>
+      </p>
+    </div>
+    <div class="ib-worker-detail__actions">{@render action()}</div>
+  </header>
+
+  {#if showNotice}
+    <Alert variant="warning" data-testid="worker-notice">
+      {#snippet icon()}<TriangleAlert size={16} aria-hidden="true" />{/snippet}
+      <strong>{copy.notice.lead(worker.queue)}</strong>
+      {copy.notice.body(worker.queue, counts?.waiting ?? 0, counts?.failed ?? 0)}
     </Alert>
   {/if}
 
-  {#if worker.transport === 'long-poll'}
-    <Alert variant="info">{LONG_POLL_LIMITATION}</Alert>
-  {/if}
+  <DescriptionList items={facts} variant="facts" data-testid="worker-facts" />
 
-  <div class="weft-worker-detail__grid">
-    <section class="weft-workers-panel" aria-labelledby="worker-connection-heading">
-      <h3 id="worker-connection-heading" class="weft-workers-panel__title">Connection</h3>
-      <DescriptionList items={connectionItems} />
-    </section>
-    <section class="weft-workers-panel" aria-labelledby="worker-activities-heading">
-      <h3 id="worker-activities-heading" class="weft-workers-panel__title">Activities</h3>
-      <div class="weft-worker-detail__activities">
-        {#each worker.activities as activity (activity)}
-          <Badge variant="neutral" monospace>{activity}</Badge>
-        {/each}
-      </div>
-    </section>
-  </div>
-
-  {#if worker.deploymentName !== undefined && deployment}
-    {@const deploymentName = worker.deploymentName}
-    <section class="weft-worker-detail__section" aria-label="Deployment">
-      <SectionHeading level={3} title={`Deployment ${deploymentName}`}>
-        {#snippet actions()}
-          {#if adminGate.disabled}
-            <Tooltip text={adminGate.title ?? ''}>
-              <Button variant="ghost" size="sm" disabled label="Drain deployment" />
-            </Tooltip>
-          {:else if onDrainDeployment && onResumeDeployment}
-            <Button
-              data-changes
-              variant="ghost"
-              size="sm"
-              label="Drain deployment"
-              onclick={() => onDrainDeployment(deploymentName)}
-            />
-            <Button
-              data-changes
-              variant="ghost"
-              size="sm"
-              label="Resume deployment"
-              onclick={() => onResumeDeployment(deploymentName)}
-            />
-          {/if}
-        {/snippet}
-      </SectionHeading>
-      {@render deployment(deploymentName)}
-    </section>
-  {/if}
-
-  {#if diagnostics}
-    <section class="weft-worker-detail__section" aria-label="Worker diagnostics">
-      <SectionHeading level={3} title="Diagnostics" />
-      {@render diagnostics()}
-    </section>
-  {/if}
-
-  <WorkerSessionPanel
-    diagnostics={manifestDiagnostics}
-    loading={manifestLoading}
-    error={manifestError}
-    {now}
-  />
-
-  <WorkerManifestPanel
-    diagnostics={manifestDiagnostics}
-    loading={manifestLoading}
-    refreshing={manifestRefreshing}
-    error={manifestError}
-    capabilities={worker.capabilities}
-  />
-
-  <WorkerContractVerificationPanel
-    diagnostics={manifestDiagnostics}
-    {registry}
-    loading={manifestLoading || registryLoading}
-    refreshing={manifestRefreshing || registryRefreshing}
-    error={manifestError ?? registryError ?? null}
-  />
+  {@render tasks()}
 </div>
+
+<style>
+  .ib-worker-detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-4);
+    min-width: 0;
+  }
+
+  .ib-worker-detail__top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cinder-space-2) var(--cinder-space-4);
+  }
+
+  .ib-worker-detail__identity {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-width: 0;
+    flex: 1 1 16rem;
+  }
+
+  .ib-worker-detail__title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+    min-width: 0;
+  }
+
+  .ib-worker-detail__name {
+    margin: 0;
+    font-size: var(--cinder-text-xl);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .ib-worker-detail__id,
+  .ib-worker-detail__version {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  /* The full id wraps inside its own column and the Copy button stays beside it (row 79g). */
+  .ib-worker-detail__long-id {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    min-width: 0;
+  }
+
+  .ib-worker-detail__long-id .ib-worker-detail__id {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .ib-worker-detail__copy {
+    flex: none;
+  }
+
+  .ib-worker-detail__status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    margin: 0;
+    color: var(--cinder-text-muted);
+  }
+
+  .ib-worker-detail__actions {
+    flex: none;
+  }
+</style>

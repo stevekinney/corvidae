@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { readFirstJsonlRecord } from './cli-jsonl.test-support.ts';
 import { HOST_RESTART_ROUTE, RESTART_EXIT_CODE } from './restart.ts';
 
 const directory = mkdtempSync(join(tmpdir(), 'interborough-cli-'));
@@ -66,6 +67,7 @@ const uploadChunks: Buffer[] = [];
 const uploadedChatBodies: Record<string, unknown>[] = [];
 const compiledStreamHandshakes: string[] = [];
 const compiledRunHandshakes: string[] = [];
+const compiledRunFirstRecord = Promise.withResolvers<void>();
 const compiledRunCancelCalls: string[] = [];
 const compiledRunRequests: Array<{ method: string; params?: Record<string, unknown> }> = [];
 const productionServer = Bun.serve({
@@ -132,7 +134,7 @@ const productionServer = Bun.serve({
       void (async () => {
         if (taskId === 'compiled-run') {
           await send('compiled-1', { kind: 'task.status', status: 'running' });
-          await Bun.sleep(200);
+          await compiledRunFirstRecord.promise;
           await send('compiled-2', { kind: 'task.status', status: 'completed' });
           await writer.close();
         } else if (taskId === 'compiled-eof') {
@@ -146,6 +148,7 @@ const productionServer = Bun.serve({
           await writer.close();
         } else {
           await send('compiled-open', { kind: 'task.status', status: 'running' });
+          await writer.closed.catch(() => undefined);
         }
       })();
       return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
@@ -186,12 +189,10 @@ const productionServer = Bun.serve({
               'data: {"type":"RUN_STARTED","threadId":"thread-sigint","runId":"run-sigint"}\n\n',
             ),
           );
-          await Bun.sleep(500);
-          try {
-            await writer.close();
-          } catch {
-            // SIGINT intentionally closes the client side of this fixture stream.
-          }
+          await writer.write(
+            encoder.encode('data: {"type":"TEXT_MESSAGE_CONTENT","delta":"stream-ready"}\n\n'),
+          );
+          await writer.closed.catch(() => undefined);
         })();
         return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
       }
@@ -232,7 +233,6 @@ const productionServer = Bun.serve({
           await send({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
         } else {
           await send({ type: 'RUN_STARTED', threadId: 'thread-sigint', runId: 'run-sigint' });
-          await Bun.sleep(500);
         }
         try {
           await writer.close();
@@ -318,15 +318,31 @@ const sigintCall = spawnWithHangGuard(
   ],
   { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
 );
-await Bun.sleep(50);
 await waitUntil(() => compiledStreamHandshakes.includes('sigint-started'), {
   message: 'compiled chat to connect to the AG-UI stream',
   yieldTurn: () => Bun.sleep(10),
 });
-await Bun.sleep(250);
+const sigintStdoutReader = sigintCall.stdout.getReader();
+const sigintStdoutDecoder = new TextDecoder();
+let sigintStdout = '';
+let sigintStreamReady = false;
+while (!sigintStreamReady) {
+  const next = await sigintStdoutReader.read();
+  if (next.done) break;
+  sigintStdout += sigintStdoutDecoder.decode(next.value, { stream: true });
+  sigintStreamReady = sigintStdout.includes('stream-ready');
+}
+if (!sigintStreamReady)
+  throw new Error('compiled chat did not render stream readiness before SIGINT');
 sigintCall.kill('SIGINT');
-const [sigintStdout, sigintStderr, sigintExitCode] = await Promise.all([
-  new Response(sigintCall.stdout).text(),
+while (true) {
+  const next = await sigintStdoutReader.read();
+  if (next.done) break;
+  sigintStdout += sigintStdoutDecoder.decode(next.value, { stream: true });
+}
+sigintStdout += sigintStdoutDecoder.decode();
+sigintStdoutReader.releaseLock();
+const [sigintStderr, sigintExitCode] = await Promise.all([
   new Response(sigintCall.stderr).text(),
   sigintCall.exited,
 ]);
@@ -462,7 +478,20 @@ const compiledRunStream = spawnWithHangGuard(
   { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
 );
 const compiledRunReader = compiledRunStream.stdout.getReader();
-const compiledRunFirstChunk = await compiledRunReader.read();
+const compiledRunFirst = await readFirstJsonlRecord(compiledRunReader, (record) => {
+  if (typeof record !== 'object' || record === null) return false;
+  const value = record as { id?: unknown; event?: { kind?: unknown; status?: unknown } };
+  return (
+    value.id === 'task:compiled-run' &&
+    value.event?.kind === 'task.status' &&
+    value.event.status === 'running'
+  );
+});
+compiledRunFirstRecord.resolve();
+const compiledRunFirstChunk = {
+  done: false,
+  value: new TextEncoder().encode(`${compiledRunFirst.text}\n`),
+};
 const compiledRunSecondChunk = await compiledRunReader.read();
 await compiledRunReader.cancel();
 const compiledRunStreamExit = await compiledRunStream.exited;

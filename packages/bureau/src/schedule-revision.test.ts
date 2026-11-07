@@ -2,7 +2,7 @@
  * COR-1482 — the Bureau's schedule methods pass `expectedRevision` to Weft, which compares it
  * inside its serialized write, and `schedules.update` wraps Weft's `updateSchedule`.
  */
-import { ScheduleStaleRevisionError } from '@lostgradient/weft';
+import { decode, KEYS, ScheduleStaleRevisionError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -112,6 +112,64 @@ describe('bureau.schedules.update', () => {
       const awaited15 = await harness.bureau.schedules.get(recurring.id);
       expect(awaited15?.revision).toBe(1);
     });
+  });
+
+  it('refuses an update of the overlap alone when a chat was given to the schedule after it was read', async () => {
+    // Update A reads the schedule (overlap 'skip', no chat) to check that 'allow' may be set; update
+    // B then gives it a chat; A must not commit on top of B, which would leave overlapping fires
+    // on a recurring chat.
+    let armedKey: string | undefined;
+    let reached: () => void = () => {};
+    let release: () => void = () => {};
+    const readByA = new Promise<void>((resolve) => (reached = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    class HoldingStorage extends MemoryStorage {
+      override async get(key: string): Promise<Uint8Array | null> {
+        const value = await super.get(key);
+        if (key !== armedKey) return value;
+        armedKey = undefined;
+        reached();
+        await gate;
+        return value;
+      }
+    }
+    const storage = new HoldingStorage();
+    const harness = await startWorkflowBureau({
+      overrides: {
+        storage,
+        agents: {
+          default: createAgent({ generate: async () => ({ content: 'tick', toolCalls: [] }) }),
+        },
+      },
+    });
+    try {
+      const { bureau } = harness;
+      const summary = await created(harness);
+      armedKey = KEYS.schedule(summary.id);
+      const first = bureau.schedules
+        .update(summary.id, { spec: '1h', overlap: 'allow' })
+        .catch((thrown: unknown) => thrown);
+      await readByA;
+      expect(await bureau.schedules.update(summary.id, { spec: '1h', continueChat: true })).toBe(
+        true,
+      );
+      release();
+      const error = await first;
+      expect(error).toBeInstanceOf(ScheduleStaleRevisionError);
+      expect(error).toMatchObject({ expectedRevision: 1, currentRevision: 2 });
+      expect(await bureau.schedules.get(summary.id)).toMatchObject({
+        overlap: 'skip',
+        revision: 2,
+      });
+      const record = decode((await storage.get(KEYS.schedule(summary.id))) as Uint8Array) as {
+        overlap?: string;
+        input: { sessionId?: string };
+      };
+      expect(record.overlap).toBe('skip');
+      expect(typeof record.input.sessionId).toBe('string');
+    } finally {
+      await harness.dispose();
+    }
   });
 
   it('refuses a workflow’s schedule as one that does not exist, and rejects one that is not there as Weft does', async () => {

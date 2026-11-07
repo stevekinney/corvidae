@@ -2,6 +2,8 @@ import type { HttpClient } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
+import { agentsListQuery } from '../lib/agent-queries.ts';
+import { AUDIT_EVENT_TYPES } from '../lib/audit-event-types.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { getGoal, listGoals } from '../lib/bureau-goals.ts';
@@ -64,9 +66,9 @@ function notFound(what: string): ViewProbeFault {
   return new ViewProbeFault(`No ${what} was found.`, 404);
 }
 
-/** The audit trail: empty when the caller may see no record, which the Bureau answers for any caller. */
+/** The audit log: empty when the caller may see no event, which the Bureau answers for any caller. */
 async function probeAudit(): Promise<ViewProbeResult> {
-  const page = await queryAudit({}, undefined, { limit: 1 });
+  const page = await queryAudit({ types: AUDIT_EVENT_TYPES }, undefined, { limit: 1 });
   return { empty: page.records.length === 0 };
 }
 
@@ -164,12 +166,6 @@ async function probeWorkflowType(
   return { empty: false };
 }
 
-/** The engine answering is all the pages that read it need settled before they show. */
-async function probeEngineRegistry(client: HttpClient): Promise<ViewProbeResult> {
-  await client.operations['weft.system.registry']({});
-  return { empty: false };
-}
-
 /**
  * The probe for a view, or `undefined` when the view needs none because the route itself says
  * what it is showing: one run's detail page handles a run that is missing in its own words.
@@ -212,8 +208,10 @@ export function probeFor(
         return { empty: page.contexts.length === 0 };
       };
     case 'agents':
-      return async () => {
-        const agents = await listAgents();
+      return async (_client, queryClient) => {
+        // A completed route prefetch may be stale after another host changes membership. Keep
+        // concurrent probe/page reads deduplicated, but make this existence observation current.
+        const agents = await queryClient.fetchQuery({ ...agentsListQuery(), staleTime: 0 });
         const agent = parameters['agent'];
         if (agent === undefined) return { empty: agents.length === 0 };
         if (!agents.some((entry) => entry.name === agent)) throw notFound('agent');
@@ -225,22 +223,13 @@ export function probeFor(
     case 'audit':
       return probeAudit;
     case 'settings':
-      // Plugins reads the host's own route, and the page words its loading and failure itself.
+      // Plugins reads the host's own route, and the page words that read's loading and failure itself;
+      // the Settings frame around it still reads the Bureau's settings for the restart notice.
       if (pattern === '/settings/plugins') return undefined;
       // API reference gates on nothing: its groups read for themselves, so one failing or refused
       // engine read must not replace the others. Its registry part words its own states.
       if (pattern === '/settings/api-reference') return undefined;
-      // The sections that moved out of the System page read the engine, not the Bureau's settings;
-      // General, Models, Model policy and A2A read the settings.
-      if (
-        pattern !== undefined &&
-        pattern !== '/settings' &&
-        pattern !== '/settings/models' &&
-        pattern !== '/settings/model-policy' &&
-        pattern !== '/settings/a2a'
-      ) {
-        return probeEngineRegistry;
-      }
+      // Every other section reads the settings.
       // The settings always have something to show: every key is listed, with a value or without.
       // Asking for them settles whether the caller may read them and whether the Bureau answers.
       return async () => {

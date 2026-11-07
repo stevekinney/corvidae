@@ -102,6 +102,11 @@ export async function exerciseAdministratorRoutes(
         path: '/host/providers/anthropic',
         body: { apiKey: 'route-provider-secret', models: ['sonnet'] },
       },
+      {
+        key: 'POST /host/providers/:name/test',
+        path: '/host/providers/anthropic/test',
+        body: { apiKey: 'route-provider-secret' },
+      },
       { key: 'PUT /host/catalog', path: '/host/catalog', body: { edits: [] } },
       { key: 'POST /host/providers/reload', path: '/host/providers/reload' },
       { key: 'DELETE /host/providers/:name', path: '/host/providers/anthropic', body: {} },

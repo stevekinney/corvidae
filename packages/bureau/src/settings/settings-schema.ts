@@ -160,6 +160,12 @@ export const settingsSchema = z
     'retention.audit': retentionWindow.describe(
       'How long audit records are kept before they are deleted.',
     ),
+    'retention.runs': retentionWindow.describe(
+      'How long finished runs and their steps are kept. Deleting a run removes its page; a link to it then says the run doesn’t exist.',
+    ),
+    'retention.chats': retentionWindow.describe(
+      'How long chats are kept after their last message.',
+    ),
     'retention.events': retentionWindow.describe(
       'How long recent activity is kept for the pages that follow it live. Run history has its own setting.',
     ),
@@ -232,7 +238,7 @@ export const settingsSchema = z
       })
       .strict()
       .describe(
-        'How long run history is kept, by how the run ended. Recent activity has its own setting.',
+        'How long run history is kept, by how the run ended, in place of the one window `retention.runs` sets for every outcome. Recent activity has its own setting.',
       ),
     'engine.retentionSweepInterval': positiveMilliseconds.describe(
       'How often old run history is removed.',
@@ -263,6 +269,9 @@ export const settingsSchema = z
     'engine.maxNestingDepth': positiveInteger.describe(
       'How deeply workflows may start other workflows.',
     ),
+    'engine.maxConcurrentRuns': positiveInteger.describe(
+      'The most workflow runs that execute at the same time on this machine.',
+    ),
     'engine.workflowClaimTtl': positiveMilliseconds.describe(
       'How long a worker’s claim on a running workflow lasts without being renewed.',
     ),
@@ -277,6 +286,16 @@ export const settingsSchema = z
       .enum(['none', 'workflow-lease'])
       .describe('How servers that share storage divide the work between them.'),
     workflowVersion: z.string().min(1).describe('The version recorded on new runs.'),
+    'a2a.enabled': z
+      .boolean()
+      .describe(
+        'Whether other agents and tools can call this one over the Agent2Agent protocol. Off, no remote call is answered.',
+      ),
+    'a2a.agents': z
+      .record(z.string().min(1), z.boolean())
+      .describe(
+        'Which agents answer remote calls, by name. An agent named here follows its entry; an agent left out follows its own file, or the host that registered it.',
+      ),
     'a2a.push.enabled': z
       .boolean()
       .describe(
@@ -311,6 +330,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'decisions.maximumPerTask': 'live',
   'context.summarizerModel': 'live',
   'retention.audit': 'live',
+  'retention.runs': 'live',
+  'retention.chats': 'live',
   'retention.events': 'live',
   'retention.tasks': 'live',
   'retention.receipts': 'live',
@@ -335,12 +356,17 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'engine.schedulerPollIntervalMs': 'live',
   'engine.checkpointHistory': 'restart',
   'engine.maxNestingDepth': 'restart',
+  // A cap Weft's engine takes at construction: a new value applies from the next start.
+  'engine.maxConcurrentRuns': 'restart',
   'engine.workflowClaimTtl': 'restart',
   'engine.workflowClaimRenewInterval': 'restart',
   durable: 'restart',
   maintenance: 'restart',
   'durableOwnership.ownership': 'restart',
   workflowVersion: 'restart',
+  'a2a.enabled': 'restart',
+  // Read on every A2A request, so an agent shared or withdrawn is served or refused at once.
+  'a2a.agents': 'live',
   'a2a.push.enabled': 'restart',
   'a2a.push.sweepIntervalMs': 'restart',
 };

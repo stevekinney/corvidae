@@ -30,6 +30,7 @@ describe('the settings the Bureau shows', () => {
       'bureau.settings.get': () => ({
         values: {},
         effective: {},
+        running: {},
         revision: 1,
         persisted: true,
         keys: {
@@ -49,11 +50,12 @@ describe('the settings the Bureau shows', () => {
     expect(keys['tools.wakeup']).not.toHaveProperty('lockReason');
   });
 
-  test('are read with their revision, what each key applies by, and how each key stands', async () => {
+  test('are read with their revision, what each key applies by, what the host runs, and how each key stands', async () => {
     stub = installBureauStub({
       'bureau.settings.get': () => ({
-        values: { 'tools.wakeup': true },
+        values: { 'tools.wakeup': true, 'engine.maxConcurrentRuns': 6 },
         effective: { 'tools.wakeup': true, 'retention.events': { olderThan: 604_800_000 } },
+        running: { 'tools.wakeup': true, 'engine.maxConcurrentRuns': 4 },
         revision: 4,
         persisted: true,
         keys: { 'tools.wakeup': { apply: 'live', locked: false, pendingRestart: false } },
@@ -61,8 +63,9 @@ describe('the settings the Bureau shows', () => {
     });
 
     expect(await getSettings()).toEqual({
-      values: { 'tools.wakeup': true },
+      values: { 'tools.wakeup': true, 'engine.maxConcurrentRuns': 6 },
       effective: { 'tools.wakeup': true, 'retention.events': { olderThan: 604_800_000 } },
+      running: { 'tools.wakeup': true, 'engine.maxConcurrentRuns': 4 },
       revision: 4,
       persisted: true,
       keys: { 'tools.wakeup': { apply: 'live', locked: false, pendingRestart: false } },

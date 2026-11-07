@@ -63,6 +63,13 @@
     line-height: var(--cinder-statistic-value-line-height, 1.1);
   }
 
+  /* The placeholder block keeps the height of a figure, so nothing shifts when the figure arrives. */
+  .cinder-statistic__value--loading {
+    display: flex;
+    align-items: center;
+    min-block-size: calc(var(--cinder-statistic-value-font-size, var(--cinder-text-4xl)) * 1.1);
+  }
+
   .cinder-statistic[data-cinder-has-icon] .cinder-statistic__value {
     grid-column: 2;
   }

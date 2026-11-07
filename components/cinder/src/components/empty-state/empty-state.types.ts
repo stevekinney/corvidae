@@ -22,6 +22,12 @@ export type EmptyStateKind =
 
 /** Scale of an empty state: `'default'` fills a page region, `'compact'` fits a tab or panel. */
 export type EmptyStateSize = 'default' | 'compact';
+/**
+ * How the parts are laid out. `stacked` is the disc above the title above the sentence. `inline`
+ * puts a 32px disc beside one line of text, the title in bold followed by the sentence, at the
+ * inline start, for a state that sits among rows (the runs of a schedule below the Now marker).
+ */
+export type EmptyStateLayout = 'stacked' | 'inline';
 
 export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
@@ -56,6 +62,12 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * @default 'default'
    */
   size?: EmptyStateSize;
+  /**
+   * `'inline'` draws a 32px disc beside the title and the sentence on one line, at the inline
+   * start, without the vertical padding of a region. Use it with `size="compact"`.
+   * @default 'stacked'
+   */
+  layout?: EmptyStateLayout;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state.

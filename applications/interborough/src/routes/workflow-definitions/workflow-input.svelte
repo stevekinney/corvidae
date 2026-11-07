@@ -135,7 +135,15 @@
 
 <div class="ib-workflow-input" bind:this={region} onsubmitcapture={noteSubmit} data-testid={testId}>
   {#if formSchema !== undefined}
-    <SchemaForm data-changes id={formId} schema={formSchema} name={formId} {issues} {onSubmit} />
+    <SchemaForm
+      data-changes
+      id={formId}
+      schema={formSchema}
+      name={formId}
+      variant="input"
+      {issues}
+      {onSubmit}
+    />
   {:else}
     <Textarea
       id={jsonId}

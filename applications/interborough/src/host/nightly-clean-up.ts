@@ -99,6 +99,7 @@ const EXPIRED_RECORD_KINDS = [
   'logs',
   'notifications',
   'hookDeliveries',
+  'chats',
 ] as const satisfies readonly ExpiredRecordKind[];
 
 const kindSchema = z.enum(EXPIRED_RECORD_KINDS);
@@ -238,6 +239,7 @@ async function readLast(
       logs: counted.logs ?? 0,
       notifications: counted.notifications ?? 0,
       hookDeliveries: counted.hookDeliveries ?? 0,
+      chats: counted.chats ?? 0,
     };
     return { ...parsed.last, byKind };
   } catch {

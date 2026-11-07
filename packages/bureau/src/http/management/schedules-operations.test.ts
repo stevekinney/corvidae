@@ -8,7 +8,8 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { join } from 'node:path';
 
 import { createAgent } from '@lostgradient/operative';
-import { handleRequest, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { decode, handleRequest, KEYS, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
@@ -66,7 +67,7 @@ async function createdBy(opened: OpenedBureau, key: string, extra: object = {}):
 const status = (body: RpcBody) => body.error?.data?.httpStatus;
 
 describe('the operations list', () => {
-  it('serves the ten schedule operations, registered and listed in OpenRPC', async () => {
+  it('serves the eleven schedule operations, registered and listed in OpenRPC', async () => {
     const names = [
       'bureau.schedules.list',
       'bureau.schedules.get',
@@ -76,6 +77,7 @@ describe('the operations list', () => {
       'bureau.schedules.cancel',
       'bureau.schedules.update',
       'bureau.schedules.skipnext',
+      'bureau.schedules.unskip',
       'bureau.schedules.runnow',
       'bureau.schedules.missed',
     ];
@@ -186,6 +188,266 @@ describe('each schedule operation, as the owner', () => {
     expect(status(recurring)).toBe(400);
     const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
     expect(listed.result!['schedules']).toEqual([]);
+  });
+});
+
+describe('an edit of the run a schedule starts (COR-2018)', () => {
+  const editor = createAgent({
+    name: 'editor',
+    generate: async () => ({ content: 'ok', toolCalls: [] }),
+  });
+
+  async function serveTwoAgents(storage?: Storage): Promise<OpenedBureau> {
+    const opened = await openBureau({
+      ...(storage === undefined ? {} : { storage }),
+      agents: { writer, editor },
+      a2aAgents: ['writer', 'editor'],
+      generate: answering(),
+    });
+    cleanups.push(() => opened.dispose());
+    return opened;
+  }
+
+  /** The view of a schedule, as its owner reads it. */
+  const read = async (opened: OpenedBureau, id: string) => {
+    const body = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+    return body.result;
+  };
+
+  it('changes the agent, the text, and the session, and the view says so without serving the session', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    expect(await read(opened, id)).toMatchObject({ continuesChat: false });
+
+    const updated = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      {
+        scheduleId: id,
+        spec: '2h',
+        agentName: 'editor',
+        input: 'A new message',
+        sessionId: 'schedule-chat-1',
+        expectedRevision: 1,
+      },
+      'alice-key',
+    );
+    expect(updated.result).toEqual({ id, status: 'active', revision: 2 });
+    const view = await read(opened, id);
+    expect(view).toMatchObject({
+      agentName: 'editor',
+      inputPreview: 'A new message',
+      continuesChat: true,
+      owner: OWNER.alice,
+    });
+    expect(JSON.stringify(view)).not.toContain('schedule-chat-1');
+
+    const fresh = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', sessionId: null },
+      'alice-key',
+    );
+    expect(fresh.result).toMatchObject({ revision: 3 });
+    expect(await read(opened, id)).toMatchObject({
+      agentName: 'editor',
+      inputPreview: 'A new message',
+      continuesChat: false,
+    });
+  });
+
+  it('refuses a new agent for a schedule whose chat belongs to another agent, and writes nothing', async () => {
+    const opened = await serveTwoAgents();
+    const task = await opened.bureau.tasks.start('writer', 'Begin the chat', {
+      principal: OWNER.alice,
+    });
+    const id = await createdBy(opened, 'alice-key', { sessionId: task.contextId });
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'editor' },
+      'alice-key',
+    );
+    expect(status(refused)).toBe(400);
+    expect(refused.error?.message).toContain('belongs to agent "writer"');
+    // Naming that chat together with another agent is the same schedule, refused the same.
+    const named = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'editor', sessionId: task.contextId },
+      'alice-key',
+    );
+    expect(status(named)).toBe(400);
+    expect(await read(opened, id)).toMatchObject({
+      agentName: 'writer',
+      continuesChat: true,
+      revision: 1,
+    });
+    // The way out is a new chat with the change, or a fresh chat every fire.
+    const renewed = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'editor', continueChat: true },
+      'alice-key',
+    );
+    expect(renewed.result).toMatchObject({ revision: 2 });
+    expect(await read(opened, id)).toMatchObject({ agentName: 'editor', continuesChat: true });
+    const fresh = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'writer', sessionId: null },
+      'alice-key',
+    );
+    expect(fresh.result).toMatchObject({ revision: 3 });
+  });
+
+  it('refuses a new chat named together with an existing one', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', continueChat: true, sessionId: 'schedule-chat-1' },
+      'alice-key',
+    );
+    expect(status(refused)).toBe(400);
+    expect(await read(opened, id)).toMatchObject({ continuesChat: false, revision: 1 });
+    const created = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      { ...NEW_SCHEDULE, continueChat: true, sessionId: 'schedule-chat-1' },
+      'alice-key',
+    );
+    expect(status(created)).toBe(400);
+  });
+
+  it('keeps the agent, the text, and the session an update does not name', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key', { sessionId: 'digest' });
+    await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '3h', description: 'renamed' },
+      'alice-key',
+    );
+    expect(await read(opened, id)).toMatchObject({
+      agentName: 'writer',
+      inputPreview: 'PROMPT-SENTINEL-7c1d',
+      continuesChat: true,
+      description: 'renamed',
+    });
+  });
+
+  it('keeps the media an input carries when its text is replaced', async () => {
+    const storage = new MemoryStorage();
+    const opened = await serveTwoAgents(storage);
+    const made = await opened.bureau.schedules.create({
+      agentName: 'writer',
+      spec: '1h',
+      input: [
+        { type: 'text', text: 'look at this' },
+        { type: 'image', source: { kind: 'remote-url', url: 'https://example.invalid/a.png' } },
+      ],
+      principal: OWNER.alice,
+    });
+    const id = made!.id;
+    const updated = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '1h', input: 'and now this' },
+      'alice-key',
+    );
+    expect(updated.error).toBeUndefined();
+    expect(await read(opened, id)).toMatchObject({ inputPreview: 'and now this' });
+    const stored = decode((await storage.get(KEYS.schedule(id))) as Uint8Array) as {
+      input: { input: unknown };
+    };
+    expect(stored.input.input).toEqual([
+      { type: 'text', text: 'and now this' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.invalid/a.png' } },
+    ]);
+  });
+
+  it('answers an agent that is not in the catalog as NotFound and writes nothing', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', agentName: 'nobody' },
+      'alice-key',
+    );
+    expect(status(refused)).toBe(404);
+    expect(await read(opened, id)).toMatchObject({ agentName: 'writer', revision: 1 });
+  });
+
+  it('refuses a recurring session on a schedule that allows overlap, in either order, and writes nothing', async () => {
+    const opened = await serveTwoAgents();
+    const overlapping = await createdBy(opened, 'alice-key', { overlap: 'allow' });
+    const session = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: overlapping, spec: '2h', sessionId: 'digest' },
+      'alice-key',
+    );
+    expect(status(session)).toBe(400);
+    const both = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: overlapping, spec: '2h', sessionId: 'digest', overlap: 'allow' },
+      'alice-key',
+    );
+    expect(status(both)).toBe(400);
+    const recurring = await createdBy(opened, 'alice-key', { sessionId: 'digest' });
+    const allow = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: recurring, spec: '2h', overlap: 'allow' },
+      'alice-key',
+    );
+    expect(status(allow)).toBe(400);
+    // Moving to a fresh session and to overlap together is allowed.
+    const together = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: recurring, spec: '2h', overlap: 'allow', sessionId: null },
+      'alice-key',
+    );
+    expect(together.error).toBeUndefined();
+    expect(await read(opened, overlapping)).toMatchObject({ revision: 1 });
+  });
+
+  it('refuses an edit of the run made against a revision that has moved on, writing nothing', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    await rpc(opened.handler, 'bureau.schedules.pause', { scheduleId: id }, 'alice-key');
+    const stale = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', input: 'too late', expectedRevision: 1 },
+      'alice-key',
+    );
+    expect(status(stale)).toBe(409);
+    expect(stale.error?.data).toMatchObject({ currentRevision: 2, expectedRevision: 1 });
+    expect(await read(opened, id)).toMatchObject({
+      inputPreview: 'PROMPT-SENTINEL-7c1d',
+      revision: 2,
+    });
+  });
+
+  it('answers an edit of a schedule that is not the caller’s as NotFound, naming nothing of the edit', async () => {
+    const opened = await serveTwoAgents();
+    const id = await createdBy(opened, 'alice-key');
+    const refused = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '2h', input: 'mine now' },
+      'bob-key',
+    );
+    expect(status(refused)).toBe(404);
+    expect(await read(opened, id)).toMatchObject({
+      inputPreview: 'PROMPT-SENTINEL-7c1d',
+    });
   });
 });
 
@@ -796,8 +1058,10 @@ it('workspace administrators manage shared configuration without private schedul
   }
 });
 
-it('workspace schedules cannot attach another owner or an unknown private session', async () => {
+/** A workspace Bureau whose members each own the schedules and chats they create. */
+async function openWorkspaceBureau(storage?: Storage): Promise<OpenedBureau> {
   const opened = await openBureau({
+    ...(storage === undefined ? {} : { storage }),
     agents: { writer },
     generate: answering(),
     bureauOptions: {
@@ -825,6 +1089,11 @@ it('workspace schedules cannot attach another owner or an unknown private sessio
     },
   });
   cleanups.push(() => opened.dispose());
+  return opened;
+}
+
+it('workspace schedules cannot attach another owner or an unknown private session', async () => {
+  const opened = await openWorkspaceBureau();
   const task = await opened.bureau.tasks.start('writer', 'PRIVATE-SESSION-SENTINEL', {
     principal: 'owner-a',
   });
@@ -842,4 +1111,77 @@ it('workspace schedules cannot attach another owner or an unknown private sessio
       principal: 'owner-a',
     }),
   ).toMatchObject({ status: 'active' });
+});
+
+it('a workspace schedule update cannot move a schedule onto another owner or an unknown chat, and writes nothing', async () => {
+  const storage = new MemoryStorage();
+  const opened = await openWorkspaceBureau(storage);
+  const task = await opened.bureau.tasks.start('writer', 'PRIVATE-SESSION-SENTINEL', {
+    principal: 'owner-a',
+  });
+  const schedule = await opened.bureau.schedules.create({
+    ...NEW_SCHEDULE,
+    principal: 'owner-b',
+  });
+  const id = schedule!.id;
+  const before = await storage.get(KEYS.schedule(id));
+  for (const sessionId of [task.contextId, 'missing-session']) {
+    expect(
+      await rejectionOf(opened.bureau.schedules.update(id, { spec: '2h', sessionId })),
+    ).toMatchObject({ code: 'NOT_FOUND', message: 'Session not found' });
+  }
+  expect(await opened.bureau.schedules.get(id)).toMatchObject({ revision: 1 });
+  expect(await storage.get(KEYS.schedule(id))).toEqual(before);
+  const own = await opened.bureau.schedules.create({ ...NEW_SCHEDULE, principal: 'owner-a' });
+  expect(
+    await opened.bureau.schedules.update(own!.id, { spec: '2h', sessionId: task.contextId }),
+  ).toBe(true);
+  expect(await opened.bureau.schedules.get(own!.id)).toMatchObject({ revision: 2 });
+});
+
+it('a workspace schedule can be given a new chat that Bureau names, which survives a restart', async () => {
+  const storage = new MemoryStorage();
+  const opened = await openWorkspaceBureau(storage);
+  const made = await opened.bureau.schedules.create({
+    ...NEW_SCHEDULE,
+    continueChat: true,
+    principal: 'owner-b',
+  });
+  const id = made!.id;
+  const storedSession = async (): Promise<string | undefined> => {
+    const record = decode((await storage.get(KEYS.schedule(id))) as Uint8Array) as {
+      input: { sessionId?: string; authorityHold?: string };
+    };
+    expect(record.input.authorityHold).toBeUndefined();
+    return record.input.sessionId;
+  };
+  const first = await storedSession();
+  if (first === undefined) throw new Error('The schedule kept no chat.');
+  expect(typeof first).toBe('string');
+  expect(await opened.bureau.schedules.get(id)).toMatchObject({ status: 'active', revision: 1 });
+  // The chat does not exist until the first fire, so a caller still cannot name an id of its own.
+  expect(
+    await rejectionOf(
+      opened.bureau.schedules.create({ ...NEW_SCHEDULE, sessionId: first, principal: 'owner-b' }),
+    ),
+  ).toMatchObject({ code: 'NOT_FOUND', message: 'Session not found' });
+  expect(
+    await rejectionOf(
+      opened.bureau.schedules.create({
+        ...NEW_SCHEDULE,
+        continueChat: true,
+        sessionId: 'schedule-chat-1',
+        principal: 'owner-b',
+      }),
+    ),
+  ).toMatchObject({ code: 'BAD_REQUEST' });
+  expect(await opened.bureau.schedules.update(id, { spec: '2h', continueChat: true })).toBe(true);
+  const second = await storedSession();
+  expect(second).not.toBe(first);
+  expect(await opened.bureau.schedules.get(id)).toMatchObject({ revision: 2 });
+  await opened.dispose();
+  const reopened = await openWorkspaceBureau(storage);
+  await reopened.bureau.maintain();
+  expect(await storedSession()).toBe(second);
+  expect(await reopened.bureau.schedules.get(id)).toMatchObject({ status: 'active' });
 });

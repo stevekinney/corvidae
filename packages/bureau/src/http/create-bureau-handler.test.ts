@@ -677,6 +677,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.schedules.resume',
         'bureau.schedules.runnow',
         'bureau.schedules.skipnext',
+        'bureau.schedules.unskip',
         'bureau.schedules.update',
         'bureau.settings.events',
         'bureau.settings.get',

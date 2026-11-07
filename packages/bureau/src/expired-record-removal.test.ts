@@ -47,6 +47,7 @@ describe('removeExpiredRecords', () => {
             logs: 0,
             notifications: 1,
             hookDeliveries: 0,
+            chats: 0,
           },
           failed: [],
         });

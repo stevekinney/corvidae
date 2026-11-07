@@ -208,6 +208,8 @@ const CONTEXT_COMMAND_PARAMETERS = {
   // Clearing a title the context never had changes nothing, so the rename reaches its own check
   // without altering the title the transcript scan looks for.
   title: null,
+  // A schedule's skip and unskip name the fire they mean.
+  occurrence: '2026-01-01T09:00:00.000Z',
 } as const;
 
 /** Whether `operation`'s `id` names an agent: a definition operation or a versions operation. */
@@ -884,6 +886,11 @@ describe('identifiers grant nothing', () => {
               // two-owner proof for memory is `memory-operations.test.ts`.
               ...(operation.name.startsWith('bureau.memory.') ? MEMORY_PARAMETERS : {}),
               ...CONTEXT_COMMAND_PARAMETERS,
+              // An update's `sessionId` is the chat to assign, not a resource it reads, so probing it
+              // still names the schedule, which is bob's.
+              ...(operation.name === 'bureau.schedules.update'
+                ? { scheduleId: bobScheduleId }
+                : {}),
               [parameter]: requested,
               decision: 'approve',
               input: { id: 'input-1', payload: 'hello' },

@@ -37,7 +37,7 @@
     pluginOfAgent,
   } from '../../lib/agent-paths.ts';
   import { agentFaultOf, duplicateAgent, getAgentDefinition } from '../../lib/agent-definitions.ts';
-  import { listAgents } from '../../lib/bureau-client.ts';
+  import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { listMemories, MEMORY_PAGE_SIZE } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -54,10 +54,7 @@
 
   let activeTab = $state(untrack(() => router.search.get('tab') ?? 'chats'));
 
-  const agents = createQuery(
-    () => ({ queryKey: queryKeys.agents.list(), queryFn: ({ signal }) => listAgents({ signal }) }),
-    undefined,
-  );
+  const agents = createQuery(agentsListQuery);
   const agent = $derived(agents.data?.find((entry) => entry.name === id));
   // The top bar's trail names the agent as a person reads it, once the listing has answered.
   usePageLabel(() => ({ path: agentPath(id), label: agent?.displayName }));

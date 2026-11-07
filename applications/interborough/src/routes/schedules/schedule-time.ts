@@ -1,9 +1,8 @@
 /**
- * When a schedule fires, said in the zone it is read in. A cron schedule is read in its own IANA
- * zone (`UTC` when it was made without one), so "every day at 09:00" in `America/Los_Angeles` fires
- * at 09:00 there, and its next runs are shown in that zone with the zone named. An interval counts
- * elapsed time and has no zone of its own, so its runs are shown in the zone the browser is in,
- * named the same way.
+ * When a schedule fires. A cron schedule is read in its own IANA zone (`UTC` when it was made without
+ * one), so "every day at 09:00" in `America/Los_Angeles` fires at 09:00 there, and its sentence says
+ * so; the Runs list shows each run in the viewer's zone. An interval counts elapsed time and has no
+ * zone of its own, so its runs fall on the browser's clock.
  */
 import { CronExpressionParser } from 'cron-parser';
 
@@ -19,8 +18,8 @@ export type ScheduleTiming = {
   readonly nextFireAt?: number | null | undefined;
   /** The most recent occurrence that started a run, in milliseconds. */
   readonly lastFireAt?: number | undefined;
-  /** The fire a person asked to skip, in milliseconds. */
-  readonly skipUntil?: number | undefined;
+  /** The upcoming fires a person asked to skip, in milliseconds. */
+  readonly skippedOccurrences?: readonly number[] | undefined;
 };
 
 /** One run the schedule has coming: when, and whether a person asked to skip it. */
@@ -46,28 +45,6 @@ export function sentenceZone(
   return timing.cronExpression !== undefined ? zoneLabel(timing.timeZone ?? 'UTC') : null;
 }
 
-function formatterFor(zone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-    timeZone: zone,
-  });
-}
-
-/** A moment in a zone, with the zone's own short name after it: "Mon, Nov 2, 9:00 AM PST". */
-export function formatInZone(at: number, zone: string): string {
-  try {
-    return formatterFor(zone).format(at);
-  } catch {
-    // A zone this browser does not know is shown in UTC rather than not at all.
-    return formatterFor('UTC').format(at);
-  }
-}
-
 const MINUTE_MS = 60_000;
 
 /** The wall clock of an instant in a zone, read as UTC, so a cron can be matched against it. */
@@ -84,6 +61,13 @@ function wallClockAsUtc(at: number, zone: string): number {
   const part = (type: Intl.DateTimeFormatPartTypes): number =>
     Number(parts.find((candidate) => candidate.type === type)?.value);
   return Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'));
+}
+
+/** How many minutes the zone's wall clock is ahead of UTC at `at` ( -300 for Chicago in daylight time). */
+export function zoneOffsetMinutes(at: number, zone: string): number {
+  // The wall clock at `at` read as UTC, less `at` itself with its seconds taken off, is the offset.
+  const minute = Math.floor(at / MINUTE_MS) * MINUTE_MS;
+  return Math.round((wallClockAsUtc(minute, zone) - minute) / MINUTE_MS);
 }
 
 /**
@@ -145,8 +129,8 @@ function occurrenceAnchor(
  * The next `count` runs of an active schedule, soonest first, counted from the engine's
  * `nextFireAt` (a cron's are the expression read in its zone after it, an interval's are each
  * interval after it) so the list changes only when the schedule does. A time the engine does not
- * fire at, such as one inside a daylight-saving gap, is left out. Only the run at `skipUntil` is
- * marked skipped. A paused or cancelled schedule has none, and an expression that cannot be read
+ * fire at, such as one inside a daylight-saving gap, is left out. The runs in `skippedOccurrences`
+ * are marked skipped. A paused or cancelled schedule has none, and an expression that cannot be read
  * has none either. `now` stands in for `nextFireAt` only when the schedule carries none.
  */
 export function upcomingFires(
@@ -174,6 +158,6 @@ export function upcomingFires(
         (Math.floor((anchor.from - (timing.nextFireAt ?? 0)) / step) + 1) * step;
     times = Array.from({ length: count }, (_, index) => first + index * step);
   }
-  const skipUntil = timing.skipUntil;
-  return times.map((at) => ({ at, skipped: skipUntil !== undefined && at === skipUntil }));
+  const skipped = new Set(timing.skippedOccurrences);
+  return times.map((at) => ({ at, skipped: skipped.has(at) }));
 }

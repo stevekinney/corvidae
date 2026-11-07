@@ -20,10 +20,10 @@ import { sha256Hex } from '../worker/manifest/content-digest.ts';
 
 /**
  * The argument every document activity handler receives: the step's static
- * `input`, the `trigger` that started the instance, and `previous`, the prior
- * step's result. `previous` is the prior activity's output, the signal payload
- * after an `await-signal` step, `null` after a `sleep` step, and `null` for the
- * first step.
+ * `input`, the `trigger` that started the instance, and `previous`, the most
+ * recent activity result or `null` before the first activity. Waits preserve
+ * that result. The next activity also receives the latest awaited signal's
+ * payload in `signal` when a payload is present.
  *
  * `workflowId` and `step` identify the step being run: the instance's workflow
  * id, and the zero-based index of the step among all of the document's steps
@@ -36,6 +36,7 @@ export type DocumentActivityArgument = Readonly<{
   input: JSONValue;
   trigger: unknown;
   previous: unknown;
+  signal?: unknown;
   workflowId: string;
   step: number;
 }>;

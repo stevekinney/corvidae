@@ -31,6 +31,8 @@ export const WORKER_CONFLICT_REASONS = {
   noWorkerBinding: 'no-worker-binding',
   /** An override preview was requested for a workflow whose policy is not auto-upgrade. */
   policyNotAutoUpgrade: 'policy-not-auto-upgrade',
+  /** A worker that still takes work cannot be forgotten: forgetting it would not stop it. */
+  workerStillConnected: 'worker-still-connected',
   /** No ready, routed deployment build provides the workflow's revision. */
   noRoutedDeployment: 'no-routed-deployment',
 } as const;

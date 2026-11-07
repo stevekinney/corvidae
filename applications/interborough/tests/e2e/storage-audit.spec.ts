@@ -1,6 +1,6 @@
 /**
  * The storage explorer and the audit log (COR-1851), driven in a browser against the real host:
- * the key table with its group and search controls, a key's pane, Edit and Delete with a
+ * the key table with its group and starts-with controls, a key's pane, Edit and Delete with a
  * confirmation on a key the application does not manage and a lock on one it does, the storage line
  * with the capabilities popover, the audit log's list and detail, Export as JSON Lines, and the two
  * shortcuts G T and G U. Each page is checked with axe at a phone's width and a desktop's.
@@ -27,8 +27,8 @@ async function searchKeys(page: Page, text: string): Promise<void> {
   await search.press('Enter');
 }
 
-const keyButton = (page: Page, key: string) =>
-  page.locator('.ib-storage__key', { hasText: key }).first();
+/** The table row of `key`, which a person clicks to open it. */
+const keyButton = (page: Page, key: string) => page.locator(`tr[data-cinder-row-id="${key}"]`);
 
 test.describe('storage', () => {
   test.beforeEach(async ({ request }) => {
@@ -66,14 +66,15 @@ test.describe('storage', () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/health/storage');
-    const line = page.getByTestId('storage-backend').getByRole('button');
-    await expect(line).toContainText('SQLite');
-    await line.click();
-    await expect(page.getByText('Persistence', { exact: true })).toBeVisible();
-    await expect(page.getByText('Conditional batch', { exact: true })).toBeVisible();
+    const backend = page.getByTestId('storage-backend');
+    await expect(backend).toContainText('Running on SQLite in');
+    await backend.getByRole('button', { name: 'Storage details' }).click();
+    const details = page.getByTestId('storage-details');
+    await expect(details.getByText('Backend', { exact: true })).toBeVisible();
+    await expect(details.getByText('Keys', { exact: true })).toBeVisible();
   });
 
-  test('narrows the table to one group, and to the keys that contain the search', async ({
+  test('narrows the table to one group, and to the keys that start with the search', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -82,9 +83,9 @@ test.describe('storage', () => {
     await expect(group.locator('option', { hasText: 'e2e-storage:' })).toHaveCount(1);
     await group.selectOption('e2e-storage:');
     await expect(keyButton(page, APP_KEY)).toBeVisible();
-    await expect(page.locator('[data-key-row]')).toHaveCount(1);
+    await expect(page.locator('main tbody tr[data-cinder-row-id]')).toHaveCount(1);
 
-    // Inside a small group the search reads every key, so it can say that none matches.
+    // Inside a small group the prefix read is short, so it can say that none matches.
     await searchKeys(page, 'no-key-has-this-text');
     await expect(page.getByRole('heading', { name: STORAGE_COPY.noMatches.title })).toBeVisible();
     await page.getByRole('button', { name: STORAGE_COPY.noMatches.clear }).click();
@@ -101,13 +102,15 @@ test.describe('storage', () => {
     const pane = page.getByTestId('storage-key');
     await expect(pane.getByTestId('storage-key-managed')).toContainText('webhook-delivery:v1:');
     await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.edit })).toHaveCount(0);
-    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).toHaveCount(0);
+    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).toHaveCount(
+      0,
+    );
 
     // A key of the application, in another group, can be changed.
     await group.selectOption('e2e-storage:');
     await keyButton(page, APP_KEY).click();
     await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.edit })).toBeVisible();
-    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).toBeVisible();
+    await expect(pane.getByRole('button', { name: STORAGE_COPY.detail.moreActions })).toBeVisible();
   });
 
   test('edits a key after a confirmation, and the new value is what storage holds', async ({
@@ -120,7 +123,7 @@ test.describe('storage', () => {
     await keyButton(page, APP_KEY).click();
     const pane = page.getByTestId('storage-key');
     await pane.getByRole('button', { name: STORAGE_COPY.detail.edit }).click();
-    await pane.getByLabel(STORAGE_COPY.detail.editLabel).fill('an edited note');
+    await pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }).fill('an edited note');
     await pane.getByRole('button', { name: STORAGE_COPY.detail.save }).click();
     const dialog = page.getByRole('dialog', { name: STORAGE_COPY.confirmSave.title });
     await expect(dialog).toBeVisible();
@@ -138,7 +141,8 @@ test.describe('storage', () => {
     await page.goto('/health/storage');
     await searchKeys(page, 'e2e-storage');
     await keyButton(page, APP_KEY).click();
-    await page.getByRole('button', { name: STORAGE_COPY.detail.delete }).click();
+    await page.getByRole('button', { name: STORAGE_COPY.detail.moreActions }).click();
+    await page.getByRole('menuitem', { name: STORAGE_COPY.detail.delete }).click();
     const dialog = page.getByRole('dialog', { name: STORAGE_COPY.confirmDelete.title });
     await expect(dialog).toBeVisible();
     const before = await request.get(storageUrl(APP_KEY));
@@ -160,22 +164,22 @@ test.describe('the audit log', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/health/audit');
       await expect(page.locator('[data-view="audit"]')).toHaveAttribute('data-state', 'ready');
-      const first = page.locator('button[data-record]').first();
+      const first = page.locator('tbody tr[data-cinder-row-id]').first();
       await expect(first).toBeVisible();
-      await checkA11y(`audit log — the list at ${width}px`);
+      await checkA11y(`audit log — the table at ${width}px`);
 
       await first.click();
       const detail = page.getByTestId('audit-detail');
       await expect(detail).toBeVisible();
-      await expect(detail).toContainText(AUDIT_COPY.rawRecord);
-      await checkA11y(`audit log — a record open at ${width}px`);
+      await expect(detail).toContainText(AUDIT_COPY.copyAsJson);
+      await checkA11y(`audit log — an event open at ${width}px`);
     });
   }
 
   test('Export saves the trail as JSON Lines, one record per line', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/health/audit');
-    await expect(page.locator('button[data-record]').first()).toBeVisible();
+    await expect(page.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
 
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: AUDIT_COPY.exportAction }).click();

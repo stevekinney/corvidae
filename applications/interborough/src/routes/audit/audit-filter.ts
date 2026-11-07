@@ -1,124 +1,149 @@
 /**
- * The audit search as the address says it, and as the Bureau takes it. The address owns the
- * filters (`/health/audit?type=schedule.created`), so a search can be linked to and survives a reload.
+ * The audit log's filters as the address says them, and as the Bureau takes them. The address owns
+ * the filters (`/health/audit?actor=you&period=30d&action=started&q=refund`), so a search can be
+ * linked to and survives a reload; an absent field is the default (anyone, the last 7 days, any
+ * action, no text).
  *
- * `since` is written as the local time the person typed (`YYYY-MM-DDTHH:mm`) and sent as epoch
- * milliseconds, which is what `bureau.audit.query` takes.
+ * The period and the action reach the Bureau: the period as `since`, and the action as the list of
+ * event types that kind covers, so the Bureau pages through, and counts, only what the log shows.
+ * The Bureau takes no actor that fits how people read one (an agent is no principal) and no text, so
+ * Who and the search narrow the events already read (`narrowEvents`).
  */
 import { agentPath } from '../../lib/agent-paths.ts';
-import type { AuditFilter, AuditRecord } from '../../lib/bureau-audit.ts';
+import type { AuditActionKind } from '../../lib/audit-event-types.ts';
+import { AUDIT_ACTION_KINDS, auditTypesOfKind } from '../../lib/audit-event-types.ts';
+import type { AuditFilter } from '../../lib/bureau-audit.ts';
 import { chatSessionPath } from '../../lib/identifier-paths.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
 
-/** What the form holds: the text of each field, before it means anything to the Bureau. */
+/** Who the Who select narrows to; the empty string is anyone. */
+export const AUDIT_ACTORS = ['you', 'agents', 'interborough'] as const;
+
+/** One of the actors the Who select offers. */
+export type AuditActorFilter = (typeof AUDIT_ACTORS)[number];
+
+/** How far back the Period select reaches. */
+export const AUDIT_PERIODS = ['today', '7d', '30d', '90d', 'all'] as const;
+
+/** One of the periods the Period select offers. */
+export type AuditPeriod = (typeof AUDIT_PERIODS)[number];
+
+/** The period the log opens on. */
+export const DEFAULT_AUDIT_PERIOD: AuditPeriod = '7d';
+
+/** What the filter row holds: the choice of each control and the text of the search. */
 export type AuditDraft = {
-  readonly since: string;
-  readonly type: string;
-  readonly resource: string;
-  /**
-   * Who did it. The operation takes no actor, so this narrows the records already read and is
-   * never sent: {@link filterOf} leaves it out, and {@link byWho} applies it.
-   */
-  readonly who: string;
+  readonly actor: AuditActorFilter | '';
+  readonly period: AuditPeriod;
+  readonly action: AuditActionKind | '';
+  readonly text: string;
 };
 
-export const EMPTY_AUDIT_DRAFT: AuditDraft = { since: '', type: '', resource: '', who: '' };
+/** The filters of an address that names none. */
+export const EMPTY_AUDIT_DRAFT: AuditDraft = {
+  actor: '',
+  period: DEFAULT_AUDIT_PERIOD,
+  action: '',
+  text: '',
+};
 
-const LOCAL_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/;
-
-/** The time a draft's `since` names, or `undefined` when it is empty or is not a time. */
-export function sinceOf(text: string): number | undefined {
-  if (!LOCAL_TIME.test(text)) return undefined;
-  const milliseconds = new Date(text).getTime();
-  return Number.isNaN(milliseconds) ? undefined : milliseconds;
-}
+const DAY = 86_400_000;
 
 /**
- * The filter the Bureau is asked with: only what is set, and only a `since` that is a time. The
- * date field refuses text that is not one, and leaves its value empty, so it narrows nothing.
+ * The time a period starts at, in epoch milliseconds, or `undefined` for all time. Today starts at
+ * the viewer's midnight; the others count back from `now`.
  */
-export function filterOf(draft: AuditDraft): AuditFilter {
-  const since = sinceOf(draft.since.trim());
-  const type = draft.type.trim();
-  const resource = draft.resource.trim();
+export function periodStart(period: AuditPeriod, now: number): number | undefined {
+  switch (period) {
+    case 'today': {
+      const day = new Date(now);
+      return new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+    }
+    case '7d':
+      return now - 7 * DAY;
+    case '30d':
+      return now - 30 * DAY;
+    case '90d':
+      return now - 90 * DAY;
+    case 'all':
+      return undefined;
+  }
+}
+
+/** The filter the Bureau is asked with: the events of the action's kind, since the period began. */
+export function filterOf(draft: AuditDraft, now: number): AuditFilter {
+  const since = periodStart(draft.period, now);
   return {
     ...(since === undefined ? {} : { since }),
-    ...(type === '' ? {} : { type }),
-    ...(resource === '' ? {} : { resource }),
+    types: auditTypesOfKind(draft.action === '' ? undefined : draft.action),
   };
 }
 
-/** The draft an address holds. */
+/** Whether the choices narrow the log beyond its opening view, which is when it offers Clear filters. */
+export function isNarrowed(draft: AuditDraft): boolean {
+  return (
+    draft.actor !== '' ||
+    draft.action !== '' ||
+    draft.text.trim() !== '' ||
+    draft.period !== DEFAULT_AUDIT_PERIOD
+  );
+}
+
+function oneOf<T extends string>(values: readonly T[], value: string | null): T | undefined {
+  return values.find((candidate) => candidate === value);
+}
+
+/** The draft an address holds; a value the page does not offer is the default. */
 export function draftFromSearch(search: URLSearchParams): AuditDraft {
   return {
-    since: search.get('since') ?? '',
-    type: search.get('type') ?? '',
-    resource: search.get('resource') ?? '',
-    who: search.get('who') ?? '',
+    actor: oneOf(AUDIT_ACTORS, search.get('actor')) ?? '',
+    period: oneOf(AUDIT_PERIODS, search.get('period')) ?? DEFAULT_AUDIT_PERIOD,
+    action: oneOf(AUDIT_ACTION_KINDS, search.get('action')) ?? '',
+    text: search.get('q') ?? '',
   };
 }
 
-/** The address of a search: `/health/audit`, with a query for each filter that is set. */
-export function pathOf(draft: AuditDraft): string {
+/** The address of a search: `/health/audit`, with a query for each filter that is not the default. */
+export function pathOf(draft: AuditDraft, record: string | null = null): string {
   const params = new URLSearchParams();
-  if (draft.since.trim() !== '') params.set('since', draft.since.trim());
-  if (draft.type.trim() !== '') params.set('type', draft.type.trim());
-  if (draft.resource.trim() !== '') params.set('resource', draft.resource.trim());
-  if (draft.who.trim() !== '') params.set('who', draft.who.trim());
+  if (draft.actor !== '') params.set('actor', draft.actor);
+  if (draft.period !== DEFAULT_AUDIT_PERIOD) params.set('period', draft.period);
+  if (draft.action !== '') params.set('action', draft.action);
+  if (draft.text.trim() !== '') params.set('q', draft.text.trim());
+  if (record !== null) params.set('record', record);
   const query = params.toString();
   return query === '' ? '/health/audit' : `/health/audit?${query}`;
 }
 
 /**
- * What a record can be about, as a person names it and as the Bureau spells it: a chat is a
- * `session:<id>`, and a run is its bare id. The form builds the `kind:<id>` string from a kind and an
- * id, so nobody types the prefix; the address and the Bureau still hold the one string.
+ * What an event can be about, as the Bureau spells it: a chat is a `session:<id>`, and a run is its
+ * bare id. A string with a known prefix is that kind and the rest is its id; any other non-empty
+ * string is a run.
  */
-export const RESOURCE_KINDS = [
-  { kind: 'session', label: 'Chat', prefix: 'session:' },
-  { kind: 'agent', label: 'Agent', prefix: 'agent:' },
-  { kind: 'schedule', label: 'Schedule', prefix: 'schedule:' },
-  { kind: 'workflow', label: 'Workflow', prefix: 'workflow:' },
-  { kind: 'run', label: 'Run ID', prefix: '' },
+const RESOURCE_PREFIXES = [
+  { kind: 'session', prefix: 'session:' },
+  { kind: 'agent', prefix: 'agent:' },
+  { kind: 'schedule', prefix: 'schedule:' },
+  { kind: 'workflow', prefix: 'workflow:' },
 ] as const;
 
-export type ResourceKind = (typeof RESOURCE_KINDS)[number]['kind'];
+/** What a record's resource names: a kind of thing and its id, or a run's id. */
+export type ResourceName = {
+  readonly kind: 'session' | 'agent' | 'schedule' | 'workflow' | 'run' | 'other';
+  readonly id: string;
+};
 
-/** What the resource picker holds: a kind (or none) and the id within it. */
-export type ResourceChoice = { readonly kind: ResourceKind | ''; readonly id: string };
-
-/**
- * The picker's reading of a resource string. A string with a known prefix is that kind and the rest
- * is its id; any other non-empty string is a run id, so a resource the picker has no kind for stays
- * searchable as it was written and reads back unchanged.
- */
-export function splitResource(resource: string): ResourceChoice {
+/** The kind and id a resource string names. */
+export function splitResource(resource: string): ResourceName {
   const text = resource.trim();
-  if (text === '') return { kind: '', id: '' };
-  const named = RESOURCE_KINDS.find(
-    (entry) => entry.prefix !== '' && text.startsWith(entry.prefix),
-  );
-  return named === undefined
-    ? { kind: 'run', id: text }
-    : { kind: named.kind, id: text.slice(named.prefix.length) };
-}
-
-/**
- * The resource string a picker choice stands for. A kind with no id narrows nothing, because the
- * Bureau takes one resource exactly and a prefix alone names none.
- */
-export function joinResource(choice: ResourceChoice): string {
-  const id = choice.id.trim();
-  if (choice.kind === '' || id === '') return '';
-  const entry = RESOURCE_KINDS.find((candidate) => candidate.kind === choice.kind);
-  return `${entry?.prefix ?? ''}${id}`;
-}
-
-/** The records `who` did, or all of them when `who` is empty. A record with no actor is nobody's. */
-export function byWho(records: readonly AuditRecord[], who: string): readonly AuditRecord[] {
-  const name = who.trim();
-  return name === '' ? records : records.filter((record) => record.principal === name);
+  if (text === '') return { kind: 'other', id: '' };
+  const named = RESOURCE_PREFIXES.find((entry) => text.startsWith(entry.prefix));
+  if (named !== undefined) return { kind: named.kind, id: text.slice(named.prefix.length) };
+  // Other resources of the trail (`host`, `hook:…`, `storage:…`) are not runs.
+  return text.includes(':') || text === 'host'
+    ? { kind: 'other', id: text }
+    : { kind: 'run', id: text };
 }
 
 /**
@@ -127,42 +152,20 @@ export function byWho(records: readonly AuditRecord[], who: string): readonly Au
  * run's id.
  */
 export function resourcePath(resource: string): string | undefined {
-  const choice = splitResource(resource);
-  if (choice.kind === '' || choice.id === '') return undefined;
-  switch (choice.kind) {
+  const { kind, id } = splitResource(resource);
+  if (id === '') return undefined;
+  switch (kind) {
     case 'session':
-      return chatSessionPath(choice.id);
+      return chatSessionPath(id);
     case 'agent':
-      return agentPath(choice.id);
+      return agentPath(id);
     case 'schedule':
-      return scheduleDetailPath(choice.id);
+      return scheduleDetailPath(id);
     case 'workflow':
-      return workflowTypePath(choice.id);
+      return workflowTypePath(id);
     case 'run':
-      return workflowDetailPath(choice.id);
+      return workflowDetailPath(id);
+    case 'other':
+      return undefined;
   }
-}
-
-/**
- * What a record says changed, when its detail names a value before and after. The operation hands
- * back only scalar fields, so a change shows as `before` and `after` among them; a record without
- * either has no change to compare, and its fields are all `rest`.
- */
-export function changeOf(detail: AuditRecord['detail']): {
-  readonly before: string | undefined;
-  readonly after: string | undefined;
-  readonly rest: readonly (readonly [string, string])[];
-} {
-  const entries = Object.entries(detail ?? {});
-  const read = (name: string): string | undefined => {
-    const found = entries.find(([key]) => key === name);
-    return found === undefined ? undefined : String(found[1]);
-  };
-  return {
-    before: read('before'),
-    after: read('after'),
-    rest: entries
-      .filter(([key]) => key !== 'before' && key !== 'after')
-      .map(([key, value]) => [key, String(value)] as const),
-  };
 }

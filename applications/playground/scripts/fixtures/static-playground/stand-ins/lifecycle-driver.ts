@@ -5,6 +5,7 @@
  *   bun lifecycle-driver.ts --mode pass|fail|hang|progress --record <dir> --output <dir>
  *   bun lifecycle-driver.ts --browser --output <dir>   (real server and real Playwright)
  *
+ * `--owner-pid <pid>` is handed to every stand-in, so none outlives the test that started it.
  * `--fixture <name>` serves another fixture directory (default `good`) with its own export report.
  */
 import { join } from 'node:path';
@@ -20,6 +21,10 @@ if (output === undefined) throw new Error('usage: lifecycle-driver.ts --output <
 
 const fixture = argumentValue('--fixture') ?? 'good';
 const browser = process.argv.includes('--browser');
+const ownerArguments =
+  argumentValue('--owner-pid') === undefined
+    ? []
+    : ['--owner-pid', argumentValue('--owner-pid') ?? ''];
 process.exitCode = await runStaticPlaygroundGate({
   directory: join(fixtures, fixture),
   exportReportPath: join(fixtures, `${fixture}.export-report.json`),
@@ -52,6 +57,7 @@ process.exitCode = await runStaticPlaygroundGate({
                 portFile,
                 '--record',
                 record,
+                ...ownerArguments,
                 ...(process.argv.includes('--hold-port') ? ['--hold-port'] : []),
                 ...(argumentValue('--advertise-port') === undefined
                   ? []
@@ -64,6 +70,7 @@ process.exitCode = await runStaticPlaygroundGate({
           '--mode',
           argumentValue('--mode') ?? 'pass',
           ...(record === undefined ? [] : ['--record', record]),
+          ...ownerArguments,
           ...(argumentValue('--environment-record') === undefined
             ? []
             : ['--environment-record', argumentValue('--environment-record') ?? '']),

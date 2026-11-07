@@ -231,7 +231,9 @@
 
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-chats {
-  block-size: max(28rem, calc(100dvh - 8rem));
+  /* The outlet is the flexed, padded viewport region. Filling it keeps the Chat surface—and its
+   * blocked composer dock—inside the visible page even when the connection banner is present. */
+  block-size: max(28rem, 100%);
   min-inline-size: 0;
   border: 1px solid var(--cinder-border-muted);
   border-radius: var(--cinder-radius-md);

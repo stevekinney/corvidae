@@ -185,6 +185,7 @@ describe('local mode', () => {
     ['durable', false],
     ['engine.workflowClaimTtl', 30_000],
     ['engine.workflowClaimRenewInterval', 5_000],
+    ['engine.maxConcurrentRuns', 6],
   ] as const)('leaves %s editable', async (key, value) => {
     const home = await mkdtemp(join(tmpdir(), 'interborough-local-settings-'));
     directories.push(home);

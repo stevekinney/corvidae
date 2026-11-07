@@ -83,6 +83,7 @@ describe('a rebound Host', () => {
       '/bureau/v1/health',
       '/host/paths',
       '/host/storage',
+      '/host/storage/summary',
       '/',
       '/assets/main.js',
     ]) {
@@ -110,7 +111,10 @@ describe('/host/storage', () => {
     const host = await start();
     const response = await fetch(new URL('/host/storage', host.url));
     expect(response.status).toBe(200);
-    const report = (await response.json()) as { bureauKeyPrefixes: string[] };
+    const report = (await response.json()) as {
+      bureauKeyPrefixes: string[];
+      sizeBytes: number | null;
+    };
     expect(report.bureauKeyPrefixes).toEqual([...MANAGED_KEY_PREFIXES]);
     for (const prefix of BUREAU_RESERVED_KEY_PREFIXES) {
       expect(report.bureauKeyPrefixes).toContain(prefix);
@@ -119,6 +123,34 @@ describe('/host/storage', () => {
       expect(report.bureauKeyPrefixes).toContain(family.prefix);
     }
     expect(report.bureauKeyPrefixes.length).toBeGreaterThan(0);
+    // The host's own SQLite file has a size, which Settings › Data and retention shows.
+    expect(report.sizeBytes).toBeGreaterThan(0);
+  });
+});
+
+describe('/host/storage/summary', () => {
+  /** What the host answers for the keys under `prefix`. */
+  async function summaryOf(
+    host: { readonly url: URL },
+    prefix?: string,
+  ): Promise<{ keyCount: number; sizeBytes: number | null }> {
+    const address = prefix === undefined ? '' : `?prefix=${encodeURIComponent(prefix)}`;
+    const response = await fetch(new URL(`/host/storage/summary${address}`, host.url));
+    expect(response.status).toBe(200);
+    return (await response.json()) as { keyCount: number; sizeBytes: number | null };
+  }
+
+  test('counts the keys under a prefix and reports the storage size, so the page can say "of N keys"', async () => {
+    const host = await start();
+    const everything = await summaryOf(host);
+    expect(everything.keyCount).toBeGreaterThan(0);
+    // A SQLite file has a size; a backend that cannot say would answer null, never zero.
+    expect(everything.sizeBytes).toBeGreaterThan(0);
+
+    const none = await summaryOf(host, 'no-such-group:');
+    expect(none.keyCount).toBe(0);
+    const some = await summaryOf(host, 'wf:');
+    expect(some.keyCount).toBeLessThanOrEqual(everything.keyCount);
   });
 });
 
@@ -129,6 +161,7 @@ describe('/host/paths', () => {
     expect(response.status).toBe(200);
     const paths = (await response.json()) as Record<string, unknown>;
     expect(Object.keys(paths).toSorted()).toEqual([
+      'a2aDirectoryUrl',
       'agentDirectory',
       'configurationFile',
       'database',
@@ -157,6 +190,7 @@ describe('/host/paths', () => {
         { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
         { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
       ],
+      a2aDirectoryUrl: `http://127.0.0.1:${host.url.port}/bureau/a2a/.well-known/agent-card.json`,
     });
   });
 
@@ -192,7 +226,13 @@ describe('a cross-site request', () => {
 
   test('is refused on Bureau and on the application too', async () => {
     const host = await start();
-    for (const path of ['/bureau/v1/health', '/host/paths', '/host/storage', '/']) {
+    for (const path of [
+      '/bureau/v1/health',
+      '/host/paths',
+      '/host/storage',
+      '/host/storage/summary',
+      '/',
+    ]) {
       const response = await fetch(new URL(path, host.url), {
         headers: { origin: 'https://attacker.example' },
       });

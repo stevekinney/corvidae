@@ -78,17 +78,28 @@ export type SchedulesOperationTypes = {
     readonly output: unknown;
     readonly faults: 'Conflict' | 'NotFound' | 'StaleRevision';
   };
+  'weft.schedules.unskip': {
+    readonly input: {
+      readonly expectedRevision?: number;
+      readonly occurrence: number;
+      readonly scheduleId: string;
+    };
+    readonly output: unknown;
+    readonly faults: 'Conflict' | 'NotFound' | 'StaleRevision';
+  };
   'weft.schedules.update': {
     readonly input: {
       readonly backfill?: unknown;
       readonly cronExpression?: unknown;
       readonly description?: unknown;
       readonly every?: unknown;
+      readonly input?: unknown;
       readonly jitter?: unknown;
       readonly overlap?: unknown;
       readonly revisionPolicy?: unknown;
       readonly scheduleId: string;
       readonly timeZone?: unknown;
+      readonly workflowType?: unknown;
     };
     readonly output: null;
     readonly faults: 'Conflict' | 'InvalidParams' | 'NotFound';

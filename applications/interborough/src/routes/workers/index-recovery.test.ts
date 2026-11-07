@@ -63,18 +63,19 @@ describe('Workers route — a read that failed', () => {
 
     const view = renderRoute();
 
-    expect(await view.findByText('Not authorized')).not.toBeNull();
+    expect(await view.findByText('Couldn’t load workers')).not.toBeNull();
     scripted.routeJsonRpcMethod('weft.workers.list', {
       items: [worker({ id: 'wkr_back' })],
       deployments: [],
       routingPolicy: 'least-loaded',
     });
-    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await view.findByRole('button', { name: 'Try again' }));
     const summary = await view.findByTestId('workers-summary');
     expect(summary.textContent).toContain('1 of 1 connected');
   });
 
   test('the Task queues tab shows its fault with Retry', async () => {
+    resetLocation('/health/workers?tab=queues');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
     scripted.routeJsonRpcMethodError(
@@ -140,7 +141,7 @@ describe('Workers route — an open worker', () => {
       diagnosticsItems: [diagnosticItem({ operationId: 'op_dead_9', workerId: 'wkr_busy' })],
       diagnosticsSummary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
     });
-    resetLocation('/health/workers?worker=wkr_busy');
+    resetLocation('/health/workers?worker=wkr_busy&tab=queues');
 
     const view = renderRoute();
 
@@ -155,7 +156,7 @@ describe('Workers route — an open worker', () => {
     resetLocation('/health/workers?worker=wkr_moving');
 
     const view = renderRoute();
-    await fireEvent.click(await view.findByRole('button', { name: 'Drain' }));
+    await fireEvent.click(await view.findByRole('button', { name: 'Drain this worker' }));
     const confirm = await view.findByRole('button', { name: 'Drain worker' });
     scripted.routeJsonRpcMethod('weft.workers.list', {
       items: [worker({ id: 'wkr_moving', health: 'draining' })],

@@ -147,6 +147,8 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
     >;
     /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
     readonly optsCodeAgentIntoA2A: (id: string) => boolean;
+    /** What the `a2a.agents` setting says about the agent `id`: `true`, `false`, or `undefined` where it names none. */
+    readonly a2aOverride: (id: string) => boolean | undefined;
     /** The rows of the deployment's model catalog, as the catalog holds them. */
     readonly models: () => readonly BackendDescriptor[];
     /** Appends to the durable audit trail; resolves without writing when the Bureau keeps none. */
@@ -371,17 +373,19 @@ function problemView(problem: NonNullable<AgentListing['problem']>) {
 }
 
 /**
- * An agent as the wire shows it. `a2a` is whoever opts the agent in saying so: the handler's `a2a`
- * allowlist for a code-defined agent, its own file for a persisted one.
+ * An agent as the wire shows it. `a2a` is whoever opts the agent in saying so: the `a2a.agents`
+ * setting where it names the agent, else the handler's `a2a` allowlist for a code-defined agent, or
+ * its own file for a persisted one.
  */
 function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentListing) {
   // An unavailable agent answers nobody, A2A callers included.
   const a2a =
     listing.state === 'unavailable'
       ? false
-      : listing.source === 'code'
-        ? host.agentDefinitions.optsCodeAgentIntoA2A(listing.id)
-        : listing.a2a;
+      : (host.agentDefinitions.a2aOverride(listing.id) ??
+        (listing.source === 'code'
+          ? host.agentDefinitions.optsCodeAgentIntoA2A(listing.id)
+          : listing.a2a));
   return {
     id: listing.id,
     source: listing.source,

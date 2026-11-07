@@ -160,17 +160,54 @@ class DashboardRouter {
   // Bumped when a navigation lands on the address a kept page was keyed on, so that address is a
   // new page and not the kept one: a kept key is a past address, and a pathname can be reached again.
   #generation = $state(0);
+  // What a page registered to be asked before the address changes (`guardLeaving`).
+  #leaveGuards: ((destination: string) => boolean)[] = [];
+  // The address the page was last at, so a back or forward that a guard refused can be undone.
+  #settledAddress: string | undefined;
 
   /** Subscribes to `popstate` on first use, so evaluating this module never touches `window`. */
   #listen(): void {
     if (this.#listening) return;
     this.#listening = true;
     window.addEventListener('popstate', () => {
+      const arrived = `${window.location.pathname}${window.location.search}`;
+      const settled = this.#settledAddress;
+      // The browser has already moved, so a refused move goes back to where the page was. The
+      // guard that refused it keeps the address it was asked about, to go there if it is let through.
+      if (settled !== undefined && settled !== arrived && !this.#allowsLeaving(arrived)) {
+        window.history.pushState(null, '', settled);
+        return;
+      }
+      this.#settledAddress = arrived;
       const leftKey = this.#keptKey;
       this.#keptKey = undefined;
       this.#syncFromLocation();
       if (leftKey !== undefined && this.viewKey === leftKey) this.#generation += 1;
     });
+  }
+
+  /** Asks every registered guard, newest first, whether the page may be left for `destination`. */
+  #allowsLeaving(destination: string): boolean {
+    for (const guard of this.#leaveGuards.toReversed()) {
+      if (!guard(destination)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Registers a question the router asks before it leaves the current page: `guard` is given the
+   * address the navigation is for and answers whether to go. A page that holds work the person has
+   * not saved answers `false` and asks them (a dialog), then calls `navigate(destination, { force:
+   * true })` if they choose to leave. A back or forward the guard refuses puts the address back.
+   * Returns the function that removes the guard, which the page calls when it unmounts.
+   */
+  guardLeaving(guard: (destination: string) => boolean): () => void {
+    this.#listen();
+    this.#settledAddress = `${window.location.pathname}${window.location.search}`;
+    this.#leaveGuards.push(guard);
+    return () => {
+      this.#leaveGuards = this.#leaveGuards.filter((candidate) => candidate !== guard);
+    };
   }
 
   #syncFromLocation(): void {
@@ -234,10 +271,16 @@ class DashboardRouter {
    * resolves it, so `pathname`/`search` are read back from
    * `window.location` rather than re-parsed here. With `keep`, the page that is mounted stays
    * mounted (see {@link DashboardRouter.viewKey}); use it only with `replace`, for an address that
-   * names the same thing the page already shows.
+   * names the same thing the page already shows. A page's leave guard (`guardLeaving`) may refuse
+   * the navigation; `force` skips the guards.
    */
-  navigate(path: string, options?: { readonly replace?: boolean; readonly keep?: boolean }): void {
+  navigate(
+    path: string,
+    options?: { readonly replace?: boolean; readonly keep?: boolean; readonly force?: boolean },
+  ): void {
     this.#listen();
+    // A page that guards leaving is asked first; `force` is the answer to its own question.
+    if (options?.force !== true && !this.#allowsLeaving(path)) return;
     // A kept page carries on under the key it already had; any other navigation ends that.
     const leftKey = this.#keptKey;
     this.#keptKey = options?.keep === true ? this.viewKey : undefined;
@@ -247,6 +290,7 @@ class DashboardRouter {
       window.history.pushState(null, '', path);
     }
     this.#syncFromLocation();
+    this.#settledAddress = `${window.location.pathname}${window.location.search}`;
     // Arriving at the address the kept page was keyed on is a new page, even though the key it
     // computes is the one that is mounted (a new chat's address, after that chat started).
     if (leftKey !== undefined && this.#keptKey === undefined && this.viewKey === leftKey) {

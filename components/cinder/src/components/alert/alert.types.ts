@@ -39,7 +39,12 @@ export type AlertProps = Omit<
   heading?: string;
   children: Snippet;
   icon?: Snippet;
-  /** Buttons at the right edge, beside the content and before the dismiss button. */
+  /**
+   * Buttons or links that act on the message, such as "Export again" after a failed export. They
+   * sit at the alert's trailing edge beside the message, and drop under it where the alert is too
+   * narrow for both. Give them the secondary or ghost variant: an alert states a problem, and the
+   * page's one primary action stays elsewhere.
+   */
   actions?: Snippet;
 };
 

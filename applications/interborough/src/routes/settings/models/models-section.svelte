@@ -1,341 +1,147 @@
 <script lang="ts">
   /**
-   * The Models part of Settings › Models: the catalog, every model the connected providers offer,
-   * with its context window, abilities and price. A switch turns a model off, to keep it from
-   * agents and plans; Edit corrects a row, and Add a model adds one the built-in list lacks.
+   * The Models part of Settings › Models (board SettingsShell, "Models · /settings/models" and
+   * "Models · provider connected"): every model the connected providers offer, as a table of
+   * Model, Abilities, Context and Allowed. It only reads. Which models agents may use is set under
+   * Allowed models, so the Allowed column says what that policy permits (a green dot and the word)
+   * and the table has no switch, no edit and no Save.
    *
-   * Nothing is written until Save models. The switches and the row dialogs change a working copy of
-   * the catalog edits, which the table shows laid over the rows the host serves, and Save sends the
-   * whole list in one `PUT /host/catalog`. The host stores it in its configuration file and the
-   * catalog takes it at once, so the change applies with no restart and survives one.
-   *
-   * The save names the edits the working copy started from (`base`), and the host compares them with
-   * the edits it stores under its configuration queue. If another tab saved, or the files were edited
-   * by hand and read again, since the working copy began, the page keeps the working copy, says the
-   * models changed, holds Save, and offers a reload, which discards the working copy. Saving would
-   * otherwise bring back a model someone else turned off.
+   * It is an operator table (board ListPatterns, "Option A, for operator tables only"): dense,
+   * sortable by model and context, the identifier small and monospaced under the name. With no
+   * provider connected it is an empty state that points up to Providers. When the list of models
+   * fails to load after the key was saved, the error sits here and the provider row stays Connected.
    */
-  import { Alert, Badge, Button, EmptyState, Table, Toggle } from '@lostgradient/cinder';
-  import { useQueryClient } from '@tanstack/svelte-query';
+  import {
+    EmptyState,
+    ErrorState,
+    FormSection,
+    Link,
+    StatusDot,
+    Table,
+    type TableSort,
+  } from '@lostgradient/cinder';
+  import { Cpu } from '@lucide/svelte';
 
   import { MODELS_COPY } from '../../../app/copy.ts';
-  import { showToast } from '../../../app/toast-host.svelte';
-  import {
-    HostProviderError,
-    replaceCatalogEdits,
-    type CatalogEdit,
-    type ProvidersSnapshot,
-  } from '../../../lib/host-providers.ts';
-  import { queryKeys } from '../../../lib/query.ts';
-  import {
-    allowlistExcludes,
-    previewRows,
-    withAddedRow,
-    withModelOff,
-    withRowFields,
-    type AddedRow,
-    type PreviewRow,
-    type RowFields,
-  } from './catalog-changes.ts';
-  import { formatContext, formatPrice } from './format-model.ts';
-  import RowDialog, { type RowDialogTarget } from './row-dialog.svelte';
+  import type { ProviderModel } from '../../../lib/host-providers.ts';
+  import { deniedProvidersOf, isModelAllowed, type ModelPolicy } from '../model-policy-edit.ts';
+  import { formatContext, formatModelAbilities, modelDisplayName } from './format-model.ts';
+  import ModelName from './model-name.svelte';
+
+  /** Why the list of models did not come back: the names of the providers that are connected, and the answer's status. */
+  export interface CatalogFailure {
+    readonly providers: readonly string[];
+    readonly status: number | undefined;
+  }
 
   interface Props {
-    snapshot: ProvidersSnapshot;
-    /** Opens the Connect dialog, for the empty list's action. */
-    onConnect: () => void;
+    /** The models the connected providers offer. */
+    models: readonly ProviderModel[];
+    /** The model policy, which says which of them agents may use. */
+    policy: ModelPolicy;
+    /** Set when the list of models failed to load; the table is not drawn then. */
+    failure?: CatalogFailure | undefined;
+    /** Reads the list of models again. */
+    onRetry: () => void;
+    /** Takes the person to the Providers section, for the empty list. */
+    onGoToProviders: () => void;
   }
 
-  let { snapshot, onConnect }: Props = $props();
+  let { models, policy, failure, onRetry, onGoToProviders }: Props = $props();
 
   const copy = MODELS_COPY.models;
-  const queryClient = useQueryClient();
+  const PROVIDERS_ANCHOR = '#ib-models-providers';
 
-  /** The edits being worked on, or `null` while the table shows what the host holds. */
-  let working = $state<readonly CatalogEdit[] | null>(null);
-  /** The edits the host held when the working copy began, which the host compares on Save. */
-  let base = $state<readonly CatalogEdit[] | null>(null);
-  /** The host refused the last Save because its edits differ from {@link base}. */
-  let conflicted = $state(false);
-  let saving = false;
-  let savePending = $state(false);
-  let failure = $state('');
-  let dialog = $state<RowDialogTarget | null>(null);
+  let sort = $state<TableSort | undefined>(undefined);
 
-  const edits = $derived(working ?? snapshot.catalog);
-  const rows = $derived(previewRows(snapshot.models, edits, snapshot.providers));
-  const locked = $derived(snapshot.lockReason !== undefined);
-  const connected = $derived(
-    snapshot.providers.filter((provider) => provider.hasKey).map((provider) => provider.name),
-  );
-  const dirty = $derived(
-    working !== null && JSON.stringify(working) !== JSON.stringify(snapshot.catalog),
-  );
+  const denied = $derived(deniedProvidersOf(policy));
+  const rows = $derived.by(() => {
+    const listed = models.map((model) => ({
+      model,
+      name: modelDisplayName(model.model),
+      allowed:
+        !model.off && !denied.includes(model.provider) && isModelAllowed(policy, model.model),
+    }));
+    if (sort === undefined) return listed;
+    const direction = sort.direction === 'ascending' ? 1 : -1;
+    return listed.toSorted((a, b) =>
+      sort?.column === 'context'
+        ? direction * (a.model.contextWindowTokens - b.model.contextWindowTokens)
+        : direction * a.name.localeCompare(b.name, 'en', { numeric: true }),
+    );
+  });
 
-  /**
-   * The host's edits are no longer the ones the working copy began from: the page read them again
-   * and they differ, or a Save was refused for it. A Save in flight is not counted, because the
-   * edits it sends are about to become the host's own.
-   */
-  const changedElsewhere = $derived(
-    working !== null &&
-      !savePending &&
-      (conflicted || (base !== null && JSON.stringify(base) !== JSON.stringify(snapshot.catalog))),
-  );
-
-  function change(next: readonly CatalogEdit[]): void {
-    if (working === null) base = snapshot.catalog;
-    working = next;
-    failure = '';
-  }
-
-  function abilitiesOf(row: PreviewRow): string[] {
-    return [
-      ...(row.tools ? [copy.abilities.tools] : []),
-      ...(row.images ? [copy.abilities.images] : []),
-      ...(row.structuredOutput ? [copy.abilities.structuredOutput] : []),
-    ];
-  }
-
-  function discard(): void {
-    working = null;
-    base = null;
-    conflicted = false;
-    failure = '';
-  }
-
-  /** Drops the working copy for what the host holds now, reading it again first. */
-  function reload(): void {
-    discard();
-    void queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
-  }
-
-  async function save(): Promise<void> {
-    if (saving || working === null || base === null || changedElsewhere) return;
-    saving = true;
-    savePending = true;
-    failure = '';
-    try {
-      await replaceCatalogEdits(working, { base });
-      showToast(copy.saved, { variant: 'success' });
-      // Read the host's rows again, and the agent editor's model choices with them. The edits stay
-      // on the table until the rows that include them are here, so no row snaps back meanwhile.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.catalog() });
-      try {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
-      } finally {
-        working = null;
-        base = null;
-        conflicted = false;
-      }
-    } catch (error) {
-      if (error instanceof HostProviderError && error.kind === 'conflict') {
-        // Nothing was written. Read the host's edits again; the working copy stays until the
-        // person reloads.
-        conflicted = true;
-        void queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
-      } else {
-        failure =
-          error instanceof HostProviderError && error.message !== ''
-            ? error.message
-            : copy.saveFailed;
-      }
-    } finally {
-      saving = false;
-      savePending = false;
+  function goToProviders(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
     }
+    event.preventDefault();
+    onGoToProviders();
   }
 </script>
 
-<section class="ib-models" aria-labelledby="models-catalog-title" data-section="models">
-  <div class="ib-models__title-row">
-    <h2 id="models-catalog-title" class="ib-models__title">{copy.heading}</h2>
-    {#if rows.length > 0}
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={locked || savePending || connected.length === 0}
-        onclick={() => (dialog = { kind: 'add' })}>{copy.add}</Button
-      >
-    {/if}
-  </div>
-  <p class="ib-models__description">{copy.description}</p>
-
-  {#if rows.length === 0}
-    <EmptyState kind="first-use" title={copy.empty.title} description={copy.empty.description}>
-      {#snippet action()}
-        <Button variant="primary" disabled={locked} onclick={onConnect}>{copy.empty.action}</Button>
-      {/snippet}
-    </EmptyState>
-  {:else}
-    {#if changedElsewhere}
-      <Alert variant="warning" data-testid="models-changed-elsewhere">
-        <p class="ib-models__alert-title">{copy.changedElsewhere.title}</p>
-        <p class="ib-models__alert-body">{copy.changedElsewhere.description}</p>
-        <Button variant="secondary" size="sm" onclick={reload}
-          >{copy.changedElsewhere.action}</Button
-        >
-      </Alert>
-    {/if}
-    {#if failure !== ''}
-      <Alert
-        variant="danger"
-        dismissible
-        onDismiss={() => (failure = '')}
-        data-testid="models-failure"
-      >
-        <p class="ib-models__alert-title">{copy.saveFailed}</p>
-        <p class="ib-models__alert-body">{failure}</p>
-      </Alert>
-    {/if}
-    <Table caption={copy.tableLabel} density="condensed">
+<div class="ib-models" data-section="models">
+  {#if failure === undefined && models.length > 0}
+    <FormSection grouped heading={copy.heading} description={copy.description} />
+    <Table caption={copy.tableLabel} density="comfortable" bind:sort>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell>{copy.columns.model}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.context}</Table.HeaderCell>
+          <Table.HeaderCell column="model" sortable>{copy.columns.model}</Table.HeaderCell>
           <Table.HeaderCell>{copy.columns.abilities}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.price}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.on}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.actions}</Table.HeaderCell>
+          <Table.HeaderCell column="context" sortable>{copy.columns.context}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.columns.allowed}</Table.HeaderCell>
         </Table.Row>
       </Table.Header>
       <Table.Body>
-        {#each rows as row (`${row.provider}/${row.model}`)}
-          {@const abilities = abilitiesOf(row)}
-          <Table.Row
-            data-model={`${row.provider}/${row.model}`}
-            data-off={row.off ? 'true' : 'false'}
-          >
+        {#each rows as row (`${row.model.provider}/${row.model.model}`)}
+          <Table.Row data-model={`${row.model.provider}/${row.model.model}`}>
             <Table.Cell>
-              <span class="ib-models__name">{row.provider}/{row.model}</span>
-              {#if row.added}
-                <Badge variant="neutral" size="sm">{copy.added}</Badge>
-              {/if}
+              <ModelName name={row.name} identifier={row.model.model} />
             </Table.Cell>
-            <Table.Cell>{formatContext(row.contextWindowTokens)}</Table.Cell>
+            <Table.Cell>{formatModelAbilities(row.model)}</Table.Cell>
+            <Table.Cell>{formatContext(row.model.contextWindowTokens)}</Table.Cell>
             <Table.Cell>
-              {#if abilities.length === 0}
-                <span class="ib-models__muted">{copy.noAbilities}</span>
-              {:else}
-                <span class="ib-models__abilities">
-                  {#each abilities as ability (ability)}
-                    <Badge variant="neutral" size="sm">{ability}</Badge>
-                  {/each}
-                </span>
-              {/if}
-            </Table.Cell>
-            <Table.Cell>
-              {#if row.pricing === undefined}
-                <span class="ib-models__muted">{copy.noPrice}</span>
-              {:else}
-                {copy.price(
-                  formatPrice(row.pricing.inputPerMillionTokens, row.pricing.currency),
-                  formatPrice(row.pricing.outputPerMillionTokens, row.pricing.currency),
-                )}
-              {/if}
-            </Table.Cell>
-            <Table.Cell>
-              <Toggle
-                id={`model-on-${row.provider}-${row.model}`}
-                label={copy.onLabel(`${row.provider}/${row.model}`)}
-                labelVisible={false}
-                checked={!row.off}
-                disabled={locked || savePending}
-                onValueChange={(next) => change(withModelOff(edits, row, !next))}
+              <StatusDot
+                status={row.allowed ? 'success' : 'neutral'}
+                label={row.allowed ? copy.allowed : copy.notAllowed}
+                labelVisible
               />
-            </Table.Cell>
-            <Table.Cell>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={locked || savePending}
-                aria-label={copy.editLabel(`${row.provider}/${row.model}`)}
-                onclick={() => (dialog = { kind: 'edit', row })}>{copy.edit}</Button
-              >
             </Table.Cell>
           </Table.Row>
         {/each}
       </Table.Body>
     </Table>
-    <div class="ib-models__actions">
-      <Button
-        data-changes
-        variant="primary"
-        disabled={!dirty || savePending || locked || changedElsewhere}
-        loading={savePending}
-        onclick={() => void save()}>{copy.save}</Button
-      >
-      <Button variant="secondary" disabled={!dirty || savePending} onclick={discard}
-        >{copy.discard}</Button
-      >
-    </div>
+  {:else}
+    <FormSection grouped heading={copy.heading} description={copy.emptyDescription}>
+      {#if failure !== undefined}
+        <ErrorState
+          headingLevel={3}
+          title={copy.loadFailed.title}
+          description={copy.loadFailed.description(failure.providers, failure.status)}
+          retryLabel={copy.loadFailed.retry}
+          {onRetry}
+          data-testid="models-catalog-failed"
+        />
+      {:else}
+        <EmptyState
+          kind="first-use"
+          headingLevel={3}
+          title={copy.empty.title}
+          description={copy.empty.description}
+          data-testid="models-empty"
+        >
+          {#snippet icon()}<Cpu size={24} aria-hidden="true" />{/snippet}
+          {#snippet action()}
+            <Link href={PROVIDERS_ANCHOR} onclick={goToProviders}>{copy.empty.action}</Link>
+          {/snippet}
+        </EmptyState>
+      {/if}
+    </FormSection>
   {/if}
-</section>
-
-<RowDialog
-  bind:target={dialog}
-  {rows}
-  providers={connected}
-  excluded={(provider: string, model: string) =>
-    allowlistExcludes(snapshot.providers, provider, model)}
-  onEdit={(row: PreviewRow, fields: RowFields) => change(withRowFields(edits, row, fields))}
-  onAdd={(added: AddedRow) => change(withAddedRow(edits, added))}
-/>
+</div>
 
 <style>
   .ib-models {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    min-width: 0;
-  }
-
-  .ib-models__title-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-2);
-    padding-bottom: var(--cinder-space-2);
-    border-bottom: 1px solid var(--cinder-border-muted);
-  }
-
-  .ib-models__title {
-    margin: 0;
-    font-size: var(--cinder-text-lg);
-    font-weight: 600;
-  }
-
-  .ib-models__description,
-  .ib-models__muted {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .ib-models__name {
-    overflow-wrap: anywhere;
-  }
-
-  .ib-models__abilities {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-1);
-  }
-
-  .ib-models__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-  }
-
-  .ib-models__alert-title {
-    margin: 0;
-    font-weight: 600;
-  }
-
-  .ib-models__alert-body {
-    margin: var(--cinder-space-1) 0 0;
-    overflow-wrap: anywhere;
+    min-inline-size: 0;
   }
 </style>
