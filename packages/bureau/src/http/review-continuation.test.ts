@@ -18,14 +18,24 @@
  * - A restart between the decision and the continuation: nothing retries the start (a residual, as
  *   for the resume's own `CONTINUATION_NOT_STARTED`); the decision and its outcome survive, a repeat
  *   still starts nothing, and the next message continues the chat from them.
+ * - The continuation starts as every other door starts a turn: under the chat's thread lease and
+ *   only when the shared admission rule (`ag-ui-thread-admission.ts`) finds the chat idle. A new
+ *   message admitted between the decision's commit and its continuation is the one live run, and the
+ *   continuation says it did not start; a message that arrives while the continuation holds the
+ *   lease is refused as on `main`; a lease taken over under the continuation starts nothing.
  */
 import { EventType } from '@ag-ui/core';
 import { createToolbox, createTool } from 'armorer';
 import type { Toolbox } from '@lostgradient/operative';
+import { encodeStorageKeyComponent } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import type { StartTaskOptions, TaskInput } from '../types.ts';
 import { listHeldTasks, waitForTaskState } from '../test';
+import { AG_UI_LEASE_KEY_PREFIX } from './ag-ui-lease.ts';
 import {
   as,
   authentication,
@@ -36,6 +46,7 @@ import {
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
 import { readAgUiStream } from './ag-ui-stream.test-support.ts';
+import { startIdleTurn } from './ag-ui-thread-admission.ts';
 import { reviewContinuationCommandId } from './review-continuation.ts';
 
 const SECRET = 'review-continuation-secret';
@@ -178,11 +189,62 @@ async function transcript(harness: Harness, threadId = 'thread-1') {
   });
 }
 
+/** A promise and the call that settles it, for holding one step of a path at a known point. */
+function gate(): { readonly opened: Promise<void>; readonly open: () => void } {
+  let open: () => void = () => undefined;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { opened, open };
+}
+
+/**
+ * Holds the Reviews continuation of `runId` before it takes the thread lease: its read of the
+ * run's pending reviews is the step that comes after the decision commits and before the lease.
+ */
+function holdContinuationBeforeLease(harness: Harness, runId: string) {
+  const reached = gate();
+  const released = gate();
+  const real = harness.bureau.reviews.pendingOf.bind(harness.bureau.reviews);
+  let held = false;
+  spyOn(harness.bureau.reviews, 'pendingOf').mockImplementation(async (taskId) => {
+    if (taskId === runId && !held) {
+      held = true;
+      reached.open();
+      await released.opened;
+    }
+    return real(taskId);
+  });
+  return { reached: reached.opened, release: released.open };
+}
+
+/** The receipt of the continuation of `runId`, as the run-creation ledger holds it. */
+function continuationReceipt(harness: Harness, runId: string) {
+  return harness.bureau.tasks.receipt({
+    principal: 'anonymous:local',
+    agentName: 'assistant',
+    commandId: reviewContinuationCommandId('thread-1', runId),
+  });
+}
+
+/** A new message on the chat through the AG-UI mount, read to its last frame. */
+async function sendMessage(harness: Harness, runId: string, content: string) {
+  const frames = await readAgUiStream(
+    await harness.handler(
+      startRequest(
+        runAgentInput({ runId, messages: [{ id: `${runId}:user`, role: 'user', content }] }),
+      ),
+    ),
+  );
+  return frames.at(-1)!.event as { type: string; code?: string; outcome?: { type: string } };
+}
+
 describe('a decision through bureau.reviews.resolve continues the chat (COR-2016)', () => {
   it('starts the continuation when it decides the run’s one review, and says which run it is', async () => {
     const charges: number[] = [];
     await withHarness(
-      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox(charges) },
+      {
+        script: [chargeOnce, say('Charged.'), say('Anything else?')],
+        toolbox: approvalToolbox(charges),
+      },
       async (harness) => {
         const [reviewId] = await chatWaitingOnApprovals(harness);
         const runId = harness.bureau.reviews.list()[0]!.runId;
@@ -213,6 +275,11 @@ describe('a decision through bureau.reviews.resolve continues the chat (COR-2016
           role: 'assistant',
           content: 'Charged.',
         });
+        // The continuation gave the thread's lease back: the next message is admitted.
+        expect(await sendMessage(harness, 'client-run-next', 'Thanks.')).toMatchObject({
+          type: EventType.RUN_FINISHED,
+        });
+        expect(await lastRow(harness)).toMatchObject({ content: 'Anything else?' });
       },
     );
   });
@@ -431,6 +498,7 @@ describe('a decision through bureau.reviews.resolve racing the chat’s own resu
       { script: [chargeTwice, say('Both charged.')], toolbox: approvalToolbox(charges) },
       async (harness) => {
         const interruptIds = await chatWaitingOnApprovals(harness);
+        const decidedRun = harness.bureau.reviews.list()[0]!.runId;
         const byCall = new Map(
           harness.bureau.reviews
             .list()
@@ -479,14 +547,15 @@ describe('a decision through bureau.reviews.resolve racing the chat’s own resu
         releaseSecond();
         const resumed = await readAgUiStream(await resuming);
 
-        expect(reply.result?.continuation?.status).toBe('started');
-        const continuation =
-          reply.result?.continuation?.status === 'started' ? reply.result.continuation.runId : '';
-        await waitForTaskState(harness.bureau, continuation);
-        // The resume's continuation is the same run, under the same command id.
+        // The resume holds the thread's lease while it decides, so Reviews starts nothing and the
+        // resume starts the one continuation.
+        expect(reply.result?.continuation).toMatchObject({ status: 'not-started' });
         expect(resumed.at(-1)!.event).toMatchObject({ type: EventType.RUN_FINISHED });
+        const continuation = listHeldTasks(harness.bureau).find((task) => task.id !== decidedRun);
+        await waitForTaskState(harness.bureau, continuation!.id);
         expect(listHeldTasks(harness.bureau)).toHaveLength(2);
         expect(charges.toSorted((left, right) => left - right)).toEqual([500, 700]);
+        expect(await lastRow(harness)).toMatchObject({ content: 'Both charged.' });
       },
     );
   });
@@ -544,5 +613,231 @@ describe('a restart between a decision and its continuation', () => {
     } finally {
       await current.dispose();
     }
+  });
+});
+
+describe('a decision through bureau.reviews.resolve and the turns other doors start', () => {
+  it('two resolves that each decide the last review at once start one continuation between them', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeTwice, say('Both charged.')], toolbox: approvalToolbox(charges) },
+      async (harness) => {
+        await chatWaitingOnApprovals(harness);
+        const ids = harness.bureau.reviews.list().map((review) => review.id);
+
+        const replies = await Promise.all(
+          ids.map((id) => resolveThroughOperation(harness.handler, { id, decision: 'approve' })),
+        );
+
+        // A continuation runs only after its own decision commits, so at most one of the two sees
+        // the other still pending; whichever start reaches the chat starts the one run, and the
+        // other finds it live, holds no lease, or replays it under the same command id.
+        const started = replies.flatMap((reply) =>
+          reply.result?.continuation?.status === 'started' ? [reply.result.continuation.runId] : [],
+        );
+        expect(started.length).toBeGreaterThan(0);
+        expect(new Set(started).size).toBe(1);
+        await waitForTaskState(harness.bureau, started[0]!);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(2);
+        expect(charges.toSorted((left, right) => left - right)).toEqual([500, 700]);
+      },
+    );
+  });
+
+  it('a new message admitted between the decision and its continuation is the one live run', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, { kind: 'block', barrier: 'second-turn' }, say('Shipping too.')],
+        toolbox: approvalToolbox(charges),
+      },
+      async (harness) => {
+        const [reviewId] = await chatWaitingOnApprovals(harness);
+        const runId = harness.bureau.reviews.list()[0]!.runId;
+        const continuation = holdContinuationBeforeLease(harness, runId);
+
+        // The decision commits; its continuation waits before the thread's lease.
+        const resolving = resolveThroughOperation(harness.handler, {
+          id: reviewId,
+          decision: 'approve',
+        });
+        await continuation.reached;
+        // A message through another door (Interborough's POST /api/chats/{chat}/messages) finds
+        // the chat idle and starts its turn.
+        const second = await startIdleTurn(harness.bureau, {
+          threadId: 'thread-1',
+          input: 'Refund the shipping too.',
+          principal: 'anonymous:local',
+        });
+        await harness.generate.reached('second-turn');
+        await waitUntil(async () => {
+          const session = await harness.bureau.contexts.get('thread-1');
+          return session?.metadata['lastRunId'] === second.id;
+        });
+        continuation.release();
+        const reply = await resolving;
+
+        expect(reply.result?.receipt).toBe('applied');
+        expect(reply.result?.continuation).toMatchObject({ status: 'not-started' });
+        expect(await continuationReceipt(harness, runId)).toMatchObject({ status: 'not-found' });
+        // One run is live on the chat, the new message's, and the session still names it.
+        expect(listHeldTasks(harness.bureau)).toHaveLength(2);
+        const session = await harness.bureau.contexts.get('thread-1');
+        expect(session?.metadata['lastRunId']).toBe(second.id);
+        harness.generate.release('second-turn');
+        await waitForTaskState(harness.bureau, second.id);
+        expect(charges).toEqual([500]);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(2);
+        expect(await lastRow(harness)).toMatchObject({ content: 'Shipping too.' });
+      },
+    );
+  });
+
+  it('starts nothing when the new message’s run has already answered by the time it reads the chat', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Shipping too.')], toolbox: approvalToolbox([]) },
+      async (harness) => {
+        const [reviewId] = await chatWaitingOnApprovals(harness);
+        const runId = harness.bureau.reviews.list()[0]!.runId;
+        const continuation = holdContinuationBeforeLease(harness, runId);
+
+        const resolving = resolveThroughOperation(harness.handler, {
+          id: reviewId,
+          decision: 'approve',
+        });
+        await continuation.reached;
+        const second = await startIdleTurn(harness.bureau, {
+          threadId: 'thread-1',
+          input: 'Refund the shipping too.',
+          principal: 'anonymous:local',
+        });
+        await waitForTaskState(harness.bureau, second.id);
+        continuation.release();
+        const reply = await resolving;
+
+        // The chat is idle again, but its conversation ends in the answer: no run can continue
+        // from it, so `tasks.start` refuses and nothing starts.
+        expect(reply.result?.continuation).toMatchObject({ status: 'not-started' });
+        expect(listHeldTasks(harness.bureau)).toHaveLength(2);
+        expect(await lastRow(harness)).toMatchObject({ content: 'Shipping too.' });
+      },
+    );
+  });
+
+  it('refuses a new message while the continuation holds the chat, then admits the next once it is done', async () => {
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.'), say('Anything else?')],
+        toolbox: approvalToolbox([]),
+      },
+      async (harness) => {
+        const [reviewId] = await chatWaitingOnApprovals(harness);
+        // Hold the continuation inside its start, which runs under the thread's lease.
+        const reached = gate();
+        const released = gate();
+        const real = harness.bureau.tasks.start.bind(harness.bureau.tasks);
+        spyOn(harness.bureau.tasks, 'start').mockImplementation(
+          async (agent: string, input: TaskInput, options?: StartTaskOptions) => {
+            if (options?.commandId?.startsWith('review-continuation:') === true) {
+              reached.open();
+              await released.opened;
+            }
+            return real(agent, input, options);
+          },
+        );
+
+        const resolving = resolveThroughOperation(harness.handler, {
+          id: reviewId,
+          decision: 'approve',
+        });
+        await reached.opened;
+
+        expect(await sendMessage(harness, 'client-run-busy', 'Are you there?')).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'THREAD_BUSY',
+        });
+        expect(
+          await rejectionOf(
+            startIdleTurn(harness.bureau, {
+              threadId: 'thread-1',
+              input: 'Are you there?',
+              principal: 'anonymous:local',
+            }),
+          ),
+        ).toMatchObject({ code: 'CONFLICT' });
+
+        released.open();
+        const reply = await resolving;
+        expect(reply.result?.continuation?.status).toBe('started');
+        const continuation =
+          reply.result?.continuation?.status === 'started' ? reply.result.continuation.runId : '';
+        await waitForTaskState(harness.bureau, continuation);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(2);
+        expect(await sendMessage(harness, 'client-run-after', 'Thanks.')).toMatchObject({
+          type: EventType.RUN_FINISHED,
+        });
+        expect(listHeldTasks(harness.bureau)).toHaveLength(3);
+      },
+    );
+  });
+
+  it('starts nothing when another start takes the chat’s lease over under the continuation', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Picked up.')], toolbox: approvalToolbox([]) },
+      async (harness) => {
+        const [reviewId] = await chatWaitingOnApprovals(harness);
+        const runId = harness.bureau.reviews.list()[0]!.runId;
+        const kv = harness.bureau.internals.kv!;
+        const key = `${AG_UI_LEASE_KEY_PREFIX}:thread:${encodeStorageKeyComponent('thread-1')}`;
+        // Once the continuation holds the lease, its read of the chat is the step before admission:
+        // there another claimant's record replaces its own.
+        let armed = false;
+        const realPending = harness.bureau.reviews.pendingOf.bind(harness.bureau.reviews);
+        spyOn(harness.bureau.reviews, 'pendingOf').mockImplementation(async (taskId) => {
+          if (taskId === runId) armed = true;
+          return realPending(taskId);
+        });
+        const realGet = harness.bureau.contexts.get.bind(harness.bureau.contexts);
+        spyOn(harness.bureau.contexts, 'get').mockImplementation(async (id, ...rest) => {
+          if (armed && id === 'thread-1') {
+            armed = false;
+            const held = await kv.get(key);
+            expect(held).not.toBeNull();
+            const taken = await kv.conditionalBatch(
+              [{ key, expectedValue: held }],
+              [
+                {
+                  type: 'set',
+                  key,
+                  value: JSON.stringify({
+                    claimant: 'another-start',
+                    expiresAt: harness.bureau.runtimeServices.clock.now() + 60_000,
+                  }),
+                },
+              ],
+            );
+            expect(taken).toBe(true);
+          }
+          return realGet(id, ...rest);
+        });
+
+        const reply = await resolveThroughOperation(harness.handler, {
+          id: reviewId,
+          decision: 'approve',
+        });
+
+        expect(reply.result?.continuation).toMatchObject({ status: 'not-started' });
+        expect(await continuationReceipt(harness, runId)).toMatchObject({ status: 'not-found' });
+        expect(listHeldTasks(harness.bureau)).toHaveLength(1);
+        // The other claimant's record still holds the chat; once it is given up, the next message
+        // continues the chat from the decided outcome.
+        expect(await kv.get(key)).toContain('another-start');
+        await kv.delete(key);
+        expect(await sendMessage(harness, 'client-run-next', 'Is it done?')).toMatchObject({
+          type: EventType.RUN_FINISHED,
+        });
+        expect(await lastRow(harness)).toMatchObject({ content: 'Picked up.' });
+      },
+    );
   });
 });
