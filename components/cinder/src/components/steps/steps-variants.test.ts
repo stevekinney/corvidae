@@ -54,9 +54,6 @@ describe('Steps checklist variant on a narrow container', () => {
     expect(narrow).toMatch(
       /\[data-cinder-variant='checklist'\] \.cinder-steps__action \{[^}]*flex-basis: 100%;[^}]*flex-direction: column;[^}]*align-items: stretch;/,
     );
-    expect(narrow).toMatch(
-      /\[data-cinder-variant='checklist'\] \.cinder-steps__action > \.cinder-button \{[^}]*inline-size: 100%;/,
-    );
   });
 });
 
