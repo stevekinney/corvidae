@@ -3,7 +3,8 @@
  * a sweep relies on, the narrowing a sign-off uses, and the refusals that keep a typo from
  * silently capturing the wrong thing.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -357,4 +358,10 @@ describe('hostEnvironment', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+afterAll(() => {
+  // A spawned Bun child can leave the coverage loader resolving the next late import against the
+  // document origin. Keep the next UI test file from handing it a network origin.
+  if (window instanceof Window) window.happyDOM.setURL('about:blank');
 });
