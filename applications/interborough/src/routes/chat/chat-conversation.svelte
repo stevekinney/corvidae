@@ -1768,7 +1768,9 @@
         : undefined}
       input={call.arguments}
       result={call.state === 'done' || call.state === 'denied' ? call.result : undefined}
-      error={call.state === 'failed' ? (call.failure ?? { message: call.summary }) : undefined}
+      error={call.state !== 'failed'
+        ? undefined
+        : (call.failure ?? (call.summary === '' ? undefined : { message: call.summary }))}
       onClose={closeCallPanel}
     />
   {/if}
