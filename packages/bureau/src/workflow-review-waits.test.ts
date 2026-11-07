@@ -133,6 +133,59 @@ async function atReview(harness: WorkflowBureauHarness): Promise<{
 }
 
 describe('a workflow review step', () => {
+  it('matches reviewed waits after a branch against canonical preorder indexes', async () => {
+    const harness = await start();
+    await harness.putWorkflow('branched-reviews', {
+      trigger: { kind: 'manual' },
+      steps: [
+        {
+          kind: 'branch',
+          on: 'status',
+          cases: {
+            undefined: [{ kind: 'await-signal', signal: 'branch-done' }],
+          },
+          otherwise: [{ kind: 'await-signal', signal: 'unused' }],
+        },
+        { kind: 'await-signal', signal: 'approve', title: 'First approval', review: true },
+        { kind: 'await-signal', signal: 'approve', title: 'Second approval', review: true },
+      ],
+    });
+    const { runId } = await harness.bureau.workflows!.start('branched-reviews', {
+      owner: 'person:test',
+    });
+    const engine = harness.bureau.durableEngine()!;
+    await waitUntil(() => waitsFor(harness, runId, 'branch-done'));
+    await engine.signal(runId, 'branch-done', null);
+    await waitUntil(() => workflowReviews(harness).length === 1);
+
+    const first = workflowReviews(harness)[0]!;
+    expect(first).toMatchObject({
+      id: `human-wait:${runId}:approve:3`,
+      prompt: 'First approval',
+      workflow: { step: 4, stepTitle: 'First approval' },
+    });
+    await harness.bureau.reviews.resolve({
+      id: first.id,
+      decision: 'approve',
+      principal: 'person:test',
+    });
+    await waitUntil(() => workflowReviews(harness).length === 1);
+
+    const second = workflowReviews(harness)[0]!;
+    expect(second).toMatchObject({
+      id: `human-wait:${runId}:approve:4`,
+      prompt: 'Second approval',
+      workflow: { step: 5, stepTitle: 'Second approval' },
+    });
+    expect(second.id).not.toBe(first.id);
+    await harness.bureau.reviews.resolve({
+      id: second.id,
+      decision: 'approve',
+      principal: 'person:test',
+    });
+    await waitUntil(async () => (await statusOf(harness, runId)) === 'completed');
+  });
+
   it('tells a review step from a signal wait on the same signal by the step the instance is at', async () => {
     const harness = await start();
     await harness.putWorkflow('twice', {

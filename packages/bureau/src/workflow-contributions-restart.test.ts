@@ -97,16 +97,14 @@ async function storeAndFiles() {
                     version: activityVersion,
                     description: 'Contributes y.',
                     setup: () => ({
-                      activities: [
-                        ...(['y', 'z'] as const).map((name) => ({
-                          name,
-                          version: activityVersion,
-                          execute: (argument: { input: unknown }) =>
-                            argument.input === 'status'
-                              ? { status: 'ready' }
-                              : activityAnswer(activityVersion, argument.input),
-                        })),
-                      ],
+                      activities: (['y', 'z'] as const).map((name) => ({
+                        name,
+                        version: activityVersion,
+                        execute: (argument: { input: unknown }) =>
+                          argument.input === 'status'
+                            ? { status: 'ready' }
+                            : activityAnswer(activityVersion, argument.input),
+                      })),
                     }),
                   }),
                   source: 'package' as const,

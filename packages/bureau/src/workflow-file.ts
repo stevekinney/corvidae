@@ -236,6 +236,32 @@ export type WorkflowFileTrigger = Readonly<{ kind: string } & Record<string, unk
 /** One step as written in a file, its `title` and `review` included. */
 export type WorkflowFileStep = Readonly<Record<string, unknown>>;
 
+/**
+ * The file steps in the same preorder used by Weft's document revision and step identities.
+ * Branch wrappers count as steps; cases are visited in canonical UTF-16 key order, followed by
+ * `otherwise`, so every consumer that joins written metadata to an engine step uses one index.
+ */
+export function workflowFileStepsInCanonicalOrder<T extends WorkflowFileStep>(
+  steps: readonly T[],
+): readonly { readonly step: T; readonly index: number; readonly path: string }[] {
+  const ordered: { step: T; index: number; path: string }[] = [];
+  const visit = (nested: readonly T[], parentPath: string): void => {
+    for (const [position, step] of nested.entries()) {
+      const path = `${parentPath}[${String(position)}]`;
+      ordered.push({ step, index: ordered.length, path });
+      if (step['kind'] !== 'branch' || !isPlainObject(step['cases'])) continue;
+      for (const literal of Object.keys(step['cases']).toSorted()) {
+        const branch = step['cases'][literal];
+        if (Array.isArray(branch)) visit(branch as T[], `${path}.cases.${literal}`);
+      }
+      const otherwise = step['otherwise'];
+      if (Array.isArray(otherwise)) visit(otherwise as T[], `${path}.otherwise`);
+    }
+  };
+  visit(steps, 'steps');
+  return ordered;
+}
+
 /** What Bureau reads from one step beyond Weft's document (COR-2009). */
 export interface WorkflowStepAnnotation {
   /** The step's `title`, or `null` when it has none. */
@@ -354,44 +380,33 @@ function agentStepIssues(document: WorkflowDocument): {
 } {
   const issues: WorkflowFileIssue[] = [];
   let unrecognizedKeys = false;
-  const visit = (steps: readonly WorkflowDocument['steps'][number][], path: string): void => {
-    for (const [index, step] of steps.entries()) {
-      const stepPath = `${path}[${String(index)}]`;
-      if (step.kind === 'branch') {
-        for (const [literal, nested] of Object.entries(step.cases)) {
-          visit(nested, `${stepPath}.cases.${literal}`);
-        }
-        if (step.otherwise !== undefined) visit(step.otherwise, `${stepPath}.otherwise`);
-        continue;
-      }
-      if (step.kind !== 'activity' || step.handler !== AGENT_STEP_HANDLER) continue;
-      const inputPath = `${stepPath}.input`;
-      const input: unknown = step.input;
-      if (!isPlainObject(input)) {
-        issues.push({
-          path: inputPath,
-          message: 'an agent step needs an input of { agent, message }',
-        });
-        continue;
-      }
-      const extra = Object.keys(input).filter((key) => key !== 'agent' && key !== 'message');
-      if (extra.length > 0) {
-        unrecognizedKeys = true;
-        issues.push({
-          path: inputPath,
-          message: `unknown key ${extra.map((key) => `"${key}"`).join(', ')}`,
-        });
-      }
-      const agent = input['agent'];
-      if (typeof agent !== 'string' || !AGENT_IDENTIFIER_PATTERN.test(agent)) {
-        issues.push({ path: inputPath, message: '"agent" must be an agent identifier' });
-      }
-      if (typeof input['message'] !== 'string') {
-        issues.push({ path: inputPath, message: '"message" must be a string' });
-      }
+  for (const { step, path } of workflowFileStepsInCanonicalOrder(document.steps)) {
+    if (step.kind !== 'activity' || step.handler !== AGENT_STEP_HANDLER) continue;
+    const inputPath = `${path}.input`;
+    const input: unknown = step.input;
+    if (!isPlainObject(input)) {
+      issues.push({
+        path: inputPath,
+        message: 'an agent step needs an input of { agent, message }',
+      });
+      continue;
     }
-  };
-  visit(document.steps, 'steps');
+    const extra = Object.keys(input).filter((key) => key !== 'agent' && key !== 'message');
+    if (extra.length > 0) {
+      unrecognizedKeys = true;
+      issues.push({
+        path: inputPath,
+        message: `unknown key ${extra.map((key) => `"${key}"`).join(', ')}`,
+      });
+    }
+    const agent = input['agent'];
+    if (typeof agent !== 'string' || !AGENT_IDENTIFIER_PATTERN.test(agent)) {
+      issues.push({ path: inputPath, message: '"agent" must be an agent identifier' });
+    }
+    if (typeof input['message'] !== 'string') {
+      issues.push({ path: inputPath, message: '"message" must be a string' });
+    }
+  }
   return { issues, unrecognizedKeys };
 }
 
@@ -450,18 +465,11 @@ function pinActivityVersions(
   const loaded = host.activityVersions;
   if (loaded === undefined) return document;
   const pins: Record<string, string> = {};
-  const visit = (steps: readonly WorkflowDocument['steps'][number][]): void => {
-    for (const step of steps) {
-      if (step.kind === 'activity') {
-        const weftName = weftNameOf(step.handler);
-        if (Object.hasOwn(loaded, weftName)) pins[step.handler] = loaded[weftName]!;
-      } else if (step.kind === 'branch') {
-        for (const literal of Object.keys(step.cases).toSorted()) visit(step.cases[literal]!);
-        if (step.otherwise !== undefined) visit(step.otherwise);
-      }
-    }
-  };
-  visit(document.steps);
+  for (const { step } of workflowFileStepsInCanonicalOrder(document.steps)) {
+    if (step.kind !== 'activity') continue;
+    const weftName = weftNameOf(step.handler);
+    if (Object.hasOwn(loaded, weftName)) pins[step.handler] = loaded[weftName]!;
+  }
   return Object.keys(pins).length === 0 ? document : { ...document, activityVersions: pins };
 }
 
