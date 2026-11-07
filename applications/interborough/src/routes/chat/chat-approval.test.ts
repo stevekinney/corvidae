@@ -84,4 +84,25 @@ describe('a waiting approval', () => {
     expect(onResolve).toHaveBeenCalledTimes(1);
     expect(onResolve.mock.calls[0]?.[0]).toMatchObject({ decision: 'approve' });
   });
+
+  test('becomes the decided row when it is decided while the page is open', async () => {
+    const view = mount('dangerous');
+    expect(view.container.querySelector('[data-approval-decision]')).not.toBeNull();
+
+    await view.rerender({
+      entry: {
+        ...entry('dangerous'),
+        state: 'done',
+        decision: {
+          outcome: 'approved',
+          decidedBy: 'steve',
+          decidedAt: Date.parse('2026-11-05T10:33:00Z'),
+        },
+      },
+    } as never);
+
+    expect(view.container.querySelector('[data-approval-decision]')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deny' })).toBeNull();
+    expect(view.container.textContent).toContain('Approved');
+  });
 });
