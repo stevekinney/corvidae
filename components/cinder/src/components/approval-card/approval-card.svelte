@@ -487,6 +487,7 @@
       {requestedIso}
       {consequence}
       {rememberScope}
+      decidedElsewhere={decidedIn !== undefined}
       {outcomeText}
       outcomeTime={outcomeClock}
       {outcomeTone}

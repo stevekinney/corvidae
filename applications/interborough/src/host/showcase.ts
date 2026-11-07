@@ -188,7 +188,7 @@ export function showcaseHostOptions(
   const scripts = showcaseAgentScripts(pacing);
   return {
     extraAgents: showcaseBuiltInAgents(pacing, scripts),
-    extraTools: showcaseCatalogTools(),
+    extraTools: showcaseCatalogTools(pacing),
     resolveProviderGenerateFor: (agentOfRun) => showcaseProviderResolver(agentOfRun, scripts),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
     plugins: showcasePlugins(),

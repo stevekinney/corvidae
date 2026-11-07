@@ -172,6 +172,12 @@ export interface ShowcaseAssistantMoment {
   readonly signal: AbortSignal | undefined;
 }
 
+/** Lookup order at work, handed to {@link ShowcasePacing.lookup} before it returns what it found. */
+export interface ShowcaseLookupMoment {
+  /** The order being looked up. */
+  readonly orderId: string;
+}
+
 /** A goal's check about to answer, handed to {@link ShowcasePacing.check}. */
 export interface ShowcaseCheckMoment {
   /** The check's validator name, one of {@link SHOWCASE_GOAL_CHECKS}. */
@@ -197,6 +203,11 @@ export interface ShowcasePacing {
   readonly assistant?: (moment: ShowcaseAssistantMoment) => void | Promise<void>;
   /** Awaited before a goal's check answers. */
   readonly check?: (moment: ShowcaseCheckMoment) => void | Promise<void>;
+  /**
+   * Awaited inside Lookup order before it returns, so the seed can give the lookup the time the
+   * story says it took (the 4471 lookup takes 0.4 s).
+   */
+  readonly lookup?: (moment: ShowcaseLookupMoment) => void | Promise<void>;
 }
 
 /** How Tool runner asks for each of its tools: Lookup order Never, Issue refund Always, Triage refunds On changes. */
@@ -206,8 +217,8 @@ export const SHOWCASE_TOOL_APPROVAL: Readonly<Record<string, ToolApprovalMode>> 
   'triage-refunds': 'on-changes',
 };
 
-/** The read-only tool: looks an order up by its number. */
-export function createShowcaseLookupOrderTool() {
+/** The read-only tool: looks an order up by its number, taking as long as `pacing.lookup` does. */
+export function createShowcaseLookupOrderTool(pacing: ShowcasePacing = {}) {
   return createTool({
     name: 'lookup-order',
     version: '1.0.0',
@@ -215,6 +226,7 @@ export function createShowcaseLookupOrderTool() {
     input: z.object({ orderId: z.string() }),
     metadata: { readOnly: true, title: 'Lookup order' },
     execute: async ({ orderId }) => {
+      await pacing.lookup?.({ orderId });
       const order = SHOWCASE_ORDERS[orderId];
       return order === undefined ? `Order ${orderId} was not found.` : lookupOrderResult(order);
     },
@@ -533,17 +545,17 @@ export function showcaseEchoGenerate(): GenerateFunction {
  * world's built-in tools, so a screen that says what a tool may do (Capabilities, and the line
  * under a review that can't be undone) reads it from the catalog, as it would for a host's own.
  */
-export function showcaseCatalogTools() {
-  const lookup = createShowcaseLookupOrderTool();
+export function showcaseCatalogTools(pacing: ShowcasePacing = {}) {
+  const lookup = createShowcaseLookupOrderTool(pacing);
   const refund = createShowcaseIssueRefundTool();
   const triage = createShowcaseTriageRefundsTool();
   return { [lookup.name]: lookup, [refund.name]: refund, [triage.name]: triage };
 }
 
 /** Tool runner's toolbox: its three tools, asked for as {@link SHOWCASE_TOOL_APPROVAL} says. */
-export function createShowcaseToolRunnerToolbox() {
+export function createShowcaseToolRunnerToolbox(pacing: ShowcasePacing = {}) {
   const tools = [
-    createShowcaseLookupOrderTool(),
+    createShowcaseLookupOrderTool(pacing),
     createShowcaseIssueRefundTool(),
     createShowcaseTriageRefundsTool(),
   ];
@@ -638,7 +650,7 @@ export function showcaseBuiltInAgents(
         description: 'Looks an order up, then asks for approval to refund it.',
         examples: ['Please refund order 4471, it arrived damaged.', 'Look up order 4398'],
         generate: scripts['tool-runner'],
-        toolbox: createShowcaseToolRunnerToolbox(),
+        toolbox: createShowcaseToolRunnerToolbox(pacing),
         stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       }),
       'request-human-input': createAgent({

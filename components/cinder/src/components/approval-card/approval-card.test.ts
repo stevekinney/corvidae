@@ -1679,6 +1679,61 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
     detail: "Interborough couldn't reach the agent. Nothing was refunded.",
   };
 
+  describe('a row decided on another page while it was shown waiting (Chat frame r)', () => {
+    test('collapses to a check, the question and the decision, with no tool line, no Input and no dot', () => {
+      const { container } = render(ApprovalCard, {
+        props: refundRow({
+          state: 'approved',
+          decidedBy: 'you',
+          decidedIn: 'Reviews',
+          decidedAt: '2026-11-02T10:46:00.000Z',
+        }),
+      });
+      const article = container.querySelector('.cinder-approval-card--row');
+      expect(squash(article?.textContent)).toBe(
+        'Refund order 4471 for $42.00? Approved by you in Reviews · 10:46 AM',
+      );
+      expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__outcome-dot')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
+      const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
+      expect(glyph?.getAttribute('data-cinder-tone')).toBe('success');
+      expect(glyph?.querySelector('svg')?.classList.contains('lucide-check')).toBe(true);
+    });
+
+    test('a denial collapses the same way, with the prohibition glyph in neutral', () => {
+      const { container } = render(ApprovalCard, {
+        props: refundRow({
+          state: 'denied',
+          decidedBy: 'you',
+          decidedIn: 'Reviews',
+          decidedAt: '2026-11-02T10:46:00.000Z',
+        }),
+      });
+      expect(squash(container.querySelector('.cinder-approval-card--row')?.textContent)).toBe(
+        'Refund order 4471 for $42.00? Denied by you in Reviews · 10:46 AM',
+      );
+      const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
+      expect(glyph?.getAttribute('data-cinder-tone')).toBe('neutral');
+      expect(glyph?.querySelector('svg')?.classList.contains('lucide-ban')).toBe(true);
+    });
+
+    test('a row decided here keeps its tool line, its Input summary and the dot', () => {
+      const { container } = render(ApprovalCard, {
+        props: refundRow({
+          state: 'approved',
+          decidedBy: 'you',
+          decidedAt: '2026-11-02T10:33:00.000Z',
+        }),
+      });
+      expect(container.querySelector('.cinder-approval-card__line')).not.toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-input')).not.toBeNull();
+      expect(container.querySelector('.cinder-approval-card__outcome-dot')).not.toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-glyph')).toBeNull();
+    });
+  });
+
   for (const layout of ['row', 'card', 'detail'] as const) {
     describe(`${layout} layout`, () => {
       test('Approve in flight writes Approving… with a spinner and turns both buttons off', async () => {

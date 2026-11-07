@@ -619,12 +619,21 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(decided.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
-    // The rail row says the same in its own words.
+    // The row collapses to a check, the question and the decision: no tool line and no Input.
+    await expect(decided).toHaveText(
+      /^\s*Refund order 4471 for \$42\.00\?\s*Approved by you in Reviews\s*·\s*10:46 AM\s*$/,
+    );
+    await expect(decided.locator('.cinder-approval-card__decided-glyph')).toHaveAttribute(
+      'data-cinder-tone',
+      'success',
+    );
+    // The rail row says the same in its own words, as the run the decision continues: from the
+    // moment it is told, the Bureau is starting that run.
     await expect(
       conversationArea(page)
-        .locator('.cinder-tool-call-rail__item[data-cinder-status="approved"]')
+        .locator('.cinder-tool-call-rail__item[data-cinder-status="running"]')
         .filter({ hasText: '4471' }),
-    ).toContainText(/Approved by you in Reviews 10:46 AM/);
+    ).toContainText(/Approved by you in Reviews 10:46 AM · running…/);
     // A polite live region says it once.
     const live = page.getByTestId('chat-decision-announcement');
     await expect(live).toHaveAttribute('aria-live', 'polite');
@@ -667,7 +676,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     // the chat's status and its row in the list say Running too.
     await expect(
       conversationArea(page)
-        .locator('.cinder-tool-call-rail__item[data-cinder-status="approved"]')
+        .locator('.cinder-tool-call-rail__item[data-cinder-status="running"]')
         .filter({ hasText: '4471' }),
     ).toContainText(/Approved by you in Reviews 10:46 AM · running…/);
     await expect(conversationArea(page).getByTestId('chat-header')).toContainText('Running');

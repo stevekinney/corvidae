@@ -178,6 +178,23 @@ describe('delivering a signal to a waiting instance', () => {
     expect(await runField(harness.bureau.workflows!, 'waiting-run', 'status')).toBe('completed');
   });
 
+  it('keeps an instance parked on a plain await-signal step out of the task list, so nothing counts it as working', async () => {
+    // Home's Running now counts the working tasks (`bureau.tasks.list`). A workflow run waiting on
+    // an external signal reads Waiting, never Running (design row 01x), which holds because such a
+    // run is a workflow run and never a task: were it ever recorded as one, it would read working.
+    const harness = await start();
+    await harness.putWorkflow('release-notes', {
+      trigger: onSignal('begin'),
+      steps: [awaiting('notes-approved')],
+    });
+    const engine = harness.bureau.durableEngine()!;
+    await engine.start('release-notes', null, { id: 'waiting-run' });
+    await parked(harness, 'waiting-run', 'notes-approved');
+
+    expect(await statusOf(harness, 'waiting-run')).toBe('running');
+    expect(await harness.bureau.tasks.get('waiting-run')).toBeUndefined();
+  });
+
   it('does not deliver to an instance waiting for another name, or to one that is not waiting', async () => {
     const harness = await start();
     await harness.putWorkflow('waiter', {

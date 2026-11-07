@@ -17,11 +17,12 @@ export type DecisionContext = {
   /** The zone times are written in. Defaults to the viewer's. */
   readonly zone?: string | undefined;
   /**
-   * Whether the run a decision continues is going. A call decided away from the chat then says the
-   * run is running in place of its result (design row 18i: "… in Reviews 10:46 AM · running…"), and
-   * the result is told again once the run stops.
+   * The calls decided away from the chat whose continuing run is going. Each says the run is
+   * running in place of its result (design row 18i: "… in Reviews 10:46 AM · running…"), and its
+   * result is told again once its run stops. It names calls, not the page, because a later run of
+   * the same chat does not continue an earlier decision.
    */
-  readonly continuing?: boolean | undefined;
+  readonly continuing?: ReadonlySet<string> | undefined;
 };
 
 /** Who decided: "you" when it was the chat's own person, otherwise the principal as recorded. */
@@ -56,8 +57,17 @@ export function decidedLine(entry: ToolCallEntry, context: DecisionContext): str
     // decision made in Reviews says the continuing run is running while it is.
     decision.outcome !== 'approved'
       ? ''
-      : context.continuing === true && decidedPlace(entry, context) !== undefined
+      : continuesAfterDecision(entry, context)
         ? CHAT_COPY.tools.decided.running
         : entry.summary,
+  );
+}
+
+/** Whether the call was decided away from the chat and the run its decision continues is going. */
+export function continuesAfterDecision(entry: ToolCallEntry, context: DecisionContext): boolean {
+  return (
+    entry.decision?.outcome === 'approved' &&
+    context.continuing?.has(entry.callId) === true &&
+    decidedPlace(entry, context) !== undefined
   );
 }

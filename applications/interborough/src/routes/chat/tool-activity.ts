@@ -15,7 +15,11 @@ import type { ToolCallRailCall } from '@lostgradient/cinder';
 import { CHAT_COPY } from '../../app/copy.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
 import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
-import { decidedLine, type DecisionContext } from './approval-decision-words.ts';
+import {
+  continuesAfterDecision,
+  decidedLine,
+  type DecisionContext,
+} from './approval-decision-words.ts';
 import { opensTurn } from './event-notes.ts';
 
 /** One row of a conversation. */
@@ -472,6 +476,12 @@ export function railCall(
           ...(entry.summary === '' ? {} : { result: entry.summary }),
           resultHref: entry.resultHref,
         };
+      }
+      // A call decided in Reviews whose continuing run is going reads as that run (design row
+      // 18i): the spinner, the decision with "running…" as its words, and no duration of its own.
+      if (decided !== undefined && continuesAfterDecision(entry, context)) {
+        const { duration: _finished, ...going } = named;
+        return { ...going, status: 'running', result: decided };
       }
       return decided !== undefined && entry.decision?.outcome === 'approved'
         ? { ...named, status: 'approved', decision: decided }

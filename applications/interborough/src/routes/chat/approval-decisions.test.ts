@@ -153,20 +153,39 @@ describe('a call whose approval a person decided', () => {
       elsewhere: new Set([entry.callId]),
       zone: 'America/Chicago',
     };
-    expect(railCall(entry, false, { ...context, continuing: true }).decision).toBe(
-      'Approved by you in Reviews 10:46 AM · running…',
-    );
+    // The row reads as the continuing run: the spinner, the decision and "running…", no duration.
+    const going = railCall(entry, false, { ...context, continuing: new Set([entry.callId]) });
+    expect(going.status).toBe('running');
+    expect(going.result).toBe('Approved by you in Reviews 10:46 AM · running…');
+    expect(going.duration).toBeUndefined();
     // A decision made in the chat itself, or a run that is not going, keeps the result.
     expect(
       railCall(entry, false, {
         owner: 'anonymous:local',
         zone: 'America/Chicago',
-        continuing: true,
+        continuing: new Set([entry.callId]),
       }).decision,
     ).toBe('Approved by you 10:46 AM · refunded 4200');
-    expect(railCall(entry, false, { ...context, continuing: false }).decision).toBe(
+    const stopped = railCall(entry, false, { ...context, continuing: new Set() });
+    expect(stopped.status).toBe('approved');
+    expect(stopped.decision).toBe('Approved by you in Reviews 10:46 AM · refunded 4200');
+  });
+
+  test('says running only for the decision whose run is still going, not for every decision made in Reviews', () => {
+    const finished = entryDecided(APPROVED);
+    const going = { ...entryDecided(APPROVED), callId: 'c2' };
+    const context = {
+      owner: 'anonymous:local',
+      elsewhere: new Set([finished.callId, going.callId]),
+      zone: 'America/Chicago',
+      continuing: new Set([going.callId]),
+    };
+    expect(decidedLine(going, context)).toBe('Approved by you in Reviews 10:46 AM · running…');
+    expect(decidedLine(finished, context)).toBe(
       'Approved by you in Reviews 10:46 AM · refunded 4200',
     );
+    expect(railCall(going, false, context).status).toBe('running');
+    expect(railCall(finished, false, context).status).toBe('approved');
   });
 
   test('reads a refusal as denied and neutral, with no claim about what it came to', () => {

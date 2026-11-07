@@ -213,6 +213,7 @@ describe('the run a decision on another page continues the chat with (design row
     const thread = decidedThread(APPROVED, { refunded: 4200 });
     let decided = false;
     let continued = false;
+    let continuation: ReadableStreamDefaultController<Uint8Array> | undefined;
     const served = bureau(
       {
         // The chat waits on the approval, and is running once the continuation has started.
@@ -247,6 +248,7 @@ describe('the run a decision on another page continues the chat with (design row
         return new Response(
           new ReadableStream({
             start(controller) {
+              continuation = controller;
               for (const frame of [
                 { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-2' },
                 { type: 'MESSAGES_SNAPSHOT', messages: thread },
@@ -299,5 +301,22 @@ describe('the run a decision on another page continues the chat with (design row
     expect(container.querySelector('.cinder-approval-card__outcome')?.textContent).toContain(
       'Approved by you in Reviews',
     );
+    // While the continuation goes, the rail row reads as that run (18i).
+    const railRow = () => container.querySelector('.cinder-tool-call-rail__item');
+    expect(railRow()?.getAttribute('data-cinder-status')).toBe('running');
+    expect(railRow()?.textContent).toMatch(/in Reviews \d{1,2}:\d{2} [AP]M · running…/);
+
+    // The continuation stops. The decision is no longer running, even though the chat as last read
+    // still says a run is going: "running…" belongs to the run the decision continued, not the page.
+    continuation?.enqueue(
+      new TextEncoder().encode(
+        `data: ${JSON.stringify({ type: 'RUN_FINISHED', threadId: 'session-1', runId: 'run-2' })}\n\n`,
+      ),
+    );
+    continuation?.close();
+    await settle(20);
+    await until(() => expect(railRow()?.getAttribute('data-cinder-status')).toBe('approved'));
+    expect(railRow()?.textContent).not.toContain('running…');
+    expect(railRow()?.textContent).toMatch(/Approved by you in Reviews \d{1,2}:\d{2} [AP]M/);
   });
 });

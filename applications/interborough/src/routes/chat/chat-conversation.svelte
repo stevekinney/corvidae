@@ -927,14 +927,15 @@
   });
   /** The calls whose approval was decided on another page while this one showed it waiting (`/reviews`). */
   let decidedAway = $state<ReadonlySet<string>>(new Set());
+  /**
+   * The calls decided on another page whose continuing run has not stopped since (design row 18i):
+   * each says "running…" in place of its result. A call joins when its decision is told here
+   * (`sayDecidedAway`), and every call leaves when the run the chat joined for it stops, or when
+   * the chat waits on a person again, so a later message never reads an older decision as running.
+   */
+  let continuingCalls = $state<ReadonlySet<string>>(new Set());
   /** What a polite live region says about a decision made on another page: said once, then left. */
   let announcement = $state('');
-  /** The words of a decided approval depend on who the person is to this chat and where it was decided. */
-  const decisionContext = $derived<DecisionContext>({
-    owner: context.data?.owner,
-    elsewhere: decidedAway,
-    continuing: session.streaming || context.data?.activity === 'running',
-  });
 
   /** What a question that declares no schema takes: free text, answered in the composer. */
   const FREE_TEXT_SCHEMA = { type: 'string', title: CHAT_COPY.questionAnswerLabel } as const;
@@ -1232,6 +1233,7 @@
     });
     if (away.length === 0) return;
     decidedAway = new Set([...decidedAway, ...away.map((entry) => entry.callId)]);
+    continuingCalls = new Set([...continuingCalls, ...away.map((entry) => entry.callId)]);
     announcement = away
       .map((entry) =>
         CHAT_COPY.tools.decided.announcement(
@@ -1291,6 +1293,31 @@
     awaitingContinuation = false;
     void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
   }
+  const NOTHING_CONTINUING: ReadonlySet<string> = new Set();
+  let continuationWasStreaming = false;
+  let wasWaitingOnPerson = false;
+  $effect(() => {
+    const streaming = session.streaming;
+    const waiting = waitingOnPerson;
+    const stopped = continuationWasStreaming && !streaming;
+    const waitsAgain = !wasWaitingOnPerson && waiting;
+    continuationWasStreaming = streaming;
+    wasWaitingOnPerson = waiting;
+    if ((stopped || waitsAgain) && untrack(() => continuingCalls.size) > 0) {
+      continuingCalls = new Set();
+    }
+  });
+  /** The words of a decided approval depend on who the person is to this chat and where it was decided. */
+  const decisionContext = $derived<DecisionContext>({
+    owner: context.data?.owner,
+    elsewhere: decidedAway,
+    // Only while a run is going or about to be joined: a continuation that ended before the page
+    // could join it leaves nothing running.
+    continuing:
+      awaitingContinuation || session.streaming || context.data?.activity === 'running'
+        ? continuingCalls
+        : NOTHING_CONTINUING,
+  });
   const seen = new SeenReviews();
   $effect(() => {
     const reviews = pendingReviews.data;

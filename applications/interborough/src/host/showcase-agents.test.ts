@@ -12,7 +12,8 @@ import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/
 import { workflowFileDirectory } from '@lostgradient/bureau/sources';
 import { readGenerationProfile } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { resolveCapabilityTier } from 'armorer';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { createToolbox, createToolCall, resolveCapabilityTier } from 'armorer';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
@@ -158,6 +159,31 @@ describe('the showcase built-in agents', () => {
       mutates: true,
       title: 'Triage refunds',
     });
+  });
+
+  test('Lookup order takes as long as its pacing, which the seed uses to give the 4471 lookup its 0.4s', async () => {
+    const paced: string[] = [];
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const toolbox = createToolbox([
+      createShowcaseLookupOrderTool({
+        lookup: async ({ orderId }) => {
+          paced.push(orderId);
+          await held;
+        },
+      }),
+    ]);
+    let settled = false;
+    const result = toolbox
+      .execute(createToolCall('lookup-order', { orderId: '4471' }, 'lookup-call'))
+      .finally(() => (settled = true));
+    await waitUntil(() => paced.length === 1);
+    expect(paced).toEqual(['4471']);
+    // The lookup has not answered while its pacing holds it.
+    expect(settled).toBe(false);
+    release();
+    const answered = await result;
+    expect(JSON.stringify(answered.result)).toContain('$42.00');
   });
 
   test('are offered to the catalog by name, so a screen reads Issue refund as dangerous from it', () => {
