@@ -38,13 +38,22 @@ function distinctStepValues(
       const value = pick(step);
       if (value !== undefined) values.add(value);
       if (step.kind === 'branch') {
-        Object.values(step.cases).forEach(visit);
+        branchCaseSteps(step).forEach(visit);
         if (step.otherwise !== undefined) visit(step.otherwise);
       }
     }
   };
   visit(document.steps);
   return [...values];
+}
+
+/** Traverse branch cases in the same UTF-16 key order used by canonical document JSON. */
+function branchCaseSteps(
+  step: Extract<WorkflowDocument['steps'][number], { kind: 'branch' }>,
+): readonly (readonly WorkflowDocument['steps'][number][])[] {
+  return Object.keys(step.cases)
+    .toSorted()
+    .map((literal) => Object.getOwnPropertyDescriptor(step.cases, literal)?.value ?? []);
 }
 
 function documentStepIndexes(
@@ -56,7 +65,7 @@ function documentStepIndexes(
     for (const step of steps) {
       indexes.set(step, next++);
       if (step.kind !== 'branch') continue;
-      Object.values(step.cases).forEach(visit);
+      branchCaseSteps(step).forEach(visit);
       if (step.otherwise !== undefined) visit(step.otherwise);
     }
   };

@@ -255,6 +255,41 @@ describe('canonicalWorkflowDocumentJson()', () => {
 });
 
 describe('workflowDocumentVersion()', () => {
+  it('keeps branch-case reordering at the same canonical version', async () => {
+    const first = validateWorkflowDocument(
+      document({
+        steps: [
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: {
+              ready: [{ kind: 'activity', handler: 'notify' }],
+              waiting: [{ kind: 'activity', handler: 'summarize' }],
+            },
+          },
+        ],
+      }),
+      host,
+    );
+    const second = validateWorkflowDocument(
+      document({
+        steps: [
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: {
+              waiting: [{ kind: 'activity', handler: 'summarize' }],
+              ready: [{ kind: 'activity', handler: 'notify' }],
+            },
+          },
+        ],
+      }),
+      host,
+    );
+
+    expect(await workflowDocumentVersion(first)).toBe(await workflowDocumentVersion(second));
+  });
+
   it('pins the version of a fixed document through the full validate-then-hash path', async () => {
     // The expected hex is the SHA-256 of this exact text, computed outside Weft with
     // Python's hashlib over a canonicalizer that sorts keys by UTF-16 code unit. The
