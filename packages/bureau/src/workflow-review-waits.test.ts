@@ -142,7 +142,14 @@ describe('a workflow review step', () => {
           kind: 'branch',
           on: 'status',
           cases: {
-            undefined: [{ kind: 'await-signal', signal: 'branch-done' }],
+            undefined: [
+              {
+                kind: 'await-signal',
+                signal: 'branch-done',
+                title: 'Branch approval',
+                review: true,
+              },
+            ],
           },
           otherwise: [{ kind: 'await-signal', signal: 'unused' }],
         },
@@ -153,9 +160,19 @@ describe('a workflow review step', () => {
     const { runId } = await harness.bureau.workflows!.start('branched-reviews', {
       owner: 'person:test',
     });
-    const engine = harness.bureau.durableEngine()!;
-    await waitUntil(() => waitsFor(harness, runId, 'branch-done'));
-    await engine.signal(runId, 'branch-done', null);
+    await waitUntil(() => workflowReviews(harness).length === 1);
+
+    const branchReview = workflowReviews(harness)[0]!;
+    expect(branchReview).toMatchObject({
+      id: `human-wait:${runId}:branch-done:1`,
+      prompt: 'Branch approval',
+      workflow: { step: 2, stepTitle: 'Branch approval' },
+    });
+    await harness.bureau.reviews.resolve({
+      id: branchReview.id,
+      decision: 'approve',
+      principal: 'person:test',
+    });
     await waitUntil(() => workflowReviews(harness).length === 1);
 
     const first = workflowReviews(harness)[0]!;

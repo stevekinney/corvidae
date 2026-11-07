@@ -497,12 +497,11 @@ function stripExtensions(
   const annotations: WorkflowStepAnnotation[] = [];
   const steps = documentInput['steps'];
   if (Array.isArray(steps)) {
-    stripped['steps'] = steps.map((step: unknown, index) => {
+    const stripStep = (step: unknown, path: string, collectAnnotation: boolean): unknown => {
       if (!isPlainObject(step)) {
-        annotations.push({ title: null, review: false });
+        if (collectAnnotation) annotations.push({ title: null, review: false });
         return step;
       }
-      const path = `steps[${String(index)}]`;
       const { title, review, ...rest } = step;
       if (Object.hasOwn(step, 'title') && !isTitle(title)) {
         issues.push({ path: `${path}.title`, message: TITLE_MESSAGE });
@@ -520,9 +519,31 @@ function stripExtensions(
           });
         }
       }
-      annotations.push({ title: isTitle(title) ? title : null, review: review === true });
+      if (collectAnnotation) {
+        annotations.push({ title: isTitle(title) ? title : null, review: review === true });
+      }
+      if (rest['kind'] === 'branch' && isPlainObject(rest['cases'])) {
+        rest['cases'] = Object.fromEntries(
+          Object.entries(rest['cases']).map(([literal, nested]) => [
+            literal,
+            Array.isArray(nested)
+              ? nested.map((child, index) =>
+                  stripStep(child, `${path}.cases.${literal}[${String(index)}]`, false),
+                )
+              : nested,
+          ]),
+        );
+        if (Array.isArray(rest['otherwise'])) {
+          rest['otherwise'] = rest['otherwise'].map((child, index) =>
+            stripStep(child, `${path}.otherwise[${String(index)}]`, false),
+          );
+        }
+      }
       return rest;
-    });
+    };
+    stripped['steps'] = steps.map((step, index) =>
+      stripStep(step, `steps[${String(index)}]`, true),
+    );
   }
   return { documentInput: stripped, annotations };
 }
