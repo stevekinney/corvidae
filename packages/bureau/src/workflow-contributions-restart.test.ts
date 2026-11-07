@@ -61,7 +61,7 @@ const branchPipeline = () =>
         kind: 'branch',
         on: 'status',
         cases: { ready: [{ kind: 'activity', handler: 'x:y', input: 'nested' }] },
-        otherwise: [{ kind: 'activity', handler: 'x:y', input: 'fallback' }],
+        otherwise: [{ kind: 'activity', handler: 'x:z', input: 'fallback' }],
       },
     ],
   });
@@ -98,14 +98,14 @@ async function storeAndFiles() {
                     description: 'Contributes y.',
                     setup: () => ({
                       activities: [
-                        {
-                          name: 'y',
+                        ...(['y', 'z'] as const).map((name) => ({
+                          name,
                           version: activityVersion,
                           execute: (argument: { input: unknown }) =>
                             argument.input === 'status'
                               ? { status: 'ready' }
                               : activityAnswer(activityVersion, argument.input),
-                        },
+                        })),
                       ],
                     }),
                   }),
@@ -163,6 +163,10 @@ describe('a run waiting across a restart, on a revision that pins x:y@1', () => 
     const first = await bureauOver('1', false, true);
     await first.put('branch-pipeline.json', branchPipeline());
     await first.bureau.workflows?.refresh();
+    const kv = first.bureau.internals.kv!;
+    const [snapshotKey] = await kv.list('bureau-workflow-snapshot:v1:branch-pipeline:');
+    const snapshot = JSON.parse((await kv.get(snapshotKey!)) ?? '{}');
+    expect(snapshot.document.activityVersions).toEqual({ 'x:y': '1', 'x:z': '1' });
     const firstEngine = first.bureau.durableEngine()!;
     await firstEngine.start('branch-pipeline', null, { id: 'branch-waiting' });
     await waitUntil(() => waitsForGo(firstEngine, 'branch-waiting'), {

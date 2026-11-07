@@ -354,27 +354,44 @@ function agentStepIssues(document: WorkflowDocument): {
 } {
   const issues: WorkflowFileIssue[] = [];
   let unrecognizedKeys = false;
-  for (const [index, step] of document.steps.entries()) {
-    if (step.kind !== 'activity' || step.handler !== AGENT_STEP_HANDLER) continue;
-    const path = `steps[${String(index)}].input`;
-    const input: unknown = step.input;
-    if (!isPlainObject(input)) {
-      issues.push({ path, message: 'an agent step needs an input of { agent, message }' });
-      continue;
+  const visit = (steps: readonly WorkflowDocument['steps'][number][], path: string): void => {
+    for (const [index, step] of steps.entries()) {
+      const stepPath = `${path}[${String(index)}]`;
+      if (step.kind === 'branch') {
+        for (const [literal, nested] of Object.entries(step.cases)) {
+          visit(nested, `${stepPath}.cases.${literal}`);
+        }
+        if (step.otherwise !== undefined) visit(step.otherwise, `${stepPath}.otherwise`);
+        continue;
+      }
+      if (step.kind !== 'activity' || step.handler !== AGENT_STEP_HANDLER) continue;
+      const inputPath = `${stepPath}.input`;
+      const input: unknown = step.input;
+      if (!isPlainObject(input)) {
+        issues.push({
+          path: inputPath,
+          message: 'an agent step needs an input of { agent, message }',
+        });
+        continue;
+      }
+      const extra = Object.keys(input).filter((key) => key !== 'agent' && key !== 'message');
+      if (extra.length > 0) {
+        unrecognizedKeys = true;
+        issues.push({
+          path: inputPath,
+          message: `unknown key ${extra.map((key) => `"${key}"`).join(', ')}`,
+        });
+      }
+      const agent = input['agent'];
+      if (typeof agent !== 'string' || !AGENT_IDENTIFIER_PATTERN.test(agent)) {
+        issues.push({ path: inputPath, message: '"agent" must be an agent identifier' });
+      }
+      if (typeof input['message'] !== 'string') {
+        issues.push({ path: inputPath, message: '"message" must be a string' });
+      }
     }
-    const extra = Object.keys(input).filter((key) => key !== 'agent' && key !== 'message');
-    if (extra.length > 0) {
-      unrecognizedKeys = true;
-      issues.push({ path, message: `unknown key ${extra.map((key) => `"${key}"`).join(', ')}` });
-    }
-    const agent = input['agent'];
-    if (typeof agent !== 'string' || !AGENT_IDENTIFIER_PATTERN.test(agent)) {
-      issues.push({ path, message: '"agent" must be an agent identifier' });
-    }
-    if (typeof input['message'] !== 'string') {
-      issues.push({ path, message: '"message" must be a string' });
-    }
-  }
+  };
+  visit(document.steps, 'steps');
   return { issues, unrecognizedKeys };
 }
 

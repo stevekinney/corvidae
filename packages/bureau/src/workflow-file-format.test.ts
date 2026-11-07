@@ -194,6 +194,28 @@ describe('parsing a workflow file', () => {
     }
   });
 
+  it('validates agent steps nested in branch cases and otherwise', () => {
+    const nestedAgent = (input: unknown) => ({ kind: 'activity', handler: 'agent', input });
+    const problem = problemOf(
+      'digest',
+      file({
+        steps: [
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: { ready: [nestedAgent({ agent: 'writer' })] },
+            otherwise: [nestedAgent({ agent: 'writer', message: 3 })],
+          },
+        ],
+      }),
+    );
+    expect(problem.code).toBe('invalid-document');
+    expect(problem.issues?.map((issue) => issue.path)).toEqual([
+      'steps[0].cases.ready[0].input',
+      'steps[0].otherwise[0].input',
+    ]);
+  });
+
   it('is invalid-document for an unregistered activity handler', () => {
     const steps = [{ kind: 'activity', handler: 'send-email' }];
     expect(problemOf('digest', file({ steps })).code).toBe('invalid-document');
