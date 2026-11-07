@@ -36,7 +36,7 @@ const host: DocumentWorkflowHost = {
     version: ({ input }) => input,
     'payments.charge': () => null,
     identify: ({ workflowId, step, stepAddress }) => {
-      identities.push({ workflowId, step, stepAddress });
+      identities.push({ workflowId, step, ...(stepAddress === undefined ? {} : { stepAddress }) });
       return hangIdentify ? new Promise(() => undefined) : { workflowId, step };
     },
     trace: ({ input, trigger, previous, signal }) => {
