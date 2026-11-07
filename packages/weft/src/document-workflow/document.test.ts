@@ -6,6 +6,7 @@ import {
   documentStepAddress,
   validateWorkflowDocument,
   workflowDocumentSchema,
+  workflowDocumentStepSchema,
   workflowDocumentVersion,
   type DocumentWorkflowHost,
   type WorkflowDocument,
@@ -63,6 +64,48 @@ describe('validateWorkflowDocument()', () => {
 
     expect(validated.name).toBe('daily-digest');
     expect(validated.steps).toHaveLength(4);
+  });
+
+  it('accepts branch steps and validates handlers nested in every branch', () => {
+    const validated = validateWorkflowDocument(
+      document({
+        steps: [
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: {
+              ready: [{ kind: 'activity', handler: 'notify' }],
+              waiting: [{ kind: 'activity', handler: 'summarize' }],
+            },
+            otherwise: [{ kind: 'activity', handler: 'notify', input: 'fallback' }],
+          },
+        ],
+      }),
+      host,
+    );
+
+    expect(validated.steps).toHaveLength(1);
+  });
+
+  it('reports missing branch handlers and branch fallback requirements by nested path', () => {
+    const issues = issuesOf(
+      document({
+        steps: [
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: { ready: [{ kind: 'activity', handler: 'missing' }] },
+          },
+        ],
+      }),
+    );
+
+    expect(issues).toEqual([
+      {
+        path: 'steps[0].cases.ready[0].handler',
+        message: 'activity handler "missing" is not registered',
+      },
+    ]);
   });
 
   it('returns a detached copy, so later mutation of the caller input cannot change the document', () => {
@@ -128,11 +171,26 @@ describe('validateWorkflowDocument()', () => {
     expect(issuesOf(document({ owner: 'steve' })).map((issue) => issue.path)).toEqual(['']);
   });
 
+  it('exposes branch in the step catalog', () => {
+    expect(
+      workflowDocumentStepSchema.safeParse({
+        kind: 'branch',
+        on: 'status',
+        cases: { ready: [] },
+      }).success,
+    ).toBe(true);
+  });
+
   it.each([
     ['a missing name', { name: undefined }, 'name'],
     ['a name outside the wire-safe grammar', { name: 'not.valid' }, 'name'],
     ['an empty step list', { steps: [] }, 'steps'],
-    ['an unknown step kind', { steps: [{ kind: 'branch' }] }, 'steps[0].kind'],
+    ['an unknown step kind', { steps: [{ kind: 'unknown' }] }, 'steps[0].kind'],
+    [
+      'a branch without cases',
+      { steps: [{ kind: 'branch', on: 'status', cases: {} }] },
+      'steps[0].cases',
+    ],
     [
       'an invalid sleep duration',
       { steps: [{ kind: 'sleep', duration: 'soon' }] },

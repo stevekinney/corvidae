@@ -22,6 +22,7 @@ import type {
 } from './document.ts';
 import {
   documentStepAddress,
+  WorkflowDocumentBranchError,
   WorkflowDocumentSchemaError,
   workflowDocumentVersion,
 } from './document.ts';
@@ -32,10 +33,17 @@ function distinctStepValues(
   pick: (step: WorkflowDocument['steps'][number]) => string | undefined,
 ): string[] {
   const values = new Set<string>();
-  for (const step of document.steps) {
-    const value = pick(step);
-    if (value !== undefined) values.add(value);
-  }
+  const visit = (steps: readonly WorkflowDocument['steps'][number][]): void => {
+    for (const step of steps) {
+      const value = pick(step);
+      if (value !== undefined) values.add(value);
+      if (step.kind === 'branch') {
+        Object.values(step.cases).forEach(visit);
+        if (step.otherwise !== undefined) visit(step.otherwise);
+      }
+    }
+  };
+  visit(document.steps);
   return [...values];
 }
 
@@ -142,11 +150,31 @@ export async function buildDocumentWorkflowDefinition(
     checkSchema('input', firedBy);
     let previous: unknown = null;
     let pendingSignal: unknown;
-    for (const [index, step] of document.steps.entries()) {
+    let lastStepWasSignal = false;
+    let nextStep = 0;
+    const runBranch = function* (
+      step: Extract<WorkflowDocument['steps'][number], { kind: 'branch' }>,
+      iteration: readonly (string | number)[],
+    ): Generator<ContextOperationRequest, void, unknown> {
+      const candidate =
+        typeof previous === 'object' && previous !== null && Object.hasOwn(previous, step.on)
+          ? Object.getOwnPropertyDescriptor(previous, step.on)?.value
+          : undefined;
+      const literal = String(candidate);
+      const caseSteps = new Map(Object.entries(step.cases));
+      const matchesCase = caseSteps.has(literal);
+      const selected = matchesCase ? caseSteps.get(literal) : step.otherwise;
+      if (selected === undefined) throw new WorkflowDocumentBranchError(step.on, candidate);
+      yield* runSteps(selected, [...iteration, matchesCase ? literal : 'otherwise']);
+    };
+    const runStep = function* (
+      step: WorkflowDocument['steps'][number],
+      index: number,
+      address: string,
+      iteration: readonly (string | number)[],
+    ): Generator<ContextOperationRequest, void, unknown> {
       switch (step.kind) {
         case 'activity':
-          // The activity itself, not its name: `ctx.run` reads the retry policy and the
-          // per-attempt timeout from the activity it is given, and a name carries neither.
           previous = yield* documentActivityOperation(
             context.run(activities.get(step.handler)!, {
               input: step.input ?? null,
@@ -155,26 +183,41 @@ export async function buildDocumentWorkflowDefinition(
               ...(pendingSignal === undefined ? {} : { signal: pendingSignal }),
               workflowId: context.workflowId,
               step: index,
-              stepAddress: documentStepAddress(index),
+              stepAddress: address,
             }),
             index,
-            documentStepAddress(index),
+            address,
           );
           pendingSignal = undefined;
           break;
         case 'sleep':
-          yield* documentOperation(context.sleep(step.duration), index, documentStepAddress(index));
+          yield* documentOperation(context.sleep(step.duration), index, address);
           break;
         case 'await-signal':
           pendingSignal = yield* documentOperation(
             context.waitForSignal(step.signal),
             index,
-            documentStepAddress(index),
+            address,
           );
           break;
+        case 'branch':
+          yield* runBranch(step, iteration);
+          break;
       }
-    }
-    const output = document.steps.at(-1)?.kind === 'await-signal' ? pendingSignal : previous;
+    };
+    const runSteps = function* (
+      steps: readonly WorkflowDocument['steps'][number][],
+      iteration: readonly (string | number)[] = [],
+    ): Generator<ContextOperationRequest, void, unknown> {
+      for (const step of steps) {
+        const index = nextStep++;
+        const address = documentStepAddress(index, iteration);
+        lastStepWasSignal = step.kind === 'await-signal';
+        yield* runStep(step, index, address, iteration);
+      }
+    };
+    yield* runSteps(document.steps);
+    const output = lastStepWasSignal ? pendingSignal : previous;
     checkSchema('output', output);
     return output;
   };

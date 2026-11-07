@@ -73,6 +73,44 @@ async function fileWorkflowEvents(engine: Engine, workflowId: string) {
 }
 
 describe('registerWorkflowDocuments()', () => {
+  it('runs only the matching branch case and continues with its result', async () => {
+    traces.length = 0;
+    const document = createDocument('branch-document', [
+      { kind: 'activity', handler: 'version', input: { status: 'ready' } },
+      {
+        kind: 'branch',
+        on: 'status',
+        cases: {
+          ready: [{ kind: 'activity', handler: 'trace', input: 'selected' }],
+          waiting: [{ kind: 'activity', handler: 'trace', input: 'wrong' }],
+        },
+        otherwise: [{ kind: 'activity', handler: 'trace', input: 'fallback' }],
+      },
+      { kind: 'activity', handler: 'trace', input: 'after' },
+    ]);
+
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+
+    const run = await engine.start('branch-document', null, { id: 'branch-run' });
+    expect(await run.result()).toBe('after');
+    expect(traces.map(({ input }) => input)).toEqual(['selected', 'after']);
+  });
+
+  it('fails a branch with no matching case or otherwise using a named error', async () => {
+    const document = createDocument('branch-no-match', [
+      { kind: 'activity', handler: 'greet', input: { status: 'missing' } },
+      { kind: 'branch', on: 'status', cases: { ready: [{ kind: 'activity', handler: 'greet' }] } },
+    ]);
+
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('branch-no-match', null, { id: 'branch-no-match-run' });
+
+    const rejected = await throwingRejectionOf(run.result());
+    expect(rejected).toThrow('Branch has no matching case for field "status"');
+  });
+
   it('records durable lifecycle history for document steps', async () => {
     const document = createDocument('document-history', [
       { kind: 'activity', handler: 'greet', input: 'hello' },
