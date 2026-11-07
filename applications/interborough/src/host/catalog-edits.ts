@@ -59,8 +59,11 @@ export type CatalogLongContextPricing = {
   readonly cacheReadPerMillionTokens?: number;
 };
 
+/** The decision capabilities to replace on a catalog model. */
 export type CatalogDecisions = {
+  /** The decision kinds the model supports. */
   readonly kinds: readonly DecisionKind[];
+  /** Whether these are the only decision kinds the model supports. */
   readonly only: boolean;
 };
 
@@ -80,6 +83,7 @@ export type CatalogEdit = {
   readonly maxOutputTokens?: number;
   /** An added row only: a current model of the same provider whose capabilities it copies. */
   readonly basedOn?: string;
+  /** The decision capabilities to replace on the model. */
   readonly decisions?: CatalogDecisions;
 };
 
@@ -99,6 +103,9 @@ const DECISION_KINDS = [
   'scale',
   'structured',
 ] as const satisfies readonly DecisionKind[];
+function isDecisionKind(value: unknown): value is DecisionKind {
+  return typeof value === 'string' && (DECISION_KINDS as readonly string[]).includes(value);
+}
 const PRICING_FIELDS = [
   'inputPerMillionTokens',
   'outputPerMillionTokens',
@@ -242,11 +249,11 @@ function parseDecisions(value: unknown, path: string, field: string): CatalogDec
   if (!Array.isArray(value['kinds']) || value['kinds'].length === 0) {
     throw problem(path, `${field}.kinds`, 'expected a non-empty list of decision kinds.');
   }
-  const kinds = value['kinds'].map((kind: unknown, index: number): DecisionKind => {
-    if (typeof kind !== 'string' || !(DECISION_KINDS as readonly string[]).includes(kind)) {
+  const kinds = value['kinds'].map((kind: unknown, index: number) => {
+    if (!isDecisionKind(kind)) {
       throw problem(path, `${field}.kinds[${index}]`, 'expected a known decision kind.');
     }
-    return kind as DecisionKind;
+    return kind;
   });
   if (new Set(kinds).size !== kinds.length)
     throw problem(path, `${field}.kinds`, 'must not contain duplicates.');
