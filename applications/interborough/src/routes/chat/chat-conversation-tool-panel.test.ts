@@ -111,7 +111,7 @@ describe('a tool call’s side panel', () => {
     expect(panel?.textContent).toContain('4471');
 
     await fireEvent.click(row);
-    await waitFor(() => expect(container.querySelector('.ib-chat-panel')).toBeNull());
+    await waitFor(() => expect(container.querySelector('.ib-chat-panel') === null).toBe(true));
   });
 
   test('shows what a call answered, what another answered, and its place among the turn’s calls', async () => {
@@ -150,8 +150,8 @@ describe('a tool call’s side panel', () => {
     if (close === null) throw new Error('The panel has no close button.');
     await fireEvent.click(close);
 
-    await waitFor(() => expect(container.querySelector('.ib-chat-panel')).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(row));
+    await waitFor(() => expect(container.querySelector('.ib-chat-panel') === null).toBe(true));
+    await waitFor(() => expect(document.activeElement === row).toBe(true));
   });
 
   test('sums three or more calls into one line under the turn', async () => {
