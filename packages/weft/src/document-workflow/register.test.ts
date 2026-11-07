@@ -228,6 +228,68 @@ describe('registerWorkflowDocuments()', () => {
     expect(retryMapAttempts).toEqual([1, 2, 1]);
   });
 
+  it('retries a nested mapped activity through its originating item', async () => {
+    retryMapAttempts.length = 0;
+    const document = createDocument('nested-map-retry', [
+      { kind: 'activity', handler: 'version', input: { groups: [{ items: [1, 2] }] } },
+      {
+        kind: 'map',
+        over: 'groups',
+        steps: [
+          {
+            kind: 'map',
+            over: 'items',
+            concurrency: 2,
+            steps: [{ kind: 'activity', handler: 'retryMap' }],
+          },
+        ],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('nested-map-retry', null, { id: 'nested-map-retry-run' });
+    expect(await run.result()).toEqual([[10, 20]]);
+    expect(retryMapAttempts).toEqual([1, 2, 1]);
+  });
+
+  it('restarts a non-waiting map before a wait without moving the wait address', async () => {
+    const storage = new MemoryStorage();
+    const document = createDocument('map-before-wait', [
+      { kind: 'activity', handler: 'version', input: { items: ['a'] } },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'identify' }] },
+      { kind: 'await-signal', signal: 'continue' },
+      { kind: 'activity', handler: 'identify' },
+    ]);
+    let addressBeforeRestart: string | undefined;
+    let stepIndexBeforeRestart: number | undefined;
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      const run = await original.start('map-before-wait', null, { id: 'map-before-wait-run' });
+      await waitForParkedOnSignal(original, run.id);
+      const timelineBeforeRestart = await original.getTimeline(run.id);
+      const waiting = timelineBeforeRestart.find((entry) => entry.operationType === 'wait-signal');
+      addressBeforeRestart = waiting?.documentStepAddress;
+      stepIndexBeforeRestart = waiting?.stepIndex;
+    }
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [run] = await restarted.recoverAll();
+    expect(run?.id).toBe('map-before-wait-run');
+    const timelineAfterRestart = await restarted.getTimeline(run!.id);
+    const waitingAfterRestart = timelineAfterRestart.find(
+      (entry) => entry.operationType === 'wait-signal',
+    );
+    const addressAfterRestart = waitingAfterRestart?.documentStepAddress;
+    expect(addressAfterRestart).toBe(addressBeforeRestart);
+    expect(addressAfterRestart).toBe('3');
+    expect(waitingAfterRestart?.stepIndex).toBe(stepIndexBeforeRestart);
+    expect(waitingAfterRestart?.stepIndex).toBe(3);
+    await run!.signal('continue', null);
+    await run!.result();
+  });
+
   it('rejects non-array and over-limit map inputs with named errors', async () => {
     const nonArray = createDocument('map-not-array', [
       { kind: 'activity', handler: 'version', input: 'nope' },

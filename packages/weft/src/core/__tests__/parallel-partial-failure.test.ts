@@ -29,6 +29,24 @@ async function flush(): Promise<void> {
 }
 
 describe('ctx.all partial-failure preservation', () => {
+  it('exposes ordered allSettled outcomes with original rejection reasons', async () => {
+    const engine = new Engine();
+    const first = async () => 'first';
+    const second = async () => {
+      throw new Error('settled branch failed');
+    };
+    const settledWorkflow = workflow({ name: 'all-settled-public' }).execute(async function* (ctx) {
+      return yield* ctx.allSettled([ctx.run(first), ctx.run(second)]);
+    });
+    engine.register(settledWorkflow);
+    const handle = await engine.start('all-settled-public', null);
+    expect(await handle.result()).toEqual([
+      { status: 'fulfilled', value: 'first' },
+      { status: 'rejected', reason: expect.objectContaining({ message: 'settled branch failed' }) },
+    ]);
+    engine[Symbol.dispose]();
+  });
+
   it('runs every branch on the original attempt before propagating failure', async () => {
     // Validates the dispatch shape: with Promise.allSettled-style
     // execution, every branch runs to settlement before the parent
