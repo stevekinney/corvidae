@@ -559,9 +559,7 @@ describe('a stop', () => {
       (error: unknown) => error,
     );
     await expectEventually(() => sent.length === 1);
-    // The turn is reading within a few turns of this process, however busy the host is.
-    for (let turn = 0; turn < 3; turn += 1) await yieldEventLoopTurn();
-
+    // A Stop before the first event is held until the event names the run, so no wait is needed.
     controller.abort();
     await turn;
 
