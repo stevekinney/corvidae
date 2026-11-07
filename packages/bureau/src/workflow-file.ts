@@ -249,6 +249,7 @@ export function workflowFileStepsInCanonicalOrder<T extends WorkflowFileStep>(
     for (const [position, step] of nested.entries()) {
       const path = `${parentPath}[${String(position)}]`;
       ordered.push({ step, index: ordered.length, path });
+      if (!isPlainObject(step)) continue;
       if (step['kind'] !== 'branch' || !isPlainObject(step['cases'])) continue;
       for (const literal of Object.keys(step['cases']).toSorted()) {
         const branch = step['cases'][literal];
@@ -497,9 +498,8 @@ function stripExtensions(
   const annotations: WorkflowStepAnnotation[] = [];
   const steps = documentInput['steps'];
   if (Array.isArray(steps)) {
-    const stripStep = (step: unknown, path: string, collectAnnotation: boolean): unknown => {
+    const stripStep = (step: unknown, path: string): unknown => {
       if (!isPlainObject(step)) {
-        if (collectAnnotation) annotations.push({ title: null, review: false });
         return step;
       }
       const { title, review, ...rest } = step;
@@ -519,31 +519,32 @@ function stripExtensions(
           });
         }
       }
-      if (collectAnnotation) {
-        annotations.push({ title: isTitle(title) ? title : null, review: review === true });
-      }
       if (rest['kind'] === 'branch' && isPlainObject(rest['cases'])) {
         rest['cases'] = Object.fromEntries(
           Object.entries(rest['cases']).map(([literal, nested]) => [
             literal,
             Array.isArray(nested)
               ? nested.map((child, index) =>
-                  stripStep(child, `${path}.cases.${literal}[${String(index)}]`, false),
+                  stripStep(child, `${path}.cases.${literal}[${String(index)}]`),
                 )
               : nested,
           ]),
         );
         if (Array.isArray(rest['otherwise'])) {
           rest['otherwise'] = rest['otherwise'].map((child, index) =>
-            stripStep(child, `${path}.otherwise[${String(index)}]`, false),
+            stripStep(child, `${path}.otherwise[${String(index)}]`),
           );
         }
       }
       return rest;
     };
-    stripped['steps'] = steps.map((step, index) =>
-      stripStep(step, `steps[${String(index)}]`, true),
-    );
+    stripped['steps'] = steps.map((step, index) => stripStep(step, `steps[${String(index)}]`));
+    for (const { step } of workflowFileStepsInCanonicalOrder(steps as WorkflowFileStep[])) {
+      annotations.push({
+        title: isPlainObject(step) && isTitle(step['title']) ? step['title'] : null,
+        review: isPlainObject(step) && step['review'] === true,
+      });
+    }
   }
   return { documentInput: stripped, annotations };
 }
