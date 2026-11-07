@@ -261,7 +261,23 @@ export async function buildDocumentWorkflowDefinition(
             const concurrency = step.concurrency ?? 4;
             const values = source;
             const results: unknown[] = [];
-            const batchSize = containsWait(step.steps) ? 1 : concurrency;
+            if (containsWait(step.steps)) {
+              for (const [offset, value] of values.entries()) {
+                const itemState: RunState = {
+                  previous: value,
+                  pendingSignal: undefined,
+                  lastStepWasSignal: false,
+                };
+                yield* runSteps(step.steps, [...iteration, offset], itemState);
+                results.push(
+                  itemState.lastStepWasSignal ? itemState.pendingSignal : itemState.previous,
+                );
+              }
+              state.previous = results;
+              state.pendingSignal = undefined;
+              break;
+            }
+            const batchSize = concurrency;
             for (let start = 0; start < values.length; start += batchSize) {
               const batch = values.slice(start, start + batchSize);
               const operations = batch.map((value, offset) => {
