@@ -8,7 +8,13 @@
 import type { Page } from '@playwright/test';
 
 import { MODEL_SWITCHER_MODELS, modelSwitcherReply } from '@lostgradient/plugin-demo';
-import { newThreadId, runToEnd } from './chat-support.ts';
+import {
+  hideModelPicker,
+  modelPicker,
+  newThreadId,
+  runToEnd,
+  showModelPicker,
+} from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
 
@@ -20,11 +26,11 @@ const VIEWPORTS = [
 const [SONNET, HAIKU] = MODEL_SWITCHER_MODELS;
 const ASSISTANT_ROW = '[data-message-role="assistant"]';
 
-const picker = (page: Page) => page.getByRole('combobox', { name: 'Model' });
-
 async function send(page: Page, text: string): Promise<void> {
-  await page.getByRole('textbox').fill(text);
-  await page.getByRole('textbox').press('Enter');
+  const box = page.getByRole('textbox');
+  await box.fill(text);
+  await expect(box).toHaveValue(text);
+  await box.press('Enter');
 }
 
 for (const viewport of VIEWPORTS) {
@@ -40,36 +46,47 @@ for (const viewport of VIEWPORTS) {
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
     // The picker lists the two models the agent allows, with the agent's default selected.
-    await expect(picker(page)).toBeVisible();
-    await expect(picker(page).locator('option')).toHaveText([SONNET.model, HAIKU.model]);
-    await expect(picker(page).locator('option:checked')).toHaveText(SONNET.model);
+    await showModelPicker(page);
+    await expect(modelPicker(page)).toContainText(SONNET.model);
+    await modelPicker(page).click();
+    const options = page.getByRole('option');
+    await expect(options).toHaveCount(2);
+    await expect(options.nth(0)).toContainText(SONNET.model);
+    await expect(options.nth(1)).toContainText(HAIKU.model);
+    await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Escape');
     const replies = page.locator(ASSISTANT_ROW);
     await expect(replies).toHaveCount(1);
     await expect(replies.last()).toContainText(modelSwitcherReply(SONNET.model));
     await checkA11y(`the model picker, at ${viewport.width} pixels`);
 
     // Switching takes effect from the next message, which names the new model.
-    await picker(page).selectOption({ label: HAIKU.model });
-    await expect(picker(page).locator('option:checked')).toHaveText(HAIKU.model);
+    await showModelPicker(page);
+    await modelPicker(page).click();
+    await page.getByRole('option', { name: new RegExp(HAIKU.model) }).click();
+    await expect(modelPicker(page)).toContainText(HAIKU.model);
     // The picker is enabled again once the Bureau has taken the switch, which is when the next
     // message is guaranteed to run on the new model.
-    await expect(picker(page)).toBeEnabled();
+    await expect(modelPicker(page)).toBeEnabled();
+    await hideModelPicker(page);
     await send(page, 'And now?');
     await expect(replies).toHaveCount(2);
     await expect(replies.last()).toContainText(modelSwitcherReply(HAIKU.model));
-    await expect(picker(page).locator('option:checked')).toHaveText(HAIKU.model);
+    await showModelPicker(page);
+    await expect(modelPicker(page)).toContainText(HAIKU.model);
 
     // A reload shows the picker on the model the session was switched to, and the next message
     // still runs on it.
     await page.reload();
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-    await expect(picker(page).locator('option:checked')).toHaveText(HAIKU.model);
+    await showModelPicker(page);
+    await expect(modelPicker(page)).toContainText(HAIKU.model);
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(2);
     await checkA11y(`the model picker after a reload, at ${viewport.width} pixels`);
   });
 }
 
-test('shows the picker disabled for an agent that allows one model, and for one that allows none', async ({
+test('shows the picker disabled for an agent that allows one model, and none for an agent that runs on no model', async ({
   page,
   request,
 }) => {
@@ -79,10 +96,15 @@ test('shows the picker disabled for an agent that allows one model, and for one 
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(1);
-    // There is no choice to make, so the picker is disabled, and still says which model answers.
-    await expect(picker(page)).toBeDisabled();
-    await expect(picker(page).locator('option:checked')).toHaveText(
-      agent === SINGLE_MODEL_AGENT_NAME ? SONNET.model : 'Agent default',
-    );
+    if (agent === SINGLE_MODEL_AGENT_NAME) {
+      // There is no choice to make, so the picker is disabled, and still says which model answers.
+      await showModelPicker(page);
+      await expect(modelPicker(page)).toBeDisabled();
+      await expect(modelPicker(page)).toContainText(SONNET.model);
+    } else {
+      // A scripted agent runs on no model, so the composer offers Permissions only (design row 23c).
+      await expect(modelPicker(page)).toHaveCount(0);
+      await expect(page.getByRole('combobox', { name: /Permissions/ })).toBeVisible();
+    }
   }
 });

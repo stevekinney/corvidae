@@ -117,6 +117,14 @@ test.describe('an open chat on the sample world', () => {
   }) => {
     await openRefundChat(page);
     await page.getByRole('combobox', { name: 'Permissions' }).click();
+    // The select keeps all four of the app's modes, in the order of how much they ask.
+    await expect(page.getByRole('option')).toHaveCount(4);
+    await expect(page.getByRole('option').locator('.cinder-select__option-label')).toHaveText([
+      'Always asks',
+      'On changes asks',
+      'Allow all',
+      'Read-only',
+    ]);
     const allowAll = page.getByRole('option', { name: /Allow all/ });
     await expect(allowAll).toContainText(
       'Skips the On changes asks for this chat. Tools set to Always still ask; Blocked tools stay blocked.',

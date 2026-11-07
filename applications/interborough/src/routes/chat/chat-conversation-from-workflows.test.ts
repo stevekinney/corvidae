@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CHAT_COPY } from '../../app/copy.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
@@ -82,8 +83,10 @@ type Run = { readonly threadId: string; readonly runId: string };
 interface Served {
   /** Lets the held run begin: the stream says it started and finishes. */
   readonly start: () => void;
-  /** Fails the held run before it began, as a host that does not answer does. */
-  readonly fail: () => void;
+  /** Fails the held run before it began: the host refuses it, or with `'network'` does not answer at all. */
+  readonly fail: (kind?: 'refused' | 'network') => void;
+  /** Lets the next run begin again, after a failure. */
+  readonly recover: () => void;
   readonly runs: () => number;
 }
 
@@ -94,7 +97,7 @@ function serve(
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let held: Run | undefined;
   let count = 0;
-  let failing = false;
+  let failing: 'refused' | 'network' | undefined;
   const served = bureau(
     {
       'bureau.agents.list': () => ({ agents: options.agents ?? [AUTHOR, RUNNER, AGENT] }),
@@ -120,7 +123,8 @@ function serve(
         typeof init?.body === 'string' ? init.body : '{}',
       );
       held = { threadId: input.threadId, runId: input.runId };
-      if (failing) return new Response('down', { status: 503 });
+      if (failing === 'network') throw new TypeError('Failed to fetch');
+      if (failing === 'refused') return new Response('down', { status: 503 });
       return new Response(
         new ReadableStream<Uint8Array>({
           start(next) {
@@ -134,8 +138,11 @@ function serve(
   restore = served.restore;
   return {
     runs: () => count,
-    fail: () => {
-      failing = true;
+    fail: (kind = 'refused') => {
+      failing = kind;
+    },
+    recover: () => {
+      failing = undefined;
     },
     start: () => {
       if (held === undefined || controller === undefined) throw new Error('No run is held.');
@@ -152,6 +159,7 @@ function serve(
 }
 
 function mount(props: Record<string, unknown> = {}) {
+  const { connection, ...pageProps } = props as { connection?: ConnectionMonitor };
   return render(QueryPage, {
     props: {
       page: ChatConversation,
@@ -161,9 +169,10 @@ function mount(props: Record<string, unknown> = {}) {
         agentName: 'workflow-author',
         isNew: true,
         fromWorkflows: true,
-        ...props,
+        ...pageProps,
       },
       client: createQueryClient(),
+      ...(connection === undefined ? {} : { connection }),
     },
   } as never);
 }
@@ -389,5 +398,89 @@ describe('the first message of a new chat', () => {
     expect(window.location.pathname).toBe('/chats/new');
     expect(container.querySelector('[data-role="user"], .chat-message--user')).toBeNull();
     expect(send(container)?.disabled).toBe(false);
+    // The failure is said under the composer, not in an alert above the page.
+    expect(container.querySelector('[data-testid="new-chat-failure"]')).not.toBeNull();
+    expect(container.querySelector('.cinder-alert')).toBeNull();
+  });
+
+  test('that got no answer says so under the composer with Retry, keeps the text, and Retry sends it again (24c, 24r)', async () => {
+    const served = serve();
+    landAt('/chats/new?agent=workflow-author');
+    const { container, findByRole } = mount({ fromWorkflows: false });
+    const field = await box(container);
+    await fireEvent.input(field, {
+      target: { value: 'Please refund order 4471, it arrived damaged.' },
+    });
+    served.fail('network');
+
+    await fireEvent.submit(container.querySelector('form.chat-input')!);
+
+    const line = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-testid="new-chat-failure"]');
+      if (found === null) throw new Error('The failure is not said yet.');
+      return found;
+    });
+    expect(line.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
+      'Couldn’t start the chat. Interborough didn’t answer. Your text is kept. Retry',
+    );
+    expect(line.getAttribute('role')).toBe('alert');
+    // The text stays, Send is enabled again, no chat page opened, and the Try row and the other
+    // agents make way for the line.
+    expect(editor(container)?.value).toBe('Please refund order 4471, it arrived damaged.');
+    expect(send(container)?.disabled).toBe(false);
+    expect(window.location.pathname).toBe('/chats/new');
+    expect(container.querySelector('[data-testid="new-chat-choices"]')).toBeNull();
+    expect(container.querySelector('h1')?.textContent).toBe('What should Workflow author do?');
+    expect(served.runs()).toBe(1);
+
+    // Retry sends the kept text as the first message again, and the line goes while it is on its way.
+    served.recover();
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(served.runs()).toBe(2));
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="new-chat-failure"]')?.outerHTML ?? null,
+      ).toBeNull(),
+    );
+    served.start();
+    await waitFor(() => expect(container.textContent).toContain('Hi.'));
+    expect(window.location.pathname).toBe('/chats/thread-1');
+    expect(editor(container)?.value).toBe('');
+  });
+
+  test('draws no line of its own while Interborough cannot be reached: the shell’s banner says it (24s)', async () => {
+    const served = serve();
+    const connection = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      probeDelayMs: () => 60_000,
+      browserOffline: false,
+    });
+    try {
+      landAt('/chats/new?agent=workflow-author');
+      const { container } = mount({ fromWorkflows: false, connection });
+      const field = await box(container);
+      await fireEvent.input(field, { target: { value: 'Say hello' } });
+      served.fail('network');
+
+      await fireEvent.submit(container.querySelector('form.chat-input')!);
+
+      // The first answer is the page's own line, until the monitor knows the server is down.
+      await waitFor(() =>
+        expect(container.querySelector('[data-testid="new-chat-failure"]')).not.toBeNull(),
+      );
+      connection.reportUnreachable();
+      await waitFor(() =>
+        expect(
+          container.querySelector('[data-testid="new-chat-failure"]')?.outerHTML ?? null,
+        ).toBeNull(),
+      );
+      // Nothing else of its own takes its place, and no chat page opened.
+      expect(container.querySelector('.cinder-alert')).toBeNull();
+      expect(window.location.pathname).toBe('/chats/new');
+    } finally {
+      connection.dispose();
+    }
   });
 });

@@ -156,3 +156,33 @@ export async function releaseBarrier(request: APIRequestContext): Promise<void> 
   const response = await request.post(`${E2E_BARRIER_URL}/release`);
   expect(response.ok()).toBe(true);
 }
+
+/** The model select of a chat's composer. */
+export const modelPicker = (page: Page) => page.getByRole('combobox', { name: 'Model' });
+
+/**
+ * Shows the model picker. A composer too narrow for its controls side by side folds them into one
+ * Settings button (the phone, and a pane beside the chat list), and the picker is then in the
+ * popover that button opens.
+ */
+export async function showModelPicker(page: Page): Promise<void> {
+  const settings = page.getByTestId('composer-settings');
+  // The composer is drawn with one or the other: the picker itself, or the button that folds it.
+  await expect(modelPicker(page).or(settings).first()).toBeVisible();
+  if (!(await modelPicker(page).isVisible())) {
+    // A popover left open by an earlier look already holds the picker, and pressing again closes it.
+    if ((await settings.getAttribute('aria-expanded')) !== 'true') await settings.click();
+  }
+  await expect(modelPicker(page)).toBeVisible();
+}
+
+/** Closes the popover that holds a folded composer's controls, when it is open, so the page can be used again. */
+export async function hideModelPicker(page: Page): Promise<void> {
+  const settings = page.getByTestId('composer-settings');
+  if ((await settings.isVisible()) && (await settings.getAttribute('aria-expanded')) === 'true') {
+    await page.keyboard.press('Escape');
+    await expect(settings).toHaveAttribute('aria-expanded', 'false');
+    // On a phone the popover is a sheet, which is gone from the page once it has closed.
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+  }
+}

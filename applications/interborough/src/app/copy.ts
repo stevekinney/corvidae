@@ -1394,39 +1394,6 @@ export const SETTINGS_SECTION_COPY = {
 } as const;
 
 /**
- * The checklist a new installation shows on Chat until it has a provider, an agent, and a chat
- * (`app/first-run-checklist.svelte`). Each step names the page that completes it; the host's own
- * answers say when it is done.
- */
-export const FIRST_RUN_COPY = {
-  title: 'Get started',
-  description: 'Three steps to your first conversation.',
-  label: 'Getting started',
-  listLabel: 'Steps to get started',
-  dismiss: 'Dismiss',
-  dismissLabel: 'Dismiss the getting started steps',
-  completed: 'Completed',
-  steps: {
-    provider: {
-      title: 'Connect a provider',
-      description:
-        'An agent runs on a model, and a provider offers models. Save its API key to connect it.',
-      action: { label: 'Connect a provider', href: '/settings/models' },
-    },
-    agent: {
-      title: 'Create an agent',
-      description: 'Write an agent of your own, or start from one that ships with the host.',
-      action: { label: 'New agent', href: '/agents/new' },
-    },
-    chat: {
-      title: 'Say hello',
-      description: 'Start a chat with an agent. Your chats are kept here.',
-      action: { label: 'New chat', href: '/chats/new' },
-    },
-  },
-} as const;
-
-/**
  * The words of Settings › A2A: the agents that opt in to being found and called by other agents,
  * the address of each one's Agent Card, and (under them) the push-notification settings.
  */
@@ -2231,8 +2198,13 @@ export const HOME_COPY = {
     agent: {
       title: 'Create an agent, or start from Assistant',
       description: 'Assistant works now; other agents need a provider.',
-      /** What a done step says: the agent that is ready, such as "Assistant". */
+      /** The title and the sentence of a host that lists no Assistant, where Assistant is not offered or named. */
+      titleWithoutAssistant: 'Create an agent',
+      descriptionWithoutAssistant: 'An agent is a model with instructions and tools.',
+      /** What a done step says: the agent that is ready, such as "Assistant", or "An agent" when none is named. */
       done: (agent: string): string => `${agent} is ready to use.`,
+      /** Who is ready when the host lists no agent to name. */
+      anAgent: 'An agent',
       /** The quiet link that takes Assistant as the agent to start from. */
       useAssistant: 'Use Assistant',
       action: 'Create an agent',
@@ -2883,6 +2855,22 @@ export const CHAT_COPY = {
     fromWorkflows: 'Starting from Workflows',
     /** What the composer holds for a chat started from Workflows, ready for the person to finish: ends in a space, with no ellipsis. */
     workflowPrefill: 'Help me build a workflow that ',
+    /** The accessible name of the placeholders drawn while the agents are read, and what their status line says when that is slow. */
+    loadingLabel: 'Loading agents',
+    /** The placeholder of the composer drawn while the agents are read, before there is an agent to name. */
+    loadingPlaceholder: 'Message…',
+    stillLoading: 'Still loading agents. This is taking longer than usual.',
+    /**
+     * What sits under the composer when the first message could not be sent: what happened, that the
+     * typed text is still in the box, and the way to send it again. With no word from the server
+     * the cause is that Interborough did not answer; any other refusal is said as the server said it.
+     */
+    startFailed: {
+      lead: 'Couldn’t start the chat.',
+      unanswered: 'Interborough didn’t answer.',
+      kept: 'Your text is kept.',
+      retry: 'Retry',
+    },
   },
   /** The chat list beside the open chat. */
   list: {
@@ -4828,13 +4816,22 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       },
     },
     // A new chat with no `?agent=` starts with the first agent that can run; with none, there is
-    // nothing to start it with.
+    // nothing to start it with, and the page is the Agents first-use state (board PageNewChat,
+    // "Loading, error and no agents"): create one, or browse the agents there are.
     emptyByPattern: {
       '/chats/new': {
-        title: 'No agent is ready to chat',
+        title: 'No agents yet',
         description:
-          'This host has no agent that can take a message yet. Turn on a plugin that adds agents, or finish setting one up, then start a chat.',
-        action: { label: 'Open plugins', href: '/settings/plugins' },
+          'An agent is a model with instructions and tools. Create one, or add a plugin that provides some.',
+        action: { label: 'New agent', href: '/agents/new' },
+      },
+    },
+    // The agents a new chat starts with could not be read: the error replaces the greeting and the
+    // composer, because there is nothing to send to.
+    errorByPattern: {
+      '/chats/new': {
+        title: 'Agents couldn’t be loaded',
+        description: 'Check that Interborough is running, then try again.',
       },
     },
   },

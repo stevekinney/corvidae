@@ -8,7 +8,7 @@
    */
   import { untrack } from 'svelte';
 
-  import { Button, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { Button, ErrorState } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
@@ -25,6 +25,7 @@
   import { router } from '../../lib/router.svelte.ts';
   import ChatConversation from './chat-conversation.svelte';
   import ChatLoading from './chat-loading.svelte';
+  import NewChatLoading from './new-chat-loading.svelte';
 
   interface ChatPaneProps {
     /** The session shown; for a new chat, the identifier the client named its thread. */
@@ -107,15 +108,7 @@
       {fromWorkflows}
     />
   {:else}
-    <div
-      class="weft-chat-route"
-      role="status"
-      aria-busy="true"
-      aria-label="Loading the conversation"
-    >
-      <Skeleton height="1.5rem" width="40%" />
-      <Skeleton height="10rem" />
-    </div>
+    <NewChatLoading onCancel={() => router.navigate('/chats')} />
   {/if}
 {:else if context.data}
   <ChatConversation {sessionId} title={context.data.title} agentName={context.data.agentName} />

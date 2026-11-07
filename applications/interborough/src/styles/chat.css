@@ -444,6 +444,28 @@
   padding-inline: var(--cinder-space-2);
 }
 
+/* On a phone the Try prompts stack, each as wide as the column, and the choices fill it: the
+   greeting, the prompts and the other agents scroll in one column over the docked composer. */
+@media (max-width: 639.98px) {
+  .ib-new-chat-choices {
+    align-items: stretch;
+    inline-size: 100%;
+  }
+
+  .ib-new-chat-choices__row--prompts {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ib-new-chat-choices__row--prompts .ib-new-chat-choices__lead {
+    text-align: center;
+  }
+
+  .ib-new-chat-choices__row--prompts .ib-new-chat-choices__prompt {
+    justify-content: flex-start;
+  }
+}
+
 /* The agent a new chat is with sits at the top of the composer, a ghost select in the accent, so it
  * reads as the one thing the box is about to do. */
 .ib-agent-select {

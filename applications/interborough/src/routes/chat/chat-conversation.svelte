@@ -41,6 +41,7 @@
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
   import { onMount, tick, untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
   import {
@@ -145,6 +146,7 @@
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
+  import NewChatFailure from './new-chat-failure.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
@@ -194,6 +196,8 @@
   let chat = $state<ReturnType<typeof Chat> | undefined>();
 
   const connection = getConnection();
+  /** A phone: a new chat's composer is docked to the bottom of the screen (board PageNewChat, frame l). */
+  const phone = new MediaQuery('(max-width: 639.98px)', false);
 
   const session = new ChatSessionState({
     sessionId: untrack(() => sessionId),
@@ -218,6 +222,16 @@
 
   // The first message of a new chat is on its way and the run has not begun.
   const startingFirstMessage = $derived(choosing && session.streaming);
+  // Why the first message of a new chat could not be sent, while nothing has started: the page says
+  // so under its composer, where the text is kept. With Interborough unreachable the shell's banner
+  // says it, and this line stays out (design row 24s).
+  const startFailure = $derived(
+    choosing && !session.streaming && !connection.unreachable && session.failure !== undefined
+      ? session.failureWasTransport
+        ? CHAT_COPY.newChatWelcome.startFailed.unanswered
+        : session.failure
+      : undefined,
+  );
 
   const agents = createQuery(
     () => ({
@@ -647,6 +661,11 @@
       }
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
+  }
+
+  /** Sends the first message again: the box kept it, so this submits the composer as it stands. */
+  function retryStart(): void {
+    chat?.getEditorElement()?.form?.requestSubmit();
   }
 
   function chooseAgent(value: string): void {
@@ -1436,7 +1455,7 @@
       <SessionTasks {sessionId} streaming={session.streaming} />
     {/if}
 
-    {#if session.failure !== undefined && !failureShownInTranscript}
+    {#if session.failure !== undefined && !failureShownInTranscript && !choosing}
       <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
         <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
         <p class="weft-chat-approval__message">{session.failure}</p>
@@ -1513,12 +1532,16 @@
         {composerStatus}
         composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
         composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
-        composerFooter={choosing && !fromWorkflows && !startingFirstMessage
-          ? newChatChoices
-          : undefined}
+        composerFooter={!choosing
+          ? undefined
+          : startFailure !== undefined
+            ? newChatFailed
+            : !phone.current && !fromWorkflows && !startingFirstMessage
+              ? newChatChoices
+              : undefined}
         composerStarting={startingFirstMessage ? CHAT_COPY.newChatWelcome.starting : undefined}
         clearComposerOnSubmit={!choosing}
-        composerPlacement={choosing ? 'centered' : 'docked'}
+        composerPlacement={choosing && !phone.current ? 'centered' : 'docked'}
         composerFormattingToolbar
         composerAnswering={answering}
         streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
@@ -1573,6 +1596,11 @@
               selected={agent === '' ? undefined : agent}
               sentence={!fromWorkflows}
             />
+            <!-- On a phone the composer is docked to the bottom, so the prompts and the other agents
+                 scroll in one column with the greeting instead of sitting under the composer. -->
+            {#if phone.current && startFailure === undefined && !fromWorkflows && !startingFirstMessage}
+              {@render newChatChoices()}
+            {/if}
           {:else}
             <EmptyState
               kind="first-use"
@@ -1814,6 +1842,12 @@
         onChoose={chooseAgent}
         onExample={fillComposer}
       />
+    {/snippet}
+
+    <!-- Under the composer of a new chat whose first message could not be sent: the typed text is
+       kept, and Retry sends it again (design rows 24c and 24r). -->
+    {#snippet newChatFailed()}
+      <NewChatFailure reason={startFailure ?? ''} onRetry={retryStart} />
     {/snippet}
 
     <!-- Above the composer of a chat started from Workflows: the chip that says so, and, when no

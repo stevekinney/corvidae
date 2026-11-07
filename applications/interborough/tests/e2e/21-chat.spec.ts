@@ -73,11 +73,14 @@ test.describe('a session', () => {
 
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('First hello');
-    await expect(
-      page
-        .getByRole('region', { name: 'Conversation' })
-        .getByText('demo:assistant', { exact: true }),
-    ).toHaveCount(1);
+    // The header is the title and its status: the agent is named once, where a message goes to it
+    // (the composer), and in the details the breadcrumb opens, not on a line under the title.
+    const region = page.getByRole('region', { name: 'Conversation' });
+    await expect(region.getByText('demo:assistant', { exact: true })).toHaveCount(0);
+    await expect(region.getByRole('textbox', { name: 'Message' })).toHaveAttribute(
+      'placeholder',
+      'Message Assistant…',
+    );
     await send(page, 'Hello again');
     await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
   });
@@ -111,11 +114,17 @@ test.describe('a tool approval', () => {
     await expect(alert).toContainText('Refund order order-1001 for $42.00?');
     const text = (await transcript(page).innerText()) ?? '';
     expect(text).not.toMatch(/requires approval|mutating tier|run-\d/);
-    // The turn's two calls are folded to one line, and the call that needs a decision is not in it.
+    // Two calls are two plain rows of the rail, with no summary: the lookup, and the refund that
+    // waits on a decision, whose approval is nested under its own row.
+    const rail = conversation(page).getByRole('region', { name: 'Tool calls' });
+    await expect(rail.getByRole('button', { name: /^Lookup order/ }).last()).toBeVisible();
+    await expect(rail.getByRole('button', { name: /^Issue refund/ })).toContainText(
+      'Waiting on you',
+    );
+    await expect(conversation(page).getByText(/^Used \d+ tools/)).toHaveCount(0);
     await expect(
-      conversation(page).getByText('Used 2 tools · lookup-order, issue-refund · 1 needs you'),
+      conversation(page).locator('code').filter({ hasText: 'issue-refund' }).first(),
     ).toBeVisible();
-    await expect(conversation(page).getByText('issue-refund').first()).toBeVisible();
     // The seeded turn already refunded the order once, so one reply is the one the session opened with.
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
@@ -164,7 +173,10 @@ test.describe('a tool approval', () => {
 
     // The run has stopped on the approval, so nothing is going to deliver this follow-up.
     await send(page, 'And one more thing');
+    // The message says "Not sent", and its Retry is in the details beside that word.
+    await page.getByRole('button', { name: 'Not sent: details' }).click();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await page.keyboard.press('Escape');
     await alert.getByRole('button', { name: 'Approve' }).click();
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(2);
 
@@ -281,6 +293,8 @@ test.describe('a follow-up sent while the run is going', () => {
 
     await page.getByRole('button', { name: /stop/i }).click();
 
+    await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
+    await page.getByRole('button', { name: 'Not sent: details' }).click();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
     await page.getByRole('button', { name: 'Retry' }).click();
     await expectWaiting(request, 1);
@@ -436,7 +450,15 @@ for (const width of [375, 1280] as const) {
         VIEW_COPY.chat.notFound?.title ?? '',
       );
       // Beside a list that stays live where there is room for both; a phone shows one at a time.
-      if (width > 640) await expect(frame.getByRole('link', { name: 'New chat' })).toBeVisible();
+      if (width > 640) {
+        await expect(
+          frame.getByRole('region', { name: 'Open chat' }).getByRole('link', { name: 'New chat' }),
+        ).toBeVisible();
+        // The list beside it keeps its own "+", which is named the same.
+        await expect(
+          frame.getByRole('region', { name: 'Chats' }).getByRole('link', { name: 'New chat' }),
+        ).toBeVisible();
+      }
       await checkA11y(`a session, not found, at ${width}px`);
     });
 
@@ -465,7 +487,12 @@ for (const width of [375, 1280] as const) {
             outcome === 'error' ? CHAT_COPY.load.errorTitle : VIEW_COPY.chat.forbidden.title,
           );
         }
-        if (width > 640) await expect(frame.getByRole('link', { name: 'New chat' })).toBeVisible();
+        // The list beside it stays live where there is room for both, with its own "+".
+        if (width > 640) {
+          await expect(
+            frame.getByRole('region', { name: 'Chats' }).getByRole('link', { name: 'New chat' }),
+          ).toBeVisible();
+        }
         await checkA11y(`a session, ${outcome}, at ${width}px`);
       });
     }

@@ -6,7 +6,7 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 import { type QueryClient } from '@tanstack/svelte-query';
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
@@ -24,7 +24,7 @@ import {
   type WorkflowStub,
   type World,
 } from '../lib/workflow-world.test-support.ts';
-import { FIRST_RUN_COPY, FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
@@ -260,12 +260,16 @@ describe('every view whose probe fails the page, when its probe fails', () => {
   for (const view of VIEWS_THAT_CAN_FAIL) {
     const copy = VIEW_COPY[view];
 
+    // A new chat words its own failure: the agents it starts with could not be read.
+    const words =
+      view === 'chat' ? (copy.errorByPattern?.['/chats/new'] ?? copy.error) : copy.error;
+
     test(`${view} is failing when its probe fails`, async () => {
       stub(view, 'error');
       const { container, findByRole, getByRole } = mountWithProbe(view);
-      expect(await findByRole('heading', { level: 1, name: copy.error.title })).not.toBeNull();
+      expect(await findByRole('heading', { level: 1, name: words.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('error');
-      expect(container.textContent).toContain(copy.error.description);
+      expect(container.textContent).toContain(words.description);
       expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
     });
   }
@@ -299,10 +303,15 @@ describe('every view, in every state', () => {
     test(`${view} is loading while its probe is pending`, async () => {
       if (view === 'health' || view === 'home') return;
       restore = installFetchImplementation(() => new Promise<Response>(() => {}));
-      const { container, findByRole } = mountWithProbe(view);
-      expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
+      const { container, findByRole, findByTestId } = mountWithProbe(view);
+      // A new chat is drawn as its own page in placeholders, with the composer already there.
+      if (view === 'chat') {
+        expect(await findByTestId('new-chat-loading')).not.toBeNull();
+      } else {
+        expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
+        expect(container.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
+      }
       expect(frame(container).dataset['state']).toBe('loading');
-      expect(container.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
     });
   }
 
@@ -433,55 +442,26 @@ describe('the chat list, a new chat, and the agents', () => {
     expect(requests).toEqual([]);
   });
 
-  test('a new chat is empty, with its own words, when no agent can run', async () => {
+  test('a new chat is empty, with the Agents first-use words, when no agent can run (24q)', async () => {
     stubBureau({ 'bureau.agents.list': () => agents() });
     const words = VIEW_COPY.chat.emptyByPattern?.['/chats/new'];
     const { container, findByRole } = mount('chat', { pattern: '/chats/new' });
 
-    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('empty');
-    expect(container.querySelector('a[href="/settings/plugins"]')?.textContent?.trim()).toBe(
-      'Open plugins',
+    expect(await findByRole('heading', { level: 1, name: 'No agents yet' })).not.toBeNull();
+    expect(words?.title).toBe('No agents yet');
+    expect(container.textContent).toContain(
+      'An agent is a model with instructions and tools. Create one, or add a plugin that provides some.',
     );
-    // The second action goes to the agents a chat can start with, and both are buttons.
+    expect(frame(container).dataset['state']).toBe('empty');
+    // A primary New agent and a secondary Browse agents, both buttons, and no composer or checklist.
+    const create = container.querySelector('a[href="/agents/new"]');
+    expect(create?.textContent?.trim()).toBe('New agent');
+    expect(create?.getAttribute('data-cinder-variant')).toBe('primary');
     const browse = container.querySelector('a[href="/agents"]');
     expect(browse?.textContent?.trim()).toBe('Browse agents');
+    expect(browse?.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
-  });
-
-  test('a new chat with no agent on a fresh installation shows the first-run steps above its actions, and none once they are dismissed', async () => {
-    window.localStorage.removeItem('interborough:first-run:dismissed');
-    restore = installFetchImplementation(async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url === '/host/providers') {
-        return Response.json({
-          configurationRevision: null,
-          providers: [{ name: 'anthropic', configured: false, hasKey: false }],
-          catalog: [],
-          models: [],
-        });
-      }
-      const method = operationOf(init?.body)?.method ?? '';
-      if (method === 'bureau.contexts.list') return rpc(method, { contexts: [], nextOffset: null });
-      if (method === 'bureau.agents.list') return agents();
-      throw new Error(`Unexpected request: ${url} ${method}`);
-    });
-    const { container, findByTestId, findByRole } = mount('chat', { pattern: '/chats/new' });
-
-    const checklist = await findByTestId('first-run');
-
-    expect(
-      [...checklist.querySelectorAll('[data-step]')].map((step) => step.getAttribute('data-done')),
-    ).toEqual(['false', 'false', 'false']);
-    // The steps come first; the New chat action is still there for a person who skips them.
-    const actions = container.querySelector('.weft-view__actions');
-    expect(
-      checklist.compareDocumentPosition(actions as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    await fireEvent.click(await findByRole('button', { name: FIRST_RUN_COPY.dismissLabel }));
-    expect(container.querySelector('[data-testid="first-run"]')).toBeNull();
-    expect(container.querySelector('a[href="/settings/plugins"]')).not.toBeNull();
-    window.localStorage.removeItem('interborough:first-run:dismissed');
+    expect(container.querySelector('textarea, [data-testid="first-run"]')).toBeNull();
   });
 
   test('a new chat is ready for an agent the Bureau lists', async () => {

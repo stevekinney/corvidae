@@ -21,6 +21,10 @@ import {
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import {
+  humanInputAnsweredReply,
+  toolRunnerRefundedReply,
+} from '../../src/host/showcase-sentences.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_JOURNEY_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, test } from './fixtures.ts';
@@ -235,10 +239,9 @@ test.describe('Home with nothing waiting and a provider connected', () => {
       'bureau.health.attention': () => ({ items: [], count: 0, checks: [] }),
       'bureau.contexts.list': (result) => {
         const answer = result as { contexts: Record<string, unknown>[] };
-        const outcomes = [
-          'You approved it. Refunded $42.00 to the original payment method.',
-          'You answered Staging.',
-        ];
+        // What the scripted agents say once each decision is made (`showcase-sentences.ts`): the
+        // refund chat once the 4471 refund is approved, and the release chat once it is answered.
+        const outcomes = [toolRunnerRefundedReply(4200), humanInputAnsweredReply('Staging')];
         return {
           ...answer,
           contexts: answer.contexts.map((context, index) => ({

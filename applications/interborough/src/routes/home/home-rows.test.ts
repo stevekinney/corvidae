@@ -452,6 +452,43 @@ describe('checklistSteps', () => {
     expect(steps[1]?.description).toBe('Assistant is ready to use.');
   });
 
+  test('names no Assistant on a host that lists none, and says an agent is ready', () => {
+    const noAssistant = {
+      providers: [],
+      agents: [{ name: 'tool-runner', displayName: 'tool-runner', kind: 'code' as const }],
+      assistantChosen: false,
+    };
+    const open = checklistSteps({ provider: false, agent: false, chat: false }, noAssistant);
+    expect([open[1]?.title, open[1]?.description]).toEqual([
+      'Create an agent',
+      'An agent is a model with instructions and tools.',
+    ]);
+    // Done by an agent of the person's own, it names that agent.
+    const own = checklistSteps(
+      { provider: false, agent: true, chat: false },
+      {
+        ...noAssistant,
+        agents: [
+          ...noAssistant.agents,
+          { name: 'researcher', displayName: 'Researcher', kind: 'file' as const },
+        ],
+      },
+    );
+    expect(own[1]?.description).toBe('Researcher is ready to use.');
+    // Done by a choice of Assistant that the host no longer lists, it names the first agent it does list.
+    const chosen = checklistSteps(
+      { provider: false, agent: true, chat: false },
+      { ...noAssistant, assistantChosen: true },
+    );
+    expect(chosen[1]?.description).toBe('Tool runner is ready to use.');
+    // With no agent listed at all it says only that one is ready.
+    const unnamed = checklistSteps(
+      { provider: false, agent: true, chat: false },
+      { providers: [], agents: [], assistantChosen: true },
+    );
+    expect(unnamed[1]?.description).toBe('An agent is ready to use.');
+  });
+
   test('says Anthropic is connected for a single provider', () => {
     expect(
       checklistSteps(

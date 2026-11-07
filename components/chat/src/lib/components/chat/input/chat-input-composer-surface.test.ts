@@ -149,6 +149,31 @@ describe('the formatting row', () => {
     expect(form.hasAttribute('data-formatting-open')).toBe(false);
   });
 
+  test('closes when a press elsewhere takes focus away only once the press is over, so the click it makes still lands', async () => {
+    const { container } = render(ChatInput, { id: 'surface-press', formattingToolbar: true });
+    const form = container.querySelector('form')!;
+    const box = container.querySelector<HTMLTextAreaElement>('textarea')!;
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    box.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    // The press goes down on a button elsewhere on the page, which takes focus from the box: the row
+    // would give its height back and move that button before the click, so it stays open.
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    elsewhere.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    // The press is over: the click is delivered first, then the row closes.
+    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+    await waitUntil(() => !form.hasAttribute('data-formatting-open'));
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+    elsewhere.remove();
+  });
+
   test('draws no row unless the toolbar is on', () => {
     const { container } = render(ChatInput, { id: 'surface-no-format' });
     expect(container.querySelector('.chat-input-format')).toBeNull();

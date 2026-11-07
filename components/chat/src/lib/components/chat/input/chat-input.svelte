@@ -386,10 +386,41 @@
       formattingOpen = true;
     }
   }
+  // A press that takes focus out of the composer closes the row, which gives its height back to the
+  // page: whatever sits above the composer in a docked transcript (an approval's Approve, a link)
+  // moves down between the press and the release, and the click is lost. So while a press is still
+  // down the row closes once the press is over, after the click it makes has been delivered.
+  let pressing = false;
+  let closeAfterPress = false;
   function handleFocusOut(event: FocusEvent): void {
     const next = event.relatedTarget;
-    if (!(next instanceof Node) || !formElement?.contains(next)) formattingOpen = false;
+    if (next instanceof Node && formElement?.contains(next)) return;
+    if (pressing) closeAfterPress = true;
+    else formattingOpen = false;
   }
+  $effect(() => {
+    if (!formattingToolbar) return undefined;
+    const press = (): void => {
+      pressing = true;
+    };
+    const release = (): void => {
+      pressing = false;
+      if (!closeAfterPress) return;
+      closeAfterPress = false;
+      // The click follows the release in the same task; this runs after it.
+      setTimeout(() => {
+        if (!formElement?.contains(document.activeElement)) formattingOpen = false;
+      }, 0);
+    };
+    document.addEventListener('pointerdown', press, true);
+    document.addEventListener('pointerup', release, true);
+    document.addEventListener('pointercancel', release, true);
+    return () => {
+      document.removeEventListener('pointerdown', press, true);
+      document.removeEventListener('pointerup', release, true);
+      document.removeEventListener('pointercancel', release, true);
+    };
+  });
 
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);

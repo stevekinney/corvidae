@@ -38,6 +38,11 @@ import {
   type ShowcasePacing,
   type ShowcaseToolRunnerMoment,
 } from './showcase-agents.ts';
+import {
+  humanInputAnsweredReply,
+  toolRunnerRefundAsk,
+  toolRunnerRefundedReply,
+} from './showcase-sentences.ts';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const directories: string[] = [];
@@ -184,7 +189,7 @@ describe('the showcase built-in agents', () => {
     expect(pending?.pendingApproval).toBeDefined();
   });
 
-  test('Tool runner says the order’s note as it asks, the answer it remembers, and is paced before each answer', async () => {
+  test('Tool runner says what it found and that it needs approval as it asks, and is paced before each answer', async () => {
     const moments: ShowcaseToolRunnerMoment[] = [];
     const bureau = await start({ toolRunner: (moment) => void moments.push(moment) });
     const result = await run(
@@ -192,7 +197,12 @@ describe('the showcase built-in agents', () => {
       'tool-runner',
       'Please refund order 4471, it arrived damaged.',
     );
-    expect(result.steps.at(-1)?.content).toBe(SHOWCASE_ORDERS['4471']?.note);
+    expect(result.steps.at(-1)?.content).toBe(
+      'I found order 4471 ($42.00). I need your approval to refund it.',
+    );
+    expect(result.steps.at(-1)?.content).toBe(
+      toolRunnerRefundAsk('4471', SHOWCASE_ORDERS['4471']?.totalCents ?? 0),
+    );
     expect(moments.map(({ step, orderId }) => [step, orderId])).toEqual([
       ['lookup', '4471'],
       ['refund-ask', '4471'],
@@ -227,23 +237,54 @@ describe('the showcase built-in agents', () => {
     });
   });
 
-  test('Tool runner ends a refund’s run with no reply once the refund is decided', async () => {
+  test('Tool runner says the person approved the refund and what it did once the refund is issued', async () => {
     const generate = showcaseToolRunnerGenerate();
-    const conversation = {
+    const conversation = (outcome: string) => ({
       getMessages: () => [
-        { role: 'user', content: 'Please refund order 4472, $18.50.' },
+        { role: 'user', content: 'Please refund order 4471, it arrived damaged.' },
         {
           role: 'assistant',
           toolResult: { callId: 'showcase-lookup-order-1', outcome: 'success' },
         },
         {
           role: 'assistant',
-          toolResult: { callId: 'showcase-issue-refund-1', outcome: 'success' },
+          toolResult: { callId: 'showcase-issue-refund-1', outcome },
         },
       ],
-    };
-    const response = await generate({ conversation } as unknown as Parameters<typeof generate>[0]);
-    expect(response).toEqual({ content: '', toolCalls: [] });
+    });
+    const approved = await generate({
+      conversation: conversation('success'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(approved).toEqual({
+      content: 'You approved it. Refunded $42.00 to the original payment method.',
+      toolCalls: [],
+    });
+    expect(approved.content).toBe(toolRunnerRefundedReply(4200));
+    // A refund that was not issued has nothing to say.
+    const refused = await generate({
+      conversation: conversation('error'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(refused).toEqual({ content: '', toolCalls: [] });
+  });
+
+  test('Request human input says which answer the person gave once the question is answered', async () => {
+    const generate = showcaseHumanInputGenerate();
+    const answered = (content: string) => ({
+      getMessages: () => [
+        { role: 'user', content: 'Ship the release.' },
+        { role: 'user', content: `[signal:environment] ${content}` },
+      ],
+    });
+    const staging = await generate({
+      conversation: answered('"staging"'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(staging.content).toBe('You answered Staging.');
+    expect(humanInputAnsweredReply('Staging')).toBe(staging.content);
+    // The person's own words are said as they wrote them.
+    const own = await generate({
+      conversation: answered('"the canary ring"'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(own.content).toBe('You answered the canary ring.');
   });
 
   test('Tool runner answers a message that names no order with its plan, once its pace lets it', async () => {

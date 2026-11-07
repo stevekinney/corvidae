@@ -17,7 +17,11 @@ import {
   WORKFLOW_CREATED_REPLY,
 } from '../../fixtures/chat-states.ts';
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
-import { connectProvider, openStatesChat } from './chat-states-support.ts';
+import {
+  connectProvider,
+  connectProviderWithModels,
+  openStatesChat,
+} from './chat-states-support.ts';
 import { deleteChats } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -74,36 +78,6 @@ async function boxOf(locator: Locator) {
   return box!;
 }
 
-/**
- * Provider connected, as the board draws it: the host lists a key, and the Bureau lists Claude
- * Sonnet 5.5 for each model agent, which is what the Model select reads.
- */
-async function connect(page: Page): Promise<void> {
-  await connectProvider(page);
-  await page.route('**/bureau/jsonrpc', async (route) => {
-    const body = JSON.parse(route.request().postData() ?? '{}') as {
-      method?: string;
-      id?: unknown;
-    };
-    if (body.method !== 'bureau.agents.models') {
-      await route.fallback();
-      return;
-    }
-    const sonnet = {
-      provider: 'anthropic',
-      model: 'claude-sonnet-5-5',
-      displayName: 'Claude Sonnet 5.5',
-    };
-    await route.fulfill({
-      json: {
-        jsonrpc: '2.0',
-        id: body.id,
-        result: { selectable: true, models: [sonnet], default: sonnet },
-      },
-    });
-  });
-}
-
 /** Answers the Bureau's agent list as a host would whose agents have none of the Create workflow tool. */
 async function withoutWorkflowTool(page: Page): Promise<void> {
   await page.route('**/bureau/jsonrpc', async (route) => {
@@ -149,7 +123,7 @@ test.describe('Typing to Tool runner, provider connected (23x)', () => {
   test('greets Tool runner with its sentence over a live composer with Model, Effort and Permissions (23x)', async ({
     page,
   }) => {
-    await connect(page);
+    await connectProviderWithModels(page);
     await open(page, '/chats/new?agent=tool-runner');
     await expectShell(page);
     await expect(greeting(page)).toHaveText('What should Tool runner do?');
@@ -179,7 +153,7 @@ test.describe('Sending the first message (24b)', () => {
       pattern: loggedFailedResponse(503, /\/ag-ui\/agents\/tool-runner\/run/),
       reason: 'the test answers the first message’s run with a host that is down',
     });
-    await connect(page);
+    await connectProviderWithModels(page);
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -255,7 +229,7 @@ test.describe('New chat from Workflows, provider connected (24d, 24e, 24f)', () 
   test('preselects Workflow author and says where the person came from in one chip, with no subtitle (24d, 24e)', async ({
     page,
   }) => {
-    await connect(page);
+    await connectProviderWithModels(page);
     await open(page, '/chats/new?from=workflows');
     await expectShell(page);
 
@@ -279,7 +253,7 @@ test.describe('New chat from Workflows, provider connected (24d, 24e, 24f)', () 
   test('prefills "Help me build a workflow that " with the caret after it, and shows the selects and a live Send (24f)', async ({
     page,
   }) => {
-    await connect(page);
+    await connectProviderWithModels(page);
     await open(page, '/chats/new?from=workflows');
 
     await expect(field(page)).toHaveValue(PREFILL);
@@ -381,7 +355,7 @@ test.describe('New chat from Workflows when no agent can create workflows (24i)'
   test('lets the person take their text to another agent, with the chip kept (24i)', async ({
     page,
   }) => {
-    await connect(page);
+    await connectProviderWithModels(page);
     await withoutWorkflowTool(page);
     await open(page, '/chats/new?from=workflows');
     await expect(blockedRow(page)).toBeVisible();

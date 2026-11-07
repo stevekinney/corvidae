@@ -34,6 +34,11 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import type { ExtraAgents } from './host.ts';
+import {
+  humanInputAnsweredReply,
+  toolRunnerRefundAsk,
+  toolRunnerRefundedReply,
+} from './showcase-sentences.ts';
 
 /**
  * The identifiers of the six built-in agents, in the order the sample world lists them, which is
@@ -125,21 +130,12 @@ export const SHOWCASE_ORDERS: Readonly<
       readonly delivered: string;
       /** The day it shipped, when the sample world says (RunDetail's order 4468). */
       readonly shipped?: string;
-      /**
-       * What Tool runner says as it asks to refund the order, if anything. A run's last answer is
-       * what its agent remembers, so this is the memory the ask leaves (PageMemory: "Order 4471
-       * arrived with a cracked mug; the customer asked for a refund.", from Tool runner at 10:42 AM).
-       */
-      readonly note?: string;
     }
   >
 > = {
+  '4398': { totalCents: 2725, delivered: 'Oct 28' },
   '4468': { totalCents: 1800, shipped: 'Oct 27', delivered: 'Oct 29' },
-  '4471': {
-    totalCents: 4200,
-    delivered: 'Oct 31',
-    note: 'Order 4471 arrived with a cracked mug; the customer asked for a refund.',
-  },
+  '4471': { totalCents: 4200, delivered: 'Oct 31' },
   '4472': { totalCents: 1850, delivered: 'Oct 30' },
 };
 
@@ -302,6 +298,25 @@ function asksOnlyToLookUp(text: string): boolean {
   return /look\s*up/i.test(text) && !/refund/i.test(text);
 }
 
+/**
+ * The answer a delivered signal carries, as a person reads it: the label of the choice the question
+ * offered ("Staging" for `staging`), or the person's own words. The signal's content is its name
+ * and the answer as JSON (`[signal:environment] "staging"`).
+ */
+export function answerNamedIn(content: string): string {
+  const body = content.slice(content.indexOf(']') + 1).trim();
+  try {
+    const value: unknown = JSON.parse(body);
+    if (typeof value !== 'string') return body;
+    const labels = SHOWCASE_HUMAN_INPUT.answerSchema['x-labels'] as Readonly<
+      Record<string, string>
+    >;
+    return Object.hasOwn(labels, value) ? (labels[value] ?? value) : value;
+  } catch {
+    return body;
+  }
+}
+
 /** What Tool runner says after looking an order up when it was asked only to look. */
 export function toolRunnerLookupReply(orderId: string): string {
   const order = SHOWCASE_ORDERS[orderId];
@@ -316,8 +331,8 @@ export function toolRunnerLookupReply(orderId: string): string {
  * Tool runner's script: it answers from where the turn has got to, because the run that follows an
  * approval is a new run on the same session. It looks the order the message names up, then (unless
  * it was asked only to look) asks to refund the order's total, saying the order's note as it asks;
- * once the refund's result is in the turn its run ends with no reply ("Run finished · no reply"), so
- * nothing more is remembered. A message that names no order gets {@link SHOWCASE_TOOL_RUNNER_PLAN}.
+ * once the refund is approved its run says so and what it did
+ * ({@link toolRunnerRefundedReply}), and a refund that was not issued ends the run with no reply. A message that names no order gets {@link SHOWCASE_TOOL_RUNNER_PLAN}.
  * Each turn's calls carry the turn's number, because a tool call identifier names one call in a
  * conversation. `pacing` is awaited before each answer.
  */
@@ -342,7 +357,12 @@ export function showcaseToolRunnerGenerate(pacing: ShowcasePacing = {}): Generat
     const refund = resultOf(refundId);
     if (refund !== undefined && refund.outcome !== 'action_required') {
       await pace('answer');
-      return replyResponse('');
+      // An approved refund says so and what it did; a refund that was not issued says nothing.
+      return replyResponse(
+        refund.outcome === 'success'
+          ? toolRunnerRefundedReply(SHOWCASE_ORDERS[orderId]?.totalCents ?? 0)
+          : '',
+      );
     }
     if (resultOf(lookupId) !== undefined) {
       if (asksOnlyToLookUp(request)) {
@@ -357,7 +377,7 @@ export function showcaseToolRunnerGenerate(pacing: ShowcasePacing = {}): Generat
           { orderId, cents: order?.totalCents ?? 0, reason: SHOWCASE_REFUND_REASON },
           refundId,
         ),
-        content: order?.note ?? '',
+        content: order === undefined ? '' : toolRunnerRefundAsk(orderId, order.totalCents),
       };
     }
     await pace('lookup');
@@ -378,7 +398,7 @@ export function showcaseHumanInputGenerate(): GenerateFunction {
       answer?.role === 'user' &&
       textOf(answer.content).startsWith(`[signal:${SHOWCASE_HUMAN_INPUT.signal}]`)
     ) {
-      return replyResponse('Thanks, the release will go to the environment you named.');
+      return replyResponse(humanInputAnsweredReply(answerNamedIn(textOf(answer.content))));
     }
     const asked = messages.filter((message) => message.toolCall !== undefined).length;
     return callResponse(
@@ -615,7 +635,7 @@ export function showcaseBuiltInAgents(
       'tool-runner': createAgent({
         name: 'tool-runner',
         description: 'Looks an order up, then asks for approval to refund it.',
-        examples: ['Please refund order 4471, it arrived damaged.'],
+        examples: ['Please refund order 4471, it arrived damaged.', 'Look up order 4398'],
         generate: scripts['tool-runner'],
         toolbox: createShowcaseToolRunnerToolbox(),
         stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],

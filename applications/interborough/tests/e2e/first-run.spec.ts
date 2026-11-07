@@ -1,9 +1,9 @@
 /**
  * First run (COR-1862) against a fresh installation: a host with an empty home, no provider key, no
- * agent file and no chat (`E2E_FIRST_RUN_PORT`, `e2e-server.ts`). New chat's empty state (no agent
- * can run) shows the checklist, each step completes from the host's own answer, a provider is
- * connected from the page the checklist links to and a person who came from the agent form returns
- * to it, and a dismissal is kept in this browser. The chat list at `/chats` is not the checklist's
+ * agent file and no chat (`E2E_FIRST_RUN_PORT`, `e2e-server.ts`). New chat, with no agent that can
+ * run, is the Agents first-use state (design row 24q); each of Home's checklist steps completes from
+ * the host's own answer, a provider is connected from the page the checklist links to and a person
+ * who came from the agent form returns to it. The chat list at `/chats` is not the checklist's
  * place: its first use is the list's own empty state (`chat-list.spec.ts`).
  *
  * Home (COR-2016, rows 01y to 02b, 13c to 13j, 14c to 14j) is the first-run checklist on this host
@@ -19,7 +19,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { AGENT_EDITOR_COPY, FIRST_RUN_COPY, MODELS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY, MODELS_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -27,14 +27,9 @@ import { expect, test } from './fixtures.ts';
 test.use({ baseURL: E2E_FIRST_RUN_URL });
 test.describe.configure({ mode: 'serial' });
 
-const DISMISSED_KEY = 'interborough:first-run:dismissed';
 const KEY = 'e2e-first-run-key-that-must-never-be-printed';
 const AGENT_NAME = 'First run agent';
 const AGENT_IDENTIFIER = 'first-run-agent';
-
-const checklist = (page: Page) => page.getByTestId('first-run');
-const step = (page: Page, name: 'provider' | 'agent' | 'chat') =>
-  page.locator(`[data-step="${name}"]`);
 
 /** Saves a key for Anthropic from Settings › Models, and waits for the page to say it is connected. */
 async function connectAnthropic(page: Page): Promise<void> {
@@ -48,7 +43,7 @@ async function connectAnthropic(page: Page): Promise<void> {
 }
 
 for (const width of [375, 1280] as const) {
-  test(`a fresh installation shows the three steps on New chat, none done, at ${width} pixels`, async ({
+  test(`a fresh installation shows the Agents first-use state on New chat, with no composer, at ${width} pixels (24q)`, async ({
     page,
     checkA11y,
   }) => {
@@ -56,30 +51,28 @@ for (const width of [375, 1280] as const) {
     await page.goto('/chats/new');
 
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
+    await expect(page.getByRole('heading', { level: 1, name: 'No agents yet' })).toBeVisible();
     await expect(
-      page.getByRole('heading', {
-        level: 1,
-        name: VIEW_COPY.chat.emptyByPattern?.['/chats/new']?.title ?? '',
-      }),
+      page.getByText(
+        'An agent is a model with instructions and tools. Create one, or add a plugin that provides some.',
+      ),
     ).toBeVisible();
-    await expect(checklist(page)).toBeVisible();
-    await expect(page.locator('[data-step]')).toHaveCount(3);
-    for (const name of ['provider', 'agent', 'chat'] as const) {
-      await expect(step(page, name)).toHaveAttribute('data-done', 'false');
-    }
-    await expect(step(page, 'provider').getByRole('link')).toHaveAttribute(
-      'href',
-      FIRST_RUN_COPY.steps.provider.action.href,
+    await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
+      'data-cinder-variant',
+      'primary',
     );
-    await expect(step(page, 'agent').getByRole('link')).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
       'href',
-      FIRST_RUN_COPY.steps.agent.action.href,
+      '/agents/new',
     );
-    await expect(step(page, 'chat').getByRole('link')).toHaveAttribute(
-      'href',
-      FIRST_RUN_COPY.steps.chat.action.href,
+    await expect(page.getByRole('link', { name: 'Browse agents' })).toHaveAttribute(
+      'data-cinder-variant',
+      'secondary',
     );
-    // Nothing scrolls sideways, and the steps come before the New chat action.
+    // There is nothing to send to, so no composer, and the checklist belongs to Home.
+    await expect(page.getByRole('textbox')).toHaveCount(0);
+    await expect(page.getByTestId('first-run')).toHaveCount(0);
+    // Nothing scrolls sideways.
     const outlet = await page.locator('main.weft-shell-outlet').evaluate((element) => ({
       scrollWidth: element.scrollWidth,
       clientWidth: element.clientWidth,
@@ -144,8 +137,10 @@ for (const width of [375, 1280] as const) {
     await expect(steps.nth(0)).toContainText(
       'Agents need a model provider before they can answer.',
     );
-    await expect(steps.nth(1)).toContainText('Create an agent, or start from Assistant');
-    await expect(steps.nth(1)).toContainText('Assistant works now; other agents need a provider.');
+    // This host lists no Assistant, so the second step names none.
+    await expect(steps.nth(1)).toContainText('Create an agent');
+    await expect(steps.nth(1)).not.toContainText('Assistant');
+    await expect(steps.nth(1)).toContainText('An agent is a model with instructions and tools.');
     await expect(steps.nth(2)).toContainText('Say hello');
     await expect(steps.nth(2)).toContainText('Send a first message to see a chat run end to end.');
     // Step 1's button is the only primary one; Use Assistant is the quiet link.
@@ -194,31 +189,6 @@ test('Home’s step 3 is live while steps 1 and 2 are open (02a, 13g, 14c)', asy
   await expect(page).toHaveURL(/\/chats\/new$/);
 });
 
-test('dismissing the steps keeps the choice in this browser, across a reload', async ({ page }) => {
-  await page.goto('/chats/new');
-  await expect(checklist(page)).toBeVisible();
-
-  await page.getByRole('button', { name: FIRST_RUN_COPY.dismissLabel }).click();
-
-  await expect(checklist(page)).toHaveCount(0);
-  // The shell keeps a personal choice under the identity it was made by
-  // (`interborough:identity:[workspace,actor]:<key>`), so the key is found by its ending.
-  expect(
-    await page.evaluate(
-      (key) =>
-        Object.entries(window.localStorage)
-          .filter(([name]) => name.endsWith(`:${key}`))
-          .map(([, value]) => value),
-      DISMISSED_KEY,
-    ),
-  ).toEqual(['true']);
-  await page.reload();
-  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
-  await expect(checklist(page)).toHaveCount(0);
-  // The empty state is still there, with its own way forward.
-  await expect(page.getByRole('link', { name: 'Open plugins' })).toBeVisible();
-});
-
 test('each step completes from its own signal, from connecting a provider to saying hello', async ({
   page,
 }) => {
@@ -251,17 +221,12 @@ test('each step completes from its own signal, from connecting a provider to say
   ).toBeVisible();
   await expect(page.getByTestId('home-counts')).toHaveCount(0);
 
-  // The provider step is done and the others are not, where the empty New chat page shows them.
+  // New chat has no agent to start with yet, and leads to the agent form.
   await page.goto('/chats/new');
-  await expect(step(page, 'provider')).toHaveAttribute('data-done', 'true');
-  await expect(step(page, 'agent')).toHaveAttribute('data-done', 'false');
-  await expect(step(page, 'chat')).toHaveAttribute('data-done', 'false');
-  await expect(step(page, 'provider').getByRole('link')).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1, name: 'No agents yet' })).toBeVisible();
 
   // Creating the agent completes the second step.
-  await step(page, 'agent')
-    .getByRole('link', { name: FIRST_RUN_COPY.steps.agent.action.label })
-    .click();
+  await page.getByRole('link', { name: 'New agent' }).click();
   await page.getByRole('textbox', { name: /^Name/ }).fill(AGENT_NAME);
   await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveValue(AGENT_IDENTIFIER);
   await page.getByRole('textbox', { name: /^Instructions/ }).fill('Answer in one short sentence.');
@@ -298,7 +263,6 @@ test('each step completes from its own signal, from connecting a provider to say
   );
   await page.goto('/chats');
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-  await expect(checklist(page)).toHaveCount(0);
   // Home is the overview now, and the checklist does not come back (14c).
   await page.goto('/');
   await expect(page.getByTestId('home-counts')).toBeVisible();

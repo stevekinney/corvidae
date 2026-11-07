@@ -311,10 +311,11 @@ test.describe('a new chat', () => {
   }) => {
     await page.goto('/chats/new');
     const agent = page.getByRole('combobox', { name: 'Agent' });
-    await expect(agent).toContainText(E2E_DEFAULT_AGENT);
+    // The pill names the agent as a person reads it: the identifier in words.
+    await expect(agent).toContainText(new RegExp(E2E_DEFAULT_AGENT, 'i'));
 
     await agent.click();
-    await page.getByRole('option', { name: /tool-runner/i }).click();
+    await page.getByRole('option', { name: /tool runner/i }).click();
 
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)tool-runner$/);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
@@ -324,7 +325,7 @@ test.describe('a new chat', () => {
     page,
   }) => {
     await page.goto('/chats/new?agent=demo:tool-runner');
-    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText('tool-runner');
+    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText('Tool runner');
     // A reload would discard this.
     await page.evaluate(() => {
       Reflect.set(window, '__stillHere', true);
@@ -336,11 +337,13 @@ test.describe('a new chat', () => {
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
     expect(await page.evaluate(() => Reflect.get(window, '__stillHere'))).toBe(true);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(0);
-    await expect(
-      page
-        .getByRole('region', { name: 'Conversation' })
-        .getByText('demo:tool-runner', { exact: true }),
-    ).toHaveCount(1);
+    // The agent is named where a message goes to it, and no line under the title repeats it.
+    const conversationRegion = page.getByRole('region', { name: 'Conversation' });
+    await expect(conversationRegion.getByRole('textbox', { name: 'Message' })).toHaveAttribute(
+      'placeholder',
+      'Message Tool runner…',
+    );
+    await expect(conversationRegion.getByText('demo:tool-runner', { exact: true })).toHaveCount(0);
   });
 
   test('replaces its history entry when it starts, so Back returns to where the person came from', async ({

@@ -42,7 +42,7 @@
 <div class="ib-new-chat-choices" data-testid="new-chat-choices">
   {#if prompts.length > 0}
     <div
-      class="ib-new-chat-choices__row"
+      class="ib-new-chat-choices__row ib-new-chat-choices__row--prompts"
       role="group"
       aria-label={CHAT_COPY.newChatWelcome.promptsLabel}
       data-testid="agent-prompts"

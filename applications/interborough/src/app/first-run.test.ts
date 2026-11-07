@@ -1,22 +1,18 @@
 /**
  * The first-run checklist's rules (`first-run.ts`): which signal completes each step, when the
- * checklist is over, and how the dismissal is kept when storage cannot be trusted.
+ * checklist is over, and how its two browser facts are kept when storage cannot be trusted.
  */
 import { describe, expect, test } from 'bun:test';
 
 import {
   FIRST_RUN_ASSISTANT_KEY,
-  FIRST_RUN_DISMISSED_KEY,
   FIRST_RUN_SAID_HELLO_KEY,
-  firstRunComplete,
   firstRunProgress,
   homeChecklistShows,
   readAssistantChosen,
-  readFirstRunDismissed,
   readSaidHello,
   stepsLeft,
   writeAssistantChosen,
-  writeFirstRunDismissed,
   writeSaidHello,
 } from './first-run.ts';
 
@@ -45,7 +41,6 @@ describe('the steps', () => {
   test('are all open on a fresh installation', () => {
     const progress = firstRunProgress(NOTHING);
     expect(progress).toEqual({ provider: false, agent: false, chat: false });
-    expect(firstRunComplete(progress)).toBe(false);
   });
 
   test('a provider is connected once one holds a key, not once one is listed', () => {
@@ -64,31 +59,6 @@ describe('the steps', () => {
 
   test('a chat exists once the Bureau lists one', () => {
     expect(firstRunProgress({ ...NOTHING, chatCount: 1 }).chat).toBe(true);
-  });
-
-  test('are complete only when all three are done', () => {
-    expect(firstRunComplete({ provider: true, agent: true, chat: false })).toBe(false);
-    expect(firstRunComplete({ provider: true, agent: true, chat: true })).toBe(true);
-  });
-});
-
-describe('the dismissal', () => {
-  test('is kept under the key the interface documents', () => {
-    expect(FIRST_RUN_DISMISSED_KEY).toBe('interborough:first-run:dismissed');
-    const storage = storageOf();
-    expect(readFirstRunDismissed(storage)).toBe(false);
-    writeFirstRunDismissed(storage);
-    expect(storage.values.get(FIRST_RUN_DISMISSED_KEY)).toBe('true');
-    expect(readFirstRunDismissed(storage)).toBe(true);
-  });
-
-  test('is not read from any other value', () => {
-    expect(readFirstRunDismissed(storageOf({ [FIRST_RUN_DISMISSED_KEY]: 'yes' }))).toBe(false);
-  });
-
-  test('is not lost to storage that throws: a failed read is not dismissed, a failed write is ignored', () => {
-    expect(readFirstRunDismissed(storageOf({}, { read: true }))).toBe(false);
-    expect(() => writeFirstRunDismissed(storageOf({}, { write: true }))).not.toThrow();
   });
 });
 
@@ -125,8 +95,6 @@ describe('Home’s checklist', () => {
     expect([readAssistantChosen(storage), readSaidHello(storage)]).toEqual([true, false]);
     writeSaidHello(storage);
     expect([readAssistantChosen(storage), readSaidHello(storage)]).toEqual([true, true]);
-    // Neither is the dismissal.
-    expect(readFirstRunDismissed(storage)).toBe(false);
   });
 
   test('is not lost to storage that throws', () => {

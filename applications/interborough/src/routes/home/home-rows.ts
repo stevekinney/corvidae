@@ -429,10 +429,14 @@ export function checklistSteps(
   context: ChecklistContext,
 ): ChecklistStep[] {
   const copy = HOME_COPY.firstRun;
-  const assistant = findAssistant(context.agents ?? []) ?? 'assistant';
+  // Assistant is named only where the host lists one. Without it the second step says an agent is
+  // ready, naming the person's own or else the first one the host lists.
+  const assistant = findAssistant(context.agents ?? []);
   const fileAgent = context.agents?.find((agent) => agent.kind === 'file');
   const readyAgent =
-    context.assistantChosen || fileAgent === undefined ? assistant : fileAgent.name;
+    assistant !== undefined && (context.assistantChosen || fileAgent === undefined)
+      ? assistant
+      : (fileAgent?.name ?? context.agents?.[0]?.name);
   const connected = context.providers
     .filter((provider) => provider.hasKey)
     .map((provider) => providerDisplayName(provider.name));
@@ -443,9 +447,12 @@ export function checklistSteps(
       done: copy.provider.done(connected),
     },
     agent: {
-      title: copy.agent.title,
-      open: copy.agent.description,
-      done: copy.agent.done(agentLabel(readyAgent, context.agents)),
+      title: assistant === undefined ? copy.agent.titleWithoutAssistant : copy.agent.title,
+      open:
+        assistant === undefined ? copy.agent.descriptionWithoutAssistant : copy.agent.description,
+      done: copy.agent.done(
+        readyAgent === undefined ? copy.agent.anAgent : agentLabel(readyAgent, context.agents),
+      ),
     },
     chat: { title: copy.chat.title, open: copy.chat.description, done: copy.chat.description },
   };

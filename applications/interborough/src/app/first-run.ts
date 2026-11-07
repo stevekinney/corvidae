@@ -1,7 +1,6 @@
 /**
- * The first-run checklist's two pieces of state that are not on the server: whether the person
- * dismissed it (kept in `localStorage`, as the shell's other personal preferences are), and which
- * of its three steps the host's answers say are done.
+ * The first-run checklist's state: which of its three steps the host's answers say are done, and the
+ * two facts kept in the browser (`localStorage`, as the shell's other personal preferences are).
  *
  * A step is done by a signal the host already gives, not by a flag the checklist keeps: a provider
  * is connected once it holds a key (`GET /host/providers`, the rule Settings › Models states), an
@@ -11,12 +10,9 @@
  *
  * Home's checklist (`routes/home/home-first-run.svelte`) reads the same signals under one more
  * rule: it is over when the chat step is done, whatever the other two say, and it never returns
- * (`homeChecklistShows`). Two things it keeps in the browser besides the dismissal: that the person
- * chose Assistant for the second step, and that a chat has happened.
+ * (`homeChecklistShows`). Two things it keeps in the browser: that the person chose Assistant for the
+ * second step, and that a chat has happened.
  */
-
-/** The `localStorage` key that holds the dismissal. */
-export const FIRST_RUN_DISMISSED_KEY = 'interborough:first-run:dismissed';
 
 /** The `localStorage` key that holds the choice to start from Assistant (the second step's quiet link). */
 export const FIRST_RUN_ASSISTANT_KEY = 'interborough:first-run:assistant';
@@ -59,11 +55,6 @@ export function firstRunProgress(signals: FirstRunSignals): FirstRunProgress {
   };
 }
 
-/** Whether every step is done, which ends the checklist whether it was dismissed or not. */
-export function firstRunComplete(progress: FirstRunProgress): boolean {
-  return FIRST_RUN_STEPS.every((step) => progress[step]);
-}
-
 /**
  * Whether Home's checklist is showing: until the chat step is done, whatever the provider and agent
  * steps say, because a person who has said hello has seen a chat work and the checklist has done its
@@ -97,20 +88,6 @@ function writeFlag(key: string, storage: Pick<Storage, 'getItem' | 'setItem'> | 
   } catch {
     // Storage that refuses the write keeps the flag for this page only.
   }
-}
-
-/** Whether the person dismissed the checklist. Storage that cannot be read means it was not. */
-export function readFirstRunDismissed(
-  storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = defaultStorage(),
-): boolean {
-  return readFlag(FIRST_RUN_DISMISSED_KEY, storage);
-}
-
-/** Keeps the dismissal. Storage that is full or blocked keeps it for this page only. */
-export function writeFirstRunDismissed(
-  storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = defaultStorage(),
-): void {
-  writeFlag(FIRST_RUN_DISMISSED_KEY, storage);
 }
 
 /** Whether the person chose to start from Assistant. Storage that cannot be read means they did not. */

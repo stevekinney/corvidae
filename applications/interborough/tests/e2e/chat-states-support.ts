@@ -34,6 +34,36 @@ export async function connectProvider(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Provider connected, as the board draws it: the host lists a key, and the Bureau lists Claude
+ * Sonnet 5.5 for each model agent, which is what the Model select reads.
+ */
+export async function connectProviderWithModels(page: Page): Promise<void> {
+  await connectProvider(page);
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      method?: string;
+      id?: unknown;
+    };
+    if (body.method !== 'bureau.agents.models') {
+      await route.fallback();
+      return;
+    }
+    const sonnet = {
+      provider: 'anthropic',
+      model: 'claude-sonnet-5-5',
+      displayName: 'Claude Sonnet 5.5',
+    };
+    await route.fulfill({
+      json: {
+        jsonrpc: '2.0',
+        id: body.id,
+        result: { selectable: true, models: [sonnet], default: sonnet },
+      },
+    });
+  });
+}
+
 /** What a request to the Bureau's JSON-RPC mount asks. */
 interface Operation {
   readonly method?: string;

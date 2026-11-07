@@ -37,6 +37,9 @@ export type ViewProbeResult = {
   readonly liveSource?: 'bureau' | 'fleet';
 };
 
+/** How long the agents a new chat starts with are trusted before the page asks for them again. */
+const AGENT_LIST_STALE_TIME_MS = 5_000;
+
 /** How often an empty runs page asks again while the feed that would fill it is not live, the poll `/tasks/:id` uses for a task that has ended. */
 export const RUNS_RECHECK_MS = 5_000;
 
@@ -192,6 +195,15 @@ export function probeFor(
       if (pattern === '/chats/new') {
         const agent = search.get('agent');
         return async (_client, queryClient) => {
+          // The page lists the agents too (the pill, the greeting, the other agents to chat with), and
+          // takes them from here, so it draws with them on its first frame and never a greeting with
+          // no agent in it. The read that fails is this view's error (design row 24p).
+          const agents = await queryClient.fetchQuery({
+            queryKey: queryKeys.agents.list(),
+            queryFn: ({ signal }) => listAgents({ signal }),
+            staleTime: AGENT_LIST_STALE_TIME_MS,
+            retry: false,
+          });
           if (agent === null) {
             const empty = (await queryClient.fetchQuery(defaultAgentQuery())) === null;
             // A chat started from Workflows begins with an agent that can create workflows. None
@@ -201,7 +213,6 @@ export function probeFor(
             }
             return { empty };
           }
-          const agents = await listAgents();
           const found = agents.find((entry) => entry.name === agent);
           if (found === undefined) throw notFound('agent');
           return { empty: false };
