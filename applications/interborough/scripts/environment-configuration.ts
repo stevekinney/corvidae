@@ -1,12 +1,25 @@
 /**
  * The one place the application's scripts read the process environment: whether the run is on a
  * continuous-integration host, which `playwright.config.ts` uses to pick its reporter and to
- * decide whether to reuse a server that is already running, the port the end-to-end suite's host
- * listens on, and where and in which color scheme a design-review capture writes its screenshots.
+ * decide whether to reuse a server that is already running, whether the run must refuse to reuse
+ * one, the port the end-to-end suite's host listens on, and where and in which color scheme a design-review capture writes its screenshots.
  */
 export function isContinuousIntegration(): boolean {
   return Boolean(process.env['CI']);
 }
+
+/**
+ * Whether the run must start its own server and never reuse one that is already listening, set by
+ * `INTERBOROUGH_E2E_FRESH_SERVER` (any non-empty value). The batch validate sets it
+ * (`scripts/run-gated-browser-suite.ts`), because Playwright otherwise reuses a server on the
+ * end-to-end port outside CI, which on a shared host can be another checkout's build.
+ */
+export function requiresFreshServer(): boolean {
+  return Boolean(process.env['INTERBOROUGH_E2E_FRESH_SERVER']);
+}
+
+/** How many consecutive ports the end-to-end suite holds, starting at `endToEndPort()`. */
+export const END_TO_END_PORT_COUNT = 7;
 
 /**
  * The port the end-to-end host listens on, and the six after it: one for the barrier's control,
@@ -17,8 +30,17 @@ export function isContinuousIntegration(): boolean {
  * that is not a port is refused rather than replaced.
  */
 export function endToEndPort(): number {
+  return endToEndPortOverride() ?? 7399;
+}
+
+/**
+ * The port `INTERBOROUGH_E2E_PORT` names, or `undefined` when it is unset or empty. A value that is
+ * not a port is refused rather than replaced. The batch validate's runner reads it to tell a port
+ * the caller chose from one it must find itself (`scripts/run-gated-browser-suite.ts`).
+ */
+export function endToEndPortOverride(): number | undefined {
   const raw = process.env['INTERBOROUGH_E2E_PORT'];
-  if (raw === undefined || raw === '') return 7399;
+  if (raw === undefined || raw === '') return undefined;
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1 || port > 65530) {
     throw new Error(`INTERBOROUGH_E2E_PORT must be a port number below 65531, not "${raw}".`);
