@@ -162,6 +162,39 @@ describe('registerWorkflowDocuments()', () => {
     expect(await throwingRejectionOf(run.result())).toThrow('map item failed');
     expect(mapActive).toBe(0);
   });
+
+  it('runs wait-bearing map steps through the normal parent run with stable iteration addresses', async () => {
+    identities.length = 0;
+    const document = createDocument('map-wait', [
+      { kind: 'activity', handler: 'version', input: { items: ['a', 'b'] } },
+      {
+        kind: 'map',
+        over: 'items',
+        concurrency: 2,
+        steps: [
+          { kind: 'await-signal', signal: 'continue' },
+          { kind: 'activity', handler: 'identify' },
+        ],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-wait', null, { id: 'map-wait-run' });
+    await waitForParkedOnSignal(engine, run.id);
+    await run.signal('continue', { ok: true });
+    await waitForCondition(
+      async () =>
+        (await engine.getTimeline(run.id)).filter((entry) => entry.operationType === 'wait-signal')
+          .length >= 2,
+      { label: 'second map iteration parked on its signal' },
+    );
+    await run.signal('continue', { ok: true });
+    await run.result();
+    expect(identities.map(({ stepAddress }) => stepAddress)).toEqual(['3#0', '3#1']);
+    expect(
+      new Set(identities.map(({ workflowId, stepAddress }) => `${workflowId}:${stepAddress}`)).size,
+    ).toBe(2);
+  });
   it('runs only the matching branch case and continues with its result', async () => {
     traces.length = 0;
     const document = createDocument('branch-document', [
