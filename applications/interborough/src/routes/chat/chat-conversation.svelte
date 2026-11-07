@@ -668,6 +668,29 @@
     chat?.getEditorElement()?.form?.requestSubmit();
   }
 
+  /**
+   * Sends the message Home handed over as the chat's first, through the composer: it is typed into
+   * the box and the box is submitted, exactly as a person's own first message is. A start that
+   * fails therefore leaves the text in the box ("Your text is kept."), and Retry submits it again.
+   * Sent around the composer, the text would be gone with the failed start and Retry would submit
+   * an empty box. With no live box to put it in (a blocked row), it waits as a prefill for the
+   * composer that can send it, and nothing is queued.
+   */
+  async function sendFirstFromComposer(text: string): Promise<void> {
+    for (let frame = 0; frame < ARRIVAL_FRAMES; frame += 1) {
+      await tick();
+      const box = chat?.getEditorElement();
+      if (box !== null && box !== undefined) {
+        fillComposer(text);
+        await tick();
+        box.form?.requestSubmit();
+        return;
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    prefill = text;
+  }
+
   function chooseAgent(value: string): void {
     // The agent is fixed once the first message is on its way.
     if (startingFirstMessage) return;
@@ -1373,7 +1396,7 @@
     // Home's Start a chat hands the new chat a message (`new-chat-handoff.ts`), sent once as the
     // chat's first. It is not in the address, so no link can start a run.
     const first = untrack(() => (isNew ? takeFirstMessage(agent) : undefined));
-    if (first !== undefined) void session.send(first);
+    if (first !== undefined) void sendFirstFromComposer(first);
     return () => {
       for (const remove of removals) remove();
       restart.dispose();

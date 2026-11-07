@@ -330,6 +330,60 @@ describe('a new chat', () => {
     expect(takeFirstMessage('assistant')).toBeUndefined();
   });
 
+  test('keeps the message Home handed over when the first start fails, and Retry sends it again', async () => {
+    const bodies: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
+    restore = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, id: 'thread-1', title: 'From Home' }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      },
+      (url, init) => {
+        if (!url.includes('/ag-ui/agents/')) return undefined;
+        const input = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+          threadId: string;
+          runId: string;
+          messages: Array<{ role: string; content: unknown }>;
+        };
+        bodies.push(input);
+        // The first start is refused; the second one runs.
+        if (bodies.length === 1) return new Response('{}', { status: 502 });
+        return sse([
+          { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Hello from the agent.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: input.threadId,
+            runId: input.runId,
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    ).restore;
+    handOffFirstMessage('assistant', 'What did I approve yesterday?');
+    landAt('/chats/new?agent=assistant');
+    const { container, findByRole, findByText } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    const retry = await findByRole('button', { name: 'Retry' });
+    expect(bodies).toHaveLength(1);
+    expect(container.querySelector('textarea')?.value).toBe('What did I approve yesterday?');
+
+    await fireEvent.click(retry);
+
+    await findByText('Hello from the agent.');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]?.messages.findLast((message) => message.role === 'user')?.content).toBe(
+      'What did I approve yesterday?',
+    );
+  });
+
   test('opens with an empty composer when no topic is named', async () => {
     restore = bureau({}).restore;
     landAt('/chats/new');
