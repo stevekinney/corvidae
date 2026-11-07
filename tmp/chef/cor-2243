@@ -1,0 +1,10 @@
+revision: 9835ac4dadda8b5678bba8a413f711c70681c318
+scope: COR-2243 W7 bounded parent-run map document step
+pull_request: https://github.com/stevekinney/corvidae/pull/1050
+checks:
+  - bun test packages/weft/src/document-workflow/document.test.ts packages/weft/src/document-workflow/register.test.ts (exit 0, 63 passed)
+  - bun run lint:root (exit 0)
+  - bunx turbo run lint typecheck --filter=@lostgradient/weft --filter=@lostgradient/bureau (exit 0)
+  - bunx prettier --check changed document-workflow files (exit 0)
+  - bunx tsc -p packages/weft/tsconfig.json --noEmit (exit 0)
+unresolved: none
