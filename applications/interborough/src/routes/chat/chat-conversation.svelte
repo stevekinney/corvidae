@@ -249,11 +249,12 @@
   // A follow-up and an answer to the run's question carry text only, so a file attached then
   // would be dropped without a word. The picker is off for both, and while the page is still
   // finding out whether the session has a run going, which would make the next message a
-  // follow-up.
+  // follow-up. While a new chat's first message is starting there is no run to follow up, and the
+  // picker stays in the row, off with Send, so the row does not reflow (design row 24b).
   const attachable = $derived(
     settings !== null &&
       !session.attaching &&
-      !session.streaming &&
+      (!session.streaming || choosing) &&
       session.humanRequests.length === 0,
   );
 

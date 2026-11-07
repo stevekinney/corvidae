@@ -31,7 +31,8 @@
     agents.map((agent) => ({
       value: agent.name,
       label: agentLabel(agent.name, agents),
-      ...(agent.description === null ? {} : { description: agent.description }),
+      // An agent with no description shows its name and, muted beside it, that it has none.
+      description: agent.description ?? CHAT_COPY.agentSelect.noDescription,
       ...(providerConnected === false && agent.media !== null
         ? { note: CHAT_COPY.agentSelect.needsProvider }
         : {}),

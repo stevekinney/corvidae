@@ -16,6 +16,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
+import { connectProvider } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -322,11 +323,22 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
       pattern: REFUSED,
       reason: 'the test takes the page’s network away on purpose',
     });
+    // Provider connected, so the composer is live: the person's follow-up, sent while the approval
+    // waits, is the message that was not sent (frame g).
+    await connectProvider(page);
     // The page loads at 10:44 AM, two minutes before the sample "now".
     await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 2 * 60_000 });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
+    // The connection drops as the message goes out, so it is the transport that fails and the row
+    // says "Not sent" (the page names a transport failure there, not in an alert of its own).
+    await page.route('**/ag-ui/agents/**', (route) => route.abort('connectionrefused'));
+    const followUp = 'Also look up order 4398, the same carrier.';
+    const composerBox = page.getByRole('textbox', { name: /^Message/ });
+    await composerBox.fill(followUp);
+    await composerBox.press('Enter');
+    await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
 
     await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 500);
     await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));
@@ -361,6 +373,19 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
       await button.focus();
       await expect(button).toBeFocused();
     }
+    // The message that was not sent keeps its Retry in the details beside "Not sent", off while the
+    // server does not answer, with the reason beside it.
+    await page.getByRole('button', { name: 'Not sent: details' }).click();
+    const retry = page.getByRole('button', { name: 'Retry' });
+    await expect(retry).toBeDisabled();
+    await expect(
+      page
+        .getByRole('dialog')
+        .or(page.getByRole('group'))
+        .filter({ hasText: 'Retries when you’re back online.' })
+        .first(),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
     const newChat = page.getByRole('link', { name: 'New chat' }).first();
     await expect(newChat).toHaveAttribute('aria-disabled', 'true');
     await newChat.focus();

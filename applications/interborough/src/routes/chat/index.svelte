@@ -130,7 +130,6 @@
     <!-- Nothing old to show, so the error state is the whole conversation area: no banner above it,
          no composer under it (there is nothing to send to), and the list beside it stays live. -->
     <ErrorState
-      variant="flat"
       title={CHAT_COPY.load.errorTitle}
       description={CHAT_COPY.load.errorDescription}
       headingLevel={1}

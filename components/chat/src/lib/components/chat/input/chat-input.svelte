@@ -1920,7 +1920,7 @@
    * only the actions leave for a line of their own. */
   .chat-input-blocked-message {
     display: flex;
-    flex: 1 1 14rem;
+    flex: 1 1 9rem;
     align-items: flex-start;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
@@ -1949,9 +1949,11 @@
     margin-inline-start: auto;
   }
 
-  /* On a phone-width composer the actions drop to a line of their own and fill it, from the left
-   * edge to the right, as touch targets (rows 05a, 06m, 24x), instead of overlapping the reason. */
-  @container (max-inline-size: 28rem) {
+  /* On a phone the actions drop to a line of their own and fill it, from the left edge to the
+   * right, as touch targets (rows 05a, 06m, 24x), instead of overlapping the reason. A tablet's
+   * conversation pane is as narrow as a phone's screen, so it is the screen that decides, not the
+   * pane: there the reason wraps and the action stays at the right (row 06n). */
+  @media (max-width: 639.98px) {
     .chat-input-blocked-actions {
       flex: 1 0 100%;
     }

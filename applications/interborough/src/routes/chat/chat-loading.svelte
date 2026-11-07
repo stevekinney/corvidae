@@ -80,8 +80,11 @@
     min-block-size: 0;
   }
 
+  /* The conversation's own inset (board frame e): the heading row is padded and its rule runs edge
+   * to edge, the transcript and the composer sit a step in from the pane, so nothing jumps when the
+   * chat arrives. */
   .ib-chat-loading__heading {
-    padding-block-end: var(--cinder-space-3);
+    padding: var(--cinder-space-5) var(--cinder-space-4);
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
@@ -91,7 +94,7 @@
     flex-direction: column;
     gap: var(--cinder-space-6);
     min-block-size: 0;
-    padding-block: var(--cinder-space-4);
+    padding: var(--cinder-space-4);
   }
 
   .ib-chat-loading__user {
@@ -107,6 +110,8 @@
 
   .ib-chat-loading__composer {
     order: 1;
+    padding-inline: var(--cinder-space-4);
+    padding-block-end: var(--cinder-space-4);
   }
 
   .ib-chat-loading__controls {

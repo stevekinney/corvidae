@@ -177,6 +177,8 @@ test.describe('Sending the first message (24b)', () => {
     await expect(page.getByRole('combobox', { name: 'Model' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Effort' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: /Permissions/ })).toBeVisible();
+    // The row does not reflow: the attach button stays in its place, off with Send.
+    await expect(page.getByRole('button', { name: 'Attach file' })).toBeDisabled();
     await expect(page.locator('.chat-message--user, [data-role="user"]')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/chats/new',

@@ -302,6 +302,16 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* A long label ("Allow Issue refund for the rest of this chat") wraps beside its box, not under it. */
+  .cinder-approval-card__remember .cinder-checkbox-field {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  .cinder-approval-card__remember .cinder-checkbox-field > .cinder-form-field__label {
+    min-inline-size: 0;
+  }
+
   /* Why Deny and Approve are off, or why an approval cannot be answered now. */
   .cinder-approval-card__reason {
     margin: 0;

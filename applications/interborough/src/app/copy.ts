@@ -2829,6 +2829,8 @@ export const CHAT_COPY = {
   agentSelect: {
     /** Said under an agent that runs on a model while no provider is connected. */
     needsProvider: 'Needs a provider',
+    /** Said, muted, beside the name of an agent that has no description (the greeting then has no sentence either). */
+    noDescription: 'no description',
   },
   sessionsTitle: 'Chats',
   /** The list's heading on a phone, where the list is a screen of its own under the page's name. */
