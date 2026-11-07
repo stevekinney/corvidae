@@ -7,7 +7,10 @@
    * asked and what became of it: "Approved by you · 10:33 AM", or "Approved by you in Reviews ·
    * 10:46 AM" when the decision was made on another page while this one was open, with the note a
    * refusal carried. The row is a group named by its question and focusable by script alone, so the
-   * page can bring the person to it on opening without answering it.
+   * page can bring the person to it on opening without answering it. A held approval of an agent
+   * whose plugin is disabled reads Unavailable with its reason and no buttons; while no provider is
+   * connected a waiting one stays answerable, and a muted line under it says the run continues once
+   * a provider is connected.
    */
   import { ApprovalCard, type ApprovalResolution } from '@lostgradient/cinder';
 
@@ -31,6 +34,13 @@
     context: DecisionContext;
     /** Whether Interborough cannot be reached, which turns Deny and Approve off with the reason. */
     unreachable: boolean;
+    /**
+     * Why nobody can answer it now, when the agent that asked is held back by a disabled plugin:
+     * the approval reads Unavailable with this under it and offers no decision.
+     */
+    unavailableReason?: string | undefined;
+    /** Said under a waiting approval while no provider is connected, such as "Tool runner continues once a provider is connected.". */
+    providerNote?: string | undefined;
     /** The answer on its way, which holds both buttons until it lands. */
     resolving?: 'approve' | 'deny' | undefined;
     /** Sends the person's decision, the note and the grant for the rest of the chat included. */
@@ -45,6 +55,8 @@
     requestedAt,
     context,
     unreachable,
+    unavailableReason,
+    providerNote,
     resolving,
     onResolve,
   }: ChatApprovalProps = $props();
@@ -80,17 +92,21 @@
   policyVersion={id}
   idempotencyKey={entry.callId}
   state={decision === undefined
-    ? 'pending'
+    ? unavailableReason === undefined
+      ? 'pending'
+      : 'unavailable'
     : decision.outcome === 'approved'
       ? 'approved'
       : 'denied'}
   {...decision === undefined
-    ? {
-        rememberScope: CHAT_COPY.approval.rememberScope,
-        ...(unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
-        ...(resolving === undefined ? {} : { resolving }),
-        onResolve,
-      }
+    ? unavailableReason === undefined
+      ? {
+          rememberScope: CHAT_COPY.approval.rememberScope,
+          ...(unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
+          ...(resolving === undefined ? {} : { resolving }),
+          onResolve,
+        }
+      : { unavailableReason }
     : {
         decidedBy: decidedByLabel(decision, context.owner),
         decidedAt: decision.decidedAt,
@@ -99,3 +115,6 @@
       }}
   {...decision === undefined ? { 'data-approval-decision': true, tabindex: -1 } : {}}
 />
+{#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}
+  <p class="weft-chat-approval__provider-note">{providerNote}</p>
+{/if}

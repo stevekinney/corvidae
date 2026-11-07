@@ -118,6 +118,8 @@
       title={VIEW_COPY.chat.notFound.title}
       description={VIEW_COPY.chat.notFound.description}
       view="chat"
+      create={VIEW_COPY.chat.notFound.create}
+      back={VIEW_COPY.chat.notFound.back}
     />
   {:else if classifyFault(context.error)?.kind === 'unauthorized'}
     <ForbiddenState

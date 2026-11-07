@@ -151,7 +151,7 @@
     type ToolCallEntry,
     type ToolInfo,
   } from './tool-activity.ts';
-  import { failedStopNoteId, withStopLine } from './stop-line.ts';
+  import { failedStopNoteId, withEndedLine, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -351,6 +351,13 @@
     undefined,
   );
   const agentUnavailable = $derived(definition.data?.state === 'unavailable');
+  // What the agent is called where a person reads it: its display name, in words (`tool-runner`
+  // reads "Tool runner"). An agent held back by a plugin is not in the catalog, so its name is the
+  // definition's, without the plugin's prefix.
+  const unavailableName = $derived(agentLabel(definition.data?.name ?? agent, undefined));
+  const agentShown = $derived(agentUnavailable ? unavailableName : agentLabel(agent, agents.data));
+  // The server stopped the chat when it restarted, so its run cannot continue.
+  const endedByRestart = $derived(context.data?.endReason === 'host-stopped');
   // What the catalog says of each tool, for its name as a person reads it and for what an
   // interrupted call may have done. A catalog that cannot be read leaves the identifiers as names and
   // treats every tool as one that may change things.
@@ -445,12 +452,12 @@
       restarting: restart.running,
       unavailable: agentUnavailable
         ? {
-            agent: definition.data?.name ?? agent,
+            agent: unavailableName,
             plugin: pluginTitle,
             enable: () => (confirmingEnable = true),
           }
         : undefined,
-      ended: context.data?.endReason === 'host-stopped',
+      ended: endedByRestart,
       noProvider,
       noWorkflowAgent: choosing && noWorkflowAgent,
       agentsHref: router.href('/agents'),
@@ -656,11 +663,13 @@
   // Chat lays out the conversation without the Bureau's files in it; they are shown under their
   // rows (`chat-assets.svelte`). An answer to a question is shown as it was typed (`answer-rows.ts`).
   // The status line under a reply that stopped is worded here, from what the run was in the middle
-  // of, so it is drawn on the row it belongs to (`withStopLine`).
+  // of, so it is drawn on the row it belongs to (`withStopLine`). A chat the server stopped when it
+  // restarted says so under what arrived, in place of the plain line the canceled run left
+  // (`withEndedLine`).
   const shown = $derived(
     withoutAssetParts(
       withTypedAnswers(
-        withStopLine(session.conversation, { tools: toolInfo }),
+        withEndedLine(withStopLine(session.conversation, { tools: toolInfo }), endedByRestart),
         session.schemaOfAnswer,
       ),
     ),
@@ -885,6 +894,13 @@
     return asset.assetId;
   }
 
+  /** When a row was written, in epoch milliseconds, or `undefined` when it carries no readable time. */
+  function askedAt(createdAt: unknown): number | undefined {
+    if (typeof createdAt !== 'string') return undefined;
+    const time = Date.parse(createdAt);
+    return Number.isFinite(time) ? time : undefined;
+  }
+
   /** Each approval the conversation waits on, as the question it asks and the call it belongs to. */
   const approvals = $derived(
     session.approvals.map(({ message, result }) => {
@@ -911,7 +927,9 @@
       return {
         toolCallId: result.callId,
         toolName,
-        requestedAt: reviewed?.requestedAt,
+        // When the Bureau's review says so; else when the thread recorded the ask, which is the same
+        // moment for an approval that was parked on a call.
+        requestedAt: reviewed?.requestedAt ?? askedAt(message.createdAt),
         question: approvalQuestion({
           toolName: toolName ?? 'a tool',
           arguments: call?.arguments,
@@ -932,8 +950,13 @@
         (row) => row.metadata['_deliveryStatus'] === 'failed',
       ),
   );
+  // The last row the transcript draws: a row that only carries a call's answer is drawn under the
+  // call's own row, so it does not count, and a turn that ends on a call ends on the call's row.
   const lastRowId = $derived(
-    shown.ids.findLast((rowId) => shown.messages[rowId]?.hidden === false),
+    shown.ids.findLast((rowId) => {
+      const row = shown.messages[rowId];
+      return row?.hidden === false && row.toolResult === undefined;
+    }),
   );
   /** Whether a group of calls is the end of a turn that finished with no reply, so its rail closes with the run's end state. */
   function endsTheTurn(group: {
@@ -953,7 +976,7 @@
   // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
-    if (context.data?.endReason === 'host-stopped') return CHAT_COPY.status.ended;
+    if (endedByRestart) return CHAT_COPY.status.ended;
     if (
       approvals.length > 0 ||
       shownRequests.length > 0 ||
@@ -1372,7 +1395,8 @@
         statusPlacement="inline"
       />
     {/if}
-    {#if !choosing}
+    <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
+    {#if !choosing && !endedByRestart}
       <SessionTasks {sessionId} streaming={session.streaming} />
     {/if}
 
@@ -1449,7 +1473,7 @@
           ? pickable
             ? CHAT_COPY.composer.answerPlaceholder
             : CHAT_COPY.questionAnswerLabel
-          : CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
+          : CHAT_COPY.composer.placeholder(agentShown)}
         {composerStatus}
         composerHeader={choosing ? newChatHeader : undefined}
         composerFormattingToolbar
@@ -1598,7 +1622,13 @@
                     id={`tools-${message.id}-${entry.callId}`}
                     {entry}
                     question={asked?.question ?? ''}
-                    source={agentSummary?.displayName ?? agent}
+                    source={agentShown}
+                    unavailableReason={agentUnavailable
+                      ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
+                      : undefined}
+                    providerNote={noProvider
+                      ? CHAT_COPY.approval.continuesOnProvider(agentShown)
+                      : undefined}
                     requestedAt={asked?.requestedAt}
                     context={decisionContext}
                     unreachable={connection.unreachable}

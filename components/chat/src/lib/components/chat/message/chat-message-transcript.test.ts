@@ -5,7 +5,7 @@
  */
 
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, setSystemTime, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -55,6 +55,33 @@ describe('transcript presentation', () => {
     expect(
       container.querySelector('[data-presentation="transcript"][data-role="assistant"]'),
     ).not.toBeNull();
+  });
+
+  test('a message written today is stamped with its time of day, and one from another day with its date too', () => {
+    setSystemTime(new Date('2026-11-02T17:00:00.000Z'));
+    try {
+      const today = mount({ message: message({ createdAt: SENT_AT }) });
+      const todayText = today.container.querySelector('time')?.textContent ?? '';
+      expect(todayText).toBe(
+        new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(
+          new Date(SENT_AT),
+        ),
+      );
+      cleanup();
+      const earlier = '2026-10-29T16:04:00.000Z';
+      const older = mount({ message: message({ createdAt: earlier }) });
+      expect(older.container.querySelector('time')?.textContent).toBe(
+        new Intl.DateTimeFormat(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        }).format(new Date(earlier)),
+      );
+      expect(older.container.querySelector('time')?.getAttribute('datetime')).toBe(earlier);
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("a person's own message offers Copy and no Quote", () => {

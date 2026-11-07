@@ -172,6 +172,12 @@
   margin: 0;
 }
 
+.weft-chat-approval__provider-note {
+  margin: var(--cinder-space-2) 0 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 .weft-chat-question {
   display: flex;
   flex-direction: column;

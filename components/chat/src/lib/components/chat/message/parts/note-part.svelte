@@ -1,13 +1,15 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { CircleAlert } from '@lostgradient/cinder';
+  import { CircleAlert, Info } from '@lostgradient/cinder';
 
   import type { ChildRunStatus, MessageNoteInfo } from '../../utilities/types.ts';
 
   /**
    * One line a run left under a message: what it remembered, when it continues, a child run, why it
    * stopped. A run that failed reads as a status line in danger text with an error glyph, not as the
-   * agent's own words; `action` draws at its end, for a Retry the host can act on.
+   * agent's own words; a notice (`notice: true`, a chat that ended because the server restarted)
+   * reads as a muted status line with an info glyph and no "Stopped" label; `action` draws at its
+   * end, for a Retry the host can act on.
    */
   let {
     note,
@@ -74,6 +76,9 @@
     class="chat-note"
     data-kind={note.kind}
     data-failed={note.kind === 'stopped' && note.failed === true ? '' : undefined}
+    data-notice={note.kind === 'stopped' && note.failed !== true && note.notice === true
+      ? ''
+      : undefined}
   >
     {#if note.kind === 'memory'}
       <span class="chat-note__label">Remembered</span>
@@ -89,6 +94,9 @@
       {/if}
     {:else if note.failed === true}
       <CircleAlert class="chat-note__glyph" aria-hidden="true" />
+      <span class="chat-note__reason" role="status">{note.reason}</span>
+    {:else if note.notice === true}
+      <Info class="chat-note__glyph" aria-hidden="true" />
       <span class="chat-note__reason" role="status">{note.reason}</span>
     {:else}
       <span class="chat-note__label">Stopped</span>
@@ -117,14 +125,19 @@
     border-radius: var(--cinder-radius-md);
   }
 
-  /* A failed run: one danger line that wraps beside its action, nothing filled. */
-  .chat-note[data-kind='stopped'][data-failed] {
+  /* A failed run, or a notice: one line that wraps beside its action, nothing filled. */
+  .chat-note[data-kind='stopped'][data-failed],
+  .chat-note[data-kind='stopped'][data-notice] {
     flex-wrap: nowrap;
     align-items: flex-start;
+  }
+
+  .chat-note[data-kind='stopped'][data-failed] {
     color: var(--cinder-status-danger-text);
   }
 
-  .chat-note[data-kind='stopped'][data-failed] .chat-note__reason {
+  .chat-note[data-kind='stopped'][data-failed] .chat-note__reason,
+  .chat-note[data-kind='stopped'][data-notice] .chat-note__reason {
     flex: 1 1 auto;
     min-inline-size: 0;
   }

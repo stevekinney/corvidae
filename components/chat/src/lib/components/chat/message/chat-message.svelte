@@ -344,16 +344,27 @@
   // Sent but not yet acknowledged by the transport (a follow-up during a run).
   const isPending = $derived(deliveryStatus === 'sending');
 
-  const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  const messageTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const messageDateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
 
+  /**
+   * The time of day for a message written today, and the date with it ("Oct 29, 11:04 AM") for one
+   * written on another day, so a message read later still says which day it is from.
+   */
   function formatMessageTimestamp(value: unknown): string | undefined {
     if (typeof value !== 'string' || value.length === 0) return undefined;
     const timestamp = new Date(value);
     if (Number.isNaN(timestamp.getTime())) return undefined;
-    return messageTimestampFormatter.format(timestamp);
+    const today = timestamp.toDateString() === new Date().toDateString();
+    return (today ? messageTimeFormatter : messageDateTimeFormatter).format(timestamp);
   }
 
   // Derived values for content processing. `textContent` drives message chrome

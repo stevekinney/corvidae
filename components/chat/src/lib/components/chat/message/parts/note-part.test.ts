@@ -131,6 +131,42 @@ describe('NotePart', () => {
     expect(container.textContent).toContain('Stopped');
     expect(container.textContent).toContain('Budget exceeded: max calls 1');
   });
+
+  test('a notice is a muted status line with an info glyph and no Stopped label', () => {
+    const container = show({
+      type: 'note',
+      key: 'm:note:ended',
+      kind: 'stopped',
+      id: 'ended',
+      reason: 'The server restarted before this reply finished.',
+      notice: true,
+    });
+    const note = container.querySelector('[data-kind="stopped"]');
+    expect(note?.hasAttribute('data-notice')).toBe(true);
+    expect(note?.hasAttribute('data-failed')).toBe(false);
+    expect(note?.querySelector('svg.lucide-info')).not.toBeNull();
+    expect(note?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(note?.querySelector('[role="status"]')?.textContent).toBe(
+      'The server restarted before this reply finished.',
+    );
+    expect(container.textContent).not.toContain('Stopped');
+  });
+
+  test('a failed stop stays a danger line when it is also marked a notice', () => {
+    const container = show({
+      type: 'note',
+      key: 'm:note:failed-notice',
+      kind: 'stopped',
+      id: 'failed-notice',
+      reason: 'The run failed.',
+      failed: true,
+      notice: true,
+    });
+    const note = container.querySelector('[data-kind="stopped"]');
+    expect(note?.hasAttribute('data-failed')).toBe(true);
+    expect(note?.hasAttribute('data-notice')).toBe(false);
+    expect(note?.querySelector('svg.lucide-circle-alert')).not.toBeNull();
+  });
 });
 
 describe('NotePart through the parts renderer', () => {

@@ -310,6 +310,8 @@
       title={notFoundCopy.title}
       description={notFoundCopy.description}
       view={initial.view}
+      create={notFoundCopy.create}
+      back={notFoundCopy.back}
     />
   {:else if state === 'error'}
     <ErrorState

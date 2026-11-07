@@ -18,6 +18,20 @@ export type ViewForbiddenCopy = {
   readonly requirement?: string;
 };
 
+/** A link to a page of the application, with the words on it. */
+export type ViewLink = { readonly label: string; readonly href: string };
+
+/**
+ * The words for a view's not-found page. A view whose missing thing has a natural next step names
+ * it: `create` is a primary button that starts the thing again, and `back` the way back to the list
+ * in the view's own words ("Back to chats"). Without them the page is the shared one: two secondary
+ * buttons, back to the view's list and Search everything.
+ */
+export type ViewNotFoundCopy = ViewStateCopy & {
+  readonly create?: ViewLink;
+  readonly back?: ViewLink;
+};
+
 export type ViewCopy = {
   /** The name of the view in navigation and headings. */
   readonly label: string;
@@ -32,9 +46,9 @@ export type ViewCopy = {
    */
   readonly forbidden: ViewForbiddenCopy;
   /** Present only for a view that opens one item by its address. */
-  readonly notFound?: ViewStateCopy;
+  readonly notFound?: ViewNotFoundCopy;
   /** The words for a route of the view whose missing thing is not the one `notFound` names. */
-  readonly notFoundByPattern?: Readonly<Record<string, ViewStateCopy>>;
+  readonly notFoundByPattern?: Readonly<Record<string, ViewNotFoundCopy>>;
   /** The words for a route of the view whose nothing is not the one `empty` names. */
   readonly emptyByPattern?: Readonly<Record<string, ViewEmptyCopy>>;
   /** The words for a route of the view whose loading is not the one `loading` names. */
@@ -2928,6 +2942,18 @@ export const CHAT_COPY = {
     rememberScope: 'the rest of this chat',
     /** Written above Deny and Approve while Interborough cannot be reached; both name it as their description. */
     unreachable: 'Approving is off until Interborough is reachable',
+    /**
+     * Written under a held approval of an agent whose plugin is disabled: nobody can answer it
+     * now, and it comes back when the plugin is enabled.
+     */
+    unavailable: (agent: string, plugin: string): string =>
+      `${agent} is unavailable, so this can’t be answered now. It returns when the ${plugin} plugin is enabled.`,
+    /**
+     * Written under a waiting approval while no model provider is connected: the decision is
+     * recorded, and the run resumes once a provider is.
+     */
+    continuesOnProvider: (agent: string): string =>
+      `${agent} continues once a provider is connected.`,
   },
   /** The tool calls of a turn. */
   tools: {
@@ -2995,6 +3021,12 @@ export const CHAT_COPY = {
     mayHaveRun: (tool: string, subject: string = 'result'): string =>
       `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
     retry: 'Retry',
+    /**
+     * The notice under the last reply of a chat the server stopped when it restarted: what arrived
+     * is kept, and the chat is over. The product speaking, with an info glyph, not a failure.
+     */
+    ended:
+      'The server restarted before this reply finished. What arrived is kept; the chat can’t continue.',
     /**
      * Said when Retry could not put the interrupted tool back behind its approval, so it sent
      * nothing rather than let the call run again unasked.
@@ -4771,9 +4803,13 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: FORBIDDEN_COPY.title('Chat'), requirement: 'bureau.contexts:read' },
+    // A chat that is gone has nothing old to show: the page offers a new chat and the way back
+    // (board ChatStates frame g).
     notFound: {
-      title: 'This conversation doesn’t exist',
-      description: NOT_FOUND_COPY.description,
+      title: 'This chat doesn’t exist',
+      description: 'It may have been deleted, or the link is wrong.',
+      create: { label: 'New chat', href: '/chats/new' },
+      back: { label: 'Back to chats', href: '/chats' },
     },
     // A new chat is for an agent, and it is the agent that is missing.
     notFoundByPattern: {
