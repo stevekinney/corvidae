@@ -47,6 +47,61 @@ describe('ctx.all partial-failure preservation', () => {
     engine[Symbol.dispose]();
   });
 
+  it('replays a persisted all-settled cache only after priming the branch generators', () => {
+    let primed = 0;
+    const context = new Context({
+      workflowId: 'all-settled-cache',
+      workflowType: 'test',
+      startedAt: 1000,
+      abortController: new AbortController(),
+      accumulatedResults: new Map([
+        [
+          0,
+          decode(
+            encode({
+              __weftParallelOperationCache: true,
+              formatVersion: 2,
+              variant: 'all-settled',
+              branches: [{ status: 'fulfilled', value: 'cached', operationId: 'parallel:0:0' }],
+              subOperationCount: 1,
+            }),
+          ),
+        ],
+      ]),
+    });
+    const operation = context.allSettled([
+      (function* () {
+        primed++;
+        yield { type: 'memo', operationId: 'fresh' } as never;
+      })(),
+    ]);
+    expect(operation.next()).toEqual({
+      done: true,
+      value: [{ status: 'fulfilled', value: 'cached' }],
+    });
+    expect(primed).toBe(1);
+
+    const malformed = new Context({
+      workflowId: 'all-settled-topology',
+      workflowType: 'test',
+      startedAt: 1000,
+      abortController: new AbortController(),
+      accumulatedResults: new Map([
+        [
+          0,
+          {
+            __weftParallelOperationCache: true,
+            formatVersion: 2,
+            variant: 'all',
+            branches: [{ status: 'fulfilled', value: 'wrong', operationId: 'parallel:0:0' }],
+            subOperationCount: 1,
+          },
+        ],
+      ]),
+    });
+    expect(() => malformed.allSettled([]).next()).toThrow(BranchTopologyChangedError);
+  });
+
   it('runs every branch on the original attempt before propagating failure', async () => {
     // Validates the dispatch shape: with Promise.allSettled-style
     // execution, every branch runs to settlement before the parent
