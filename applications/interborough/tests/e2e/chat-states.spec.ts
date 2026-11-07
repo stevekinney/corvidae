@@ -134,6 +134,11 @@ test.describe('Chat ended by a restart (frame a: 19a, 19b, 19c, 19e)', () => {
       'The server restarted before this reply finished. What arrived is kept; the chat can’t continue.',
     );
     await expect(line.locator('svg.lucide-info')).toBeVisible();
+    // A reply the Bureau recorded no time for is not dated by the moment it was read: no time under
+    // it and no band for today above the Oct 29 message (19c).
+    await expect(conversation.locator('time')).toHaveCount(1);
+    await expect(conversation).not.toContainText(/today/i);
+    await expect(conversation).not.toContainText('November 7');
     // Muted like the times, not the danger red of a failure.
     const colors = await Promise.all([
       line.evaluate((element) => getComputedStyle(element).color),
@@ -355,6 +360,10 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
 
     await expectTopBar(page);
     expect(await statusOf(page)).toEqual({ word: 'Failed', dot: 'danger' });
+    // The chat's own row in the list says the same (19p): its latest run failed.
+    await expect(
+      page.locator('[data-chat]').filter({ hasText: '10:41 AM' }).filter({ hasText: 'Failed' }),
+    ).toHaveCount(1);
     const user = transcript(page).locator('[data-role="user"], .chat-message--user').first();
     await expect(user).toContainText(REFUND_TITLE);
     await expect(user).toContainText('10:41 AM');

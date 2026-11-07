@@ -109,6 +109,25 @@ export async function openStatesChat(
   const context = contextOf(chat, kind);
   await page.route('**/bureau/jsonrpc', async (route) => {
     const body = operationOf(route);
+    // The chat list and the bell read the Bureau's recent runs of every chat; this chat's run is
+    // among them, so its row says what became of the run (Failed, for a reply that stopped).
+    if (body.method === 'bureau.tasks.list' && body.params?.contextId === undefined) {
+      const response = await route.fetch();
+      const listed = (await response.json()) as {
+        result?: { tasks?: Record<string, unknown>[] };
+      };
+      await route.fulfill({
+        response,
+        json: {
+          ...listed,
+          result: {
+            ...listed.result,
+            tasks: [...tasksOf(chat), ...(listed.result?.tasks ?? [])],
+          },
+        },
+      });
+      return;
+    }
     if (body.params?.contextId !== thread) {
       await route.fallback();
       return;
