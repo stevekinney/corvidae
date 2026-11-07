@@ -221,7 +221,16 @@ function resolutionFor(
     };
   }
   const payload = entry.payload as AgUiResumePayload;
-  const base = { id: review.id, decision: payload.decision, principal: owner, ...fence } as const;
+  // The note rides every decision, an approval's included: the person's own words belong in the
+  // audit trail and the conversation row whichever way they decided, and a reject's is required.
+  const note = payload.reason === undefined ? {} : { reason: payload.reason };
+  const base = {
+    id: review.id,
+    decision: payload.decision,
+    principal: owner,
+    ...note,
+    ...fence,
+  } as const;
   if (payload.decision === 'approve') {
     if (review.kind === 'tool-approval') {
       // COR-1990: the grant joins the chat in the same commit as the decision, so the continuation
@@ -233,7 +242,7 @@ function resolutionFor(
     }
     return { ...base, payload: payload.answer };
   }
-  return payload.reason === undefined ? base : { ...base, reason: payload.reason };
+  return base;
 }
 
 export function createResume(context: ResumeContext) {

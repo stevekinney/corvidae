@@ -4,7 +4,6 @@ import { CHAT_COPY } from '../../app/copy.ts';
 import type { ChatContext } from '../../lib/bureau-client.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
-import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
 
 /** The status words of a chat, in the one table every status word comes from (`StatusDot`'s). */
 export type ChatStatusWord = 'Waiting on you' | 'Running' | 'Failed' | 'Ended' | 'Done';
@@ -38,28 +37,20 @@ export function chatStatusWord(
 }
 
 /**
- * What a pending review asks the person, in the words the chat itself uses: an approval is the
- * question its tool's own sentence or its arguments make (`approvalQuestion`), a question is its
- * prompt. A review that says nothing yields `undefined`, so the row falls back to the last message.
+ * What a pending review asks the person, for the chat list: a question is its prompt. An approval
+ * asks nothing here, because the agent has already said what it needs in the chat's own latest
+ * message ("I need your approval to refund it."), which line two shows instead of the review's
+ * title. A review that says nothing yields `undefined`, so the row falls back to the last message.
  */
 function reviewQuestion(review: BureauReview): string | undefined {
-  if (review.kind === 'human-wait') {
-    const prompt = review.prompt?.trim();
-    return prompt === undefined || prompt === '' ? undefined : prompt;
-  }
-  const { approval } = review;
-  return approvalQuestion({
-    toolName: approval.toolName,
-    arguments: approval.arguments,
-    summary: declaredSummary(
-      approval.action.type === 'approval' ? approval.action.message : undefined,
-      approval.reason,
-    ),
-  });
+  if (review.kind !== 'human-wait') return undefined;
+  const prompt = review.prompt?.trim();
+  return prompt === undefined || prompt === '' ? undefined : prompt;
 }
 
 /**
- * The question each chat is waiting on, by session. A chat with several pending reviews shows the
+ * The question each chat is waiting on, by session: only a chat that asked a question has one, an
+ * approval is told by the chat's latest message. A chat with several pending questions shows the
  * oldest, which is the one it stopped at. Only a pending review counts.
  */
 export function pendingQuestions(reviews: readonly BureauReview[]): ReadonlyMap<string, string> {
@@ -90,9 +81,9 @@ export function waitingChatIds(reviews: readonly BureauReview[]): readonly strin
 
 /**
  * A session as a row. The snippet is the latest message the Bureau records; while the chat waits on
- * the person it is the question being asked instead, because the last thing said is then the
- * person's own message, which the title already is, and once the host has ended the chat it is why
- * it ended. A chat with nothing to show says how many messages it holds.
+ * the person's answer it is the question being asked instead, because the last thing said is then
+ * the person's own message, which the title already is, and once the host has ended the chat it is
+ * why it ended. A chat with nothing to show says how many messages it holds.
  */
 export function sessionRow(
   context: ChatContext,

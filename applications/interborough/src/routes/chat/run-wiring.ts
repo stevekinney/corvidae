@@ -724,6 +724,11 @@ function answerTo(interrupt: Interrupt, resolution: ApprovalResolution): ResumeE
         // Allow for the rest of this chat: the grant rides the same resume as the approval, so the
         // turn continues as Approve's does (COR-1990). The mount refuses it on a deny.
         ...(resolution.remember ? { remember: true } : {}),
+        // The note typed on Approve ("Add a note for the agent or the record") rides the resume, so
+        // it lands on the decided row as Reviews' does.
+        ...(resolution.reason === undefined || resolution.reason.trim() === ''
+          ? {}
+          : { reason: resolution.reason }),
       },
     };
   }

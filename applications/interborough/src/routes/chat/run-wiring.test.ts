@@ -1688,6 +1688,29 @@ describe('a resume the mount refused', () => {
       ]);
     });
 
+    test('sends the note typed on an approval, and none when it is blank', async () => {
+      for (const [reason, expected] of [
+        ['Check the carrier first.', { decision: 'approve', reason: 'Check the carrier first.' }],
+        ['   ', { decision: 'approve' }],
+      ] as const) {
+        const conversation = appendUserMessage(empty(), 'Refund it');
+        const stubbed = mount([
+          stream([started(), finished({ type: 'interrupt', interrupts: [INTERRUPT] })]),
+          stream([started('run-2'), finished(undefined, 'run-2')]),
+        ]);
+        const wiring = createChatRunWiring({
+          agentName: () => 'tool-runner',
+          fetch: stubbed.fetch,
+          conversation: () => conversation,
+        });
+        await frames(wiring, conversation);
+        await wiring.resolveToolApproval('call-refund', { decision: 'approve', reason });
+        await frames(wiring, conversation);
+
+        expect(inputOf(stubbed.sent[1]).resume?.[0]?.payload).toEqual(expected);
+      }
+    });
+
     test('sends no remember when the person did not ask for it', async () => {
       const { wiring, sent, conversation } = await approved([
         stream([started('run-2'), finished(undefined, 'run-2')]),

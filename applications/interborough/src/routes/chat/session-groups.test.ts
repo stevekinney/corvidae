@@ -78,15 +78,15 @@ const approval = (
 });
 
 describe('the question a waiting chat asks', () => {
-  test('is an approval’s own sentence, the call when it has none, or a question’s prompt', () => {
+  test('is a question’s prompt, and nothing for an approval, which the chat’s own message tells (16f)', () => {
     const questions = pendingQuestions([
       approval('a', 'Refund order order-1001 for $42.00'),
       approval('b', undefined),
       humanWait('c', 'Which environment?'),
     ]);
 
-    expect(questions.get('a')).toBe('Refund order order-1001 for $42.00?');
-    expect(questions.get('b')).toBe('Run issue-refund with orderId order-1001?');
+    expect(questions.has('a')).toBe(false);
+    expect(questions.has('b')).toBe(false);
     expect(questions.get('c')).toBe('Which environment?');
   });
 
