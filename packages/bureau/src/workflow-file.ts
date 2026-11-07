@@ -250,6 +250,10 @@ export function workflowFileStepsInCanonicalOrder<T extends WorkflowFileStep>(
       const path = `${parentPath}[${String(position)}]`;
       ordered.push({ step, index: ordered.length, path });
       if (!isPlainObject(step)) continue;
+      if (step['kind'] === 'map' && Array.isArray(step['steps'])) {
+        visit(step['steps'] as T[], `${path}.steps`);
+        continue;
+      }
       if (step['kind'] !== 'branch' || !isPlainObject(step['cases'])) continue;
       for (const literal of Object.keys(step['cases']).toSorted()) {
         const branch = step['cases'][literal];
@@ -535,6 +539,10 @@ function stripExtensions(
             stripStep(child, `${path}.otherwise[${String(index)}]`),
           );
         }
+      } else if (rest['kind'] === 'map' && Array.isArray(rest['steps'])) {
+        rest['steps'] = rest['steps'].map((child, index) =>
+          stripStep(child, `${path}.steps[${String(index)}]`),
+        );
       }
       return rest;
     };

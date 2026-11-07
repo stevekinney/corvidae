@@ -106,6 +106,26 @@ describe('a document that pins activity versions', () => {
     ]);
   });
 
+  it('validates a pin for a handler used inside a map', () => {
+    const nested = {
+      ...document({ x__y: '1' }),
+      steps: [
+        {
+          kind: 'map',
+          over: 'items',
+          steps: [{ kind: 'activity', handler: 'x__y' }],
+        },
+      ],
+    };
+    expect(issuesOf(nested, hostAt('1'))).toEqual([]);
+    expect(issuesOf(nested, hostAt('2'))).toEqual([
+      {
+        path: 'activityVersions.x__y',
+        message: 'activity handler "x__y" is pinned at version "1", but this host has version "2"',
+      },
+    ]);
+  });
+
   it('is refused when it pins a handler no step uses', () => {
     expect(issuesOf(document({ plain: '1' }), hostAt('1')).map((issue) => issue.path)).toEqual([
       'activityVersions.plain',

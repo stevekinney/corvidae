@@ -192,6 +192,10 @@ export type WorkflowTimelineStatus = 'running' | 'completed' | 'failed' | 'cance
  */
 export type WorkflowTimelineOperationDetail = {
   index: number;
+  /** Optional document step identity for a file-workflow parallel branch. */
+  documentStep?: number;
+  /** Stable document step address for a file-workflow parallel branch. */
+  documentStepAddress?: string;
   key?: string;
   operationId: string;
   operationType: string;

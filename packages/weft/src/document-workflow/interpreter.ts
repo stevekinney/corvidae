@@ -23,6 +23,7 @@ import type {
 import {
   documentStepAddress,
   WorkflowDocumentBranchError,
+  WorkflowDocumentMapError,
   WorkflowDocumentSchemaError,
   workflowDocumentVersion,
 } from './document.ts';
@@ -40,7 +41,7 @@ function distinctStepValues(
       if (step.kind === 'branch') {
         branchCaseSteps(step).forEach(visit);
         if (step.otherwise !== undefined) visit(step.otherwise);
-      }
+      } else if (step.kind === 'map') visit(step.steps);
     }
   };
   visit(document.steps);
@@ -64,13 +65,25 @@ function documentStepIndexes(
   const visit = (steps: readonly WorkflowDocument['steps'][number][]): void => {
     for (const step of steps) {
       indexes.set(step, next++);
-      if (step.kind !== 'branch') continue;
-      branchCaseSteps(step).forEach(visit);
-      if (step.otherwise !== undefined) visit(step.otherwise);
+      if (step.kind === 'branch') {
+        branchCaseSteps(step).forEach(visit);
+        if (step.otherwise !== undefined) visit(step.otherwise);
+      } else if (step.kind === 'map') visit(step.steps);
     }
   };
   visit(document.steps);
   return indexes;
+}
+
+function containsWait(steps: readonly WorkflowDocument['steps'][number][]): boolean {
+  return steps.some(
+    (step) =>
+      step.kind === 'await-signal' ||
+      (step.kind === 'branch' &&
+        (Object.values(step.cases).some(containsWait) ||
+          (step.otherwise !== undefined && containsWait(step.otherwise)))) ||
+      (step.kind === 'map' && containsWait(step.steps)),
+  );
 }
 
 function* documentOperation<T>(
@@ -96,7 +109,6 @@ function* documentOperation<T>(
  * the activity dispatches yielded by the retry generator so a retry does not
  * create a file-workflow sleep event or inherit the engine's step counter.
  */
-/** Applies stable document identity to each activity dispatch, including retry replays. */
 export function* documentActivityOperation<T>(
   operation: Generator<unknown, T, unknown>,
   documentStep: number,
@@ -125,6 +137,95 @@ export function* documentActivityOperation<T>(
       input = yield thrownRequest;
     }
   }
+}
+
+function mapSource(
+  step: Extract<WorkflowDocument['steps'][number], { kind: 'map' }>,
+  index: number,
+  previous: unknown,
+): readonly unknown[] {
+  const source =
+    typeof previous === 'object' && previous !== null
+      ? Object.getOwnPropertyDescriptor(previous, step.over)?.value
+      : undefined;
+  if (!Array.isArray(source)) {
+    throw new WorkflowDocumentMapError(
+      'not-array',
+      `Map step ${String(index)} requires field "${step.over}" of the previous result to be an array`,
+    );
+  }
+  if (source.length > 1000) {
+    throw new WorkflowDocumentMapError(
+      'too-many',
+      `Map step ${String(index)} cannot iterate more than 1000 items (received ${String(source.length)})`,
+    );
+  }
+  return source;
+}
+
+function* runMapBatch(
+  context: WorkflowContext,
+  generators: Generator<ContextOperationRequest, unknown, unknown>[],
+): Generator<ContextOperationRequest, unknown[], unknown> {
+  const itemResults: unknown[] = Array.from({ length: generators.length });
+  let pending: {
+    generator: Generator<ContextOperationRequest, unknown, unknown>;
+    itemIndex: number;
+    resume: { kind: 'next'; value: unknown } | { kind: 'throw'; error: unknown };
+  }[] = generators.map((generator, itemIndex) => ({
+    generator,
+    itemIndex,
+    resume: { kind: 'next', value: undefined },
+  }));
+  while (pending.length > 0) {
+    const nextPending: typeof pending = [];
+    const operations: Generator<ContextOperationRequest, unknown, unknown>[] = [];
+    for (const entry of pending) {
+      const next =
+        entry.resume.kind === 'throw'
+          ? entry.generator.throw(entry.resume.error)
+          : entry.generator.next(entry.resume.value);
+      if (next.done) itemResults[entry.itemIndex] = next.value;
+      else {
+        operations.push(
+          (function* (): Generator<ContextOperationRequest, unknown, unknown> {
+            return yield next.value;
+          })(),
+        );
+        nextPending.push(entry);
+      }
+    }
+    if (operations.length === 0) break;
+    const operationResults = yield* context.allSettled(operations) as unknown as Generator<
+      ContextOperationRequest,
+      unknown[],
+      unknown
+    >;
+    for (let resultIndex = 0; resultIndex < nextPending.length; resultIndex++) {
+      const outcome = operationResults[resultIndex] as
+        { status: 'fulfilled'; value: unknown } | { status: 'rejected'; reason: unknown };
+      nextPending[resultIndex]!.resume =
+        outcome.status === 'fulfilled'
+          ? { kind: 'next', value: outcome.value }
+          : { kind: 'throw', error: outcome.reason };
+    }
+    pending = nextPending;
+  }
+  return itemResults;
+}
+
+function branchSteps(
+  step: Extract<WorkflowDocument['steps'][number], { kind: 'branch' }>,
+  previous: unknown,
+): readonly WorkflowDocument['steps'][number][] {
+  const candidate =
+    typeof previous === 'object' && previous !== null && Object.hasOwn(previous, step.on)
+      ? Object.getOwnPropertyDescriptor(previous, step.on)?.value
+      : undefined;
+  const literal = String(candidate);
+  const selected = Object.hasOwn(step.cases, literal) ? step.cases[literal] : step.otherwise;
+  if (selected === undefined) throw new WorkflowDocumentBranchError(step.on, candidate);
+  return selected;
 }
 
 /**
@@ -175,76 +276,106 @@ export async function buildDocumentWorkflowDefinition(
     const firedBy = trigger === undefined ? null : trigger;
     // Pure, and the same on a replay: it reads the recorded input and yields nothing.
     checkSchema('input', firedBy);
-    let previous: unknown = null;
-    let pendingSignal: unknown;
-    let lastStepWasSignal = false;
-    const runBranch = function* (
-      step: Extract<WorkflowDocument['steps'][number], { kind: 'branch' }>,
+    type RunState = { previous: unknown; pendingSignal: unknown; lastStepWasSignal: boolean };
+    type RunSteps = (
+      steps: readonly WorkflowDocument['steps'][number][],
       iteration: readonly (string | number)[],
-    ): Generator<ContextOperationRequest, void, unknown> {
-      const candidate =
-        typeof previous === 'object' && previous !== null && Object.hasOwn(previous, step.on)
-          ? Object.getOwnPropertyDescriptor(previous, step.on)?.value
-          : undefined;
-      const literal = String(candidate);
-      const caseSteps = new Map(Object.entries(step.cases));
-      const matchesCase = caseSteps.has(literal);
-      const selected = matchesCase ? caseSteps.get(literal) : step.otherwise;
-      if (selected === undefined) throw new WorkflowDocumentBranchError(step.on, candidate);
-      yield* runSteps(selected, iteration);
+      state: RunState,
+    ) => Generator<ContextOperationRequest, unknown, unknown>;
+    const indexOf = (step: WorkflowDocument['steps'][number]): number => {
+      const index = stepIndexes.get(step);
+      if (index === undefined) throw new Error('Document step is missing from its static index');
+      return index;
     };
-    const runStep = function* (
-      step: WorkflowDocument['steps'][number],
+    function* runMap(
+      step: Extract<WorkflowDocument['steps'][number], { kind: 'map' }>,
       index: number,
-      address: string,
       iteration: readonly (string | number)[],
+      state: RunState,
+      runNested: RunSteps,
     ): Generator<ContextOperationRequest, void, unknown> {
-      switch (step.kind) {
-        case 'activity':
-          previous = yield* documentActivityOperation(
-            context.run(activities.get(step.handler)!, {
-              input: step.input ?? null,
-              trigger: firedBy,
-              previous,
-              ...(pendingSignal === undefined ? {} : { signal: pendingSignal }),
-              workflowId: context.workflowId,
-              step: index,
-              stepAddress: address,
-            }),
-            index,
-            address,
-          );
-          pendingSignal = undefined;
-          break;
-        case 'sleep':
-          yield* documentOperation(context.sleep(step.duration), index, address);
-          break;
-        case 'await-signal':
-          pendingSignal = yield* documentOperation(
-            context.waitForSignal(step.signal),
-            index,
-            address,
-          );
-          break;
-        case 'branch':
-          yield* runBranch(step, iteration);
-          break;
+      const source = mapSource(step, index, state.previous);
+      const results: unknown[] = [];
+      if (containsWait(step.steps)) {
+        for (const [offset, value] of source.entries()) {
+          const itemState: RunState = {
+            previous: value,
+            pendingSignal: undefined,
+            lastStepWasSignal: false,
+          };
+          yield* runNested(step.steps, [...iteration, offset], itemState);
+          results.push(itemState.lastStepWasSignal ? itemState.pendingSignal : itemState.previous);
+        }
+      } else {
+        const batchSize = step.concurrency ?? 4;
+        for (let start = 0; start < source.length; start += batchSize) {
+          const generators = source.slice(start, start + batchSize).map((value, offset) => {
+            const itemState: RunState = {
+              previous: value,
+              pendingSignal: undefined,
+              lastStepWasSignal: false,
+            };
+            return (function* (): Generator<ContextOperationRequest, unknown, unknown> {
+              return yield* runNested(step.steps, [...iteration, start + offset], itemState);
+            })();
+          });
+          results.push(...(yield* runMapBatch(context, generators)));
+        }
       }
-    };
+      state.previous = results;
+      state.pendingSignal = undefined;
+    }
     const runSteps = function* (
       steps: readonly WorkflowDocument['steps'][number][],
-      iteration: readonly (string | number)[] = [],
-    ): Generator<ContextOperationRequest, void, unknown> {
+      iteration: readonly (string | number)[],
+      state: RunState,
+    ): Generator<ContextOperationRequest, unknown, unknown> {
       for (const step of steps) {
-        const index = stepIndexes.get(step);
-        if (index === undefined) throw new Error('Document step is missing from its static index');
+        const index = indexOf(step);
         const address = documentStepAddress(index, iteration);
-        lastStepWasSignal = step.kind === 'await-signal';
-        yield* runStep(step, index, address, iteration);
+        state.lastStepWasSignal = step.kind === 'await-signal';
+        switch (step.kind) {
+          case 'activity':
+            state.previous = yield* documentActivityOperation(
+              context.run(activities.get(step.handler)!, {
+                input: step.input ?? null,
+                trigger: firedBy,
+                previous: state.previous,
+                ...(state.pendingSignal === undefined ? {} : { signal: state.pendingSignal }),
+                workflowId: context.workflowId,
+                step: index,
+                iteration,
+                stepAddress: address,
+              }),
+              index,
+              address,
+            );
+            state.pendingSignal = undefined;
+            break;
+          case 'sleep':
+            yield* documentOperation(context.sleep(step.duration), index, address);
+            break;
+          case 'await-signal':
+            state.pendingSignal = yield* documentOperation(
+              context.waitForSignal(step.signal),
+              index,
+              address,
+            );
+            break;
+          case 'branch': {
+            yield* runSteps(branchSteps(step, state.previous), iteration, state);
+            break;
+          }
+          case 'map': {
+            yield* runMap(step, index, iteration, state, runSteps);
+            break;
+          }
+        }
       }
+      return state.lastStepWasSignal ? state.pendingSignal : state.previous;
     };
-    yield* runSteps(document.steps);
-    const output = lastStepWasSignal ? pendingSignal : previous;
+    const state: RunState = { previous: null, pendingSignal: undefined, lastStepWasSignal: false };
+    const output = yield* runSteps(document.steps, [], state);
     checkSchema('output', output);
     return output;
   };

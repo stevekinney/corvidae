@@ -181,6 +181,27 @@ describe('validateWorkflowDocument()', () => {
     ).toBe(true);
   });
 
+  it('validates map concurrency and nested handlers', () => {
+    const issues = issuesOf(
+      document({
+        steps: [
+          {
+            kind: 'map',
+            over: 'items',
+            concurrency: 2,
+            steps: [{ kind: 'activity', handler: 'missing' }],
+          },
+        ],
+      }),
+    );
+    expect(issues.map((issue) => issue.path)).toEqual(['steps[0].steps[0].handler']);
+    expect(
+      issuesOf(
+        document({ steps: [{ kind: 'map', over: 'items', concurrency: 0, steps: [] }] }),
+      ).map((issue) => issue.path),
+    ).toContain('steps[0].concurrency');
+  });
+
   it.each([
     ['a missing name', { name: undefined }, 'name'],
     ['a name outside the wire-safe grammar', { name: 'not.valid' }, 'name'],

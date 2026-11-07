@@ -49,7 +49,7 @@ export type ParallelBranchSlot =
 export type ParallelOperationCacheEntry = {
   __weftParallelOperationCache: true;
   formatVersion: 2;
-  variant: 'all' | 'race' | 'run-all';
+  variant: 'all' | 'all-settled' | 'race' | 'run-all';
   branches: ParallelBranchSlot[];
   /** Ordered key list for `run-all` or `raceKeyed`; absent for `all` and positional `race`. */
   branchNames?: string[];
@@ -77,8 +77,8 @@ export class BranchTopologyChangedError extends WeftError<'BranchTopologyChanged
   }
 }
 
-function isValidVariant(value: unknown): value is 'all' | 'race' | 'run-all' {
-  return value === 'all' || value === 'race' || value === 'run-all';
+function isValidVariant(value: unknown): value is 'all' | 'all-settled' | 'race' | 'run-all' {
+  return value === 'all' || value === 'all-settled' || value === 'race' || value === 'run-all';
 }
 
 function isValidSlotStatus(
@@ -122,7 +122,7 @@ function hasParallelOperationCacheMarker(value: unknown): boolean {
 }
 
 function hasValidBranchTopology(
-  variant: 'all' | 'race' | 'run-all',
+  variant: 'all' | 'all-settled' | 'race' | 'run-all',
   branches: unknown[],
   subOperationCount: number,
   branchNames: unknown,
@@ -206,7 +206,7 @@ export function assertValidParallelOperationCacheEntry(value: unknown): void {
 
 /** Build a fresh v2 cache entry with the given branch slots. */
 export function createParallelOperationCacheEntry(
-  variant: 'all' | 'race' | 'run-all',
+  variant: 'all' | 'all-settled' | 'race' | 'run-all',
   branches: ParallelBranchSlot[],
   subOperationCount: number,
   branchNames?: string[],
