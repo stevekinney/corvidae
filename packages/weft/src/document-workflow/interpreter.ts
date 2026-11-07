@@ -303,7 +303,7 @@ export async function buildDocumentWorkflowDefinition(
           )?.value;
           return typeof registered !== 'function' && registered?.retry !== undefined;
         });
-        if (hasRetryingActivity) {
+        if (hasRetryingActivity || step.steps.length > 1) {
           for (const [offset, value] of source.entries()) {
             const itemState: RunState = {
               previous: value,
