@@ -37,7 +37,7 @@ const definitions: ProviderDefinition[] = [geminiProvider];
 
 const generate = definitions
   .find((definition) => definition.name === 'gemini')
-  ?.generate({ provider: 'gemini', model: 'gemini-2.5-flash' });
+  ?.generate?.({ provider: 'gemini', model: 'gemini-2.5-flash' });
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.
