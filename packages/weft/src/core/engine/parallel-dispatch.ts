@@ -48,6 +48,7 @@ export type ParallelDispatchResult = {
    * rethrow this as-is to preserve that contract.
    */
   firstError: unknown;
+  errors: unknown[];
 };
 
 /**
@@ -107,6 +108,7 @@ export async function dispatchBranchesAllSettled(
   });
 
   const capture = createFirstRejectionCapture();
+  const errors: unknown[] = [];
 
   await Promise.all(
     operationIds.map(async (operationId, index) => {
@@ -128,11 +130,12 @@ export async function dispatchBranchesAllSettled(
           operationId,
         };
         captureFirstRejection(capture, error);
+        errors[index] = error;
       }
     }),
   );
 
-  return { slots, hasFirstError: capture.hasFirstError, firstError: capture.firstError };
+  return { slots, hasFirstError: capture.hasFirstError, firstError: capture.firstError, errors };
 }
 
 /**

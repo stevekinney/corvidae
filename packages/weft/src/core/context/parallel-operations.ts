@@ -43,9 +43,19 @@ function reconstructRunAllResult(entry: ParallelOperationCacheEntry): Record<str
   return result;
 }
 
-/** True iff every slot in the entry is fulfilled (full success). */
 function isEntryFullyFulfilled(entry: ParallelOperationCacheEntry): boolean {
   return entry.branches.every((slot) => slot.status === 'fulfilled');
+}
+function primeCachedBranches(
+  operations: Generator<ContextOperationRequest, unknown, unknown>[],
+  expectedCount: number,
+): void {
+  const primed = primeParallelOperations(operations);
+  if (primed.length !== expectedCount) {
+    throw new BranchTopologyChangedError(
+      `ctx.all branch topology changed across retry: expected ${expectedCount} yielded branches, got ${primed.length}.`,
+    );
+  }
 }
 
 function reconstructSettledResult(entry: ParallelOperationCacheEntry): unknown[] {
@@ -74,30 +84,23 @@ export function* all(
     const cached = internals.accumulatedResults.get(step);
     assertValidParallelOperationCacheEntry(cached);
     if (isParallelOperationCacheEntry(cached)) {
-      // Variant guard: a workflow that swapped ctx.all <-> ctx.race at the
-      // same step would otherwise reconstruct the wrong shape. Treat as a
-      // topology change.
       const expectedVariant = settle === 'settled' ? 'all-settled' : 'all';
       if (cached.variant !== expectedVariant) {
         throw new BranchTopologyChangedError(
           `ctx.all step ${step} found a cached entry of variant '${cached.variant}'. The same step must use the same parallel primitive across retries.`,
         );
       }
-      // Topology guard: branch count must be deterministic across retries
-      // even on the fully-fulfilled fast path. If the user changed
-      // operations.length between attempts, returning the cached array
-      // would silently feed wrong-position values into the workflow.
       if (operations.length !== cached.subOperationCount) {
         throw new BranchTopologyChangedError(
           `ctx.all branch count changed across retry: expected ${cached.subOperationCount}, got ${operations.length}. Branch count must be deterministic.`,
         );
       }
       if (settle === 'settled') {
-        internals.stepIndex += cached.subOperationCount;
+        primeCachedBranches(operations, cached.subOperationCount);
         return reconstructSettledResult(cached);
       }
       if (isEntryFullyFulfilled(cached)) {
-        internals.stepIndex += cached.subOperationCount;
+        primeCachedBranches(operations, cached.subOperationCount);
         return reconstructAllResult(cached);
       }
       // Partial cache: re-yield with the cached entry so the engine reuses

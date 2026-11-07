@@ -284,6 +284,19 @@ async function executeParallelSubOperation(
       speculativeState,
     ),
   );
+  if (operation.settle === 'settled') {
+    try {
+      const outcomes = await Promise.allSettled(subOperationPromises);
+      return outcomes.map((outcome) =>
+        outcome.status === 'fulfilled'
+          ? { status: 'fulfilled', value: outcome.value }
+          : { status: 'rejected', reason: outcome.reason },
+      );
+    } finally {
+      signal?.removeEventListener('abort', abortNestedAll);
+      controller.abort();
+    }
+  }
   // Swallow sibling rejections that surface only after the controller fires in
   // the finally block (typically AbortError on the abandoned branches). Without
   // this, aborting losers would produce unhandled promise rejections, since
