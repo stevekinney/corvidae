@@ -46,6 +46,7 @@
 
   import {
     Alert,
+    Banner,
     Button,
     Chip,
     ConfirmDialog,
@@ -932,6 +933,7 @@
   const decisionContext = $derived<DecisionContext>({
     owner: context.data?.owner,
     elsewhere: decidedAway,
+    continuing: session.streaming || context.data?.activity === 'running',
   });
 
   /** What a question that declares no schema takes: free text, answered in the composer. */
@@ -1466,6 +1468,19 @@
     bind:this={route}
   >
     {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
+    <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
+       contrast, and the shared restart preset says what is happening above the heading (row 20e):
+       no action while the restart is asked for, Retry now once the host stopped answering. A
+       restart that never came back is the shared failed dialog below (`RestartDialog`). -->
+    {#if restart.running}
+      <Banner
+        preset={restart.phase === 'starting' ? 'reconnecting' : 'restarting'}
+        attempt={restart.attempt === 0 ? undefined : restart.attempt}
+        retryInSeconds={restart.retryInSeconds}
+        onRetry={() => restart.retryNow()}
+        data-testid="chat-restart-banner"
+      />
+    {/if}
     <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
     {#if !choosing}
       <PageHeader
@@ -1923,7 +1938,7 @@
       onConfirm={() =>
         void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
     />
-    <RestartDialog flow={restart} />
+    <RestartDialog flow={restart} failedOnly />
   </section>
   {#if selectedCall !== undefined}
     {@const call = selectedCall.entry}

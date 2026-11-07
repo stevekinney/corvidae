@@ -123,6 +123,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(await scrollsSideways(page)).toBe(false);
     const back = trail(page).getByRole('link', { name: 'Chat' });
     await expect(back).toBeVisible();
+    // The back link takes the menu button's place, so the chat's title in the bar keeps room to
+    // say more than its first letters (06m).
+    await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
+    const title = trail(page).getByRole('button', { name: /Please refund order 4471/ });
+    const titleBox = await boxOf(title);
+    expect(titleBox.width).toBeGreaterThanOrEqual(110);
 
     await back.click();
     await expect(page).toHaveURL(/\/chats$/);

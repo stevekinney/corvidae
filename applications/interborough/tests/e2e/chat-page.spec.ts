@@ -203,6 +203,10 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     await expect(composer).toBeDisabled();
     await expect(loading.getByRole('button', { name: 'Send message' })).toBeDisabled();
     await expect(loading.locator('.ib-chat-loading__controls .cinder-skeleton')).toHaveCount(3);
+    // The breadcrumb does not show the chat's identifier while the read is out.
+    const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' });
+    await expect(crumbs).toContainText('This chat');
+    await expect(crumbs).not.toContainText(SAMPLE_WORLD_THREADS.refund);
     // The status line is for a read that is slow.
     await expect(loading.locator('.cinder-skeleton-status')).toBeEmpty();
     // The list beside it is live.
@@ -380,7 +384,12 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     // server does not answer, with the reason beside it.
     await page.getByRole('button', { name: 'Not sent: details' }).click();
     const retry = page.getByRole('button', { name: 'Retry', exact: true });
-    await expect(retry).toBeDisabled();
+    // Like Deny and Approve: aria-disabled, focusable, and described by the reason beside it.
+    await expect(retry).toHaveAttribute('aria-disabled', 'true');
+    await expect(retry).not.toHaveAttribute('disabled', /.*/);
+    await expect(retry).toHaveAccessibleDescription('Retries when you’re back online.');
+    await retry.focus();
+    await expect(retry).toBeFocused();
     await expect(
       page
         .getByRole('dialog')
@@ -620,9 +629,11 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     const live = page.getByTestId('chat-decision-announcement');
     await expect(live).toHaveAttribute('aria-live', 'polite');
     await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
+    // The decision is told before the Bureau's continuing run is going, so the chat has not
+    // joined it yet: this is the moment between frame r's two halves, not the frame.
     await captureForDesignReview(page, {
       route: '/chats/:chat',
-      state: 'approved in Reviews',
+      state: 'answered in Reviews, run not joined yet',
       source: SOURCE,
     });
 
@@ -652,11 +663,31 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
       /Approved by you in Reviews\s*·\s*10:46 AM/,
     );
     await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
-    await captureForDesignReview(page, {
-      route: '/chats/:chat',
-      state: 'running after Reviews',
-      source: SOURCE,
-    });
+    // While the continuing run is going the rail row says so in place of the result (18i), and
+    // the chat's status and its row in the list say Running too.
+    await expect(
+      conversationArea(page)
+        .locator('.cinder-tool-call-rail__item[data-cinder-status="approved"]')
+        .filter({ hasText: '4471' }),
+    ).toContainText(/Approved by you in Reviews 10:46 AM · running…/);
+    await expect(conversationArea(page).getByTestId('chat-header')).toContainText('Running');
+    // The transcript holds the earlier 4472 turn above this one. The window is tall enough for both
+    // turns and rests at the top, so the first reply is read whole and not from its last line.
+    await page.setViewportSize({ width: 1280, height: 1400 });
+    await conversationArea(page)
+      .getByText('Please refund order 4471, it arrived damaged.', { exact: true })
+      .first()
+      .evaluate((element) => {
+        for (let node = element.parentElement; node !== null; node = node.parentElement) {
+          if (node.scrollHeight > node.clientHeight) node.scrollTop = 0;
+        }
+      });
+    await expect(
+      conversationArea(page).getByText('You approved it. Refunded $18.50'),
+    ).toBeInViewport();
+    for (const state of ['approved in Reviews', 'running after Reviews']) {
+      await captureForDesignReview(page, { route: '/chats/:chat', state, source: SOURCE });
+    }
   });
 });
 

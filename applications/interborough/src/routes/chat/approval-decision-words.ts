@@ -16,6 +16,12 @@ export type DecisionContext = {
   readonly elsewhere?: ReadonlySet<string> | undefined;
   /** The zone times are written in. Defaults to the viewer's. */
   readonly zone?: string | undefined;
+  /**
+   * Whether the run a decision continues is going. A call decided away from the chat then says the
+   * run is running in place of its result (design row 18i: "… in Reviews 10:46 AM · running…"), and
+   * the result is told again once the run stops.
+   */
+  readonly continuing?: boolean | undefined;
 };
 
 /** Who decided: "you" when it was the chat's own person, otherwise the principal as recorded. */
@@ -46,7 +52,12 @@ export function decidedLine(entry: ToolCallEntry, context: DecisionContext): str
     decidedByLabel(decision, context.owner),
     decidedPlace(entry, context),
     clockTime(decision.decidedAt, context.zone ?? viewerTimeZone()),
-    // What a refusal came to is not known: only what an approved call returned is said.
-    decision.outcome === 'approved' ? entry.summary : '',
+    // What a refusal came to is not known: only what an approved call returned is said, and a
+    // decision made in Reviews says the continuing run is running while it is.
+    decision.outcome !== 'approved'
+      ? ''
+      : context.continuing === true && decidedPlace(entry, context) !== undefined
+        ? CHAT_COPY.tools.decided.running
+        : entry.summary,
   );
 }

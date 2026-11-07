@@ -36,6 +36,7 @@ import { z } from 'zod';
 import type { ExtraAgents } from './host.ts';
 import {
   humanInputAnsweredReply,
+  lookupOrderResult,
   toolRunnerRefundAsk,
   toolRunnerRefundedReply,
 } from './showcase-sentences.ts';
@@ -130,12 +131,14 @@ export const SHOWCASE_ORDERS: Readonly<
       readonly delivered: string;
       /** The day it shipped, when the sample world says (RunDetail's order 4468). */
       readonly shipped?: string;
+      /** What the order is flagged for, when something is (the refund chat's order 4471). */
+      readonly flagged?: string;
     }
   >
 > = {
   '4398': { totalCents: 2725, delivered: 'Oct 28' },
   '4468': { totalCents: 1800, shipped: 'Oct 27', delivered: 'Oct 29' },
-  '4471': { totalCents: 4200, delivered: 'Oct 31' },
+  '4471': { totalCents: 4200, delivered: 'Monday', flagged: 'damaged' },
   '4472': { totalCents: 1850, delivered: 'Oct 30' },
 };
 
@@ -213,9 +216,7 @@ export function createShowcaseLookupOrderTool() {
     metadata: { readOnly: true, title: 'Lookup order' },
     execute: async ({ orderId }) => {
       const order = SHOWCASE_ORDERS[orderId];
-      return order === undefined
-        ? { orderId, found: false }
-        : { orderId, found: true, status: 'delivered', ...order };
+      return order === undefined ? `Order ${orderId} was not found.` : lookupOrderResult(order);
     },
   });
 }

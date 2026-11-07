@@ -440,6 +440,9 @@ export type ChatNotSent = {
   summary?: string | undefined;
   /** Said beside the Retry button, such as "Retries when you're back online." */
   retryNote?: string | undefined;
-  /** Whether Retry is inert, for example while the server cannot be reached. */
+  /**
+   * Whether Retry is inert, for example while the server cannot be reached. It is `aria-disabled`,
+   * so it keeps keyboard focus, and `retryNote` is its description.
+   */
   retryDisabled?: boolean | undefined;
 };

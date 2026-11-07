@@ -148,7 +148,13 @@ describe('transcript presentation', () => {
     });
     expect(await findByText('Retries when you’re back online.')).not.toBeNull();
     const button = getByRole('button', { name: 'Retry', hidden: true }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    // Inert, but not natively disabled: it keeps focus and is described by the note beside it.
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    const note = await findByText('Retries when you’re back online.');
+    expect(button.getAttribute('aria-describedby')).toBe(note.id);
     await fireEvent.click(button);
     expect(retry).not.toHaveBeenCalled();
   });

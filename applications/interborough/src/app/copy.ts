@@ -2984,6 +2984,8 @@ export const CHAT_COPY = {
       you: 'you',
       /** Where a decision made away from the chat was made. */
       elsewhere: 'Reviews',
+      /** Said on the rail in place of the result while the run a decision made in Reviews continues is going. */
+      running: 'running…',
       /** The words of the rail's result for a decided call: `place` is absent for a decision made here. */
       line: (
         outcome: 'Approved' | 'Denied',
@@ -3252,7 +3254,7 @@ export const CHAT_COPY = {
     loadingLabel: 'Loading this chat',
     /** Cinder skeleton's status line once the read is taking long, with a Cancel beside it. */
     stillLoading: 'Still loading this chat…',
-    /** The breadcrumb's last entry while the chat cannot be read, in place of its identifier. */
+    /** The breadcrumb's last entry while the chat is not read yet or cannot be read, in place of its identifier. */
     crumb: 'This chat',
     errorTitle: 'This chat couldn’t be loaded',
     errorDescription:

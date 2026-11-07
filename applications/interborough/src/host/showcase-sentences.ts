@@ -11,6 +11,25 @@ function dollars(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/**
+ * What Lookup order answers for an order it found, in the words a person reads on the chat's rail:
+ * the total, when it shipped (when the sample world says), when it was delivered, and what the
+ * order is flagged for (when it is), such as "$42.00, delivered Monday, flagged damaged".
+ */
+export function lookupOrderResult(order: {
+  readonly totalCents: number;
+  readonly shipped?: string | undefined;
+  readonly delivered: string;
+  readonly flagged?: string | undefined;
+}): string {
+  return [
+    dollars(order.totalCents),
+    ...(order.shipped === undefined ? [] : [`shipped ${order.shipped}`]),
+    `delivered ${order.delivered}`,
+    ...(order.flagged === undefined ? [] : [`flagged ${order.flagged}`]),
+  ].join(', ');
+}
+
 /** What Tool runner says as it asks for a person's approval to refund an order: what it found, and that it needs the approval. */
 export function toolRunnerRefundAsk(orderId: string, totalCents: number): string {
   return `I found order ${orderId} (${dollars(totalCents)}). I need your approval to refund it.`;

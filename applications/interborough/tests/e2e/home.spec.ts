@@ -76,6 +76,30 @@ async function answerBureau(
   });
 }
 
+/**
+ * What the host answers once every decision is made: no review waits, nothing needs attention, and
+ * each chat is idle with the outcome its scripted agent says once the decision is made
+ * (`showcase-sentences.ts`): the refund chat once the 4471 refund is approved, and the release chat
+ * once it is answered. A chat that is not waiting on anything reads Done, as it does in a real
+ * world where its review has been decided.
+ */
+const everythingDecided = {
+  'bureau.reviews.list': (result: unknown) => ({ ...(result as object), reviews: [] }),
+  'bureau.health.attention': () => ({ items: [], count: 0, checks: [] }),
+  'bureau.contexts.list': (result: unknown) => {
+    const answer = result as { contexts: Record<string, unknown>[] };
+    const outcomes = [toolRunnerRefundedReply(4200), humanInputAnsweredReply('Staging')];
+    return {
+      ...answer,
+      contexts: answer.contexts.map((context, index) => ({
+        ...context,
+        activity: 'idle',
+        ...(outcomes[index] === undefined ? {} : { lastMessagePreview: outcomes[index] }),
+      })),
+    };
+  },
+};
+
 const needsYou = (page: Page) => page.locator('[data-home-card="Needs you"]');
 
 test.describe('Home on the sample world, with something waiting on you', () => {
@@ -237,24 +261,7 @@ test('a host with no storage rule has two rows under Needs attention (01i)', asy
 
 test.describe('Home with nothing waiting and a provider connected', () => {
   test.beforeEach(async ({ page }) => {
-    await answerBureau(page, {
-      'bureau.reviews.list': (result) => ({ ...(result as object), reviews: [] }),
-      'bureau.health.attention': () => ({ items: [], count: 0, checks: [] }),
-      'bureau.contexts.list': (result) => {
-        const answer = result as { contexts: Record<string, unknown>[] };
-        // What the scripted agents say once each decision is made (`showcase-sentences.ts`): the
-        // refund chat once the 4471 refund is approved, and the release chat once it is answered.
-        const outcomes = [toolRunnerRefundedReply(4200), humanInputAnsweredReply('Staging')];
-        return {
-          ...answer,
-          contexts: answer.contexts.map((context, index) => ({
-            ...context,
-            activity: 'idle',
-            ...(outcomes[index] === undefined ? {} : { lastMessagePreview: outcomes[index] }),
-          })),
-        };
-      },
-    });
+    await answerBureau(page, everythingDecided);
     await page.route('**/host/providers', async (route) => {
       const response = await route.fetch();
       const answer = (await response.json()) as { providers?: Record<string, unknown>[] };
@@ -505,8 +512,7 @@ test.describe('Home with a run going', () => {
           : params['status'] === 'submitted'
             ? { tasks: [], nextPageToken: null }
             : result,
-      'bureau.reviews.list': (result) => ({ ...(result as object), reviews: [] }),
-      'bureau.health.attention': () => ({ items: [], count: 0, checks: [] }),
+      ...everythingDecided,
     });
     await openHome(page);
     await expect(page.getByTestId('home-counts').locator('.cinder-statistic').first()).toHaveText(
@@ -533,6 +539,11 @@ test.describe('Home with a run going', () => {
     const attention = await page.getByTestId('attention-clear').boundingBox();
     expect(waiting!.y + waiting!.height).toBeLessThan(running!.y);
     expect(running!.y + running!.height).toBeLessThan(attention!.y);
+    // Needs you reads 0 and no chat waits on anything, so Recent chats says Done on every row.
+    const chats = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
+    await expect(chats).toHaveCount(3);
+    await expect(chats.filter({ hasText: 'Waiting on you' })).toHaveCount(0);
+    await expect(chats.filter({ hasText: 'Done' })).toHaveCount(3);
     await captureForDesignReview(page, { route: '/', state: 'running now', source: SOURCE });
     await checkA11y('Home with a run going');
   });

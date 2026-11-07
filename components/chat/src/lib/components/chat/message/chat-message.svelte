@@ -459,6 +459,7 @@
   // Accessibility IDs
   const messageId = $derived(idPrefix ? `${idPrefix}-message` : `message-${message.id}`);
   const roleId = $derived(`${messageId}-role`);
+  const retryNoteId = $derived(`${messageId}-retry-note`);
 
   function toggleExpanded() {
     expanded = !expanded;
@@ -518,13 +519,16 @@
                 class="chat-message-retry"
                 size="xs"
                 variant="secondary"
-                disabled={notSent?.retryDisabled === true}
+                aria-disabled={notSent?.retryDisabled === true ? 'true' : undefined}
+                aria-describedby={notSent?.retryDisabled === true && notSent?.retryNote
+                  ? retryNoteId
+                  : undefined}
                 onclick={() => onRetry(message.id)}
               >
                 Retry
               </Button>
               {#if notSent?.retryNote}
-                <span class="chat-message-not-sent-note">{notSent.retryNote}</span>
+                <span class="chat-message-not-sent-note" id={retryNoteId}>{notSent.retryNote}</span>
               {/if}
             </div>
           {/if}

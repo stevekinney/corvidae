@@ -6,6 +6,10 @@
    * one way on. It cannot be dismissed while the restart runs, because the host does not answer and
    * the page behind it would show nothing true. When the host answers again it closes and the page
    * says what applied (`restart-back-banner.svelte`).
+   *
+   * A page that keeps its content on screen while the host restarts (a chat) shows the progress as
+   * Cinder's restart banner and sets `failedOnly`, so this opens only for a restart that never came
+   * back.
    */
   import { RestartState } from '@lostgradient/cinder';
 
@@ -25,9 +29,11 @@
       retryNow(): void;
       keepWaiting(): void;
     };
+    /** Draw only the failed state, because the page shows the progress itself. */
+    failedOnly?: boolean;
   }
 
-  let { flow }: Props = $props();
+  let { flow, failedOnly = false }: Props = $props();
 
   const phase = $derived(
     flow.phase === 'failed' ? 'failed' : flow.phase === 'starting' ? 'reconnecting' : 'restarting',
@@ -49,7 +55,7 @@
 </script>
 
 <RestartState
-  open={flow.open}
+  open={flow.open && (!failedOnly || flow.phase === 'failed')}
   {phase}
   {description}
   steps={RESTART_COPY.steps}

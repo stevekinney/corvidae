@@ -146,6 +146,29 @@ describe('a call whose approval a person decided', () => {
     );
   });
 
+  test('says the run is running in place of the result while the run a decision in Reviews continues is going (18i)', () => {
+    const entry = entryDecided(APPROVED);
+    const context = {
+      owner: 'anonymous:local',
+      elsewhere: new Set([entry.callId]),
+      zone: 'America/Chicago',
+    };
+    expect(railCall(entry, false, { ...context, continuing: true }).decision).toBe(
+      'Approved by you in Reviews 10:46 AM · running…',
+    );
+    // A decision made in the chat itself, or a run that is not going, keeps the result.
+    expect(
+      railCall(entry, false, {
+        owner: 'anonymous:local',
+        zone: 'America/Chicago',
+        continuing: true,
+      }).decision,
+    ).toBe('Approved by you 10:46 AM · refunded 4200');
+    expect(railCall(entry, false, { ...context, continuing: false }).decision).toBe(
+      'Approved by you in Reviews 10:46 AM · refunded 4200',
+    );
+  });
+
   test('reads a refusal as denied and neutral, with no claim about what it came to', () => {
     const entry = entryDecided(
       { ...APPROVED, decision: 'deny', reason: 'Check the carrier’s claim first.' },

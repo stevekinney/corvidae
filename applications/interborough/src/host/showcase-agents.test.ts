@@ -40,6 +40,7 @@ import {
 } from './showcase-agents.ts';
 import {
   humanInputAnsweredReply,
+  lookupOrderResult,
   toolRunnerRefundAsk,
   toolRunnerRefundedReply,
 } from './showcase-sentences.ts';
@@ -132,6 +133,16 @@ describe('the showcase built-in agents', () => {
       'bureau:workflows-create': 'on-changes',
       'bureau:discover-agents': 'never',
     });
+  });
+
+  test('Lookup order answers in the words the chat rail shows (19f)', () => {
+    const orders = SHOWCASE_ORDERS;
+    expect(lookupOrderResult(orders['4471'] ?? { totalCents: 0, delivered: '' })).toBe(
+      '$42.00, delivered Monday, flagged damaged',
+    );
+    expect(lookupOrderResult(orders['4468'] ?? { totalCents: 0, delivered: '' })).toBe(
+      '$18.00, shipped Oct 27, delivered Oct 29',
+    );
   });
 
   test('name each tool for a person, and call Issue refund Dangerous (S64)', () => {

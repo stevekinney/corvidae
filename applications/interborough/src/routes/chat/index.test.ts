@@ -214,6 +214,11 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(queryByRole('button', { name: 'Send message' })?.hasAttribute('disabled')).toBe(true);
     // Not slow yet, so no status line.
     expect(container.textContent).not.toContain(CHAT_COPY.load.stillLoading);
+    // The breadcrumb does not show the identifier of a chat that is still being read.
+    expect(breadcrumbTrail('/chats/session-1').map((item) => item.label)).toEqual([
+      'Chat',
+      CHAT_COPY.load.crumb,
+    ]);
   });
 
   test('says it is still loading after 10 s, with a ghost Cancel that returns to the chat list', async () => {
@@ -250,6 +255,11 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
 
     await findByRole('heading', { level: 1, name: 'Plan the week' });
     expect(container.querySelector('[data-testid="chat-loading"]')).toBeNull();
+    // Once it has loaded the breadcrumb names the chat by its title.
+    expect(breadcrumbTrail('/chats/session-1').map((item) => item.label)).toEqual([
+      'Chat',
+      'Plan the week',
+    ]);
   });
 });
 

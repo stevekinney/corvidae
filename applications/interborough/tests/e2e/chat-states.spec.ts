@@ -210,6 +210,8 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     await expect(user.getByRole('button', { name: /Copy/ })).toBeVisible();
     const lookup = railRow(page, 'Lookup order').last();
     await expect(lookup).toContainText('4471');
+    // Lookup order says what it found in words, as the board draws it.
+    await expect(lookup).toContainText('$42.00, delivered Monday, flagged damaged');
     // The reply is stamped with when it was written and the model that wrote it.
     await expect(conversation.getByText(/10:42 AM\s*·\s*Claude Sonnet 5\.5/)).toBeVisible();
     // The composer is the one blocked row, not a banner.
@@ -294,8 +296,13 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
       pattern: /net::ERR_CONNECTION_FAILED/,
       reason: 'the test holds the host down once it is asked to restart, so its plugin reads fail',
     });
-    // The host is asked to restart and answers no more, so the chat reads what it knew.
+    // The host is asked to restart and answers no more, so the chat reads what it knew. The
+    // restart request is held first, so the banner for a restart being asked for can be read.
     let down = false;
+    let releaseRestart: () => void = () => undefined;
+    const restartHeld = new Promise<void>((resolve) => {
+      releaseRestart = resolve;
+    });
     await page.route('**/host/plugins/*', (route) =>
       route.fulfill({
         json: { plugin: 'demo', enabled: true, configuration: {}, restartRequired: true },
@@ -310,6 +317,7 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     });
     await page.route('**/host/restart', async (route) => {
       if (route.request().method() === 'POST') {
+        await restartHeld;
         down = true;
         await route.fulfill({ status: 202, json: { restarting: true } });
         return;
@@ -327,6 +335,22 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
       .click();
     await expect(page.getByText('Sending resumes when Interborough is back.')).toBeVisible();
 
+    // The shared restarting banner sits above the heading with no action and no dismiss, and no
+    // dialog takes the page over: the conversation is not covered, blurred or dimmed (20e, 20f).
+    const banner = page.getByTestId('chat-restart-banner');
+    await expect(banner).toHaveAttribute('data-cinder-preset', 'restarting');
+    await expect(banner).toContainText(
+      'Restarting Interborough. Your changes are saved. Running work picks up where it stopped; reviews stay waiting.',
+    );
+    await expect(banner.getByRole('button')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const bannerBox = await banner.boundingBox();
+    const headerBox = await page.getByTestId('chat-header').boundingBox();
+    expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(headerBox!.y);
+    expect(
+      await page.evaluate(() => document.querySelector('.weft-shell')?.hasAttribute('inert')),
+    ).toBe(false);
+
     const conversation = transcript(page);
     const row = railRow(page, 'List changes');
     await expect(row).toContainText('0.8s');
@@ -343,11 +367,21 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     // Full contrast: neither the row nor the held approval is dimmed.
     expect(await opacityOf(row)).toBe(1);
     expect(await opacityOf(card)).toBe(1);
+    expect(await opacityOf(conversation)).toBe(1);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'restarting after enable and restart',
       source: SOURCE,
     });
+
+    // Once the host stops answering the banner counts the attempts and offers Retry now; the
+    // conversation is still readable.
+    releaseRestart();
+    await expect(banner).toHaveAttribute('data-cinder-preset', 'reconnecting');
+    await expect(banner).toContainText('Reconnecting');
+    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await opacityOf(card)).toBe(1);
   });
 });
 
