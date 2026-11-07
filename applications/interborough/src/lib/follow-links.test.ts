@@ -9,13 +9,25 @@ import { Window } from 'happy-dom';
 import { followLinks } from './follow-links.ts';
 import { router } from './router.svelte.ts';
 
-afterEach(() => {
+let previousMainFrameNavigation: boolean | undefined;
+
+afterEach(async () => {
+  // Modified and new-tab clicks intentionally remain browser-default. Happy DOM starts a
+  // navigation for those defaults; abort it before the shared test window can leak a refused
+  // localhost request into a later file.
+  if (window instanceof Window) await window.happyDOM.abort();
+  if (window instanceof Window && previousMainFrameNavigation !== undefined) {
+    window.happyDOM.settings.navigation.disableMainFrameNavigation = previousMainFrameNavigation;
+    previousMainFrameNavigation = undefined;
+  }
   document.body.replaceChildren();
 });
 
 function listWith(markup: string): { list: HTMLElement; stop: () => void } {
   if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
   window.happyDOM.setURL('http://localhost/');
+  previousMainFrameNavigation = window.happyDOM.settings.navigation.disableMainFrameNavigation;
+  window.happyDOM.settings.navigation.disableMainFrameNavigation = true;
   router.navigate('/schedules', { replace: true });
   const list = document.createElement('div');
   list.innerHTML = markup;
