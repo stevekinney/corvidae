@@ -37,6 +37,9 @@ import {
   createTickerController,
 } from './testing/workflow-contributions.test-support';
 import { createWorkflowContributions, type WorkflowContributions } from './workflow-contributions';
+import { workflowStepRunId } from './workflow-agent-step';
+import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
+import { z } from 'zod';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -133,46 +136,51 @@ async function world(): Promise<World> {
 }
 
 describe('mapped agent steps', () => {
-  it('returns distinct actual agent run ids for each parent-run iteration', async () => {
-    const w = await world();
-    await w.put('mapped', {
-      name: 'mapped',
-      trigger: { kind: 'manual' },
-      steps: [
-        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'seed' } },
-        {
-          kind: 'map',
-          over: 'output',
-          concurrency: 2,
-          steps: [
-            { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'item' } },
-          ],
-        },
-      ],
-    });
-    let agentRunNumber = 0;
-    const { engine } = await w.boot({
-      runAgentStep: async (request) => {
-        if (request.message.includes('seed')) {
-          return {
-            content: 'seed',
-            output: ['one', 'two'],
-            finishReason: 'stop-condition',
-          };
-        }
-        return {
-          content: request.message,
-          output: { runId: `agent-run-${String(++agentRunNumber)}` },
-          finishReason: 'stop-condition',
-        };
+  it('creates distinct durable Bureau agent runs for each parent-run iteration', async () => {
+    const harness = await startWorkflowBureau({
+      output: z.array(z.string()),
+      replies: {
+        writer: (call) => (call.message.includes('seed') ? '["one","two"]' : '["done"]'),
       },
     });
-    const run = await engine.start('mapped', null, { id: 'mapped-run' });
-    const result = (await run.result()) as AgentStepResult[];
-    const runIds = result.map((item) => (item.output as { runId: string }).runId);
-    expect(runIds).toEqual(['agent-run-1', 'agent-run-2']);
-    expect(new Set(runIds).size).toBe(2);
-    expect(w.requests.filter((request) => request.message.includes('item'))).toHaveLength(2);
+    try {
+      await harness.put(
+        'mapped.json',
+        JSON.stringify({
+          name: 'mapped',
+          trigger: { kind: 'manual' },
+          steps: [
+            { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'seed' } },
+            {
+              kind: 'map',
+              over: 'output',
+              concurrency: 2,
+              steps: [
+                { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'item' } },
+              ],
+            },
+          ],
+        }),
+      );
+      await harness.bureau.workflows?.refresh();
+      const engine = harness.bureau.durableEngine()!;
+      const parent = await engine.start('mapped', null, { id: 'mapped-run' });
+      const result = (await parent.result()) as AgentStepResult[];
+      const expected = [0, 1].map((offset) => workflowStepRunId('mapped-run', `2#${offset}`));
+      expect(result).toHaveLength(2);
+      expect(await engine.get(expected[0]!)).toMatchObject({
+        id: expected[0],
+        status: 'completed',
+      });
+      expect(await engine.get(expected[1]!)).toMatchObject({
+        id: expected[1],
+        status: 'completed',
+      });
+      expect(expected[0]).not.toBe(expected[1]);
+      expect(harness.calls.filter((call) => call.message.includes('item'))).toHaveLength(2);
+    } finally {
+      await harness.dispose();
+    }
   });
 });
 

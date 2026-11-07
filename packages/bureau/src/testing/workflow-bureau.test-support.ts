@@ -15,6 +15,7 @@ import type { Bureau, BureauOptions } from '../types.ts';
 import { workflowFileText } from './workflow-file-fixtures.test-support.ts';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
+import type { ZodType } from 'zod';
 
 /** What a scripted agent was sent, and by which agent. */
 export interface AgentCall {
@@ -43,6 +44,7 @@ export interface WorkflowBureauOptions {
   readonly agentNames?: readonly string[];
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   readonly calls?: AgentCall[];
+  readonly output?: ZodType;
 }
 
 function lastUserMessage(context: GenerateContext): string {
@@ -54,12 +56,14 @@ export function scriptedAgents(
   names: readonly string[],
   replies: Readonly<Record<string, Reply>>,
   calls: AgentCall[],
+  output?: ZodType,
 ): AgentDefinitions {
   return Object.fromEntries(
     names.map((name) => [
       name,
       createAgent({
         name,
+        ...(output === undefined ? {} : { output }),
         generate: async (context) => {
           const call = { agent: name, message: lastUserMessage(context) };
           calls.push(call);
@@ -79,7 +83,12 @@ export async function startWorkflowBureau(
   const calls = options.calls ?? [];
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
-      ...scriptedAgents(options.agentNames ?? ['writer', 'editor'], options.replies ?? {}, calls),
+      ...scriptedAgents(
+        options.agentNames ?? ['writer', 'editor'],
+        options.replies ?? {},
+        calls,
+        options.output,
+      ),
     },
     workflowSource: workflowFileDirectory(directory),
     storage: new MemoryStorage(),
