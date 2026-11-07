@@ -97,6 +97,29 @@ describe('registerWorkflowDocuments()', () => {
     expect(traces.map(({ input }) => input)).toEqual(['selected', 'after']);
   });
 
+  it('uses static preorder identities for a later branch case', async () => {
+    identities.length = 0;
+    const document = createDocument('branch-static-address', [
+      { kind: 'activity', handler: 'version', input: { status: 'waiting' } },
+      {
+        kind: 'branch',
+        on: 'status',
+        cases: {
+          ready: [{ kind: 'activity', handler: 'identify', input: 'ready' }],
+          waiting: [{ kind: 'activity', handler: 'identify', input: 'waiting' }],
+        },
+        otherwise: [{ kind: 'activity', handler: 'identify', input: 'otherwise' }],
+      },
+    ]);
+
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('branch-static-address', null, { id: 'branch-static-run' });
+
+    expect(await run.result()).toEqual({ workflowId: 'branch-static-run', step: 3 });
+    expect(identities).toEqual([{ workflowId: 'branch-static-run', step: 3, stepAddress: '3' }]);
+  });
+
   it('fails a branch with no matching case or otherwise using a named error', async () => {
     const document = createDocument('branch-no-match', [
       { kind: 'activity', handler: 'greet', input: { status: 'missing' } },
