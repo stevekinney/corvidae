@@ -333,7 +333,9 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
       .getByRole('dialog', { name: /^Enable the Demo plugin and restart/ })
       .getByRole('button', { name: 'Enable and restart' })
       .click();
-    await expect(page.getByText('Sending resumes when Interborough is back.')).toBeVisible();
+    await expect(
+      blockedRow(page).getByText('Sending resumes when Interborough is back.'),
+    ).toBeVisible();
 
     // The shared restarting banner sits above the heading with no action and no dismiss, and no
     // dialog takes the page over: the conversation is not covered, blurred or dimmed (20e, 20f).
