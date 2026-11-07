@@ -32,6 +32,12 @@
     block-size: 100%;
   }
 
+  /* Without a Back button the detail region takes the focus when an item opens; it is a target to
+     land on, not a control, so it draws no ring. */
+  .cinder-list-detail__detail:focus {
+    outline: none;
+  }
+
   .cinder-list-detail__header {
     display: flex;
     flex-direction: column;

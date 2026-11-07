@@ -395,6 +395,34 @@ export function showcaseModelSwitcherReply(model: string): string {
 }
 
 /**
+ * The model a built-in agent that needs one runs on unless a chat says otherwise: Sonnet 5.5, the
+ * row of the `anthropic` provider's catalog that Tool runner's saved version names.
+ */
+export const SHOWCASE_MODEL_AGENT_MODEL = {
+  provider: 'anthropic',
+  model: 'claude-sonnet-5-5',
+} as const;
+
+/**
+ * Attaches {@link SHOWCASE_MODEL_AGENT_MODEL}'s catalog row to a scripted agent, as the Bureau reads
+ * the model a code agent runs on (`bureau.agents.list`'s `media`). A scripted agent names no model,
+ * so no provider gates it; this is what makes Tool runner, Request human input and Workflow author
+ * agents that need one, which the sample world's no-provider frames require. The script still
+ * answers, because the showcase never calls a model.
+ */
+export function onShowcaseModel(generate: GenerateFunction): GenerateFunction {
+  const row = createModelCatalog().descriptors.find(
+    (descriptor) =>
+      descriptor.provider === SHOWCASE_MODEL_AGENT_MODEL.provider &&
+      descriptor.model === SHOWCASE_MODEL_AGENT_MODEL.model,
+  );
+  if (row === undefined) {
+    throw new Error(`The model catalog has no ${SHOWCASE_MODEL_AGENT_MODEL.model} row.`);
+  }
+  return withBackendDescriptors(generate, [row]);
+}
+
+/**
  * Model switcher's script: it names the model its step was told to use. The first model's catalog
  * row is attached, which is how the Bureau knows the agent's default.
  */
@@ -519,10 +547,10 @@ export function showcaseAgentScripts(
   return {
     assistant: showcaseAssistantGenerate(pacing),
     echo: showcaseEchoGenerate(),
-    'tool-runner': showcaseToolRunnerGenerate(pacing),
-    'request-human-input': showcaseHumanInputGenerate(),
+    'tool-runner': onShowcaseModel(showcaseToolRunnerGenerate(pacing)),
+    'request-human-input': onShowcaseModel(showcaseHumanInputGenerate()),
     'model-switcher': showcaseModelSwitcherGenerate(),
-    'workflow-author': showcaseWorkflowAuthorGenerate(),
+    'workflow-author': onShowcaseModel(showcaseWorkflowAuthorGenerate()),
   };
 }
 

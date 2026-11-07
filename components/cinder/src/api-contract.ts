@@ -365,6 +365,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
       backLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Back') },
+      backVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: B(true) },
       detailLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Details') },
       emptyTitle: { optional: true, type_kind: 'TSStringKeyword', default: L('Nothing selected') },
       emptyDescription: {

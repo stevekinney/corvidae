@@ -162,6 +162,7 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `backLabel` | `string` | no | `"Back"` | Label of the Back button shown above the detail below `pushBelow`. |
+| `backVisible` | `boolean` | no | `true` | Whether the Back button shows above the detail below `pushBelow`. A host whose own chrome already carries the way back to the list (a top bar's back link) turns it off, so the screen has one Back and not two. Back is also how a person returns to the list by keyboard, so the host's way back must be a link or a button, and opening an item focuses the detail region when there is no Back button to focus. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-list-detail` root element. |
 | `defaultListWidth` | `number` | no | `280` | Width in pixels of the list pane before the divider is moved. |
 | `detailLabel` | `string` | no | `"Details"` | Accessible name of the detail region. |

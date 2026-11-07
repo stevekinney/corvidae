@@ -250,9 +250,10 @@
   color: inherit;
 }
 
-/* One sentence about the chat's runs, under the header. */
+/* One sentence about the chat's runs, under the header, at the header's own inset. */
 .weft-chat-strip {
   margin: 0;
+  padding-inline: var(--cinder-space-4);
   font-size: var(--cinder-text-sm);
 }
 

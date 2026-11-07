@@ -73,6 +73,12 @@ const schema = {
       description: 'Label of the Back button shown above the detail below `pushBelow`.',
       default: 'Back',
     },
+    backVisible: {
+      type: 'boolean',
+      description:
+        "Whether the Back button shows above the detail below `pushBelow`. A host whose own chrome\nalready carries the way back to the list (a top bar's back link) turns it off, so the screen\nhas one Back and not two. Back is also how a person returns to the list by keyboard, so the\nhost's way back must be a link or a button, and opening an item focuses the detail region\nwhen there is no Back button to focus.",
+      default: true,
+    },
     detailLabel: {
       type: 'string',
       description: 'Accessible name of the detail region.',

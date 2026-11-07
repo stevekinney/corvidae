@@ -71,7 +71,7 @@ A row with nothing to report (a workflow, an available agent) keeps the column's
 
 On a phone (a viewport narrower than 640px) the status moves to line two beside the kind and agent (`Waiting on you · Chat · Tool runner`) and the time stays on line one. The word and dot are unchanged, and a row with no status simply has none.
 
-The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis.
+The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a dot separator, then the preview (`Waiting on you · I found order 4471…`), and the title clamps at two lines (`titleLines={2}`).
 
 ### The whole row is one link
 

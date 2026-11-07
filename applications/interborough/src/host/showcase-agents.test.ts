@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { workflowFileDirectory } from '@lostgradient/bureau/sources';
+import { readGenerationProfile } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { resolveCapabilityTier } from 'armorer';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -22,7 +23,9 @@ import {
   SHOWCASE_AGENT_IDENTIFIERS,
   SHOWCASE_ASSISTANT_REPLY,
   SHOWCASE_HUMAN_INPUT,
+  SHOWCASE_MODEL_AGENT_MODEL,
   SHOWCASE_ORDERS,
+  SHOWCASE_SCRIPTED_AGENTS,
   SHOWCASE_TOOL_APPROVAL,
   SHOWCASE_TOOL_RUNNER_PLAN,
   SHOWCASE_WORKFLOW_AUTHOR_REPLY,
@@ -84,6 +87,32 @@ describe('the showcase built-in agents', () => {
     expect(ids.toSorted()).toEqual([...SHOWCASE_AGENT_IDENTIFIERS].toSorted());
     expect(ids.some((id) => id.includes(':'))).toBe(false);
     expect(Object.keys(showcaseBuiltInAgents().agents)).not.toContain('release-helper');
+  });
+
+  test('name a model only for the agents that need one, so a chat with no provider is blocked for them alone (06m, 14h)', async () => {
+    const bureau = await start();
+    const model = (id: string) => {
+      const agent = bureau.agents.find(id);
+      if (agent === undefined) throw new Error(`No agent ${id}.`);
+      return readGenerationProfile(agent as never).descriptors.map(
+        (descriptor) => `${descriptor.provider}/${descriptor.model}`,
+      );
+    };
+    const needsAModel = SHOWCASE_AGENT_IDENTIFIERS.filter(
+      (id) => !(SHOWCASE_SCRIPTED_AGENTS as readonly string[]).includes(id),
+    );
+    expect(needsAModel).toEqual([
+      'tool-runner',
+      'request-human-input',
+      'model-switcher',
+      'workflow-author',
+    ]);
+    for (const id of needsAModel) {
+      expect(model(id), id).toContain(
+        `${SHOWCASE_MODEL_AGENT_MODEL.provider}/${SHOWCASE_MODEL_AGENT_MODEL.model}`,
+      );
+    }
+    for (const id of SHOWCASE_SCRIPTED_AGENTS) expect(model(id), id).toEqual([]);
   });
 
   test('Workflow author holds Create workflow and Discover agents, Bureau’s own tools', async () => {

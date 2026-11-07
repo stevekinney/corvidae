@@ -423,6 +423,23 @@ describe('ListDetail', () => {
     expect(getByRole('button', { name: 'All chats' })).toBeTruthy();
   });
 
+  test('backVisible={false} leaves the way back to the host and focuses the detail when an item opens', async () => {
+    const { container, queryByRole } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), backVisible: false },
+    });
+    await measure(container, 400);
+    await fireEvent.click(primaryOf(container, 'beta'));
+    await tick();
+    await tick();
+
+    expect(detailText(container)).toBe('Beta chat detail');
+    expect(queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(container.querySelector('.cinder-list-detail__back')).toBeNull();
+    const detail = container.querySelector('.cinder-list-detail__detail');
+    expect(detail?.getAttribute('tabindex')).toBe('-1');
+    expect(document.activeElement).toBe(detail);
+  });
+
   test('starts the divider at the remembered width', async () => {
     const storage = memoryStorage({ chats: '410' });
     const { container } = render(ListDetailFixture, {

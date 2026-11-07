@@ -25,8 +25,28 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'chat-page.spec.ts';
 const TITLE = 'Please refund order 4471, it arrived damaged.';
 
+/**
+ * Answers the host's provider list as it would with a key in place. The sample world holds no key,
+ * and Tool runner needs a model, so its composer is the blocked row (rows 06m, 06n, 19f); the
+ * frames of the Chat page board captioned "Provider connected" show the live composer instead.
+ */
+async function connectProvider(page: Page): Promise<void> {
+  await page.route('**/host/providers', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { providers: { hasKey: boolean }[] };
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        providers: body.providers.map((provider) => ({ ...provider, hasKey: true })),
+      },
+    });
+  });
+}
+
 /** Opens the refund chat at 1280 pixels and waits until its transcript is drawn. */
 async function openRefundChat(page: Page): Promise<void> {
+  await connectProvider(page);
   await page.clock.setFixedTime(SAMPLE_NOW);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
@@ -389,6 +409,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     page,
     request,
   }) => {
+    await connectProvider(page);
     await holdContinuationStream(page, SAMPLE_WORLD_THREADS.refund);
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -732,6 +753,7 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
     page,
     request,
   }) => {
+    await connectProvider(page);
     await serveDeniedChat(page, request);
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width: 1280, height: 900 });

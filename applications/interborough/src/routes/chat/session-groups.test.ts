@@ -256,6 +256,22 @@ describe('the day band of a row', () => {
     expect(group('2026-10-29T15:00:00-05:00').key).toBe(older.key);
   });
 
+  test('on a phone names Today and Yesterday alone, and an older day by its date (06l)', () => {
+    const phone = (at: string) =>
+      chatDayGroup({ updatedAt: Date.parse(at) }, now, ZONE, false, true);
+    expect(phone('2026-11-02T10:42:00-06:00')).toEqual({
+      key: 'today',
+      label: 'Today',
+      detail: 'Central time',
+    });
+    expect(phone('2026-11-01T16:12:00-06:00')).toEqual({
+      key: 'yesterday',
+      label: 'Yesterday',
+      detail: 'Central time',
+    });
+    expect(phone('2026-10-29T11:05:00-05:00').label).toBe('Thursday, Oct 29');
+  });
+
   test('reads the day in the viewer’s zone, not the instant’s own, and puts a future time in Today', () => {
     // 9:30 PM Sunday in Chicago is already Monday at UTC.
     expect(group('2026-11-02T03:30:00Z').label).toBe('Yesterday · Sunday, Nov 1');

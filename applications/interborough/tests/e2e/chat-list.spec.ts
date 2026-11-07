@@ -204,7 +204,7 @@ test.describe('the chat list at other widths', () => {
     await expect(header.getByRole('searchbox')).toHaveCount(0);
     await expect(list(page).locator('.cinder-data-list-group__header')).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday · Sunday, Nov 1\s*Central time$/,
+      /^Yesterday\s*Central time$/,
       /^Friday, Oct 30\s*Central time$/,
       /^Thursday, Oct 29\s*Central time$/,
     ]);

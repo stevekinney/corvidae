@@ -80,6 +80,24 @@ describe('StackedListItem on a phone', () => {
     setPhone(false);
   });
 
+  test('a line-two status gives up its fixed column on a phone and reads word, dot, then the preview', () => {
+    setPhone(true);
+    const { container } = render(StatusListFixture, { props: { rows, placement: 'line-two' } });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--status-line-two')).toBe(true);
+    expect(row?.hasAttribute('data-cinder-phone')).toBe(true);
+    // The phone rules name the line-two placement as well as the leading one: an auto status track
+    // in place of the fixed column, no end padding, and the dot separator after the word.
+    expect(stylesheet).toMatch(
+      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*>\s*\.cinder-stacked-list-item__layout\s*\{\s*--_cinder-status-track:\s*auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*\.cinder-stacked-list-item__status::after\s*\{\s*content:\s*'·'/,
+    );
+    cleanup();
+    setPhone(false);
+  });
+
   test('a row on a tablet or desktop has no phone attribute', () => {
     setPhone(false);
     const { container } = render(StatusListFixture, { props: { rows } });

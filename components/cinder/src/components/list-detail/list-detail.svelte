@@ -87,6 +87,7 @@
     defaultListWidth = 280,
     flushDetail = false,
     backLabel = 'Back',
+    backVisible = true,
     detailLabel = 'Details',
     emptyTitle = 'Nothing selected',
     emptyDescription = 'Choose an item from the list to see it here.',
@@ -255,7 +256,10 @@
     if (!narrow) return;
     // The list is gone below `pushBelow`, so focus moves to the first control of the detail.
     await tick();
-    rootElement?.querySelector<HTMLElement>('.cinder-list-detail__back button')?.focus();
+    (
+      rootElement?.querySelector<HTMLElement>('.cinder-list-detail__back button') ??
+      rootElement?.querySelector<HTMLElement>('.cinder-list-detail__detail')
+    )?.focus();
   }
 
   async function back(): Promise<void> {
@@ -343,8 +347,15 @@
 {/snippet}
 
 {#snippet detailPane()}
-  <section class="cinder-list-detail__detail" aria-label={detailLabel}>
-    {#if narrow}
+  <!-- Without a Back button the region is where focus lands when an item opens, so it takes a
+       programmatic tab stop of -1 (never a stop of the tab order). -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <section
+    class="cinder-list-detail__detail"
+    aria-label={detailLabel}
+    tabindex={backVisible ? undefined : -1}
+  >
+    {#if narrow && backVisible}
       <div class="cinder-list-detail__back">
         <Button variant="ghost" size="sm" onclick={() => void back()}>
           {#snippet leadingIcon()}<ChevronLeft

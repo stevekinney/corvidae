@@ -311,7 +311,7 @@
       items={visible}
       key={(row: SessionRow) => row.id}
       aria-label={CHAT_COPY.sessionsTitle}
-      groupBy={(row: SessionRow) => chatDayGroup(row, clock(), zone, wide)}
+      groupBy={(row: SessionRow) => chatDayGroup(row, clock(), zone, wide, phone.current)}
     >
       {#snippet children(row: SessionRow)}
         {@const agent = agentName(row)}
@@ -414,6 +414,8 @@
   {/if}
 {/snippet}
 
+<!-- On a phone the top bar's "‹ Chat" is the way back to the list (design rows 04y, 06m), so the pane
+     draws no second Back of its own; between 640px and the width a pane stacks at, it still does. -->
 <div class="ib-chats" data-shortcut-region="list-detail">
   <ListDetail
     {items}
@@ -425,6 +427,7 @@
     selectionParameter={null}
     storageKey="interborough-chats"
     flushDetail
+    backVisible={!phone.current}
     {listBody}
   >
     {#snippet header()}
