@@ -332,7 +332,11 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
     // The connection drops as the message goes out, so it is the transport that fails and the row
     // says "Not sent" (the page names a transport failure there, not in an alert of its own).
-    await page.route('**/ag-ui/agents/**', (route) => route.abort('connectionrefused'));
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+      if (body.method === 'bureau.contexts.input') await route.abort('connectionrefused');
+      else await route.fallback();
+    });
     const followUp = 'Also look up order 4398, the same carrier.';
     const composerBox = page.getByRole('textbox', { name: /^Message/ });
     await composerBox.fill(followUp);
@@ -375,7 +379,7 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     // The message that was not sent keeps its Retry in the details beside "Not sent", off while the
     // server does not answer, with the reason beside it.
     await page.getByRole('button', { name: 'Not sent: details' }).click();
-    const retry = page.getByRole('button', { name: 'Retry' });
+    const retry = page.getByRole('button', { name: 'Retry', exact: true });
     await expect(retry).toBeDisabled();
     await expect(
       page

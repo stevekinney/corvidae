@@ -220,11 +220,12 @@ test.describe('Chat on a tablet (06n)', () => {
     await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     await expect(row.getByRole('combobox')).toHaveCount(0);
     await expect(openChat(page).getByRole('combobox')).toHaveCount(0);
-    // The pane is narrower than the row's stacking width, so the action drops under the reason
-    // exactly as it does on the board's own tablet frame.
+    // The pane is as narrow as a phone's screen, but the screen is a tablet's: the reason wraps and
+    // the action stays at its right, never under it (06n). Only a phone stacks them (06m).
     const reason = await boxOf(row.getByText(REASON));
     const action = await boxOf(row.getByRole('link', { name: 'Connect a provider' }));
-    expect(action.y).toBeGreaterThanOrEqual(reason.y + reason.height - 1);
+    expect(action.x).toBeGreaterThanOrEqual(reason.x + reason.width - 1);
+    expect(action.y).toBeLessThan(reason.y + reason.height);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'no provider',

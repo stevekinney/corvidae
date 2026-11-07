@@ -136,7 +136,9 @@ test.describe('Chat ended by a restart (frame a: 19a, 19b, 19c, 19e)', () => {
     await expect(line.locator('svg.lucide-info')).toBeVisible();
     // A reply the Bureau recorded no time for is not dated by the moment it was read: no time under
     // it and no band for today above the Oct 29 message (19c).
-    await expect(conversation.locator('time')).toHaveCount(1);
+    await expect(
+      conversation.locator('article', { hasText: ENDED_PARTIAL_REPLY }).locator('time'),
+    ).toHaveCount(0);
     await expect(conversation).not.toContainText(/today/i);
     await expect(conversation).not.toContainText('November 7');
     // Muted like the times, not the danger red of a failure.
