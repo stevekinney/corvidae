@@ -309,3 +309,19 @@ describe('the details popover, copying and an unset model', () => {
     expect(group.textContent).toContain('Model Agent default');
   });
 });
+
+describe('the top bar under an open chat', () => {
+  test('keeps search and quick settings live beside the breadcrumb', async () => {
+    serve();
+    landAt('/chats/session-1');
+    const { findByRole } = mount();
+
+    await findByRole('button', { name: TITLE });
+    const search = await findByRole('button', { name: /Search everything/ });
+    await fireEvent.click(search);
+    const settings = await findByRole('button', { name: 'Quick settings' });
+    await fireEvent.click(settings);
+
+    expect(settings.getAttribute('aria-expanded')).toBe('true');
+  });
+});
