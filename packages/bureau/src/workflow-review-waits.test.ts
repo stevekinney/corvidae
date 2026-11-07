@@ -24,6 +24,19 @@ import {
 } from './testing/workflow-bureau.test-support';
 import { AGENT_STEP } from './testing/workflow-file-fixtures.test-support';
 import type { PendingHumanWaitReview } from './types';
+import { workflowReviewId } from './workflow-review-waits';
+
+describe('workflowReviewId', () => {
+  it('keeps flat ids and distinguishes encoded iteration addresses', () => {
+    expect(workflowReviewId('run', 'approve', 2)).toBe('human-wait:run:approve:2');
+    expect(workflowReviewId('run', 'approve', 2, '2#summaries.0')).not.toBe(
+      workflowReviewId('run', 'approve', 2, '2#summaries.1'),
+    );
+    expect(workflowReviewId('run', 'approve', 2, '2#a%2Eb')).not.toBe(
+      workflowReviewId('run', 'approve', 2, '2#a.b'),
+    );
+  });
+});
 
 const cleanups: Array<() => Promise<void>> = [];
 

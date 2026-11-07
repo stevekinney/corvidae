@@ -19,7 +19,7 @@ import { registerWorkflowDocuments } from './register.ts';
 
 const handlerCalls: string[] = [];
 const traces: { input: unknown; trigger: unknown; previous: unknown; signal: unknown }[] = [];
-const identities: { workflowId: string; step: number }[] = [];
+const identities: { workflowId: string; step: number; stepAddress?: string }[] = [];
 let hangIdentify = false;
 
 const host: DocumentWorkflowHost = {
@@ -35,8 +35,8 @@ const host: DocumentWorkflowHost = {
     },
     version: ({ input }) => input,
     'payments.charge': () => null,
-    identify: ({ workflowId, step }) => {
-      identities.push({ workflowId, step });
+    identify: ({ workflowId, step, stepAddress }) => {
+      identities.push({ workflowId, step, stepAddress });
       return hangIdentify ? new Promise(() => undefined) : { workflowId, step };
     },
     trace: ({ input, trigger, previous, signal }) => {
@@ -673,8 +673,8 @@ describe('the identity every activity handler receives', () => {
 
     expect(await run.result()).toEqual({ workflowId: 'identity-run', step: 2 });
     expect(identities).toEqual([
-      { workflowId: 'identity-run', step: 1 },
-      { workflowId: 'identity-run', step: 2 },
+      { workflowId: 'identity-run', step: 1, stepAddress: '1' },
+      { workflowId: 'identity-run', step: 2, stepAddress: '2' },
     ]);
   });
 
@@ -702,8 +702,8 @@ describe('the identity every activity handler receives', () => {
 
     expect(await handle!.result()).toEqual({ workflowId: 'identity-restart-run', step: 1 });
     expect(identities).toEqual([
-      { workflowId: 'identity-restart-run', step: 1 },
-      { workflowId: 'identity-restart-run', step: 1 },
+      { workflowId: 'identity-restart-run', step: 1, stepAddress: '1' },
+      { workflowId: 'identity-restart-run', step: 1, stepAddress: '1' },
     ]);
   });
 });
