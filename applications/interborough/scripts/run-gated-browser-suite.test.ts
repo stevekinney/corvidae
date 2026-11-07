@@ -3,12 +3,16 @@
  * free block of ports, never lets Playwright reuse a server, and passes Playwright's exit code on.
  */
 import { describe, expect, test } from 'bun:test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { END_TO_END_PORT_COUNT } from './environment-configuration.ts';
 import {
   blockIsFree,
   findFreePortBlock,
   type GatedRunEnvironment,
+  hostEnvironment,
   runGatedBrowserSuite,
 } from './run-gated-browser-suite.ts';
 
@@ -114,5 +118,42 @@ describe('runGatedBrowserSuite', () => {
     expect(await runGatedBrowserSuite([], taken.environment)).toBe(2);
     expect(taken.runs).toHaveLength(0);
     expect(taken.errors.join('')).toContain('never reuses a server');
+  });
+});
+
+describe('hostEnvironment', () => {
+  test('reads the requested port, probes the loopback port, and runs a command with the variables added', async () => {
+    const saved = process.env['INTERBOROUGH_E2E_PORT'];
+    try {
+      delete process.env['INTERBOROUGH_E2E_PORT'];
+      expect(hostEnvironment.requestedPort).toBeUndefined();
+      process.env['INTERBOROUGH_E2E_PORT'] = '31000';
+      expect(hostEnvironment.requestedPort).toBe(31000);
+    } finally {
+      if (saved === undefined) delete process.env['INTERBOROUGH_E2E_PORT'];
+      else process.env['INTERBOROUGH_E2E_PORT'] = saved;
+    }
+    const holder = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } });
+    try {
+      expect(hostEnvironment.portIsFree(holder.port)).toBe(false);
+    } finally {
+      holder.stop(true);
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'gated-browser-suite-'));
+    try {
+      const marker = join(directory, 'marker.txt');
+      const exitCode = await hostEnvironment.run(
+        [
+          process.execPath,
+          '-e',
+          `require('node:fs').writeFileSync(${JSON.stringify(marker)}, process.env.GATED_SUITE_PROBE ?? '')`,
+        ],
+        { GATED_SUITE_PROBE: 'seen' },
+      );
+      expect(exitCode).toBe(0);
+      expect(await readFile(marker, 'utf8')).toBe('seen');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
