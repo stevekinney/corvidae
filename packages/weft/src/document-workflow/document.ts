@@ -149,6 +149,11 @@ export type WorkflowDocumentStep =
       on: string;
       cases: Readonly<Record<string, readonly WorkflowDocumentStep[]>>;
       otherwise?: readonly WorkflowDocumentStep[] | undefined;
+    }>
+  | Readonly<{
+      kind: 'map';
+      steps: readonly WorkflowDocumentStep[];
+      concurrency?: number | undefined;
     }>;
 
 /** A declarative workflow: a name, an opaque trigger, and ordered steps. */
@@ -213,6 +218,8 @@ const durationSchema = z.union([z.string(), z.number()]).superRefine((duration, 
   }
 });
 
+const mapConcurrencySchema = z.number().int().positive().optional();
+
 /** The schema of one document step, exposed so workflow editors can derive its field catalog. */
 export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.lazy(() =>
   z.discriminatedUnion('kind', [
@@ -234,6 +241,11 @@ export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.laz
           }
         }),
       otherwise: z.array(workflowDocumentStepSchema).optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('map'),
+      steps: z.array(workflowDocumentStepSchema).min(1),
+      concurrency: mapConcurrencySchema,
     }),
   ]),
 );
@@ -278,6 +290,17 @@ export class WorkflowDocumentBranchError extends Error {
   constructor(field: string, value: unknown) {
     super(`Branch has no matching case for field "${field}" with value ${JSON.stringify(value)}`);
     this.name = 'WorkflowDocumentBranchError';
+  }
+}
+
+/** Thrown when a map step cannot iterate its previous result. */
+export class WorkflowDocumentMapError extends Error {
+  readonly code: 'not-array' | 'too-many';
+
+  constructor(code: 'not-array' | 'too-many', message: string) {
+    super(message);
+    this.name = 'WorkflowDocumentMapError';
+    this.code = code;
   }
 }
 
@@ -380,11 +403,14 @@ function visitSteps(
   for (const [index, step] of steps.entries()) {
     const stepPath = `${path}[${String(index)}]`;
     visit(step, stepPath);
-    if (step.kind !== 'branch') continue;
-    for (const [literal, nested] of Object.entries(step.cases)) {
-      visitSteps(nested, `${stepPath}.cases.${literal}`, visit);
+    if (step.kind === 'branch') {
+      for (const [literal, nested] of Object.entries(step.cases)) {
+        visitSteps(nested, `${stepPath}.cases.${literal}`, visit);
+      }
+      if (step.otherwise !== undefined) visitSteps(step.otherwise, `${stepPath}.otherwise`, visit);
+    } else if (step.kind === 'map') {
+      visitSteps(step.steps, `${stepPath}.steps`, visit);
     }
-    if (step.otherwise !== undefined) visitSteps(step.otherwise, `${stepPath}.otherwise`, visit);
   }
 }
 

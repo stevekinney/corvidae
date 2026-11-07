@@ -27,6 +27,8 @@ const handlerCalls: string[] = [];
 const traces: { input: unknown; trigger: unknown; previous: unknown; signal: unknown }[] = [];
 const identities: { workflowId: string; step: number; stepAddress?: string }[] = [];
 let hangIdentify = false;
+let mapActive = 0;
+let mapMaximum = 0;
 
 const host: DocumentWorkflowHost = {
   activities: {
@@ -48,6 +50,21 @@ const host: DocumentWorkflowHost = {
     trace: ({ input, trigger, previous, signal }) => {
       traces.push({ input, trigger, previous, signal });
       return input;
+    },
+    mapWork: async ({ input, previous, stepAddress }) => {
+      mapActive++;
+      mapMaximum = Math.max(mapMaximum, mapActive);
+      await Bun.sleep(2);
+      mapActive--;
+      return { input, previous, stepAddress };
+    },
+    mapFail: async ({ previous }) => {
+      mapActive++;
+      mapMaximum = Math.max(mapMaximum, mapActive);
+      await Bun.sleep(2);
+      mapActive--;
+      if (previous === 3) throw new Error('map item failed');
+      return previous;
     },
   },
   triggerKinds: { manual: () => undefined },
@@ -78,6 +95,63 @@ async function fileWorkflowEvents(engine: Engine, workflowId: string) {
 }
 
 describe('registerWorkflowDocuments()', () => {
+  it('maps in order with per-item previous values and bounded concurrency', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
+    const document = createDocument('map-document', [
+      { kind: 'activity', handler: 'version', input: [1, 2, 3, 4, 5] },
+      {
+        kind: 'map',
+        steps: [{ kind: 'activity', handler: 'mapWork', input: 'work' }],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-document', null, { id: 'map-run' });
+    expect(await run.result()).toEqual([
+      { input: 'work', previous: 1, stepAddress: '2#0' },
+      { input: 'work', previous: 2, stepAddress: '2#1' },
+      { input: 'work', previous: 3, stepAddress: '2#2' },
+      { input: 'work', previous: 4, stepAddress: '2#3' },
+      { input: 'work', previous: 5, stepAddress: '2#4' },
+    ]);
+    expect(mapMaximum).toBe(4);
+  });
+
+  it('rejects non-array and over-limit map inputs with named errors', async () => {
+    const nonArray = createDocument('map-not-array', [
+      { kind: 'activity', handler: 'version', input: 'nope' },
+      { kind: 'map', steps: [{ kind: 'activity', handler: 'version' }] },
+    ]);
+    const tooMany = createDocument('map-too-many', [
+      { kind: 'activity', handler: 'version', input: Array.from({ length: 1001 }, () => null) },
+      { kind: 'map', steps: [{ kind: 'activity', handler: 'version' }] },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [nonArray, tooMany] });
+    const nonArrayRun = await engine.start('map-not-array', null, { id: 'map-not-array-run' });
+    const tooManyRun = await engine.start('map-too-many', null, { id: 'map-too-many-run' });
+    expect(await throwingRejectionOf(nonArrayRun.result())).toThrow(
+      'requires the previous result to be an array',
+    );
+    expect(await throwingRejectionOf(tooManyRun.result())).toThrow(
+      'cannot iterate more than 1000 items',
+    );
+  });
+
+  it('cleans up sibling iterations when one map item fails', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
+    const document = createDocument('map-cleanup', [
+      { kind: 'activity', handler: 'version', input: [1, 2, 3, 4] },
+      { kind: 'map', concurrency: 4, steps: [{ kind: 'activity', handler: 'mapFail' }] },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-cleanup', null, { id: 'map-cleanup-run' });
+    expect(await throwingRejectionOf(run.result())).toThrow('map item failed');
+    expect(mapActive).toBe(0);
+  });
   it('runs only the matching branch case and continues with its result', async () => {
     traces.length = 0;
     const document = createDocument('branch-document', [
