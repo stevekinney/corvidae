@@ -326,79 +326,93 @@
   color: var(--cinder-text-muted);
 }
 
-/* An agent keeps its colour: eight of Cinder's categorical series, tinted so the initials keep
- * the text colour's contrast on any of them. */
+/* An agent keeps its colour: eight hues (`agentTone`), each a soft fill with initials in a deep shade
+ * of the same hue, so the initials keep their contrast on any of them in both schemes. */
 .ib-chat-avatar {
-  --ib-avatar-tone: var(--cinder-chart-series-1);
-  border-color: var(--ib-avatar-tone);
-  background: color-mix(in oklch, var(--cinder-surface), var(--ib-avatar-tone) 22%);
-  color: var(--cinder-text-default);
+  --ib-avatar-hue: 270;
+  border-color: transparent;
+  background: light-dark(
+    oklch(92% 0.06 var(--ib-avatar-hue)),
+    oklch(34% 0.07 var(--ib-avatar-hue))
+  );
+  color: light-dark(oklch(32% 0.1 var(--ib-avatar-hue)), oklch(92% 0.06 var(--ib-avatar-hue)));
+  font-weight: var(--cinder-font-semibold);
+}
+
+.ib-chat-avatar[data-tone='0'] {
+  --ib-avatar-hue: 20;
 }
 
 .ib-chat-avatar[data-tone='1'] {
-  --ib-avatar-tone: var(--cinder-chart-series-2);
+  --ib-avatar-hue: 235;
 }
 
 .ib-chat-avatar[data-tone='2'] {
-  --ib-avatar-tone: var(--cinder-chart-series-3);
+  --ib-avatar-hue: 150;
 }
 
 .ib-chat-avatar[data-tone='3'] {
-  --ib-avatar-tone: var(--cinder-chart-series-4);
+  --ib-avatar-hue: 270;
 }
 
 .ib-chat-avatar[data-tone='4'] {
-  --ib-avatar-tone: var(--cinder-chart-series-5);
+  --ib-avatar-hue: 310;
 }
 
 .ib-chat-avatar[data-tone='5'] {
-  --ib-avatar-tone: var(--cinder-chart-series-6);
+  --ib-avatar-hue: 55;
 }
 
 .ib-chat-avatar[data-tone='6'] {
-  --ib-avatar-tone: var(--cinder-chart-series-7);
+  --ib-avatar-hue: 110;
 }
 
 .ib-chat-avatar[data-tone='7'] {
-  --ib-avatar-tone: var(--cinder-chart-series-8);
+  --ib-avatar-hue: 200;
 }
 
-/* ── New chat: a greeting, example prompts and the other agents, centred over the composer ── */
+/* ── New chat: the agent's avatar, a greeting and its sentence, centred over the composer ── */
 
 .ib-new-chat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: var(--cinder-space-4);
+  gap: var(--cinder-space-2);
   min-inline-size: 0;
-  min-block-size: 100%;
+  padding-block-end: var(--cinder-space-4);
   text-align: center;
 }
 
-.ib-new-chat__greeting {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
+/* The greeting's avatar is 48 pixels (row 23g), which is Avatar's lg; the interface lint keeps
+   size="lg" for a page's primary action, so the avatar takes md's markup at that size. */
+.ib-new-chat .ib-new-chat__avatar {
+  inline-size: 3rem;
+  block-size: 3rem;
+  font-size: var(--cinder-text-base);
+  margin-block-end: var(--cinder-space-2);
+}
+
+.ib-new-chat .ib-new-chat__greeting {
   overflow-wrap: anywhere;
 }
 
-.ib-new-chat__id {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-  font-weight: 400;
-}
-
-.ib-new-chat__description {
-  margin: 0;
+.ib-new-chat .ib-new-chat__description {
   max-inline-size: 40rem;
   color: var(--cinder-text-secondary);
-  font-size: var(--cinder-text-sm);
   overflow-wrap: anywhere;
 }
 
-.ib-new-chat__examples,
-.ib-new-chat__agents {
+/* ── What a new chat offers under its composer: the Try prompts and the agents to chat with ── */
+
+.ib-new-chat-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.ib-new-chat-choices__row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-2);
@@ -407,25 +421,27 @@
   max-inline-size: 100%;
 }
 
-/* A prompt is a sentence, not a label: it wraps inside its button (Cinder's buttons never wrap) and
-   a word too long for the line breaks, so a long prompt cannot widen the page. */
-.ib-new-chat__examples .ib-new-chat__prompt {
+.ib-new-chat-choices__lead {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* A prompt is a sentence, not a label: it is a pill that wraps inside its button (Cinder's buttons
+   never wrap) and a word too long for the line breaks, so a long prompt cannot widen the page. */
+.ib-new-chat-choices__row .ib-new-chat-choices__prompt {
   max-inline-size: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: start;
   line-height: 1.3;
   padding-block: var(--cinder-space-1);
+  border-radius: var(--cinder-radius-full);
 }
 
-.ib-new-chat__agents .ib-new-chat__agent {
+.ib-new-chat-choices__row .ib-new-chat-choices__agent {
   max-inline-size: 100%;
   overflow-wrap: anywhere;
-}
-
-.ib-new-chat__lead {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
+  padding-inline: var(--cinder-space-2);
 }
 
 /* The agent a new chat is with sits at the top of the composer, a ghost select in the accent, so it

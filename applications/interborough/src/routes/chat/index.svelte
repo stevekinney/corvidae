@@ -43,7 +43,6 @@
   // Whether this pane began as a new chat is read once too: the address becomes the chat's own when
   // its run starts, and the conversation, with its live run, stays mounted through that.
   const startsNew = untrack(() => isNew);
-  const chosenAgent = untrack(() => router.current.search.has('agent'));
   const namedAgent = untrack(() => router.current.search.get('agent'));
   // Without `?agent=` a new chat starts with the first agent that can run. The view frame has
   // already asked, so this is the cached answer; `null` means no agent can run.
@@ -96,7 +95,6 @@
       {sessionId}
       title={null}
       agentName={namedAgent ?? defaultAgent.data ?? ''}
-      agentChosen={chosenAgent}
       isNew
     />
   {:else}

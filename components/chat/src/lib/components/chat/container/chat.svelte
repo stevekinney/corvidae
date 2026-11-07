@@ -124,6 +124,8 @@
     composerActions,
     composerControls,
     composerHeader,
+    composerFooter,
+    composerPlacement = 'docked',
     composerPlaceholder,
     composerAnswering = false,
     composerHint,
@@ -785,6 +787,13 @@
   const typingIndicatorState = useChatTypingIndicator({
     getTypingParticipants: () => typingParticipants,
   });
+
+  // The empty state, composer and footer are one centered block only while nothing has been said.
+  const composerCentered = $derived(
+    composerPlacement === 'centered' &&
+      messages.length === 0 &&
+      typingIndicatorState.participantCount === 0,
+  );
 
   const readReceiptsState = useChatReadReceipts({
     getReadReceipts: () => readReceipts,
@@ -1686,6 +1695,7 @@
     data-surface-mode={surfaceMode}
     data-cinder-density={density}
     data-cinder-variant={variant}
+    data-composer-placement={composerCentered ? 'centered' : 'docked'}
     role="region"
     aria-label="Chat conversation"
     onkeydown={handleKeyDown}
@@ -2086,6 +2096,11 @@
           {onAttachmentRemove}
           {onAttachmentFailure}
         />
+        {#if composerFooter}
+          <div class="chat-composer-footer">
+            {@render composerFooter()}
+          </div>
+        {/if}
       </div>
     </div>
 
@@ -2522,6 +2537,30 @@
   .chat-input-wrapper {
     position: relative;
     flex-shrink: 0;
+  }
+
+  /* Centered placement: with nothing said yet, the empty state, the composer and the footer under
+     it are one block in the middle of the surface instead of a composer docked at the bottom. */
+  .chat-container[data-composer-placement='centered'] {
+    justify-content: safe center;
+    overflow-y: auto;
+  }
+
+  .chat-container[data-composer-placement='centered'] .chat-timeline {
+    flex: 0 0 auto;
+    overflow: visible;
+    gap: 0;
+    padding-block-end: 0;
+  }
+
+  .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
+    align-self: center;
+    inline-size: 100%;
+    max-inline-size: 52rem;
+  }
+
+  .chat-composer-footer {
+    margin-block-start: var(--cinder-space-4);
   }
 
   /* Input Area */

@@ -335,11 +335,18 @@ describe('an agent’s avatar', () => {
       expect(agentTone(name)).toBeGreaterThanOrEqual(0);
       expect(agentTone(name)).toBeLessThan(8);
     }
-    // The seeded agents do not all share one colour.
+    // The sample world's six agents, which a new chat draws side by side, each have a colour of their own.
     const tones = new Set(
-      ['assistant', 'tool-runner', 'request-human-input', 'echo', 'model-switcher'].map(agentTone),
+      [
+        'assistant',
+        'tool-runner',
+        'request-human-input',
+        'workflow-author',
+        'echo',
+        'model-switcher',
+      ].map(agentTone),
     );
-    expect(tones.size).toBeGreaterThan(2);
+    expect(tones.size).toBe(6);
   });
 
   test('spells the first letters of the first two parts of the identifier', () => {

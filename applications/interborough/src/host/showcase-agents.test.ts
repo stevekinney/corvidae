@@ -104,8 +104,8 @@ describe('the showcase built-in agents', () => {
     expect(needsAModel).toEqual([
       'tool-runner',
       'request-human-input',
-      'model-switcher',
       'workflow-author',
+      'model-switcher',
     ]);
     for (const id of needsAModel) {
       expect(model(id), id).toContain(

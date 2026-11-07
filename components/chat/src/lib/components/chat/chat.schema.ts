@@ -48,6 +48,11 @@ const schema = {
       description:
         "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`.",
     },
+    composerPlacement: {
+      enum: ['docked', 'centered'],
+      description:
+        "Where the composer sits. `'docked'` (default) keeps it at the bottom of the surface under the transcript. `'centered'` puts the empty state, the composer and `composerFooter` together in the middle of the surface while the conversation has no message, and docks the composer as soon as it has one.",
+    },
     composerAnswering: {
       type: 'boolean',
       description:
@@ -205,6 +210,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           "The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it.",
+      },
+      {
+        name: 'composerFooter',
+        reason: 'function-or-snippet',
+        description:
+          "Content under the composer, after its hint or status line: the host's own next steps for an empty chat, such as example prompts and other agents to start with. The snippet takes no arguments, and the caller owns the semantics inside it.",
       },
       {
         name: 'composerHint',

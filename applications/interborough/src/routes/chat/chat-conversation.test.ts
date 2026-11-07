@@ -129,7 +129,7 @@ describe('a new chat', () => {
     expect(names).toContain('Internal');
   });
 
-  test('puts the agent select at the top of the composer and leaves the header with the title alone', async () => {
+  test('puts the agent select at the top of the composer, with no header over the page', async () => {
     restore = served().restore;
     landAt('/chats/new');
 
@@ -144,16 +144,15 @@ describe('a new chat', () => {
     expect(select.closest('.chat-input-header')).not.toBeNull();
     expect(select.closest('.ib-agent-select')).not.toBeNull();
     expect(select.getAttribute('data-cinder-variant')).toBe('ghost');
-    expect(
-      container.querySelector('[data-testid="chat-header"]')?.querySelector('input, select'),
-    ).toBeNull();
+    // The greeting is the page's title: there is no header, and so no agent control in one.
+    expect(container.querySelector('[data-testid="chat-header"]')).toBeNull();
     // The agent first, then the one setting a scripted agent has, and the Send beside it.
     const row = container.querySelector('.chat-input-footer-left')!;
     expect(row.querySelector('#weft-chat-permission')).not.toBeNull();
     expect(row.querySelector('#weft-chat-agent')).toBeNull();
   });
 
-  test('greets with the agent and its prompts, and shows the other agents as one row until one is chosen', async () => {
+  test('greets with the agent, offers its prompts under the composer, and shows the other agents as one row', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({
         agents: [
@@ -174,22 +173,34 @@ describe('a new chat', () => {
 
     const welcome = await findByTestId('new-chat-welcome');
     await waitFor(() => expect(welcome.textContent).toContain(AGENT.description));
-    // The greeting is a line, not a second title.
-    expect(welcome.querySelector('h1, h2, h3')).toBeNull();
-    // Up to three prompts, as buttons, and an agent that suggests none shows none.
+    // The greeting is the page's one title, under the avatar of the agent the chat is with.
+    expect(welcome.querySelectorAll('h1')).toHaveLength(1);
+    expect(welcome.querySelector('h1')?.textContent?.trim()).toBe(
+      `What should ${AGENT.displayName} do?`,
+    );
+    expect(welcome.querySelector('.ib-chat-avatar')).not.toBeNull();
+    // The prompts are under the composer, up to three, as buttons after a "Try" lead, and an agent
+    // that suggests none shows none.
     const group = await findByRole('group', { name: 'Example prompts' });
     expect(
       [...group.querySelectorAll('button')].map((button) => button.textContent?.trim()),
     ).toEqual(['Say hello', 'Plan the week', 'Summarise it']);
-    // The other agents are one row of buttons to choose from.
-    const others = await findByRole('group', { name: 'Or start with another agent' });
+    expect(group.textContent).toMatch(/^Try/);
+    // The other agents are one row of buttons to choose from, each with its avatar, and the
+    // selected agent is not repeated.
+    const others = await findByRole('group', { name: 'Or chat with' });
     expect(
-      [...others.querySelectorAll('button')].map((button) => button.textContent?.trim()),
-    ).toEqual(['Researcher', 'Internal']);
+      [...others.querySelectorAll('button')].map((button) =>
+        button.textContent?.replaceAll(/\s+/g, ' ').trim(),
+      ),
+    ).toEqual(['R Researcher', 'I Internal']);
+    expect(others.querySelectorAll('button .ib-chat-avatar')).toHaveLength(2);
     expect(queryByRole('group', { name: 'Example prompts' })).not.toBeNull();
+    // The page has no header of its own to say "New chat" a second time.
+    expect(queryByRole('heading', { level: 1, name: 'New chat' })).toBeNull();
   });
 
-  test('greets only the agent the address names, with its prompts', async () => {
+  test('greets the agent the address names, with its prompts, and still offers the other agents', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({
         agents: [AGENT, { ...RESEARCHER, examples: ['Find the latest filing'] }],
@@ -197,17 +208,25 @@ describe('a new chat', () => {
     }).restore;
     landAt('/chats/new?agent=researcher');
 
-    const { findByTestId, queryByRole } = mount({
+    const { findByTestId, findByRole, queryByRole } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'researcher',
-      agentChosen: true,
       isNew: true,
     });
 
     const welcome = await findByTestId('new-chat-welcome');
     await waitFor(() => expect(welcome.textContent).toContain('Researcher'));
-    expect(welcome.textContent).toContain('Find the latest filing');
+    expect(await findByRole('group', { name: 'Example prompts' })).toHaveProperty(
+      'textContent',
+      expect.stringContaining('Find the latest filing'),
+    );
+    const others = await findByRole('group', { name: 'Or chat with' });
+    expect(
+      [...others.querySelectorAll('button')].map((button) =>
+        button.textContent?.replaceAll(/\s+/g, ' ').trim(),
+      ),
+    ).toEqual(['A Assistant']);
     expect(queryByRole('group', { name: 'Or start with another agent' })).toBeNull();
   });
 
@@ -325,7 +344,7 @@ describe('a new chat', () => {
     expect(container.querySelector('textarea')?.value).toBe('');
   });
 
-  test('names an agent whose display name is its identifier once, in monospace, in the greeting', async () => {
+  test('names an agent whose display name is its identifier in words, in the greeting and in the row', async () => {
     const echo = { ...AGENT, name: 'echo', displayName: 'echo', description: null };
     const runner = {
       ...AGENT,
@@ -335,7 +354,7 @@ describe('a new chat', () => {
     };
     restore = bureau({ 'bureau.agents.list': () => ({ agents: [echo, runner] }) }).restore;
     landAt('/chats/new');
-    const { findByTestId } = mount({
+    const { findByTestId, container } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'echo',
@@ -350,11 +369,17 @@ describe('a new chat', () => {
           .querySelector('.ib-new-chat__greeting')
           ?.textContent?.replaceAll(/\s+/g, ' ')
           .trim(),
-      ).toBe('Chat with echo'),
+      ).toBe('What should Echo do?'),
     );
-    expect(welcome.querySelectorAll('.ib-new-chat__greeting code.ib-identifier')).toHaveLength(1);
-    expect(welcome.querySelector('[data-agent="tool-runner"]')?.textContent?.trim()).toBe(
-      'tool-runner',
+    // The identifier is not the title: the greeting holds no code, and the row says "Tool runner".
+    expect(welcome.querySelectorAll('code')).toHaveLength(0);
+    await waitFor(() =>
+      expect(
+        container
+          .querySelector('[data-testid="other-agents"] [data-agent="tool-runner"]')
+          ?.textContent?.replaceAll(/\s+/g, ' ')
+          .trim(),
+      ).toBe('TR Tool runner'),
     );
   });
 

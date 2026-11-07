@@ -50,8 +50,10 @@ describe('the More menu', () => {
       },
     } as never);
 
-    await view.findByTestId('chat-header');
+    // The page holds no header of its own, so it has nowhere to offer the menu: wait for the greeting.
+    await view.findByTestId('new-chat-welcome');
 
+    expect(view.queryByTestId('chat-header')).toBeNull();
     expect(view.queryByRole('button', { name: MORE.label })).toBeNull();
   });
 });

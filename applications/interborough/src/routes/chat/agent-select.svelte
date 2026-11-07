@@ -9,6 +9,7 @@
   import { Avatar, Select } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
   import { agentAvatarName, agentTone } from './session-groups.ts';
 
@@ -27,7 +28,7 @@
   const options = $derived(
     agents.map((agent) => ({
       value: agent.name,
-      label: agent.displayName,
+      label: agentLabel(agent.name, agents),
       ...(agent.description === null ? {} : { description: agent.description }),
       ...(providerConnected === false && agent.media !== null
         ? { note: CHAT_COPY.agentSelect.needsProvider }

@@ -60,7 +60,8 @@ const SPECIFICATIONS = {
  * (`chat-page.spec.ts`), Chat on a phone and a tablet and with no provider (`chat-responsive.spec.ts`), and a chat of
  * thirty tool calls (`chat-tool-call-turn.spec.ts`), and the chat states of the ChatStates board: ended by
  * a restart, no provider, held by a disabled plugin, failed partway, not found and ended on a tool call
- * (`chat-states.spec.ts`).
+ * (`chat-states.spec.ts`), and New chat with Assistant, with no provider and once Assistant is
+ * chosen (`chat-new.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/showcase.spec.ts',
@@ -74,6 +75,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-responsive.spec.ts',
   'tests/e2e/chat-tool-call-turn.spec.ts',
   'tests/e2e/chat-states.spec.ts',
+  'tests/e2e/chat-new.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

@@ -15,7 +15,6 @@ import {
   releaseBarrier,
   runToEnd,
 } from './chat-support.ts';
-import { E2E_DEFAULT_AGENT } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const BARRIER = 'barrier';
@@ -487,18 +486,24 @@ for (const width of [375, 1280] as const) {
 
       const welcome = page.getByTestId('new-chat-welcome');
       await expect(welcome).toBeVisible();
-      await expect(welcome.locator('.ib-new-chat__greeting')).toContainText('demo:tool-runner');
-      await expect(welcome.locator('.ib-new-chat__greeting code')).toHaveCount(1);
+      await expect(welcome.getByRole('heading', { level: 1 })).toHaveText(
+        'What should Tool runner do?',
+      );
       await expect(welcome).toContainText(
         'Looks an order up, then asks for approval to refund it.',
       );
-      // The greeting is a line, not a second title: the chat's own title is the page's one heading.
-      await expect(welcome.getByRole('heading')).toHaveCount(0);
-      // `?agent=` is the person's own choice, so the other agents are not offered.
-      await expect(page.getByRole('group', { name: 'Or start with another agent' })).toHaveCount(0);
+      // The greeting is the page's one title: there is no header over it.
+      await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+      // The other agents are offered whichever agent is chosen, and the chosen one is not repeated.
+      const others = page.getByRole('group', { name: 'Or chat with' });
+      await expect(others).toBeVisible();
+      await expect(others.getByRole('button', { name: /Tool runner/ })).toHaveCount(0);
       await checkA11y(`a new chat greeting the tool-runner at ${width}px`);
 
-      await welcome.getByRole('button', { name: 'Refund order 1234' }).click();
+      await page
+        .getByTestId('agent-prompts')
+        .getByRole('button', { name: 'Refund order 1234' })
+        .click();
 
       await expect(composer(page)).toHaveValue('Refund order 1234');
       await expect(composer(page)).toBeFocused();
@@ -526,7 +531,7 @@ for (const width of [375, 1280] as const) {
       });
       await page.goto('/chats/new?agent=demo:tool-runner');
 
-      const button = page.getByTestId('new-chat-welcome').getByRole('button', { name: prompt });
+      const button = page.getByTestId('agent-prompts').getByRole('button', { name: prompt });
       await expect(button).toBeVisible();
       const outlet = page.locator('main.weft-shell-outlet');
       const outletBox = await outlet.boundingBox();
@@ -549,25 +554,29 @@ for (const width of [375, 1280] as const) {
       ).toBe(true);
     });
 
-    test('offers the other agents as one row until one is chosen, and choosing one selects it', async ({
+    test('offers the other agents as one row, and choosing one selects it', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/chats/new');
       const welcome = page.getByTestId('new-chat-welcome');
-      await expect(welcome).toContainText(E2E_DEFAULT_AGENT);
-      const others = page.getByRole('group', { name: 'Or start with another agent' });
+      await expect(welcome.getByRole('heading', { level: 1 })).toContainText(/What should .* do\?/);
+      const others = page.getByRole('group', { name: 'Or chat with' });
       await expect(others).toBeVisible();
       await checkA11y(`a new chat with the agents to choose from at ${width}px`);
 
-      await others.getByRole('button', { name: /request-human-input/ }).click();
+      await others.getByRole('button', { name: /request human input/i }).click();
 
       await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Arequest-human-input$/);
-      await expect(welcome).toContainText('demo:request-human-input');
+      await expect(welcome.getByRole('heading', { level: 1 })).toHaveText(
+        'What should Request human input do?',
+      );
       await expect(page.getByTestId('agent-prompts').getByRole('button')).toHaveText(
         'Ship the release',
       );
-      await expect(others).toHaveCount(0);
+      // The row stays, and now lists the agent that was left behind instead of the chosen one.
+      await expect(others).toBeVisible();
+      await expect(others.getByRole('button', { name: /request human input/i })).toHaveCount(0);
     });
   });
 }

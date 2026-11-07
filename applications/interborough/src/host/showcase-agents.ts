@@ -35,14 +35,19 @@ import { z } from 'zod';
 
 import type { ExtraAgents } from './host.ts';
 
-/** The identifiers of the six built-in agents, in the order the sample world lists them. */
+/**
+ * The identifiers of the six built-in agents, in the order the sample world lists them, which is
+ * the order a new chat offers them in. Workflow author is built from the Bureau's own tools, which
+ * exist only once the Bureau does, so the Bureau lists it after the agents built up front; Echo and
+ * Model switcher are registered the same way, after it, to keep this order.
+ */
 export const SHOWCASE_AGENT_IDENTIFIERS = [
   'assistant',
-  'echo',
   'tool-runner',
   'request-human-input',
-  'model-switcher',
   'workflow-author',
+  'echo',
+  'model-switcher',
 ] as const;
 
 /** The identifier of one of the six built-in agents of {@link SHOWCASE_AGENT_IDENTIFIERS}. */
@@ -607,13 +612,6 @@ export function showcaseBuiltInAgents(
         generate: scripts.assistant,
         stopWhen: stopWhen.noToolCalls(),
       }),
-      echo: createAgent({
-        name: 'echo',
-        description: 'Repeats the last message it was sent.',
-        examples: ['Hello echo, say this back'],
-        generate: scripts.echo,
-        stopWhen: stopWhen.noToolCalls(),
-      }),
       'tool-runner': createAgent({
         name: 'tool-runner',
         description: 'Looks an order up, then asks for approval to refund it.',
@@ -631,17 +629,27 @@ export function showcaseBuiltInAgents(
         // reply, which has no tool call.
         stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],
       }),
-      'model-switcher': createAgent({
-        name: 'model-switcher',
-        description: 'Names the model it answers as, and can be switched between two.',
-        examples: ['Which model are you?'],
-        generate: scripts['model-switcher'],
-        allowedCandidates: SHOWCASE_MODEL_SWITCHER_MODELS,
-        stopWhen: stopWhen.noToolCalls(),
-      }),
     },
+    // Listed after the agents above, in this order (`SHOWCASE_AGENT_IDENTIFIERS`).
     withBureauTools: {
       'workflow-author': (tools) => showcaseWorkflowAuthor(tools, scripts['workflow-author']),
+      echo: () =>
+        createAgent({
+          name: 'echo',
+          description: 'Repeats the last message it was sent.',
+          examples: ['Hello echo, say this back'],
+          generate: scripts.echo,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      'model-switcher': () =>
+        createAgent({
+          name: 'model-switcher',
+          description: 'Names the model it answers as, and can be switched between two.',
+          examples: ['Which model are you?'],
+          generate: scripts['model-switcher'],
+          allowedCandidates: SHOWCASE_MODEL_SWITCHER_MODELS,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
     },
     validators: createShowcaseValidators(pacing),
   };

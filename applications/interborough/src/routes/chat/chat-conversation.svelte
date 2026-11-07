@@ -31,10 +31,11 @@
    * list: the Bureau would start it again if it were sent to.
    *
    * A new chat (`isNew`, at `/chats/new`) has no session yet. The client names the thread, the agent
-   * is chosen from the pill in the composer, the transcript's place shows a greeting, the prompts
-   * the agent suggests and the other agents (`new-chat-welcome.svelte`; a prompt fills the composer
-   * and sends nothing), and the first message
-   * starts the run. Home's Start a chat hands it a message, which is sent as that first message
+   * is chosen from the pill in the composer, the transcript's place shows the agent's avatar and a
+   * greeting that is the page's only title (`new-chat-welcome.svelte`), the composer sits under it
+   * in the middle of the page (`composerPlacement="centered"`), under the composer are the prompts
+   * the agent suggests and the other agents (`new-chat-choices.svelte`; a prompt fills the composer
+   * and sends nothing), and the first message starts the run. Home's Start a chat hands it a message, which is sent as that first message
    * (`new-chat-handoff.ts`). When the run has started
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
@@ -140,6 +141,7 @@
   import { composerStatusOf } from './composer-state.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
+  import NewChatChoices from './new-chat-choices.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
@@ -161,8 +163,6 @@
     agentName: string;
     /** Whether this is a chat that has no session until its first run starts. */
     isNew?: boolean;
-    /** For a new chat: whether the address names the agent, rather than the default being used. */
-    agentChosen?: boolean;
     /**
      * For a new chat started from Workflows: no agent has the Create workflow tool, so the
      * composer says so in its blocked row, with the way to Agents, and keeps what was typed.
@@ -175,7 +175,6 @@
     title,
     agentName,
     isNew = false,
-    agentChosen = false,
     noWorkflowAgent = false,
   }: ChatConversationProps = $props();
 
@@ -183,8 +182,6 @@
   // The agent is chosen until the run starts, and fixed once the session exists.
   let agent = $state(untrack(() => agentName));
   let choosing = $state(untrack(() => isNew));
-  // Whether the person has picked the agent: the address named it, or they chose one since.
-  let chosen = $state(untrack(() => agentChosen));
   let chat = $state<ReturnType<typeof Chat> | undefined>();
 
   const connection = getConnection();
@@ -645,7 +642,6 @@
 
   function chooseAgent(value: string): void {
     agent = value;
-    chosen = true;
     router.navigate(`/chats/new?agent=${encodeURIComponent(value)}`, { replace: true });
   }
 
@@ -1382,9 +1378,8 @@
     bind:this={route}
   >
     {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
-    {#if choosing}
-      <PageHeader data-testid="chat-header" title={markdownTitle} headingLevel={1} />
-    {:else}
+    <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
+    {#if !choosing}
       <PageHeader
         data-testid="chat-header"
         title={markdownTitle}
@@ -1476,6 +1471,8 @@
           : CHAT_COPY.composer.placeholder(agentShown)}
         {composerStatus}
         composerHeader={choosing ? newChatHeader : undefined}
+        composerFooter={choosing ? newChatChoices : undefined}
+        composerPlacement={choosing ? 'centered' : 'docked'}
         composerFormattingToolbar
         composerAnswering={answering}
         streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
@@ -1525,13 +1522,7 @@
         {/snippet}
         {#snippet empty()}
           {#if choosing}
-            <NewChatWelcome
-              agents={agents.data ?? []}
-              selected={agent}
-              {chosen}
-              onChoose={chooseAgent}
-              onExample={fillComposer}
-            />
+            <NewChatWelcome agents={agents.data ?? []} selected={agent} />
           {:else}
             <EmptyState
               kind="first-use"
@@ -1761,6 +1752,17 @@
         onApplied={(value) => noted('toolCall', SETTINGS.permission, value)}
         draft={choosing}
         onDraft={(value) => (draftPermission = value)}
+      />
+    {/snippet}
+
+    <!-- The prompts and the other agents to chat with, under a new chat's composer. -->
+    {#snippet newChatChoices()}
+      <NewChatChoices
+        agents={agents.data ?? []}
+        selected={agent}
+        blocked={composerStatus?.kind === 'blocked'}
+        onChoose={chooseAgent}
+        onExample={fillComposer}
       />
     {/snippet}
 

@@ -2869,10 +2869,13 @@ export const CHAT_COPY = {
   },
   /** What a new chat shows where its transcript will be. */
   newChatWelcome: {
-    /** Said before the name of the agent the chat is with. */
-    greeting: 'Chat with',
+    /** The page's one title: asks what the agent the chat is with should do, by the name a person reads. */
+    greeting: (agentName: string): string => `What should ${agentName} do?`,
+    /** The lead of the row of the agent's example prompts, and the name of that group. */
+    promptsLead: 'Try',
     promptsLabel: 'Example prompts',
-    otherAgents: 'Or start with another agent',
+    /** The lead of the row of the other agents to start with, and the name of that group. */
+    otherAgents: 'Or chat with',
     chooseAgent: 'Choose an agent to start with',
   },
   /** The chat list beside the open chat. */

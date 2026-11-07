@@ -20,6 +20,18 @@ test.afterEach(async ({ request }) => {
 });
 const transcript = (page: Page) => page.getByRole('region', { name: 'Chat conversation' });
 
+/** Opens the chat's details from the breadcrumb and checks the identifier of the agent it names, then closes them. */
+async function expectAgent(page: Page, title: string, identifier: string): Promise<void> {
+  await page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('button', { name: title })
+    .click();
+  await expect(
+    page.getByTestId('chat-details').locator('code', { hasText: new RegExp(`^${identifier}$`) }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+}
+
 test.describe('a new chat', () => {
   test('is built around the composer: the agent pill is in the composer, and the header holds no agent list', async ({
     page,
@@ -28,7 +40,8 @@ test.describe('a new chat', () => {
 
     const pill = page.getByRole('combobox', { name: 'Agent' });
     await expect(pill).toBeVisible();
-    await expect(pill).toContainText(E2E_DEFAULT_AGENT);
+    // The pill names the agent in words ("Barrier"), not by its identifier.
+    await expect(pill).toContainText(new RegExp(E2E_DEFAULT_AGENT, 'i'));
     // The pill is the top row of the composer's own bordered surface, above its text, and not in
     // the header above the page.
     expect(await pill.evaluate((element) => element.closest('header') === null)).toBe(true);
@@ -38,11 +51,14 @@ test.describe('a new chat', () => {
     const composerBox = await composer(page).boundingBox();
     const pillBox = await pill.boundingBox();
     expect(pillBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(composerBox?.y ?? 0);
-    // One agent control, no agent card, no second title.
+    // One agent control, no agent card, and the greeting is the one title: no header over it.
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(1);
     await expect(page.getByTestId('agent-card')).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-    await expect(page.getByTestId('new-chat-welcome').getByRole('heading')).toHaveCount(0);
+    await expect(
+      page.getByTestId('new-chat-welcome').getByRole('heading', { level: 1 }),
+    ).toHaveCount(1);
+    await expect(page.getByTestId('chat-header')).toHaveCount(0);
   });
 
   test('lists no row of its own, and becomes the chat without a reload', async ({ page }) => {
@@ -111,12 +127,12 @@ test.describe('a new chat', () => {
     await page.setViewportSize({ width: 600, height: 800 });
     await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
     await expect(transcript(page)).toContainText('A chat to resize');
-    await expect(page.locator('.weft-chat-header__agent')).toHaveText('demo:assistant');
+    await expectAgent(page, 'A chat to resize', 'demo:assistant');
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
     await expect(transcript(page)).toContainText('A chat to resize');
-    await expect(page.locator('.weft-chat-header__agent')).toHaveText('demo:assistant');
+    await expectAgent(page, 'A chat to resize', 'demo:assistant');
     expect(page.url()).toBe(address);
     await expect(page.getByTestId('new-chat-welcome')).toHaveCount(0);
   });
@@ -165,7 +181,11 @@ test.describe('the chat list beside the open chat', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('A chat on a phone');
     await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Back' }).click();
+    // On a phone the breadcrumb's "Chat" is the way back to the list.
+    await page
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      .getByRole('link', { name: 'Chat' })
+      .click();
 
     await expect(page).toHaveURL(/\/chats$/);
     await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();

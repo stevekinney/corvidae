@@ -214,12 +214,14 @@ function todayLabel(now: number, zone: string, wide: boolean): string {
 
 /**
  * Which of eight colours an agent's avatar takes. The same name always gives the same colour, so an
- * agent keeps its colour across lists and reloads; the sum of the name's code units spreads the
- * names a host has well enough, and carries no meaning.
+ * agent keeps its colour across lists and reloads; the colour carries no meaning. The seed and the
+ * multiplier were picked so that the six built-in agents of the sample world, which a new chat
+ * draws side by side, each get a colour of their own: Assistant blue, Tool runner green, Request
+ * human input orange, Workflow author teal, Echo violet, and Model switcher olive.
  */
 export function agentTone(agentName: string): number {
-  let total = 0;
-  for (const character of agentName) total = (total * 31 + (character.codePointAt(0) ?? 0)) % 8191;
+  let total = 302;
+  for (const character of agentName) total = (total * 27 + (character.codePointAt(0) ?? 0)) % 8191;
   return total % 8;
 }
 
