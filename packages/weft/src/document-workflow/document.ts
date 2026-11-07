@@ -85,7 +85,6 @@ export type DocumentActivityDefinition = Omit<
   /** Runs the step. */
   execute: DocumentActivityHandler;
 };
-
 /** What a host registers under a handler key: a bare handler, or a definition with settings. */
 export type DocumentActivity = DocumentActivityHandler | DocumentActivityDefinition;
 
@@ -294,6 +293,7 @@ export class WorkflowDocumentBranchError extends Error {
 }
 /** Thrown when a map step cannot iterate its previous result. */
 export class WorkflowDocumentMapError extends Error {
+  /** Why the map source could not be iterated. */
   readonly code: 'not-array' | 'too-many';
 
   constructor(code: 'not-array' | 'too-many', message: string) {
