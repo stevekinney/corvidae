@@ -533,6 +533,23 @@ describe('CLI authenticated workspace authority', () => {
     expect(json.exitCode).toBe(3);
     expect(json.stderr).toBe('reflected x-api-key=[redacted]');
     expect(json.stderr).not.toContain('alice-secret');
+    const streamed = await executeCli(
+      ['chat', '--agent', 'demo', '--message', 'hello', '--connection', 'remote'],
+      {
+        ...fixture,
+        environment: { TOKEN: 'alice-secret' },
+        fetch: async (input, init) => {
+          if (
+            new URL(input instanceof Request ? input.url : input).pathname === '/api/v1/principal'
+          )
+            return fixture.fetch(input, init);
+          return Response.json({ message: 'reflected x-api-key=alice-secret' }, { status: 401 });
+        },
+      },
+    );
+    expect(streamed.exitCode).toBe(3);
+    expect(streamed.stderr).toBe('reflected x-api-key=[redacted]');
+    expect(streamed.stderr).not.toContain('alice-secret');
 
     await executeCli(
       [

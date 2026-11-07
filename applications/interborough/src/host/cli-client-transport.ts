@@ -157,7 +157,7 @@ export async function requestBytes(
       try {
         const parsedBody: unknown = JSON.parse(body);
         if (isRecord(parsedBody) && typeof parsedBody['message'] === 'string')
-          message = parsedBody['message'];
+          message = redactCredentials(target, parsedBody['message']);
       } catch {
         // Keep the status when a failed binary response is not JSON.
       }
@@ -215,7 +215,7 @@ export async function stream(
       try {
         const parsedBody: unknown = JSON.parse(body);
         if (isRecord(parsedBody) && typeof parsedBody['message'] === 'string')
-          message = parsedBody['message'];
+          message = redactCredentials(target, parsedBody['message']);
       } catch {
         // Keep the status when a failed stream does not return JSON.
       }
