@@ -872,6 +872,7 @@ describe('workflows-validate and workflows-catalog', () => {
       'activity',
       'sleep',
       'await-signal',
+      'branch',
     ]);
     expect(catalog.activities.map(({ id }) => id)).toContain('agent');
     expect(catalog.triggerKinds.map(({ id }) => id)).toEqual(['schedule', 'signal', 'manual']);
