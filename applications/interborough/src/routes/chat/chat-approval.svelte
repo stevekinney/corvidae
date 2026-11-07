@@ -41,6 +41,11 @@
     unavailableReason?: string | undefined;
     /** Said under a waiting approval while no provider is connected, such as "Tool runner continues once a provider is connected.". */
     providerNote?: string | undefined;
+    /**
+     * Whether the tool is set to Always, which asks on every call: "Allow for the rest of this chat"
+     * is then not offered, because the grant would change nothing (decision 86).
+     */
+    alwaysAsks?: boolean | undefined;
     /** The answer on its way, which holds both buttons until it lands. */
     resolving?: 'approve' | 'deny' | undefined;
     /** Sends the person's decision, the note and the grant for the rest of the chat included. */
@@ -57,6 +62,7 @@
     unreachable,
     unavailableReason,
     providerNote,
+    alwaysAsks,
     resolving,
     onResolve,
   }: ChatApprovalProps = $props();
@@ -101,7 +107,7 @@
   {...decision === undefined
     ? unavailableReason === undefined
       ? {
-          rememberScope: CHAT_COPY.approval.rememberScope,
+          ...(alwaysAsks === true ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }),
           ...(unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
           ...(resolving === undefined ? {} : { resolving }),
           onResolve,

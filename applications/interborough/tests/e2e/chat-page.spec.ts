@@ -76,6 +76,9 @@ test.describe('an open chat on the sample world', () => {
     // Nothing was answered: the approval is still waiting, with both choices enabled.
     await expect(row.getByRole('button', { name: 'Approve' })).toBeEnabled();
     await expect(row.getByRole('button', { name: 'Deny' })).toBeEnabled();
+    // Issue refund is set to Always, which asks on every call, so allowing it for the rest of the
+    // chat is not offered (decision 86).
+    await expect(row.getByRole('checkbox')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'approval focused',

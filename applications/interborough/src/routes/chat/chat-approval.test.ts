@@ -23,7 +23,11 @@ function entry(tier: ToolCallEntry['tier']): ToolCallEntry {
   };
 }
 
-function mount(tier: ToolCallEntry['tier'], onResolve: (resolution: unknown) => void = () => {}) {
+function mount(
+  tier: ToolCallEntry['tier'],
+  onResolve: (resolution: unknown) => void = () => {},
+  alwaysAsks?: boolean,
+) {
   return render(ChatApproval, {
     props: {
       id: 'approval-1',
@@ -32,6 +36,7 @@ function mount(tier: ToolCallEntry['tier'], onResolve: (resolution: unknown) => 
       source: 'Tool runner',
       context: {},
       unreachable: false,
+      alwaysAsks,
       onResolve,
     },
   } as never);
@@ -46,6 +51,16 @@ describe('a waiting approval', () => {
     expect(row?.textContent).toContain('Look up order 4471?');
     expect(getByRole('button', { name: 'Deny' })).not.toBeNull();
     expect(getByRole('button', { name: /^Approve/ })).not.toBeNull();
+  });
+
+  test('offers Allow for the rest of this chat, except for a tool set to Always, which asks every time (06m)', () => {
+    const asked = mount('dangerous');
+    expect(asked.queryByRole('checkbox', { name: /for the rest of this chat/ })).not.toBeNull();
+    cleanup();
+
+    const always = mount('dangerous', () => {}, true);
+    expect(always.queryByRole('checkbox')).toBeNull();
+    expect(always.getByRole('button', { name: /^Approve/ })).not.toBeNull();
   });
 
   test('takes its risk from what the tool may do', () => {

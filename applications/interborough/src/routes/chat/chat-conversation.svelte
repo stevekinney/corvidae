@@ -104,7 +104,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
   import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
-  import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
+  import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
@@ -1009,6 +1009,10 @@
         // When the Bureau's review says so; else when the thread recorded the ask, which is the same
         // moment for an approval that was parked on a call.
         requestedAt: reviewed?.requestedAt ?? askedAt(message.createdAt),
+        // A tool set to Always asks on every call, so allowing it for the chat is not offered.
+        alwaysAsks: reasonSaysAlways(
+          reviewed?.kind === 'tool-approval' ? reviewed.approval.reason : reason,
+        ),
         question: approvalQuestion({
           toolName: toolName ?? 'a tool',
           arguments: call?.arguments,
@@ -1722,6 +1726,7 @@
                       ? CHAT_COPY.approval.continuesOnProvider(agentShown)
                       : undefined}
                     requestedAt={asked?.requestedAt}
+                    alwaysAsks={asked?.alwaysAsks}
                     context={decisionContext}
                     unreachable={connection.unreachable}
                     resolving={deciding || session.streaming

@@ -53,6 +53,16 @@ export function declaredSummary(
 }
 
 /**
+ * Whether the policy's reason for an approval says the tool is set to Always, which asks on every
+ * call: "Tool "issue-refund" (dangerous tier) requires approval (mode: always)." That sentence is
+ * where the Bureau says the mode today, so reading it is how a page learns that allowing the tool
+ * for the rest of the chat would change nothing (the grant never loosens an Always tool).
+ */
+export function reasonSaysAlways(reason: string | undefined): boolean {
+  return reason !== undefined && /\(mode: always\)/.test(reason);
+}
+
+/**
  * The question an approval asks: the tool's own sentence when it wrote one, else the tool and its
  * arguments. Always ends in a question mark.
  */
