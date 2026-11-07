@@ -14,6 +14,7 @@ import type { ToolCallRailCall } from '@lostgradient/cinder';
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
+import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
 import { decidedLine, type DecisionContext } from './approval-decision-words.ts';
 import { opensTurn } from './event-notes.ts';
 
@@ -47,6 +48,8 @@ export type ToolCallEntry = {
   readonly state: ToolCallState;
   /** One line about the answer, empty while there is none. */
   readonly summary: string;
+  /** Where the answer goes, when it is a page: the workflow a Create workflow call made. */
+  readonly resultHref?: string | undefined;
   /** The answer, for the details. */
   readonly result: unknown;
   /**
@@ -301,11 +304,58 @@ export function keyInput(args: unknown): string {
   return '';
 }
 
+/**
+ * What the catalog says of each tool, by the name a call carries. The catalog names a namespaced
+ * tool `bureau:workflows-create`, and a model calls it by the form a provider takes, `bureau__workflows-create`,
+ * so a tool is listed under both.
+ */
+export function toolInfoByName(
+  tools: readonly {
+    readonly name: string;
+    readonly title: string | null;
+    readonly tier: ToolInfo['tier'];
+  }[],
+): ReadonlyMap<string, ToolInfo> {
+  const info = new Map<string, ToolInfo>();
+  for (const tool of tools) {
+    const entry = { title: tool.title, tier: tool.tier };
+    info.set(tool.name, entry);
+    info.set(tool.name.replaceAll(':', '__'), entry);
+  }
+  return info;
+}
+
 /** A tool's identifier as a person reads it when the catalog gives no title: "lookup-order" is "Lookup order". */
 export function toolDisplayName(identifier: string, title?: string | null): string {
   if (title !== undefined && title !== null && title.trim() !== '') return title;
   const words = identifier.replaceAll(/[-_]+/g, ' ').trim();
   return words === '' ? identifier : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+/** The Bureau's tool that creates a workflow, as a call names it (`bureau:workflows-create` in the catalog). */
+const CREATE_WORKFLOW_CALL = 'bureau__workflows-create';
+
+/**
+ * The workflow a finished Create workflow call made: what it was called, which is what the row
+ * says came back, and the address of its page. A call that did not create one (it was refused, or
+ * the file already existed) points nowhere.
+ */
+export function createdWorkflow(
+  name: string,
+  args: unknown,
+  result: unknown,
+): { readonly title: string; readonly href: string } | undefined {
+  if (name !== CREATE_WORKFLOW_CALL || typeof result !== 'object' || result === null) {
+    return undefined;
+  }
+  const { status, id } = result as { status?: unknown; id?: unknown };
+  if (status !== 'ok' || typeof id !== 'string' || id === '') return undefined;
+  const called =
+    typeof args === 'object' && args !== null ? (args as { name?: unknown }).name : undefined;
+  return {
+    title: typeof called === 'string' && called.trim() !== '' ? called.trim() : id,
+    href: workflowTypePath(id),
+  };
 }
 
 function entryOf(
@@ -321,6 +371,10 @@ function entryOf(
   const info = tools.get(pair.call.name);
   const durationMilliseconds = rows === undefined ? undefined : durationOf(state, rows, timing);
   const decision = recordedDecision(rows?.result?.metadata);
+  const created =
+    state === 'done'
+      ? createdWorkflow(pair.call.name, pair.call.arguments, pair.result?.content)
+      : undefined;
   return {
     ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
     ...(decision === undefined ? {} : { decision }),
@@ -331,14 +385,17 @@ function entryOf(
     input: keyInput(pair.call.arguments),
     arguments: pair.call.arguments,
     state,
+    ...(created === undefined ? {} : { resultHref: created.href }),
     summary:
-      state === 'needs-you' || state === 'running' || state === 'interrupted'
-        ? ''
-        : state === 'denied'
-          ? (refusalReason(pair) ?? '')
-          : state === 'failed'
-            ? (failure ?? resultSummary(pair.result?.content))
-            : resultSummary(pair.result?.content),
+      created !== undefined
+        ? created.title
+        : state === 'needs-you' || state === 'running' || state === 'interrupted'
+          ? ''
+          : state === 'denied'
+            ? (refusalReason(pair) ?? '')
+            : state === 'failed'
+              ? (failure ?? resultSummary(pair.result?.content))
+              : resultSummary(pair.result?.content),
     result: pair.result?.content,
     ...(state === 'failed' && error !== undefined
       ? {
@@ -406,6 +463,16 @@ export function railCall(
         ...(entry.summary === '' ? {} : { result: entry.summary }),
       };
     case 'done':
+      // A call whose answer is a page keeps its answer on the row, as a link, so a person's
+      // approval of it is told in the approval under the row and not in place of the answer.
+      if (entry.resultHref !== undefined) {
+        return {
+          ...named,
+          status: entry.decision?.outcome === 'approved' ? 'approved' : 'done',
+          ...(entry.summary === '' ? {} : { result: entry.summary }),
+          resultHref: entry.resultHref,
+        };
+      }
       return decided !== undefined && entry.decision?.outcome === 'approved'
         ? { ...named, status: 'approved', decision: decided }
         : {

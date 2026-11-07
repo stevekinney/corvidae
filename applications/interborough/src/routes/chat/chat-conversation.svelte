@@ -46,6 +46,7 @@
   import {
     Alert,
     Button,
+    Chip,
     ConfirmDialog,
     EmptyState,
     PageHeader,
@@ -58,11 +59,12 @@
     Chat,
     ChatNote,
     ChatQuestion,
+    createConversationHistory,
     McpApp,
     resolveMessageNotes,
     type MessageNoteInfo,
   } from '@lostgradient/chat';
-  import { CircleHelp, GitBranch } from '@lucide/svelte';
+  import { CircleHelp, GitBranch, Workflow } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
@@ -95,6 +97,7 @@
   import { answerUndoMilliseconds } from '../../lib/answer-undo.ts';
   import { uploadAsset } from '../../lib/bureau-assets.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import { NEW_CHAT_FROM_WORKFLOWS } from '../../lib/new-chat-address.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { isRunning, listTasks } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -150,8 +153,8 @@
     formatCallDuration,
     railCall,
     toolGroups,
+    toolInfoByName,
     type ToolCallEntry,
-    type ToolInfo,
   } from './tool-activity.ts';
   import { failedStopNoteId, withEndedLine, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
@@ -164,10 +167,12 @@
     /** Whether this is a chat that has no session until its first run starts. */
     isNew?: boolean;
     /**
-     * For a new chat started from Workflows: no agent has the Create workflow tool, so the
-     * composer says so in its blocked row, with the way to Agents, and keeps what was typed.
+     * A new chat started from the Workflows page: a chip above the composer says so, the box holds
+     * the start of a request for the person to finish, and the agent is one that can create
+     * workflows. With no such agent the chat has none yet, the agent pill reads "Choose an agent",
+     * and the composer says no agent can create workflows, with the way to Agents.
      */
-    noWorkflowAgent?: boolean;
+    fromWorkflows?: boolean;
   }
 
   let {
@@ -175,10 +180,14 @@
     title,
     agentName,
     isNew = false,
-    noWorkflowAgent = false,
+    fromWorkflows = false,
   }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
+  // What a new chat shows while its first message is on its way: nothing yet. The message's row
+  // exists in the session as soon as it is sent, but the chat page opens only when the run has
+  // started, so until then the greeting stays and the box keeps what was typed.
+  const unstartedConversation = createConversationHistory({ id: untrack(() => sessionId) });
   // The agent is chosen until the run starts, and fixed once the session exists.
   let agent = $state(untrack(() => agentName));
   let choosing = $state(untrack(() => isNew));
@@ -193,9 +202,12 @@
     closed: () => gone,
     onNotFound: () => void context.refetch(),
     onGrantNotLoosened: (notice) => grantNotLoosened(notice),
+    discardUnstarted: () => choosing,
     onRunStarted: () => {
       if (!choosing) return;
       choosing = false;
+      // The box kept what was typed until the chat started (`clearComposerOnSubmit`).
+      chat?.clearInput();
       // The session exists now. Its address replaces the new chat's, so Back returns to where the
       // person came from, and this page stays mounted so the run carries on.
       router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
@@ -203,6 +215,9 @@
       void applyDraft();
     },
   });
+
+  // The first message of a new chat is on its way and the run has not begun.
+  const startingFirstMessage = $derived(choosing && session.streaming);
 
   const agents = createQuery(
     () => ({
@@ -367,13 +382,7 @@
     }),
     undefined,
   );
-  const toolInfo = $derived(
-    new Map<string, ToolInfo>(
-      (catalog.data?.tools ?? []).map(
-        (tool) => [tool.name, { title: tool.title, tier: tool.tier }] as const,
-      ),
-    ),
-  );
+  const toolInfo = $derived(toolInfoByName(catalog.data?.tools ?? []));
   const plugins = createQuery(
     () => ({
       queryKey: queryKeys.hostPlugins(),
@@ -456,7 +465,7 @@
         : undefined,
       ended: endedByRestart,
       noProvider,
-      noWorkflowAgent: choosing && noWorkflowAgent,
+      noWorkflowAgent: choosing && fromWorkflows && agent === '',
       agentsHref: router.href('/agents'),
       connectHref: router.href('/settings/models'),
       useAssistant:
@@ -467,7 +476,7 @@
       reconnectAttempt: session.reconnectAttempt,
       queuedFollowUps: session.queuedFollowUps,
       note: appliesNote,
-      working: session.streaming,
+      working: session.streaming && !choosing,
     }),
   );
 
@@ -641,8 +650,40 @@
   }
 
   function chooseAgent(value: string): void {
+    // The agent is fixed once the first message is on its way.
+    if (startingFirstMessage) return;
     agent = value;
-    router.navigate(`/chats/new?agent=${encodeURIComponent(value)}`, { replace: true });
+    const search = new URLSearchParams({ agent: value });
+    // The chip stays: the person came from Workflows whichever agent they take their text to.
+    if (fromWorkflows) search.set('from', NEW_CHAT_FROM_WORKFLOWS);
+    router.navigate(`/chats/new?${search.toString()}`, { replace: true });
+  }
+
+  // A chat started from Workflows holds the start of a request for the person to finish. It waits
+  // for a composer to put it in: a blocked row has no box, so with no provider (or no agent that can
+  // create workflows) it appears once there is one, and it never replaces what the person typed.
+  let prefill = $state<string | undefined>(
+    untrack(() => (isNew && fromWorkflows ? CHAT_COPY.newChatWelcome.workflowPrefill : undefined)),
+  );
+  $effect(() => {
+    const text = prefill;
+    const live = chat !== undefined && agent !== '' && composerStatus?.kind !== 'blocked';
+    if (text === undefined || !live) return;
+    untrack(() => void putPrefillInComposer(text));
+  });
+  /** Waits for the composer's box to be drawn, then fills it with `text` and leaves the caret after it. */
+  async function putPrefillInComposer(text: string): Promise<void> {
+    for (let frame = 0; frame < ARRIVAL_FRAMES; frame += 1) {
+      await tick();
+      if (prefill === undefined) return;
+      const box = chat?.getEditorElement();
+      if (box !== null && box !== undefined) {
+        prefill = undefined;
+        if (box.value === '') fillComposer(text);
+        return;
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
   }
 
   /**
@@ -1451,9 +1492,9 @@
       <Chat
         bind:this={chat}
         id={`chat-${sessionId}`}
-        conversation={shown}
+        conversation={choosing ? unstartedConversation : shown}
         adapter={session.chatAdapter}
-        streaming={session.streaming}
+        streaming={session.streaming && !choosing}
         surfaceMode="transparent"
         variant="transcript"
         notSent={connection.unreachable
@@ -1470,8 +1511,13 @@
             : CHAT_COPY.questionAnswerLabel
           : CHAT_COPY.composer.placeholder(agentShown)}
         {composerStatus}
-        composerHeader={choosing ? newChatHeader : undefined}
-        composerFooter={choosing ? newChatChoices : undefined}
+        composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
+        composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
+        composerFooter={choosing && !fromWorkflows && !startingFirstMessage
+          ? newChatChoices
+          : undefined}
+        composerStarting={startingFirstMessage ? CHAT_COPY.newChatWelcome.starting : undefined}
+        clearComposerOnSubmit={!choosing}
         composerPlacement={choosing ? 'centered' : 'docked'}
         composerFormattingToolbar
         composerAnswering={answering}
@@ -1522,7 +1568,11 @@
         {/snippet}
         {#snippet empty()}
           {#if choosing}
-            <NewChatWelcome agents={agents.data ?? []} selected={agent} />
+            <NewChatWelcome
+              agents={agents.data ?? []}
+              selected={agent === '' ? undefined : agent}
+              sentence={!fromWorkflows}
+            />
           {:else}
             <EmptyState
               kind="first-use"
@@ -1766,12 +1816,39 @@
       />
     {/snippet}
 
+    <!-- Above the composer of a chat started from Workflows: the chip that says so, and, when no
+       agent can create workflows, the pill to choose one with, which has no composer box to sit in. -->
+    {#snippet newChatLead()}
+      <div class="ib-new-chat-lead">
+        {#if fromWorkflows}
+          <Chip
+            class="ib-new-chat-lead__chip"
+            label={CHAT_COPY.newChatWelcome.fromWorkflows}
+            data-testid="new-chat-source"
+          >
+            {#snippet leadingIcon()}
+              <Workflow size={14} aria-hidden="true" />
+            {/snippet}
+          </Chip>
+        {/if}
+        {#if agent === ''}
+          <AgentSelect
+            agents={agents.data ?? []}
+            value={undefined}
+            providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
+            onChange={chooseAgent}
+          />
+        {/if}
+      </div>
+    {/snippet}
+
     <!-- The agent a new chat is with, at the top of the composer. -->
     {#snippet newChatHeader()}
       <AgentSelect
         agents={agents.data ?? []}
         value={agent}
         providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
+        disabled={startingFirstMessage}
         onChange={chooseAgent}
       />
     {/snippet}

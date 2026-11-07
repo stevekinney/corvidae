@@ -2,7 +2,8 @@
  * The chats of the ChatStates board that the sample world does not hold (COR-2016, design rows 19b
  * to 19p, 20f and 20h): a chat the server stopped mid-reply with what arrived kept, a Release
  * helper chat whose agent a disabled plugin holds back and whose approval waits, a reply that
- * failed partway, and a turn that ended on a tool call. Their records are what the Bureau stores
+ * failed partway, a turn that ended on a tool call, and the chat a person started from Workflows
+ * whose agent created the workflow (PageNewChat, "After the agent created it", rows 24k and 24m). Their records are what the Bureau stores
  * and answers for such a chat: the thread's AG-UI messages, each call's recorded start and end
  * under `toolTiming`, the `action_required` outcome an approval parks on, the failed task a reply
  * stopped partway leaves, and the context record that lists the chat. A capture answers the
@@ -36,6 +37,20 @@ export const ENDED_ON_TOOL_CALL_THREAD = 'sample-chat-refund-ended-on-tool-call'
 /** The title both refund chats carry, which is the sample world's refund chat's. */
 export const REFUND_TITLE = 'Please refund order 4471, it arrived damaged.';
 
+/** The thread identifier of the chat started from Workflows whose agent created a workflow (rows 24k, 24m). */
+export const WORKFLOW_CREATED_THREAD = 'sample-chat-workflow-created';
+
+/** What the person asked, which is the chat's title: the start the page filled in, finished. */
+export const WORKFLOW_CREATED_ASK =
+  'Help me build a workflow that sends me a summary of open reviews every morning.';
+
+/** What Workflow author said once the workflow existed. */
+export const WORKFLOW_CREATED_REPLY =
+  'I made a daily workflow that gathers open reviews and sends you the summary at 9:00 AM Central time. You can change the schedule or the steps from its page.';
+
+/** The identifier and name of the workflow the agent created. */
+export const CREATED_WORKFLOW = { id: 'morning-briefing', name: 'Morning briefing' } as const;
+
 /** The thread identifier of the Release helper chat held back by the disabled Demo plugin (frame c). */
 export const HELD_BY_PLUGIN_THREAD = 'sample-chat-release-notes-held';
 
@@ -62,8 +77,13 @@ const REPLY_MODEL = { provider: 'anthropic', model: 'claude-sonnet-5-5' } as con
 type Call = {
   readonly id: string;
   readonly tool: string;
-  readonly arguments: Record<string, string>;
-  readonly answer: string;
+  readonly arguments: Record<string, unknown>;
+  /** What the tool answered: text, or the fields of a result the way the Bureau's own tools answer. */
+  readonly answer: string | Record<string, unknown>;
+  /** When the person decided the approval the call waited on, when it waited on one. */
+  readonly decidedAt?: number;
+  /** What the approval asked, in the words the Bureau recorded with the decision. */
+  readonly asked?: string;
   readonly startedAt: number;
   readonly milliseconds: number;
 };
@@ -99,10 +119,20 @@ function stepOf(
       id: `${runId}:step:${String(step)}:result:${call.id}`,
       role: 'tool',
       toolCallId: call.id,
-      content: call.answer,
+      content: typeof call.answer === 'string' ? call.answer : JSON.stringify(call.answer),
       metadata: {
         toolTiming: { startedAt: iso(call.startedAt), endedAt: iso(ended) },
         ...stamp(ended),
+        ...(call.decidedAt === undefined
+          ? {}
+          : {
+              approvalDecision: {
+                decision: 'approve',
+                decidedBy: 'anonymous:local',
+                decidedAt: iso(call.decidedAt),
+                ...(call.asked === undefined ? {} : { asked: call.asked }),
+              },
+            }),
         'conversationalist:toolResult': { outcome: 'success', content: call.answer },
       },
     },
@@ -230,8 +260,42 @@ export function heldByPluginMessages(): Record<string, unknown>[] {
   ];
 }
 
+/** The Create workflow call of the chat started from Workflows: approved at 10:42 AM, answered in 0.8 seconds. */
+const CREATE_MORNING_BRIEFING: Call = {
+  id: 'states-create-morning-briefing',
+  tool: 'bureau__workflows-create',
+  arguments: {
+    name: CREATED_WORKFLOW.name,
+    trigger: { kind: 'schedule', spec: 'Every day at 9:00 AM Central time' },
+    steps: [{ kind: 'activity', handler: 'agent', input: { agent: 'assistant' } }],
+  },
+  answer: { status: 'ok', id: CREATED_WORKFLOW.id, hash: 'sha256:5b0c' },
+  startedAt: Date.parse('2026-11-02T16:42:10.000Z'),
+  milliseconds: 800,
+  decidedAt: Date.parse('2026-11-02T16:42:09.000Z'),
+  asked: `Create workflow “${CREATED_WORKFLOW.name}”?`,
+};
+
+/** The thread of the chat started from Workflows: the ask, the call that created the workflow, and the reply. */
+export function workflowCreatedMessages(): Record<string, unknown>[] {
+  return [
+    userMessage('user-states-workflow-created', WORKFLOW_CREATED_ASK, ASKED),
+    ...stepOf(0, 'run-states-workflow-created', CREATE_MORNING_BRIEFING),
+    {
+      id: 'run-states-workflow-created:step:1',
+      role: 'assistant',
+      content: WORKFLOW_CREATED_REPLY,
+      metadata: {
+        ...stamp(CREATE_MORNING_BRIEFING.startedAt + 1500),
+        'bureau:replyModel': REPLY_MODEL,
+      },
+    },
+  ];
+}
+
 /** Which of the board's chats a record is for. */
-export type StatesChat = 'failed-partway' | 'ended-on-tool-call' | 'held-by-plugin';
+export type StatesChat =
+  'failed-partway' | 'ended-on-tool-call' | 'held-by-plugin' | 'workflow-created';
 
 /** The thread identifier of `chat`. */
 export function threadOf(chat: StatesChat): string {
@@ -242,6 +306,8 @@ export function threadOf(chat: StatesChat): string {
       return ENDED_ON_TOOL_CALL_THREAD;
     case 'held-by-plugin':
       return HELD_BY_PLUGIN_THREAD;
+    case 'workflow-created':
+      return WORKFLOW_CREATED_THREAD;
   }
 }
 
@@ -254,6 +320,8 @@ export function messagesOf(chat: StatesChat): Record<string, unknown>[] {
       return endedOnToolCallMessages();
     case 'held-by-plugin':
       return heldByPluginMessages();
+    case 'workflow-created':
+      return workflowCreatedMessages();
   }
 }
 
@@ -266,6 +334,8 @@ function previewOf(chat: StatesChat): string {
       return FAILED_PARTWAY_REPLY;
     case 'ended-on-tool-call':
       return REFUND_TITLE;
+    case 'workflow-created':
+      return WORKFLOW_CREATED_REPLY;
   }
 }
 
@@ -297,12 +367,14 @@ export function contextOf(
 ): Record<string, unknown> {
   const messages = messagesOf(chat);
   const held = chat === 'held-by-plugin';
+  const created = chat === 'workflow-created';
   const startedAt = held ? Date.parse('2026-11-02T16:34:00.000Z') : ASKED;
   return {
     ...kind,
     id: threadOf(chat),
-    title: held ? HELD_BY_PLUGIN_TITLE : REFUND_TITLE,
+    title: held ? HELD_BY_PLUGIN_TITLE : created ? WORKFLOW_CREATED_ASK : REFUND_TITLE,
     ...(held ? { agentName: HELD_BY_PLUGIN_AGENT } : {}),
+    ...(created ? { agentName: 'workflow-author' } : {}),
     lastMessagePreview: previewOf(chat),
     messageCount: messages.length,
     createdAt: iso(startedAt),
@@ -358,6 +430,24 @@ export function tasksOf(chat: StatesChat): Record<string, unknown>[] {
           statusMessage: null,
           createdAt: iso(ASKED),
           updatedAt: iso(LOOKED_UP + 1400),
+        },
+      ];
+    case 'workflow-created':
+      return [
+        {
+          ...common,
+          id: 'run-states-workflow-created',
+          agentName: 'workflow-author',
+          origin: {
+            kind: 'chat',
+            contextId: WORKFLOW_CREATED_THREAD,
+            principal: 'anonymous:local',
+          },
+          status: 'completed',
+          finishReason: 'stop',
+          statusMessage: null,
+          createdAt: iso(ASKED),
+          updatedAt: iso(CREATE_MORNING_BRIEFING.startedAt + 2000),
         },
       ];
     case 'held-by-plugin':

@@ -66,7 +66,11 @@
     decision !== undefined &&
     (entry.state === 'needs-you' ||
       (entry.decision !== undefined &&
-        (entry.decision.outcome === 'denied' || decided.elsewhere?.has(entry.callId) === true)));
+        (entry.decision.outcome === 'denied' ||
+          decided.elsewhere?.has(entry.callId) === true ||
+          // A call whose row carries a link keeps its approval under it, since the row's
+          // words are the answer.
+          (entry.resultHref !== undefined && entry.decision.outcome === 'approved'))));
   const calls = $derived(
     entries.map((entry) => ({
       ...railCall(

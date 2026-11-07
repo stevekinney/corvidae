@@ -73,6 +73,12 @@
     // Submission behavior
     /** Whether to clear input after submit (default: true). Set to false for error recovery. */
     clearOnSubmit?: boolean;
+    /**
+     * Set while the host is starting what the message belongs to, such as the conversation its first
+     * message opens. Send reads this word with a spinner and is off, and there is no Stop, because
+     * nothing is running yet. The text and files stay in the box. Left out, Send is Send.
+     */
+    starting?: string | undefined;
     /** Keyboard gesture that submits the composer. Default `'enter'`. */
     submitOn?: 'enter' | 'modifier-enter' | 'enter-if-single-line';
 
@@ -264,6 +270,7 @@
     action,
     name = 'content',
     clearOnSubmit = true,
+    starting,
     submitOn = 'enter',
     allowAttachments = true,
     maxFileSize = 10 * 1024 * 1024, // 10MB
@@ -324,8 +331,8 @@
     syncBackdropScroll();
   });
 
-  const showSendingSpinner = $derived(sending && !allowFollowUp);
-  const sendBlocked = $derived(sending && !allowFollowUp);
+  const showSendingSpinner = $derived((sending && !allowFollowUp) || starting !== undefined);
+  const sendBlocked = $derived((sending && !allowFollowUp) || starting !== undefined);
   // Names the key the composer's `submitOn` actually listens for, so a
   // modifier-enter composer never announces a bare Enter.
   const followUpInstruction = $derived.by(() => {
@@ -363,6 +370,26 @@
     return () => observer.disconnect();
   });
   const controlsContext = $derived<ChatComposerControlsContext>({ folded });
+
+  // The formatting row opens when the box or the row itself takes focus and stays open while focus
+  // is anywhere in the composer. A control elsewhere in the composer (the host's agent select above
+  // the box, its Model and Permissions selects under it) taking focus does not open it: the row's
+  // height would move that control between the press and the release of a click, and the click would
+  // be lost, most of all in a composer centered in its surface.
+  let formattingOpen = $state(false);
+  function handleFocusIn(event: FocusEvent): void {
+    const target = event.target;
+    if (
+      target === editorElement ||
+      (target instanceof Element && target.closest('.chat-input-toolbar'))
+    ) {
+      formattingOpen = true;
+    }
+  }
+  function handleFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node) || !formElement?.contains(next)) formattingOpen = false;
+  }
 
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);
@@ -414,6 +441,7 @@
       !hasPendingAttachments,
   );
   const sendTooltipText = $derived.by(() => {
+    if (starting !== undefined) return starting;
     if (hasPendingAttachments) return 'Wait for attachments';
     if (showStopButton) return 'Stop generating';
     if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
@@ -432,7 +460,7 @@
   }
   // Stop takes Send's place while the chat is working. In follow-up mode Send comes back beside
   // Stop once a message is typed, so the message can still be sent without a keyboard.
-  const stopOffered = $derived(sending && onstop !== undefined);
+  const stopOffered = $derived(sending && onstop !== undefined && starting === undefined);
   const showStopButton = $derived(stopOffered && (!allowFollowUp || !canSubmit));
   const showSideStopButton = $derived(stopOffered && allowFollowUp && canSubmit);
   // When the run ends, Stop goes away: the side button unmounts, and the main button turns back into
@@ -451,15 +479,17 @@
     }
   });
 
-  const sendLabel = $derived(answering ? 'Answer' : 'Send');
+  const sendLabel = $derived(starting ?? (answering ? 'Answer' : 'Send'));
   const sendAccessibleName = $derived(
     showStopButton
       ? 'Stop generating'
-      : showSendingSpinner
-        ? 'Sending message'
-        : answering
-          ? 'Answer'
-          : 'Send message',
+      : starting !== undefined
+        ? starting
+        : showSendingSpinner
+          ? 'Sending message'
+          : answering
+            ? 'Answer'
+            : 'Send message',
   );
   const hintText = $derived.by(() => {
     if (hint === false) return undefined;
@@ -1225,6 +1255,9 @@
       method="POST"
       {action}
       onsubmit={handleSubmit}
+      data-formatting-open={formattingOpen || undefined}
+      onfocusin={handleFocusIn}
+      onfocusout={handleFocusOut}
       onpaste={handlePaste}
       ondrop={handleDrop}
       ondragenter={handleDragEnter}
@@ -1233,7 +1266,7 @@
       oncompositionstart={handleCompositionStart}
       oncompositionend={handleCompositionEnd}
       aria-label="Chat message composer"
-      aria-busy={sending || undefined}
+      aria-busy={sending || starting !== undefined || undefined}
       {...rest}
     >
       {#if isDragOver}
@@ -1773,7 +1806,7 @@
   }
 
   /* The formatting row: the toolbar at the left, the words of its shortcuts at the right. It is
-   * there only while the composer has focus, so an idle composer stays quiet. */
+   * there only while the composer has been focused at its box, so an idle composer stays quiet. */
   .chat-input-format {
     display: none;
     align-items: center;
@@ -1783,7 +1816,7 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
-  .chat-input:focus-within .chat-input-format {
+  .chat-input[data-formatting-open] .chat-input-format {
     display: flex;
   }
 

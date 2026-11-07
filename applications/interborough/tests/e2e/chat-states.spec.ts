@@ -11,28 +11,19 @@
  * `chat-page.spec.ts` (its frames e, g and m), so the two copies cannot drift. Each frame is captured
  * for the design review under its own name.
  */
-import type { APIRequestContext, Locator, Page, Route } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import {
   billingThreadWithPartialReply,
-  contextOf,
   ENDED_PARTIAL_REPLY,
   FAILED_PARTWAY_REPLY,
   HELD_BY_PLUGIN_REASON,
   HELD_BY_PLUGIN_TITLE,
-  messagesOf,
   REFUND_TITLE,
-  STATES_CONTEXT_WINDOW,
-  tasksOf,
-  threadOf,
-  type StatesChat,
 } from '../../fixtures/chat-states.ts';
-import {
-  SAMPLE_NOW,
-  SAMPLE_NOW_MILLISECONDS,
-  SAMPLE_TIME_ZONE,
-} from '../../fixtures/sample-now.ts';
+import { SAMPLE_NOW_MILLISECONDS, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
+import { connectProvider, open, openStatesChat } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -41,107 +32,12 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-states.spec.ts';
 
-/** Answers the host's provider list as it would with a key in place. */
-async function connectProvider(page: Page): Promise<void> {
-  await page.route('**/host/providers', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { providers: { hasKey: boolean }[] };
-    await route.fulfill({
-      response,
-      json: {
-        ...body,
-        providers: body.providers.map((provider) => ({ ...provider, hasKey: true })),
-      },
-    });
-  });
-}
-
-/** What a request to the Bureau's JSON-RPC mount asks. */
-interface Operation {
-  readonly method?: string;
-  readonly id?: unknown;
-  readonly params?: { readonly contextId?: string };
-}
-
-const operationOf = (route: Route): Operation =>
-  JSON.parse(route.request().postData() ?? '{}') as Operation;
-
 /**
  * Ten seconds past the sample "now". The Release helper chat's approval was asked at 10:34 AM, and
  * the board says it was 12 minutes ago at 10:46: counted to the minute, as the card counts, that
  * takes the clock just past 10:46:00.
  */
 const HELD_NOW = SAMPLE_NOW_MILLISECONDS + 10_000;
-
-/** Opens `path` at 1280 pixels on the sample clock (or at `now`) and waits until the page holds its state. */
-async function open(page: Page, path: string, now: string | number = SAMPLE_NOW): Promise<void> {
-  await page.clock.setFixedTime(now);
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(path);
-}
-
-/**
- * Opens one of the board's chats the sample world does not hold: the Bureau answers for its record,
- * its thread and its runs as it would for a chat it held, and the run it would attach to is not
- * there, which is how a chat answers once its run is no longer live.
- */
-async function openStatesChat(
-  page: Page,
-  request: APIRequestContext,
-  chat: StatesChat,
-  now: string | number = SAMPLE_NOW,
-): Promise<void> {
-  const read = await request.post(`${E2E_SHOWCASE_URL}/bureau/jsonrpc`, {
-    data: {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'bureau.contexts.get',
-      params: { contextId: SAMPLE_WORLD_THREADS.refund },
-    },
-  });
-  const kind = ((await read.json()) as { result: Record<string, unknown> }).result;
-  const thread = threadOf(chat);
-  const context = contextOf(chat, kind);
-  await page.route('**/bureau/jsonrpc', async (route) => {
-    const body = operationOf(route);
-    if (body.params?.contextId !== thread) {
-      await route.fallback();
-      return;
-    }
-    if (body.method === 'bureau.contexts.get') {
-      await route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result: context } });
-      return;
-    }
-    if (body.method === 'bureau.contexts.window') {
-      await route.fulfill({
-        json: { jsonrpc: '2.0', id: body.id, result: STATES_CONTEXT_WINDOW },
-      });
-      return;
-    }
-    if (body.method === 'bureau.tasks.list') {
-      await route.fulfill({
-        json: {
-          jsonrpc: '2.0',
-          id: body.id,
-          result: { tasks: tasksOf(chat), nextPageToken: null },
-        },
-      });
-      return;
-    }
-    await route.fallback();
-  });
-  await page.route(`**/ag-ui/threads/${thread}/messages`, (route) =>
-    route.fulfill({ json: { threadId: thread, messages: messagesOf(chat) } }),
-  );
-  await page.route(`**/ag-ui/threads/${thread}/run`, (route) =>
-    route.fulfill({
-      contentType: 'text/event-stream',
-      body: `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' })}\n\n`,
-    }),
-  );
-  await open(page, `/chats/${thread}`, now);
-  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-}
 
 /** Gives the sample world's billing chat the part of its reply that arrived before the restart. */
 async function keepPartialReply(page: Page): Promise<void> {

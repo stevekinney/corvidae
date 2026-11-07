@@ -168,6 +168,14 @@
     }
     return call.result === undefined || call.result === '' ? '' : `→ ${call.result}`;
   };
+  /** Whether the row's result is a link: the call has an address and its row shows what came back. */
+  const linksResult = (call: ToolCallRailCall): boolean =>
+    call.resultHref !== undefined && call.resultHref !== '' && resultText(call).startsWith('→ ');
+  /** The accessible name of the button that covers a row whose result is a link. */
+  const rowName = (call: ToolCallRailCall): string =>
+    [statusWord(call), call.name, call.input, resultText(call), call.duration]
+      .filter((part): part is string => part !== undefined && part !== '')
+      .join(' ');
   const statusWord = (call: ToolCallRailCall): string =>
     call.status === 'failed'
       ? 'Failed'
@@ -215,6 +223,17 @@
   </span>
 {/snippet}
 
+<!-- A result a link points at: the arrow and the words are one link. It sits above the button that
+     covers a selectable row, so it is its own click target (`data-cinder-linked`). -->
+{#snippet resultCell(call: ToolCallRailCall)}
+  {@const text = resultText(call)}
+  {#if linksResult(call)}
+    <a class="cinder-tool-call-rail__result-link" href={call.resultHref}>{text}</a>
+  {:else}
+    {text}
+  {/if}
+{/snippet}
+
 {#snippet cells(call: ToolCallRailCall)}
   <span class="cinder-tool-call-rail__name">
     {#if statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
@@ -225,7 +244,9 @@
       <span class="cinder-tool-call-rail__input" title={call.input}>{call.input}</span>
     {/if}
     {#if resultText(call) !== ''}
-      <span class="cinder-tool-call-rail__result" title={resultText(call)}>{resultText(call)}</span>
+      <span class="cinder-tool-call-rail__result" title={resultText(call)}
+        >{@render resultCell(call)}</span
+      >
     {/if}
   </span>
   <span class="cinder-tool-call-rail__duration">{call.duration ?? ''}</span>
@@ -238,7 +259,21 @@
     data-cinder-status={call.status}
     data-cinder-selected={selected ? '' : undefined}
   >
-    {#if onSelect}
+    {#if onSelect && linksResult(call)}
+      <!-- A link cannot sit inside a button: the row is a container, and the button covers it with
+           the link above it. -->
+      <div class="cinder-tool-call-rail__row" data-cinder-linked="" {@attach trackRow(call.id)}>
+        {@render cells(call)}
+        <button
+          type="button"
+          class="cinder-tool-call-rail__hit"
+          data-cinder-tool-call-row={call.id}
+          aria-label={rowName(call)}
+          aria-pressed={selected}
+          onclick={() => onSelect(call.id)}
+        ></button>
+      </div>
+    {:else if onSelect}
       <button
         type="button"
         class="cinder-tool-call-rail__row"

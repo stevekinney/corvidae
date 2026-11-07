@@ -3,10 +3,13 @@
    * What a new chat shows where the transcript will be, centred over the composer: the avatar of the
    * agent the chat is with, a greeting that asks what it should do and is the page's one title (the
    * breadcrumb names the page, so there is no separate heading), and the sentence the agent is
-   * described by. With no agent selected (one the Bureau does not list), the greeting asks to choose
-   * one. The prompts and the other agents sit under the composer (`new-chat-choices.svelte`).
+   * described by. With no agent selected, the greeting asks to choose one for screen readers only: a
+   * chat started from Workflows when no agent can create workflows draws no title, and the agent
+   * pill beside the composer is the way on. A chat started from Workflows leaves the sentence out,
+   * and its chip above the composer is the only sign of where it came from. The prompts and the
+   * other agents sit under the composer (`new-chat-choices.svelte`).
    */
-  import { Avatar, Text } from '@lostgradient/cinder';
+  import { Avatar, Text, VisuallyHidden } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
@@ -16,11 +19,13 @@
   interface NewChatWelcomeProps {
     /** The agents a chat can start with. */
     agents: readonly AgentSummary[];
-    /** The agent the chat is with, or `undefined` when the Bureau does not list it. */
+    /** The agent the chat is with, or `undefined` when there is none. */
     selected: string | undefined;
+    /** Whether the agent's sentence is drawn under the greeting. Default `true`. */
+    sentence?: boolean;
   }
 
-  let { agents, selected }: NewChatWelcomeProps = $props();
+  let { agents, selected, sentence = true }: NewChatWelcomeProps = $props();
 
   const current = $derived(agents.find((agent) => agent.name === selected));
 </script>
@@ -37,10 +42,10 @@
     <Text variant="h1" class="ib-new-chat__greeting"
       >{CHAT_COPY.newChatWelcome.greeting(agentLabel(current.name, agents))}</Text
     >
-    {#if current.description}
+    {#if sentence && current.description}
       <Text class="ib-new-chat__description">{current.description}</Text>
     {/if}
   {:else}
-    <Text variant="h1" class="ib-new-chat__greeting">{CHAT_COPY.newChatWelcome.chooseAgent}</Text>
+    <VisuallyHidden as="h1">{CHAT_COPY.newChatWelcome.chooseAgent}</VisuallyHidden>
   {/if}
 </div>

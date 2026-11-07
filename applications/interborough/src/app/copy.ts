@@ -2877,6 +2877,12 @@ export const CHAT_COPY = {
     /** The lead of the row of the other agents to start with, and the name of that group. */
     otherAgents: 'Or chat with',
     chooseAgent: 'Choose an agent to start with',
+    /** What Send reads while the first message is on its way and the chat page has not opened. */
+    starting: 'Starting chat…',
+    /** The chip above the composer of a chat started from the Workflows page. */
+    fromWorkflows: 'Starting from Workflows',
+    /** What the composer holds for a chat started from Workflows, ready for the person to finish: ends in a space, with no ellipsis. */
+    workflowPrefill: 'Help me build a workflow that ',
   },
   /** The chat list beside the open chat. */
   list: {

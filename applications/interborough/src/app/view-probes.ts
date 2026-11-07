@@ -9,9 +9,10 @@ import { getHook, listHooks } from '../lib/bureau-hooks.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
 import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
-import { defaultAgentQuery } from '../lib/default-agent.ts';
+import { defaultAgentQuery, workflowAuthorQuery } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
 import { listMemories } from '../lib/memory-client.ts';
+import { startedFromWorkflows } from '../lib/new-chat-address.ts';
 import { AGENT_MEMORY_PATTERN, queryKeys } from '../lib/query.ts';
 import {
   CATALOG_STALE_TIME_MS,
@@ -192,7 +193,13 @@ export function probeFor(
         const agent = search.get('agent');
         return async (_client, queryClient) => {
           if (agent === null) {
-            return { empty: (await queryClient.fetchQuery(defaultAgentQuery())) === null };
+            const empty = (await queryClient.fetchQuery(defaultAgentQuery())) === null;
+            // A chat started from Workflows begins with an agent that can create workflows. None
+            // is not an empty view: the page says so in its composer and lets the person choose.
+            if (!empty && startedFromWorkflows(search)) {
+              await queryClient.fetchQuery(workflowAuthorQuery());
+            }
+            return { empty };
           }
           const agents = await listAgents();
           const found = agents.find((entry) => entry.name === agent);

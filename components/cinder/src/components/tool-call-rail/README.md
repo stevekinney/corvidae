@@ -69,6 +69,8 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 
 Set `onSelect` and every row is a button. The row whose id is `selectedId` is tinted and keeps the quiet focus ring while its panel is open. Call `focusCall(id)` on the component to hand focus back to a row when the panel closes.
 
+A call with `resultHref` shows its result (the arrow and the words) as a link to that address, such as the page of a workflow the call created. A link cannot sit inside a button, so with `onSelect` such a row is a container with a button that covers it and the link above the button: the link is its own click target, and a click anywhere else on the row selects the call.
+
 A call with `nested: true` draws the `children` snippet under its row: the approval a `waiting` call is waiting on, or the decided approval under a call that has been approved. Nothing gates it on the call's status.
 
 ```svelte
@@ -138,6 +140,7 @@ identifier  string   optional  The tool's identifier, in a tooltip on the name.
 input       string   optional  The key input, muted and truncated.
 result      string   optional  What came back, in one line.
 decision    string   optional  What a person decided, in their own words and without an arrow.
+resultHref  string   optional  Where the result goes; the result on the row becomes a link to it.
 duration    string   optional  How long it took, formatted by the caller.
 status      done | approved | running | waiting | denied | failed | interrupted   required
 failure     string   optional  A failed call's consequence, in one danger line.

@@ -104,10 +104,49 @@ describe('the formatting row', () => {
     );
   });
 
-  test('is drawn only while the composer has focus', async () => {
+  test('is drawn only once the box or the row has focus, and stays while focus is in the composer', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(/\.chat-input-format\s*\{[^}]*display:\s*none;/);
-    expect(source).toMatch(/\.chat-input:focus-within \.chat-input-format\s*\{\s*display:\s*flex;/);
+    expect(source).toMatch(
+      /\.chat-input\[data-formatting-open\] \.chat-input-format\s*\{\s*display:\s*flex;/,
+    );
+  });
+
+  test('opens for the box, not for a control the host puts in the composer, so that control stays where a click found it', async () => {
+    const { container, getByRole } = render(ChatInput, {
+      id: 'surface-open',
+      formattingToolbar: true,
+      header: createRawSnippet(() => ({
+        render: () => '<button type="button" data-testid="host-control">Agent</button>',
+      })),
+    });
+    const form = container.querySelector('form')!;
+    const control = container.querySelector<HTMLElement>('[data-testid="host-control"]')!;
+    const box = container.querySelector<HTMLTextAreaElement>('textarea')!;
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+
+    // The host's control takes focus: the row stays closed, so nothing moves under the pointer.
+    control.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+
+    // The box takes focus: the row opens, and stays open while focus moves on inside the composer.
+    box.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+    control.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+    getByRole('button', { name: 'Bold' }).focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    // Focus leaves the composer: the row closes.
+    box.blur();
+    control.blur();
+    getByRole('button', { name: 'Bold' }).blur();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
   });
 
   test('draws no row unless the toolbar is on', () => {

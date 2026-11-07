@@ -125,6 +125,9 @@
     composerControls,
     composerHeader,
     composerFooter,
+    composerLead,
+    clearComposerOnSubmit = true,
+    composerStarting,
     composerPlacement = 'docked',
     composerPlaceholder,
     composerAnswering = false,
@@ -2057,6 +2060,11 @@
             onemptied={() => inputRef?.focus()}
           />
         {/if}
+        {#if composerLead}
+          <div class="chat-composer-lead">
+            {@render composerLead()}
+          </div>
+        {/if}
         <ChatInput
           id={inputId}
           bind:this={inputRef}
@@ -2070,6 +2078,8 @@
           paused={disabled}
           {pausedReason}
           sending={composerSending}
+          starting={composerStarting}
+          clearOnSubmit={clearComposerOnSubmit}
           allowFollowUp={followUpsEnabled && !composerCompact}
           compact={composerCompact}
           actions={composerActions}
@@ -2561,6 +2571,11 @@
 
   .chat-composer-footer {
     margin-block-start: var(--cinder-space-4);
+  }
+
+  /* The host's note above the composer, such as where a new chat was started from. */
+  .chat-composer-lead {
+    margin-block-end: var(--cinder-space-2);
   }
 
   /* Input Area */

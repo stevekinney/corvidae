@@ -17,9 +17,10 @@
   import ForbiddenState from '../../app/forbidden-state.svelte';
   import NotFoundState from '../../app/not-found-state.svelte';
   import { getContext } from '../../lib/bureau-client.ts';
-  import { defaultAgentQuery } from '../../lib/default-agent.ts';
+  import { defaultAgentQuery, workflowAuthorQuery } from '../../lib/default-agent.ts';
   import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import { startedFromWorkflows } from '../../lib/new-chat-address.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import ChatConversation from './chat-conversation.svelte';
@@ -45,11 +46,18 @@
   const startsNew = untrack(() => isNew);
   const namedAgent = untrack(() => router.current.search.get('agent'));
   // Without `?agent=` a new chat starts with the first agent that can run. The view frame has
-  // already asked, so this is the cached answer; `null` means no agent can run.
-  const defaultAgent = createQuery(
-    () => ({ ...defaultAgentQuery(), enabled: startsNew && namedAgent === null }),
-    undefined,
-  );
+  // already asked, so this is the cached answer; `null` means no agent can run. A chat started from
+  // Workflows ("Ask an agent to write one") begins with an agent that has the Create workflow tool
+  // instead; with none it has no agent yet, and its composer says so.
+  const fromWorkflows = untrack(() => startsNew && startedFromWorkflows(router.current.search));
+  const defaultAgent = createQuery(() => {
+    const query = fromWorkflows ? workflowAuthorQuery() : defaultAgentQuery();
+    return {
+      ...query,
+      queryKey: query.queryKey as readonly string[],
+      enabled: startsNew && namedAgent === null,
+    };
+  }, undefined);
 
   const context = createQuery(
     () => ({
@@ -96,6 +104,7 @@
       title={null}
       agentName={namedAgent ?? defaultAgent.data ?? ''}
       isNew
+      {fromWorkflows}
     />
   {:else}
     <div
