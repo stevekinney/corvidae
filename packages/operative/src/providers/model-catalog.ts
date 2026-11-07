@@ -63,7 +63,9 @@ export interface GeneratedAssetBehavior {
 
 /** Decision requests a backend answers natively, and whether it answers decisions only. */
 export interface BackendDecisions {
+  /** The decision request kinds this backend answers. */
   readonly kinds: readonly DecisionKind[];
+  /** Whether this backend is intended only for decisions, not generation. */
   readonly only: boolean;
 }
 
@@ -109,6 +111,7 @@ export interface BackendDescriptor {
   readonly tools: boolean;
   readonly parallelTools: boolean;
   readonly structuredOutput: boolean;
+  /** Native decision capabilities, when the backend exposes them. */
   readonly decisions?: BackendDecisions | undefined;
   readonly parameterCompatibility: readonly (keyof BaseProviderOptions)[];
   readonly caching: boolean; // subsumes ProviderCapabilities.requestControlledContextCaching

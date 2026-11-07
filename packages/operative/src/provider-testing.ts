@@ -111,11 +111,14 @@ export function runProviderContract<Call extends object>(
     client,
     ...(maximumTokens === undefined ? {} : { maximumTokens }),
   });
-  const generateFactory = definition.generate;
-  const streamFactory = definition.stream;
-  if (generateFactory === undefined || streamFactory === undefined) {
+  if (definition.generate === undefined || definition.stream === undefined) {
     throw new TypeError(`${fixtures.name} provider contract requires generate and stream`);
   }
+  // Invoke through `definition` so method-based provider definitions retain their `this` binding.
+  const generateFactory = (configuration: Parameters<typeof definition.generate>[0]) =>
+    definition.generate!(configuration);
+  const streamFactory = (configuration: Parameters<typeof definition.stream>[0]) =>
+    definition.stream!(configuration);
 
   describe(`${fixtures.name} provider contract`, () => {
     it('names the definition after its provider and fits the string-keyed ProviderDefinition', () => {
