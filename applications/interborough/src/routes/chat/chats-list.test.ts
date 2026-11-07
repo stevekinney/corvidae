@@ -352,4 +352,26 @@ describe('the list on a phone and a modified click', () => {
     link.dispatchEvent(plain);
     expect(plain.defaultPrevented).toBe(true);
   });
+
+  test('a wide pane names the agent before each row’s message (11g)', async () => {
+    serveChats();
+    landAt('/chats');
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => 600,
+    });
+    try {
+      const { region } = await list();
+
+      const agents = [...region.querySelectorAll('.ib-chat-row__agent')].map((element) =>
+        element.textContent?.trim(),
+      );
+      expect(agents.length).toBeGreaterThan(0);
+      expect(agents.every((text) => text?.endsWith('·'))).toBe(true);
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
+      else Object.defineProperty(HTMLElement.prototype, 'clientWidth', original);
+    }
+  });
 });

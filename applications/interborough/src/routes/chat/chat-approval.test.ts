@@ -2,8 +2,8 @@
  * One approval under its call (COR-2016): Cinder's approval row, with the risk its tool's tier
  * implies, so a read-only call is not drawn as a risky one.
  */
-import { cleanup, render } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import ChatApproval from './chat-approval.svelte';
 import type { ToolCallEntry } from './tool-activity.ts';
@@ -23,7 +23,7 @@ function entry(tier: ToolCallEntry['tier']): ToolCallEntry {
   };
 }
 
-function mount(tier: ToolCallEntry['tier']) {
+function mount(tier: ToolCallEntry['tier'], onResolve: (resolution: unknown) => void = () => {}) {
   return render(ChatApproval, {
     props: {
       id: 'approval-1',
@@ -32,7 +32,7 @@ function mount(tier: ToolCallEntry['tier']) {
       source: 'Tool runner',
       context: {},
       unreachable: false,
-      onResolve: () => undefined,
+      onResolve,
     },
   } as never);
 }
@@ -58,5 +58,15 @@ describe('a waiting approval', () => {
       return risk;
     });
     expect(new Set(risks).size).toBeGreaterThan(1);
+  });
+
+  test('sends the person’s decision with the call it answers', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const { getByRole } = mount('dangerous', onResolve);
+
+    await fireEvent.click(getByRole('button', { name: /^Approve/ }));
+
+    expect(onResolve).toHaveBeenCalledTimes(1);
+    expect(onResolve.mock.calls[0]?.[0]).toMatchObject({ decision: 'approve' });
   });
 });
