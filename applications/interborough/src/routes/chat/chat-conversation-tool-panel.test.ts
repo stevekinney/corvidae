@@ -56,6 +56,16 @@ function lookupRun(url: string, init?: RequestInit): Response | undefined {
       }),
       role: 'tool',
     },
+    { type: 'TOOL_CALL_START', toolCallId: 'call-third', toolCallName: 'lookup-order' },
+    { type: 'TOOL_CALL_ARGS', toolCallId: 'call-third', delta: '{"orderId":"4472"}' },
+    { type: 'TOOL_CALL_END', toolCallId: 'call-third' },
+    {
+      type: 'TOOL_CALL_RESULT',
+      messageId: 'result-3',
+      toolCallId: 'call-third',
+      content: '{"total":"$7.50"}',
+      role: 'tool',
+    },
     { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
     { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Order 4471 is $42.00.' },
     { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
@@ -104,7 +114,7 @@ describe('a tool call’s side panel', () => {
     await waitFor(() => expect(container.querySelector('.ib-chat-panel')).toBeNull());
   });
 
-  test('shows what a call answered, and why a failed one failed', async () => {
+  test('shows what a call answered, what another answered, and its place among the turn’s calls', async () => {
     const { container, row } = await lookedUp();
 
     await fireEvent.click(row);
@@ -124,6 +134,8 @@ describe('a tool call’s side panel', () => {
     await waitFor(() =>
       expect(container.querySelector('.ib-chat-panel')?.textContent).toContain('No such order'),
     );
+    // The panel says where the call stands among the turn’s calls.
+    expect(container.querySelector('.ib-chat-panel')?.textContent).toContain('call 2 of 3');
   });
 
   test('closing it hands focus back to the row that opened it', async () => {
@@ -140,5 +152,15 @@ describe('a tool call’s side panel', () => {
 
     await waitFor(() => expect(container.querySelector('.ib-chat-panel')).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(row));
+  });
+
+  test('sums three or more calls into one line under the turn', async () => {
+    const { container } = await lookedUp();
+
+    await waitFor(() =>
+      expect(container.querySelector('.cinder-tool-call-rail__summary')?.textContent).toContain(
+        'Used 3 tools',
+      ),
+    );
   });
 });
