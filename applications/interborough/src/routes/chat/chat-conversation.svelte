@@ -49,6 +49,7 @@
     EmptyState,
     PageHeader,
     StatusDot,
+    ToolCallPanel,
     VisuallyHidden,
     type ApprovalResolution,
   } from '@lostgradient/cinder';
@@ -143,7 +144,13 @@
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
-  import { toolGroups, type ToolCallEntry, type ToolInfo } from './tool-activity.ts';
+  import {
+    formatCallDuration,
+    railCall,
+    toolGroups,
+    type ToolCallEntry,
+    type ToolInfo,
+  } from './tool-activity.ts';
   import { failedStopNoteId, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
@@ -974,6 +981,36 @@
       },
     }),
   );
+  // The call whose panel is open, with where it falls in its turn. A call that is gone (the page
+  // moved to another chat, or the turn was read again without it) has no panel.
+  let selectedCallId = $state<string | undefined>();
+  const selectedCall = $derived.by(() => {
+    if (selectedCallId === undefined) return undefined;
+    for (const group of activity.groups.values()) {
+      const index = group.entries.findIndex((entry) => entry.callId === selectedCallId);
+      const entry = group.entries[index];
+      if (entry !== undefined) return { entry, number: index + 1, total: group.entries.length };
+    }
+    return undefined;
+  });
+  function selectCall(callId: string): void {
+    selectedCallId = selectedCallId === callId ? undefined : callId;
+  }
+  // Closing the panel hands focus back to the row that opened it.
+  async function focusCallRow(callId: string): Promise<void> {
+    await tick();
+    for (const row of route?.querySelectorAll<HTMLElement>('[data-cinder-tool-call-row]') ?? []) {
+      if (row.dataset['cinderToolCallRow'] === callId) {
+        row.focus();
+        return;
+      }
+    }
+  }
+  function closeCallPanel(): void {
+    const callId = selectedCallId;
+    selectedCallId = undefined;
+    if (callId !== undefined) void focusCallRow(callId);
+  }
   const callRunning = $derived(
     [...activity.groups.values()].some((group) =>
       group.entries.some((entry) => entry.state === 'running'),
@@ -1314,393 +1351,425 @@
   />
 {/snippet}
 
-<section
-  class="weft-chat-route"
-  aria-label={CHAT_COPY.regionLabel}
-  data-session={sessionId}
-  bind:this={route}
->
-  {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
-  {#if choosing}
-    <PageHeader data-testid="chat-header" title={markdownTitle} headingLevel={1} />
-  {:else}
-    <PageHeader
-      data-testid="chat-header"
-      title={markdownTitle}
-      headingLevel={1}
-      {...context.data?.parentContextId ? { description: details } : {}}
-      actions={headerActions}
-      status={headerStatus}
-      statusPlacement="inline"
-    />
-  {/if}
-  {#if !choosing}
-    <SessionTasks {sessionId} streaming={session.streaming} />
-  {/if}
+<div class="ib-chat-frame">
+  <section
+    class="weft-chat-route"
+    aria-label={CHAT_COPY.regionLabel}
+    data-session={sessionId}
+    bind:this={route}
+  >
+    {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
+    {#if choosing}
+      <PageHeader data-testid="chat-header" title={markdownTitle} headingLevel={1} />
+    {:else}
+      <PageHeader
+        data-testid="chat-header"
+        title={markdownTitle}
+        headingLevel={1}
+        {...context.data?.parentContextId ? { description: details } : {}}
+        actions={headerActions}
+        status={headerStatus}
+        statusPlacement="inline"
+      />
+    {/if}
+    {#if !choosing}
+      <SessionTasks {sessionId} streaming={session.streaming} />
+    {/if}
 
-  {#if session.failure !== undefined && !failureShownInTranscript}
-    <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
-      <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
-      <p class="weft-chat-approval__message">{session.failure}</p>
-    </Alert>
-  {/if}
+    {#if session.failure !== undefined && !failureShownInTranscript}
+      <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
+        <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
+        <p class="weft-chat-approval__message">{session.failure}</p>
+      </Alert>
+    {/if}
 
-  <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
+    <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
        stream gets no banner of its own (design row 18e). -->
-  {#if session.disconnected && !connection.unreachable}
-    <Alert variant="warning">
-      <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
-      <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
-      <Button
-        size="sm"
-        variant="secondary"
-        label={CHAT_COPY.disconnected.reconnect}
-        onclick={() => void session.reconnect()}
-      />
-    </Alert>
-  {/if}
+    {#if session.disconnected && !connection.unreachable}
+      <Alert variant="warning">
+        <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
+        <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
+        <Button
+          size="sm"
+          variant="secondary"
+          label={CHAT_COPY.disconnected.reconnect}
+          onclick={() => void session.reconnect()}
+        />
+      </Alert>
+    {/if}
 
-  {#if branchFailure !== undefined}
-    <Alert
-      variant="danger"
-      dismissible
-      onDismiss={() => {
-        branchFailure = undefined;
-      }}
-    >
-      <p class="weft-chat-approval__message">{branchFailure}</p>
-    </Alert>
-  {/if}
+    {#if branchFailure !== undefined}
+      <Alert
+        variant="danger"
+        dismissible
+        onDismiss={() => {
+          branchFailure = undefined;
+        }}
+      >
+        <p class="weft-chat-approval__message">{branchFailure}</p>
+      </Alert>
+    {/if}
 
-  {#if gone}
-    <Alert variant="danger" data-testid="chat-gone">
-      <p class="weft-chat-approval__title">{CHAT_COPY.gone.title}</p>
-      <p class="weft-chat-approval__message">{CHAT_COPY.gone.description}</p>
-      <Button
-        size="sm"
-        variant="secondary"
-        label={CHAT_COPY.gone.back}
-        onclick={() => router.navigate('/chats')}
-      />
-    </Alert>
-  {/if}
+    {#if gone}
+      <Alert variant="danger" data-testid="chat-gone">
+        <p class="weft-chat-approval__title">{CHAT_COPY.gone.title}</p>
+        <p class="weft-chat-approval__message">{CHAT_COPY.gone.description}</p>
+        <Button
+          size="sm"
+          variant="secondary"
+          label={CHAT_COPY.gone.back}
+          onclick={() => router.navigate('/chats')}
+        />
+      </Alert>
+    {/if}
 
-  <!-- A decision made on another page, said once to a screen reader; the row itself changes in place. -->
-  <VisuallyHidden role="status" aria-live="polite" data-testid="chat-decision-announcement">
-    {announcement}
-  </VisuallyHidden>
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="weft-chat-surface" onclick={openNoteLink}>
-    <Chat
-      bind:this={chat}
-      id={`chat-${sessionId}`}
-      conversation={shown}
-      adapter={session.chatAdapter}
-      streaming={session.streaming}
-      surfaceMode="transparent"
-      variant="transcript"
-      notSent={connection.unreachable
-        ? {
-            summary: CHAT_COPY.notSent.unreachable,
-            retryDisabled: true,
-            retryNote: CHAT_COPY.notSent.retryNote,
-          }
-        : { summary: CHAT_COPY.notSent.online }}
-      disabled={session.disconnected || gone || answerHeld}
-      composerPlaceholder={answering
-        ? pickable
-          ? CHAT_COPY.composer.answerPlaceholder
-          : CHAT_COPY.questionAnswerLabel
-        : CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
-      {composerStatus}
-      composerHeader={choosing ? newChatHeader : undefined}
-      composerFormattingToolbar
-      composerAnswering={answering}
-      streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
-      capabilities={{
-        attachments: attachable && !gone,
-        // The transcript offers Branch on a message and no Edit: editing a sent message is a
-        // fork, which Branch on that message is.
-        editing: false,
-        quote: true,
-      }}
-      uploadAttachment={upload}
-      acceptedTypes={settings?.acceptedTypes ?? []}
-      maxFileSize={settings?.maxFileSize}
-      formatAttachmentError={chatAttachmentErrorMessage}
-    >
-      {#snippet trailing()}
-        {#each shownRequests as request (request.interruptId)}
-          <div class="weft-chat-question" data-interrupt={request.interruptId}>
-            <p class="weft-chat-question__prompt">
-              <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
-              {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
-            </p>
-            <div bind:this={questionElement} data-question-answer-region>
-              <ChatQuestion
-                {...{ 'data-changes': true }}
-                id={`chat-question-${request.interruptId}`}
-                schema={request.schema ?? FREE_TEXT_SCHEMA}
-                answerInComposer
-                busy={session.attaching}
-                uploadFile={uploadQuestionFile}
-                undoMilliseconds={answerUndoMilliseconds()}
-                onHoldChange={(held) => (answerHeld = held)}
-                onSubmit={async (value) => {
-                  sentRequest = request;
-                  const taken = await session.answerQuestion(request.interruptId, value);
-                  // An answer the session did not take leaves the question open, not "answered".
-                  if (!taken) sentRequest = undefined;
-                  return taken;
-                }}
-              />
-            </div>
-            {#if pickable}
-              <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
-            {/if}
-          </div>
-        {/each}
-      {/snippet}
-      {#snippet empty()}
-        {#if choosing}
-          <NewChatWelcome
-            agents={agents.data ?? []}
-            selected={agent}
-            {chosen}
-            onChoose={chooseAgent}
-            onExample={fillComposer}
-          />
-        {:else}
-          <EmptyState
-            kind="first-use"
-            size="compact"
-            headingLevel={2}
-            title={CHAT_COPY.emptyTranscript.title}
-            description={CHAT_COPY.emptyTranscript.description}
-          />
-        {/if}
-      {/snippet}
-      {#snippet composerControls({ folded })}
-        {#if folded}
-          <ComposerSettings>{@render settingControls()}</ComposerSettings>
-        {:else}
-          {@render settingControls()}
-        {/if}
-      {/snippet}
-      {#snippet composerActions()}
-        {#if !choosing && usesModel}
-          <ContextMeter report={contextWindow.data} failed={contextWindow.isError} />
-        {/if}
-      {/snippet}
-      {#snippet messageActions({ message })}
-        {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
-        {@const branchAt = branchTargetOf(message)}
-        {#if replyStep !== undefined && !session.streaming}
-          {@const replyModel = replyModelName(message.metadata)}
-          {#if replyModel !== undefined}
-            <span class="weft-chat-model">· {replyModel}</span>
-          {/if}
-          <ReplyDetails
-            runId={replyStep.runId}
-            step={replyStep.step}
-            usage={session.usage.get(replyStep.runId)}
-          />
-        {/if}
-        {#if branchAt !== undefined}
-          <Button
-            data-changes
-            type="button"
-            class="chat-message-action-button"
-            size="xs"
-            variant="ghost"
-            aria-label={message.role === 'user' ? CHAT_COPY.branch.before : CHAT_COPY.branch.action}
-            disabled={branching}
-            onclick={() => void branchThrough(branchAt.messageId)}
-          >
-            <GitBranch class="cinder-icon-xs" />
-            {CHAT_COPY.branch.short}
-          </Button>
-        {/if}
-      {/snippet}
-      {#snippet noteAction(note: MessageNoteInfo)}
-        {#if note.id === retryNoteId}
-          <Button
-            data-changes
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={!session.canRetryTurn}
-            onclick={() => void retryTurn()}
-          >
-            {CHAT_COPY.stopLine.retry}
-          </Button>
-        {/if}
-      {/snippet}
-      {#snippet row({ message }, renderDefault)}
-        {@const group = activity.groups.get(message.id)}
-        {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
-        {#if group !== undefined}
-          <ToolCalls
-            id={`tools-${message.id}`}
-            entries={group.entries}
-            decided={decisionContext}
-            endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
-          >
-            {#snippet decision(entry)}
-              {@const asked = approvalsByCall.get(entry.callId)}
-              {#if entry.decision !== undefined || asked !== undefined}
-                <ChatApproval
-                  id={`tools-${message.id}-${entry.callId}`}
-                  {entry}
-                  question={asked?.question ?? ''}
-                  source={agentSummary?.displayName ?? agent}
-                  requestedAt={asked?.requestedAt}
-                  context={decisionContext}
-                  unreachable={connection.unreachable}
-                  resolving={deciding || session.streaming ? (decidingAs ?? 'approve') : undefined}
-                  onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
-                />
-              {/if}
-            {/snippet}
-            {#snippet mcpApp(entry)}
-              {@const panel = workflowRevisionPanels.find(
-                (candidate) =>
-                  candidate.opensFromAgentTool === entry.name ||
-                  candidate.opensFromAgentTool === entry.name.replace('__', ':'),
-              )}
-              {@const proposalText = revisionProposalText(entry)}
-              {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
-                {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
-                {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
-                <McpApp
-                  resourceUri={panel.uri}
-                  title={panel.title}
-                  {loadResource}
-                  {onToolCall}
-                  hostContext={mcpHostContext}
-                  maxHeight={560}
-                  toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
-                  toolResult={{
-                    content: [],
-                    structuredContent: proposalText,
+    <!-- A decision made on another page, said once to a screen reader; the row itself changes in place. -->
+    <VisuallyHidden role="status" aria-live="polite" data-testid="chat-decision-announcement">
+      {announcement}
+    </VisuallyHidden>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="weft-chat-surface" onclick={openNoteLink}>
+      <Chat
+        bind:this={chat}
+        id={`chat-${sessionId}`}
+        conversation={shown}
+        adapter={session.chatAdapter}
+        streaming={session.streaming}
+        surfaceMode="transparent"
+        variant="transcript"
+        notSent={connection.unreachable
+          ? {
+              summary: CHAT_COPY.notSent.unreachable,
+              retryDisabled: true,
+              retryNote: CHAT_COPY.notSent.retryNote,
+            }
+          : { summary: CHAT_COPY.notSent.online }}
+        disabled={session.disconnected || gone || answerHeld}
+        composerPlaceholder={answering
+          ? pickable
+            ? CHAT_COPY.composer.answerPlaceholder
+            : CHAT_COPY.questionAnswerLabel
+          : CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
+        {composerStatus}
+        composerHeader={choosing ? newChatHeader : undefined}
+        composerFormattingToolbar
+        composerAnswering={answering}
+        streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
+        capabilities={{
+          attachments: attachable && !gone,
+          // The transcript offers Branch on a message and no Edit: editing a sent message is a
+          // fork, which Branch on that message is.
+          editing: false,
+          quote: true,
+        }}
+        uploadAttachment={upload}
+        acceptedTypes={settings?.acceptedTypes ?? []}
+        maxFileSize={settings?.maxFileSize}
+        formatAttachmentError={chatAttachmentErrorMessage}
+      >
+        {#snippet trailing()}
+          {#each shownRequests as request (request.interruptId)}
+            <div class="weft-chat-question" data-interrupt={request.interruptId}>
+              <p class="weft-chat-question__prompt">
+                <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
+                {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+              </p>
+              <div bind:this={questionElement} data-question-answer-region>
+                <ChatQuestion
+                  {...{ 'data-changes': true }}
+                  id={`chat-question-${request.interruptId}`}
+                  schema={request.schema ?? FREE_TEXT_SCHEMA}
+                  answerInComposer
+                  busy={session.attaching}
+                  uploadFile={uploadQuestionFile}
+                  undoMilliseconds={answerUndoMilliseconds()}
+                  onHoldChange={(held) => (answerHeld = held)}
+                  onSubmit={async (value) => {
+                    sentRequest = request;
+                    const taken = await session.answerQuestion(request.interruptId, value);
+                    // An answer the session did not take leaves the question open, not "answered".
+                    if (!taken) sentRequest = undefined;
+                    return taken;
                   }}
                 />
+              </div>
+              {#if pickable}
+                <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
               {/if}
-            {/snippet}
-          </ToolCalls>
-          <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
-          {#each group.messageIds as rowId (rowId)}
-            {@const held = shown.messages[rowId]}
-            {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
-            {#each notes as note (note.id)}
-              <ChatNote
-                {note}
-                action={note.kind === 'stopped' && note.id === retryNoteId ? noteAction : undefined}
-              />
-            {/each}
+            </div>
           {/each}
-        {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
-          <!-- A message of only files has no bubble to show. A row with no file is Chat's own. A
+        {/snippet}
+        {#snippet empty()}
+          {#if choosing}
+            <NewChatWelcome
+              agents={agents.data ?? []}
+              selected={agent}
+              {chosen}
+              onChoose={chooseAgent}
+              onExample={fillComposer}
+            />
+          {:else}
+            <EmptyState
+              kind="first-use"
+              size="compact"
+              headingLevel={2}
+              title={CHAT_COPY.emptyTranscript.title}
+              description={CHAT_COPY.emptyTranscript.description}
+            />
+          {/if}
+        {/snippet}
+        {#snippet composerControls({ folded })}
+          {#if folded}
+            <ComposerSettings>{@render settingControls()}</ComposerSettings>
+          {:else}
+            {@render settingControls()}
+          {/if}
+        {/snippet}
+        {#snippet composerActions()}
+          {#if !choosing && usesModel}
+            <ContextMeter report={contextWindow.data} failed={contextWindow.isError} />
+          {/if}
+        {/snippet}
+        {#snippet messageActions({ message })}
+          {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
+          {@const branchAt = branchTargetOf(message)}
+          {#if replyStep !== undefined && !session.streaming}
+            {@const replyModel = replyModelName(message.metadata)}
+            {#if replyModel !== undefined}
+              <span class="weft-chat-model">· {replyModel}</span>
+            {/if}
+            <ReplyDetails
+              runId={replyStep.runId}
+              step={replyStep.step}
+              usage={session.usage.get(replyStep.runId)}
+            />
+          {/if}
+          {#if branchAt !== undefined}
+            <Button
+              data-changes
+              type="button"
+              class="chat-message-action-button"
+              size="xs"
+              variant="ghost"
+              aria-label={message.role === 'user'
+                ? CHAT_COPY.branch.before
+                : CHAT_COPY.branch.action}
+              disabled={branching}
+              onclick={() => void branchThrough(branchAt.messageId)}
+            >
+              <GitBranch class="cinder-icon-xs" />
+              {CHAT_COPY.branch.short}
+            </Button>
+          {/if}
+        {/snippet}
+        {#snippet noteAction(note: MessageNoteInfo)}
+          {#if note.id === retryNoteId}
+            <Button
+              data-changes
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!session.canRetryTurn}
+              onclick={() => void retryTurn()}
+            >
+              {CHAT_COPY.stopLine.retry}
+            </Button>
+          {/if}
+        {/snippet}
+        {#snippet row({ message }, renderDefault)}
+          {@const group = activity.groups.get(message.id)}
+          {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
+          {#if group !== undefined}
+            <ToolCalls
+              id={`tools-${message.id}`}
+              entries={group.entries}
+              decided={decisionContext}
+              selectedId={selectedCallId}
+              onSelect={selectCall}
+              endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
+              duration={group.durationMilliseconds === undefined
+                ? undefined
+                : formatCallDuration(group.durationMilliseconds)}
+            >
+              {#snippet decision(entry)}
+                {@const asked = approvalsByCall.get(entry.callId)}
+                {#if entry.decision !== undefined || asked !== undefined}
+                  <ChatApproval
+                    id={`tools-${message.id}-${entry.callId}`}
+                    {entry}
+                    question={asked?.question ?? ''}
+                    source={agentSummary?.displayName ?? agent}
+                    requestedAt={asked?.requestedAt}
+                    context={decisionContext}
+                    unreachable={connection.unreachable}
+                    resolving={deciding || session.streaming
+                      ? (decidingAs ?? 'approve')
+                      : undefined}
+                    onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
+                  />
+                {/if}
+              {/snippet}
+              {#snippet mcpApp(entry)}
+                {@const panel = workflowRevisionPanels.find(
+                  (candidate) =>
+                    candidate.opensFromAgentTool === entry.name ||
+                    candidate.opensFromAgentTool === entry.name.replace('__', ':'),
+                )}
+                {@const proposalText = revisionProposalText(entry)}
+                {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
+                  {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
+                  {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
+                  <McpApp
+                    resourceUri={panel.uri}
+                    title={panel.title}
+                    {loadResource}
+                    {onToolCall}
+                    hostContext={mcpHostContext}
+                    maxHeight={560}
+                    toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
+                    toolResult={{
+                      content: [],
+                      structuredContent: proposalText,
+                    }}
+                  />
+                {/if}
+              {/snippet}
+            </ToolCalls>
+            <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
+            {#each group.messageIds as rowId (rowId)}
+              {@const held = shown.messages[rowId]}
+              {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
+              {#each notes as note (note.id)}
+                <ChatNote
+                  {note}
+                  action={note.kind === 'stopped' && note.id === retryNoteId
+                    ? noteAction
+                    : undefined}
+                />
+              {/each}
+            {/each}
+          {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
+            <!-- A message of only files has no bubble to show. A row with no file is Chat's own. A
                later call of a run of tool rows is shown with the first (`tool-activity.ts`). -->
-          {@render renderDefault()}
-        {/if}
-        <ChatAssets {assets} role={message.role === 'user' ? 'user' : 'assistant'} />
-      {/snippet}
-      {#snippet messagePart(part, renderDefault)}
-        {#if part.type !== 'tool-approval'}
-          {@render renderDefault(part)}
-        {/if}
-      {/snippet}
-    </Chat>
-  </div>
-  <!-- Model, Effort and Permissions: the live session's, or, on a new chat, the person's choices
+            {@render renderDefault()}
+          {/if}
+          <ChatAssets {assets} role={message.role === 'user' ? 'user' : 'assistant'} />
+        {/snippet}
+        {#snippet messagePart(part, renderDefault)}
+          {#if part.type !== 'tool-approval'}
+            {@render renderDefault(part)}
+          {/if}
+        {/snippet}
+      </Chat>
+    </div>
+    <!-- Model, Effort and Permissions: the live session's, or, on a new chat, the person's choices
        before it has a session (applied once the first message has started it). Rendered once, in
        the row or folded into the one Settings control. -->
-  {#snippet settingControls()}
-    {#if usesModel}
-      <ModelPicker
-        {sessionId}
-        agentName={agent}
-        current={choosing
-          ? draftModel === undefined
-            ? null
-            : { provider: draftModel.provider, model: draftModel.model }
-          : context.data?.model}
-        revision={context.data?.configVersion}
-        reload={reloadContext}
-        locked={steering}
-        unavailable={cannotSteer}
-        onBusyChange={(busy) => (steering = busy)}
-        onApplied={(value) => noted('step', SETTINGS.model, value)}
-        draft={choosing}
-        onDraft={(choice) => (draftModel = choice)}
-      />
+    {#snippet settingControls()}
+      {#if usesModel}
+        <ModelPicker
+          {sessionId}
+          agentName={agent}
+          current={choosing
+            ? draftModel === undefined
+              ? null
+              : { provider: draftModel.provider, model: draftModel.model }
+            : context.data?.model}
+          revision={context.data?.configVersion}
+          reload={reloadContext}
+          locked={steering}
+          unavailable={cannotSteer}
+          onBusyChange={(busy) => (steering = busy)}
+          onApplied={(value) => noted('step', SETTINGS.model, value)}
+          draft={choosing}
+          onDraft={(choice) => (draftModel = choice)}
+        />
+        <SettingSelect
+          {sessionId}
+          id="weft-chat-effort"
+          label={SETTINGS.effort}
+          options={SETTINGS.effortOptions}
+          current={choosing ? (draftEffort ?? null) : context.data?.effort}
+          unsetLabel={SETTINGS.agentDefault}
+          revision={context.data?.configVersion}
+          send={(value, commandId, expectedRevision) =>
+            steerContext({
+              contextId: sessionId,
+              commandId,
+              expectedRevision,
+              effort: value as Effort,
+            })}
+          notices={SETTINGS.effortNotices}
+          reload={reloadContext}
+          locked={steering}
+          unavailable={cannotSteer}
+          onBusyChange={(busy) => (steering = busy)}
+          onApplied={(value) => noted('step', SETTINGS.effort, value)}
+          draft={choosing}
+          onDraft={(value) => (draftEffort = value)}
+        />
+      {/if}
       <SettingSelect
         {sessionId}
-        id="weft-chat-effort"
-        label={SETTINGS.effort}
-        options={SETTINGS.effortOptions}
-        current={choosing ? (draftEffort ?? null) : context.data?.effort}
-        unsetLabel={SETTINGS.agentDefault}
+        id="weft-chat-permission"
+        label={SETTINGS.permission}
+        options={SETTINGS.permissionOptions}
+        current={choosing ? (draftPermission ?? 'on-changes') : context.data?.permissionMode}
         revision={context.data?.configVersion}
         send={(value, commandId, expectedRevision) =>
           steerContext({
             contextId: sessionId,
             commandId,
             expectedRevision,
-            effort: value as Effort,
+            permissionMode: value as PermissionMode,
           })}
-        notices={SETTINGS.effortNotices}
+        notices={SETTINGS.permissionNotices}
         reload={reloadContext}
         locked={steering}
         unavailable={cannotSteer}
         onBusyChange={(busy) => (steering = busy)}
-        onApplied={(value) => noted('step', SETTINGS.effort, value)}
+        onApplied={(value) => noted('toolCall', SETTINGS.permission, value)}
         draft={choosing}
-        onDraft={(value) => (draftEffort = value)}
+        onDraft={(value) => (draftPermission = value)}
       />
-    {/if}
-    <SettingSelect
-      {sessionId}
-      id="weft-chat-permission"
-      label={SETTINGS.permission}
-      options={SETTINGS.permissionOptions}
-      current={choosing ? (draftPermission ?? 'on-changes') : context.data?.permissionMode}
-      revision={context.data?.configVersion}
-      send={(value, commandId, expectedRevision) =>
-        steerContext({
-          contextId: sessionId,
-          commandId,
-          expectedRevision,
-          permissionMode: value as PermissionMode,
-        })}
-      notices={SETTINGS.permissionNotices}
-      reload={reloadContext}
-      locked={steering}
-      unavailable={cannotSteer}
-      onBusyChange={(busy) => (steering = busy)}
-      onApplied={(value) => noted('toolCall', SETTINGS.permission, value)}
-      draft={choosing}
-      onDraft={(value) => (draftPermission = value)}
-    />
-  {/snippet}
+    {/snippet}
 
-  <!-- The agent a new chat is with, at the top of the composer. -->
-  {#snippet newChatHeader()}
-    <AgentSelect
-      agents={agents.data ?? []}
-      value={agent}
-      providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
-      onChange={chooseAgent}
+    <!-- The agent a new chat is with, at the top of the composer. -->
+    {#snippet newChatHeader()}
+      <AgentSelect
+        agents={agents.data ?? []}
+        value={agent}
+        providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
+        onChange={chooseAgent}
+      />
+    {/snippet}
+    <ConfirmDialog
+      bind:open={confirmingEnable}
+      title={CHAT_COPY.composer.enableDialog.title(pluginTitle)}
+      description={CHAT_COPY.composer.enableDialog.description}
+      confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
+      onConfirm={() =>
+        void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
     />
-  {/snippet}
-  <ConfirmDialog
-    bind:open={confirmingEnable}
-    title={CHAT_COPY.composer.enableDialog.title(pluginTitle)}
-    description={CHAT_COPY.composer.enableDialog.description}
-    confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
-    onConfirm={() =>
-      void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
-  />
-  <RestartDialog flow={restart} />
-</section>
+    <RestartDialog flow={restart} />
+  </section>
+  {#if selectedCall !== undefined}
+    {@const call = selectedCall.entry}
+    <ToolCallPanel
+      class="ib-chat-panel"
+      name={call.title ?? call.name}
+      identifier={call.name}
+      status={railCall(call, false, decisionContext).status}
+      duration={call.durationMilliseconds === undefined
+        ? undefined
+        : formatCallDuration(call.durationMilliseconds)}
+      position={selectedCall.total > 1
+        ? CHAT_COPY.tools.position(selectedCall.number, selectedCall.total)
+        : undefined}
+      input={call.arguments}
+      result={call.state === 'done' || call.state === 'denied' ? call.result : undefined}
+      error={call.state === 'failed' ? (call.failure ?? { message: call.summary }) : undefined}
+      onClose={closeCallPanel}
+    />
+  {/if}
+</div>

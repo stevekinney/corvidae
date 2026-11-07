@@ -57,7 +57,8 @@ const SPECIFICATIONS = {
  * confirmations), Home on a fresh installation (`first-run.spec.ts`, whose own host holds no
  * provider, agent or chat), the chat list in each of its states (`chat-list.spec.ts`), and an open chat with its approval,
  * details popover, Permissions select, and its loading, offline, denied and answered-in-Reviews states
- * (`chat-page.spec.ts`), and Chat on a phone and a tablet and with no provider (`chat-responsive.spec.ts`).
+ * (`chat-page.spec.ts`), Chat on a phone and a tablet and with no provider (`chat-responsive.spec.ts`), and a chat of
+ * thirty tool calls (`chat-tool-call-turn.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/showcase.spec.ts',
@@ -69,6 +70,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-list.spec.ts',
   'tests/e2e/chat-page.spec.ts',
   'tests/e2e/chat-responsive.spec.ts',
+  'tests/e2e/chat-tool-call-turn.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

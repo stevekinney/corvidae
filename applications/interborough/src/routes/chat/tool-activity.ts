@@ -50,6 +50,12 @@ export type ToolCallEntry = {
   /** The answer, for the details. */
   readonly result: unknown;
   /**
+   * Why a failed call failed, as the tool reported it: what went wrong, its machine code, and
+   * whether trying again can work. Absent for a call that did not fail, and for a failure that
+   * carries no error.
+   */
+  readonly failure?: ToolFailure | undefined;
+  /**
    * How long the call ran, in milliseconds: from its start to its end as the Bureau recorded them,
    * so far for a call still running, and to when the run stopped for an interrupted one. Absent
    * when nothing recorded says (a call that waits on a person, or one whose start is not known).
@@ -61,6 +67,13 @@ export type ToolCallEntry = {
    * before the Bureau recorded decisions.
    */
   readonly decision?: ApprovalDecision | undefined;
+};
+
+/** Why a call failed: the tool's own error. */
+export type ToolFailure = {
+  readonly message: string;
+  readonly code?: string | undefined;
+  readonly retryable?: boolean | undefined;
 };
 
 /** How a person decided a tool approval, as the Bureau wrote it on the call's outcome row. */
@@ -159,20 +172,21 @@ type CallRows = {
 };
 
 /**
- * How long a call ran, from the times the Bureau recorded: the result row's start and end. A call
+ * When a call ran, from the times the Bureau recorded: the result row's start and end. A call
  * whose answer records none counts from its start (the Bureau's time on its `TOOL_CALL_START`, else
  * its row's recorded time) to its answer (the Bureau's time on its `TOOL_CALL_RESULT`, else the
  * answer row's), to the Bureau's now while it runs, or to the run's stop once it was interrupted.
- * A call a person denied never ran, so it has a duration only when one was recorded.
+ * A call a person denied never ran, so it has times only when they were recorded, and a call that
+ * waits on a person has none.
  */
-function durationOf(
+function intervalOf(
   state: ToolCallState,
   rows: CallRows,
   timing: ToolTimingContext | undefined,
-): number | undefined {
+): { readonly start: number; readonly end: number } | undefined {
   if (timing === undefined || state === 'needs-you') return undefined;
   const recorded = recordedTiming(rows.result?.metadata);
-  if (recorded !== undefined) return recorded.endedAt - recorded.startedAt;
+  if (recorded !== undefined) return { start: recorded.startedAt, end: recorded.endedAt };
   if (state === 'denied') return undefined;
   const callId = rows.call.toolCall?.id ?? '';
   const start = timing.callStarts?.get(callId) ?? epochOf(rows.call.createdAt);
@@ -183,7 +197,41 @@ function durationOf(
       : state === 'interrupted'
         ? timing.stoppedAt
         : (timing.callEnds?.get(callId) ?? epochOf(rows.result?.createdAt));
-  return end === undefined ? undefined : Math.max(0, end - start);
+  return end === undefined ? undefined : { start, end: Math.max(start, end) };
+}
+
+/** How long a call ran, in milliseconds, from the times {@link intervalOf} reads; absent when none. */
+function durationOf(
+  state: ToolCallState,
+  rows: CallRows,
+  timing: ToolTimingContext | undefined,
+): number | undefined {
+  const interval = intervalOf(state, rows, timing);
+  return interval === undefined ? undefined : interval.end - interval.start;
+}
+
+/**
+ * How long a turn spent on its tools, in milliseconds: the time at least one call was under way,
+ * so calls that ran together count once and the time the turn waited on a person counts for
+ * nothing. Absent when no call has recorded times, and while any call is still running (the rail's
+ * summary says "so far" and shows no duration then).
+ */
+function turnDuration(
+  intervals: readonly ({ readonly start: number; readonly end: number } | undefined)[],
+  entries: readonly ToolCallEntry[],
+): number | undefined {
+  if (entries.some((entry) => entry.state === 'running')) return undefined;
+  const known = intervals
+    .filter((interval) => interval !== undefined)
+    .toSorted((left, right) => left.start - right.start);
+  if (known.length === 0) return undefined;
+  let total = 0;
+  let reach = -Infinity;
+  for (const { start, end } of known) {
+    total += Math.max(0, end - Math.max(start, reach));
+    reach = Math.max(reach, end);
+  }
+  return total;
 }
 
 /** A call's duration as the rail prints it: `0.4s`, `12s`, `1m 5s`. */
@@ -198,6 +246,11 @@ export function formatCallDuration(milliseconds: number): string {
 export type ToolGroup = {
   readonly entries: readonly ToolCallEntry[];
   readonly messageIds: readonly string[];
+  /**
+   * How long the turn spent on its tools, in milliseconds (the time at least one call was under
+   * way); absent while a call is running and when no call recorded its times.
+   */
+  readonly durationMilliseconds?: number | undefined;
 };
 
 /** The code this page writes on a call the person denied (`run-wiring.ts`). */
@@ -264,6 +317,7 @@ function entryOf(
 ): ToolCallEntry {
   const state = toolCallState(pair, runActive);
   const failure = pair.result?.error?.message;
+  const error = pair.result?.error;
   const info = tools.get(pair.call.name);
   const durationMilliseconds = rows === undefined ? undefined : durationOf(state, rows, timing);
   const decision = recordedDecision(rows?.result?.metadata);
@@ -286,6 +340,15 @@ function entryOf(
             ? (failure ?? resultSummary(pair.result?.content))
             : resultSummary(pair.result?.content),
     result: pair.result?.content,
+    ...(state === 'failed' && error !== undefined
+      ? {
+          failure: {
+            message: error.message,
+            ...(error.code === '' ? {} : { code: error.code }),
+            retryable: error.retryable,
+          },
+        }
+      : {}),
   };
 }
 
@@ -398,11 +461,22 @@ export function toolGroups(
   }
   const groups = new Map<string, ToolGroup>();
   const absorbed = new Set<string>();
-  let current: { ids: string[]; entries: ToolCallEntry[] } | undefined;
+  let current:
+    | {
+        ids: string[];
+        entries: ToolCallEntry[];
+        intervals: ({ readonly start: number; readonly end: number } | undefined)[];
+      }
+    | undefined;
   const close = (): void => {
     const first = current?.ids[0];
     if (current !== undefined && first !== undefined) {
-      groups.set(first, { entries: current.entries, messageIds: current.ids });
+      const durationMilliseconds = turnDuration(current.intervals, current.entries);
+      groups.set(first, {
+        entries: current.entries,
+        messageIds: current.ids,
+        ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
+      });
       for (const id of current.ids.slice(1)) absorbed.add(id);
     }
     current = undefined;
@@ -418,17 +492,18 @@ export function toolGroups(
       continue;
     }
     const pair = pairs.get(call.id) ?? { call };
-    current ??= { ids: [], entries: [] };
+    current ??= { ids: [], entries: [], intervals: [] };
     current.ids.push(id);
-    current.entries.push(
-      entryOf(
-        pair,
-        index >= lastTurn && (options.runActive ?? true),
-        options.tools ?? new Map(),
-        { call: message, result: resultRows.get(call.id) },
-        options.timing,
-      ),
+    const rows = { call: message, result: resultRows.get(call.id) };
+    const entry = entryOf(
+      pair,
+      index >= lastTurn && (options.runActive ?? true),
+      options.tools ?? new Map(),
+      rows,
+      options.timing,
     );
+    current.entries.push(entry);
+    current.intervals.push(intervalOf(entry.state, rows, options.timing));
   }
   close();
   return { groups, absorbed };

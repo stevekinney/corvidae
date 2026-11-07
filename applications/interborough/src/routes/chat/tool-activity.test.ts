@@ -89,6 +89,38 @@ describe('toolGroups', () => {
     ]);
   });
 
+  test('a failed call keeps the tool’s own error for its panel: the message, the code and whether trying again can work', () => {
+    const { groups } = toolGroups(
+      conversation(
+        call('s0', 'c1', 'send-email'),
+        row({
+          id: 's0:r',
+          role: 'tool-result',
+          toolResult: {
+            callId: 'c1',
+            outcome: 'error',
+            content: 'SMTP timeout after 10s',
+            error: {
+              message: 'SMTP timeout after 10s',
+              code: 'smtp-timeout',
+              category: 'timeout',
+              retryable: true,
+            },
+          },
+        }),
+        call('s1', 'c2', 'lookup-order'),
+        result('s1:r', 'c2', 'success', { status: 'delivered' }),
+      ),
+    );
+    const [failed, fine] = groups.get('s0')?.entries ?? [];
+    expect(failed?.failure).toEqual({
+      message: 'SMTP timeout after 10s',
+      code: 'smtp-timeout',
+      retryable: true,
+    });
+    expect(fine?.failure).toBeUndefined();
+  });
+
   test('a message between two tool rows ends the group', () => {
     const { groups } = toolGroups(
       conversation(call('s0', 'c1', 'a'), row({ id: 'a1', content: 'Hm.' }), call('s1', 'c2', 'b')),

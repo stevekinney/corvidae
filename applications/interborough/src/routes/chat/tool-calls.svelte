@@ -4,7 +4,8 @@
    * what came back), with the middle of a long turn folded. A call that needs a decision, failed,
    * was refused or was interrupted is never inside the fold; a call that needs a decision has its
    * decision directly under its row, and any call opens its arguments and result when its row is
-   * chosen. A call whose approval was refused, or was decided on another page while this one was
+   * chosen: in the page's side panel when the page hands `onSelect` (the chat page's), otherwise
+   * under the row. A call whose approval was refused, or was decided on another page while this one was
    * open, keeps the decision under its row as what became of it. A turn that ends on a tool call
    * closes with the run's end state.
    */
@@ -26,13 +27,33 @@
     decided?: DecisionContext;
     /** The run's end state, on its own line after the last row, for a turn that ends on a tool call. */
     endLabel?: string | undefined;
+    /** How long the turn spent on its tools, formatted ("18s"), at the end of the summary line; left out when no call recorded its times. */
+    duration?: string | undefined;
     /** An inline plugin panel for a completed tool call. */
     mcpApp?: Snippet<[ToolCallEntry]>;
+    /**
+     * Fired with a call's id when its row is chosen, which opens the call in the page's side panel.
+     * Without it a chosen row opens the call's arguments and result under it.
+     */
+    onSelect?: ((callId: string) => void) | undefined;
+    /** The call whose panel is open: its row is tinted. Only with `onSelect`. */
+    selectedId?: string | undefined;
   }
 
-  let { id, entries, decision, decided = {}, endLabel, mcpApp }: ToolCallsProps = $props();
+  let {
+    id,
+    entries,
+    decision,
+    decided = {},
+    endLabel,
+    duration,
+    mcpApp,
+    onSelect,
+    selectedId,
+  }: ToolCallsProps = $props();
 
   let openDetails = $state<ReadonlySet<string>>(new Set());
+  const inline = $derived(onSelect === undefined);
 
   const byId = $derived(new Map(entries.map((entry) => [entry.callId, entry] as const)));
   /** A finished revision proposal keeps its inline panel on the rail, whatever the fold. */
@@ -50,7 +71,7 @@
     entries.map((entry) => ({
       ...railCall(
         entry,
-        showsDecision(entry) || openDetails.has(entry.callId) || showsPanel(entry),
+        showsDecision(entry) || (inline && openDetails.has(entry.callId)) || showsPanel(entry),
         decided,
       ),
       ...(showsPanel(entry) ? { pinned: true } : {}),
@@ -77,15 +98,16 @@
   <ToolCallRail
     {calls}
     {running}
+    {duration}
     {endLabel}
     label={CHAT_COPY.tools.railLabel}
-    selectedId={undefined}
-    onSelect={toggleDetails}
+    {selectedId}
+    onSelect={onSelect ?? toggleDetails}
   >
     {#snippet children(call)}
       {@const entry = byId.get(call.id)}
       {#if entry !== undefined}
-        {#if openDetails.has(entry.callId)}
+        {#if inline && openDetails.has(entry.callId)}
           <dl class="ib-tool__details" id={`${id}-${entry.callId}-details`}>
             {#each argumentEntries(entry.arguments) as [key, value] (`argument-${key}`)}
               <dt>{key}</dt>

@@ -2935,6 +2935,8 @@ export const CHAT_COPY = {
     railLabel: 'Tool calls',
     /** The words of the arguments and result a chosen call opens. */
     resultPrefix: 'Result:',
+    /** Where a call falls in its turn, written in its panel's header after how long it took. */
+    position: (number: number, total: number) => `call ${String(number)} of ${String(total)}`,
     /** A call the person refused reads Denied: it did not fail. */
     denied: 'Denied',
     /**

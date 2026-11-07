@@ -74,6 +74,8 @@
   const PAGE_SIZE = 20;
   /** The width of the list pane, in pixels, from which it names the agent and today's date too. */
   const WIDE_PANE_WIDTH = 480;
+  /** The header's width under which the status segments no longer fit on one line. */
+  const SEGMENTS_MINIMUM_WIDTH = 236;
 
   // The outlet mounts a new route for each page, so the draft is named once. A new chat has no
   // session until its first run: the client names the thread now, and its row stands for it until
@@ -193,21 +195,25 @@
   );
   const agentName = (row: SessionRow): string => agentLabel(row.agentName, catalog.data);
 
+  // The pane's own width, which decides whether the day bands and line two name more.
+  let paneWidth = $state(0);
+  const wide = $derived(paneWidth >= WIDE_PANE_WIDTH);
+  // The segments need room for their three labels on one line. In a pane dragged narrower than
+  // that, as the long turn's frame draws it (row 21p), they give way to the search, and what was
+  // chosen narrows nothing, like on a phone. An unmeasured pane shows them.
+  const segmentsFit = $derived(paneWidth === 0 || paneWidth >= SEGMENTS_MINIMUM_WIDTH);
+
   // A phone's list is a screen of its own with no search or segments (row 06l), so what was typed
   // or chosen on a wider screen narrows nothing there, and comes back when the screen is wide again.
   let typed = $state('');
   let chosen = $state<ChatSegment>('all');
   const search = $derived(phone.current ? '' : typed);
-  const segment = $derived<ChatSegment>(phone.current ? 'all' : chosen);
+  const segment = $derived<ChatSegment>(phone.current || !segmentsFit ? 'all' : chosen);
   const searched = $derived(matchingRows(allRows, search, agentName));
   // The segments count what the search leaves, so each says how many it would show.
   const counts = $derived(segmentCounts(searched));
   const visible = $derived(searched.filter((row) => inSegment(row, segment)));
   const searching = $derived(search.trim() !== '');
-
-  // The pane's own width, which decides whether the day bands and line two name more.
-  let paneWidth = $state(0);
-  const wide = $derived(paneWidth >= WIDE_PANE_WIDTH);
 
   // The open chat always has a row to open it in, so its pane is shown even when the Bureau has not
   // (yet) said anything about it, or a search leaves it out of the list: the pane reports a chat
@@ -445,23 +451,25 @@
             placeholder={CHAT_COPY.list.searchPlaceholder}
             bind:value={typed}
           />
-          <SegmentedControl
-            id="chat-status"
-            label={CHAT_COPY.list.segmentsLabel}
-            labelVisible={false}
-            size="sm"
-            value={segment}
-            onValueChange={(next: ChatSegment) => (chosen = next)}
-          >
-            {#each CHAT_SEGMENTS as option (option)}
-              <Segment
-                value={option}
-                count={sessions.data === undefined ? 'pending' : counts[option]}
-              >
-                {CHAT_COPY.list.segments[option]}
-              </Segment>
-            {/each}
-          </SegmentedControl>
+          {#if segmentsFit}
+            <SegmentedControl
+              id="chat-status"
+              label={CHAT_COPY.list.segmentsLabel}
+              labelVisible={false}
+              size="sm"
+              value={segment}
+              onValueChange={(next: ChatSegment) => (chosen = next)}
+            >
+              {#each CHAT_SEGMENTS as option (option)}
+                <Segment
+                  value={option}
+                  count={sessions.data === undefined ? 'pending' : counts[option]}
+                >
+                  {CHAT_COPY.list.segments[option]}
+                </Segment>
+              {/each}
+            </SegmentedControl>
+          {/if}
         {/if}
       </div>
     {/snippet}

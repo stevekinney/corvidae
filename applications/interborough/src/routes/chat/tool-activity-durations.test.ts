@@ -187,6 +187,64 @@ describe('a call’s duration', () => {
   });
 });
 
+describe('a turn’s duration (design row 21q)', () => {
+  const groupOf = (history: ConversationHistory, options: Parameters<typeof toolGroups>[1] = {}) =>
+    [...toolGroups(history, { timing: NOW, ...options }).groups.values()][0];
+
+  test('is the time at least one call was under way: calls that ran together count once', () => {
+    const group = groupOf(
+      conversation(
+        call('c1', 'call-1', '16:41:01.000'),
+        call('c2', 'call-2', '16:41:01.000'),
+        call('c3', 'call-3', '16:41:01.000'),
+        result('r1', 'call-1', 'success', { timing: ['16:41:01.000', '16:41:03.000'] }),
+        result('r2', 'call-2', 'success', { timing: ['16:41:02.000', '16:41:04.000'] }),
+        result('r3', 'call-3', 'success', { timing: ['16:41:10.000', '16:41:11.500'] }),
+      ),
+    );
+    // 01:00 to 04:00 is 3s of overlapping calls, then 1.5s after a gap, not the 5.5s of the sum.
+    expect(group?.durationMilliseconds).toBe(4500);
+    expect(formatCallDuration(group?.durationMilliseconds ?? 0)).toBe('4.5s');
+  });
+
+  test('leaves out the time the turn waited on a person: a waiting call adds none and a late decision adds a gap', () => {
+    const group = groupOf(
+      conversation(
+        call('c1', 'call-1', '16:41:01.000'),
+        call('c2', 'call-2', '16:41:01.000'),
+        call('c3', 'call-3', '16:41:01.000'),
+        result('r1', 'call-1', 'success', { timing: ['16:41:01.000', '16:41:02.000'] }),
+        // Approved six minutes after it asked: it ran for a second then.
+        result('r2', 'call-2', 'success', { timing: ['16:47:00.000', '16:47:01.000'] }),
+        result('r3', 'call-3', 'action_required', { timing: ['16:41:03.000', '16:41:03.100'] }),
+      ),
+    );
+    expect(group?.durationMilliseconds).toBe(2000);
+  });
+
+  test('is absent while a call is running, and when no call recorded its times', () => {
+    const running = groupOf(
+      conversation(
+        call('c1', 'call-1', '16:41:01.000'),
+        call('c2', 'call-2', '16:45:00.000'),
+        result('r1', 'call-1', 'success', { timing: ['16:41:01.000', '16:41:02.000'] }),
+      ),
+      { runActive: true },
+    );
+    expect(running?.durationMilliseconds).toBeUndefined();
+    const unrecorded = groupOf(
+      conversation(
+        call('c1', 'call-1', '16:41:01.000'),
+        result('r1', 'call-1', 'action_required', { timing: ['16:41:01.000', '16:41:01.100'] }),
+      ),
+    );
+    expect(unrecorded?.durationMilliseconds).toBeUndefined();
+    expect(
+      groupOf(conversation(call('c1', 'call-1', '16:41:01.000')), { timing: undefined }),
+    ).not.toHaveProperty('durationMilliseconds');
+  });
+});
+
 describe('recordedTiming', () => {
   test('reads a start and an end, and refuses times that are missing, unparsed or backwards', () => {
     const timing = (startedAt: unknown, endedAt: unknown) => ({

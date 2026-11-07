@@ -178,7 +178,7 @@ test.describe('a tool approval', () => {
 });
 
 test.describe('a tool call', () => {
-  test('is one short row with its summary, and its chevron shows its arguments and its result', async ({
+  test('is one short row with its summary, and choosing it opens its arguments and its result in a panel', async ({
     page,
     request,
   }) => {
@@ -193,12 +193,18 @@ test.describe('a tool call', () => {
     await expect(lookup).toContainText('status delivered');
     const box = await lookup.boundingBox();
     expect(box?.height ?? 999).toBeLessThanOrEqual(48);
-    // Choosing the row opens what the call was given and what it answered.
+    // Choosing the row opens what the call was given and what it answered in the call's panel,
+    // beside the conversation, and the rail's rows stay one line each.
     await lookup.click();
-    const details = page.locator('.ib-tool__details');
-    await expect(details.locator('dt', { hasText: 'orderId' }).first()).toBeVisible();
-    await expect(details.locator('dt', { hasText: 'Result: totalCents' })).toBeVisible();
-    await expect(details.locator('dd', { hasText: '4200' })).toBeVisible();
+    const panel = page.locator('.cinder-tool-call-panel');
+    await expect(panel).toContainText('Lookup order');
+    const given = panel.getByRole('region', { name: 'Input' });
+    await expect(given.getByText('Order ID')).toBeVisible();
+    await expect(given.getByText('order-1001')).toBeVisible();
+    const answered = panel.getByRole('region', { name: 'Result' });
+    await expect(answered.getByText('Total cents')).toBeVisible();
+    await expect(answered.getByText('4200')).toBeVisible();
+    await expect(page.locator('.ib-tool__details')).toHaveCount(0);
   });
 });
 
