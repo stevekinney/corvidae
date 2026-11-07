@@ -74,8 +74,9 @@ function pricingWithEdit(
       : editedLongContext === null
         ? undefined
         : { ...keptLongContext, ...editedLongContext };
+  const { longContext: _rowLongContext, ...rowRates } = rowPricing ?? {};
   return {
-    ...rowPricing,
+    ...rowRates,
     ...editedRates,
     ...(longContext === undefined ? {} : { longContext }),
   };
@@ -121,6 +122,7 @@ export function withRowFields(
       ? {
           pricing: {
             ...preservedPricing,
+            ...(existing.pricing?.longContext === null ? { longContext: null } : {}),
             inputPerMillionTokens: fields.inputPerMillionTokens,
             outputPerMillionTokens: fields.outputPerMillionTokens,
             currency: existing.pricing?.currency ?? row.pricing?.currency ?? DEFAULT_CURRENCY,

@@ -201,6 +201,72 @@ describe('withRowFields', () => {
       },
     ]);
   });
+
+  test('preserves explicit tier removal when ordinary prices change', () => {
+    const edits: CatalogEdit[] = [
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        pricing: {
+          inputPerMillionTokens: 3,
+          outputPerMillionTokens: 10,
+          currency: 'USD',
+          longContext: null,
+        },
+      },
+    ];
+
+    expect(withRowFields(edits, CACHED_SONNET, { ...FIELDS, outputPerMillionTokens: 20 })).toEqual([
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        pricing: {
+          inputPerMillionTokens: 3,
+          outputPerMillionTokens: 20,
+          currency: 'USD',
+          cacheReadPerMillionTokens: 0.2,
+          cacheWritePerMillionTokens: 2.5,
+          longContext: null,
+        },
+      },
+    ]);
+  });
+
+  test('preserves explicit tier removal when context limits change', () => {
+    const edits: CatalogEdit[] = [
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        pricing: {
+          inputPerMillionTokens: 3,
+          outputPerMillionTokens: 10,
+          currency: 'USD',
+          longContext: null,
+        },
+      },
+    ];
+
+    expect(
+      withRowFields(edits, CACHED_SONNET, {
+        ...FIELDS,
+        contextWindowTokens: CACHED_SONNET.contextWindowTokens + 1,
+      }),
+    ).toEqual([
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        contextWindowTokens: CACHED_SONNET.contextWindowTokens + 1,
+        pricing: {
+          inputPerMillionTokens: 3,
+          outputPerMillionTokens: 15,
+          currency: 'USD',
+          cacheReadPerMillionTokens: 0.2,
+          cacheWritePerMillionTokens: 2.5,
+          longContext: null,
+        },
+      },
+    ]);
+  });
 });
 
 describe('withAddedRow', () => {
@@ -292,6 +358,37 @@ describe('previewRows with cache pricing', () => {
         cacheWritePerMillionTokens: 6.25,
       },
     });
+  });
+
+  test('removes a tier in effective previews while preserving its persisted null marker', () => {
+    const removed: CatalogEdit = {
+      provider: 'anthropic',
+      model: 'sonnet',
+      pricing: {
+        inputPerMillionTokens: 3,
+        outputPerMillionTokens: 15,
+        currency: 'USD',
+        longContext: null,
+      },
+    };
+    expect(previewRows([CACHED_SONNET], [removed])[0]?.pricing?.longContext).toBeUndefined();
+
+    const ordinaryWithRemoval = withRowFields([removed], CACHED_SONNET, {
+      ...FIELDS,
+      outputPerMillionTokens: 20,
+    });
+    const contextWithRemoval = withRowFields([removed], CACHED_SONNET, {
+      ...FIELDS,
+      contextWindowTokens: CACHED_SONNET.contextWindowTokens + 1,
+    });
+    expect(ordinaryWithRemoval[0]?.pricing?.longContext).toBeNull();
+    expect(contextWithRemoval[0]?.pricing?.longContext).toBeNull();
+    expect(
+      previewRows([CACHED_SONNET], ordinaryWithRemoval)[0]?.pricing?.longContext,
+    ).toBeUndefined();
+    expect(
+      previewRows([CACHED_SONNET], contextWithRemoval)[0]?.pricing?.longContext,
+    ).toBeUndefined();
   });
 });
 
