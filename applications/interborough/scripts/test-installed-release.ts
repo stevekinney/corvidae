@@ -38,6 +38,7 @@ type Probe = {
   readonly stdout: Promise<string>;
   readonly stderr: Promise<string>;
   readonly output: () => string;
+  readonly errorOutput?: () => string;
 };
 type Acceptance = {
   readonly assertion: string;
@@ -70,11 +71,22 @@ function spawn(
     stderr: 'pipe',
   });
   let output = '';
+  let errorOutput = '';
   const stdout = (async () => {
-    for await (const chunk of process.stdout) output += new TextDecoder().decode(chunk);
+    for await (const chunk of process.stdout) {
+      const text = new TextDecoder().decode(chunk);
+      output += text;
+    }
     return output;
   })();
-  return { process, stdout, stderr: new Response(process.stderr).text(), output: () => output };
+  const stderr = (async () => {
+    for await (const chunk of process.stderr) {
+      const text = new TextDecoder().decode(chunk);
+      errorOutput += text;
+    }
+    return errorOutput;
+  })();
+  return { process, stdout, stderr, output: () => output, errorOutput: () => errorOutput };
 }
 
 export async function waitForListening(
@@ -90,7 +102,11 @@ export async function waitForListening(
       throw new Error(
         `Installed release exited ${probe.process.exitCode}: ${text}\n${await probe.stderr}`,
       );
-    if (Date.now() - start > timeout) throw new Error(`Installed release did not listen: ${text}`);
+    if (Date.now() - start > timeout)
+      throw new Error(
+        `Installed release did not listen: ${text}\n` +
+          `standard error:\n${probe.errorOutput?.() ?? '<unavailable>'}`,
+      );
     await Bun.sleep(100);
   }
 }
