@@ -101,7 +101,7 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { NEW_CHAT_FROM_WORKFLOWS } from '../../lib/new-chat-address.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
-  import { isRunning, listTasks } from '../../lib/bureau-tasks.ts';
+  import { isRunning, listTasks, type TaskView } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
   import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
@@ -195,6 +195,9 @@
   let agent = $state(untrack(() => agentName));
   let choosing = $state(untrack(() => isNew));
   let chat = $state<ReturnType<typeof Chat> | undefined>();
+  // What the box held when the first message of a new chat was sent, so a start that finishes after
+  // the person typed on can tell their later text from the message it started with.
+  let submittedDraft: string | undefined;
 
   const connection = getConnection();
   /** A phone: a new chat's composer is docked to the bottom of the screen (board PageNewChat, frame l). */
@@ -211,14 +214,31 @@
     onRunStarted: () => {
       if (!choosing) return;
       choosing = false;
-      // The box kept what was typed until the chat started (`clearComposerOnSubmit`).
-      chat?.clearInput();
+      // The box kept what was typed until the chat started (`clearComposerOnSubmit`). It is emptied
+      // only if it still holds what was sent: text typed after Send, while "Starting chat…" showed,
+      // is the person's next message and stays.
+      const submitted = submittedDraft;
+      submittedDraft = undefined;
+      if (submitted === undefined || chat?.getComposerValue() === submitted) chat?.clearInput();
       // The session exists now. Its address replaces the new chat's, so Back returns to where the
       // person came from, and this page stays mounted so the run carries on.
       router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
       void applyDraft();
     },
+  });
+
+  /** The session's adapter; while the chat is new it also notes the box as the first message is sent. */
+  const chatAdapter = $derived.by(() => {
+    const adapter = session.chatAdapter;
+    if (!choosing) return adapter;
+    return {
+      ...adapter,
+      sendMessage: (...input: Parameters<typeof adapter.sendMessage>) => {
+        submittedDraft = chat?.getComposerValue();
+        return adapter.sendMessage(...input);
+      },
+    };
   });
 
   // The first message of a new chat is on its way and the run has not begun.
@@ -1279,10 +1299,59 @@
       untrack(() => (awaitingContinuation = false));
       return;
     }
-    const going = latestRuns.data?.tasks.some(isRunning) === true;
-    if (!going || session.attaching) return;
-    untrack(() => void joinContinuation());
+    const tasks = latestRuns.data?.tasks ?? [];
+    if (session.attaching) return;
+    if (tasks.some(isRunning)) {
+      untrack(() => void joinContinuation());
+      return;
+    }
+    // A continuation that has already stopped, or parked on another approval or question, is not
+    // going to be joined, and nothing else reloads the thread it wrote.
+    if (continuationRan(tasks, decidedRuns)) untrack(() => void settleContinuation());
   });
+  /**
+   * The tool call each pending approval of this chat was last read for, with the run it parked:
+   * once the call is decided, that run is the one the decision continued.
+   */
+  const parkedRuns = new Map<string, string>();
+  /** The runs the decisions made on another page settled, until the chat has caught up with what followed. */
+  const decidedRuns = new Set<string>();
+  /** The calls those decisions were for, whose "running…" ends when the chat has caught up. */
+  const awaitedCalls = new Set<string>();
+  let settlingContinuation = false;
+  /**
+   * Whether a run newer than the decided ones exists in `tasks` (most recently changed first),
+   * whatever its status. The decided run is found among them, and a run created after it is the
+   * one the decision started.
+   */
+  function continuationRan(tasks: readonly TaskView[], decided: ReadonlySet<string>): boolean {
+    const created = tasks
+      .filter((task) => decided.has(task.id))
+      .map((task) => Date.parse(task.createdAt));
+    if (created.length === 0) return false;
+    const since = Math.max(...created);
+    return tasks.some((task) => !decided.has(task.id) && Date.parse(task.createdAt) > since);
+  }
+  /**
+   * Catches the chat up with a continuation that stopped before the page could join it: the thread
+   * and what the chat waits on are read again, the awaited calls stop reading as running, and the
+   * wait for a continuation ends. A read that could not be made is tried again at the next read of
+   * the chat's runs.
+   */
+  async function settleContinuation(): Promise<void> {
+    if (settlingContinuation) return;
+    settlingContinuation = true;
+    try {
+      if (!(await session.refresh().catch(() => false))) return;
+      awaitingContinuation = false;
+      continuingCalls = new Set([...continuingCalls].filter((callId) => !awaitedCalls.has(callId)));
+      decidedRuns.clear();
+      awaitedCalls.clear();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
+    } finally {
+      settlingContinuation = false;
+    }
+  }
   /**
    * Joins the run the chat's runs show going, and stops waiting for one once it has. The chat is
    * read again then: what was read while it waited on the approval says it still does, and the
@@ -1291,6 +1360,8 @@
   async function joinContinuation(): Promise<void> {
     if (!(await session.attach())) return;
     awaitingContinuation = false;
+    decidedRuns.clear();
+    awaitedCalls.clear();
     void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
   }
   const NOTHING_CONTINUING: ReadonlySet<string> = new Set();
@@ -1328,6 +1399,11 @@
       return;
     }
     if (reviews === undefined) return;
+    for (const review of reviews) {
+      if (review.kind === 'tool-approval' && review.sessionId === sessionId) {
+        parkedRuns.set(review.approval.callId, review.runId);
+      }
+    }
     const decided = seen.observe(
       reviews.filter((review) => review.sessionId === sessionId),
       {
@@ -1360,7 +1436,14 @@
           sayDecidedAway(decided.calls, questions);
           // An approval decided there continues the chat with a run of its own, which the read
           // may have come too early to join.
-          if (decided.calls.length > 0 && !session.streaming) awaitingContinuation = true;
+          if (decided.calls.length > 0 && !session.streaming) {
+            for (const callId of decided.calls) {
+              awaitedCalls.add(callId);
+              const run = parkedRuns.get(callId);
+              if (run !== undefined) decidedRuns.add(run);
+            }
+            awaitingContinuation = true;
+          }
         } else if (rereadFor === key) {
           rereadFor = '';
         }
@@ -1582,7 +1665,7 @@
         bind:this={chat}
         id={`chat-${sessionId}`}
         conversation={choosing ? unstartedConversation : shown}
-        adapter={session.chatAdapter}
+        adapter={chatAdapter}
         streaming={session.streaming && !choosing}
         surfaceMode="transparent"
         variant="transcript"

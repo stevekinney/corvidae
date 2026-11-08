@@ -320,3 +320,160 @@ describe('the run a decision on another page continues the chat with (design row
     expect(railRow()?.textContent).toMatch(/Approved by you in Reviews \d{1,2}:\d{2} [AP]M/);
   });
 });
+
+describe('a continuation that stops before the chat could join it (design row 18j)', () => {
+  const REPLY = { id: 'assistant-2', role: 'assistant', content: 'Refund issued for order 4471.' };
+  const SECOND_APPROVAL = {
+    id: 'approval:run-2:call-second',
+    reason: 'tool-approval',
+    toolCallId: 'call-second',
+    message: 'Email the customer about order 4471?',
+    metadata: { '@lostgradient/bureau': { kind: 'tool-approval', round: 0 } },
+  };
+  /** The thread after the continuation: the agent's reply, then a second call that wants approval. */
+  const SECOND_CALL = {
+    id: 'assistant-3',
+    role: 'assistant',
+    toolCalls: [
+      {
+        id: 'call-second',
+        type: 'function',
+        function: { name: 'send-email', arguments: '{"orderId":4471}' },
+      },
+    ],
+  };
+
+  /**
+   * The chat open on the refund's approval, which Reviews decides; the read the decision causes
+   * comes before the continuation starts, and then the continuation runs to `ending` before the
+   * next read of the chat's runs.
+   */
+  async function continuedAndStopped(ending: 'finished' | 'parked') {
+    const thread = decidedThread(APPROVED, { refunded: 4200 });
+    let decided = false;
+    let ran = false;
+    const served = bureau(
+      {
+        'bureau.contexts.get': () => ({
+          ...CONTEXT,
+          activity: ran && ending === 'parked' ? 'awaiting-input' : 'idle',
+        }),
+        'bureau.reviews.list': () => ({
+          reviews: !decided
+            ? [
+                toolApprovalFixture({
+                  sessionId: 'session-1',
+                  approval: { ...toolApprovalFixture().approval, callId: 'call-refund' },
+                }),
+              ]
+            : ran && ending === 'parked'
+              ? [
+                  toolApprovalFixture({
+                    id: 'approval:run-2:call-second',
+                    runId: 'run-2',
+                    sessionId: 'session-1',
+                    approval: { ...toolApprovalFixture().approval, callId: 'call-second' },
+                  }),
+                ]
+              : [],
+        }),
+        // The decided run (run-1) is read as it ended; the continuation (run-2) is created after it
+        // and is not going when the chat reads the chat's runs.
+        'bureau.tasks.list': () => ({
+          tasks: [
+            ...(ran
+              ? [
+                  taskFixture({
+                    id: 'run-2',
+                    status: ending === 'parked' ? 'input-required' : 'completed',
+                    createdAt: '2026-10-19T08:05:00.000Z',
+                    updatedAt: '2026-10-19T08:06:00.000Z',
+                  }),
+                ]
+              : []),
+            ...(decided ? [taskFixture({ id: 'run-1', status: 'completed' })] : []),
+          ],
+          nextPageToken: null,
+        }),
+      },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({
+            threadId: 'session-1',
+            messages: !decided
+              ? []
+              : !ran
+                ? thread
+                : ending === 'finished'
+                  ? [...thread, REPLY]
+                  : [...thread, REPLY, SECOND_CALL],
+          });
+        }
+        if (!url.includes('/threads/')) return undefined;
+        if (!decided) return sse(PARKED);
+        if (ran && ending === 'parked') {
+          return sse([
+            { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-2' },
+            { type: 'MESSAGES_SNAPSHOT', messages: [...thread, REPLY] },
+            { type: 'TOOL_CALL_START', toolCallId: 'call-second', toolCallName: 'send-email' },
+            { type: 'TOOL_CALL_ARGS', toolCallId: 'call-second', delta: '{"orderId":4471}' },
+            { type: 'TOOL_CALL_END', toolCallId: 'call-second' },
+            {
+              type: 'TOOL_CALL_RESULT',
+              messageId: 'result-2',
+              toolCallId: 'call-second',
+              content: 'requires approval',
+              role: 'tool',
+            },
+            {
+              type: 'RUN_FINISHED',
+              threadId: 'session-1',
+              runId: 'run-2',
+              outcome: { type: 'interrupt', interrupts: [SECOND_APPROVAL] },
+            },
+          ]);
+        }
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      },
+    );
+    restore = served.restore;
+    landAt('/chats/session-1');
+    jest.useFakeTimers();
+    const view = mount();
+    await until(() =>
+      expect(view.container.querySelector('[data-approval-decision]')).not.toBeNull(),
+    );
+
+    decided = true;
+    jest.advanceTimersByTime(3_000);
+    await settle(20);
+    await until(() => expect(view.container.querySelector('[data-approval-decision]')).toBeNull());
+    const railRow = () => view.container.querySelector('.cinder-tool-call-rail__item');
+    expect(railRow()?.textContent).toContain('running…');
+
+    // The continuation ran and stopped between two reads of the chat's runs.
+    ran = true;
+    jest.advanceTimersByTime(3_000);
+    await settle(20);
+    return { ...view, railRow };
+  }
+
+  test('that finished is read into the chat: its reply shows and the call stops reading as running', async () => {
+    const { container, railRow } = await continuedAndStopped('finished');
+
+    await until(() => expect(container.textContent).toContain('Refund issued for order 4471.'));
+    await until(() => expect(railRow()?.getAttribute('data-cinder-status')).toBe('approved'));
+    expect(railRow()?.textContent).not.toContain('running…');
+    // The chat never joined a run, so Send keeps its place.
+    expect(container.querySelector('button[aria-label="Stop generating"]')).toBeNull();
+  });
+
+  test('that parked on another approval shows that approval and the earlier call is no longer running', async () => {
+    const { container, railRow } = await continuedAndStopped('parked');
+
+    await until(() => expect(container.textContent).toContain('Refund issued for order 4471.'));
+    await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
+    expect(container.textContent).toContain('Email the customer about order 4471?');
+    expect(railRow()?.textContent).not.toContain('running…');
+  });
+});

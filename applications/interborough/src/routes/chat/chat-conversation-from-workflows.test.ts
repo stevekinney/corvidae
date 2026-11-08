@@ -381,6 +381,43 @@ describe('the first message of a new chat', () => {
     expect(window.location.pathname).toBe('/chats/thread-1');
   });
 
+  test('keeps what was typed after Send, while it was starting, when the run begins', async () => {
+    const served = serve();
+    landAt('/chats/new?agent=workflow-author');
+    const { container } = mount({ fromWorkflows: false });
+    const field = await box(container);
+    await fireEvent.input(field, { target: { value: 'Please refund order 4471.' } });
+    await fireEvent.submit(container.querySelector('form.chat-input')!);
+    await waitFor(() => expect(send(container)?.textContent).toContain('Starting chat…'));
+
+    // The box stays editable while the chat starts, and the person goes on typing their next message.
+    await fireEvent.input(editor(container)!, {
+      target: { value: 'Please refund order 4471. Also email the customer.' },
+    });
+    served.start();
+
+    await waitFor(() => expect(container.textContent).toContain('Hi.'));
+    expect(send(container)?.textContent).not.toContain('Starting chat…');
+    expect(editor(container)?.value).toBe('Please refund order 4471. Also email the customer.');
+  });
+
+  test('empties the box when the run begins and the text is still what was sent', async () => {
+    const served = serve();
+    landAt('/chats/new?agent=workflow-author');
+    const { container } = mount({ fromWorkflows: false });
+    const field = await box(container);
+    await fireEvent.input(field, { target: { value: 'Say hello' } });
+    await fireEvent.submit(container.querySelector('form.chat-input')!);
+    await waitFor(() => expect(send(container)?.textContent).toContain('Starting chat…'));
+    // Typing the same text again changes nothing about what the box holds.
+    await fireEvent.input(editor(container)!, { target: { value: 'Say hello' } });
+
+    served.start();
+
+    await waitFor(() => expect(container.textContent).toContain('Hi.'));
+    expect(editor(container)?.value).toBe('');
+  });
+
   test('that could not be started keeps the typed text and leaves no row behind, so the next Send is the first (24r)', async () => {
     const served = serve();
     landAt('/chats/new?agent=workflow-author');
