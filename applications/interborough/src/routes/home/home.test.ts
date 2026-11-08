@@ -41,8 +41,8 @@ import {
 
 let installed: InstalledHome | undefined;
 
-// `bun test` runs in UTC without naming it in `TZ`, so the zone to give back is the one in effect.
-const previousZone = process.env['TZ'] ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+// The zone in effect now is the one to give back; `bun test` runs in UTC without naming it in `TZ`.
+const previousZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 beforeAll(() => {
   // The date line and the times read the viewer's zone, which the board draws as Central time.
