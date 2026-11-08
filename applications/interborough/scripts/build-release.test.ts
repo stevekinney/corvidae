@@ -359,7 +359,30 @@ describe('release arguments', () => {
   // spawn-free: the validation fixtures own and clean their guarded child processes.
   test('covers relocated host validation failures', async () => {
     await expectRelocatedFailure('missing-inspector', 'Prebuilt inspector is missing');
-    await expectRelocatedFailure('not-running', 'did not run');
+    const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
+    const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'not-running' });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-not-running-'));
+    let clock = 0;
+    try {
+      const failure = await throwingRejectionOf(
+        buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+          ...fixture.operations,
+          now: () => clock,
+          sleep: async () => {
+            while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
+            clock += 100;
+          },
+        }),
+      );
+      expect(failure).toThrow(
+        /did not run[\s\S]*child exit before cleanup: running[\s\S]*child exit after cleanup: 0[\s\S]*standard error:/,
+      );
+      expect(await Bun.file(marker).text()).toBe('terminated');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+      await rm(marker, { force: true });
+    }
     await expectRelocatedFailure('missing-contribution', 'did not register');
     await expectRelocatedFailure('malformed-html', 'did not contain its generated page');
   });

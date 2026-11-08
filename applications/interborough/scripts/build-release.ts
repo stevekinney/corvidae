@@ -290,8 +290,18 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       }
       await sleep(100);
     }
-    if (listing === undefined || Reflect.get(listing, 'status') !== 'running')
-      throw new Error(`Relocated SDK plugin did not run: ${JSON.stringify(snapshot)}`);
+    if (listing === undefined || Reflect.get(listing, 'status') !== 'running') {
+      const exitBeforeCleanup = childProcess.exitCode;
+      await stopChild();
+      const [standardOutput, standardError] = await Promise.all([stdout, stderr]);
+      throw new Error(
+        `Relocated SDK plugin did not run: ${JSON.stringify(snapshot)}\n` +
+          `child exit before cleanup: ${exitBeforeCleanup ?? 'running'}\n` +
+          `child exit after cleanup: ${childProcess.exitCode ?? 'running'}\n` +
+          `standard output:\n${standardOutput}\n` +
+          `standard error:\n${standardError}`,
+      );
+    }
     const contributions = Reflect.get(listing, 'contributions');
     if (
       !Array.isArray(contributions) ||

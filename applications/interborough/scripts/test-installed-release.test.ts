@@ -161,11 +161,26 @@ describe('installed-release harness arguments', () => {
               output: () => '',
               stdout: Promise.resolve(''),
               stderr: new Promise(() => {}),
+              errorOutput: () => 'child still starting',
             },
             0,
           ),
         ),
       ).toThrow('did not listen');
+      expect(
+        await throwingRejectionOf(
+          waitForListening(
+            {
+              process: { exitCode: null } as ReturnType<typeof Bun.spawn>,
+              output: () => 'partial startup',
+              stdout: Promise.resolve(''),
+              stderr: new Promise(() => {}),
+              errorOutput: () => 'child diagnostic',
+            },
+            0,
+          ),
+        ),
+      ).toThrow(/partial startup[\s\S]*child diagnostic/);
     } finally {
       await server.stop(true);
     }

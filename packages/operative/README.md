@@ -1444,7 +1444,7 @@ const definitions: ProviderDefinition[] = [example];
 
 const selected = definitions
   .find((definition) => definition.name === 'example')
-  ?.generate({ provider: 'example', model: 'example-model' });
+  ?.generate?.({ provider: 'example', model: 'example-model' });
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.

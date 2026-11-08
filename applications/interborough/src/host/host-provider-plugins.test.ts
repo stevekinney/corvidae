@@ -112,6 +112,7 @@ describe('a plugin that contributes a provider', () => {
       resolveProviderGenerate: (definitions, provider) => {
         const found = definitions.find((candidate) => candidate.name === provider.provider);
         if (found === undefined) throw new Error('No such provider.');
+        if (found.generate === undefined) throw new Error('Provider has no generate capability.');
         return found.generate(provider);
       },
     });
