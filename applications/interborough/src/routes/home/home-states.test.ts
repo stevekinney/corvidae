@@ -40,7 +40,7 @@ let installed: InstalledHome | undefined;
 let restoreFetch: (() => void) | undefined;
 
 // `bun test` runs in UTC without naming it in `TZ`, so the zone to give back is the one in effect.
-const zoneBefore = process.env['TZ'] ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+const previousZone = process.env['TZ'] ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 beforeAll(() => {
   process.env['TZ'] = 'America/Chicago';
@@ -48,7 +48,7 @@ beforeAll(() => {
 
 afterAll(() => {
   // The zone is the process's: another file in this worker reads its own.
-  process.env['TZ'] = zoneBefore;
+  process.env['TZ'] = previousZone;
 });
 
 beforeEach(() => {
