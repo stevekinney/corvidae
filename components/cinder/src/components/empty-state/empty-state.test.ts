@@ -422,6 +422,58 @@ describe('EmptyState size', () => {
   });
 });
 
+describe('EmptyState layout', () => {
+  test('is stacked by default, and a row marks the root', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty' } });
+    expect(rootOf(container)?.hasAttribute('data-cinder-layout')).toBe(false);
+    cleanup();
+    const row = render(EmptyState, { props: { title: 'Empty', layout: 'row' } });
+    expect(rootOf(row.container)?.getAttribute('data-cinder-layout')).toBe('row');
+  });
+
+  test('a row puts the disc, the words and the action on one line, the action at the end', () => {
+    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
+    expect(root.get('display')).toBe('grid');
+    expect(root.get('grid-template-columns')).toBe('auto minmax(0, 1fr) auto');
+    expect(root.get('text-align')).toBe('start');
+    const action = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
+    );
+    expect(action.get('grid-area')).toBe('action');
+    expect(action.get('justify-content')).toBe('flex-end');
+  });
+
+  test('a row keeps its parts in reading order: disc, title, description, action', () => {
+    const action = createRawSnippet(() => ({
+      render: () => '<a href="/reviews">Open Reviews</a>',
+    }));
+    const { container } = render(EmptyState, {
+      props: {
+        title: 'Nothing is waiting',
+        description: 'Approvals show up here.',
+        kind: 'done',
+        layout: 'row',
+        action,
+      },
+    });
+    const order = [...(rootOf(container)?.children ?? [])].map((child) => child.className);
+    expect(order).toEqual([
+      'cinder-empty-state-icon',
+      'cinder-empty-state-title',
+      'cinder-empty-state-description',
+      'cinder-empty-state-action',
+    ]);
+  });
+
+  test('an unknown layout falls back to stacked', () => {
+    const { container } = render(EmptyState, {
+      props: { title: 'Empty', layout: 'diagonal' as never },
+    });
+    expect(rootOf(container)?.hasAttribute('data-cinder-layout')).toBe(false);
+  });
+});
+
 describe('EmptyState restyle', () => {
   test('disc is 48px, title is 16px semibold, the sentence holds 380px and the actions row is spaced', () => {
     const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');

@@ -93,26 +93,25 @@ test.describe('the outlet pads a page and nothing else does', () => {
   });
 });
 
-test.describe('the empty chat screen on a fresh host', () => {
-  // The second host holds nothing a person did, so /chats is empty (`24-chat-sessions.spec.ts`).
+test.describe('the first-use chat screen on a fresh host', () => {
+  // The second host holds nothing a person did, so /chats has no chats (`24-chat-sessions.spec.ts`).
   test.use({ baseURL: E2E_BUREAU_URL });
 
   test('adds no padding of its own inside the outlet, which pads the page', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/chats');
-    await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
+    // The frame is ready: the list pane words its own first use ("No chats yet") inside itself,
+    // so the screen is no longer an empty state that fills the outlet.
+    await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+    await expect(
+      page.getByRole('region', { name: 'Chats' }).getByRole('heading', { name: 'No chats yet' }),
+    ).toBeVisible();
 
-    // Cinder's EmptyState pads itself 48px by 32px; the frame takes that off, so the outlet's
-    // padding is the only one and the state starts where the page does.
-    const empty = page.locator('[data-view="chat"] .cinder-empty-state');
-    await expect(empty).toHaveCSS('padding-top', '0px');
-    await expect(empty).toHaveCSS('padding-right', '0px');
-    await expect(empty).toHaveCSS('padding-bottom', '0px');
-    await expect(empty).toHaveCSS('padding-left', '0px');
+    // The outlet's padding is the only one: the chat screen's roots add none of their own.
     const roots = await pageRootPaddings(page);
     expect(roots.length).toBeGreaterThan(0);
     for (const root of roots) {
-      expect(root, `/chats (empty): ${root}`).toMatch(/ 0px 0px 0px 0px$/);
+      expect(root, `/chats (first use): ${root}`).toMatch(/ 0px 0px 0px 0px$/);
     }
   });
 });

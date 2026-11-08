@@ -179,8 +179,12 @@ test.describe('the search palette on the sample world', () => {
     // One run (the 4471 refund waiting on you): the finished 4472 refund shares its chat and is not
     // titled by it, and the goal attempts, whose identifiers hold "refund", do not match what shows.
     await expect(group('Runs').getByRole('option')).toHaveCount(1);
-    // Issue refund alone: Tool runner's prompt mentions refunds, but its row never says so.
-    await expect(group('Agents and tools').getByRole('option')).toHaveCount(1);
+    // Issue refund and Triage refunds (the 30-call turn's tool): Tool runner's prompt mentions
+    // refunds, but its row never says so.
+    await expect(group('Agents and tools').getByRole('option')).toHaveCount(2);
+    await expect(
+      group('Agents and tools').getByRole('option', { name: /^Triage refunds,/ }),
+    ).toHaveCount(1);
 
     // A tool: its name for a person, then its identifier small and monospaced, "tool", and who uses it.
     const tool = group('Agents and tools').getByRole('option', { name: /^Issue refund,/ });

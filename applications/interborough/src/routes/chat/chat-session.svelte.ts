@@ -70,6 +70,12 @@ export type ChatSessionOptions = {
   /** Told when a run this page started has begun. */
   readonly onRunStarted?: () => void;
   /**
+   * Whether a turn that ends before any run has begun leaves nothing behind: a new chat's first
+   * message whose start failed. The message was never sent, so its row is dropped, the person keeps
+   * what they typed in the box, and the next Send is the first message again, not a second one.
+   */
+  readonly discardUnstarted?: () => boolean;
+  /**
    * Whether the chat is closed: it was deleted, so a send would start a new chat under the same
    * identifier. A closed session sends nothing, and says why to whoever tried.
    */
@@ -301,6 +307,10 @@ export class ChatSessionState {
           // announced, so they are put on their rows here, as a completed turn's are.
           else {
             this.stopping = false;
+            if (options.discardUnstarted?.() === true) {
+              this.conversation = createConversationHistory({ id: options.sessionId });
+              return;
+            }
             this.#stampAnnouncedAssets();
             this.#dropSettledAnswerRows();
             this.#readAgainAfterRefusal();

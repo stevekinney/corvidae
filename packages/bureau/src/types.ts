@@ -1721,8 +1721,14 @@ export interface BureauReviews {
    * conversation (COR-855): the executed result on approve, an error result
    * carrying the reason on deny and reject, each replacing the pending
    * `action_required` tool-result row in place, so the next run started on the
-   * session answers an up-to-date conversation. A resolution the policy gates
-   * again (`superseded`) writes nothing.
+   * session answers an up-to-date conversation. The row's metadata says who
+   * decided and when, with the note and the sentence the tool asked with
+   * (`approvalDecision`, COR-2016), so a page that was not there can say so. A
+   * resolution the policy gates again (`superseded`) writes nothing.
+   *
+   * It starts no run. The chat's AG-UI resume and the `bureau.reviews.resolve`
+   * operation each start the run that answers a chat's decided approvals, under
+   * one command id per decided run (`http/review-continuation.ts`, COR-2016).
    *
    * Throws `BureauError('NOT_FOUND')` when `input.id` does not match a
    * currently pending review (including an already-resolved one).

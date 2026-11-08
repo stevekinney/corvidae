@@ -189,6 +189,11 @@
     justify-content: center;
   }
 
+  /* A page's own placeholder has its status line centred under it as well. */
+  .cinder-skeleton-group[data-cinder-variant='custom'] > .cinder-skeleton-status {
+    justify-content: center;
+  }
+
   .cinder-skeleton-heading {
     height: 1.25em;
     width: 40%;

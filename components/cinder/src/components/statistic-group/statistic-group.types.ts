@@ -2,6 +2,11 @@ import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 /** Number of columns in the stat grid, or 'auto' for responsive auto-fit. */
 export type StatisticGroupColumns = 1 | 2 | 3 | 4 | 'auto';
+/**
+ * The one edge a `cards` stat draws: a hairline `border` with no shadow, or a soft `shadow` over the
+ * border. It only changes the `cards` variant, the one that gives each stat a card of its own.
+ */
+export type StatisticGroupEdge = 'border' | 'shadow';
 /** Visual variant for the stat group container. */
 export type StatisticGroupVariant = 'default' | 'cards' | 'shared-borders';
 export type StatisticGroupProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
@@ -25,6 +30,12 @@ export type StatisticGroupProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> 
    * @default 'default'
    */
   variant?: StatisticGroupVariant;
+  /**
+   * With `variant="cards"`, the edge each stat's card draws: a flat `'border'`, or a `'shadow'` over
+   * the border, as a raised card has. The other variants have their own borders and ignore it.
+   * @default 'shadow'
+   */
+  edge?: StatisticGroupEdge;
   /** Statistic children, typically one or more `<Statistic>` components. */
   children: Snippet;
   /** Additional class names merged with `.cinder-statistic-group`. */
@@ -53,6 +64,12 @@ export interface StatisticGroupSchemaProps {
    * @default 'default'
    */
   variant?: StatisticGroupVariant;
+  /**
+   * With `variant="cards"`, the edge each stat's card draws: a flat `'border'`, or a `'shadow'` over
+   * the border, as a raised card has. The other variants have their own borders and ignore it.
+   * @default 'shadow'
+   */
+  edge?: StatisticGroupEdge;
   /** Statistic children, typically one or more `<Statistic>` components. */
   children: Snippet;
   /** Additional class names merged with `.cinder-statistic-group`. */

@@ -5,15 +5,67 @@
 .weft-chat-route {
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
+  gap: var(--cinder-space-3);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The conversation and, when a tool call is opened, its panel docked beside it (from 1280px; below
+ * that Cinder opens the panel over the page). */
+.ib-chat-frame {
+  display: flex;
   gap: var(--cinder-space-3);
   height: 100%;
   min-height: 0;
 }
 
-.weft-chat-header__agent {
-  color: var(--cinder-text-muted);
-  text-decoration: none;
+.ib-chat-panel {
+  align-self: flex-start;
+}
+
+/* The details popover of an open chat (the last breadcrumb): the session, its agent, when it
+ * started, and an "As run" group of what it ran with. */
+.weft-chat-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  /* Wide enough that the terms sit beside their values: Cinder's list stacks them under 28rem. */
+  min-inline-size: min(32rem, calc(100vw - 4rem));
   font-size: var(--cinder-text-sm);
+}
+
+.weft-chat-details__identifier {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cinder-space-1);
+  overflow-wrap: anywhere;
+}
+
+.weft-chat-details__agent {
+  color: var(--cinder-accent-text);
+  text-decoration: none;
+}
+
+.weft-chat-details__small {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
+}
+
+.weft-chat-details__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  padding-block-start: var(--cinder-space-3);
+  border-block-start: 1px solid var(--cinder-border-muted);
+}
+
+.weft-chat-details__heading {
+  margin: 0;
+  padding-inline: var(--cinder-space-3);
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
 }
 
 /* The composer's context meter: a short bar and its percentage, on the control row beside Send. */
@@ -120,6 +172,12 @@
   margin: 0;
 }
 
+.weft-chat-approval__provider-note {
+  margin: var(--cinder-space-2) 0 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 .weft-chat-question {
   display: flex;
   flex-direction: column;
@@ -213,9 +271,10 @@
   color: inherit;
 }
 
-/* One sentence about the chat's runs, under the header. */
+/* One sentence about the chat's runs, under the header, at the header's own inset. */
 .weft-chat-strip {
   margin: 0;
+  padding-inline: var(--cinder-space-4);
   font-size: var(--cinder-text-sm);
 }
 
@@ -227,7 +286,7 @@
   color: var(--cinder-status-danger-text);
 }
 
-/* ── Chat list: the chats beside the open one, "Needs you" first ───────────────── */
+/* ── Chat list: the chats beside the open one, newest first under their days ─────── */
 
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-chats {
@@ -240,9 +299,17 @@
   overflow: hidden;
 }
 
+/* The pane's header: the title and "+", then the search field and the status segments under
+ * them, each on a line of its own so the action never reads as the field's submit button. */
+.ib-chats__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-inline-size: 0;
+}
+
 .ib-chats__title-row {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--cinder-space-2) var(--cinder-space-3);
   align-items: center;
   justify-content: space-between;
@@ -254,88 +321,98 @@
   font-weight: 600;
 }
 
-.ib-chat-row__title,
-.ib-chat-row__snippet {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* The agent that line two names in a pane wide enough for it keeps the muted line's colour. */
+.ib-chat-row__agent {
+  color: var(--cinder-text-muted);
 }
 
-/* An agent keeps its colour: eight of Cinder's categorical series, tinted so the initials keep
- * the text colour's contrast on any of them. */
+/* An agent keeps its colour: eight hues (`agentTone`), each a soft fill with initials in a deep shade
+ * of the same hue, so the initials keep their contrast on any of them in both schemes. */
 .ib-chat-avatar {
-  --ib-avatar-tone: var(--cinder-chart-series-1);
-  border-color: var(--ib-avatar-tone);
-  background: color-mix(in oklch, var(--cinder-surface), var(--ib-avatar-tone) 22%);
-  color: var(--cinder-text-default);
+  --ib-avatar-hue: 270;
+  border-color: transparent;
+  background: light-dark(
+    oklch(92% 0.06 var(--ib-avatar-hue)),
+    oklch(34% 0.07 var(--ib-avatar-hue))
+  );
+  color: light-dark(oklch(32% 0.1 var(--ib-avatar-hue)), oklch(92% 0.06 var(--ib-avatar-hue)));
+  font-weight: var(--cinder-font-semibold);
+}
+
+.ib-chat-avatar[data-tone='0'] {
+  --ib-avatar-hue: 20;
 }
 
 .ib-chat-avatar[data-tone='1'] {
-  --ib-avatar-tone: var(--cinder-chart-series-2);
+  --ib-avatar-hue: 235;
 }
 
 .ib-chat-avatar[data-tone='2'] {
-  --ib-avatar-tone: var(--cinder-chart-series-3);
+  --ib-avatar-hue: 150;
 }
 
 .ib-chat-avatar[data-tone='3'] {
-  --ib-avatar-tone: var(--cinder-chart-series-4);
+  --ib-avatar-hue: 270;
 }
 
 .ib-chat-avatar[data-tone='4'] {
-  --ib-avatar-tone: var(--cinder-chart-series-5);
+  --ib-avatar-hue: 310;
 }
 
 .ib-chat-avatar[data-tone='5'] {
-  --ib-avatar-tone: var(--cinder-chart-series-6);
+  --ib-avatar-hue: 55;
 }
 
 .ib-chat-avatar[data-tone='6'] {
-  --ib-avatar-tone: var(--cinder-chart-series-7);
+  --ib-avatar-hue: 110;
 }
 
 .ib-chat-avatar[data-tone='7'] {
-  --ib-avatar-tone: var(--cinder-chart-series-8);
+  --ib-avatar-hue: 200;
 }
 
-/* ── New chat: a greeting, example prompts and the other agents, centred over the composer ── */
+/* ── New chat: the agent's avatar, a greeting and its sentence, centred over the composer ── */
 
 .ib-new-chat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: var(--cinder-space-4);
+  gap: var(--cinder-space-2);
   min-inline-size: 0;
-  min-block-size: 100%;
+  padding-block-end: var(--cinder-space-4);
   text-align: center;
 }
 
-.ib-new-chat__greeting {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
+/* The greeting's avatar is 48 pixels (row 23g), which is Avatar's lg; the interface lint keeps
+   size="lg" for a page's primary action, so the avatar takes md's markup at that size. */
+.ib-new-chat .ib-new-chat__avatar {
+  inline-size: 3rem;
+  block-size: 3rem;
+  font-size: var(--cinder-text-base);
+  margin-block-end: var(--cinder-space-2);
+}
+
+.ib-new-chat .ib-new-chat__greeting {
   overflow-wrap: anywhere;
 }
 
-.ib-new-chat__id {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-  font-weight: 400;
-}
-
-.ib-new-chat__description {
-  margin: 0;
+.ib-new-chat .ib-new-chat__description {
   max-inline-size: 40rem;
   color: var(--cinder-text-secondary);
-  font-size: var(--cinder-text-sm);
   overflow-wrap: anywhere;
 }
 
-.ib-new-chat__examples,
-.ib-new-chat__agents {
+/* ── What a new chat offers under its composer: the Try prompts and the agents to chat with ── */
+
+.ib-new-chat-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.ib-new-chat-choices__row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-2);
@@ -344,25 +421,49 @@
   max-inline-size: 100%;
 }
 
-/* A prompt is a sentence, not a label: it wraps inside its button (Cinder's buttons never wrap) and
-   a word too long for the line breaks, so a long prompt cannot widen the page. */
-.ib-new-chat__examples .ib-new-chat__prompt {
+.ib-new-chat-choices__lead {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* A prompt is a sentence, not a label: it is a pill that wraps inside its button (Cinder's buttons
+   never wrap) and a word too long for the line breaks, so a long prompt cannot widen the page. */
+.ib-new-chat-choices__row .ib-new-chat-choices__prompt {
   max-inline-size: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: start;
   line-height: 1.3;
   padding-block: var(--cinder-space-1);
+  border-radius: var(--cinder-radius-full);
 }
 
-.ib-new-chat__agents .ib-new-chat__agent {
+.ib-new-chat-choices__row .ib-new-chat-choices__agent {
   max-inline-size: 100%;
   overflow-wrap: anywhere;
+  padding-inline: var(--cinder-space-2);
 }
 
-.ib-new-chat__lead {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
+/* On a phone the Try prompts stack, each as wide as the column, and the choices fill it: the
+   greeting, the prompts and the other agents scroll in one column over the docked composer. */
+@media (max-width: 639.98px) {
+  .ib-new-chat-choices {
+    align-items: stretch;
+    inline-size: 100%;
+  }
+
+  .ib-new-chat-choices__row--prompts {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ib-new-chat-choices__row--prompts .ib-new-chat-choices__lead {
+    text-align: center;
+  }
+
+  .ib-new-chat-choices__row--prompts .ib-new-chat-choices__prompt {
+    justify-content: flex-start;
+  }
 }
 
 /* The agent a new chat is with sits at the top of the composer, a ghost select in the accent, so it
@@ -371,6 +472,21 @@
   display: inline-flex;
   min-inline-size: 0;
   max-inline-size: 100%;
+}
+
+/* Above the composer of a chat started from Workflows: the chip that says so and, with no agent that
+ * can create workflows, the pill to choose one with, at the composer's left edge. */
+.ib-new-chat-lead {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--cinder-space-2);
+  min-inline-size: 0;
+}
+
+.ib-new-chat-lead .ib-agent-select {
+  border-radius: var(--cinder-radius-full);
+  background: var(--cinder-surface-hover);
 }
 
 /* The settings the composer folds into one control when it is too narrow for them side by side. */

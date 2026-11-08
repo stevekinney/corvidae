@@ -32,6 +32,11 @@
     consequence: string | undefined;
     /** The checkbox's scope, or `undefined` when the tool never offers it. */
     rememberScope: string | undefined;
+    /**
+     * Whether it was decided on another page while this one showed it waiting: the decided row then
+     * collapses to a glyph, the question and the decision, with no tool line and no Input.
+     */
+    decidedElsewhere: boolean;
     /** What was decided, such as "Denied by you". */
     outcomeText: string | undefined;
     /** When it was decided, such as "10:40 AM". */
@@ -72,6 +77,8 @@
 </script>
 
 <script lang="ts">
+  import Ban from '@lucide/svelte/icons/ban';
+  import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
   import { untrack } from 'svelte';
@@ -96,6 +103,7 @@
     requestedIso,
     consequence,
     rememberScope,
+    decidedElsewhere,
     outcomeText,
     outcomeTime,
     outcomeTone,
@@ -140,6 +148,8 @@
   const isPending = $derived(approvalState === 'pending');
   const isUnavailable = $derived(approvalState === 'unavailable');
   const isDecided = $derived(!isPending && !isUnavailable);
+  // Decided on another page, the row is what became of it and nothing else (Chat frame r).
+  const collapsed = $derived(isDecided && decidedElsewhere);
   const canAnswer = $derived(isPending && resolve !== undefined);
   // While an answer is on its way nothing else can be answered, and the note and checkbox stay
   // as they were sent.
@@ -166,54 +176,66 @@
   <div class="cinder-approval-card__context">{@render context()}</div>
 {/if}
 
-<div class="cinder-approval-card__row">
-  <span
-    class="cinder-approval-card__risk-icon"
-    role="img"
-    aria-label={riskLabel}
-    data-cinder-risk={tool.risk}
-  >
-    <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
-  </span>
+<div class="cinder-approval-card__row" data-cinder-collapsed={collapsed || undefined}>
+  {#if collapsed}
+    <span class="cinder-approval-card__decided-glyph" data-cinder-tone={outcomeTone}>
+      {#if outcomeTone === 'success'}
+        <Check size={16} strokeWidth={2} aria-hidden="true" />
+      {:else}
+        <Ban size={16} strokeWidth={2} aria-hidden="true" />
+      {/if}
+    </span>
+  {:else}
+    <span
+      class="cinder-approval-card__risk-icon"
+      role="img"
+      aria-label={riskLabel}
+      data-cinder-risk={tool.risk}
+    >
+      <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
+    </span>
+  {/if}
   <div class="cinder-approval-card__row-main">
     <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__row-question">
       {question}
     </svelte:element>
-    <p class="cinder-approval-card__line">
-      <span class="cinder-approval-card__line-tool">
-        {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
-            >{tool.label}</span
-          >{' '}{/if}<span class="cinder-approval-card__line-facts"
-          ><span class="cinder-approval-card__keep"
-            ><code class="cinder-approval-card__tool-identifier">{tool.name}</code>{' '}<span
-              class="cinder-approval-card__separator"
-              aria-hidden="true">·</span
-            ></span
-          >{' '}<span class="cinder-approval-card__keep"
-            ><span class="cinder-approval-card__risk-word">{riskWord}</span
-            >{#if tool.irreversible}{' '}<span
+    {#if !collapsed}
+      <p class="cinder-approval-card__line">
+        <span class="cinder-approval-card__line-tool">
+          {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
+              >{tool.label}</span
+            >{' '}{/if}<span class="cinder-approval-card__line-facts"
+            ><span class="cinder-approval-card__keep"
+              ><code class="cinder-approval-card__tool-identifier">{tool.name}</code>{' '}<span
                 class="cinder-approval-card__separator"
                 aria-hidden="true">·</span
+              ></span
+            >{' '}<span class="cinder-approval-card__keep"
+              ><span class="cinder-approval-card__risk-word">{riskWord}</span
+              >{#if tool.irreversible}{' '}<span
+                  class="cinder-approval-card__separator"
+                  aria-hidden="true">·</span
+                >{/if}</span
+            >{#if tool.irreversible}{' '}<span class="cinder-approval-card__undone"
+                >Can't be undone</span
               >{/if}</span
-          >{#if tool.irreversible}{' '}<span class="cinder-approval-card__undone"
-              >Can't be undone</span
-            >{/if}</span
-        >
-      </span>
-      {#if hasSourceLine}
-        <span class="cinder-approval-card__line-source">
-          <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-          {#if sourceText !== undefined}<span>{sourceText}</span
-            >{#if requestedText !== undefined}{'\u00a0'}<span
-                class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                aria-hidden="true">·</span
-              >{/if}{/if}
-          {#if requestedText !== undefined}
-            <time datetime={requestedIso}>{requestedText}</time>
-          {/if}
+          >
         </span>
-      {/if}
-    </p>
+        {#if hasSourceLine}
+          <span class="cinder-approval-card__line-source">
+            <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+            {#if sourceText !== undefined}<span>{sourceText}</span
+              >{#if requestedText !== undefined}{'\u00a0'}<span
+                  class="cinder-approval-card__separator cinder-approval-card__time-separator"
+                  aria-hidden="true">·</span
+                >{/if}{/if}
+            {#if requestedText !== undefined}
+              <time datetime={requestedIso}>{requestedText}</time>
+            {/if}
+          </span>
+        {/if}
+      </p>
+    {/if}
     {#if consequence !== undefined && !isDecided}
       <p class="cinder-approval-card__consequence">{consequence}</p>
     {/if}
@@ -226,7 +248,7 @@
 </div>
 
 {#if isDecided}
-  {#if inputPairs.length > 0}
+  {#if inputPairs.length > 0 && !collapsed}
     <p class="cinder-approval-card__input-summary cinder-approval-card__decided-input">
       <span class="cinder-approval-card__input-word">{inputLabel}</span>
       {#each inputPairs as pair, index (pair.key)}
@@ -243,6 +265,7 @@
       {outcomeText}
       {outcomeTime}
       tone={outcomeTone}
+      dot={!collapsed}
       {decisionNote}
       {decisionNoteCaption}
     />
@@ -365,7 +388,8 @@
             variant="secondary"
             size="sm"
             mutating
-            disabled={actionsOff && resolving !== 'deny'}
+            disabled={isBusy && resolving !== 'deny'}
+            aria-disabled={disabledReason === undefined ? undefined : 'true'}
             loading={resolving === 'deny'}
             loadingStatus="Denying…"
             aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
@@ -378,7 +402,8 @@
             variant="primary"
             size="sm"
             mutating
-            disabled={actionsOff && resolving !== 'approve'}
+            disabled={isBusy && resolving !== 'approve'}
+            aria-disabled={disabledReason === undefined ? undefined : 'true'}
             loading={resolving === 'approve'}
             loadingStatus="Approving…"
             aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}

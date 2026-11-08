@@ -174,8 +174,17 @@ test('chats with the barrier agent, sends a follow-up while it works, and sees i
   await expectWaiting(request, 0);
 });
 
-test('lands in the session it just made when it starts from /', async ({ page }) => {
+test('opens on Home, whose Recent chats lead back to the session it just made', async ({
+  page,
+}) => {
   await page.goto('/');
+
+  // The app opens on Home, not in a chat, and the chat just made is among its Recent chats.
+  await expect(page).toHaveURL(/\/$/);
+  await page
+    .locator('[data-home-card="Recent chats"]')
+    .locator(`a[href="/chats/${sessions.followUp}"]`)
+    .click();
 
   await expect(page).toHaveURL(new RegExp(`/chats/${sessions.followUp}$`));
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Start the journey');
@@ -198,7 +207,7 @@ test('starts a second session with the same agent from the agent’s page, and r
   await page.goto('/chats');
   await page
     .getByRole('region', { name: 'Chats' })
-    .getByRole('button', { name: /Start the journey/ })
+    .getByRole('link', { name: /Start the journey/ })
     .click();
 
   await expect(page).toHaveURL(new RegExp(`/chats/${sessions.followUp}$`));

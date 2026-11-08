@@ -122,12 +122,22 @@ function stubHost(
 }
 
 function serve(
-  host: BureauReviewsOperationHost,
+  host: Omit<BureauReviewsOperationHost, 'reviewContinuation'> &
+    Partial<Pick<BureauReviewsOperationHost, 'reviewContinuation'>>,
   authenticate: OperationHandlerAuthenticate = createOperationHandlerAuthenticator(authentication, {
     additionalScopes: BUREAU_SCOPES,
   }),
 ) {
-  return createOperationHandler({ operations: bureauReviewsOperations, host, authenticate });
+  // A stub run is no chat's, so no decision here continues one (`review-continuation.test.ts`).
+  const served: BureauReviewsOperationHost = {
+    reviewContinuation: async () => ({ status: 'not-chat' }),
+    ...host,
+  };
+  return createOperationHandler({
+    operations: bureauReviewsOperations,
+    host: served,
+    authenticate,
+  });
 }
 
 function runHumanWaitReview(overrides: Partial<PendingReview> = {}): PendingReview {
@@ -682,7 +692,10 @@ describe('bureau.reviews.resolve', () => {
     });
     const handler = createOperationHandler({
       operations: bureauReviewsOperations,
-      host: stubHost({}, record),
+      host: {
+        ...stubHost({}, record),
+        reviewContinuation: async () => ({ status: 'not-chat' as const }),
+      },
       authenticate,
     });
 

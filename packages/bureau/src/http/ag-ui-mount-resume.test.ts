@@ -245,6 +245,36 @@ describe('resuming a tool approval', () => {
     );
   });
 
+  it('records the note an approval carries on the outcome row and in the audit trail', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox(charges) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const entry = resolved(first.interruptIds[0]!, {
+          decision: 'approve',
+          reason: 'Refund it, the carrier admitted fault.',
+        });
+
+        const frames = await readAgUiStream(await handler(resumeRequest([entry])));
+
+        expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        const session = await bureau.contexts.get('thread-1');
+        const history = session?.conversationHistory;
+        const row = history?.ids
+          .map((id) => history.messages[id]!)
+          .find((candidate) => candidate.toolResult?.callId === 'call-1');
+        expect(row?.metadata?.['approvalDecision']).toMatchObject({
+          decision: 'approve',
+          reason: 'Refund it, the carrier admitted fault.',
+        });
+        expect(JSON.stringify(await bureau.internals.auditTrail?.query({}))).toContain(
+          'the carrier admitted fault',
+        );
+      },
+    );
+  });
+
   it('replays the arguments the approval ran the tool with, not the ones the model proposed', async () => {
     const charges: number[] = [];
     await withHarness(

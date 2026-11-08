@@ -39,6 +39,7 @@
     onCancel,
     stillLoadingLabel = 'Still loading. This is taking longer than usual.',
     cancelLabel = 'Cancel',
+    children,
   }: SkeletonProps = $props();
 
   const MAXIMUM_LINES = 20;
@@ -96,7 +97,12 @@
   });
   /** How many fields a form placeholder draws: `rows`, which defaults to 3 for a list, is 2 here unless it was set. */
   const formRows = $derived(rowCount);
-  const grouped = $derived(lineCount > 1 || shape !== 'row' || stillLoadingThreshold !== undefined);
+  const grouped = $derived(
+    lineCount > 1 ||
+      shape !== 'row' ||
+      stillLoadingThreshold !== undefined ||
+      children !== undefined,
+  );
 
   const style = $derived(
     [
@@ -170,30 +176,38 @@
   </div>
 {:else if visible}
   {#if grouped}
-    <div class={classNames('cinder-skeleton-group', className)} data-cinder-variant={shape}>
+    <div
+      class={classNames('cinder-skeleton-group', className)}
+      data-cinder-variant={children ? 'custom' : shape}
+      aria-busy={children ? 'true' : undefined}
+    >
       {#if label}
         <VisuallyHidden role="status">{label}</VisuallyHidden>
       {/if}
-      <div class="cinder-skeleton-lines" aria-hidden="true">
-        {#if shape === 'card'}
-          <div class="cinder-skeleton cinder-skeleton-heading"></div>
-        {/if}
-        {#if shape === 'form'}
-          {#each { length: formRows } as _, index (index)}
-            <div class="cinder-skeleton cinder-skeleton-field-label"></div>
-            <div class="cinder-skeleton cinder-skeleton-field-control"></div>
+      {#if children}
+        {@render children()}
+      {:else}
+        <div class="cinder-skeleton-lines" aria-hidden="true">
+          {#if shape === 'card'}
+            <div class="cinder-skeleton cinder-skeleton-heading"></div>
+          {/if}
+          {#if shape === 'form'}
+            {#each { length: formRows } as _, index (index)}
+              <div class="cinder-skeleton cinder-skeleton-field-label"></div>
+              <div class="cinder-skeleton cinder-skeleton-field-control"></div>
+            {/each}
+          {/if}
+          {#each { length: shape === 'form' ? 0 : lineCount } as _, index (index)}
+            <div
+              class="cinder-skeleton"
+              data-cinder-last={index === lineCount - 1 && lineCount > 1 && width === undefined
+                ? ''
+                : undefined}
+              {style}
+            ></div>
           {/each}
-        {/if}
-        {#each { length: shape === 'form' ? 0 : lineCount } as _, index (index)}
-          <div
-            class="cinder-skeleton"
-            data-cinder-last={index === lineCount - 1 && lineCount > 1 && width === undefined
-              ? ''
-              : undefined}
-            {style}
-          ></div>
-        {/each}
-      </div>
+        </div>
+      {/if}
       {@render stillLoadingStatus()}
     </div>
   {:else}

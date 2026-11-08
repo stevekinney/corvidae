@@ -33,6 +33,8 @@ Opening a group keeps focus on the control that opened it; the rows it reveals f
 
 ### Names, roles and state
 
+A call with `resultHref` draws its result as a real link (an `a` with the result's words as its name, after the arrow). With `onSelect` the row cannot be a button around a link, so the row is a container holding the link and a button that covers the row; the button keeps the row's whole text as its accessible name and its `aria-pressed`, the link and the button are separate tab stops in that order, and the quiet focus ring shows on the row when the button has focus.
+
 The rail is a labelled region (`label`, default "Tool calls") around an ordered list, so the number of rows is announced. Status glyphs and dots are decorative and hidden from assistive technology; the state is in words: a failed call's row begins with a visually hidden "Failed", an interrupted call with "Interrupted", an approved call with "Approved", and `Running…`, `Waiting on you` and the denial words are visible text. The running spinner is decorative; the summary says `so far…`. The tooltip carrying the identifier is a `title`, so the name never relies on it.
 
 ## Verification

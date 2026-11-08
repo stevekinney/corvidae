@@ -98,6 +98,12 @@ const schema = {
   metadata: {
     unsupportedProps: [
       {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description:
+          'The page\'s own placeholder, drawn instead of the bars, for a loading state whose shape is a\nwhole page (real labels and headings with placeholder values and rows). The group still owns\nthe timing: nothing is drawn until `delay` has passed, and the "Still loading" status follows\nthe content after `stillLoadingAfter`. The group is marked busy while it shows. Draw each\nplaceholder block with a `Skeleton` of its own; the content is not hidden from assistive\ntechnology, so text in it is read as written.',
+      },
+      {
         name: 'onCancel',
         reason: 'function-or-snippet',
         description:

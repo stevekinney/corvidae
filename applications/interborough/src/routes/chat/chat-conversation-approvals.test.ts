@@ -6,10 +6,13 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { ConnectionMonitor } from '../../app/connection.svelte.ts';
+import { CHAT_COPY } from '../../app/copy.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -81,11 +84,11 @@ async function askForApproval(container: HTMLElement): Promise<void> {
   if (box === null) throw new Error('The composer did not render.');
   await fireEvent.input(box, { target: { value: 'Refund it' } });
   await fireEvent.keyDown(box, { key: 'Enter' });
-  await waitFor(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+  await waitFor(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
 }
 
 describe('an approval in the chat', () => {
-  test('is one row that offers Allow for the rest of this chat beside Deny and Approve', async () => {
+  test('is the shared approval row: Input, a note, Allow for the rest of this chat, Deny and Approve', async () => {
     restore = bureau(
       { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
       approvalRun,
@@ -95,10 +98,13 @@ describe('an approval in the chat', () => {
 
     await askForApproval(container);
 
-    expect(container.querySelectorAll('.ib-decision__row')).toHaveLength(1);
-    for (const name of ['Show input', 'Allow for the rest of this chat', 'Deny', 'Approve']) {
-      expect(await findByRole('button', { name })).not.toBeNull();
+    expect(container.querySelectorAll('[data-approval-decision]')).toHaveLength(1);
+    for (const name of ['Input', 'Add a note', 'Deny', 'Approve']) {
+      expect(await findByRole('button', { name: new RegExp(`^${name}`) })).not.toBeNull();
     }
+    expect(
+      await findByRole('checkbox', { name: /^Allow .* for the rest of this chat$/ }),
+    ).not.toBeNull();
   });
 
   describe('when allowed for the rest of the chat (COR-1990)', () => {
@@ -148,8 +154,9 @@ describe('an approval in the chat', () => {
       const view = mount();
       await askForApproval(view.container);
       await fireEvent.click(
-        await view.findByRole('button', { name: 'Allow for the rest of this chat' }),
+        await view.findByRole('checkbox', { name: /^Allow .* for the rest of this chat$/ }),
       );
+      await fireEvent.click(await view.findByRole('button', { name: 'Approve' }));
       return { ...view, served, resumes };
     }
 
@@ -196,23 +203,199 @@ describe('an approval in the chat', () => {
     });
   });
 
-  test('shows what the call was given under Show input, and hides it again', async () => {
+  test('shows what the call was given under Input, and hides it again', async () => {
     restore = bureau(
       { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
       approvalRun,
     ).restore;
     landAt('/chats/session-1');
-    const { container, findByRole, queryByRole } = mount();
+    const { container, findByRole } = mount();
     await askForApproval(container);
-    expect(container.querySelector('.ib-decision__input')).toBeNull();
+    const toggle = await findByRole('button', { name: /^Input/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
-    await fireEvent.click(await findByRole('button', { name: 'Show input' }));
+    await fireEvent.click(toggle);
 
-    expect(container.querySelector('.ib-decision__input')?.textContent).toContain('cents');
-    expect(container.querySelector('.ib-decision__input')?.textContent).toContain('4200');
-    await fireEvent.click(await findByRole('button', { name: 'Hide input' }));
-    expect(container.querySelector('.ib-decision__input')).toBeNull();
-    expect(queryByRole('button', { name: 'Show input' })).not.toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('[data-approval-decision]')?.textContent).toContain('4200');
+    await fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('sends a refusal with the note the person left, as the reason the agent reads', async () => {
+    const resumes: unknown[] = [];
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
+      (url, init) => {
+        const body: { runId: string; resume?: unknown } = JSON.parse(
+          typeof init?.body === 'string' ? init.body : '{}',
+        );
+        if (url.includes('/agents/') && body.resume !== undefined) {
+          resumes.push(body.resume);
+          return sse([
+            { type: 'RUN_STARTED', threadId: 'session-1', runId: body.runId },
+            { type: 'RUN_FINISHED', threadId: 'session-1', runId: body.runId },
+          ]);
+        }
+        return approvalRun(url, init);
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByRole, findByLabelText } = mount();
+    await askForApproval(container);
+
+    await fireEvent.click(await findByRole('button', { name: 'Add a note' }));
+    await fireEvent.input(await findByLabelText(/^Note/), {
+      target: { value: 'Check the carrier’s claim first.' },
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Deny' }));
+
+    await waitFor(() => expect(resumes).toHaveLength(1));
+    expect(resumes[0]).toMatchObject([
+      {
+        interruptId: APPROVAL.id,
+        payload: { decision: 'deny', reason: 'Check the carrier’s claim first.' },
+      },
+    ]);
+  });
+});
+
+describe('an approval raised after the person answered a question', () => {
+  test('is decided in its row, and the decision continues the run', async () => {
+    type Body = { resume?: Array<{ interruptId: string; payload: unknown }> };
+    const bodies: Body[] = [];
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
+      (url, init) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (!url.includes('/agents/')) return undefined;
+        bodies.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+        const run = `run-${bodies.length}`;
+        if (bodies.length === 1) {
+          return sse([
+            { type: 'RUN_STARTED', threadId: 'session-1', runId: run },
+            {
+              type: 'RUN_FINISHED',
+              threadId: 'session-1',
+              runId: run,
+              outcome: {
+                type: 'interrupt',
+                interrupts: [
+                  {
+                    id: 'human-wait:native-1:environment:0',
+                    reason: 'human-wait',
+                    message: 'Which environment?',
+                  },
+                ],
+              },
+            },
+          ]);
+        }
+        if (bodies.length === 2) {
+          return sse([
+            { type: 'RUN_STARTED', threadId: 'session-1', runId: run },
+            { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+            { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{"cents":4200}' },
+            { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+            {
+              type: 'TOOL_CALL_RESULT',
+              messageId: 'result-1',
+              toolCallId: 'call-refund',
+              content: 'requires approval',
+              role: 'tool',
+            },
+            {
+              type: 'RUN_FINISHED',
+              threadId: 'session-1',
+              runId: run,
+              outcome: { type: 'interrupt', interrupts: [APPROVAL] },
+            },
+          ]);
+        }
+        return sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: run },
+          { type: 'RUN_FINISHED', threadId: 'session-1', runId: run },
+        ]);
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container } = mount();
+    const box = container.querySelector('textarea');
+    if (box === null) throw new Error('The composer did not render.');
+    await fireEvent.input(box, { target: { value: 'Ship it' } });
+    await fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    await waitFor(() => expect(container.textContent).toContain('Which environment?'));
+    await fireEvent.input(box, { target: { value: 'staging' } });
+    await fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
+
+    const approve = [
+      ...(container.querySelector('[data-approval-decision]')?.querySelectorAll('button') ?? []),
+    ].find((button) => button.textContent?.trim() === 'Approve');
+    if (approve === undefined) throw new Error('The approval has no Approve.');
+    await fireEvent.click(approve);
+
+    await waitFor(() => expect(bodies).toHaveLength(3));
+    expect(bodies[2]?.resume?.[0]).toMatchObject({
+      interruptId: APPROVAL.id,
+      payload: { decision: 'approve' },
+    });
+  });
+});
+
+describe('an approval while Interborough cannot be reached (design rows 16y, 16z)', () => {
+  test('keeps its question and input at full contrast and turns only Deny and Approve off, each with the reason as its description', async () => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
+      approvalRun,
+    ).restore;
+    landAt('/chats/session-1');
+    const monitor = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      probeDelayMs: () => 60_000,
+      browserOffline: false,
+    });
+    try {
+      const { container, findByRole } = render(QueryPage, {
+        props: {
+          page: ChatConversation,
+          pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' },
+          connection: monitor,
+        },
+      } as never);
+      await askForApproval(container);
+      monitor.reportUnreachable();
+
+      const approve = await findByRole('button', { name: 'Approve' });
+      const deny = await findByRole('button', { name: 'Deny' });
+      await waitFor(() => expect(approve.getAttribute('aria-disabled')).toBe('true'));
+      for (const button of [approve, deny]) {
+        // Off with aria-disabled, never the disabled property, so the control stays focusable.
+        expect(button.hasAttribute('disabled')).toBe(false);
+        expect(button.getAttribute('aria-disabled')).toBe('true');
+        const reason = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+        expect(reason?.textContent).toContain(CHAT_COPY.approval.unreachable);
+      }
+      expect(container.querySelector('[data-approval-decision]')?.textContent).toContain(
+        CHAT_COPY.approval.unreachable,
+      );
+      // What does not change anything stays available, and nothing is dimmed.
+      const input = await findByRole('button', { name: /^Input/ });
+      const note = await findByRole('button', { name: 'Add a note' });
+      expect(input.hasAttribute('disabled')).toBe(false);
+      expect(note.hasAttribute('aria-disabled')).toBe(false);
+      expect(container.querySelector('[style*="opacity"]')).toBeNull();
+    } finally {
+      cleanup();
+      monitor.dispose();
+    }
   });
 });
 

@@ -28,9 +28,9 @@ const NAMES: readonly [string, string, boolean][] = [
   ['Assistant', 'assistant', true],
   ['Tool runner', 'tool-runner', true],
   ['Request human input', 'request-human-input', false],
+  ['Workflow author', 'workflow-author', false],
   ['Echo', 'echo', false],
   ['Model switcher', 'model-switcher', false],
-  ['Workflow author', 'workflow-author', false],
   ['Release helper', 'release-helper', false],
   ['Changelog writer', 'changelog-writer', false],
 ];
@@ -432,9 +432,9 @@ describe('the agents a disabled plugin holds back', () => {
       'Assistant',
       'Tool runner',
       'Request human input',
+      'Workflow author',
       'Echo',
       'Model switcher',
-      'Workflow author',
       'Release helper',
       'Changelog writer',
     ]);

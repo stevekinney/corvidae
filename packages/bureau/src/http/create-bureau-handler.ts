@@ -110,6 +110,7 @@ import { createAssetsMount } from './assets-mount.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
 import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
+import { createReviewContinuation } from './review-continuation.ts';
 import {
   type BureauAgentModelsOperationHost,
   agentsModelsOperation,
@@ -1262,6 +1263,8 @@ export function buildBureauHandlerHost(
       get: (bureauId) => (bureauId === bureau.id ? bureau.internals.eventFeed : undefined),
     },
     runFeeds: bureau.internals.runEventFeeds,
+    // COR-2016: a decision through `bureau.reviews.resolve` continues the chat as its resume does.
+    reviewContinuation: createReviewContinuation(bureau),
     reviews: {
       list: () => bureau.reviews.list(),
       listResolved: (filter) => bureau.reviews.listResolved(filter),

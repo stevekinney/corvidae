@@ -12,9 +12,11 @@ import { CHAT_COPY } from '../../src/app/copy.ts';
 import {
   conversation,
   expectWaiting,
+  modelPicker,
   newThreadId,
   releaseBarrier,
   runToEnd,
+  showModelPicker,
 } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -29,7 +31,6 @@ const ASSISTANT_ROW = '[data-message-role="assistant"]';
 const USER_ROW = '[data-message-role="user"]';
 
 const branchAction = (page: Page) => page.getByRole('button', { name: CHAT_COPY.branch.action });
-const picker = (page: Page) => page.getByRole('combobox', { name: 'Model' });
 
 /** A session of `model-switcher` switched to its second model, with two turns in it. */
 async function seedSession(
@@ -89,7 +90,10 @@ for (const viewport of VIEWPORTS) {
     await expect(page.locator(USER_ROW)).toContainText('First question');
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(1);
     // It runs on the model its parent was switched to.
-    await expect(picker(page).locator('option:checked')).toHaveText(HAIKU.model);
+    await showModelPicker(page);
+    await expect(modelPicker(page)).toContainText(HAIKU.model);
+    // A folded composer showed it in a popover, which is closed before the page is used again.
+    await page.keyboard.press('Escape');
     // Its header says where it came from, and links back.
     const origin = page.locator('.weft-chat-header__origin');
     await expect(origin).toContainText(CHAT_COPY.branch.branchedFrom);

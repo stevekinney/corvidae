@@ -67,6 +67,31 @@ describe('holdChangingActions', () => {
     expect(byId(root, 'late').hasAttribute('aria-disabled')).toBe(false);
   });
 
+  test('holds a control again after the page draws it again and removes what was added', async () => {
+    const root = page('<a href="/x" data-changes id="answer">Answer</a>');
+    const release = holdChangingActions(root, 'Turned off');
+    const answer = byId(root, 'answer');
+    expect(answer.getAttribute('aria-disabled')).toBe('true');
+    // A Cinder button whose props are recomputed sets an attribute it has no value for to nothing.
+    answer.removeAttribute('aria-disabled');
+    answer.removeAttribute('title');
+    await waitUntil(() => answer.getAttribute('aria-disabled') === 'true');
+    expect(answer.title).toBe('Turned off');
+    release();
+    expect(answer.hasAttribute('aria-disabled')).toBe(false);
+    expect(answer.hasAttribute('title')).toBe(false);
+  });
+
+  test('holds a control that is marked after it was drawn', async () => {
+    const root = page('<a href="/x" id="late">Later</a>');
+    const release = holdChangingActions(root, 'Turned off');
+    const late = byId(root, 'late');
+    expect(late.hasAttribute('aria-disabled')).toBe(false);
+    late.setAttribute('data-changes', '');
+    await waitUntil(() => late.getAttribute('aria-disabled') === 'true');
+    release();
+  });
+
   test('never writes the disabled property: a control the page keeps disabled stays so, and one it enables is enabled', () => {
     const root = page(`
       <button type="submit" id="off" disabled>Off</button>

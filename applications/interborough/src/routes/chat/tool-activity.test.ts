@@ -2,6 +2,7 @@ import type { ConversationHistory } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
 import {
+  createdWorkflow,
   DEFAULT_DENIAL,
   DENIED_CODE,
   interruptedWords,
@@ -9,6 +10,7 @@ import {
   railCall,
   toolDisplayName,
   toolGroups,
+  toolInfoByName,
   type ToolInfo,
 } from './tool-activity.ts';
 
@@ -87,6 +89,38 @@ describe('toolGroups', () => {
       ['issue-refund', 'failed', 'The card was declined.'],
       ['close-ticket', 'running', ''],
     ]);
+  });
+
+  test('a failed call keeps the tool’s own error for its panel: the message, the code and whether trying again can work', () => {
+    const { groups } = toolGroups(
+      conversation(
+        call('s0', 'c1', 'send-email'),
+        row({
+          id: 's0:r',
+          role: 'tool-result',
+          toolResult: {
+            callId: 'c1',
+            outcome: 'error',
+            content: 'SMTP timeout after 10s',
+            error: {
+              message: 'SMTP timeout after 10s',
+              code: 'smtp-timeout',
+              category: 'timeout',
+              retryable: true,
+            },
+          },
+        }),
+        call('s1', 'c2', 'lookup-order'),
+        result('s1:r', 'c2', 'success', { status: 'delivered' }),
+      ),
+    );
+    const [failed, fine] = groups.get('s0')?.entries ?? [];
+    expect(failed?.failure).toEqual({
+      message: 'SMTP timeout after 10s',
+      code: 'smtp-timeout',
+      retryable: true,
+    });
+    expect(fine?.failure).toBeUndefined();
   });
 
   test('a message between two tool rows ends the group', () => {
@@ -225,5 +259,78 @@ describe('how a call is named', () => {
     expect(toolDisplayName('issue_refund', null)).toBe('Issue refund');
     expect(toolDisplayName('lookup-order', 'Find an order')).toBe('Find an order');
     expect(toolDisplayName('', null)).toBe('');
+  });
+});
+
+describe('the workflow a Create workflow call made', () => {
+  const created = { status: 'ok', id: 'morning-briefing', hash: 'abc' };
+  const args = { name: 'Morning briefing', trigger: { kind: 'schedule' } };
+
+  test('is named as the call named it, and its page is the row’s link', () => {
+    expect(createdWorkflow('bureau__workflows-create', args, created)).toEqual({
+      title: 'Morning briefing',
+      href: '/workflows/morning-briefing',
+    });
+    // With no name given, the identifier is what came back.
+    expect(createdWorkflow('bureau__workflows-create', {}, created)?.title).toBe(
+      'morning-briefing',
+    );
+  });
+
+  test('is nothing for another tool, or a call that created nothing', () => {
+    expect(createdWorkflow('lookup-order', args, created)).toBeUndefined();
+    expect(
+      createdWorkflow('bureau__workflows-create', args, {
+        status: 'conflict',
+        id: 'morning-briefing',
+      }),
+    ).toBeUndefined();
+    expect(createdWorkflow('bureau__workflows-create', args, null)).toBeUndefined();
+    expect(createdWorkflow('bureau__workflows-create', args, 'ok')).toBeUndefined();
+  });
+
+  test('makes the call’s rail row say its name and link to the page, whether or not it was approved', () => {
+    const history = conversation(
+      call('s0', 'c1', 'bureau__workflows-create', args),
+      result('s0:r', 'c1', 'success', created),
+    );
+    const entry = toolGroups(history).groups.get('s0')!.entries[0]!;
+    expect(entry.resultHref).toBe('/workflows/morning-briefing');
+    expect(entry.summary).toBe('Morning briefing');
+    expect(railCall(entry, false)).toMatchObject({
+      status: 'done',
+      result: 'Morning briefing',
+      resultHref: '/workflows/morning-briefing',
+    });
+    // An approved call keeps its answer on the row, with its approval nested under it.
+    const approved = {
+      ...entry,
+      decision: {
+        outcome: 'approved',
+        decidedBy: 'owner',
+        decidedAt: Date.parse('2026-10-23T00:00:00.000Z'),
+      },
+    } as const;
+    expect(railCall(approved, true)).toMatchObject({
+      status: 'approved',
+      result: 'Morning briefing',
+      resultHref: '/workflows/morning-briefing',
+      nested: true,
+    });
+    expect(railCall(approved, true)).not.toHaveProperty('decision');
+  });
+});
+
+describe('what the catalog says of a tool a call names', () => {
+  test('is found under the catalog’s name and under the form a model calls a namespaced tool by', () => {
+    const info = toolInfoByName([
+      { name: 'bureau:workflows-create', title: 'Create workflow', tier: 'mutating' },
+      { name: 'lookup-order', title: 'Lookup order', tier: 'read-only' },
+    ]);
+    expect(info.get('bureau:workflows-create')?.title).toBe('Create workflow');
+    expect(info.get('bureau__workflows-create')?.title).toBe('Create workflow');
+    expect(info.get('bureau__workflows-create')?.tier).toBe('mutating');
+    expect(info.get('lookup-order')?.title).toBe('Lookup order');
+    expect(info.size).toBe(3);
   });
 });

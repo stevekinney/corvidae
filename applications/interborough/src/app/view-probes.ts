@@ -5,15 +5,16 @@ import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts
 import { agentsListQuery } from '../lib/agent-queries.ts';
 import { AUDIT_EVENT_TYPES } from '../lib/audit-event-types.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
-import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
+import { listAgents } from '../lib/bureau-client.ts';
 import { getGoal, listGoals } from '../lib/bureau-goals.ts';
 import { getHook, listHooks } from '../lib/bureau-hooks.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
 import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
-import { defaultAgentQuery } from '../lib/default-agent.ts';
+import { defaultAgentQuery, workflowAuthorQuery } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
 import { listMemories } from '../lib/memory-client.ts';
+import { startedFromWorkflows } from '../lib/new-chat-address.ts';
 import { AGENT_MEMORY_PATTERN, queryKeys } from '../lib/query.ts';
 import {
   CATALOG_STALE_TIME_MS,
@@ -37,6 +38,9 @@ export type ViewProbeResult = {
   readonly recheckMs?: number;
   readonly liveSource?: 'bureau' | 'fleet';
 };
+
+/** How long the agents a new chat starts with are trusted before the page asks for them again. */
+const AGENT_LIST_STALE_TIME_MS = 5_000;
 
 /** How often an empty runs page asks again while the feed that would fill it is not live, the poll `/tasks/:id` uses for a task that has ended. */
 export const RUNS_RECHECK_MS = 5_000;
@@ -178,35 +182,42 @@ export function probeFor(
 ): ViewProbe | undefined {
   switch (view) {
     case 'chat':
-      // One session's page asks for that session, which settles whether it exists and may be seen.
-      if (parameters['chat'] !== undefined) {
-        const sessionId = parameters['chat'];
-        return async () => {
-          // Only whether it exists and may be seen matters here; the page reads what it shows.
-          await callBureau('bureau.contexts.get', { contextId: sessionId });
-          return { empty: false };
-        };
-      }
+      // One session's page asks for no probe: the pane reads the session itself and words its own
+      // loading, failure, forbidden and not-found states in place of the conversation, so the list of
+      // chats beside it stays live in each of them (design rows 17c, 17e, 17j and 17y).
+      if (parameters['chat'] !== undefined) return undefined;
       // A new chat needs an agent the Bureau lists: an unknown one is not found. Without `?agent=`
       // it starts with the first agent that can run, and with none the view is empty.
       if (pattern === '/chats/new') {
         const agent = search.get('agent');
         return async (_client, queryClient) => {
+          // The page lists the agents too (the pill, the greeting, the other agents to chat with), and
+          // takes them from here, so it draws with them on its first frame and never a greeting with
+          // no agent in it. The read that fails is this view's error (design row 24p).
+          const agents = await queryClient.fetchQuery({
+            queryKey: queryKeys.agents.list(),
+            queryFn: ({ signal }) => listAgents({ signal }),
+            staleTime: AGENT_LIST_STALE_TIME_MS,
+            retry: false,
+          });
           if (agent === null) {
-            return { empty: (await queryClient.fetchQuery(defaultAgentQuery())) === null };
+            const empty = (await queryClient.fetchQuery(defaultAgentQuery())) === null;
+            // A chat started from Workflows begins with an agent that can create workflows. None
+            // is not an empty view: the page says so in its composer and lets the person choose.
+            if (!empty && startedFromWorkflows(search)) {
+              await queryClient.fetchQuery(workflowAuthorQuery());
+            }
+            return { empty };
           }
-          const agents = await listAgents();
           const found = agents.find((entry) => entry.name === agent);
           if (found === undefined) throw notFound('agent');
           return { empty: false };
         };
       }
-      // The list is empty when the caller has started no chat: a goal's or a schedule's session is
-      // not listed here, so it does not make the list not empty.
-      return async () => {
-        const page = await listContexts({ origin: 'chat', limit: 1 });
-        return { empty: page.contexts.length === 0 };
-      };
+      // The list of chats words its own states (loading, first use, a search that matches nothing,
+      // and a read that fails) inside its pane, so the rest of the page stays live in each, and
+      // asks for no probe. A goal's or a schedule's session is not listed there either.
+      return undefined;
     case 'agents':
       return async (_client, queryClient) => {
         // A completed route prefetch may be stale after another host changes membership. Keep

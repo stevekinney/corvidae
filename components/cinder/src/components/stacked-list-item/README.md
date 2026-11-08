@@ -71,7 +71,7 @@ A row with nothing to report (a workflow, an available agent) keeps the column's
 
 On a phone (a viewport narrower than 640px) the status moves to line two beside the kind and agent (`Waiting on you · Chat · Tool runner`) and the time stays on line one. The word and dot are unchanged, and a row with no status simply has none.
 
-The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis.
+The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a dot separator, then the preview (`Waiting on you · I found order 4471…`), and the title clamps at two lines (`titleLines={2}`).
 
 ### A third line
 
@@ -151,6 +151,7 @@ Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each i
 | `leadingTone` | `"neutral"` \| `"info"` \| `"success"` \| `"warning"` \| `"danger"` | no | — | Draws `leading` as a 32px rounded glyph tile tinted with this tone, one glyph per kind (the needs-attention rows on Health use `warning`). The glyph is decoration, so give the tile no accessible name of its own. |
 | `lines` | `boolean` | no | — | Draws the two-line layout (bold title, one-line muted description or meta, a trailing region centred beside both lines) for a row that has no status, time or details to trigger it. A row with a `leadingTone` tile and `actions` is the usual case. |
 | `metaTooltip` | `string` | no | — | Line two as text, shown as a tooltip over line two, which ends in an ellipsis when it is long. Set it to the same text the `meta` (or `description`) snippet renders. |
+| `phoneActions` | `"menu"` \| `"buttons"` | no | — | What `actions` become on a phone: one menu button (`'menu'`, the default) or full-width buttons stacked under the row's text (`'buttons'`), each a 44px target under a coarse pointer. |
 | `rel` | `string` \| `null` | no | — | `rel` attribute forwarded to the title anchor; `noopener noreferrer` is merged automatically when `target="_blank"`. |
 | `retryLabel` | `string` | no | — | Text of the error's retry button. Default `Try again`. |
 | `selected` | `boolean` | no | — | Marks the row as the one open in the detail beside the list. It takes an accent tint, which stays when the pointer is over it, and sets `aria-current` on the row's link (or on the row when it is not a link). |

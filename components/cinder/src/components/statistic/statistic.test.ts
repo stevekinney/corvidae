@@ -18,6 +18,27 @@ function textSnippet(text: string) {
   }));
 }
 
+describe('Statistic loading', () => {
+  test('draws a placeholder where the value goes, marks the tile busy and says no number', () => {
+    const { container } = render(Statistic, { label: 'Running now', value: 0, loading: true });
+    const tile = container.querySelector('.cinder-statistic');
+    expect(tile?.getAttribute('aria-busy')).toBe('true');
+    const value = container.querySelector('.cinder-statistic__value');
+    expect(value?.querySelector('.cinder-skeleton')?.getAttribute('aria-hidden')).toBe('true');
+    expect(value?.textContent?.trim()).toBe('');
+    // The label stays real text, and the tile is named by it alone.
+    expect(container.querySelector('.cinder-statistic__label')?.textContent).toContain(
+      'Running now',
+    );
+  });
+
+  test('is off by default: the value shows and the tile is not busy', () => {
+    const { container } = render(Statistic, { label: 'Running now', value: 0 });
+    expect(container.querySelector('.cinder-statistic')?.hasAttribute('aria-busy')).toBe(false);
+    expect(container.querySelector('.cinder-statistic__value')?.textContent?.trim()).toBe('0');
+  });
+});
+
 describe('Statistic', () => {
   test('loading keeps the label, stands a placeholder where the value was, and leaves the caption out', () => {
     const { container } = render(Statistic, {

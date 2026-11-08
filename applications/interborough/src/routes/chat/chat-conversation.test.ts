@@ -19,6 +19,7 @@ import {
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { chooseOption, optionLabels } from './listbox.test-support.ts';
+import { handOffFirstMessage, takeFirstMessage } from './new-chat-handoff.ts';
 import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -128,7 +129,7 @@ describe('a new chat', () => {
     expect(names).toContain('Internal');
   });
 
-  test('puts the agent select at the top of the composer and leaves the header with the title alone', async () => {
+  test('puts the agent select at the top of the composer, with no header over the page', async () => {
     restore = served().restore;
     landAt('/chats/new');
 
@@ -143,16 +144,15 @@ describe('a new chat', () => {
     expect(select.closest('.chat-input-header')).not.toBeNull();
     expect(select.closest('.ib-agent-select')).not.toBeNull();
     expect(select.getAttribute('data-cinder-variant')).toBe('ghost');
-    expect(
-      container.querySelector('[data-testid="chat-header"]')?.querySelector('input, select'),
-    ).toBeNull();
+    // The greeting is the page's title: there is no header, and so no agent control in one.
+    expect(container.querySelector('[data-testid="chat-header"]')).toBeNull();
     // The agent first, then the one setting a scripted agent has, and the Send beside it.
     const row = container.querySelector('.chat-input-footer-left')!;
     expect(row.querySelector('#weft-chat-permission')).not.toBeNull();
     expect(row.querySelector('#weft-chat-agent')).toBeNull();
   });
 
-  test('greets with the agent and its prompts, and shows the other agents as one row until one is chosen', async () => {
+  test('greets with the agent, offers its prompts under the composer, and shows the other agents as one row', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({
         agents: [
@@ -173,22 +173,34 @@ describe('a new chat', () => {
 
     const welcome = await findByTestId('new-chat-welcome');
     await waitFor(() => expect(welcome.textContent).toContain(AGENT.description));
-    // The greeting is a line, not a second title.
-    expect(welcome.querySelector('h1, h2, h3')).toBeNull();
-    // Up to three prompts, as buttons, and an agent that suggests none shows none.
+    // The greeting is the page's one title, under the avatar of the agent the chat is with.
+    expect(welcome.querySelectorAll('h1')).toHaveLength(1);
+    expect(welcome.querySelector('h1')?.textContent?.trim()).toBe(
+      `What should ${AGENT.displayName} do?`,
+    );
+    expect(welcome.querySelector('.ib-chat-avatar')).not.toBeNull();
+    // The prompts are under the composer, up to three, as buttons after a "Try" lead, and an agent
+    // that suggests none shows none.
     const group = await findByRole('group', { name: 'Example prompts' });
     expect(
       [...group.querySelectorAll('button')].map((button) => button.textContent?.trim()),
     ).toEqual(['Say hello', 'Plan the week', 'Summarise it']);
-    // The other agents are one row of buttons to choose from.
-    const others = await findByRole('group', { name: 'Or start with another agent' });
+    expect(group.textContent).toMatch(/^Try/);
+    // The other agents are one row of buttons to choose from, each with its avatar, and the
+    // selected agent is not repeated.
+    const others = await findByRole('group', { name: 'Or chat with' });
     expect(
-      [...others.querySelectorAll('button')].map((button) => button.textContent?.trim()),
-    ).toEqual(['Researcher', 'Internal']);
+      [...others.querySelectorAll('button')].map((button) =>
+        button.textContent?.replaceAll(/\s+/g, ' ').trim(),
+      ),
+    ).toEqual(['R Researcher', 'I Internal']);
+    expect(others.querySelectorAll('button .ib-chat-avatar')).toHaveLength(2);
     expect(queryByRole('group', { name: 'Example prompts' })).not.toBeNull();
+    // The page has no header of its own to say "New chat" a second time.
+    expect(queryByRole('heading', { level: 1, name: 'New chat' })).toBeNull();
   });
 
-  test('greets only the agent the address names, with its prompts', async () => {
+  test('greets the agent the address names, with its prompts, and still offers the other agents', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({
         agents: [AGENT, { ...RESEARCHER, examples: ['Find the latest filing'] }],
@@ -196,17 +208,25 @@ describe('a new chat', () => {
     }).restore;
     landAt('/chats/new?agent=researcher');
 
-    const { findByTestId, queryByRole } = mount({
+    const { findByTestId, findByRole, queryByRole } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'researcher',
-      agentChosen: true,
       isNew: true,
     });
 
     const welcome = await findByTestId('new-chat-welcome');
     await waitFor(() => expect(welcome.textContent).toContain('Researcher'));
-    expect(welcome.textContent).toContain('Find the latest filing');
+    expect(await findByRole('group', { name: 'Example prompts' })).toHaveProperty(
+      'textContent',
+      expect.stringContaining('Find the latest filing'),
+    );
+    const others = await findByRole('group', { name: 'Or chat with' });
+    expect(
+      [...others.querySelectorAll('button')].map((button) =>
+        button.textContent?.replaceAll(/\s+/g, ' ').trim(),
+      ),
+    ).toEqual(['A Assistant']);
     expect(queryByRole('group', { name: 'Or start with another agent' })).toBeNull();
   });
 
@@ -262,6 +282,110 @@ describe('a new chat', () => {
     expect(runs).toEqual([]);
   });
 
+  test('sends the message Home’s Start a chat handed over as the first message, once, and no address can send one', async () => {
+    const bodies: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
+    restore = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, id: 'thread-1', title: 'From Home' }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      },
+      (url, init) => {
+        if (!url.includes('/ag-ui/agents/')) return undefined;
+        const input = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+          threadId: string;
+          runId: string;
+          messages: Array<{ role: string; content: unknown }>;
+        };
+        bodies.push(input);
+        return sse([
+          { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Hello from the agent.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: input.threadId,
+            runId: input.runId,
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    ).restore;
+    handOffFirstMessage('assistant', 'What did I approve yesterday?');
+    landAt('/chats/new?agent=assistant');
+    const { container, findByText } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    await findByText('Hello from the agent.');
+    // The text went through the composer, and the started chat cleared it as it clears a typed one.
+    await waitFor(() => expect(container.querySelector('textarea')?.value).toBe(''));
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]?.messages.findLast((message) => message.role === 'user')?.content).toBe(
+      'What did I approve yesterday?',
+    );
+    // It was taken as it was sent, so a chat opened again sends nothing.
+    expect(takeFirstMessage('assistant')).toBeUndefined();
+  });
+
+  test('keeps the message Home handed over when the first start fails, and Retry sends it again', async () => {
+    const bodies: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
+    restore = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, id: 'thread-1', title: 'From Home' }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      },
+      (url, init) => {
+        if (!url.includes('/ag-ui/agents/')) return undefined;
+        const input = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+          threadId: string;
+          runId: string;
+          messages: Array<{ role: string; content: unknown }>;
+        };
+        bodies.push(input);
+        // The first start is refused; the second one runs.
+        if (bodies.length === 1) return new Response('{}', { status: 502 });
+        return sse([
+          { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Hello from the agent.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: input.threadId,
+            runId: input.runId,
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    ).restore;
+    handOffFirstMessage('assistant', 'What did I approve yesterday?');
+    landAt('/chats/new?agent=assistant');
+    const { container, findByRole, findByText } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    const retry = await findByRole('button', { name: 'Retry' });
+    expect(bodies).toHaveLength(1);
+    expect(container.querySelector('textarea')?.value).toBe('What did I approve yesterday?');
+
+    await fireEvent.click(retry);
+
+    await findByText('Hello from the agent.');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]?.messages.findLast((message) => message.role === 'user')?.content).toBe(
+      'What did I approve yesterday?',
+    );
+  });
+
   test('opens with an empty composer when no topic is named', async () => {
     restore = bureau({}).restore;
     landAt('/chats/new');
@@ -276,7 +400,7 @@ describe('a new chat', () => {
     expect(container.querySelector('textarea')?.value).toBe('');
   });
 
-  test('names an agent whose display name is its identifier once, in monospace, in the greeting', async () => {
+  test('names an agent whose display name is its identifier in words, in the greeting and in the row', async () => {
     const echo = { ...AGENT, name: 'echo', displayName: 'echo', description: null };
     const runner = {
       ...AGENT,
@@ -286,7 +410,7 @@ describe('a new chat', () => {
     };
     restore = bureau({ 'bureau.agents.list': () => ({ agents: [echo, runner] }) }).restore;
     landAt('/chats/new');
-    const { findByTestId } = mount({
+    const { findByTestId, container } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'echo',
@@ -301,11 +425,17 @@ describe('a new chat', () => {
           .querySelector('.ib-new-chat__greeting')
           ?.textContent?.replaceAll(/\s+/g, ' ')
           .trim(),
-      ).toBe('Chat with echo'),
+      ).toBe('What should Echo do?'),
     );
-    expect(welcome.querySelectorAll('.ib-new-chat__greeting code.ib-identifier')).toHaveLength(1);
-    expect(welcome.querySelector('[data-agent="tool-runner"]')?.textContent?.trim()).toBe(
-      'tool-runner',
+    // The identifier is not the title: the greeting holds no code, and the row says "Tool runner".
+    expect(welcome.querySelectorAll('code')).toHaveLength(0);
+    await waitFor(() =>
+      expect(
+        container
+          .querySelector('[data-testid="other-agents"] [data-agent="tool-runner"]')
+          ?.textContent?.replaceAll(/\s+/g, ' ')
+          .trim(),
+      ).toBe('TR Tool runner'),
     );
   });
 
@@ -476,7 +606,7 @@ describe('an existing session', () => {
     expect(container.querySelector('.chat-empty')).toBeNull();
   });
 
-  test('shows its title and its agent once, and no agent chooser', async () => {
+  test('shows its title once, with no agent line under it and no agent chooser', async () => {
     const served = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
       if (url.includes('/threads/')) {
@@ -495,35 +625,8 @@ describe('an existing session', () => {
 
     const heading = await findByRole('heading', { level: 1 });
     expect(heading.textContent).toBe('Plan the week');
-    expect(container.querySelectorAll('.weft-chat-header__agent')).toHaveLength(1);
+    expect(container.querySelector('[data-testid="chat-header"] a[href^="/agents/"]')).toBeNull();
     expect(queryByRole('combobox', { name: 'Agent' })).toBeNull();
-  });
-
-  test('names its agent as a link to the agent’s page, which a modified click leaves to the browser', async () => {
-    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
-      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
-      if (url.includes('/threads/')) {
-        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
-      }
-      return undefined;
-    }).restore;
-    landAt('/chats/session-1');
-    const { container } = mount({
-      sessionId: 'session-1',
-      title: 'Plan the week',
-      agentName: 'assistant',
-    });
-
-    const link = await waitFor(() => {
-      const found = container.querySelector<HTMLAnchorElement>('a.weft-chat-header__agent');
-      if (found === null) throw new Error('The agent link did not render.');
-      return found;
-    });
-    expect(link.getAttribute('href')).toBe('/agents/assistant');
-    expect(await fireEvent.click(link, { button: 0, ctrlKey: true })).toBe(true);
-    expect(router.pathname).toBe('/chats/session-1');
-    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/agents/assistant');
   });
 
   test('reads its title once when it opens and once more when its run is over, and never in a loop', async () => {
@@ -788,7 +891,7 @@ describe('a run that waits on a tool approval', () => {
     // The approval is one flat row with the question it asks, which is the approval's own message
     // here. No run identifier and no policy string reaches the page.
     await waitFor(() =>
-      expect(container.querySelector('.ib-decision__question')?.textContent).toBe(
+      expect(container.querySelector('[data-approval-decision] h4')?.textContent).toBe(
         'Refund order-1001?',
       ),
     );
@@ -891,7 +994,7 @@ describe('a decision made somewhere else', () => {
       agentName: 'assistant',
     });
     await sendMessage(container, 'Refund it');
-    await until(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+    await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
     expect(messageReads).toBe(1);
 
     // The poll finds the review gone and the read fails; the next poll reads the thread again.
@@ -991,7 +1094,7 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
       if (box === null) throw new Error('The composer did not render.');
       await fireEvent.input(box, { target: { value: 'Refund it' } });
       await fireEvent.keyDown(box, { key: 'Enter' });
-      await until(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+      await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
       await until(() => expect(listReads).toBe(1));
       expect(messageReads).toBe(1);
 

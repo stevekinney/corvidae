@@ -136,7 +136,10 @@ function isMessageNoteInfo(value: unknown): value is MessageNoteInfo {
       return (
         'reason' in value &&
         isNonEmptyString(value.reason) &&
-        ('failed' in value ? typeof value.failed === 'boolean' || value.failed === undefined : true)
+        ('failed' in value
+          ? typeof value.failed === 'boolean' || value.failed === undefined
+          : true) &&
+        ('notice' in value ? typeof value.notice === 'boolean' || value.notice === undefined : true)
       );
     default:
       return false;

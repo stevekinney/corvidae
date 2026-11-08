@@ -67,7 +67,8 @@ test.describe('workflow revision review in Chat', () => {
     ).toBe(true);
     await expect(
       page
-        .locator('.ib-tool')
+        .getByRole('region', { name: 'Tool calls' })
+        .getByRole('listitem')
         .filter({ has: page.locator('iframe[title="Review workflow revision"]') }),
     ).toHaveCount(1);
     await expect(
@@ -365,12 +366,16 @@ test.describe('workflow revision review in Chat', () => {
       `invalid proposal for ${WORKFLOW_ID}`,
     );
     await page.goto(`/chats/${invalidThread}`);
-    const invalidTool = page.locator('.ib-tool[data-tool-call-row="cor-2034-workflow-proposal"]');
+    const invalidTool = page
+      .locator('[data-cinder-tool-call-row]')
+      .filter({ hasText: /propose/i })
+      .first();
     await expect(invalidTool).toBeVisible();
-    await invalidTool
-      .getByRole('button', { name: /Details for bureau__workflows-propose-update/ })
-      .click();
-    await expect(invalidTool.locator('.ib-tool__details')).toContainText('expectedHash');
+    // Choosing the row opens what the call was given and answered in its panel.
+    await invalidTool.click();
+    await expect(page.getByRole('complementary').filter({ hasText: /propose/i })).toContainText(
+      'Expected hash',
+    );
     await expect(page.locator('iframe[title="Review workflow revision"]')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: `/chats/${invalidThread}`,
@@ -470,8 +475,17 @@ test.describe('workflow revision review in Chat', () => {
     );
     await page.goto(`/chats/${staleThread}`);
     await expect(page.locator('iframe[title="Review workflow revision"]')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Show tool calls' }).click();
-    await expect(page.getByText('bureau__workflows-propose-update', { exact: true })).toBeVisible();
+    // The call is a row of the rail, and choosing it names the tool in its panel.
+    await page
+      .locator('[data-cinder-tool-call-row]')
+      .filter({ hasText: /propose/i })
+      .first()
+      .click();
+    await expect(
+      page
+        .getByRole('complementary')
+        .getByText('bureau__workflows-propose-update', { exact: true }),
+    ).toBeVisible();
   });
 
   test('counts a single real proposal change', async ({ page, request }) => {

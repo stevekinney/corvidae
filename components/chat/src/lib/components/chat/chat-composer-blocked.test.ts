@@ -43,7 +43,7 @@ describe('a blocked composer', () => {
 
   test('on a phone-width composer the actions fill a line of their own, as touch targets', async () => {
     const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
-    const narrow = /@container \(max-inline-size: 28rem\) \{([\s\S]*?)\n  \}\n/u.exec(
+    const narrow = /@media \(max-width: 639\.98px\) \{([\s\S]*?)\n  \}\n/u.exec(
       source.slice(source.indexOf('.chat-input-blocked-actions {')),
     )?.[1];
 

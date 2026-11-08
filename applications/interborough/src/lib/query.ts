@@ -58,6 +58,8 @@ export const queryKeys = {
     waiting: (contextIds: readonly string[]) => ['contexts', 'waiting', contextIds] as const,
     /** The newest chat, read by the first-run checklist to learn whether the person has had one. */
     firstRun: () => ['contexts', 'first-run'] as const,
+    /** The newest chats, for Home's Recent chats card (`bureau.contexts.list`). */
+    recent: (limit: number) => ['contexts', 'recent', limit] as const,
     /** Every session the caller owns, read to count and date each agent's chats. */
     usage: () => ['contexts', 'usage'] as const,
     /** The chats' titles, read by the notification feed to name what finished. */
@@ -77,6 +79,8 @@ export const queryKeys = {
     list: () => ['agents', 'list'] as const,
     /** The first listed agent that can run, or `null` (`lib/default-agent.ts`). */
     default: () => ['agents', 'default'] as const,
+    /** The first listed agent that can run and has the Create workflow tool, or `null` (`lib/default-agent.ts`). */
+    workflowAuthor: () => ['agents', 'workflow-author'] as const,
     /** Every agent definition, invalid files included (`bureau.agents.definitions.list`). */
     definitions: () => ['agents', 'definitions'] as const,
     /** One agent as `bureau.agents.definitions.get` shows it. */
@@ -177,6 +181,8 @@ export const queryKeys = {
     overlay: () => ['schedules', 'overlay'] as const,
     /** The newest fire each schedule that missed one recorded, for the bell. Under `list`, so a fleet event that changes the schedules reads it again. */
     missedFires: () => ['schedules', 'list', 'missed-fires'] as const,
+    /** The Bureau's own view of every schedule (`bureau.schedules.list`), for Home's missed-runs row and for the name of a scheduled run in Running now. Under `list`, so a fleet event reads it again. */
+    bureau: () => ['schedules', 'list', 'bureau'] as const,
     /** What the schedule rows read besides the schedules: the engine's workflow types, the agents, and what needs attention. Under `list`, so a fleet event that changes the schedules reads it again. */
     rowContext: () => ['schedules', 'list', 'row-context'] as const,
     /** The agents each workflow ran in its last saved version, for the rows of workflows that cannot load. Under `list` for the same reason. */
@@ -235,12 +241,27 @@ export const queryKeys = {
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
     /** One step's reply details (`bureau.tasks.inspect` with `step`). */
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
+    /** How many runs are running now: working or not yet started, never waiting on a person. */
+    running: () => ['bureau-tasks', 'running'] as const,
+    /**
+     * The newest runs of one chat session, read while the chat waits for the run a decision made
+     * elsewhere continues it with (COR-2016). Under the session's entry, so what invalidates the
+     * session's runs invalidates this too.
+     */
+    sessionLatest: (contextId: string) => ['bureau-tasks', 'session', contextId, 'latest'] as const,
   },
   /** What needs attention now (`bureau.health.attention`), for the sidebar's Health dot. */
   bureauAttention: {
     count: () => ['bureau-attention', 'count'] as const,
     /** The rules that are firing, for the notification bell. */
     alerts: () => ['bureau-attention', 'alerts'] as const,
+    /** Every problem, for Home's Needs attention card. */
+    items: () => ['bureau-attention', 'items'] as const,
+    /**
+     * Every problem again, for the Missed schedule runs count on Home, which is a read of its own:
+     * the count row must read as it did when the Needs attention card could not be read.
+     */
+    homeCounts: () => ['bureau-attention', 'home-counts'] as const,
     /** The whole list and its checks, for the Health page. */
     list: () => ['bureau-attention', 'list'] as const,
   },

@@ -30,6 +30,7 @@ import {
   createBureau,
   ReviewRoundChangedError,
 } from './create-bureau';
+import { APPROVAL_DECISION_METADATA_KEY } from './approval-decision-metadata';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -156,6 +157,48 @@ describe('resolveReview writes the outcome of a tool approval into the session',
       expect(charges).toEqual([500]);
     } finally {
       await bureau.dispose();
+    }
+  });
+
+  it('says who decided the approval, when and with what note, on the outcome row (COR-2016)', async () => {
+    const approved = await parkedBureau(approvalToolbox([]));
+    try {
+      const before = Date.now();
+      await approved.bureau.reviews.resolve({
+        id: approved.review.id,
+        decision: 'approve',
+        principal: 'alice',
+      });
+      const stamp = resultRow(await sessionRows(approved.bureau, approved.run.contextId), 'call-1')
+        .metadata[APPROVAL_DECISION_METADATA_KEY] as
+        { decision: string; decidedBy: string; decidedAt: string; reason?: string } | undefined;
+      expect(stamp).toMatchObject({ decision: 'approve', decidedBy: 'alice' });
+      expect(Date.parse(stamp!.decidedAt)).toBeGreaterThanOrEqual(before);
+      expect(stamp).not.toHaveProperty('reason');
+      // The tool's own sentence is kept, since the outcome replaces the row that held it.
+      expect(stamp).toMatchObject({ asked: 'Approve charge' });
+    } finally {
+      await approved.bureau.dispose();
+    }
+
+    const denied = await parkedBureau(approvalToolbox([]));
+    try {
+      await denied.bureau.reviews.resolve({
+        id: denied.review.id,
+        decision: 'deny',
+        principal: 'alice',
+        reason: 'Check the carrier’s claim first.',
+      });
+      const row = resultRow(await sessionRows(denied.bureau, denied.run.contextId), 'call-1');
+      expect(row.metadata[APPROVAL_DECISION_METADATA_KEY]).toMatchObject({
+        decision: 'deny',
+        decidedBy: 'alice',
+        reason: 'Check the carrier’s claim first.',
+      });
+      // The agent reads the same note as the reason, so the row and the stamp say one thing.
+      expect(row.toolResult?.content).toBe('Tool call denied: Check the carrier’s claim first.');
+    } finally {
+      await denied.bureau.dispose();
     }
   });
 

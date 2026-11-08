@@ -123,6 +123,11 @@
     background: var(--cinder-surface);
   }
 
+  /* A muted header is the inset band over a card's rows. */
+  .cinder-card__header[data-cinder-tone='muted'] {
+    background: var(--cinder-surface-inset);
+  }
+
   /* The divider under the header is opt-in (`headerDivider`). */
   .cinder-card__header[data-cinder-divider] {
     border-bottom: 1px solid var(--cinder-border-muted);

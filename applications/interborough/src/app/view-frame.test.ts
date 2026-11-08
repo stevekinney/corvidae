@@ -6,13 +6,12 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 import { type QueryClient } from '@tanstack/svelte-query';
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
-import { queryKeys } from '../lib/query.ts';
 import { router } from '../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
 import {
@@ -25,9 +24,9 @@ import {
   type WorkflowStub,
   type World,
 } from '../lib/workflow-world.test-support.ts';
-import { FIRST_RUN_COPY, FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
-import { RUNS_RECHECK_MS } from './view-probes.ts';
+import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
 
 type Outcome = 'content' | 'empty' | 'error' | 'forbidden';
@@ -235,6 +234,15 @@ function mount(
   return { ...result, store: () => store, queryClient: () => queryClient };
 }
 
+/**
+ * How a view is mounted to read its probe's states. The list of chats asks no probe (it words its
+ * own states in its pane), so the chat view's probe states are those of a new chat, which asks
+ * whether an agent can run.
+ */
+function mountWithProbe(view: ViewName, options: Parameters<typeof mount>[1] = {}) {
+  return mount(view, view === 'chat' ? { pattern: '/chats/new', ...options } : options);
+}
+
 function frame(container: HTMLElement): HTMLElement {
   const element = container.querySelector<HTMLElement>('.weft-view');
   if (element === null) throw new Error('The view frame did not render.');
@@ -268,12 +276,16 @@ describe('every view whose probe fails the page, when its probe fails', () => {
   for (const view of VIEWS_THAT_CAN_FAIL) {
     const copy = VIEW_COPY[view];
 
+    // A new chat words its own failure: the agents it starts with could not be read.
+    const words =
+      view === 'chat' ? (copy.errorByPattern?.['/chats/new'] ?? copy.error) : copy.error;
+
     test(`${view} is failing when its probe fails`, async () => {
       stub(view, 'error');
-      const { container, findByRole, getByRole } = mount(view);
-      expect(await findByRole('heading', { level: 1, name: copy.error.title })).not.toBeNull();
+      const { container, findByRole, getByRole } = mountWithProbe(view);
+      expect(await findByRole('heading', { level: 1, name: words.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('error');
-      expect(container.textContent).toContain(copy.error.description);
+      expect(container.textContent).toContain(words.description);
       expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
     });
   }
@@ -284,10 +296,11 @@ describe('every view, in every state', () => {
     const copy = VIEW_COPY[view];
 
     test(`${view} is empty when its probe finds nothing, with its own words`, async () => {
-      const emptyCopy = copy.empty;
+      // The chat view is empty only where it asks a probe: a new chat, with no agent to start it.
+      const emptyCopy = view === 'chat' ? copy.emptyByPattern?.['/chats/new'] : copy.empty;
       if (!VIEWS[view].canBeEmpty || emptyCopy === undefined || VIEWS[view].ownsStates) return;
       stub(view, 'empty');
-      const { container, findByRole } = mount(view);
+      const { container, findByRole } = mountWithProbe(view);
       const heading = await findByRole('heading', { level: 1, name: emptyCopy.title });
       expect(heading).not.toBeNull();
       expect(frame(container).dataset['view']).toBe(view);
@@ -298,7 +311,7 @@ describe('every view, in every state', () => {
     test(`${view} is forbidden when its probe is refused`, async () => {
       if (view === 'health' || view === 'home') return;
       stub(view, 'forbidden');
-      const { container, findByRole } = mount(view);
+      const { container, findByRole } = mountWithProbe(view);
       expect(await findByRole('heading', { level: 1, name: copy.forbidden.title })).not.toBeNull();
       expect(frame(container).dataset['state']).toBe('forbidden');
     });
@@ -314,10 +327,15 @@ describe('every view, in every state', () => {
         expect(queryByRole('heading', { level: 1, name: copy.loading.title })).toBeNull();
         return;
       }
-      const { container, findByRole } = mount(view);
-      expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
+      const { container, findByRole, findByTestId } = mountWithProbe(view);
+      // A new chat is drawn as its own page in placeholders, with the composer already there.
+      if (view === 'chat') {
+        expect(await findByTestId('new-chat-loading')).not.toBeNull();
+      } else {
+        expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
+        expect(container.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
+      }
       expect(frame(container).dataset['state']).toBe('loading');
-      expect(container.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
     });
   }
 
@@ -447,93 +465,23 @@ describe('a refused probe', () => {
 });
 
 describe('one chat session’s page', () => {
-  const parameters = { chat: 'session-1' };
-
-  /** Answers `bureau.contexts.get` the way the Bureau would, and records what was asked. */
-  function stubContext(answer: () => Response): { requests: string[] } {
-    const requests: string[] = [];
-    restore = installFetchImplementation(async (input, init) => {
-      const call = operationOf(init?.body);
-      requests.push(`${requestUrl(input).pathname} ${call?.method ?? ''}`.trim());
-      return answer();
+  test('asks nothing before it shows: the pane words its own loading, failure, forbidden and not-found states, so the list beside it stays live', async () => {
+    expect(probeFor('chat', { chat: 'session-1' }, '/chats/:chat')).toBeUndefined();
+    const { requests } = stub('chat', 'content');
+    const { container, findByTestId } = mount('chat', {
+      parameters: { chat: 'session-1' },
+      pattern: '/chats/:chat',
     });
-    return { requests };
-  }
-
-  const rpcFault = (status: number, code: string) => () =>
-    Response.json({
-      jsonrpc: '2.0',
-      id: 'bureau.contexts.get',
-      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
-    });
-
-  test('asks the Bureau for that session, and shows its content when the Bureau has it', async () => {
-    const { requests } = stubContext(() =>
-      Response.json({ jsonrpc: '2.0', id: 'bureau.contexts.get', result: { id: 'session-1' } }),
-    );
-    const { container, findByTestId } = mount('chat', { parameters });
 
     expect(await findByTestId('content')).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('ready');
-    expect(requests).toEqual(['/bureau/jsonrpc bureau.contexts.get']);
-  });
-
-  test('is not found when the Bureau says there is no such session, with the words copy.ts holds', async () => {
-    stubContext(rpcFault(404, 'NotFound'));
-    const { container, findByRole } = mount('chat', { parameters });
-    const notFound = VIEW_COPY.chat.notFound;
-
-    expect(await findByRole('heading', { level: 1, name: notFound?.title ?? '' })).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('not-found');
-    expect(container.textContent).toContain(notFound?.description ?? '');
-  });
-
-  test('is forbidden when the Bureau refuses the caller', async () => {
-    stubContext(rpcFault(403, 'Forbidden'));
-    const { container, findByRole } = mount('chat', { parameters });
-
-    expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.forbidden.title }),
-    ).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('forbidden');
-  });
-
-  test('is failing, not not-found, when the Bureau breaks', async () => {
-    stubContext(() => Response.json({ error: 'The server broke.' }, { status: 500 }));
-    const { container, findByRole } = mount('chat', { parameters });
-
-    expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.error.title }),
-    ).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('error');
-  });
-
-  test('two sessions do not share one answer', async () => {
-    stubContext(rpcFault(404, 'NotFound'));
-    const first = mount('chat', { parameters });
-    await first.findByRole('heading', { level: 1, name: VIEW_COPY.chat.notFound?.title ?? '' });
-    first.unmount();
-    restore?.();
-
-    stubContext(() =>
-      Response.json({ jsonrpc: '2.0', id: 'bureau.contexts.get', result: { id: 'session-2' } }),
-    );
-    const second = mount('chat', { parameters: { chat: 'session-2' } });
-
-    expect(await second.findByTestId('content')).not.toBeNull();
+    expect(requests).toEqual([]);
   });
 });
 
 describe('the chat list, a new chat, and the agents', () => {
   const rpc = (method: string, result: unknown) =>
     Response.json({ jsonrpc: '2.0', id: method, result });
-  const fault = (status: number, code: string) =>
-    Response.json({
-      jsonrpc: '2.0',
-      id: 1,
-      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
-    });
-
   /** Answers each Bureau operation the frame's probes ask, by name. */
   function stubBureau(answers: Record<string, () => Response>): void {
     restore = installFetchImplementation(async (_input, init) => {
@@ -547,103 +495,36 @@ describe('the chat list, a new chat, and the agents', () => {
   const agents = (...entries: Array<Partial<typeof AGENT>>) =>
     rpc('bureau.agents.list', { agents: entries.map((entry) => ({ ...AGENT, ...entry })) });
 
-  test('is forbidden when the Bureau refuses the caller the list of sessions', async () => {
-    stubBureau({ 'bureau.contexts.list': () => fault(403, 'Forbidden') });
-    const { container, findByRole } = mount('chat', { pattern: '/chats' });
-
-    expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.forbidden.title }),
-    ).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('forbidden');
-  });
-
-  test('is empty, with a New chat action, when the caller has no session', async () => {
-    stubBureau({ 'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }) });
-    const { container, findByRole } = mount('chat', { pattern: '/chats' });
-
-    expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
-    ).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('empty');
-    expect(container.querySelector('a[href="/chats/new"]')?.textContent?.trim()).toBe('New chat');
-    // The second action goes to the agents a chat can start with, and both are buttons.
-    const browse = container.querySelector('a[href="/agents"]');
-    expect(browse?.textContent?.trim()).toBe('Browse agents');
-    expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
-  });
-
-  test('an empty chat page on a fresh installation shows the first-run steps above its actions, and none once they are dismissed', async () => {
-    window.localStorage.removeItem('interborough:first-run:dismissed');
-    restore = installFetchImplementation(async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url === '/host/providers') {
-        return Response.json({
-          configurationRevision: null,
-          providers: [{ name: 'anthropic', configured: false, hasKey: false }],
-          catalog: [],
-          models: [],
-        });
-      }
-      const method = operationOf(init?.body)?.method ?? '';
-      if (method === 'bureau.contexts.list') return rpc(method, { contexts: [], nextOffset: null });
-      if (method === 'bureau.agents.list') return agents({ name: 'assistant' });
-      throw new Error(`Unexpected request: ${url} ${method}`);
-    });
-    const { container, findByTestId, findByRole } = mount('chat', { pattern: '/chats' });
-
-    const checklist = await findByTestId('first-run');
-
-    expect(
-      [...checklist.querySelectorAll('[data-step]')].map((step) => step.getAttribute('data-done')),
-    ).toEqual(['false', 'false', 'false']);
-    // The steps come first; the New chat action is still there for a person who skips them.
-    const actions = container.querySelector('.weft-view__actions');
-    expect(
-      checklist.compareDocumentPosition(actions as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    await fireEvent.click(await findByRole('button', { name: FIRST_RUN_COPY.dismissLabel }));
-    expect(container.querySelector('[data-testid="first-run"]')).toBeNull();
-    expect(container.querySelector('a[href="/chats/new"]')?.textContent?.trim()).toBe('New chat');
-    window.localStorage.removeItem('interborough:first-run:dismissed');
-  });
-
-  test('the welcome names the agents a chat can start with, by their identifiers in monospace, and adds no padding of its own', async () => {
-    stubBureau({
-      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
-      'bureau.agents.list': () =>
-        agents({ name: 'assistant' }, { name: 'tool-runner' }, { name: 'internal' }),
-    });
+  test('asks nothing before the list of chats shows: the list words its own loading, first use and failure', async () => {
+    expect(probeFor('chat', {}, '/chats')).toBeUndefined();
+    const { requests } = stub('chat', 'content');
     const { container, findByTestId } = mount('chat', { pattern: '/chats' });
 
-    const line = await findByTestId('welcome-agents');
-
-    expect(line.textContent).toContain('Agents:');
-    expect(
-      [...line.querySelectorAll('code.ib-identifier')].map((code) => code.textContent),
-    ).toEqual(['assistant', 'tool-runner', 'internal']);
-    // The outlet pads the page, so the empty state is Cinder's with its own padding removed.
-    expect(container.querySelector('.cinder-empty-state')?.classList).toContain('weft-view__empty');
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toEqual([]);
   });
 
-  test('the welcome says nothing of agents when the Bureau lists none', async () => {
-    stubBureau({
-      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
-      'bureau.agents.list': () => agents(),
-    });
-    const { container, findByRole, queryClient } = mount('chat', { pattern: '/chats' });
+  test('a new chat is empty, with the Agents first-use words, when no agent can run (24q)', async () => {
+    stubBureau({ 'bureau.agents.list': () => agents() });
+    const words = VIEW_COPY.chat.emptyByPattern?.['/chats/new'];
+    const { container, findByRole } = mount('chat', { pattern: '/chats/new' });
 
-    await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' });
-    // The line is not there for want of an answer: the Bureau has answered, and said none.
-    await waitFor(() =>
-      expect(queryClient()?.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
+    expect(await findByRole('heading', { level: 1, name: 'No agents yet' })).not.toBeNull();
+    expect(words?.title).toBe('No agents yet');
+    expect(container.textContent).toContain(
+      'An agent is a model with instructions and tools. Create one, or add a plugin that provides some.',
     );
-    const answered: unknown = queryClient()?.getQueryData(queryKeys.agents.list());
-    expect(answered).toEqual([]);
-    // One turn of the event loop lets the page take the answer in.
-    // load-proof: the Bureau answer is already in the query cache, so the page only needs its Svelte flush, which settles inside the promise chain
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(container.querySelector('[data-testid="welcome-agents"]')).toBeNull();
+    expect(frame(container).dataset['state']).toBe('empty');
+    // A primary New agent and a secondary Browse agents, both buttons, and no composer or checklist.
+    const create = container.querySelector('a[href="/agents/new"]');
+    expect(create?.textContent?.trim()).toBe('New agent');
+    expect(create?.getAttribute('data-cinder-variant')).toBe('primary');
+    const browse = container.querySelector('a[href="/agents"]');
+    expect(browse?.textContent?.trim()).toBe('Browse agents');
+    expect(browse?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
+    expect(container.querySelector('textarea, [data-testid="first-run"]')).toBeNull();
   });
 
   test('a new chat is ready for an agent the Bureau lists', async () => {
@@ -700,7 +581,6 @@ describe('the chat list, a new chat, and the agents', () => {
     const words = VIEW_COPY.chat.emptyByPattern?.['/chats/new'];
 
     expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(words?.title).not.toBe(VIEW_COPY.chat.empty?.title);
     expect(frame(container).dataset['state']).toBe('empty');
   });
 

@@ -121,7 +121,10 @@ export function findPairedToolResultIds(messages: readonly Message[]): Set<strin
   return pairedResultIds;
 }
 
-/** Build visible messages with date separators, skipping paired tool-result messages. */
+/**
+ * Build visible messages with date separators, skipping paired tool-result messages. A system
+ * message never opens a day: it stays with the day band it falls under.
+ */
 export function buildMessagesWithDateSeparators(
   messages: readonly Message[],
   pairedToolResultIds: ReadonlySet<string>,
@@ -134,7 +137,12 @@ export function buildMessagesWithDateSeparators(
       continue;
     }
 
-    const timestamp = message.createdAt ?? message.metadata?.['timestamp'];
+    // The instructions are not part of the conversation's days: they are written when the chat is
+    // created and say nothing of when it was spoken, so they never open a day (or hold one open).
+    const timestamp =
+      message.role === 'system'
+        ? undefined
+        : (message.createdAt ?? message.metadata?.['timestamp']);
     if (timestamp != null) {
       const messageDate = new Date(timestamp);
       const isValidDate = !isNaN(messageDate.getTime());

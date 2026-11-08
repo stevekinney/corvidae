@@ -541,6 +541,35 @@ describe('a stop', () => {
     ]);
   });
 
+  test('still waits for the run to end when the cancel request cannot be made', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const controller = new AbortController();
+    const { wiring, sent } = wiringOver(
+      [
+        waiting,
+        () => {
+          throw new TypeError('network down');
+        },
+        stream([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]),
+      ],
+      () => conversation,
+    );
+    const turn = frames(wiring, conversation, controller.signal).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await expectEventually(() => sent.length === 1);
+    // A Stop before the first event is held until the event names the run, so no wait is needed.
+    controller.abort();
+    await turn;
+
+    expect(sent.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+      `POST ${AG_UI_PATH}/agents/assistant/run`,
+      `POST ${AG_UI_PATH}/runs/native-1/cancel`,
+      `GET ${AG_UI_PATH}/runs/native-1`,
+    ]);
+  });
+
   test('leaves the Bureau’s run going when the page detaches, as it does when its chat is left', async () => {
     const conversation = appendUserMessage(empty(), 'Hello');
     const controller = new AbortController();
@@ -1686,6 +1715,33 @@ describe('a resume the mount refused', () => {
           metadata: { '@lostgradient/bureau': { round: 2 } },
         },
       ]);
+    });
+
+    test('sends the note typed on an approval, and none when it is blank', async () => {
+      for (const [reason, expected] of [
+        ['Check the carrier first.', { decision: 'approve', reason: 'Check the carrier first.' }],
+        ['   ', { decision: 'approve' }],
+      ] as const) {
+        const conversation = appendUserMessage(empty(), 'Refund it');
+        const stubbed = mount([
+          stream([started(), finished({ type: 'interrupt', interrupts: [INTERRUPT] })]),
+          stream([started('run-2'), finished(undefined, 'run-2')]),
+        ]);
+        const wiring = createChatRunWiring({
+          agentName: () => 'tool-runner',
+          fetch: stubbed.fetch,
+          conversation: () => conversation,
+        });
+        await frames(wiring, conversation);
+        await wiring.resolveToolApproval('call-refund', {
+          decision: 'approve',
+          reason,
+          remember: false,
+        });
+        await frames(wiring, conversation);
+
+        expect(inputOf(stubbed.sent[1]).resume?.[0]?.payload).toEqual(expected);
+      }
     });
 
     test('sends no remember when the person did not ask for it', async () => {

@@ -208,6 +208,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       tone: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       bodyTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       footerTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      headerTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       edgeToEdgeOnMobile: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       padding: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
     },
@@ -369,6 +370,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
       backLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Back') },
+      backVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: B(true) },
       detailLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Details') },
       emptyTitle: { optional: true, type_kind: 'TSStringKeyword', default: L('Nothing selected') },
       emptyDescription: {
@@ -573,7 +575,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       cancelLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Cancel') },
       statusMarker: { optional: true, type_kind: 'TSTypeReference', default: L('bar') },
     },
-    snippets: {},
+    snippets: { children: s0(true) },
   },
 
   spinner: {

@@ -1,8 +1,8 @@
 /**
  * The composer of a new chat, over a stubbed Bureau: the agent select at the top of the surface,
  * the choices made before the chat has a session (applied once the first message has started it),
- * the one Settings control a narrow composer folds them into, the formatting row, and the blocked
- * row of a chat started from Workflows that has no agent to write with.
+ * the one Settings control a narrow composer folds them into, and the formatting row. A chat started
+ * from Workflows is `chat-conversation-from-workflows.test.ts`.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -11,7 +11,7 @@ import { CHAT_COPY } from '../../app/copy.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { chooseOption, optionLabels } from './listbox.test-support.ts';
+import { chooseOption, optionDescriptions, optionLabels } from './listbox.test-support.ts';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -164,6 +164,24 @@ describe('a new chat with a model agent and a provider', () => {
     // The avatar spells the agent's identifier.
     expect(agent.querySelector('.ib-agent-select__avatar')?.textContent?.trim()).toBe('TR');
     expect(editor(container)?.placeholder).toBe('Message Tool runner…');
+  });
+
+  test('says under each Permissions option what it does, in the words an open chat uses (17g)', async () => {
+    serve();
+    landAt('/chats/new?agent=tool-runner');
+    const { container } = mount();
+    await waitFor(() =>
+      expect(footer(container).querySelector('#weft-chat-permission')).not.toBeNull(),
+    );
+
+    const lines = await optionDescriptions(container, 'weft-chat-permission');
+    expect(lines).toEqual(CHAT_COPY.settings.permissionOptions.map((option) => option.description));
+    // Allow all skips the asks that On changes would raise for this chat only: a tool set to
+    // Always still asks, and a Blocked tool still refuses.
+    expect(lines).toContain(
+      'Skips the On changes asks for this chat. Tools set to Always still ask; Blocked tools stay blocked.',
+    );
+    expect(lines).toContain('Tools set to On changes ask before they run.');
   });
 
   test('draws the formatting row, which the composer shows only while it has focus', async () => {
@@ -337,42 +355,5 @@ describe('a narrow composer', () => {
     const { container, queryByRole } = mount();
     await waitFor(() => expect(footer(container).querySelector('#weft-chat-model')).not.toBeNull());
     expect(queryByRole('button', { name: /^Settings/ })).toBeNull();
-  });
-});
-
-describe('a chat started from Workflows with no agent that can create workflows', () => {
-  test('says so once, in the blocked row, with a link to Agents, and keeps what was typed', async () => {
-    serve();
-    landAt('/chats/new?agent=tool-runner');
-    const view = mount();
-    await waitFor(() => expect(editor(view.container)).not.toBeNull());
-    await fireEvent.input(editor(view.container)!, {
-      target: { value: 'Help me build a workflow that…' },
-    });
-
-    await view.rerender({
-      page: ChatConversation,
-      pageProps: {
-        sessionId: 'thread-1',
-        title: null,
-        agentName: 'tool-runner',
-        isNew: true,
-        noWorkflowAgent: true,
-      },
-      client: createQueryClient(),
-    } as never);
-
-    const row = await waitFor(() => {
-      const found = view.container.querySelector<HTMLElement>(
-        '[data-chat-composer-status="blocked"]',
-      );
-      if (found === null) throw new Error('The blocked row did not appear.');
-      return found;
-    });
-    expect(row.textContent).toContain(CHAT_COPY.composer.noWorkflowAgent);
-    const link = row.querySelector('a')!;
-    expect(link.textContent?.trim()).toBe('Open Agents');
-    expect(link.getAttribute('href')).toBe('/agents');
-    expect(editor(view.container)).toBeNull();
   });
 });

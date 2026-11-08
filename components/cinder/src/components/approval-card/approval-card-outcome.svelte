@@ -11,6 +11,8 @@
     tone: 'success' | 'neutral';
     /** Whether the time follows the word without a middot, as the Done detail writes it: "Approved by you 10:33 AM today". */
     inlineTime?: boolean | undefined;
+    /** Whether the word is led by a dot in its tone. Off where a glyph above already says it. Default `true`. */
+    dot?: boolean | undefined;
     /** Content after the outcome and its time, such as where the question was asked ("Tool runner in a chat"). */
     trailing?: Snippet | undefined;
     /** The note the approver left with the decision. */
@@ -24,6 +26,7 @@
     outcomeTime,
     tone,
     inlineTime = false,
+    dot = true,
     trailing,
     decisionNote,
     decisionNoteCaption,
@@ -32,7 +35,7 @@
 
 <p class="cinder-approval-card__outcome" data-cinder-tone={tone}>
   <span class="cinder-approval-card__outcome-word">
-    <span class="cinder-approval-card__outcome-dot" aria-hidden="true"></span>
+    {#if dot}<span class="cinder-approval-card__outcome-dot" aria-hidden="true"></span>{/if}
     {outcomeText}
   </span>
   {#if outcomeTime !== undefined}

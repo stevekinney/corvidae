@@ -1,3 +1,5 @@
+import type { Snippet } from 'svelte';
+
 /**
  * Shape of a multi-line skeleton group: `'row'` stacks `lines` bars on the surrounding surface,
  * `'card'` draws them inside a bordered card beneath a heading bar, and `'list'` draws `rows`
@@ -103,4 +105,13 @@ export type SkeletonProps = {
    * @default 'Cancel'
    */
   cancelLabel?: string;
+  /**
+   * The page's own placeholder, drawn instead of the bars, for a loading state whose shape is a
+   * whole page (real labels and headings with placeholder values and rows). The group still owns
+   * the timing: nothing is drawn until `delay` has passed, and the "Still loading" status follows
+   * the content after `stillLoadingAfter`. The group is marked busy while it shows. Draw each
+   * placeholder block with a `Skeleton` of its own; the content is not hidden from assistive
+   * technology, so text in it is read as written.
+   */
+  children?: Snippet;
 };

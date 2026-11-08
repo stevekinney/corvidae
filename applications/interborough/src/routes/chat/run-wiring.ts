@@ -91,6 +91,7 @@ import {
 } from './event-notes.ts';
 import { ResumableMapper } from './resumable-mapper.ts';
 import { DEFAULT_DENIAL, DENIED_CODE } from './tool-activity.ts';
+import { withoutImportTimes } from './unrecorded-times.ts';
 
 /** The AG-UI mount's path, under the Bureau's. */
 export const AG_UI_PATH = `${BUREAU_PATH}/ag-ui`;
@@ -724,6 +725,11 @@ function answerTo(interrupt: Interrupt, resolution: ApprovalResolution): ResumeE
         // Allow for the rest of this chat: the grant rides the same resume as the approval, so the
         // turn continues as Approve's does (COR-1990). The mount refuses it on a deny.
         ...(resolution.remember ? { remember: true } : {}),
+        // The note typed on Approve ("Add a note for the agent or the record") rides the resume, so
+        // it lands on the decided row as Reviews' does.
+        ...(resolution.reason === undefined || resolution.reason.trim() === ''
+          ? {}
+          : { reason: resolution.reason }),
       },
     };
   }
@@ -1589,7 +1595,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         ).catch(() => undefined);
         restored = await withTaskNotes(
           withStoredMemoryNotes(
-            mergeAGUIMessages(createConversationHistory({ id: threadId }), messages),
+            withoutImportTimes(
+              mergeAGUIMessages(createConversationHistory({ id: threadId }), messages),
+              messages,
+            ),
             options.agentName(),
           ),
           attachedRun,
@@ -1638,7 +1647,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         throw new Error('The server answered with messages this page cannot read.');
       }
       const thread = withStoredMemoryNotes(
-        mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages),
+        withoutImportTimes(
+          mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages),
+          snapshot.messages,
+        ),
         options.agentName(),
       );
       // The stream said why a run stopped while it was watched and does not say it again, so the

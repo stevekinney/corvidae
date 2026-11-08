@@ -18,6 +18,20 @@ export type ViewForbiddenCopy = {
   readonly requirement?: string;
 };
 
+/** A link to a page of the application, with the words on it. */
+export type ViewLink = { readonly label: string; readonly href: string };
+
+/**
+ * The words for a view's not-found page. A view whose missing thing has a natural next step names
+ * it: `create` is a primary button that starts the thing again, and `back` the way back to the list
+ * in the view's own words ("Back to chats"). Without them the page is the shared one: two secondary
+ * buttons, back to the view's list and Search everything.
+ */
+export type ViewNotFoundCopy = ViewStateCopy & {
+  readonly create?: ViewLink;
+  readonly back?: ViewLink;
+};
+
 export type ViewCopy = {
   /** The name of the view in navigation and headings. */
   readonly label: string;
@@ -32,9 +46,9 @@ export type ViewCopy = {
    */
   readonly forbidden: ViewForbiddenCopy;
   /** Present only for a view that opens one item by its address. */
-  readonly notFound?: ViewStateCopy;
+  readonly notFound?: ViewNotFoundCopy;
   /** The words for a route of the view whose missing thing is not the one `notFound` names. */
-  readonly notFoundByPattern?: Readonly<Record<string, ViewStateCopy>>;
+  readonly notFoundByPattern?: Readonly<Record<string, ViewNotFoundCopy>>;
   /** The words for a route of the view whose nothing is not the one `empty` names. */
   readonly emptyByPattern?: Readonly<Record<string, ViewEmptyCopy>>;
   /** The words for a route of the view whose loading is not the one `loading` names. */
@@ -1567,39 +1581,6 @@ export const SETTINGS_SECTION_COPY = {
   apiReference: 'API reference',
 } as const;
 
-/**
- * The checklist a new installation shows on Chat until it has a provider, an agent, and a chat
- * (`app/first-run-checklist.svelte`). Each step names the page that completes it; the host's own
- * answers say when it is done.
- */
-export const FIRST_RUN_COPY = {
-  title: 'Get started',
-  description: 'Three steps to your first conversation.',
-  label: 'Getting started',
-  listLabel: 'Steps to get started',
-  dismiss: 'Dismiss',
-  dismissLabel: 'Dismiss the getting started steps',
-  completed: 'Completed',
-  steps: {
-    provider: {
-      title: 'Connect a provider',
-      description:
-        'An agent runs on a model, and a provider offers models. Save its API key to connect it.',
-      action: { label: 'Connect a provider', href: '/settings/models' },
-    },
-    agent: {
-      title: 'Create an agent',
-      description: 'Write an agent of your own, or start from one that ships with the host.',
-      action: { label: 'New agent', href: '/agents/new' },
-    },
-    chat: {
-      title: 'Say hello',
-      description: 'Start a chat with an agent. Your chats are kept here.',
-      action: { label: 'New chat', href: '/chats/new' },
-    },
-  },
-} as const;
-
 /** The numbers a sentence about the agents says in words; a larger count says its digits. */
 const COUNT_WORDS = [
   'no',
@@ -2481,6 +2462,212 @@ export const PLUGINS_COPY = {
 } as const;
 
 /**
+ * The words of Home (`/`): the date line, the four counts, what needs you, what needs attention,
+ * the box that starts a chat, and the chats you were last in. The four counts use the labels and
+ * windows the agreed design gives Health and Home both; Health says them in its own batch.
+ */
+export const HOME_COPY = {
+  /** The screen-reader heading; the breadcrumb already says Home, so none is drawn. */
+  heading: 'Home',
+  /** The accessible name of the four counts. */
+  countsLabel: 'Home counts',
+  counts: {
+    running: 'Running now',
+    needsYou: 'Needs you',
+    failed: 'Failed in 24 hours',
+    missed: 'Missed schedule runs (7 days)',
+  },
+  /** The value of a count that could not be read. */
+  unavailable: '—',
+  /** The words of a row's link to where the rest lives, such as "Open Reviews". */
+  needsYou: {
+    title: 'Needs you',
+    link: 'Open Reviews',
+    /** The accessible name of the list of reviews waiting on the person. */
+    listLabel: 'Reviews waiting on you',
+    empty: {
+      title: 'Nothing is waiting on you',
+      description: 'Approvals and questions from your agents show up here.',
+    },
+    answer: 'Answer',
+    review: 'Review',
+    kind: { approval: 'Approval', question: 'Question', workflow: 'Workflow review' },
+    cantBeUndone: 'Can’t be undone',
+    /** The line under the rows when more wait than Home lists. */
+    more: (count: number): string => `${String(count)} more in Reviews`,
+  },
+  attention: {
+    title: 'Needs attention',
+    link: 'Open Health',
+    listLabel: 'System problems',
+    /** The one line that stands for the card when nothing needs attention. */
+    clear: {
+      title: 'Nothing needs attention',
+      description: 'Storage, schedules, providers and hooks are fine.',
+    },
+    storage: {
+      title: 'Storage is over its warning level',
+      detail: (size: string): string => `${size} used`,
+      action: 'Review storage',
+    },
+    failureRate: {
+      title: 'Workflow failure rate is over its warning level',
+      detail: (rate: string): string => `${rate} of recent runs failed`,
+      action: 'Review health',
+    },
+    slowSteps: {
+      title: 'Slowest steps are over their warning level',
+      detail: (duration: string): string => `Slowest steps take ${duration}`,
+      action: 'Review health',
+    },
+    otherAlert: {
+      title: (metric: string): string => `${metric} is over its warning level`,
+      action: 'Review health',
+    },
+    missedRuns: {
+      title: (name: string, count: number, since: string): string =>
+        `${name} missed ${String(count)} ${count === 1 ? 'run' : 'runs'} since ${since}`,
+      /** What a schedule with no description of its own is called. */
+      unnamed: 'A schedule',
+      kind: 'Schedule',
+      action: 'View schedule',
+    },
+    hookFailed: {
+      title: (name: string, gaveUp: boolean): string =>
+        `${name}’s ${gaveUp ? 'delivery gave up' : 'last delivery failed'}`,
+      /** What a hook with no name of its own is called. */
+      unnamed: 'A hook',
+      action: 'View hook',
+    },
+    pluginNotLoaded: {
+      title: (plugin: string): string => `${plugin} did not load`,
+      action: 'View plugins',
+    },
+    noProvider: {
+      title: 'No model provider connected',
+      detail: 'Model agents can’t answer until one is connected. Assistant works now.',
+      action: 'Connect a provider',
+    },
+  },
+  startChat: {
+    title: 'Start a chat',
+    messageLabel: 'Message',
+    placeholder: 'Ask an agent to do something',
+    agentLabel: 'Agent',
+    send: 'Send',
+    /** The note beside the agent while the server is off, and Send is disabled with it. */
+    offNote: 'Off until it’s back',
+    /** What the card says when the agents it offers could not be read. */
+    failed: 'Couldn’t load agents.',
+  },
+  recent: {
+    title: 'Recent chats',
+    link: 'All chats',
+    listLabel: 'Recent chats',
+    /** What the card says before the person has sent a first message. */
+    empty: {
+      title: 'No chats yet',
+      description: 'Your chats appear here once you send a first message.',
+    },
+  },
+  /**
+   * What Home says while it loads and when a read fails: one card that cannot be read says so in
+   * its own place and the rest stay live, a load that takes long can be canceled, and a server
+   * that does not answer with nothing loaded yet is the full error state.
+   */
+  states: {
+    /** The words of the status line under the loading placeholders, and its button. */
+    stillLoading: 'Still loading Home. This is taking longer than usual.',
+    /** The line that names the loading region for assistive technology. */
+    loadingLabel: 'Loading Home',
+    /** What the page says after the person canceled a slow load, with Try again beside it. */
+    canceled: {
+      title: 'Loading canceled',
+      description: 'Home stopped loading. Try again when you’re ready.',
+    },
+    /** The sentence that ends every card's own failure: the other cards are fine. */
+    restIsLive: 'The rest of Home is live.',
+    /** What each card says it could not load; the card's title is already above it. */
+    cardFailed: {
+      needsYou: 'Couldn’t load what needs you.',
+      attention: 'Couldn’t load system problems.',
+      recent: 'Couldn’t load recent chats.',
+    },
+  },
+  /** The Running now card, which sits under Needs you while any run is going. */
+  running: {
+    title: 'Running now',
+    link: 'Open Runs',
+    listLabel: 'Runs running now',
+    /** The button at the end of a row, which opens the run. */
+    viewRun: 'View run',
+    /** The word that leads line two, in Cinder's status table. */
+    status: 'Running',
+    /** What a run reads when no title can be found for it: its agent, else this. */
+    untitled: 'A run',
+    startedAt: (time: string): string => `started ${time}`,
+    /** What started the run, as line two says it: one word, kind first. */
+    startedBy: {
+      chat: 'Chat',
+      person: 'Person',
+      schedule: 'Schedule',
+      api: 'API',
+      agent: 'Agent',
+      'agent-run': 'Agent',
+      goal: 'Goal',
+      parent: 'Workflow',
+      system: 'Interborough',
+    },
+    /** The line under the rows when more run than Home lists. */
+    more: (count: number): string => `${String(count)} more in Runs`,
+  },
+  /**
+   * The checklist a new installation shows in place of the overview (rows 01y to 02b), until the
+   * person has had a chat. The words lead the page in place of the date line.
+   */
+  firstRun: {
+    /** The accessible name of the checklist, and its title. */
+    title: 'Get started',
+    /** The line that leads the page, from how many of the three steps are still open. */
+    lead: (stepsLeft: number): string =>
+      stepsLeft >= 3
+        ? 'Welcome. Three steps to your first chat.'
+        : stepsLeft === 2
+          ? 'Welcome. Two steps left.'
+          : 'Welcome. One step left.',
+    provider: {
+      title: 'Connect a provider',
+      description: 'Agents need a model provider before they can answer.',
+      /** What a connected step says: the providers that hold a key, by name. */
+      done: (providers: readonly string[]): string =>
+        `${nameList(providers)} ${providers.length === 1 ? 'is' : 'are'} connected.`,
+      action: 'Connect a provider',
+      href: '/settings/models',
+    },
+    agent: {
+      title: 'Create an agent, or start from Assistant',
+      description: 'Assistant works now; other agents need a provider.',
+      /** The title and the sentence of a host that lists no Assistant, where Assistant is not offered or named. */
+      titleWithoutAssistant: 'Create an agent',
+      descriptionWithoutAssistant: 'An agent is a model with instructions and tools.',
+      /** What a done step says: the agent that is ready, such as "Assistant", or "An agent" when none is named. */
+      done: (agent: string): string => `${agent} is ready to use.`,
+      /** Who is ready when the host lists no agent to name. */
+      anAgent: 'An agent',
+      /** The quiet link that takes Assistant as the agent to start from. */
+      useAssistant: 'Use Assistant',
+      action: 'Create an agent',
+      href: '/agents/new',
+    },
+    chat: {
+      title: 'Say hello',
+      description: 'Send a first message to see a chat run end to end.',
+      action: 'Start a chat',
+    },
+  },
+} as const;
+
+/**
  * The words of Settings › Allowed models (board PageSettingsSections, "Allowed models ·
  * /settings/allowed-models"): which models agents may use, and the caller's own preferences among
  * them. Saving is explicit, because it raises the policy revision.
@@ -3310,15 +3497,12 @@ export const CHAT_COPY = {
   agentSelect: {
     /** Said under an agent that runs on a model while no provider is connected. */
     needsProvider: 'Needs a provider',
+    /** Said, muted, beside the name of an agent that has no description (the greeting then has no sentence either). */
+    noDescription: 'no description',
   },
   sessionsTitle: 'Chats',
-  /** The headings the list of chats is cut under; "Needs you" is the run states' word for waiting on a person. */
-  groups: {
-    'needs-you': 'Needs you',
-    today: 'Today',
-    yesterday: 'Yesterday',
-    earlier: 'Earlier',
-  },
+  /** The list's heading on a phone, where the list is a screen of its own under the page's name. */
+  sessionsTitlePhone: 'Chat',
   /** What the chat says when its live connection to the run could not be restored. */
   disconnected: {
     title: 'Disconnected',
@@ -3327,22 +3511,83 @@ export const CHAT_COPY = {
   },
   /** What a new chat shows where its transcript will be. */
   newChatWelcome: {
-    /** Said before the name of the agent the chat is with. */
-    greeting: 'Chat with',
-    /** Said before the agents' identifiers under the welcome of a fresh Interborough. */
-    agentsLine: 'Agents:',
+    /** The page's one title: asks what the agent the chat is with should do, by the name a person reads. */
+    greeting: (agentName: string): string => `What should ${agentName} do?`,
+    /** The lead of the row of the agent's example prompts, and the name of that group. */
+    promptsLead: 'Try',
     promptsLabel: 'Example prompts',
-    otherAgents: 'Or start with another agent',
+    /** The lead of the row of the other agents to start with, and the name of that group. */
+    otherAgents: 'Or chat with',
     chooseAgent: 'Choose an agent to start with',
+    /** What Send reads while the first message is on its way and the chat page has not opened. */
+    starting: 'Starting chat…',
+    /** The chip above the composer of a chat started from the Workflows page. */
+    fromWorkflows: 'Starting from Workflows',
+    /** What the composer holds for a chat started from Workflows, ready for the person to finish: ends in a space, with no ellipsis. */
+    workflowPrefill: 'Help me build a workflow that ',
+    /** The accessible name of the placeholders drawn while the agents are read, and what their status line says when that is slow. */
+    loadingLabel: 'Loading agents',
+    /** The placeholder of the composer drawn while the agents are read, before there is an agent to name. */
+    loadingPlaceholder: 'Message…',
+    stillLoading: 'Still loading agents. This is taking longer than usual.',
+    /**
+     * What sits under the composer when the first message could not be sent: what happened, that the
+     * typed text is still in the box, and the way to send it again. With no word from the server
+     * the cause is that Interborough did not answer; any other refusal is said as the server said it.
+     */
+    startFailed: {
+      lead: 'Couldn’t start the chat.',
+      unanswered: 'Interborough didn’t answer.',
+      kept: 'Your text is kept.',
+      retry: 'Retry',
+    },
   },
   /** The chat list beside the open chat. */
   list: {
     /** The accessible name of the pane that holds the open chat. */
     detailLabel: 'Open chat',
+    /** The day bands: today and yesterday by their names, any other day by its date. */
+    today: 'Today',
+    yesterday: 'Yesterday',
+    earlier: 'Earlier',
+    /** The field that narrows the list by what a chat says. */
+    searchLabel: 'Search chats',
+    searchPlaceholder: 'Search chats',
+    /** The status segments over the list; the count is part of each one's accessible name. */
+    segmentsLabel: 'Status',
+    segments: { all: 'All', waiting: 'Waiting on you', done: 'Done' },
+    /** First use: no chat has been started, and the one primary New chat is here. */
     emptyTitle: 'No chats yet',
-    emptyDescription: 'A chat you start is listed here.',
+    emptyDescription: 'Start one with an agent.',
+    /** A search that matched nothing says what was searched. */
+    noMatchTitle: (search: string): string => `No chats match “${search}”`,
+    noMatchDescription: 'Check the spelling or try another word.',
+    clearSearch: 'Clear search',
+    /** A status segment with no chat in it, and the way back to every chat. */
+    segmentEmpty: {
+      waiting: {
+        title: 'Nothing is waiting on you',
+        description: 'Chats that ask for an approval or an answer are listed here.',
+      },
+      done: {
+        title: 'No finished chats yet',
+        description: 'A chat is done once its latest reply is in.',
+      },
+    },
+    showAll: 'Show all chats',
+    /**
+     * What line two says of a chat that ended, in place of its last message: why it ended. The host
+     * stopping it is the one reason that ends a chat.
+     */
+    endedBecause: 'The server restarted before I finished.',
+    /** The list could not be read: the error stays in the list and the page stays live. */
+    failedTitle: 'Couldn’t load chats',
+    failedDescription: 'Interborough didn’t send them back.',
     pickTitle: 'Pick a chat',
     pickDescription: 'Choose a chat from the list, or start a new one.',
+    /** What the open pane says when there is no chat to pick, so the list's one primary stays alone. */
+    noChatTitle: 'No chat open',
+    noChatDescription: 'A chat you start opens here.',
   },
   /** What a chat with no message says in place of its transcript. */
   emptyTranscript: {
@@ -3358,12 +3603,33 @@ export const CHAT_COPY = {
   tasksTitle: 'Tasks in this chat',
   agentSessions: 'Chats with this agent',
   approvalTitle: 'Needs your approval',
+  /** The approval row under a tool call in the transcript. */
+  approval: {
+    /** What "Allow <tool> for …" ends with. */
+    rememberScope: 'the rest of this chat',
+    /** Written above Deny and Approve while Interborough cannot be reached; both name it as their description. */
+    unreachable: 'Approving is off until Interborough is reachable',
+    /**
+     * Written under a held approval of an agent whose plugin is disabled: nobody can answer it
+     * now, and it comes back when the plugin is enabled.
+     */
+    unavailable: (agent: string, plugin: string): string =>
+      `${agent} is unavailable, so this can’t be answered now. It returns when the ${plugin} plugin is enabled.`,
+    /**
+     * Written under a waiting approval while no model provider is connected: the decision is
+     * recorded, and the run resumes once a provider is.
+     */
+    continuesOnProvider: (agent: string): string =>
+      `${agent} continues once a provider is connected.`,
+  },
   /** The tool calls of a turn. */
   tools: {
     /** The accessible name of the rail of one turn's calls. */
     railLabel: 'Tool calls',
     /** The words of the arguments and result a chosen call opens. */
     resultPrefix: 'Result:',
+    /** Where a call falls in its turn, written in its panel's header after how long it took. */
+    position: (number: number, total: number) => `call ${String(number)} of ${String(total)}`,
     /** A call the person refused reads Denied: it did not fail. */
     denied: 'Denied',
     /**
@@ -3375,6 +3641,36 @@ export const CHAT_COPY = {
     interruptedChanges: 'Interrupted · may have run',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
     runFinishedNoReply: 'Run finished · no reply',
+    /**
+     * How a decided approval is worded on the rail and under the call: "Approved by you 10:33 AM",
+     * and, for one decided on a page that is not this one, "Approved by you in Reviews 10:46 AM".
+     */
+    decided: {
+      approved: 'Approved',
+      denied: 'Denied',
+      /** Who decided, when it was the chat's own person. */
+      you: 'you',
+      /** Where a decision made away from the chat was made. */
+      elsewhere: 'Reviews',
+      /** Said on the rail in place of the result while the run a decision made in Reviews continues is going. */
+      running: 'running…',
+      /** The words of the rail's result for a decided call: `place` is absent for a decision made here. */
+      line: (
+        outcome: 'Approved' | 'Denied',
+        who: string,
+        place: string | undefined,
+        time: string,
+        after: string,
+      ): string =>
+        `${outcome} by ${who}${place === undefined ? '' : ` in ${place}`} ${time}${after === '' ? '' : ` · ${after}`}`,
+      /**
+       * Said, politely, when the approval the person was looking at is decided away from the chat.
+       * `question` is what the approval asked, such as "Refund order 4471 for $42.00?", which is
+       * said as a statement: "Approved in Reviews. Refund order 4471 for $42.00.".
+       */
+      announcement: (outcome: 'Approved' | 'Denied', place: string, question: string): string =>
+        `${outcome} in ${place}. ${question.replace(/\?$/, '.')}`,
+    },
   },
   /**
    * The status line under a reply that stopped, in danger text with a Retry beside it. It is the
@@ -3394,6 +3690,12 @@ export const CHAT_COPY = {
     mayHaveRun: (tool: string, subject: string = 'result'): string =>
       `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
     retry: 'Retry',
+    /**
+     * The notice under the last reply of a chat the server stopped when it restarted: what arrived
+     * is kept, and the chat is over. The product speaking, with an info glyph, not a failure.
+     */
+    ended:
+      'The server restarted before this reply finished. What arrived is kept; the chat can’t continue.',
     /**
      * Said when Retry could not put the interrupted tool back behind its approval, so it sent
      * nothing rather than let the call run again unasked.
@@ -3614,6 +3916,22 @@ export const CHAT_COPY = {
     category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
     unavailable: 'Context window unavailable',
   },
+  /** An open chat while it is read, and when it cannot be (design rows 17c to 17e, 17j, 17y). */
+  load: {
+    /** The accessible name of the placeholders while the chat is read. */
+    loadingLabel: 'Loading this chat',
+    /** Cinder skeleton's status line once the read is taking long, with a Cancel beside it. */
+    stillLoading: 'Still loading this chat…',
+    /** The breadcrumb's last entry while the chat is not read yet or cannot be read, in place of its identifier. */
+    crumb: 'This chat',
+    errorTitle: 'This chat couldn’t be loaded',
+    errorDescription:
+      'Interborough didn’t send it back. Nothing was lost; the messages are stored with the chat.',
+    tryAgain: 'Try again',
+    backToChats: 'Back to chats',
+    /** What the composer's placeholder calls the agent before the list has said which it is. */
+    unnamedAgent: 'the agent',
+  },
   /** What the composer says in place of its text box, and the line under it. */
   composer: {
     /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
@@ -3676,6 +3994,25 @@ export const CHAT_COPY = {
     failed: 'Failed',
     ended: 'Ended',
     done: 'Done',
+  },
+  /**
+   * The details popover the last breadcrumb opens (board ChatPage frame b): the session, its agent,
+   * when it started, and what the chat ran with.
+   */
+  details: {
+    /** The popover's accessible name, before the chat's title. */
+    label: 'Chat details',
+    sessionId: 'Session ID',
+    copySessionId: 'Copy session ID',
+    agent: 'Agent',
+    started: 'Started',
+    /** What follows when the chat started, naming the last time it changed. */
+    lastActive: (when: string): string => `last active ${when}`,
+    /** The group of what the chat ran with. */
+    asRun: 'As run',
+    model: 'Model',
+    effort: 'Effort',
+    permissions: 'Permissions',
   },
   branch: {
     /** The visible words of the action on a message, which is named `action` for assistive technology. */
@@ -5130,20 +5467,18 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Loading chat',
       description: 'Checking that the server is ready to take messages.',
     },
-    empty: {
-      title: 'Start a chat',
-      description:
-        'Pick an agent and say what you need. Your chats are kept here, and anything an agent needs from you shows in Reviews.',
-      action: { label: 'New chat', href: '/chats/new' },
-    },
     error: {
       title: 'Chat is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: FORBIDDEN_COPY.title('Chat'), requirement: 'bureau.contexts:read' },
+    // A chat that is gone has nothing old to show: the page offers a new chat and the way back
+    // (board ChatStates frame g).
     notFound: {
-      title: 'This conversation doesn’t exist',
-      description: NOT_FOUND_COPY.description,
+      title: 'This chat doesn’t exist',
+      description: 'It may have been deleted, or the link is wrong.',
+      create: { label: 'New chat', href: '/chats/new' },
+      back: { label: 'Back to chats', href: '/chats' },
     },
     // A new chat is for an agent, and it is the agent that is missing.
     notFoundByPattern: {
@@ -5153,13 +5488,22 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       },
     },
     // A new chat with no `?agent=` starts with the first agent that can run; with none, there is
-    // nothing to start it with.
+    // nothing to start it with, and the page is the Agents first-use state (board PageNewChat,
+    // "Loading, error and no agents"): create one, or browse the agents there are.
     emptyByPattern: {
       '/chats/new': {
-        title: 'No agent is ready to chat',
+        title: 'No agents yet',
         description:
-          'This host has no agent that can take a message yet. Turn on a plugin that adds agents, or finish setting one up, then start a chat.',
-        action: { label: 'Open plugins', href: '/settings/plugins' },
+          'An agent is a model with instructions and tools. Create one, or add a plugin that provides some.',
+        action: { label: 'New agent', href: '/agents/new' },
+      },
+    },
+    // The agents a new chat starts with could not be read: the error replaces the greeting and the
+    // composer, because there is nothing to send to.
+    errorByPattern: {
+      '/chats/new': {
+        title: 'Agents couldn’t be loaded',
+        description: 'Check that Interborough is running, then try again.',
       },
     },
   },

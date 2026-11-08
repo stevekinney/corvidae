@@ -62,6 +62,13 @@ export class ConnectionMonitor {
    * event). The banner then says "You're offline" instead of blaming the server.
    */
   browserOffline = $state(false);
+  /**
+   * Whether the page in front is showing the unreachable state itself, because it has nothing to
+   * show but that. The shell's banner then stays out: a banner says the data on screen is old, and
+   * with nothing on screen the page's own error is the one account (the Errors rule: a banner over
+   * old data, the full error state when nothing can show, never both).
+   */
+  shownInPlace = $state(false);
   /** The probe that is under way or counting down, counted from 1; 0 while the server answers. */
   attempt = $state(0);
   /** Seconds until the next automatic probe, or `undefined` while none is counting down. */
@@ -103,6 +110,11 @@ export class ConnectionMonitor {
     this.attempt = 0;
     this.stopped = false;
     this.#scheduleProbe();
+  }
+
+  /** Records that the page in front shows the unreachable state itself (see {@link shownInPlace}). */
+  setShownInPlace(shown: boolean): void {
+    this.shownInPlace = shown;
   }
 
   /** Records the browser's own word on whether it is online, from the `offline` and `online` events. */
@@ -248,6 +260,7 @@ export type Connection = Pick<
   | 'retryInSeconds'
   | 'bannerDrawnByPage'
   | 'claimBanner'
+  | 'setShownInPlace'
   | 'retryNow'
 >;
 
@@ -261,6 +274,7 @@ const REACHABLE = {
   retryInSeconds: undefined,
   bannerDrawnByPage: false,
   claimBanner: () => () => {},
+  setShownInPlace: () => undefined,
   retryNow: async () => {},
 } as const satisfies Connection;
 

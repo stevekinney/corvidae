@@ -41,9 +41,9 @@ const schema = {
       default: 'default',
     },
     layout: {
-      enum: ['stacked', 'inline'],
+      enum: ['stacked', 'row', 'inline'],
       description:
-        '`\'inline\'` draws a 32px disc beside the title and the sentence on one line, at the inline\nstart, without the vertical padding of a region. Use it with `size="compact"`.',
+        "Whether the state stacks its parts and centres them (`'stacked'`), lays them on one row,\nwith the disc and the words at the start and the action at the end (`'row'`), or draws a 32px\ndisc beside the title and the sentence on one line (`'inline'`). A row reads as the line of a\nlist, such as \"Nothing is waiting on you\" with its link to the page that holds the rest, so it\nis the layout for a state inside a card; on a phone its action drops under the words. Inline\nsits among rows at the inline start, without the vertical padding of a region; use it with\n`size=\"compact\"`.",
       default: 'stacked',
     },
     bordered: {

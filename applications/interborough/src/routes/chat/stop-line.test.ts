@@ -15,6 +15,7 @@ import {
   interruptedTool,
   stopSentence,
   subjectOf,
+  withEndedLine,
   withStopLine,
 } from './stop-line.ts';
 import type { ToolInfo } from './tool-activity.ts';
@@ -215,6 +216,13 @@ describe('the stop note on the transcript', () => {
     expect(failedStopNoteId(plain)).toBeUndefined();
   });
 
+  test('reads a transcript whose order names a row it does not hold as having no failed stop', () => {
+    const base = calling('issue-refund');
+    const dangling = { ...base, ids: [...base.ids, 'missing'] };
+
+    expect(failedStopNoteId(dangling)).toBeUndefined();
+  });
+
   test('a transcript with no failed stop note is the very transcript it was', () => {
     const base = calling('issue-refund');
     expect(withStopLine(base, { tools })).toBe(base);
@@ -297,5 +305,60 @@ describe('what a call acted on', () => {
     expect(subjectOf('orderId')).toBeUndefined();
     expect(subjectOf(null)).toBeUndefined();
     expect(subjectOf([{ orderId: 1 }])).toBeUndefined();
+  });
+});
+
+describe('a chat the server ended when it restarted (rows 19b, 19c)', () => {
+  const ENDED =
+    'The server restarted before this reply finished. What arrived is kept; the chat can’t continue.';
+  const notesOn = (history: ConversationHistory, id: string) =>
+    resolveMessageNotes(history.messages[id] as Row) ?? [];
+
+  const withStopped = (reply: Row) =>
+    conversation(row({ id: 'u1', role: 'user', content: 'Rename the billing tables' }), {
+      ...reply,
+      metadata: {
+        [CINDER_NOTES_METADATA_KEY]: [
+          { kind: 'stopped', id: 'stopped:run-1', reason: 'The run was stopped.' },
+        ],
+      },
+    });
+  const partial = row({ id: 'a1', content: 'I’ll start with the invoices table, then the' });
+
+  test('says why under the partial reply, in place of the plain line the canceled run left', () => {
+    const ended = withEndedLine(withStopped(partial), true);
+    expect(notesOn(ended, 'a1')).toEqual([
+      { kind: 'stopped', id: 'stopped:run-1', reason: ENDED, notice: true },
+    ]);
+    // What arrived is kept.
+    expect(ended.messages['a1']?.content).toBe('I’ll start with the invoices table, then the');
+  });
+
+  test('is a notice, not a failure: nothing is offered to retry', () => {
+    const ended = withEndedLine(withStopped(partial), true);
+    expect(failedStopNoteId(ended)).toBeUndefined();
+    expect(notesOn(ended, 'a1').every((note) => note.kind === 'stopped' && !note.failed)).toBe(
+      true,
+    );
+  });
+
+  test('is put on the last row when the run left no line', () => {
+    const bare = conversation(
+      row({ id: 'u1', role: 'user', content: 'Rename the billing tables' }),
+      partial,
+    );
+    expect(notesOn(withEndedLine(bare, true), 'a1')).toEqual([
+      { kind: 'stopped', id: 'ended', reason: ENDED, notice: true },
+    ]);
+  });
+
+  test('is the very transcript it was for a chat that did not end', () => {
+    const history = withStopped(partial);
+    expect(withEndedLine(history, false)).toBe(history);
+  });
+
+  test('does nothing for a chat with no row', () => {
+    const none = conversation();
+    expect(withEndedLine(none, true)).toBe(none);
   });
 });

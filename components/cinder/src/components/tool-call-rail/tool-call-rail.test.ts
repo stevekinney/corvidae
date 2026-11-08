@@ -548,3 +548,76 @@ describe('ToolCallRail styles', () => {
     );
   });
 });
+
+describe('ToolCallRail linked results', () => {
+  const created: Call = {
+    id: 'create',
+    name: 'Create workflow',
+    input: 'Morning briefing',
+    result: 'Morning briefing',
+    resultHref: '/workflows/morning-briefing',
+    duration: '0.8s',
+    status: 'done',
+  };
+
+  test('a done call with an address shows its arrow and words as one link', () => {
+    const { container } = render(ToolCallRail, { props: { calls: [created] } });
+    const link = container.querySelector<HTMLAnchorElement>('.cinder-tool-call-rail__result a');
+    expect(link?.getAttribute('href')).toBe('/workflows/morning-briefing');
+    expect(text(link)).toBe('→ Morning briefing');
+    // Without onSelect the row stays the focusable container it was, and holds the link.
+    expect(container.querySelector('.cinder-tool-call-rail__hit')).toBeNull();
+    expect(container.querySelector('.cinder-tool-call-rail__row')?.contains(link)).toBe(true);
+  });
+
+  test('with onSelect the link is not inside a button: a button covers the row and the link is above it', async () => {
+    const onSelect = mock((_id: string) => undefined);
+    const { container } = render(ToolCallRail, { props: { calls: [created], onSelect } });
+    const link = container.querySelector<HTMLAnchorElement>('a.cinder-tool-call-rail__result-link');
+    expect(link).not.toBeNull();
+    expect(link?.closest('button')).toBeNull();
+    const row = container.querySelector('.cinder-tool-call-rail__row')!;
+    expect(row.hasAttribute('data-cinder-linked')).toBe(true);
+    const hit = row.querySelector<HTMLButtonElement>('button.cinder-tool-call-rail__hit')!;
+    expect(hit.dataset['cinderToolCallRow']).toBe('create');
+    // The button keeps the row's whole text as its name and its pressed state.
+    expect(hit.getAttribute('aria-label')).toBe(
+      'Create workflow Morning briefing → Morning briefing 0.8s',
+    );
+    expect(hit.getAttribute('aria-pressed')).toBe('false');
+    await fireEvent.click(hit);
+    expect(onSelect).toHaveBeenCalledWith('create');
+    // The link is its own click target: a click on it selects nothing.
+    link?.addEventListener('click', (event) => event.preventDefault());
+    await fireEvent.click(link!);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  test('a row with no address, or whose result is not after an arrow, draws no link', () => {
+    const calls: Call[] = [
+      { ...created, id: 'plain', resultHref: undefined },
+      {
+        id: 'waiting',
+        name: 'Issue refund',
+        status: 'waiting',
+        resultHref: '/workflows/not-here',
+      },
+      {
+        id: 'approved',
+        name: 'Issue refund',
+        status: 'approved',
+        decision: 'Approved by you 10:33 AM',
+        resultHref: '/workflows/not-here',
+      },
+    ];
+    const { container } = render(ToolCallRail, { props: { calls, onSelect: () => undefined } });
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector('.cinder-tool-call-rail__hit')).toBeNull();
+    expect(container.querySelectorAll('button.cinder-tool-call-rail__row')).toHaveLength(3);
+  });
+
+  test('the link and the covering button are styled so the link sits above the button', () => {
+    expect(cssText).toMatch(/\.cinder-tool-call-rail__hit\s*\{[^}]*position:\s*absolute/);
+    expect(cssText).toMatch(/\.cinder-tool-call-rail__result-link\s*\{[^}]*z-index:\s*1/);
+  });
+});

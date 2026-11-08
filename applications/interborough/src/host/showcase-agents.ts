@@ -1,6 +1,6 @@
 /**
  * The built-in agents and tools of the showcase sample world (`tmp/design-review/decisions.md`):
- * Assistant, Tool runner, Request human input, Echo, Model switcher and Workflow author, and the
+ * Assistant, Tool runner, Request human input, Workflow author, Echo and Model switcher, and the
  * Lookup order, Issue refund and Triage refunds tools Tool runner holds. Only the showcase host
  * registers them, as `HostOptions.extraAgents` (`showcase.ts`), so they are built in rather than a
  * plugin's: the Demo plugin keeps its own copies under `demo:`, and the sample world keeps it
@@ -34,15 +34,26 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import type { ExtraAgents } from './host.ts';
+import {
+  humanInputAnsweredReply,
+  lookupOrderResult,
+  toolRunnerRefundAsk,
+  toolRunnerRefundedReply,
+} from './showcase-sentences.ts';
 
-/** The identifiers of the six built-in agents, in the order the sample world lists them. */
+/**
+ * The identifiers of the six built-in agents, in the order the sample world lists them, which is
+ * the order a new chat offers them in. Workflow author is built from the Bureau's own tools, which
+ * exist only once the Bureau does, so the Bureau lists it after the agents built up front; Echo and
+ * Model switcher are registered the same way, after it, to keep this order.
+ */
 export const SHOWCASE_AGENT_IDENTIFIERS = [
   'assistant',
   'tool-runner',
   'request-human-input',
+  'workflow-author',
   'echo',
   'model-switcher',
-  'workflow-author',
 ] as const;
 
 /** The identifier of one of the six built-in agents of {@link SHOWCASE_AGENT_IDENTIFIERS}. */
@@ -120,21 +131,14 @@ export const SHOWCASE_ORDERS: Readonly<
       readonly delivered: string;
       /** The day it shipped, when the sample world says (RunDetail's order 4468). */
       readonly shipped?: string;
-      /**
-       * What Tool runner says as it asks to refund the order, if anything. A run's last answer is
-       * what its agent remembers, so this is the memory the ask leaves (PageMemory: "Order 4471
-       * arrived with a cracked mug; the customer asked for a refund.", from Tool runner at 10:42 AM).
-       */
-      readonly note?: string;
+      /** What the order is flagged for, when something is (the refund chat's order 4471). */
+      readonly flagged?: string;
     }
   >
 > = {
+  '4398': { totalCents: 2725, delivered: 'Oct 28' },
   '4468': { totalCents: 1800, shipped: 'Oct 27', delivered: 'Oct 29' },
-  '4471': {
-    totalCents: 4200,
-    delivered: 'Oct 31',
-    note: 'Order 4471 arrived with a cracked mug; the customer asked for a refund.',
-  },
+  '4471': { totalCents: 4200, delivered: 'Monday', flagged: 'damaged' },
   '4472': { totalCents: 1850, delivered: 'Oct 30' },
 };
 
@@ -168,6 +172,12 @@ export interface ShowcaseAssistantMoment {
   readonly signal: AbortSignal | undefined;
 }
 
+/** Lookup order at work, handed to {@link ShowcasePacing.lookup} before it returns what it found. */
+export interface ShowcaseLookupMoment {
+  /** The order being looked up. */
+  readonly orderId: string;
+}
+
 /** A goal's check about to answer, handed to {@link ShowcasePacing.check}. */
 export interface ShowcaseCheckMoment {
   /** The check's validator name, one of {@link SHOWCASE_GOAL_CHECKS}. */
@@ -193,6 +203,11 @@ export interface ShowcasePacing {
   readonly assistant?: (moment: ShowcaseAssistantMoment) => void | Promise<void>;
   /** Awaited before a goal's check answers. */
   readonly check?: (moment: ShowcaseCheckMoment) => void | Promise<void>;
+  /**
+   * Awaited inside Lookup order before it returns, so the seed can give the lookup the time the
+   * story says it took (the 4471 lookup takes 0.4 s).
+   */
+  readonly lookup?: (moment: ShowcaseLookupMoment) => void | Promise<void>;
 }
 
 /** How Tool runner asks for each of its tools: Lookup order Never, Issue refund Always, Triage refunds On changes. */
@@ -202,8 +217,8 @@ export const SHOWCASE_TOOL_APPROVAL: Readonly<Record<string, ToolApprovalMode>> 
   'triage-refunds': 'on-changes',
 };
 
-/** The read-only tool: looks an order up by its number. */
-export function createShowcaseLookupOrderTool() {
+/** The read-only tool: looks an order up by its number, taking as long as `pacing.lookup` does. */
+export function createShowcaseLookupOrderTool(pacing: ShowcasePacing = {}) {
   return createTool({
     name: 'lookup-order',
     version: '1.0.0',
@@ -211,10 +226,9 @@ export function createShowcaseLookupOrderTool() {
     input: z.object({ orderId: z.string() }),
     metadata: { readOnly: true, title: 'Lookup order' },
     execute: async ({ orderId }) => {
+      await pacing.lookup?.({ orderId });
       const order = SHOWCASE_ORDERS[orderId];
-      return order === undefined
-        ? { orderId, found: false }
-        : { orderId, found: true, status: 'delivered', ...order };
+      return order === undefined ? `Order ${orderId} was not found.` : lookupOrderResult(order);
     },
   });
 }
@@ -297,6 +311,25 @@ function asksOnlyToLookUp(text: string): boolean {
   return /look\s*up/i.test(text) && !/refund/i.test(text);
 }
 
+/**
+ * The answer a delivered signal carries, as a person reads it: the label of the choice the question
+ * offered ("Staging" for `staging`), or the person's own words. The signal's content is its name
+ * and the answer as JSON (`[signal:environment] "staging"`).
+ */
+export function answerNamedIn(content: string): string {
+  const body = content.slice(content.indexOf(']') + 1).trim();
+  try {
+    const value: unknown = JSON.parse(body);
+    if (typeof value !== 'string') return body;
+    const labels = SHOWCASE_HUMAN_INPUT.answerSchema['x-labels'] as Readonly<
+      Record<string, string>
+    >;
+    return Object.hasOwn(labels, value) ? (labels[value] ?? value) : value;
+  } catch {
+    return body;
+  }
+}
+
 /** What Tool runner says after looking an order up when it was asked only to look. */
 export function toolRunnerLookupReply(orderId: string): string {
   const order = SHOWCASE_ORDERS[orderId];
@@ -311,8 +344,8 @@ export function toolRunnerLookupReply(orderId: string): string {
  * Tool runner's script: it answers from where the turn has got to, because the run that follows an
  * approval is a new run on the same session. It looks the order the message names up, then (unless
  * it was asked only to look) asks to refund the order's total, saying the order's note as it asks;
- * once the refund's result is in the turn its run ends with no reply ("Run finished · no reply"), so
- * nothing more is remembered. A message that names no order gets {@link SHOWCASE_TOOL_RUNNER_PLAN}.
+ * once the refund is approved its run says so and what it did
+ * ({@link toolRunnerRefundedReply}), and a refund that was not issued ends the run with no reply. A message that names no order gets {@link SHOWCASE_TOOL_RUNNER_PLAN}.
  * Each turn's calls carry the turn's number, because a tool call identifier names one call in a
  * conversation. `pacing` is awaited before each answer.
  */
@@ -337,7 +370,12 @@ export function showcaseToolRunnerGenerate(pacing: ShowcasePacing = {}): Generat
     const refund = resultOf(refundId);
     if (refund !== undefined && refund.outcome !== 'action_required') {
       await pace('answer');
-      return replyResponse('');
+      // An approved refund says so and what it did; a refund that was not issued says nothing.
+      return replyResponse(
+        refund.outcome === 'success'
+          ? toolRunnerRefundedReply(SHOWCASE_ORDERS[orderId]?.totalCents ?? 0)
+          : '',
+      );
     }
     if (resultOf(lookupId) !== undefined) {
       if (asksOnlyToLookUp(request)) {
@@ -352,7 +390,7 @@ export function showcaseToolRunnerGenerate(pacing: ShowcasePacing = {}): Generat
           { orderId, cents: order?.totalCents ?? 0, reason: SHOWCASE_REFUND_REASON },
           refundId,
         ),
-        content: order?.note ?? '',
+        content: order === undefined ? '' : toolRunnerRefundAsk(orderId, order.totalCents),
       };
     }
     await pace('lookup');
@@ -373,7 +411,7 @@ export function showcaseHumanInputGenerate(): GenerateFunction {
       answer?.role === 'user' &&
       textOf(answer.content).startsWith(`[signal:${SHOWCASE_HUMAN_INPUT.signal}]`)
     ) {
-      return replyResponse('Thanks, the release will go to the environment you named.');
+      return replyResponse(humanInputAnsweredReply(answerNamedIn(textOf(answer.content))));
     }
     const asked = messages.filter((message) => message.toolCall !== undefined).length;
     return callResponse(
@@ -392,6 +430,34 @@ export function showcaseHumanInputGenerate(): GenerateFunction {
 /** What Model switcher says when `model` answered. */
 export function showcaseModelSwitcherReply(model: string): string {
   return `This reply is from ${model}. It is scripted; no model was called.`;
+}
+
+/**
+ * The model a built-in agent that needs one runs on unless a chat says otherwise: Sonnet 5.5, the
+ * row of the `anthropic` provider's catalog that Tool runner's saved version names.
+ */
+export const SHOWCASE_MODEL_AGENT_MODEL = {
+  provider: 'anthropic',
+  model: 'claude-sonnet-5-5',
+} as const;
+
+/**
+ * Attaches {@link SHOWCASE_MODEL_AGENT_MODEL}'s catalog row to a scripted agent, as the Bureau reads
+ * the model a code agent runs on (`bureau.agents.list`'s `media`). A scripted agent names no model,
+ * so no provider gates it; this is what makes Tool runner, Request human input and Workflow author
+ * agents that need one, which the sample world's no-provider frames require. The script still
+ * answers, because the showcase never calls a model.
+ */
+export function onShowcaseModel(generate: GenerateFunction): GenerateFunction {
+  const row = createModelCatalog().descriptors.find(
+    (descriptor) =>
+      descriptor.provider === SHOWCASE_MODEL_AGENT_MODEL.provider &&
+      descriptor.model === SHOWCASE_MODEL_AGENT_MODEL.model,
+  );
+  if (row === undefined) {
+    throw new Error(`The model catalog has no ${SHOWCASE_MODEL_AGENT_MODEL.model} row.`);
+  }
+  return withBackendDescriptors(generate, [row]);
 }
 
 /**
@@ -473,10 +539,23 @@ export function showcaseEchoGenerate(): GenerateFunction {
   };
 }
 
+/**
+ * The three tools Tool runner holds, as the catalog lists them (`HostOptions.extraTools`): Lookup
+ * order reads, Issue refund is dangerous, and Triage refunds changes things. They are the sample
+ * world's built-in tools, so a screen that says what a tool may do (Capabilities, and the line
+ * under a review that can't be undone) reads it from the catalog, as it would for a host's own.
+ */
+export function showcaseCatalogTools(pacing: ShowcasePacing = {}) {
+  const lookup = createShowcaseLookupOrderTool(pacing);
+  const refund = createShowcaseIssueRefundTool();
+  const triage = createShowcaseTriageRefundsTool();
+  return { [lookup.name]: lookup, [refund.name]: refund, [triage.name]: triage };
+}
+
 /** Tool runner's toolbox: its three tools, asked for as {@link SHOWCASE_TOOL_APPROVAL} says. */
-export function createShowcaseToolRunnerToolbox() {
+export function createShowcaseToolRunnerToolbox(pacing: ShowcasePacing = {}) {
   const tools = [
-    createShowcaseLookupOrderTool(),
+    createShowcaseLookupOrderTool(pacing),
     createShowcaseIssueRefundTool(),
     createShowcaseTriageRefundsTool(),
   ];
@@ -506,10 +585,10 @@ export function showcaseAgentScripts(
   return {
     assistant: showcaseAssistantGenerate(pacing),
     echo: showcaseEchoGenerate(),
-    'tool-runner': showcaseToolRunnerGenerate(pacing),
-    'request-human-input': showcaseHumanInputGenerate(),
+    'tool-runner': onShowcaseModel(showcaseToolRunnerGenerate(pacing)),
+    'request-human-input': onShowcaseModel(showcaseHumanInputGenerate()),
     'model-switcher': showcaseModelSwitcherGenerate(),
-    'workflow-author': showcaseWorkflowAuthorGenerate(),
+    'workflow-author': onShowcaseModel(showcaseWorkflowAuthorGenerate()),
   };
 }
 
@@ -569,9 +648,9 @@ export function showcaseBuiltInAgents(
       'tool-runner': createAgent({
         name: 'tool-runner',
         description: 'Looks an order up, then asks for approval to refund it.',
-        examples: ['Please refund order 4471, it arrived damaged.'],
+        examples: ['Please refund order 4471, it arrived damaged.', 'Look up order 4398'],
         generate: scripts['tool-runner'],
-        toolbox: createShowcaseToolRunnerToolbox(),
+        toolbox: createShowcaseToolRunnerToolbox(pacing),
         stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       }),
       'request-human-input': createAgent({
@@ -583,24 +662,27 @@ export function showcaseBuiltInAgents(
         // reply, which has no tool call.
         stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],
       }),
-      echo: createAgent({
-        name: 'echo',
-        description: 'Repeats the last message it was sent.',
-        examples: ['Hello echo, say this back'],
-        generate: scripts.echo,
-        stopWhen: stopWhen.noToolCalls(),
-      }),
-      'model-switcher': createAgent({
-        name: 'model-switcher',
-        description: 'Names the model it answers as, and can be switched between two.',
-        examples: ['Which model are you?'],
-        generate: scripts['model-switcher'],
-        allowedCandidates: SHOWCASE_MODEL_SWITCHER_MODELS,
-        stopWhen: stopWhen.noToolCalls(),
-      }),
     },
+    // Listed after the agents above, in this order (`SHOWCASE_AGENT_IDENTIFIERS`).
     withBureauTools: {
       'workflow-author': (tools) => showcaseWorkflowAuthor(tools, scripts['workflow-author']),
+      echo: () =>
+        createAgent({
+          name: 'echo',
+          description: 'Repeats the last message it was sent.',
+          examples: ['Hello echo, say this back'],
+          generate: scripts.echo,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      'model-switcher': () =>
+        createAgent({
+          name: 'model-switcher',
+          description: 'Names the model it answers as, and can be switched between two.',
+          examples: ['Which model are you?'],
+          generate: scripts['model-switcher'],
+          allowedCandidates: SHOWCASE_MODEL_SWITCHER_MODELS,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
     },
     validators: createShowcaseValidators(pacing),
   };

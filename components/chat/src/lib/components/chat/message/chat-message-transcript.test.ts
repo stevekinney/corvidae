@@ -5,7 +5,7 @@
  */
 
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, setSystemTime, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -55,6 +55,33 @@ describe('transcript presentation', () => {
     expect(
       container.querySelector('[data-presentation="transcript"][data-role="assistant"]'),
     ).not.toBeNull();
+  });
+
+  test('a message written today is stamped with its time of day, and one from another day with its date too', () => {
+    setSystemTime(new Date('2026-11-02T17:00:00.000Z'));
+    try {
+      const today = mount({ message: message({ createdAt: SENT_AT }) });
+      const todayText = today.container.querySelector('time')?.textContent ?? '';
+      expect(todayText).toBe(
+        new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(
+          new Date(SENT_AT),
+        ),
+      );
+      cleanup();
+      const earlier = '2026-10-29T16:04:00.000Z';
+      const older = mount({ message: message({ createdAt: earlier }) });
+      expect(older.container.querySelector('time')?.textContent).toBe(
+        new Intl.DateTimeFormat(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        }).format(new Date(earlier)),
+      );
+      expect(older.container.querySelector('time')?.getAttribute('datetime')).toBe(earlier);
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("a person's own message offers Copy and no Quote", () => {
@@ -121,7 +148,13 @@ describe('transcript presentation', () => {
     });
     expect(await findByText('Retries when you’re back online.')).not.toBeNull();
     const button = getByRole('button', { name: 'Retry', hidden: true }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    // Inert, but not natively disabled: it keeps focus and is described by the note beside it.
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    const note = await findByText('Retries when you’re back online.');
+    expect(button.getAttribute('aria-describedby')).toBe(note.id);
     await fireEvent.click(button);
     expect(retry).not.toHaveBeenCalled();
   });

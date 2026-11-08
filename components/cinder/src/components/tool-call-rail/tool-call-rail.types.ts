@@ -46,6 +46,8 @@ export type ToolCallRailCall = {
    * its `result` after an arrow like a `done` one.
    */
   decision?: string | undefined;
+  /** Where the call's result goes, such as the page of the workflow a call created. When set, the result on the row (the arrow and the `result` words) is a link to it. With `onSelect` the link is its own click target and the rest of the row still selects the call. Only a call whose row shows its `result` after an arrow takes a link: `done`, `approved` without a `decision`, and `failed`. */
+  resultHref?: string | undefined;
   /** How long the call took, formatted by the caller ("0.2s"), at the end of the row. Elapsed while `running`. */
   duration?: string | undefined;
   /** Where the call stands. */

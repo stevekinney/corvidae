@@ -261,6 +261,56 @@
     color: var(--cinder-text-subtle);
   }
 
+  /* A result that links somewhere: the arrow and the words are one link in the accent, above the
+     button that covers a selectable row, so the row selects everywhere but on the link. */
+  .cinder-tool-call-rail__result-link {
+    position: relative;
+    z-index: 1;
+    color: var(--cinder-accent-text);
+    text-decoration: none;
+    text-underline-offset: 0.15em;
+  }
+
+  @media (hover: hover) {
+    .cinder-tool-call-rail__result-link:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .cinder-tool-call-rail__result-link:focus-visible {
+    border-radius: var(--cinder-radius-sm);
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* A selectable row with a linked result is a container, and its button covers it. */
+  .cinder-tool-call-rail__row[data-cinder-linked] {
+    position: relative;
+    cursor: pointer;
+  }
+
+  .cinder-tool-call-rail__hit {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .cinder-tool-call-rail__hit:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (hover: hover) {
+    .cinder-tool-call-rail__row[data-cinder-linked]:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
   .cinder-tool-call-rail__duration {
     grid-column: 4;
     color: var(--cinder-text-subtle);
@@ -529,6 +579,8 @@
     }
 
     .cinder-tool-call-rail__row:focus-visible,
+    .cinder-tool-call-rail__hit:focus-visible,
+    .cinder-tool-call-rail__result-link:focus-visible,
     .cinder-tool-call-rail__more:focus-visible,
     .cinder-tool-call-rail__link:focus-visible,
     button.cinder-tool-call-rail__summary:focus-visible {

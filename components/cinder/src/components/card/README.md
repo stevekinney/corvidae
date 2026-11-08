@@ -45,6 +45,7 @@ A card becomes interactive when it receives `href` (the whole card renders as an
 | `edgeToEdgeOnMobile` | `boolean` | no | — | Remove side borders/radius and bleed to the viewport edge on narrow screens. |
 | `footerTone` | `"default"` \| `"muted"` | no | — | Footer surface treatment. `muted` renders a grey/inset footer region. |
 | `headerDivider` | `boolean` | no | — | Draw a divider rule under the header. Off by default: the header is separated from the body by its surface alone, and a divider is opt-in. |
+| `headerTone` | `"default"` \| `"muted"` | no | — | Header surface treatment. `muted` renders a grey/inset header region, for a card whose title row reads as a band over its rows. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | — | Heading level for the generated title. Defaults to `3`. Set this so the card title nests correctly within the surrounding document outline. |
 | `href` | `string` | no | — | Destination URL that makes the entire card an anchor. |
 | `padding` | `"default"` \| `"none"` | no | — | Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. |

@@ -41,6 +41,7 @@ import { workspacePlugins } from './plugins.ts';
 import {
   showcaseAgentScripts,
   showcaseBuiltInAgents,
+  showcaseCatalogTools,
   type ShowcaseAgentIdentifier,
   type ShowcasePacing,
 } from './showcase-agents.ts';
@@ -215,6 +216,7 @@ export function showcaseHostOptions(
 ): Pick<
   HostOptions,
   | 'extraAgents'
+  | 'extraTools'
   | 'a2aAgents'
   | 'resolveProviderGenerateFor'
   | 'nightlyCleanUp'
@@ -228,6 +230,7 @@ export function showcaseHostOptions(
   const scripts = showcaseAgentScripts(pacing);
   return {
     extraAgents: showcaseBuiltInAgents(pacing, scripts),
+    extraTools: showcaseCatalogTools(pacing),
     // Settings › A2A shows Assistant and Tool runner shared and the rest not (board
     // PageSettingsSections, "A2A · /settings/a2a").
     a2aAgents: SHOWCASE_A2A_AGENTS,

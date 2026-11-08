@@ -515,8 +515,12 @@ describe('resolveMessageNotes', () => {
       { kind: 'wakeup', id: 'b', wakeAt: 1_700_000_000_000, note: 'later' },
       { kind: 'child-run', id: 'c', childRunId: 'x', agentName: 'helper', status: 'running' },
       { kind: 'stopped', id: 'd', reason: 'Budget exceeded' },
+      { kind: 'stopped', id: 'd2', reason: 'The server restarted.', notice: true },
+      { kind: 'stopped', id: 'd4', reason: 'The reply failed partway.', failed: true },
     ];
     const malformed = [
+      { kind: 'stopped', id: 'd3', reason: 'The server restarted.', notice: 'yes' },
+      { kind: 'stopped', id: 'd5', reason: 'The reply failed partway.', failed: 'yes' },
       null,
       'text',
       { kind: 'memory', id: 'e', recordId: '', collection: 'c', memoryClass: 'k' },

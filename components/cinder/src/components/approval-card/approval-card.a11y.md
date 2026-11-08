@@ -30,7 +30,7 @@ The card title renders at `headingLevel` (default `3`) and section headings one 
 
 ## State communication
 
-Risk and approval state are communicated with more than color. The status dot is accompanied by its visible text label. The risk is also written as a muted word (Reads, Changes things, Dangerous), and "Can't be undone" is written out, so the amber glyph is never the only signal; the glyph's `aria-label` names the level (`Low risk` / `Medium risk` / `High risk`). A denied approval is neutral text, not an error colour. An unavailable approval shows the word "Unavailable" and its reason, with no decision buttons.
+Risk and approval state are communicated with more than color. The status dot is accompanied by its visible text label. The risk is also written as a muted word (Reads, Changes things, Dangerous), and "Can't be undone" is written out, so the amber glyph is never the only signal; the glyph's `aria-label` names the level (`Low risk` / `Medium risk` / `High risk`). A denied approval is neutral text, not an error colour. An unavailable approval shows the word "Unavailable" and its reason, with no decision buttons. A row decided on another page (`decidedIn`) drops the risk glyph for a decorative check or prohibition glyph (`aria-hidden`), because the decision is written out beside it ("Approved by you in Reviews · 10:46 AM").
 
 When `expiresAt` passes, the effective state becomes `expired` and the action buttons are removed. Expiration never fires `onResolve`; the host remains the source of truth for persisted state.
 

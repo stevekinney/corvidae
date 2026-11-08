@@ -38,12 +38,22 @@ describe('replyModelLabel', () => {
     );
   });
 
-  test('names a model the agent no longer lists, or another provider’s of the same name, by its own name', () => {
+  test('names a Claude model the agent does not list as a person reads it: the catalog holds no label', () => {
     expect(replyModelLabel({ provider: 'anthropic', model: 'claude-opus-5-5' }, CHOICES)).toBe(
-      'claude-opus-5-5',
+      'Claude Opus 5.5',
     );
     expect(replyModelLabel({ provider: 'bedrock', model: 'claude-sonnet-5-5' }, CHOICES)).toBe(
-      'claude-sonnet-5-5',
+      'Claude Sonnet 5.5',
     );
+    // A catalog row whose display name is only the provider's model name has no label of its own.
+    expect(
+      replyModelLabel({ provider: 'anthropic', model: 'claude-sonnet-5-5' }, [
+        { provider: 'anthropic', model: 'claude-sonnet-5-5', displayName: 'claude-sonnet-5-5' },
+      ]),
+    ).toBe('Claude Sonnet 5.5');
+  });
+
+  test('names any other model by its own name when the agent does not list it', () => {
+    expect(replyModelLabel({ provider: 'openai', model: 'gpt-5' }, CHOICES)).toBe('gpt-5');
   });
 });

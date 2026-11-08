@@ -171,4 +171,67 @@ describe('a turn’s tool calls', () => {
     );
     expect(rowOf(container, 'cut')).not.toBeNull();
   });
+
+  test('a long turn’s summary line counts the failed and waiting calls and ends with how long the turn took (21q)', () => {
+    const entries = [
+      ...Array.from({ length: 28 }, (_, index) =>
+        entry({ callId: `d${String(index)}`, input: String(index) }),
+      ),
+      entry({
+        callId: 'send',
+        name: 'send-email',
+        title: 'Send email',
+        state: 'failed',
+        summary: 'SMTP timeout after 10s',
+        result: undefined,
+      }),
+      entry({
+        callId: 'refund',
+        name: 'issue-refund',
+        title: 'Issue refund',
+        state: 'needs-you',
+        summary: '',
+        result: undefined,
+      }),
+    ];
+    const { container } = render(Harness, { props: { entries, duration: '18s' } } as never);
+    const summary = container.querySelector('.cinder-tool-call-rail__summary');
+    expect(summary?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
+      'Used 30 tools · 1 failed · 1 waiting on you · 18s',
+    );
+    // The first three and the last three stay, the failed and waiting calls with them, and the
+    // other twenty-four fold behind one button.
+    expect(container.querySelector('.cinder-tool-call-rail__more')?.textContent).toContain(
+      'Show 24 more',
+    );
+    expect(rowOf(container, 'send')).not.toBeNull();
+    expect(rowOf(container, 'refund')).not.toBeNull();
+  });
+
+  test('a turn with no recorded times has no duration on its summary line', () => {
+    const entries = Array.from({ length: 4 }, (_, index) =>
+      entry({ callId: `d${String(index)}`, input: String(index) }),
+    );
+    const { container } = render(Harness, { props: { entries } } as never);
+    expect(container.querySelector('.cinder-tool-call-rail__summary')?.textContent?.trim()).toBe(
+      'Used 4 tools',
+    );
+  });
+
+  test('with a handler for chosen rows, choosing one hands the call to the page and opens nothing under the row', async () => {
+    const chosen: string[] = [];
+    const { container } = render(Harness, {
+      props: {
+        entries: [entry({ callId: 'c1' }), entry({ callId: 'c2', input: 'A-2' })],
+        onSelect: (callId: string) => chosen.push(callId),
+        selectedId: 'c2',
+      },
+    } as never);
+    await fireEvent.click(rowOf(container, 'c1')!);
+    expect(chosen).toEqual(['c1']);
+    expect(container.querySelector('.ib-tool__details')).toBeNull();
+    // The call whose panel is open has its row tinted.
+    expect(rowOf(container, 'c2')?.getAttribute('aria-pressed')).toBe('true');
+    expect(rowOf(container, 'c1')?.getAttribute('aria-pressed')).not.toBe('true');
+  });
 });

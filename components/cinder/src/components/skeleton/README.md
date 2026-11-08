@@ -75,6 +75,25 @@ Cinder's loading rules are timing rules, and Skeleton implements them so each vi
 
 The status is Skeleton's own line below the placeholders, centred in the list variant, and never a banner. The header and filters of the page stay live. The default text is the shared line, "Still loading. This is taking longer than usual."; a page replaces it with its own noun through `stillLoadingLabel`, for example "Still loading runs. This is taking longer than usual.". Cancel is a ghost button that appears only when `onCancel` is set.
 
+When the loading state is the shape of a whole page (real labels and headings with placeholder values and rows), give the Skeleton `children`. They are drawn instead of the bars, in a group marked busy, and the group keeps the timing: nothing is drawn until `delay`, and the status line follows the content. Draw each placeholder block with a Skeleton of its own; text in the children is read as written.
+
+```svelte
+<script lang="ts">
+  import { Skeleton } from '@lostgradient/cinder';
+</script>
+
+<Skeleton
+  delay={300}
+  stillLoadingAfter={10000}
+  stillLoadingLabel="Still loading Home. This is taking longer than usual."
+  onCancel={() => console.log('cancel')}
+>
+  <p>Monday, Nov 2</p>
+  <h2>Needs you</h2>
+  <Skeleton height="2.5rem" />
+</Skeleton>
+```
+
 Both timers start when the Skeleton mounts, so render it only while the request is pending and unmount it when the request settles. Unmounting clears the timers. `stillLoadingAfter` counts from mount, not from the end of `delay`. Without `delay` or `stillLoadingAfter` a Skeleton renders immediately and never shows a status, exactly as a plain block always has.
 
 ## Props
@@ -99,6 +118,7 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 | `stillLoadingLabel` | `string` | no | `"Still loading. This is taking longer than usual."` | Text of the "Still loading" status. Pages replace the default with their own noun, for example `'Still loading runs. This is taking longer than usual.'`. |
 | `variant` | `"row"` \| `"card"` \| `"list"` \| `"form"` | no | `"row"` | Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws `rows` fields, a label bar over a control bar each. |
 | `width` | `string` | no | — | CSS width value applied as an inline style on the skeleton block (e.g. `'200px'`, `'100%'`). |
+| `children` | `(opaque)` | no | — | The page's own placeholder, drawn instead of the bars, for a loading state whose shape is a whole page (real labels and headings with placeholder values and rows). The group still owns the timing: nothing is drawn until `delay` has passed, and the "Still loading" status follows the content after `stillLoadingAfter`. The group is marked busy while it shows. Draw each placeholder block with a `Skeleton` of its own; the content is not hidden from assistive technology, so text in it is read as written. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when the Cancel button in the "Still loading" status is pressed. The button renders only when this is set. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

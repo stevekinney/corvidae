@@ -102,4 +102,56 @@ describe('the not-found page', () => {
 
     await waitFor(() => expect(getByTestId('trail').textContent).toBe('Runs › Not found'));
   });
+
+  describe('a page whose missing thing can be started again (the chat page, row 19u)', () => {
+    const create = { label: 'New chat', href: '/chats/new' };
+    const back = { label: 'Back to chats', href: '/chats' };
+    const props = { title: 'This chat doesn’t exist', view: 'chat' as const, create, back };
+
+    test('offers a primary New chat and a secondary way back in the view’s words, and no search button', () => {
+      landAt('/chats/gone');
+      const { container, getByRole, queryByRole } = render(Harness, { props });
+
+      const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+      expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+        'New chat',
+        'Back to chats',
+      ]);
+      expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
+        'primary',
+        'secondary',
+      ]);
+      expect(getByRole('link', { name: 'New chat' }).getAttribute('href')).toBe('/chats/new');
+      expect(getByRole('link', { name: 'Back to chats' }).getAttribute('href')).toBe('/chats');
+      expect(queryByRole('button', { name: NOT_FOUND_COPY.search })).toBeNull();
+    });
+
+    test('draws an accent disc with an inbox rather than the neutral search glyph', () => {
+      landAt('/chats/gone');
+      const { container } = render(Harness, { props });
+
+      const root = container.querySelector('.cinder-empty-state');
+      expect(root?.getAttribute('data-cinder-kind')).toBe('first-use');
+      expect(root?.querySelector('.cinder-empty-state-icon svg.lucide-inbox')).not.toBeNull();
+    });
+
+    test('New chat and Back to chats open their pages in place', async () => {
+      landAt('/chats/gone');
+      const { getByRole } = render(Harness, { props });
+
+      await fireEvent.click(getByRole('link', { name: 'Back to chats' }));
+      await waitFor(() => expect(router.pathname).toBe('/chats'));
+
+      landAt('/chats/gone');
+      await fireEvent.click(getByRole('link', { name: 'New chat' }));
+      await waitFor(() => expect(router.pathname).toBe('/chats/new'));
+    });
+
+    test('keeps “Not found” in the breadcrumb, never the identifier', async () => {
+      landAt('/chats/gone');
+      const { getByTestId } = render(Harness, { props });
+
+      await waitFor(() => expect(getByTestId('trail').textContent).toBe('Chat › Not found'));
+    });
+  });
 });

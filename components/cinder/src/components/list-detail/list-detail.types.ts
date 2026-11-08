@@ -156,6 +156,15 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   backLabel?: string;
   /**
+   * Whether the Back button shows above the detail below `pushBelow`. A host whose own chrome
+   * already carries the way back to the list (a top bar's back link) turns it off, so the screen
+   * has one Back and not two. Back is also how a person returns to the list by keyboard, so the
+   * host's way back must be a link or a button, and opening an item focuses the detail region
+   * when there is no Back button to focus.
+   * @default true
+   */
+  backVisible?: boolean;
+  /**
    * Accessible name of the detail region.
    * @default 'Details'
    */

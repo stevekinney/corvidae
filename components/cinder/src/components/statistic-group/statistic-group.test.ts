@@ -367,6 +367,39 @@ describe('StatisticGroup', () => {
     expect(root?.getAttribute('class')).toContain('custom');
   });
 
+  test('a cards group draws a shadow until it asks for a flat border edge', async () => {
+    const shadowed = render(StatisticGroup, { children: textSnippet('x'), variant: 'cards' });
+    expect(
+      shadowed.container.querySelector('.cinder-statistic-group')?.hasAttribute('data-cinder-edge'),
+    ).toBe(false);
+    cleanup();
+    const flat = render(StatisticGroup, {
+      children: textSnippet('x'),
+      variant: 'cards',
+      edge: 'border',
+    });
+    expect(
+      flat.container.querySelector('.cinder-statistic-group')?.getAttribute('data-cinder-edge'),
+    ).toBe('border');
+    const css = normalizeCss(
+      await readFile(new URL('./statistic-group.css', import.meta.url), 'utf8'),
+    );
+    expect(css).toMatch(
+      /\.cinder-statistic-group\[data-cinder-variant='cards'\]\[data-cinder-edge='border'\] > \.cinder-statistic-group__grid > \.cinder-statistic \{ box-shadow: none; \}/,
+    );
+  });
+
+  test('the edge only means something to the cards variant', () => {
+    const { container } = render(StatisticGroup, {
+      children: textSnippet('x'),
+      variant: 'shared-borders',
+      edge: 'border',
+    });
+    expect(
+      container.querySelector('.cinder-statistic-group')?.hasAttribute('data-cinder-edge'),
+    ).toBe(false);
+  });
+
   test('consumer data-cinder-variant does not override prop-driven value', () => {
     const { container } = render(StatisticGroup, {
       children: textSnippet('x'),
