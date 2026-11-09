@@ -12,7 +12,7 @@
  * child-effects" case the helper is built for.
  *
  * The expensive two-build SSR discriminator is covered by the synthetic
- * `hydration-probe-child-browser-flag` fixture in `src/test/hydration-safety.test.ts`.
+ * `hydration-probe-child-browser-flag` fixture in `src/test/hydration-safety.integration.test.ts`.
  * This real-world companion keeps ShareCard itself pinned to the safe source
  * shape: no `esm-env` browser import, and the native-share capability check must
  * be guarded by the post-hydration state.

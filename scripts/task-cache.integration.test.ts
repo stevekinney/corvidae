@@ -671,7 +671,7 @@ test('the playground build is keyed on the published versions its documentation 
 test('the bureau tests hash the runtime contracts guide they compare a fixture with', async () => {
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const task = configuration.tasks['@lostgradient/bureau#test'];
-  // `signal-shutdown.test.ts` fails when the reference handler in the guide drifts from the
+  // `signal-shutdown.integration.test.ts` fails when the reference handler in the guide drifts from the
   // tested fixture. The guide lives outside the package, so without this input an edit to it
   // alone would restore a cached pass. The entry replaces the generic `test` definition, so it
   // restates `transit` and the generic environment.
@@ -680,7 +680,9 @@ test('the bureau tests hash the runtime contracts guide they compare a fixture w
   expect(task?.dependsOn).toContain('transit');
   expect(task?.env).toEqual(configuration.tasks.test?.env);
   // Pin the read the input covers, so removing the read prompts removing the input.
-  const source = await Bun.file(join(root, 'packages/bureau/src/signal-shutdown.test.ts')).text();
+  const source = await Bun.file(
+    join(root, 'packages/bureau/src/signal-shutdown.integration.test.ts'),
+  ).text();
   expect(source).toMatch(/'documentation',\s*'runtime-contracts\.md'/);
 });
 
@@ -760,12 +762,12 @@ test("the validate gate runs each package's suite once, through its coverage run
   }
 });
 
-test('the check gate keeps the coverage floor of every workspace it selects whole (COR-1693)', async () => {
-  // `check` once ran the plain `test` and so merged a coverage regression that only `validate`
-  // would have caught. Tests now run through the selector, which runs a workspace selected whole
-  // through `test:gate` (its coverage run where the workspace has a floor) and one selected in part
-  // through a narrowed `test`, where a floor cannot be judged on a partial file set. Naming `test`
-  // beside `test:gate`, or `test:coverage` at all, would run a suite twice.
+test('the check gate is the quick tier: no coverage run and no isolated lane', async () => {
+  // COR-1693 had `check` run a workspace selected whole through `test:gate`, its coverage run, so a
+  // coverage regression could not merge unseen. Coverage runs include each workspace's integration
+  // tests (a process or an out-of-process service), which made `check` depend on host load, so the
+  // owner moved coverage floors to `bun run validate` and the batch validate (2026-11-09): `check`
+  // runs `test` alone, whole or narrowed, and never names a coverage task.
   const { scripts } = await Bun.file(join(root, 'package.json')).json();
   expect(scripts.check as string).toContain('bun scripts/affected-tests.ts run');
   for (const invocation of (scripts.check as string).match(/turbo run [^&']+/g) ?? []) {
@@ -785,11 +787,10 @@ test('the check gate keeps the coverage floor of every workspace it selects whol
   });
   expect(selection.repositoryRule).not.toBeNull();
   for (const step of planInvocations(selection)) {
+    // The quick tier never judges a coverage floor; `bun run validate` does.
     expect(step.tasks).not.toContain('test:coverage');
-    if (step.tasks.includes('test') || step.tasks.includes('test:gate')) {
-      // A whole-workspace step is the one that must reach the floor.
-      expect(step.tasks).toEqual([step.narrowed ? 'test' : 'test:gate']);
-    }
+    expect(step.tasks).not.toContain('test:gate');
+    expect(step.tasks).not.toContain('test:slow');
   }
 });
 
@@ -931,7 +932,7 @@ test("Interborough's gate runs the host suite its coverage run leaves out", asyn
 });
 
 test('the root self-tests are keyed on the workspace files they validate', async () => {
-  // `scripts/workspace-contract.test.ts` reads every workspace manifest and TypeScript configuration,
+  // `scripts/workspace-contract.integration.test.ts` reads every workspace manifest and TypeScript configuration,
   // but a root task hashes only root files by default, so without these inputs a manifest-only
   // change could replay a cached pass instead of re-running the contract.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();

@@ -23,7 +23,7 @@ async function readHealthAddress(output: ReadableStream<Uint8Array>): Promise<st
 }
 
 /**
- * Performance claim moved out of `src/cold-start.test.ts`: the source CLI starts and answers a
+ * Performance claim moved out of `src/cold-start.integration.test.ts`: the source CLI starts and answers a
  * health request within five seconds. The wall-clock target depends on host load, so it runs
  * through `test:benchmarks` rather than the default gate; the default-suite test keeps the
  * correctness half (the CLI starts and serves a 200) and its readiness deadline.

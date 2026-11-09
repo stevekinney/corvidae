@@ -80,7 +80,7 @@ describe('the Dev Container', () => {
 
   test('runs an init process, so killed process groups are reaped', () => {
     // COR-1379: with the entrypoint as PID 1, nothing reaped the children
-    // `scripts/run-exclusively.test.ts` kills, and their zombies kept each group alive.
+    // `scripts/run-exclusively.integration.test.ts` kills, and their zombies kept each group alive.
     expect(configuration.init).toBe(true);
   });
 

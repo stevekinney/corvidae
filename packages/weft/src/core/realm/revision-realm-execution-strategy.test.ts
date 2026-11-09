@@ -1,6 +1,6 @@
 /**
  * Strategy-level tests for `RevisionRealmExecutionStrategy` (COR-249's
- * engine integration, R2E), mirroring `worker-execution-strategy.test.ts`'s
+ * engine integration, R2E), mirroring `worker-execution-strategy.integration.test.ts`'s
  * own convention of driving the strategy directly rather than only through
  * a full `Engine`. `revision-realm-execution.test.ts` (engine-level) already
  * proves `startWorkflow`/activation/recovery end to end; this file covers

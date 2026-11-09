@@ -259,8 +259,8 @@ describe('hasBooleanIsPrefix', () => {
 // ---------------------------------------------------------------------------
 
 describe('hasHydrationTest', () => {
-  test('returns true for portal.test.ts (calls hydrateServerHtml)', () => {
-    const testFile = join(componentDirectory('portal'), 'portal.test.ts');
+  test('returns true for portal.integration.test.ts (calls hydrateServerHtml)', () => {
+    const testFile = join(componentDirectory('portal'), 'portal.integration.test.ts');
     expect(existsSync(testFile)).toBe(true);
     expect(hasHydrationTest(testFile)).toBe(true);
   });

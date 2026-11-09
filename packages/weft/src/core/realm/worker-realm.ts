@@ -303,7 +303,7 @@ export class WorkerRealm {
    * Internal test seam: feed a message directly into this realm's OWN
    * inbound message handling, as if it had just arrived over `postMessage`
    * from the real Worker — the opposite direction of {@link
-   * postRawMessageForTesting}. Lets `realm-conformance.test.ts` exercise the
+   * postRawMessageForTesting}. Lets `realm-conformance.integration.test.ts` exercise the
    * host-side envelope fencing on an INCOMING `realm-result`/`realm-failure`
    * message directly (a deliberately mismatched envelope, an arbitrary
    * result value) without depending on a specific fixture script's own

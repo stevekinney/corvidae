@@ -11,6 +11,7 @@ import {
   CORVIDAE_COVERAGE_ALLOWANCES,
   COVERAGE_ALLOWANCES,
   formatCoverageFailureReason,
+  INTEGRATION_TEST_PATTERN,
   isOtherWorkspaceSource,
   listCoverageTestFiles,
   memoryFootprintUncoveredOutsideDarwin,
@@ -37,7 +38,7 @@ function closedByteStream(): ReadableStream<Uint8Array> {
 const listedTestFiles = await outcomeOf(async () => {
   const files = await listCoverageTestFiles();
 
-  expect(files).toContain('scripts/check-coverage.test.ts');
+  expect(files).toContain('scripts/check-coverage.integration.test.ts');
   expect(files).toContain('scripts/check-implementation-file-sizes.test.ts');
   expect(files).not.toContain('scripts/check-coverage.ts');
   expect(files.some((file) => file.includes('node_modules/'))).toBe(false);
@@ -54,6 +55,11 @@ const benchmarkExclusions = await outcomeOf(async () => {
     '**/*.slow.test.ts',
   ]);
   const files = await listCoverageTestFiles();
+  // `test` also leaves the integration files to `test:slow`, but the coverage floors count them.
+  expect(packageJson.scripts.test).toContain(
+    `--path-ignore-patterns='${INTEGRATION_TEST_PATTERN}'`,
+  );
+  expect(files).toContain('src/examples.integration.test.ts');
   expect(files).not.toContain('src/cli/codegen-typecheck.slow.test.ts');
   expect(files).not.toContain('src/client/empty-registry-overloads-typecheck.slow.test.ts');
   expect(files.some((file) => file.endsWith('.bench.ts'))).toBe(false);

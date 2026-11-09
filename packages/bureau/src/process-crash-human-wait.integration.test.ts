@@ -10,7 +10,7 @@
  * nothing with it but the bytes it left on disk.
  *
  * The one real-time wait is the claim-lapse wait, derived from the claim TTL
- * exactly as `process-crash-recovery.test.ts` does. Every other wait is
+ * exactly as `process-crash-recovery.integration.test.ts` does. Every other wait is
  * `child.exited`, the marker file, or a bounded condition poll with a tiny real
  * delay, because LMDB's completion callbacks starve under a zero-delay loop.
  */

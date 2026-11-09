@@ -6731,7 +6731,7 @@ describe('visibility timeout expiry triggers task reassignment', () => {
       });
       // Post-cutover (WFT-22), corrupt the `task-ledger:` value with genuinely
       // invalid MessagePack bytes (`0xc1` is msgpack's reserved "never used"
-      // marker — see `engine.test.ts`'s malformed-review fixtures for the same
+      // marker — see `engine.integration.test.ts`'s malformed-review fixtures for the same
       // idiom). `decodeRemoteTaskRecord` only returns `null` for
       // validly-decoded-but-wrong-shape values; it deliberately does not catch
       // `decode()` itself throwing on unparseable bytes (see its doc comment),

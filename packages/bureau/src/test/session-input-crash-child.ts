@@ -16,7 +16,7 @@
  *   end settles anything: the input is open, no run is live, and the
  *   recovering process's boot sweep must cancel it.
  *
- * Not a test file: it is spawned by `session-input-crash-recovery.test.ts`.
+ * Not a test file: it is spawned by `session-input-crash-recovery.integration.test.ts`.
  */
 import { publishChildFile } from './child-output-file';
 

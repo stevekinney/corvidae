@@ -4,7 +4,7 @@
  * generated documentation, fixtures, and package exports agree on the new
  * protocol version").
  *
- * `cli-conformance.test.ts` already exercises `executeConformance()`'s full
+ * `cli-conformance.integration.test.ts` already exercises `executeConformance()`'s full
  * check list end to end against the existing worker fixtures; those tests
  * are untouched and continue to pass because `startWorker()` always sets
  * `WEFT_WORKER_PROTOCOL_VERSION` from the live `REMOTE_WORKER_PROTOCOL_VERSION`
@@ -54,7 +54,7 @@ import { executeConformance } from './index.ts';
  *
  * This file's job is narrower and does not re-prove that sequence: it proves
  * `conformance-lost-ack-worker.ts` is a working CLI conformance artifact —
- * the same shape `cli-conformance.test.ts` proves for every other fixture
+ * the same shape `cli-conformance.integration.test.ts` proves for every other fixture
  * here, via `executeConformance()`. Two earlier versions of this test instead
  * drove the fixture directly with their own `Bun.spawn` plus one or more
  * `waitForCondition` calls in the test body, racing Bun's fixed 5000ms
@@ -66,7 +66,7 @@ import { executeConformance } from './index.ts';
  * it. `executeConformance()` bounds its own internal waits and always
  * resolves — it never leaves an unbounded wait sitting in the test body — and
  * empirically survived 5 consecutive runs at this same load with zero
- * failures (see `cli-conformance.test.ts`'s identically-shaped "passes a
+ * failures (see `cli-conformance.integration.test.ts`'s identically-shaped "passes a
  * conforming worker fixture" test), so routing through it here removes the
  * timing dependency instead of narrowing it.
  */

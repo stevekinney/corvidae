@@ -3,7 +3,7 @@
  * per non-terminal ledger state, plus corrupt-record and scan-failure
  * handling. End-to-end cross-restart behavior (a real subprocess reboot with
  * live WebSocket workers) is covered separately by
- * `src/worker/remote-worker-reconnection.test.ts`.
+ * `src/worker/remote-worker-reconnection.integration.test.ts`.
  */
 
 import { describe, expect, it, spyOn } from 'bun:test';

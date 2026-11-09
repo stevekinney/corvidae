@@ -36,7 +36,7 @@ Weft and Bureau take a `Storage` you construct. Pass this one to `new Engine({ s
 
 ## Test it
 
-The package's tests run under Bun, which cannot load `better-sqlite3`. They exercise the adapter through an injected database constructor and the loader's error shaping, and `src/node-sqlite.test.ts` launches one real Node process (it fails without one) for everything that needs the driver:
+The package's tests run under Bun, which cannot load `better-sqlite3`. They exercise the adapter through an injected database constructor and the loader's error shaping, and `src/node-sqlite.integration.test.ts` launches one real Node process (it fails without one) for everything that needs the driver:
 
 - `src/node-sqlite-native.integration.ts`, the adapter's own native cases, including a two-process write race;
 - `src/node-sqlite-contract.integration.ts`, the shared `Storage` contract from `@lostgradient/storage/testing`;

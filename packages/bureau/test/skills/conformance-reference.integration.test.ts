@@ -28,13 +28,13 @@ import { CONFORMANCE_CORPUS } from './fixtures/agent-skills-corpus';
  * Run it with the pinned validator fetched on demand:
  *
  * ```sh
- * AGENT_SKILLS_REFERENCE_VALIDATOR=uvx bun test packages/bureau/test/skills/conformance-reference.test.ts
+ * AGENT_SKILLS_REFERENCE_VALIDATOR=uvx bun test packages/bureau/test/skills/conformance-reference.integration.test.ts
  * ```
  *
  * Or point it at an already-installed executable:
  *
  * ```sh
- * AGENT_SKILLS_REFERENCE_VALIDATOR=skills-ref bun test packages/bureau/test/skills/conformance-reference.test.ts
+ * AGENT_SKILLS_REFERENCE_VALIDATOR=skills-ref bun test packages/bureau/test/skills/conformance-reference.integration.test.ts
  * ```
  */
 function resolveValidatorCommand(): string[] | undefined {

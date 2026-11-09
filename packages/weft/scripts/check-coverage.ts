@@ -159,7 +159,7 @@ export function readCoveragePathIgnorePatterns(): string[] {
  * Whether an allowance key (a repo-relative file path) would be excluded by a
  * `coveragePathIgnorePatterns` entry. Bun matches these patterns against LCOV file paths
  * as GLOBS — NOT substrings — so this uses {@link Glob} for every pattern. Verified
- * empirically (see the characterization test in `check-coverage.test.ts`): a bare
+ * empirically (see the characterization test in `check-coverage.integration.test.ts`): a bare
  * `nested` does NOT exclude `sub/nested-file.ts` (a substring matcher would wrongly flag
  * it — a false positive), while `*`, `?`, `[…]`, and `**` all behave as glob
  * metacharacters (a `*`-only matcher would miss `?`/`[…]` — a false negative). An exact
@@ -356,7 +356,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/core/realm/child-process-realm.ts',
       {
         reason:
-          "A fresh full-suite coverage run reports 100% LINE coverage for this file (every DA: record has a nonzero hit count — child-process-realm.test.ts and realm-conformance.test.ts together exercise the ready handshake, digest mismatch, dispatch/release/failure, crash/terminate/discard, restart, the spawn-epoch stale-restart guard, and reclamation) but FNH is one short of FNF, with no `FNDA:0,` entry anywhere in the file's record. The same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact already documented for revision-realm-registry.ts's and revision-realm-execution-strategy.ts's entries above.",
+          "A fresh full-suite coverage run reports 100% LINE coverage for this file (every DA: record has a nonzero hit count — child-process-realm.integration.test.ts and realm-conformance.integration.test.ts together exercise the ready handshake, digest mismatch, dispatch/release/failure, crash/terminate/discard, restart, the spawn-epoch stale-restart guard, and reclamation) but FNH is one short of FNF, with no `FNDA:0,` entry anywhere in the file's record. The same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact already documented for revision-realm-registry.ts's and revision-realm-execution-strategy.ts's entries above.",
         functions: 1,
       },
     ],
@@ -549,7 +549,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       'examples/remote-worker/src/index.ts',
       {
         reason:
-          'Two distinct unreachable classes, none a test gap: (1) lines 80 and 95 are defensive validation the example’s own happy-path fixture (remote-worker.test.ts) never violates — isGreetingInput always accepts the fixture’s well-formed input, and the remote worker always returns a string, so triggering either throw would mean injecting a malformed wire payload past RemoteWorker’s own contract, not exercising this example; (2) lines 106-107, the `if (import.meta.main)` CLI entry point, only run when this file is spawned directly (remote-worker.test.ts’s second test does this via `Bun.spawn`), and that child process’s hits are not attributed to the parent Bun LCOV report — the same class of gap already documented for examples/order-processing/src/client.ts and src/server.ts above and examples/hello-world/src/index.ts in TARGET_ONLY_COVERAGE_ALLOWANCES. The body of formatGreetingRemotely.execute (lines 30-33) is covered by a test that calls it directly.',
+          'Two distinct unreachable classes, none a test gap: (1) lines 80 and 95 are defensive validation the example’s own happy-path fixture (remote-worker.integration.test.ts) never violates — isGreetingInput always accepts the fixture’s well-formed input, and the remote worker always returns a string, so triggering either throw would mean injecting a malformed wire payload past RemoteWorker’s own contract, not exercising this example; (2) lines 106-107, the `if (import.meta.main)` CLI entry point, only run when this file is spawned directly (remote-worker.integration.test.ts’s second test does this via `Bun.spawn`), and that child process’s hits are not attributed to the parent Bun LCOV report — the same class of gap already documented for examples/order-processing/src/client.ts and src/server.ts above and examples/hello-world/src/index.ts in TARGET_ONLY_COVERAGE_ALLOWANCES. The body of formatGreetingRemotely.execute (lines 30-33) is covered by a test that calls it directly.',
         lines: new Set([80, 95, 106, 107]),
         requireUncoveredLines: true,
       },
@@ -1199,7 +1199,7 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'src/hello-world-example.test-support.ts',
     {
       reason:
-        "The `if (import.meta.main) {...}` CLI entry point only runs when this file is spawned directly (bun src/hello-world-example.test-support.ts), never when imported — proven by a dedicated subprocess test (src/examples.test.ts) that spawns it and asserts its stdout, exit code, and empty stderr. That child process runs outside the parent Bun test process's --coverage instrumentation, so its hits are never attributed to the parent LCOV report — the same class of gap TARGET_ONLY_COVERAGE_ALLOWANCES documents for scripts/run-gates.ts, scripts/verify-no-test-sleeps.ts, and examples/hello-world/src/index.ts above.",
+        "The `if (import.meta.main) {...}` CLI entry point only runs when this file is spawned directly (bun src/hello-world-example.test-support.ts), never when imported — proven by a dedicated subprocess test (src/examples.integration.test.ts) that spawns it and asserts its stdout, exit code, and empty stderr. That child process runs outside the parent Bun test process's --coverage instrumentation, so its hits are never attributed to the parent LCOV report — the same class of gap TARGET_ONLY_COVERAGE_ALLOWANCES documents for scripts/run-gates.ts, scripts/verify-no-test-sleeps.ts, and examples/hello-world/src/index.ts above.",
       lines: new Set([77, 78, 80, 81]),
       requireUncoveredLines: true,
     },
@@ -1585,13 +1585,20 @@ export function parseLcov(content: string): CoverageResult {
 /**
  * The paths the package's own `test` script excludes with `--path-ignore-patterns`.
  *
- * That is the slow lane (`**\/*.slow.test.ts`, which `test:slow` runs alone). The measurement
+ * That is the slow lane (`**\/*.slow.test.ts`, which `test:slow` runs alone). The integration
+ * files `test` also leaves to `test:slow` stay in the coverage run (`INTEGRATION_TEST_PATTERN`). The measurement
  * benchmarks need no entry: they are `*.bench.ts` files, which neither `bun test` nor the shard's
  * test-file globs discover, and `test:benchmarks` runs them on demand (COR-1739). The shard
  * applies exactly the exclusion `test` applies, read from the script rather than copied, and the
  * runner modules only those benchmarks exercise are ignored from instrumentation in `bunfig.toml`
  * with their reasons.
  */
+/**
+ * The isolated lane's integration tests: `test` leaves them to `test:slow`, but the coverage floors
+ * were measured with them, so the coverage run keeps them (AGENTS.md "Test tiers").
+ */
+export const INTEGRATION_TEST_PATTERN = '**/*.integration.test.ts';
+
 export function readTestScriptPathIgnorePatterns(): string[] {
   const script = packageJson.scripts?.test;
   if (typeof script !== 'string') {
@@ -1613,7 +1620,8 @@ export function readTestScriptPathIgnorePatterns(): string[] {
   );
   return [...parallelPhase.matchAll(/--path-ignore-patterns='([^']+)'/g)]
     .map((match) => match[1] ?? '')
-    .filter((pattern) => !runSeriallyInstead.has(pattern));
+    .filter((pattern) => !runSeriallyInstead.has(pattern))
+    .filter((pattern) => pattern !== INTEGRATION_TEST_PATTERN);
 }
 
 export async function listCoverageTestFiles(): Promise<string[]> {

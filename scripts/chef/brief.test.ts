@@ -286,6 +286,8 @@ describe('charter rules', () => {
       'give every criterion exactly one status in the return',
       'Not verified: not checked, with the reason',
       'a conflict between them is needs-decision',
+      'bun scripts/affected-tests.ts run --isolated',
+      'is named `*.integration.test.ts`',
     ]) {
       expect(record.replace(/\s+/g, ' ')).toContain(phrase);
       expect(charterRules.join('\n').toLowerCase()).toContain(phrase.toLowerCase());

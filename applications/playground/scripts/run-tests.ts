@@ -72,12 +72,20 @@ const MOUNT_HEAVY_TEST = 'src/component-page.test.ts';
  * of the fast lane. The fast lane writes one JUnit report per process for the root duration ratchet.
  */
 export const SLOW_TEST_SUFFIX = '.slow.test.ts';
+/**
+ * The suffixes of the serial lane: slow tests, and integration tests that start a process or an
+ * out-of-process service (`scripts/check-test-process-spawns.ts`).
+ */
+export const ISOLATED_TEST_SUFFIXES = [SLOW_TEST_SUFFIX, '.integration.test.ts'] as const;
 export type TestLane = 'fast' | 'slow';
 const JUNIT_DIRECTORY = join(PLAYGROUND_ROOT, 'test-output', 'junit');
 
 /** Keep the files that belong to a lane. */
 export function selectLaneFiles<T extends { path: string }>(files: T[], lane: TestLane): T[] {
-  return files.filter((file) => file.path.endsWith(SLOW_TEST_SUFFIX) === (lane === 'slow'));
+  return files.filter(
+    (file) =>
+      ISOLATED_TEST_SUFFIXES.some((suffix) => file.path.endsWith(suffix)) === (lane === 'slow'),
+  );
 }
 
 /**

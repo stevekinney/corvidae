@@ -4,7 +4,7 @@
  *
  * Bun's `run.bun` setting can prepend a virtual `node` shim directory that does not exist on disk;
  * it is dropped here. The remaining shims are filesystem links to Bun, which `resolveNativeNode` in
- * `node-sqlite.test.ts` rejects by asking each candidate which runtime it is.
+ * `node-sqlite.integration.test.ts` rejects by asking each candidate which runtime it is.
  */
 import { existsSync } from 'node:fs';
 import { delimiter } from 'node:path';

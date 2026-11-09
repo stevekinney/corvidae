@@ -8,7 +8,7 @@
  * group, so the test runner receives nothing) and the outcome reports it as
  * leaked, which `expectCleanExit` turns into a failure naming the invocation.
  *
- * Not a test file: `invocation-driven-execution.test.ts` imports it.
+ * Not a test file: `invocation-driven-execution.integration.test.ts` imports it.
  */
 import type { Subprocess } from 'bun';
 

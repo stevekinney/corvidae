@@ -13,7 +13,7 @@
  * surface. The `open={true}`-during-SSR-still-renders-empty assertion below
  * is the one that would have caught that regression.
  *
- * KNOWN GAP (mirrors modal.hydration.test.ts's own documented limitation):
+ * KNOWN GAP (mirrors modal.hydration.integration.test.ts's own documented limitation):
  * a genuine SSR round-trip assertion for `open={true}` — proving the SERVER
  * output is empty AND that the SAME hydrated instance then mounts the real
  * dialog markup on the client — is not exercised here beyond confirming the

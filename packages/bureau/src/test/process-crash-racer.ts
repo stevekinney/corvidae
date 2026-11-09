@@ -1,5 +1,5 @@
 /**
- * COR-1390 — one of the two racing successors in `process-crash-recovery.test.ts`. The test boots
+ * COR-1390 — one of the two racing successors in `process-crash-recovery.integration.test.ts`. The test boots
  * one racer in its own process and the other in `process-crash-child.ts` (`race-recover`), so no
  * process holds two handles on the store a crashed child left behind (COR-1795). Both build the
  * Bureau here, so the two racers differ only in the process they run in.

@@ -23,4 +23,4 @@ Browser component workspaces use `browser.json` for their production source chec
 
 ## Verification
 
-Run `bun test scripts/workspace-contract.test.ts` from the repository root to verify the exported preset contract. Run `bun run validate` for the complete workspace validation graph.
+Run `bun test scripts/workspace-contract.integration.test.ts` from the repository root to verify the exported preset contract. Run `bun run validate` for the complete workspace validation graph.

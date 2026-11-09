@@ -6,6 +6,7 @@ import {
   BUDGET_MILLISECONDS,
   STALE_FLOOR_MILLISECONDS,
   budgetFailures,
+  integrationLaneProblems,
   judgeDurations,
   laneProblems,
   measuresWorkspace,
@@ -361,5 +362,56 @@ describe('measuresWorkspace', () => {
 
   test('the enforce mode, which reruns every test first, measures every workspace', () => {
     expect(measuresWorkspace('enforce', { test: 'x', 'test:coverage': 'y' })).toBe(true);
+  });
+});
+
+describe('integrationLaneProblems', () => {
+  const runner = 'bun ../../scripts/bun-test-junit.ts';
+  const ignoring = `${runner} --path-ignore-patterns='**/*.integration.test.ts'`;
+  const lane = 'bun ../../scripts/bun-test-selected.ts .slow.test.ts .integration.test.ts';
+
+  test('a workspace without integration files has nothing to wire', () => {
+    expect(integrationLaneProblems('w', runner, {}, 'test:slow', [])).toEqual([]);
+  });
+
+  test('requires test to ignore them and test:slow to run them', () => {
+    expect(
+      integrationLaneProblems('w', runner, {}, 'test:slow', ['src/a.integration.test.ts']),
+    ).toEqual([
+      'w: has .integration.test.ts files but its test script does not ignore them with --path-ignore-patterns',
+      'w: has .integration.test.ts files but defines no test:slow script',
+    ]);
+    expect(
+      integrationLaneProblems(
+        'w',
+        ignoring,
+        { 'test:slow': 'bun ../../scripts/bun-test-selected.ts .slow.test.ts' },
+        'test:slow',
+        ['src/a.integration.test.ts'],
+      ),
+    ).toEqual([
+      'w: test:slow does not run its .integration.test.ts files; name .integration.test.ts in it',
+    ]);
+    expect(
+      integrationLaneProblems('w', ignoring, { 'test:slow': lane }, 'test:slow', [
+        'src/a.integration.test.ts',
+      ]),
+    ).toEqual([]);
+  });
+
+  test('requires every root integration file to match a test:self:slow pattern', () => {
+    const scripts = {
+      'test:self:slow': 'bun scripts/bun-test-selected.ts ./scripts/*.integration.test.ts',
+    };
+    expect(
+      integrationLaneProblems('.', ignoring, scripts, 'test:self:slow', [
+        'scripts/a.integration.test.ts',
+      ]),
+    ).toEqual([]);
+    expect(
+      integrationLaneProblems('.', ignoring, scripts, 'test:self:slow', [
+        'scripts/chef/b.integration.test.ts',
+      ]),
+    ).toHaveLength(1);
   });
 });

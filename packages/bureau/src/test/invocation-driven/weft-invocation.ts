@@ -16,7 +16,7 @@
  * driver attributes every committed step. Setting the block variable to
  * `charge` or `finish` holds that activity open (see `blockIfRequested`).
  *
- * Not a test file: it is spawned by `invocation-driven-execution.test.ts`.
+ * Not a test file: it is spawned by `invocation-driven-execution.integration.test.ts`.
  */
 import { join } from 'node:path';
 

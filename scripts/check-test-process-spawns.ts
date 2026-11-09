@@ -46,6 +46,12 @@
  * guard used to require, counts time the host spent asleep and killed children on wake
  * (COR-1541); a synchronous spawn blocks the thread, so no awake-time guard can run beside it.
  *
+ * The isolation rule (`findFastLaneSpawn`): a `*.test.ts` file that is not `*.slow.test.ts` or
+ * `*.integration.test.ts` starts no process anywhere, at module scope or in a helper included, so
+ * the quick tier (`bun run check`) never waits on a process boot. A file that needs one is an
+ * `*.integration.test.ts` file, which the workspace's isolated lane (`test:slow`) runs serially in
+ * `bun run validate`. The same `spawn-free:` marker excuses an inferred call to a stubbed helper.
+ *
  * Blind spots, documented rather than claimed as covered:
  *
  *   - a spawning function reached through a value rather than a name: a method on an object
@@ -597,6 +603,72 @@ export function findTestProcessSpawnViolations(
   return violations;
 }
 
+/** The file suffixes of the isolated lane, which runs serially, outside `bun run check`. */
+export const ISOLATED_TEST_SUFFIXES = ['.slow.test.ts', '.integration.test.ts'] as const;
+
+/** Whether `fileName` is a test file of the isolated lane. */
+export function isIsolatedTestFile(fileName: string): boolean {
+  return ISOLATED_TEST_SUFFIXES.some((suffix) => fileName.endsWith(suffix));
+}
+
+/**
+ * The isolation rule: a test file in the fast lane starts no process at all, so `bun run check`
+ * never depends on how fast the host can boot one. Any spawn in the file counts, wherever it runs
+ * (a test body, a hook, module scope, or a helper reached by name or import), except an inferred
+ * call inside a test whose `spawn-free:` marker names the stub that stands in for the process. A
+ * file that needs a real process, a real `git`, or a PostgreSQL server is an
+ * `*.integration.test.ts` file (or `*.slow.test.ts`, when the work itself takes seconds), which the
+ * workspace's isolated lane runs. Returns the first spawn found, or `null`.
+ */
+export function findFastLaneSpawn(sourceFile: ts.SourceFile): TestProcessSpawnViolation | null {
+  const fileName = sourceFile.fileName;
+  if (isIsolatedTestFile(fileName) || !/\.test\.tsx?$/.test(fileName)) return null;
+  const imports = importedNames(sourceFile, fileName);
+  const local = new Set<string>();
+  const bodies = namedBodies(sourceFile);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const { name, body } of bodies) {
+      if (!local.has(name) && containsSpawn(body, imports, local)) {
+        local.add(name);
+        changed = true;
+      }
+    }
+  }
+  let found: TestProcessSpawnViolation | null = null;
+  const consider = (node: ts.Node, direct: boolean): void => {
+    if (found !== null) return;
+    if (!direct) {
+      const registration = enclosingTestOrHook(node, imports);
+      if (registration !== null) {
+        const reason = spawnFreeReason(registration, sourceFile);
+        if (reason !== null && reason.length >= MINIMUM_SPAWN_FREE_REASON) return;
+      }
+    }
+    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const text = node.getText(sourceFile).split('\n')[0]!;
+    found = {
+      line: line + 1,
+      text: `starts a process (${text.length > 60 ? `${text.slice(0, 57)}...` : text}); rename the file to *.integration.test.ts`,
+    };
+  };
+  walk(sourceFile, (node) => {
+    if (found !== null) return false;
+    // A spawning function only counts where it is called, not where it is declared.
+    if (isDirectSpawn(node, imports)) consider(node, true);
+    else if (isInferredSpawn(node, imports, local)) consider(node, false);
+    else if (ts.isCallExpression(node) && isTestOrHookRegistration(node, imports)) {
+      for (const argument of node.arguments) {
+        const name = calleeName(argument);
+        if (name !== null && isSpawningName(name, imports, local)) consider(argument, false);
+      }
+    }
+    return found === null;
+  });
+  return found;
+}
+
 /**
  * Process API calls written directly in a test file. Each one must go through the hang-guarded
  * helpers instead, which also lets the test-body analysis above infer them from their module.
@@ -641,9 +713,11 @@ function scan(): string[] {
       ts.ScriptTarget.Latest,
       true,
     );
+    const fastLaneSpawn = findFastLaneSpawn(sourceFile);
     for (const violation of [
       ...findTestProcessSpawnViolations(sourceFile),
       ...findDirectSpawns(sourceFile),
+      ...(fastLaneSpawn === null ? [] : [fastLaneSpawn]),
     ]) {
       findings.push(`${relative(root, path)}:${violation.line} — ${violation.text}`);
     }
@@ -655,7 +729,7 @@ function main(): void {
   const findings = scan();
   if (findings.length === 0) {
     process.stdout.write(
-      'check-test-process-spawns — OK (no test body or hook starts a child process, and no test file calls a process API directly).\n',
+      'check-test-process-spawns — OK (no test body or hook starts a child process, no test file calls a process API directly, and no *.test.ts file starts a process at all).\n',
     );
     return;
   }
@@ -666,7 +740,9 @@ function main(): void {
       'out on a loaded host. Call the logic in process when the child only runs repository code;\n' +
       'when the real process is the behavior, run it at module scope with top-level await and\n' +
       'assert on the recorded result, and start every process in a test file with\n' +
-      'spawnWithHangGuard or runWithHangGuard, whose guard counts only awake time.\n' +
+      'spawnWithHangGuard or runWithHangGuard, whose guard counts only awake time. A *.test.ts file\n' +
+      'that starts a process anywhere belongs in the isolated lane: rename it *.integration.test.ts,\n' +
+      'so `bun run check` (the quick tier) never depends on how fast the host can boot one.\n' +
       'Never raise the per-test timeout.\n\n',
   );
   for (const finding of findings) process.stderr.write(`  ${finding}\n`);

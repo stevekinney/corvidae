@@ -15,7 +15,7 @@
  * wait is `child.exited`, a marker file, or a condition poll (`waitUntil`,
  * which falls back to a tiny real delay, because LMDB's completion callbacks
  * starve under a zero-delay macrotask loop; see
- * `event-history-run-ownership-recovery-lmdb.test.ts`).
+ * `event-history-run-ownership-recovery-lmdb.integration.test.ts`).
  */
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

@@ -288,7 +288,7 @@ export class ChildProcessRealm {
    * not `kill()`'s own void return. Combine with `process.kill(pid, 0)`
    * (throws `ESRCH` once reclaimed) and `postRawMessageForTesting` (throws
    * once the IPC channel is closed) to observe both halves — see
-   * `child-process-realm.test.ts`.
+   * `child-process-realm.integration.test.ts`.
    */
   async whenReclaimed(): Promise<ChildProcessReclamation> {
     const childProcess = this.#process;
