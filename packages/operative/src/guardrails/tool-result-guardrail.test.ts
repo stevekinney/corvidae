@@ -72,6 +72,9 @@ const resultCarrying: Record<string, () => ToolExecutionResult> = {
         },
       ],
     }),
+  'an object key': () => toolResult({ content: { [INJECTION]: 'a clean value' } }),
+  'a nested object key': () =>
+    toolResult({ content: { page: [{ [INJECTION]: { ok: true } }] }, result: null }),
   'error.message only': () =>
     toolResult({
       outcome: 'error',
@@ -119,6 +122,94 @@ describe('createToolResultGuardrail', () => {
       expect((thrown as GuardrailTripwireError).phase).toBe('tool-result');
       expect((thrown as GuardrailTripwireError).guardrailName).toBe('sentinel');
     });
+  });
+
+  describe.each([
+    [
+      'inline base64',
+      { kind: 'inline', data: '/w==', encoding: 'base64' } as const,
+      'inline base64 is not UTF-8',
+    ],
+    [
+      'a data URL',
+      { kind: 'data-url', url: 'data:text/plain;base64,/w==' } as const,
+      'the data URL body is not UTF-8',
+    ],
+  ])('an undecodable text body in %s', (_name, source, reason) => {
+    const undecodable = () =>
+      toolResult({
+        content: null,
+        parts: [{ type: 'document', mimeType: 'text/plain', source }],
+      });
+
+    it.each(['block', 'sanitize', 'warn'] as const)(
+      'is refused under %s, with a content-body finding',
+      async (action) => {
+        const events: GuardrailTriggeredEvent[] = [];
+        const hook = createToolResultGuardrail({
+          detectors: [sentinel()],
+          action,
+          onTriggered: (event) => events.push(event),
+        });
+        const replaced = await hook(undecodable(), context());
+        expect(replaced?.error?.code).toBe(GUARDRAIL_BLOCKED_CODE);
+        expect(replaced?.error?.message).toContain('"content-body"');
+        expect(replaced?.parts).toBeUndefined();
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          detector: 'content-body',
+          category: 'uninspectable-content',
+          confidence: 1,
+          action,
+          provenance: 'tool-result',
+        });
+        expect(events[0]?.detail).toContain(reason);
+      },
+    );
+
+    it('throws a tool-result GuardrailTripwireError under tripwire', async () => {
+      const hook = createToolResultGuardrail({ detectors: [sentinel()], action: 'tripwire' });
+      const thrown = await hook(undecodable(), context()).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(thrown).toBeInstanceOf(GuardrailTripwireError);
+      expect((thrown as GuardrailTripwireError).phase).toBe('tool-result');
+      expect((thrown as GuardrailTripwireError).guardrailName).toBe('content-body');
+    });
+
+    it('reports a detector finding in the same result first, and still refuses under warn', async () => {
+      const events: GuardrailTriggeredEvent[] = [];
+      const hook = createToolResultGuardrail({
+        detectors: [sentinel()],
+        action: 'warn',
+        onTriggered: (event) => events.push(event),
+      });
+      const replaced = await hook(
+        toolResult({
+          content: INJECTION,
+          parts: [{ type: 'document', mimeType: 'text/plain', source }],
+        }),
+        context(),
+      );
+      expect(events.map((event) => event.detector)).toEqual(['sentinel']);
+      expect(replaced?.error?.code).toBe(GUARDRAIL_BLOCKED_CODE);
+    });
+  });
+
+  it('reads a decodable text body, and is not refused for one', async () => {
+    const hook = createToolResultGuardrail({ detectors: [sentinel()], action: 'block' });
+    const clean = toolResult({
+      content: null,
+      parts: [
+        {
+          type: 'document',
+          mimeType: 'text/plain',
+          source: { kind: 'inline', data: 'aGVsbG8=', encoding: 'base64' },
+        },
+      ],
+    });
+    expect(await hook(clean, context())).toBeUndefined();
   });
 
   it('falls back to block under sanitize', async () => {

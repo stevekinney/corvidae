@@ -1366,7 +1366,7 @@ const guardrails = createGuardrails({
 });
 
 // Register all three hooks on the run's hook registry. `validateToolResult` runs the same input
-// detectors over every tool result before the model is shown it (COR-2103); like
+// detectors over a tool result before the model is shown it (COR-2103; see "Tool Results" for the results it does not read yet); like
 // `validateResponse` it is a waterfall, so register it last.
 const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
 hooks.on('prepareStep', guardrails.prepareStep, { id: 'app:guardrails-input', replay: 'safe' });
@@ -2830,11 +2830,13 @@ Every detector/validator returns a `DetectionResult`/`ValidationResult` carrying
 
 ### Tool Results (COR-2103)
 
-A tool's output (a fetched page, an API response) is how an indirect prompt injection arrives, so `createGuardrails` runs the same input detectors over every tool result before the model is shown it, through its `validateToolResult` hook, with provenance `'tool-result'`. It reads every string leaf of `content`, the text of `parts` (a media part's prose, locator and readable body included, as for a user message), and `error.message`. What a detection does follows `mode` and `input.action`:
+A tool's output (a fetched page, an API response) is how an indirect prompt injection arrives, so `createGuardrails` runs the same input detectors over the tool results it can read before the model is shown them, through its `validateToolResult` hook, with provenance `'tool-result'`. It reads every string leaf and every object key of `content` (the model sees a key as it sees a value), the text of `parts` (a media part's prose, locator and readable body included, as for a user message), and `error.message`. A media part whose text body a provider would read but that cannot be decoded is refused as it is in a user message (detector `content-body`, category `uninspectable-content`), under `warn` as well, because warning about it would show the model text nothing read. What a detection does follows `mode` and `input.action`:
 
 - **`block`**, and **`sanitize`**, which falls back to a block because a tool result has no field a sanitized string could stand in for: the result is replaced with an error result for the same call (`outcome: 'error'`, `errorCategory: 'permission'`, code `GUARDRAIL_BLOCKED`, `GUARDRAIL_BLOCKED_CODE`), whose message names only the guardrail, and whose `parts` and raw `result` are cleared. The conversation still pairs the call with a result, the run goes on, and the session is always tainted.
 - **`warn`**: the result passes through, and the session is tainted at or above the taint threshold.
 - **`tripwire`** (and the default preset): the run halts with `finishReason: 'tripwire'` and one `run.tripwire` event with phase `tool-result`. The call is sealed with a `GUARDRAIL_BLOCKED` result in place of the flagged one, and of any later result of the same step no guardrail read, so the conversation never keeps what tripped the wire.
+
+Three kinds of result are not scanned yet: the result of an approved call (one a human approved and the run then executed), a durable child-wait result, and the content of a streamed result. They are tracked in [COR-2299](https://linear.app/lost-gradient/issue/COR-2299); until it lands, do not rely on the detectors for them.
 
 `createToolResultGuardrail` is the hook on its own, for a caller composing guardrails by hand. Every host that registers `createGuardrails`' hooks (`createAgent`, Bureau's own tier, and a code agent's override guardrails) registers `validateToolResult` pinned last on its waterfall, beside `validateResponse`, so no later handler overrules it.
 
@@ -2871,7 +2873,7 @@ The three retrieval tags and `'tool-result'` mark a distinct trust boundary from
 `bureau` wires a guardrail preset automatically whenever `BureauOptions.guardrails` is left `undefined`:
 
 - `mode: 'tripwire'`—any trigger hard-halts the run.
-- **Input**: `createPromptInjectionDetector()` wrapped in `withMinimumTripwireConfidence(..., DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD)`—the threshold is `0.6`, so only medium-to-high-confidence injection matches trip the run. It reads user messages and every tool result (COR-2103; the owner decided on 2026-11-05 that the preset scans tool results in its existing tripwire mode).
+- **Input**: `createPromptInjectionDetector()` wrapped in `withMinimumTripwireConfidence(..., DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD)`—the threshold is `0.6`, so only medium-to-high-confidence injection matches trip the run. It reads user messages and the tool results the guardrail reads (COR-2103, with the exceptions listed under "Tool Results"; the owner decided on 2026-11-05 that the preset scans tool results in its existing tripwire mode).
 - **Output**: `createOutputPIIValidator()`—output PII trips the run rather than being redacted.
 
 Output validators run over the response's text and over the text of each `thinking` part (COR-1806), because the model's reasoning reaches the run's owner and the stored conversation. A flagged thought is handled by the same action: `block` replaces the whole response, `tripwire` throws, `warn` reports and passes the response through, and `redact` withholds the flagged thinking parts and keeps the answer, its tool calls and its other parts (a thinking part carries a provider signature, so its text is withheld, never edited). How it withholds depends on the step. A step with no tool calls has the flagged parts removed from the response, so the stored conversation never holds them. A step with tool calls keeps every part unchanged, because a provider such as Anthropic requires a tool-use turn's thinking back complete and unmodified on the request that carries the tool results (a turn missing one is refused): the flagged thinking stays in the stored conversation, where only the model reads it again, and the response names the flagged parts' indices in `GenerateResponse.withheldThinking`, which `generate.completed` carries. A host that shows a run's reasoning must leave those parts out; Bureau's AG-UI stream sends no frame for them. `redacted_thinking` parts carry no readable text and are not scanned.

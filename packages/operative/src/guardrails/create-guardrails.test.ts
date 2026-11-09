@@ -507,6 +507,53 @@ describe('createGuardrails tool-result scanning (COR-2103)', () => {
     expect((thrown as GuardrailTripwireError).phase).toBe('tool-result');
   });
 
+  describe('a text body no detector can decode', () => {
+    const undecodable = {
+      ...flagged,
+      content: null,
+      result: null,
+      parts: [
+        {
+          type: 'document' as const,
+          mimeType: 'text/plain',
+          source: { kind: 'data-url' as const, url: 'data:text/plain;base64,/w==' },
+        },
+      ],
+    };
+    const clean = createMockDetector('sentinel', safeDetection);
+
+    it('is blocked under validate mode, and taints, as it is in a user message', async () => {
+      const taints: SessionTaintedEvent[] = [];
+      const { validateToolResult, taint } = createGuardrails({
+        mode: 'validate',
+        input: { detectors: [clean], action: 'warn' },
+        taint: { onTainted: (event) => taints.push(event) },
+      });
+      const replaced = await validateToolResult(undecodable, toolResultContext());
+      expect(replaced?.error?.code).toBe('GUARDRAIL_BLOCKED');
+      expect(replaced?.error?.message).toContain('"content-body"');
+      expect(replaced?.parts).toBeUndefined();
+      expect(taint.isTainted()).toBe(true);
+      expect(taints).toEqual([
+        expect.objectContaining({ detector: 'content-body', provenance: 'tool-result' }),
+      ]);
+    });
+
+    it('halts under the default preset with a tool-result tripwire', async () => {
+      const { validateToolResult } = createGuardrails({
+        mode: 'tripwire',
+        input: { detectors: [clean] },
+      });
+      const thrown = await validateToolResult(undecodable, toolResultContext()).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(thrown).toBeInstanceOf(GuardrailTripwireError);
+      expect((thrown as GuardrailTripwireError).phase).toBe('tool-result');
+      expect((thrown as GuardrailTripwireError).guardrailName).toBe('content-body');
+    });
+  });
+
   it('reports a validate-mode firing at the tool-result phase, and no tripwire firing', async () => {
     const firings: GuardrailFiring[] = [];
     const reportGuardrail = (firing: GuardrailFiring) => void firings.push(firing);

@@ -10,7 +10,7 @@ import { runDetectorPipeline } from 'armorer';
 
 import { GuardrailTripwireError } from '../errors';
 import type { ValidateToolResultHook } from '../types';
-import { inspectContent } from './inspectable-content';
+import { inspectContent, type UninspectableBody } from './inspectable-content';
 import type { DetectorContext, GuardrailTriggeredEvent, InputDetector } from './types';
 
 /** The `error.code` of a tool result a guardrail replaced. */
@@ -37,29 +37,44 @@ export interface ToolResultGuardrailOptions {
 }
 
 /**
- * Every piece of text a tool result shows the model: each string leaf of `content`, the text of
- * `parts` (a text part's text, and a media part's prose, locator and readable body, as the input
- * guardrail reads a user message's parts), and `error.message`.
+ * Everything a tool result shows the model that a detector must read, and what it shows that no
+ * detector can: each string leaf and each object key of `content`, the text of `parts` (a text
+ * part's text, and a media part's prose, locator and readable body, as the input guardrail reads a
+ * user message's parts), and `error.message`. A media part whose text body a provider would read
+ * but that does not decode is `uninspectable`, which the guardrail refuses rather than skips.
  */
-function textsOf(result: ToolExecutionResult): string[] {
+function inspectResult(result: ToolExecutionResult): {
+  texts: string[];
+  uninspectable: readonly UninspectableBody[];
+} {
   const texts: string[] = [];
+  let uninspectable: readonly UninspectableBody[] = [];
   collectStrings(result.content, texts);
   if (result.parts !== undefined && result.parts.length > 0) {
-    for (const field of inspectContent([...result.parts]).fields) texts.push(field.text);
+    const inspected = inspectContent([...result.parts]);
+    for (const field of inspected.fields) texts.push(field.text);
+    uninspectable = inspected.uninspectable;
   }
   const message = result.error?.message;
   if (message !== undefined && message !== '') texts.push(message);
-  return texts;
+  return { texts, uninspectable };
 }
 
+/** Collects every string leaf, and every object key, since the model reads a key as it does a value. */
 function collectStrings(value: JSONValue | undefined, into: string[]): void {
   if (typeof value === 'string') {
     if (value !== '') into.push(value);
     return;
   }
   if (value === null || typeof value !== 'object') return;
-  const entries = Array.isArray(value) ? value : Object.values(value);
-  for (const entry of entries) collectStrings(entry, into);
+  if (Array.isArray(value)) {
+    for (const entry of value) collectStrings(entry, into);
+    return;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (key !== '') into.push(key);
+    collectStrings(entry, into);
+  }
 }
 
 /**
@@ -130,11 +145,12 @@ export function createToolResultGuardrail(
       provenance: 'tool-result',
     };
 
-    for (const text of textsOf(result)) {
+    const { texts, uninspectable } = inspectResult(result);
+    let flagged: GuardrailTriggeredEvent | undefined;
+    for (const text of texts) {
       const pipeline = await runDetectorPipeline(text, detectors, detectorContext, mode);
       if (pipeline === undefined) continue;
-
-      const event: GuardrailTriggeredEvent = {
+      flagged = {
         detector: pipeline.detectorName,
         category: pipeline.result.category,
         confidence: pipeline.result.confidence,
@@ -143,23 +159,42 @@ export function createToolResultGuardrail(
         ...(pipeline.result.detail === undefined ? {} : { detail: pipeline.result.detail }),
         provenance: 'tool-result',
       };
-      onTriggered?.(event);
-
-      if (action === 'tripwire') {
-        throw new GuardrailTripwireError(
-          `Tool-result guardrail tripwire: "${event.detector}" flagged the result of "${result.toolName}" (${event.category}).`,
-          {
-            guardrailName: event.detector,
-            category: event.category,
-            phase: 'tool-result',
-            confidence: event.confidence,
-            detail: event.detail,
-          },
-        );
-      }
-      if (action === 'warn') return;
-      return guardrailBlockedResult(result, guardrailBlockedMessage(event.detector));
+      break;
     }
-    return;
+
+    // Text a provider would read but no detector could decode is a finding of its own, handled as
+    // the input guardrail handles it: a detector's finding is reported first, and the result is
+    // refused whatever the action, because warning about it would show the model what nothing read.
+    const undecodable = uninspectable[0];
+    const event: GuardrailTriggeredEvent | undefined =
+      flagged ??
+      (undecodable === undefined
+        ? undefined
+        : {
+            detector: 'content-body',
+            category: 'uninspectable-content',
+            confidence: 1,
+            action,
+            input: undecodable.label,
+            detail: `A provider would read this media part as text, but it cannot be decoded: ${undecodable.reason}.`,
+            provenance: 'tool-result',
+          });
+    if (event === undefined) return;
+    onTriggered?.(event);
+
+    if (action === 'tripwire') {
+      throw new GuardrailTripwireError(
+        `Tool-result guardrail tripwire: "${event.detector}" flagged the result of "${result.toolName}" (${event.category}).`,
+        {
+          guardrailName: event.detector,
+          category: event.category,
+          phase: 'tool-result',
+          confidence: event.confidence,
+          detail: event.detail,
+        },
+      );
+    }
+    if (action === 'warn' && undecodable === undefined) return;
+    return guardrailBlockedResult(result, guardrailBlockedMessage(event.detector));
   };
 }
