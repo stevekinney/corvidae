@@ -1018,6 +1018,34 @@ describe('Bureau hook tier composition (COR-1265)', () => {
       }
     });
 
+    // COR-2106 — the factory a Bureau-owned run hands the children it dispatches: the same
+    // invariants a catalog dispatch carries, and a fresh registry for each child.
+    it.each([
+      [
+        false,
+        [
+          'bureau:identity',
+          'bureau:guardrails-prepare-step',
+          'bureau:guardrails-validate-response',
+        ],
+      ],
+      [true, ['bureau:identity']],
+    ] as const)(
+      'builds a child’s Bureau tier with identity and, unless the child resolves its own, guardrails (agentResolvesGuardrails: %p)',
+      async (agentResolvesGuardrails, expected) => {
+        const runtime = await createRuntimeComposition({
+          identity: { resolve: async () => 'the house agent' },
+          storage: new MemoryStorage(),
+        });
+
+        const first = runtime.bureauChildInvariants({ agentResolvesGuardrails });
+        const second = runtime.bureauChildInvariants({ agentResolvesGuardrails });
+
+        expect(planOf(first).map((entry) => entry.id)).toEqual([...expected]);
+        expect(second).not.toBe(first);
+      },
+    );
+
     it('snapshots the agent tier, so a later registration cannot reach the recovered run', async () => {
       const { options, agentHooks } = catalogOptionsWithAgentTier();
       const { runtime, result } = await recoverCatalogRun('catalog-snapshot-run', options);

@@ -28,6 +28,7 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
   resolvesOwnGuardrails,
+  bureauInvariantsField,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
@@ -197,6 +198,22 @@ export function catalogRunGuardrailsContext(
   agent: object,
 ): Pick<AgentRunContext, 'inheritedGuardrails'> {
   return resolvesOwnGuardrails(agent) ? {} : { inheritedGuardrails: false };
+}
+
+/**
+ * COR-2106 — the refusal for a catalog agent whose run options cannot be resolved outside it.
+ *
+ * Bureau's identity and guardrail hooks reach a catalog run only by being merged into the
+ * `RunOptions` the agent's `OPERATIVE_RESOLVE_RUN_OPTIONS` resolves, so an agent with none could
+ * only run without them. Wrapping it would need the caller-facing hook field COR-567 Decision 4
+ * declines, so it is refused instead. `cause` is the lazy wrapper's own error, when there is one.
+ */
+function resolverlessAgentRefusal(name: string, cause?: AgentContractError): AgentContractError {
+  return new AgentContractError(
+    `Agent "${name}" exposes no run-options resolver, so Bureau's invariant hooks cannot reach it and it cannot be dispatched` +
+      (cause === undefined ? '' : `: ${cause.message}`),
+    cause,
+  );
 }
 
 /**
@@ -380,6 +397,15 @@ export function createCatalogDispatcher({
    * the entry goes only when its last holder lets go.
    */
   const attributionHolders = new WeakMap<RunAttribution, number>();
+
+  /**
+   * A workspace bureau needs dispatch-time authority from the agent's own resolver, so an agent
+   * with none cannot run in it: the conflict a workspace bureau always raised, which comes before
+   * the COR-2106 refusal.
+   */
+  function workspaceAuthorityUnsupported(): Error {
+    return createBureauError('Workspace runs require dispatch-time authority support.', 'CONFLICT');
+  }
 
   /**
    * COR-1630 — tells Bureau when `handle` settles, so it can release the claims the run's rows
@@ -658,6 +684,8 @@ export function createCatalogDispatcher({
       const toolbox = runtime.withChatPermission(withRuntime.toolbox, runId);
       return {
         ...withRuntime,
+        // COR-2106 — children this run dispatches carry Bureau's tier.
+        ...bureauInvariantsField(runtime.bureauChildInvariants),
         ...(humanInputEmitter === undefined && decide === undefined
           ? { toolbox }
           : {
@@ -722,23 +750,15 @@ export function createCatalogDispatcher({
         // is true for EVERY `createLazyAgent`-wrapped agent unconditionally
         // — the wrapper always exposes this symbol as a proxy that only
         // discovers, once actually invoked, whether the module it loads
-        // supports durable resolution at all. A lazy-wrapped agent whose
-        // real underlying agent does NOT support it would otherwise always
-        // be routed into this durable branch and fail here, even though
-        // the exact same agent registered eagerly correctly falls back to
-        // direct dispatch (see the "falls back to direct execution" test
-        // above). `AgentContractError` is the established convention this
-        // codebase already throws for "this capability is not supported"
-        // (both here and inside `createLazyAgent`'s own resolver) — catch
-        // exactly that class and fall back to the ORIGINAL catalog agent's
-        // own `run()`, matching what direct registration would have done.
+        // supports durable resolution at all. `AgentContractError` is the
+        // established convention this codebase already throws for "this
+        // capability is not supported" (both here and inside
+        // `createLazyAgent`'s own resolver). COR-2106: such an agent is
+        // refused, as a resolver-less agent registered eagerly is, rather
+        // than run through its own `run()` without Bureau's invariants.
         // Anything else is a genuine resolver failure and must propagate.
         if (error instanceof AgentContractError) {
-          if (workspace !== undefined)
-            throw createBureauError(
-              'Workspace runs require dispatch-time authority support.',
-              'CONFLICT',
-            );
+          if (workspace !== undefined) throw workspaceAuthorityUnsupported();
           // COR-851: a goal attempt's run is untracked and its activity retries
           // on failure, so a direct run here would be work no restart can find,
           // launched again by the retry. There is no fallback for an attempt.
@@ -755,14 +775,12 @@ export function createCatalogDispatcher({
               `Agent "${name}" cannot resolve its run options durably, so it cannot run a goal attempt: ${error.message}`,
             );
           }
-          // AB-241: this fallback abandons the durable run behind `runId` —
-          // the agent's own `run()` drives an in-memory run instead (under
-          // the same id, through `context.runId`, COR-1302), which nothing
-          // durable records, so an attribution entry recorded above under
-          // `runId` would otherwise be a permanent phantom, keyed to a
-          // durable run that never existed.
+          // AB-241: the durable run behind `runId` is abandoned, so an attribution entry recorded
+          // above under it would otherwise be a permanent phantom. COR-2106: this used to fall
+          // back to the agent's own `run()`, an in-memory run carrying none of Bureau's
+          // invariants, under the same id. The agent is refused instead.
           releaseAttribution();
-          return agent;
+          throw resolverlessAgentRefusal(name, error);
         }
         throw error;
       }
@@ -1194,8 +1212,13 @@ export function createCatalogDispatcher({
       ...(start.principal === undefined ? {} : { principal: start.principal }),
       ...catalogRunGuardrailsContext(agent),
     };
-    const hasResolver = hasDefinitionResolver(agent);
-    if (runtime.durable && hasResolver) {
+    // COR-2106 — read once, and refused before the child has a handle, an attribution or a task.
+    // A workspace bureau refused such an agent already, as a conflict, and still does.
+    if (!hasDefinitionResolver(agent)) {
+      if (workspace !== undefined) throw workspaceAuthorityUnsupported();
+      throw resolverlessAgentRefusal(start.agentName);
+    }
+    if (runtime.durable) {
       return runDurableCatalogAgent(
         start.agentName,
         start.input,
@@ -1226,7 +1249,6 @@ export function createCatalogDispatcher({
               context,
               start.principal,
               agent,
-              hasResolver,
               undefined,
               fileReference,
               start.workspaceAuthority,
@@ -1240,7 +1262,7 @@ export function createCatalogDispatcher({
       ),
     );
     // COR-1630 — see `runAgent`.
-    if (hasResolver) reportWhenSettled(direct, context.runId, start.principal);
+    reportWhenSettled(direct, context.runId, start.principal);
     // COR-1868 — nothing is durable in this mode, so the task is written from what the start knows.
     trackSubordinateRun?.({
       runId: start.childRunId,
@@ -1384,34 +1406,16 @@ export function createCatalogDispatcher({
     input: AgentInput,
     context: AgentRunContext,
     principal: string | undefined,
-    agent: AnyRunnableAgent,
-    hasResolver: boolean,
+    agent: DefinitionResolvingAgentWithResolver & AnyRunnableAgent,
     /** COR-1302 — receives the run this dispatch builds; see `registerCatalogRun`. */
     onActiveRun?: (activeRun: ActiveRun) => void,
     /** COR-1524 — settles once a file agent's snapshot is stored; a failure stops the start. */
     fileReference?: Promise<unknown>,
     inheritedWorkspaceAuthority?: RunWorkspaceAuthority,
   ): Promise<RunnableAgent<unknown, boolean>> {
-    // An agent exposing no `OPERATIVE_RESOLVE_RUN_OPTIONS` builds its
-    // `RunOptions` entirely inside `run()`, so there is no bag to merge a tier
-    // into and nothing here can change that (COR-1276's accepted gap). It runs
-    // exactly as it did before this function existed.
-    //
-    // Handed the caller's already-computed boolean rather than re-running
-    // `hasDefinitionResolver` here, because the capability is a GETTER on the
-    // agent and re-running the guard would read it a second time. A test pins
-    // that read count at one for this path ("reads the resolver capability
-    // before the direct-dispatch durability branch"), and a lazily-wrapped
-    // agent is entitled to treat a read as meaningful.
-    if (!hasResolver) {
-      if (workspace !== undefined)
-        throw createBureauError(
-          'Workspace runs require dispatch-time authority support.',
-          'CONFLICT',
-        );
-      return agent as RunnableAgent<unknown, boolean>;
-    }
-
+    // COR-2106 — the caller refused an agent with no `OPERATIVE_RESOLVE_RUN_OPTIONS` before it got
+    // here, so there is always a bag to merge Bureau's tier into. It read the capability once: the
+    // capability is a getter, and a lazily-wrapped agent may treat a read as meaningful.
     const authorityRunId = context.runId ?? runtimeServices.identifiers.next('run-authority');
     const directContext = normalizeRunRequestContext(
       undefined,
@@ -1432,27 +1436,16 @@ export function createCatalogDispatcher({
     );
     let resolvedOptions: RunOptions;
     try {
-      // The cast is what the boolean above costs: `hasResolver` carries the
-      // narrowing that the guard would have applied, but not in a form the
-      // compiler tracks across a parameter. Sound because the caller computed
-      // it from this exact agent, immediately before.
-      resolvedOptions = await (agent as unknown as DefinitionResolvingAgentWithResolver)[
-        OPERATIVE_RESOLVE_RUN_OPTIONS
-      ](input, context);
+      resolvedOptions = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](input, context);
     } catch (error) {
-      // Same fallback the durable branch makes, for the same reason: a
-      // `createLazyAgent` wrapper exposes this symbol unconditionally and only
-      // discovers on invocation whether the module behind it supports durable
-      // resolution. `AgentContractError` means "not supported" — fall back to
-      // the agent's own `run()`, which is what direct registration would have
-      // done. This is NOT the no-resolver case above; that one never gets here.
+      // A `createLazyAgent` wrapper exposes this symbol unconditionally and only discovers on
+      // invocation whether the module behind it supports resolution. `AgentContractError` means
+      // "not supported", and the durable branch reads it the same way. COR-2106: it was a fallback
+      // to the agent's own `run()`, which carries none of Bureau's invariants; the agent is
+      // refused instead, and the handle settles with the refusal.
       if (error instanceof AgentContractError) {
-        if (workspace !== undefined)
-          throw createBureauError(
-            'Workspace runs require dispatch-time authority support.',
-            'CONFLICT',
-          );
-        return agent as RunnableAgent<unknown, boolean>;
+        if (workspace !== undefined) throw workspaceAuthorityUnsupported();
+        throw resolverlessAgentRefusal(name, error);
       }
       // Any other resolution failure is a genuine one, and it must keep
       // settling as it does today. Before this change the same failure happened
@@ -1491,6 +1484,8 @@ export function createCatalogDispatcher({
 
     const merged: RunOptions = {
       ...resolvedOptions,
+      // COR-2106 — children this run dispatches carry Bureau's tier.
+      ...bureauInvariantsField(runtime.bureauChildInvariants),
       // COR-1955: a process-local child is held to its root chat's mode as a durable one is
       // (`composeResolvedOptions`), under the id its topology recorded. A run with no id, which
       // belongs to no chat, is left to its toolbox.

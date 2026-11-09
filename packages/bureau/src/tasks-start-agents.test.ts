@@ -849,74 +849,105 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
   });
 });
 
-describe('a child run is outside Bureau’s hook authority (COR-1269)', () => {
-  it('does not carry the dispatching Bureau’s invariants into a child run', async () => {
-    const supervisorSaw: string[] = [];
-    const childSaw: string[] = [];
-    function recordInto(seen: string[]) {
-      return async (request: {
-        conversation: { getMessages: () => ReadonlyArray<{ role?: string; content?: unknown }> };
-      }) => {
-        for (const message of request.conversation.getMessages()) {
-          if (message.role === 'system' && typeof message.content === 'string') {
-            seen.push(message.content);
-          }
-        }
-        return { content: 'done', toolCalls: [] };
-      };
-    }
-
-    const child = createAgent({ name: 'researcher', generate: recordInto(childSaw) });
-    const delegate = createSubagentTool({
-      name: 'delegate',
-      description: 'Delegate',
-      agent: child,
-      agentName: 'researcher',
-      input: z.object({ q: z.string() }),
-    });
-
-    let step = 0;
-    const bureau = await createBureau({
-      agents: {
-        supervisor: createAgent({
-          name: 'supervisor',
-          toolbox: createToolbox([delegate]),
-          generate: async (request) => {
-            const settled = await recordInto(supervisorSaw)(request);
-            return step++ === 0
-              ? {
-                  content: '',
-                  toolCalls: [{ id: 'c1', name: 'delegate', arguments: { q: 'hi' } }],
-                }
-              : settled;
-          },
-        }),
+describe('a child run carries Bureau’s invariant tier (COR-1269, COR-2106)', () => {
+  // COR-2106 — the top-level half of "refuse resolver-less dispatch": a task for an agent with no
+  // run-options resolver is refused before it starts. It already was on main
+  // (`UNSUPPORTED_CAPABILITY`, `create-bureau.ts`'s `not-durable-capable`), and stays pinned here
+  // beside the child path so the two cannot drift.
+  it.each([
+    ['an ephemeral bureau', false],
+    ['a durable bureau', true],
+  ] as const)('refuses a task for a resolver-less agent in %s', async (_label, durable) => {
+    let runs = 0;
+    const resolverless: RunnableAgent = {
+      name: 'bare',
+      hasOutput: false,
+      run: (input, context) => {
+        runs += 1;
+        return createAgent({ name: 'bare', generate: mockGenerate('ran') }).run(input, context);
       },
-      identity: { resolve: async () => 'BUREAU-IDENTITY' },
+    };
+    const bureau = await createBureau({
+      agents: { bare: resolverless },
       storage: new MemoryStorage(),
-      durable: true,
+      ...(durable ? { durable: true } : {}),
     });
 
     try {
-      await runTask(bureau, 'supervisor', 'go');
-
-      // The supervisor is Bureau-owned and carries the invariant. Its child does
-      // not, and cannot: `dispatchChildRun` calls `agent.run()`, which builds
-      // its `RunOptions` inside the agent, so there is no options bag for a
-      // Bureau tier to be merged into — structurally the same gap as the two
-      // catalog rows above, closed only by a caller-facing hook field that
-      // COR-567 Decision 4 declines.
-      //
-      // Pinned rather than left implicit. COR-1269's criterion 1 originally
-      // claimed a child of a Bureau-owned agent DOES receive that child's
-      // Bureau invariants; it was amended to match reality once this was
-      // verified by probe. If this ever starts failing, the gap closed: delete
-      // the test and update the child section of
-      // `documentation/hierarchical-hook-composition.md`.
-      expect(supervisorSaw).toContain('BUREAU-IDENTITY');
-      expect(childSaw).not.toContain('BUREAU-IDENTITY');
+      const error = await rejectionOf(bureau.tasks.start('bare', 'hi'));
+      expect(error).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+      expect((error as Error).message).toContain('Agent "bare"');
+      expect(runs).toBe(0);
     } finally {
       await bureau.dispose();
     }
   });
+
+  it.each([
+    ['an ephemeral bureau', false],
+    ['a durable bureau', true],
+  ] as const)(
+    'carries the dispatching Bureau’s invariants into a child run in %s',
+    async (_label, durable) => {
+      const supervisorSaw: string[] = [];
+      const childSaw: string[] = [];
+      function recordInto(seen: string[]) {
+        return async (request: {
+          conversation: { getMessages: () => ReadonlyArray<{ role?: string; content?: unknown }> };
+        }) => {
+          for (const message of request.conversation.getMessages()) {
+            if (message.role === 'system' && typeof message.content === 'string') {
+              seen.push(message.content);
+            }
+          }
+          return { content: 'done', toolCalls: [] };
+        };
+      }
+
+      const child = createAgent({ name: 'researcher', generate: recordInto(childSaw) });
+      const delegate = createSubagentTool({
+        name: 'delegate',
+        description: 'Delegate',
+        agent: child,
+        agentName: 'researcher',
+        input: z.object({ q: z.string() }),
+      });
+
+      let step = 0;
+      const bureau = await createBureau({
+        agents: {
+          supervisor: createAgent({
+            name: 'supervisor',
+            toolbox: createToolbox([delegate]),
+            generate: async (request) => {
+              const settled = await recordInto(supervisorSaw)(request);
+              return step++ === 0
+                ? {
+                    content: '',
+                    toolCalls: [{ id: 'c1', name: 'delegate', arguments: { q: 'hi' } }],
+                  }
+                : settled;
+            },
+          }),
+        },
+        identity: { resolve: async () => 'BUREAU-IDENTITY' },
+        storage: new MemoryStorage(),
+        ...(durable ? { durable: true } : {}),
+      });
+
+      try {
+        await runTask(bureau, 'supervisor', 'go');
+
+        // The supervisor is Bureau-owned and carries the invariant, and so does its child:
+        // `dispatchChildRun` resolves the child's run options and merges Bureau's tier in front
+        // of the child's own (COR-2106). COR-1269's criterion 1 first claimed this, was amended
+        // to a pinned gap once a probe showed the child ran through `agent.run()` with no tier,
+        // and holds again now that the gap is closed.
+        expect(supervisorSaw).toContain('BUREAU-IDENTITY');
+        expect(childSaw).toContain('BUREAU-IDENTITY');
+      } finally {
+        await bureau.dispose();
+      }
+    },
+  );
 });

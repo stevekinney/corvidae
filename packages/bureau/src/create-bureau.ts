@@ -118,6 +118,8 @@ import {
   summarizeSession,
   TOOL_TIMING_METADATA_KEY,
   type ToolTiming,
+  bureauInvariantsField,
+  runScopedExecutionContextOf,
 } from '@lostgradient/operative';
 import {
   approvalDecisionMetadata,
@@ -3957,6 +3959,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   const catalogRunIds = new Set<string>();
   const runToolboxes = new Set<BureauToolbox>();
   const runToolboxesByRunId = new Map<string, BureauToolbox>();
+  /**
+   * COR-2106 — the run-scoped `executionContext` of each live run, from the options it was built
+   * with (`runScopedExecutionContextOf`), for the approved call that resumes outside the run's step.
+   * Released wherever `runToolboxesByRunId` releases the run.
+   */
+  const runScopedContexts = new Map<string, Record<string, unknown>>();
   let shutdownPromise: Promise<BureauShutdownReport> | undefined;
   // COR-690: flipped synchronously the moment `shutdown()` starts, before it
   // snapshots the runs and toolboxes it drains, so an API or scheduler run
@@ -6375,6 +6383,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         runRequestContexts.delete(removedRunId);
         recoveredRunIds.delete(removedRunId);
         runToolboxesByRunId.delete(removedRunId);
+        runScopedContexts.delete(removedRunId);
         terminalReviewSessions.delete(removedRunId);
         announcedReviewRequests.delete(removedRunId);
         fireReviewSeeds.release(removedRunId);
@@ -8028,6 +8037,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (!scheduledFireApprovalRuns.has(runId) || holdsFireApproval(runId)) return;
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
+    runScopedContexts.delete(runId);
     if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
       detachBestEffortPromise(tasks.announceChanged(runId));
     }
@@ -9044,6 +9054,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       terminalReviewSessions.delete(runId);
       runRequestContexts.delete(runId);
       runToolboxesByRunId.delete(runId);
+      runScopedContexts.delete(runId);
       releaseScheduledFireReviews(scheduledFireReviewState, runId);
       unfollowFireReviewsWhenNoneRemain(runId);
     } else if (scheduledFire) {
@@ -9863,6 +9874,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // synchronous, so a `shutdown()` that started during the awaits above
       // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
+      let startedRunOptions: RunOptions;
       // COR-1707 — with no session store, nothing saves the context's rows or claims what they
       // reference, so the task holds its own rows, its input included, under its run for the
       // task's life, as a catalog run does; its end releases them (the terminal listeners below).
@@ -9896,65 +9908,68 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (inFlightSessionDeletions.has(sessionId)) {
           throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
         }
-        activeRun = createActiveRun(
-          {
-            generate: runRuntime.generate,
-            toolbox: runToolbox,
-            conversation,
-            // COR-1577 — the named agent's own options (stop conditions, structured output and
-            // its retries, …), before the ones Bureau sets below, which win.
-            ...copyAgentOwnedRunOptions(sessionAgent?.options),
-            ...(chatCostBudget === undefined ? {} : { costBudget: chatCostBudget }),
-            // COR-716 — a managed asset in this run's input (or in input admitted to
-            // its session mid-run) resolves as the run's owner.
-            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
-            maximumSteps: effectiveMaximumSteps,
-            maximumTokens: effectiveMaximumTokens,
-            // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
-            stopWhen: sessionAgent?.options.stopWhen,
-            // AB-260: the bureau's single composed RuntimeServices instance,
-            // snapshotted into every run it starts.
-            runtime: runtimeServices,
-            ...(runSteeringGate ? { steering: runSteeringGate } : {}),
-            // COR-1269 — stamped onto this run's hook-plan observations.
-            sessionId,
-            // COR-1476 — input admitted while this run is live, delivered at
-            // each of its step boundaries.
-            ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
-            // COR-1265 criterion 8 — merged AFTER the trailing registration, so
-            // the Bureau tier is complete before it becomes the merge's first
-            // argument. A single-tier merge still copies every entry into a fresh
-            // registry, which is what makes the plan a snapshot: a registration
-            // added to `runRuntime.hooks` afterwards cannot reach this run.
-            hooks: mergeHookRegistries(
-              registerTrailingOnStep(
-                runRuntime.hooks,
-                'bureau:pending-approval-persist',
-                createPendingApprovalPersistHook(
-                  runId,
-                  sessionId,
-                  pendingApprovalOverrides,
-                  persistPendingApprovalOverrideWithRetry,
-                ),
+        startedRunOptions = {
+          generate: runRuntime.generate,
+          toolbox: runToolbox,
+          conversation,
+          // COR-2106 — children this run dispatches carry Bureau's tier.
+          ...bureauInvariantsField(runtime.bureauChildInvariants),
+          // COR-1577 — the named agent's own options (stop conditions, structured output and
+          // its retries, …), before the ones Bureau sets below, which win.
+          ...copyAgentOwnedRunOptions(sessionAgent?.options),
+          ...(chatCostBudget === undefined ? {} : { costBudget: chatCostBudget }),
+          // COR-716 — a managed asset in this run's input (or in input admitted to
+          // its session mid-run) resolves as the run's owner.
+          ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
+          maximumSteps: effectiveMaximumSteps,
+          maximumTokens: effectiveMaximumTokens,
+          // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
+          stopWhen: sessionAgent?.options.stopWhen,
+          // AB-260: the bureau's single composed RuntimeServices instance,
+          // snapshotted into every run it starts.
+          runtime: runtimeServices,
+          ...(runSteeringGate ? { steering: runSteeringGate } : {}),
+          // COR-1269 — stamped onto this run's hook-plan observations.
+          sessionId,
+          // COR-1476 — input admitted while this run is live, delivered at
+          // each of its step boundaries.
+          ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
+          // COR-1265 criterion 8 — merged AFTER the trailing registration, so
+          // the Bureau tier is complete before it becomes the merge's first
+          // argument. A single-tier merge still copies every entry into a fresh
+          // registry, which is what makes the plan a snapshot: a registration
+          // added to `runRuntime.hooks` afterwards cannot reach this run.
+          hooks: mergeHookRegistries(
+            registerTrailingOnStep(
+              runRuntime.hooks,
+              'bureau:pending-approval-persist',
+              createPendingApprovalPersistHook(
+                runId,
+                sessionId,
+                pendingApprovalOverrides,
+                persistPendingApprovalOverrideWithRetry,
               ),
-              // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
-              sessionAgent?.options.hooks,
             ),
-            executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
-            // Thread agentName and runId so curated tool.* bubble events are stamped
-            // with {agentName, runId, step} metadata (C3) and durable launch input
-            // carries the owning agent for audit/recovery attribution (F2). Fall back
-            // to BUREAU_AGENT_NAME when the request omits it, matching the agent the
-            // session is stamped with — otherwise the durable input + tool events
-            // carry an empty agentName while the session says 'bureau'.
-            agentName,
-            runId,
-            // The start's trace context parents this run's spans, as a catalog dispatch's does.
-            ...(request.traceContext === undefined ? {} : { parentContext: request.traceContext }),
-            ...(request.withTraceContext === undefined
-              ? {}
-              : { withTraceContext: request.withTraceContext }),
-          },
+            // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
+            sessionAgent?.options.hooks,
+          ),
+          executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
+          // Thread agentName and runId so curated tool.* bubble events are stamped
+          // with {agentName, runId, step} metadata (C3) and durable launch input
+          // carries the owning agent for audit/recovery attribution (F2). Fall back
+          // to BUREAU_AGENT_NAME when the request omits it, matching the agent the
+          // session is stamped with — otherwise the durable input + tool events
+          // carry an empty agentName while the session says 'bureau'.
+          agentName,
+          runId,
+          // The start's trace context parents this run's spans, as a catalog dispatch's does.
+          ...(request.traceContext === undefined ? {} : { parentContext: request.traceContext }),
+          ...(request.withTraceContext === undefined
+            ? {}
+            : { withTraceContext: request.withTraceContext }),
+        };
+        activeRun = createActiveRun(
+          startedRunOptions,
           // Route through the durable engine when one was composed (durable
           // + storage). The conversation already carries the seeded user/system
           // messages, so no separate `prompt` is passed — the workflow snapshots it.
@@ -10014,6 +10029,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       request.onActiveRun?.(activeRun);
       runToolboxes.add(runToolbox);
       runToolboxesByRunId.set(runId, runToolbox);
+      // COR-2106 — what the run gives its tool calls, kept for the approved call that resumes later.
+      const startedScope = runScopedExecutionContextOf(startedRunOptions);
+      if (startedScope !== undefined) runScopedContexts.set(runId, startedScope);
       // AB-96 — the versioned run-lifecycle frame stream. Registered before
       // `store.register` so `run-started` is the first frame a live subscriber
       // ever sees for this run.
@@ -10659,6 +10677,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         recoveredRunIds.add(runId);
       }
       runToolboxesByRunId.set(runId, recoveredServices.toolbox);
+      const recoveredScope = runScopedExecutionContextOf(recoveredServices.options);
+      if (recoveredScope !== undefined) runScopedContexts.set(runId, recoveredScope);
     }
     // AB-359 — rehydrate `runAttribution`'s `principal` from the durably
     // persisted `lastRunOwningPrincipals` map so a recovered run's REAL owner
@@ -12112,6 +12132,8 @@ async function constructBureau<const D extends AgentDefinitions>(
                     generate: runRuntime.generate,
                     toolbox: runRuntime.toolbox,
                     conversation: new Conversation(fullSession.conversationHistory),
+                    // COR-2106 — children this run dispatches carry Bureau's tier.
+                    ...bureauInvariantsField(runtime.bureauChildInvariants),
                     ...copyAgentOwnedRunOptions(reattachedSessionAgent?.options),
                     ...sessionRunMediaOptions(
                       reattachedSessionAgent,
@@ -12799,6 +12821,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     runToolboxesByRunId.delete(id);
+    runScopedContexts.delete(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
     // A task record that cannot be removed is diagnosed, like every step after the run has left
@@ -16615,6 +16638,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       for (const runId of sessionRunIds) {
         runRequestContexts.delete(runId);
         runToolboxesByRunId.delete(runId);
+        runScopedContexts.delete(runId);
         terminalReviewSessions.delete(runId);
         for (const [reviewId, cleanup] of reviewResolutionCleanupPending) {
           if (cleanup.runId === runId) reviewResolutionCleanupPending.delete(reviewId);
@@ -18877,6 +18901,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
+    runScopedContexts.delete(runId);
     recoveredRunIds.delete(runId);
   }
 
@@ -19391,6 +19416,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-2106 — the `executionContext` an approved call resumes with: what the run gives a call it
+   * does not park (its child registry, delegated grant, parent signals, Bureau's invariants), from
+   * the one function the step builds it with, and the run's id as the call's `parentRunId`. A run
+   * this process does not hold has no options to build it from, but it is still Bureau's, so its
+   * children still get Bureau's tier.
+   */
+  function approvedCallExecutionContext(runId: string): Record<string, unknown> {
+    return {
+      ...(runScopedContexts.get(runId) ?? bureauInvariantsField(runtime.bureauChildInvariants)),
+      parentRunId: runId,
+    };
+  }
+
+  /**
    * COR-1828 — what a decision's records keep beyond the decision itself. A human wait's approved
    * answer is kept as the digest the decision fence already took over its reference form
    * (`answerDigest`); a tool approval approved with `remember` names the tool its grant allows
@@ -19751,7 +19790,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               ...(approvalRequestContext ? { requestContext: approvalRequestContext } : {}),
               // COR-1920: the approved call is the run's, so a secret answer it names resolves for
               // that run, as it would have had the call not waited for approval.
-              executionContext: { parentRunId: review.runId },
+              // COR-2106: and so is the rest of the run's context (`approvedCallExecutionContext`).
+              executionContext: approvedCallExecutionContext(review.runId),
               ...(peerRecovery === undefined
                 ? {}
                 : { durableOperationKey: peerRecovery.durableOperationKey }),

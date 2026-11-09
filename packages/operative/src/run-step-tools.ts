@@ -19,6 +19,7 @@ import type { StepGeneratedMediaAdmitter } from './generated-media';
 import type { ErrorRecoveryAction } from './hooks/types';
 import { modelFacingToolResult } from './human-wait-parks';
 import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
+import { runScopedExecutionContext } from './run-scoped-execution-context';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
 import { explicitAbortReason } from './run-step-utilities';
@@ -223,6 +224,7 @@ export async function executeTools(
         // survives unless it collides with `childRegistry`/`parentRunId`/
         // `delegatedAuthority`/`parentSignals`.
         const { concurrency, mode, errorMode, ...baseExecuteOptions } = deps.executeOptions ?? {};
+        const runScopedContext = runScopedExecutionContext(deps);
         const toolboxExecuteOptions = {
           ...baseExecuteOptions,
           ...(concurrency === undefined ? {} : { concurrency }),
@@ -240,29 +242,12 @@ export async function executeTools(
           // sharing one `Toolbox`.
           ...(deps.runId !== undefined ? { ownerId: deps.runId } : {}),
           ...(deps.parentContext !== undefined ? { traceContext: deps.parentContext } : {}),
-          ...(deps.childRegistry !== undefined ||
-          deps.runId !== undefined ||
-          deps.delegatedAuthority !== undefined ||
-          deps.delegatedToolCapabilities !== undefined ||
-          deps.parentSignals !== undefined
+          ...(runScopedContext !== undefined
             ? {
                 executionContext: {
-                  ...deps.executeOptions?.executionContext,
-                  ...(deps.childRegistry !== undefined
-                    ? { childRegistry: deps.childRegistry }
-                    : {}),
-                  ...(deps.runId !== undefined ? { parentRunId: deps.runId } : {}),
-                  ...(deps.delegatedAuthority !== undefined
-                    ? { delegatedAuthority: deps.delegatedAuthority }
-                    : {}),
-                  ...(deps.delegatedToolCapabilities !== undefined
-                    ? { delegatedToolCapabilities: deps.delegatedToolCapabilities }
-                    : {}),
-                  // COR-814 — this run's own port to its parent, replacing any
-                  // `parentSignals` key a caller put in `executeOptions`.
-                  ...(deps.parentSignals !== undefined
-                    ? { parentSignals: deps.parentSignals }
-                    : {}),
+                  // COR-2106 — the run-scoped fields come from the one function a host also uses
+                  // to resume a parked call, so a field added there reaches both.
+                  ...runScopedContext,
                   ...(deps.requestChildWait !== undefined && deps.runId !== undefined
                     ? {
                         durableChildWait: (request: { childRunId: string; toolCallId: string }) => {

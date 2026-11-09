@@ -46,31 +46,27 @@ A catalog-dispatched run (a `bureau.children.dispatch` child, a goal attempt, or
 
 The whole Bureau tier cannot travel there: `bureau:memory-recall`, `bureau:memory-persist` and `bureau:skill-record-snapshot` close over a session, a memory and a skill session a catalog run does not have. The three registrations that close over composition-level configuration only — `bureau:identity` and both guardrails — do travel, through `RuntimeComposition.createBureauInvariantHooks()`, merged in front of the agent's own tier. The guardrails travel only to an agent that does not resolve its own (COR-1367): a `createAgent` agent carries `OPERATIVE_RESOLVES_GUARDRAILS`, receives the bureau-level policy as `AgentRunContext.inheritedGuardrails`, and registers its resolved guardrails in its own tier as `agent:guardrails-prepare-step` and `agent:guardrails-validate-response`, so Bureau passes `agentResolvesGuardrails` and registers none. Those two entries sit at `AGENT_POLICY_PINNED_LAST_PRIORITY`, behind every ordinary agent hook and still ahead of Bureau's own pinned-last entries.
 
-Which paths that reaches — and the axis is the resolver, not durability. `bureau-catalog-dispatch.ts` composes the invariants for any agent satisfying `hasDefinitionResolver`, whether or not the bureau was built durable, by resolving the agent's own `RunOptions` and merging into that bag. An agent exposing no resolver builds its options entirely inside `run()`, so there is nothing to merge into:
+Which paths that reaches — and the axis is the resolver, not durability. `bureau-catalog-dispatch.ts` composes the invariants for any agent satisfying `hasDefinitionResolver`, whether or not the bureau was built durable, by resolving the agent's own `RunOptions` and merging into that bag. An agent exposing no resolver builds its options entirely inside `run()`, so there is nothing to merge into, and it is refused rather than run without them (COR-2106):
 
-| Catalog path                                          | Bureau invariants |
-| ----------------------------------------------------- | ----------------- |
-| Dispatch of an agent that resolves run options        | Yes               |
-| Recovery of a durably dispatched catalog run          | Yes               |
-| Dispatch of an agent exposing no run-options resolver | **No**            |
+| Catalog path | Bureau invariants |
+| --- | --- |
+| Dispatch of an agent that resolves run options | Yes |
+| Recovery of a durably dispatched catalog run | Yes |
+| Dispatch of an agent exposing no run-options resolver | Refused with `AgentContractError`, which names the agent |
 
-> [!WARNING] The last row is a real gap
->
-> It calls `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines, and COR-1276 accepted the gap rather than taking that.
->
-> It applies to a hand-written `RunnableAgent` placed in a catalog — a deliberate act by whoever wrote the agent, not a configuration anybody falls into. `durable` has nothing to do with it: tests pin the same outcome on both sides of that flag, so a future change that reintroduces a durability dependency fails rather than quietly narrowing this row.
+The refusal holds on every route Bureau dispatches by: the eager check, a `createLazyAgent` wrapper whose module turns out to expose no resolver (in a durable bureau too), and a child dispatched under a Bureau-owned run, including one a `createSubagentTool` call dispatches after an approval resumed it. It does not reach code that calls `agent.run()` itself outside a Bureau-owned run: that run is not under Bureau and runs as it always did. Wrapping such an agent would need a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines, and COR-1276, which had accepted the gap, was reversed on 2026-11-05. `durable` has nothing to do with it.
 
 ## Child runs
 
-A child dispatched through `dispatchChildRun` gets its effective plan entirely from its own `agent.run()` path — the child agent's own tier, and nothing else. No parent hook reaches it.
+A child dispatched through `dispatchChildRun` gets its effective plan from its own agent's tier, and — when the dispatching run is Bureau-owned — Bureau's invariant tier in front of it. No other parent hook reaches it.
 
-This is structural rather than a convention anybody has to remember. Neither `child-run.ts` nor `create-subagent-tool.ts` contains a hook-registry reference, and `parentContext` declares no `hooks` field; there is nothing to copy from. Sibling children of one fan-out hold independent plans for the same reason.
+Bureau's tier travels as a factory, not a registry, on a symbol-keyed field (`bureauInvariantsField` and `withBureauInvariants` in `bureau-invariants.ts`). The field is not declared on any options or context type and its symbol is private to Operative, never `Symbol.for`, so plain data (a request body, a stored record, an `AgentRunContext` literal) has no name to write it under: this is not the caller-facing hook field COR-567 Decision 4 declines. It is not a capability only a host holds. Operative's index exports both functions, so any in-process caller can attach a factory, and a factory is a function that builds hooks that run in-process, as every hook a caller registers does. Every place Bureau builds a run's `RunOptions` attaches it (`RuntimeComposition.bureauChildInvariants`), the agent loop hands it to each tool call, `createSubagentTool` passes it to `dispatchChildRun`, and `dispatchChildRun` attaches it to the child's own context so a grandchild inherits it. It is never persisted: a recovered run is rebuilt by the same Bureau code that built it, which attaches it again. A parked tool call is resumed by Bureau outside the run's step, so the approval resume builds the call's `executionContext` from the same function the step does (`runScopedExecutionContextOf` over the run's options, kept per live run), which carries the factory together with the child registry, delegated authority and tool capabilities, and parent signals; Bureau keeps those options for a chat or task run it starts or recovers, so a run it does not (an approval restored after a restart, or a catalog dispatch) resumes its call with the factory and its `parentRunId` alone.
 
-> [!WARNING] Bureau's invariants do not reach a child run either
->
-> A child dispatched by a Bureau-owned agent carries the child agent's tier and **no Bureau tier at all** — not the identity hook, not the guardrails. `dispatchChildRun` calls `agent.run()`, which builds its `RunOptions` inside the agent, so there is no options bag for a Bureau tier to be merged into. Structurally this is the same gap as a non-durable catalog dispatch, with the same only-remaining fix — a caller-facing hook field on `AgentRunContext` — which COR-567 Decision 4 declines.
->
-> COR-1269's criterion 1 originally stated the opposite. It was amended to match the implementation once the discrepancy was verified by probe rather than argued, and a test in `packages/bureau/src/bureau-run.test.ts` pins the actual behavior. Do not read the tier table above as applying to child runs.
+`dispatchChildRun` reads it in one place, `composeBureauInvariantsIntoChild`. A child with a run-options resolver has its options resolved and Bureau's registry merged in front of its own tier, so its plan carries `bureau:identity` and the guardrails, exactly as a catalog dispatch does. A child with none is refused: the dispatch fails with an `AgentContractError` that names it, through the same path as any child that cannot start (`multiagent.child-workflow.failed`, a failed registry entry, and a failed tool call for the parent).
+
+A parent that carries no factory is not under Bureau, so a standalone Operative parent's resolver-less child still runs through `agent.run()`, as it always did. Nothing Bureau-specific applies to it, and there are no Bureau invariants to skip.
+
+This is structural rather than a convention anybody has to remember. Neither `child-run.ts` nor `create-subagent-tool.ts` contains a hook-registry reference other than that single seam, and `parentContext` declares no `hooks` field. Sibling children of one fan-out hold independent plans for the same reason: each gets a fresh registry from the factory.
 
 Narrowing and veto do work inside a child, through the child's own tier: a child-tier `validateResponse` narrows what its run returns, and a child-tier `prepareStep` that answers replaces the generate call entirely. What a child does not get is inheritance from above.
 

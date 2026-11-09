@@ -93,6 +93,7 @@ export type {
   GuardrailsDeclaration,
 } from './agent-policy';
 export * from './agent-skill-descriptor';
+export * from './bureau-invariants';
 export { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from './cost-budget';
 export type { RunCostBudget } from './cost-budget';
 export * from './cost-budget-monitor';
@@ -240,6 +241,7 @@ export {
   rowContentForParts,
   runWideParts,
 } from './response-parts';
+export { runScopedExecutionContextOf } from './run-scoped-execution-context';
 export * from './runnable-agent';
 export * from './selection-gate';
 export { admitToolResultMedia } from './tool-result-media';

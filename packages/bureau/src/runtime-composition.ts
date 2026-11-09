@@ -37,6 +37,7 @@ import type {
   GenerateFunction,
   DecisionModel,
   GenerationMode,
+  BureauChildInvariants,
   GuardrailHooks,
   GuardrailsOptions,
   JSONValue,
@@ -88,6 +89,7 @@ import {
   SCHEDULER_RUN_ID_PREFIX,
   ScheduleSkippedEvent,
   withActiveSkillToolPolicy,
+  bureauInvariantsField,
   withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
@@ -2560,6 +2562,12 @@ export interface RuntimeComposition {
     goalAttempt?: GoalAttemptTarget,
     options?: BureauInvariantOptions,
   ): HookRegistry<OperativeHookMap>;
+  /**
+   * COR-2106 — {@link RuntimeComposition.createBureauInvariantHooks} as a child-run factory: what a
+   * run Bureau owns attaches (`bureauInvariantsField`) so that the children it dispatches carry
+   * Bureau's identity and guardrails.
+   */
+  readonly bureauChildInvariants: BureauChildInvariants;
 }
 
 /** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
@@ -3415,11 +3423,10 @@ async function buildRuntimeComposition(
    * carries per-run taint state, so sharing one across catalog runs would leak
    * one run's detections into another.
    *
-   * This does not reach every catalog path. A non-durable dispatch of a catalog
-   * agent that exposes no `OPERATIVE_RESOLVE_RUN_OPTIONS` goes straight to
-   * `agent.run()` with no `RunOptions` for anyone to augment; there is no seam
-   * short of a caller-facing hook field, which COR-567 Decision 4 declines. See
-   * `documentation/hierarchical-hook-composition.md`.
+   * Every catalog path carries these, and so does a child a Bureau-owned run dispatches
+   * (`bureauChildInvariants`): an agent exposing no `OPERATIVE_RESOLVE_RUN_OPTIONS` has no
+   * `RunOptions` for anyone to augment, so it is refused rather than run without them (COR-2106).
+   * See `documentation/hierarchical-hook-composition.md`.
    */
   function createBureauInvariantHooks(
     goalAttempt?: GoalAttemptTarget,
@@ -3450,6 +3457,14 @@ async function buildRuntimeComposition(
     }
     return invariants;
   }
+
+  /**
+   * COR-2106 — what a Bureau-owned run hands the children it dispatches
+   * (`bureauInvariantsField`): Bureau's identity and guardrail tier, one fresh registry per child.
+   * The single seam through which Bureau's tier reaches a child; a plugin tier (COR-2127) joins here.
+   */
+  const bureauChildInvariants: BureauChildInvariants = (request) =>
+    createBureauInvariantHooks(undefined, request);
 
   function createRunRuntime(
     request: RunRuntimeRequest,
@@ -4132,6 +4147,8 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: runToolbox,
         conversation: new Conversation(session.conversationHistory),
+        // COR-2106 — children this run dispatches carry Bureau's tier.
+        ...bureauInvariantsField(bureauChildInvariants),
         ...copyAgentOwnedRunOptions(sessionAgent?.options),
         // COR-1577 — the request's cap persisted at the start, then the named agent's, then the
         // Bureau's default; a run with no named agent keeps the Bureau's.
@@ -4796,6 +4813,8 @@ async function buildRuntimeComposition(
         ),
         toolbox,
         hooks: mergeHookRegistries(invariants, resolution.options.hooks),
+        // COR-2106 — children this run dispatches carry Bureau's tier.
+        ...bureauInvariantsField(bureauChildInvariants),
       },
       toolbox,
     };
@@ -5337,6 +5356,8 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: fireToolbox,
         conversation,
+        // COR-2106 — children this run dispatches carry Bureau's tier.
+        ...bureauInvariantsField(bureauChildInvariants),
         ...scheduledAgentRunOptions(fireAgent?.options, requestContext),
         ...sessionRunMediaOptions(fireAgent, mediaOptionsFor(owner, 'session')),
         maximumSteps: fireAgent?.options.maximumSteps ?? maximumSteps,
@@ -5713,6 +5734,7 @@ async function buildRuntimeComposition(
     readCommittedScheduledSkillSnapshot,
     readSessionSkillSnapshot,
     createBureauInvariantHooks,
+    bureauChildInvariants,
     resolveSessionAgentRun,
   };
 
