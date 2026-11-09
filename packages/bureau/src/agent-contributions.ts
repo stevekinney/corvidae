@@ -237,7 +237,7 @@ function interceptorHookParts(hook: InterceptorHook): {
  * are given. The type says so, but a plugin is code the host loads, so a wrong shape would otherwise
  * fail in the middle of a run, or sort as `NaN`.
  */
-function assertInterceptorHooks(id: string, interceptor: PluginInterceptor): void {
+export function assertInterceptorHooks(id: string, interceptor: PluginInterceptor): void {
   for (const point of INTERCEPTOR_POINTS) {
     const hook: unknown = interceptor[point];
     if (hook === undefined || typeof hook === 'function') continue;

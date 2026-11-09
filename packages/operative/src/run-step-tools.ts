@@ -22,7 +22,7 @@ import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './messag
 import { runScopedExecutionContext } from './run-scoped-execution-context';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
-import { explicitAbortReason } from './run-step-utilities';
+import { applyWaterfallHandlerErrorPolicy, explicitAbortReason } from './run-step-utilities';
 import { admitToolResultMedia, retainToolResultMedia } from './tool-result-media';
 import { ToolTimingRecorder } from './tool-timing';
 import type { GenerateResponse } from './types';
@@ -149,16 +149,29 @@ export async function executeTools(
         // with a bare
         // `ToolCall[]` for the second handler. Invocations still go through
         // `runHandler` so an observer sees them like any dispatched hook.
-        for (const entry of hooks.getHandlers('beforeToolExecution')) {
+        // A throwing handler goes through the policy `run()` applies (the handler's own `onError`,
+        // then the registry's), so `'continue'` skips it and `'abort'` or no policy fails the step.
+        for (const [index, entry] of hooks.getHandlers('beforeToolExecution').entries()) {
           const beforeContext = {
             conversation,
             step,
             toolCalls: [...callsToExecute],
             elicit,
           };
-          const registryResult = await hooks.runHandler('beforeToolExecution', entry, [
-            beforeContext,
-          ]);
+          let registryResult: unknown;
+          try {
+            registryResult = await hooks.runHandler('beforeToolExecution', entry, [beforeContext]);
+          } catch (handlerError) {
+            applyWaterfallHandlerErrorPolicy(
+              handlerError,
+              'beforeToolExecution',
+              index,
+              entry.options,
+              hooks.onError,
+              entry.id,
+            );
+            continue;
+          }
           if (registryResult !== undefined) {
             callsToExecute = registryResult as ToolCall[];
           }

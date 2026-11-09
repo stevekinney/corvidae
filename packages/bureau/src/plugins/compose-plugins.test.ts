@@ -353,6 +353,44 @@ describe('composePlugins', () => {
     ]);
   });
 
+  it.each([
+    ['a priority of NaN', { handler: async () => {}, priority: Number.NaN }, '`priority`'],
+    ['an infinite priority', { handler: async () => {}, priority: Infinity }, '`priority`'],
+    ['a replay of its own invention', { handler: async () => {}, replay: 'maybe' }, '`replay`'],
+    ['an onError that is not a function', { handler: async () => {}, onError: 'x' }, '`onError`'],
+    ['a handler that is not a function', { handler: 'nope' }, 'must be a function or an object'],
+  ])(
+    'skips only the plugin whose interceptor declares %s, and composition succeeds',
+    async (_name, onStep, message) => {
+      // Once as written, and once for a plugin with a declared secret, whose hooks the secret gate
+      // wraps before the plan reads them.
+      for (const secrets of [undefined, ['api-key']]) {
+        const descriptor = definePlugin({
+          name: 'broken',
+          version: '1.0.0',
+          description: 'broken',
+          ...(secrets === undefined ? {} : { secrets }),
+          setup: () => ({ interceptors: [{ name: 'audit', onStep } as never] }),
+        });
+        const { records } = await composePlugins({
+          plugins: [
+            { descriptor, source: 'package', location: '@example/broken' },
+            pluginEntry('fine', () => ({
+              interceptors: [{ name: 'audit', onStep: { handler: async () => {}, priority: 5 } }],
+            })),
+          ],
+        });
+        expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+        expect(records[0]?.problems).toEqual([
+          expect.objectContaining({
+            code: 'setup-failed',
+            message: expect.stringContaining(message),
+          }),
+        ]);
+      }
+    },
+  );
+
   it('reads the caller’s plugin list and configuration before the first setup awaits', async () => {
     const seen: unknown[] = [];
     const reading = (name: string) =>
