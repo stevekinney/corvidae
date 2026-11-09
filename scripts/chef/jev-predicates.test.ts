@@ -84,6 +84,21 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
 };
 
 describe('registry', () => {
+  test('matches the predicate table in references/decisions.md, kind for kind', () => {
+    const decisions = readFileSync(
+      join(import.meta.dir, '../../.agents/skills/chef/references/decisions.md'),
+      'utf8',
+    );
+    const rows = new Map<string, string>();
+    for (const match of decisions.matchAll(/^\| `([\w-]+)` \|.*\| (\w+) \(\d\.\d+\) \|$/gm))
+      rows.set(match[1] as string, match[2] as string);
+    expect([...rows.entries()].toSorted(([a], [b]) => a.localeCompare(b))).toEqual(
+      PREDICATES.map((predicate): [string, string] => [predicate.id, predicate.kind]).toSorted(
+        ([a], [b]) => a.localeCompare(b),
+      ),
+    );
+  });
+
   test('holds the twelve predicates with unique ids', () => {
     expect(PREDICATES.map((predicate) => predicate.id).toSorted()).toEqual(
       Object.keys(SAMPLES).toSorted(),

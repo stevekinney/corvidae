@@ -278,29 +278,67 @@ describe('charter rules', () => {
     expect(rules).toContain('You do not merge');
   });
 
-  test('stay in step with references/execution-record.md', () => {
-    const record = readFileSync(
-      join(import.meta.dir, '../../.agents/skills/chef/references/execution-record.md'),
-      'utf8',
-    );
-    for (const phrase of [
-      'focused checks',
-      'answer every thread before merge',
-      'at most three rounds',
-      'End a turn only on a state change',
-      'defect-classes.md',
-      'review-threads.ts classes',
-      'return evidence for causal reassessment',
-      'give every criterion exactly one status in the return',
-      'Not verified: not checked, with the reason',
-      'a conflict between them is needs-decision',
+  // The charter rules are the one source of the worker-facing rules. Each pair names a phrase of a
+  // charter rule and the phrase of the governing rule it restates, in AGENTS.md or in the execution
+  // record's remaining coordinator text, so a change to either side that drops the rule fails here.
+  const normalize = (text: string) => text.replace(/\s+/g, ' ').toLowerCase();
+  const read = (path: string) =>
+    normalize(readFileSync(join(import.meta.dir, '../..', path), 'utf8'));
+  const agents = 'AGENTS.md';
+  const record = '.agents/skills/chef/references/execution-record.md';
+  const governing: [charter: string, document: string, rule: string][] = [
+    ['focused checks on what you changed', agents, 'focused checks on what it changed'],
+    ['`bun scripts/chef/focused-checks.ts`', agents, '`bun scripts/chef/focused-checks.ts`'],
+    ['is named `*.integration.test.ts`', agents, 'is named `*.integration.test.ts`'],
+    [
       'bun scripts/affected-tests.ts run --isolated',
-      'is named `*.integration.test.ts`',
-    ]) {
-      expect(record.replace(/\s+/g, ' ')).toContain(phrase);
-      expect(charterRules.join('\n').toLowerCase()).toContain(phrase.toLowerCase());
+      agents,
+      'bun scripts/affected-tests.ts run --isolated',
+    ],
+    ['a full `bun run validate` only for a one-way door', agents, 'changes a one-way door'],
+    ['delivery runs no gate', agents, 'delivery runs no gate'],
+    ['a red `main` is a warning', agents, '`merge-gate.ts` warns, and never refuses'],
+    ['you do not merge', record, 'the worker does not merge'],
+    ['answer every thread before merge', agents, 'answer every thread before merge'],
+    ['at most three rounds', agents, 'cap review at three rounds'],
+    ['round one fixes every real finding', agents, 'fix every real finding in round one'],
+    ['push once per round', agents, 'push once per round'],
+    ['codex reviews every push automatically', agents, 'codex reviews every push'],
+    ['end a turn only on a state change', agents, 'end a turn only on a state change'],
+    ['review-threads.ts classes --pr <n>', record, 'review-threads.ts classes --pr <n>` exits 1'],
+    ['return evidence for causal reassessment', agents, 'stop patching a repeating class'],
+    ['not verified: not checked, with the reason', record, 'each verified criterion'],
+  ];
+
+  test('each restate a rule that AGENTS.md or the execution record still carries', () => {
+    const rules = normalize(charterRules.join('\n'));
+    for (const [charter, document, rule] of governing) {
+      expect(rules, charter).toContain(normalize(charter));
+      expect(read(document), `${document}: ${rule}`).toContain(normalize(rule));
     }
   });
+
+  test('are not restated by references/execution-record.md, which points at brief.ts', () => {
+    const text = read(record);
+    expect(text).toContain(normalize('`charterRules` in `scripts/chef/brief.ts`'));
+    for (const phrase of [
+      'final message is the report',
+      'answer every thread before merge',
+      'at most three rounds',
+      'end a turn only on a state change',
+      'check the diff against every class',
+      'give every criterion exactly one status',
+      'not verified: not checked',
+      'return evidence for causal reassessment',
+    ]) {
+      expect(rules(phrase), phrase).toBe(true);
+      expect(text, phrase).not.toContain(phrase);
+    }
+  });
+
+  function rules(phrase: string): boolean {
+    return normalize(charterRules.join('\n')).includes(phrase);
+  }
 });
 
 describe('report rule', () => {

@@ -22,8 +22,10 @@
 //     description;
 //   - the verification commands: each `--verify`, else the issue's Verification section, else the
 //     focused checks for what the worker changed, with the root lint always among them;
-//   - the charter rules every worker gets (`references/execution-record.md` "Worker charter"): the
-//     merge gate, the review rounds, the turn rule, and the defect-class self-check.
+//   - the charter rules every worker gets (`charterRules` below, their one source; the
+//     `references/execution-record.md` "Worker charter" template points here): the merge gate, the
+//     review rounds, the turn rule, the defect-class self-check, context, the report, corrections,
+//     and acceptance-criteria statuses.
 //
 // The script only prepares the brief. The coordinator tool starts the session: one fresh session
 // per issue, on Sonnet unless the brief names a reason for another model, from this file, and the
@@ -53,7 +55,10 @@ import { resolveMainCheckout } from './repository-locations.ts';
 
 export { UsageError };
 
-/** The charter rules, kept equal to `references/execution-record.md` by `brief.test.ts`. */
+/**
+ * The charter rules: the one source of the worker-facing rules. `brief.test.ts` keeps each in step
+ * with the AGENTS.md rule it restates and keeps `references/execution-record.md` from restating them.
+ */
 export const charterRules = [
   '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: one command, `bun scripts/chef/focused-checks.ts`, which runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and the affected tests, and prints one summary line; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` itself when your change reaches one. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved. You do not merge: after the coordinator accepts your ready-for-review return, it delivers with `deliver.ts`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
   '**Review rounds (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',

@@ -142,7 +142,9 @@ describe('worktreeCommonDirectory', () => {
 // not have, so the documented clone command names a baseline that exists there.
 describe('the bundle-clone validation command', () => {
   test('sets the plugin identity baseline to HEAD', async () => {
-    const guidance = await Bun.file(join(root, 'AGENTS.md')).text();
+    const guidance = await Bun.file(
+      join(root, 'documentation/repository/dev-container-suites.md'),
+    ).text();
     const command = guidance.match(/docker run --rm --init [^\n]*bun run validate'/u)?.[0];
     expect(command).toContain('export CORVIDAE_PLUGIN_IDENTITY_BASE=HEAD &&');
   });

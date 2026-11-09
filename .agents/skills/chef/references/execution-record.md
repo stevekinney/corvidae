@@ -30,6 +30,8 @@ Keep the note readable in one sitting, because a resuming coordinator reads it w
 
 Resolve these fields before dispatching. A file reference is useful only if the worker can access it; otherwise include the necessary excerpt. Do not require workers to infer the assignment from a transcript.
 
+The worker-facing rules (the merge gate, review rounds, the turn rule, the defect-class self-check, context, the report, corrections, and acceptance-criteria statuses) have one source: `charterRules` in `scripts/chef/brief.ts`, which `bun scripts/chef/brief.ts <ID>` writes into every brief's `## Charter rules` section. This template does not restate them; it carries the fields only the coordinator can fill and the rules the charter does not hold. `scripts/chef/brief.test.ts` checks that the charter rules stay in step with AGENTS.md and that this file does not restate them.
+
 ```text
 Package and outcome:
 Source issue identifiers and relevant acceptance criteria:
@@ -53,13 +55,12 @@ Staged verification commands, working directory, and expected results (cheap che
 Reusable evidence identities, environment assumptions, exit codes, paths, and invalidation conditions:
 Primary reviewer and inherited correction-attempt counts:
 Review policy (also required in specialist reviewer charters): before suggesting a change, read linked COR issues and search the COR backlog across projects for matching behavior, symbols, and work; verify scope, status, acceptance criteria, and decisions, and cite matching tickets instead of duplicating requests. Disclose an unavailable lookup without making it a blocker. A ticket does not excuse a concrete blocker introduced by the diff. Accept pre-release breaking changes, update in-repository callers directly, and remove deprecated code in the replaced path without compatibility layers. Block only with a supported input or reachable interleaving, wrong result, and concrete consequence; omit nitpicks and optional refactoring. Read AGENTS.md "Review guidelines" and the chef reference "Review and deliver" before reviewing.
-Merge gate (corvidae: the worker runs the focused checks on what it changed before opening the pull request, not `bun run check`, with one command, `bun scripts/chef/focused-checks.ts`, which runs `bun test` on the touched files, `bun run lint:root` always, because its guards scan the tests of every workspace, `bun run typecheck:root` when root or `scripts/` files changed, `bunx turbo run lint typecheck --filter=<workspace>` for each changed workspace, and `bunx prettier --check` on the changed files; A test file that starts a process, directly or through a helper, is named `*.integration.test.ts` (`lint:root` rejects it otherwise). When `bun scripts/affected-tests.ts --explain --isolated` lists a `*.integration.test.ts` or `*.slow.test.ts` file your change reaches, also run `bun scripts/affected-tests.ts run --isolated`, because no other per-pull-request check runs the isolated lane. Delivery runs no gate and does not repeat a check because `main` moved; a full `validate` only for a one-way door, lock or concurrency infrastructure, or `turbo.json` and root scripts, and the coordinator merges those):
+Charter rules: the brief's `## Charter rules` section, from `charterRules` in `scripts/chef/brief.ts`; a charter written without `bun scripts/chef/brief.ts <ID>` copies that section verbatim. A pull request that takes a full `validate` as an exception (a one-way door, lock or concurrency infrastructure, or `turbo.json` and root scripts) is merged by the coordinator:
 Delivery: the worker does not merge; before each correction dispatch or delivery launch the coordinator reads live pull request, Linear, and worktree state as [review and deliver](review-and-deliver.md) specifies. After acceptance the coordinator launches `bun scripts/chef/deliver.ts --pr <n> --worktree <path> --comment-file <file> --head <accepted head>` (with `--issue`, `--completion-file`, `--remove-worktree` as needed). Delivery merges when GitHub reports no conflict with the base, every review thread is resolved, and the head is the accepted one; a `conflict` goes back to the worker, which merges `main` in, reruns its focused checks, and returns the new head. The coordinator's command carries `--usage-log <main checkout>/tmp/chef/<run>-usage.log --transcript <worker transcript path>`, which `deliver.ts` passes to `merge-gate.ts`, and that log is the source of tokens per merged pull request.
 Parallel-run limits (AGENTS.md "Parallel runs"): at most three sessions or workers on the host; at most one full validate queued per session, and only for an exception.
 Repository packet: `<main checkout>/tmp/chef/packets/<area>.md` (path; `packet.ts status <area>` exits 0, so it is fresh). Read it instead of rediscovering the code; read source only for the lines you will change.
 Worker start: one fresh worker for this issue, a background `Agent` subagent on Claude Code (a subagent per `.codex/agents/` on Codex), started from its brief (`bun scripts/chef/brief.ts <ID>` writes `tmp/chef/briefs/<ID>.md`), Sonnet by default; it ends when its pull request merges. A separate `start_session` session only when the owner asked for one.
 Main health: `merge-gate.ts` warns in its report while `main`'s last batch validate failed and never refuses on it; a pull request that repairs `main` carries `--fixes-main`.
-Review rounds (AGENTS.md "Review guidelines"): answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically, so batch a round's fixes into one push; do not re-answer a re-reported comment.
 Delivery artifact and review boundary:
 
 Mutation protocol: `exec` workdir affects only that command. Before any write,
@@ -82,14 +83,12 @@ recovery; never reset or automatically clean a checkout.
 Inspect the existing codebase and match its conventions. Implement and verify
 only this package. Add a regression test for each bug. Preserve other owners'
 changes. Do not delegate or edit the work-history note. Do not write Linear,
-except to move this package's own issue to In Progress when you start. Do not merge;
-the coordinator delivers after it accepts your ready-for-review return. Do not skip gates, suppress failures,
-increase limits, or leave a required fix as a follow-up. Follow the charter's
-review-rounds line, and queue at most one full validate at a time. After two
-unsuccessful attempts at the same defect or acceptance criterion, stop
-patching and return evidence for causal reassessment. Inherit prior attempts;
-new agents, task names, or follow-ups never reset the count. Stop if required
-input, ownership, permissions, or dependency evidence is missing.
+except to move this package's own issue to In Progress when you start. Do not
+skip gates, suppress failures, increase limits, or leave a required fix as a
+follow-up. Queue at most one full validate at a time. Attempts at the same
+defect or acceptance criterion are inherited: new agents, task names, or
+follow-ups never reset the count. Stop if required input, ownership,
+permissions, or dependency evidence is missing.
 
 Delete a test only with a recorded reason that the behavior it covered no
 longer exists; deleting a failing test to get green is forbidden. A behavior
@@ -97,42 +96,24 @@ difference from `main` is a regression unless the issue body or a dated
 revision says otherwise. `needs-decision` is for product choices, and its
 return attaches the `main` comparison.
 
-Before opening the pull request, check the diff against every class in
-`.agents/skills/chef/references/defect-classes.md`, fix what applies, and
-report each class's result in the return. Before every fix push, run
-`bun scripts/chef/review-threads.ts classes --pr <n>`. On exit 1, one defect
-class has appeared in two or more review rounds: push no further patch, and
-return blocked with its output for causal reassessment.
-
-End a turn only on a state change: merged, blocked, needs-decision, or
-ready-for-review. Wait for a gate, a check, or a review bot in a background
-command (or a foreground one within the tool's time limit) and keep working;
-never end a turn to report that you are still waiting. Collect every
-background command before you return.
+`bun scripts/chef/review-threads.ts classes --pr <n>` exits 1 when one defect
+class has appeared in two or more review rounds; return blocked with its
+output. A wait may also be a foreground command within the tool's time limit.
+Collect every background command before you return.
 
 Never leave background processes running. Start one only to wait on a gate,
 or (including a CPU load generator) when this charter requires it; record
 every PID, collect or kill each before returning, and report a
 `pgrep -fl "<pattern>"` that prints nothing.
 
-Keep your context small. Every gate writes its full output to a log under the
-evidence directory and prints only its exit code and a short summary; read a
-failure with a targeted search, never by printing the log. Run one
+Every gate writes its full output to a log under the evidence directory and
+prints only its exit code and a short summary; never print the log. Run one
 consolidated gate command per stage. Commit only after the package's lint and
 type checks pass, chained so a failed check produces no commit. Show each
 regression test red with its fix reverted, and restore the fix; a test that
-passes without the fix is not evidence.
-
-Report: your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Write logs and evidence under `tmp/chef/<package>/round-<n>/` in the main checkout, with a new directory for each correction round. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.
-
-Acceptance criteria: give every criterion exactly one status in the return.
-Implemented: the code exists and has not been checked. Verified: a command
-ran and passed, or a manual check was performed, named in the return.
-Failed: a check ran and failed. Blocked: an external dependency prevents
-checking. Not verified: not checked, with the reason. The criteria are the
-description's plus those in dated revisions and in comments that explicitly
-amend it; a conflict between them is needs-decision. Number unnumbered
-criteria AC1, AC2 in the return only, never in the issue.
+passes without the fix is not evidence. Name the command or manual check behind
+each Verified criterion, and number criteria only in the return, never in the
+issue.
 
 Return status: merged, ready-for-review, blocked, or needs-decision.
 Include changed behavior/files; branch, worktree, commit and pull-request URL;
