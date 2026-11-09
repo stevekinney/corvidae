@@ -1284,7 +1284,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // never stops the host from starting.
     for (const failure of mcpMounts.failures) {
       bureau.plugins.reportPanelFailure(failure.plugin, failure.app, failure.message);
-      log(`Plugin ${failure.plugin}: its MCP app ${failure.app} did not build: ${failure.message}`);
+      log(`Plugin ${failure.plugin}: its panel ${failure.app} did not build: ${failure.message}`);
     }
     let bureauHandler: BureauHandler | undefined;
     const bureauSockets: BureauHandler['websocket'] = {

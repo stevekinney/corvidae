@@ -243,7 +243,7 @@ function planOf(
   ) => {
     if (!isPluginName(name)) {
       throw new TypeError(
-        `setup returned a ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
+        `setup returned ${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
       );
     }
     const contributionId = id ?? formatToolId({ namespace: plugin, name });

@@ -164,8 +164,7 @@ const HOST_ENTRY: Record<
       'A provider is handed to the host’s `models.catalog` factory, which holds no names.',
   },
   panel: {
-    noHostEntry:
-      'Bureau has no MCP app option; the host reads them from `bureau.plugins.panels()`.',
+    noHostEntry: 'Bureau has no panel option; the host reads them from `bureau.plugins.panels()`.',
   },
   embedder: {
     noHostEntry:
