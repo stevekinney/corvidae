@@ -300,9 +300,9 @@ export async function pluginIdentities(
     ...entriesOf(contributions.providers, (provider) => named(provider, 'provider'), descriptor),
     ...entriesOf(contributions.interceptors, (hooks) => named(hooks, 'interceptor'), descriptor),
     ...entriesOf(
-      contributions.eventFormatters,
+      contributions.formatters,
       (formatter) =>
-        named(formatter, 'event-formatter', {
+        named(formatter, 'formatter', {
           eventKinds: [...formatter.eventKinds].toSorted(compareText),
         }),
       descriptor,

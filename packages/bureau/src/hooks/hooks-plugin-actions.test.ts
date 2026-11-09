@@ -462,7 +462,7 @@ describe('a Bureau composed with contributed hook actions and event formatters',
           },
         ],
       },
-      eventFormatters: [
+      formatters: [
         {
           plugin: 'reports',
           formatter: {

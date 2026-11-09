@@ -8,7 +8,7 @@
  * later plugin that claims a held name is `skipped` whole with `name-clash`, so none of its
  * contributions is registered. A plugin that passes registers every contribution through the
  * option it belongs to (`contributionCatalog`, `agentContributions`, `validators`, `hooks`,
- * `eventFormatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
+ * `formatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
  * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
@@ -342,8 +342,8 @@ function planOf(
     // A tool links to one page, so the host cannot serve two apps opened from the same tool.
     claims.push({ space: 'panel-tool', name: app.opensFromTool });
   }
-  for (const formatter of contributions.eventFormatters ?? []) {
-    contribute('event-formatter', formatter.name);
+  for (const formatter of contributions.formatters ?? []) {
+    contribute('formatter', formatter.name);
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
   }
   for (const agent of contributions.codeAgents ?? []) contribute('code-agent', agent.name);
@@ -393,9 +393,9 @@ function heldByHost(options: ComposableOptions): Claims {
       HOST_PARTY,
     );
   }
-  for (const { plugin, formatter } of options.eventFormatters ?? []) {
+  for (const { plugin, formatter } of options.formatters ?? []) {
     claims.hold(
-      { space: 'event-formatter', name: formatToolId({ namespace: plugin, name: formatter.name }) },
+      { space: 'formatter', name: formatToolId({ namespace: plugin, name: formatter.name }) },
       HOST_PARTY,
     );
     for (const kind of formatter.eventKinds)
@@ -427,7 +427,7 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'interceptor',
   'decision-router',
   'reaction',
-  'event-formatter',
+  'formatter',
   'code-agent',
   'scorer',
 ]);
@@ -463,7 +463,7 @@ class Contributed {
   > = {};
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
-  readonly formatters: NonNullable<BureauOptions['eventFormatters']>[number][] = [];
+  readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
   readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
   readonly agents: Record<string, unknown> = {};
   readonly memory: {
@@ -499,8 +499,7 @@ class Contributed {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
       this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
     }
-    for (const formatter of result.eventFormatters ?? [])
-      this.formatters.push({ plugin, formatter });
+    for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
     for (const judge of result.scorers ?? []) {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
@@ -641,7 +640,7 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
         }),
     ...(contributed.formatters.length === 0
       ? {}
-      : { eventFormatters: [...(options.eventFormatters ?? []), ...contributed.formatters] }),
+      : { formatters: [...(options.formatters ?? []), ...contributed.formatters] }),
     ...(options.scorers === undefined || contributed.scorers.length === 0
       ? {}
       : {
@@ -781,7 +780,7 @@ function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
     agents,
     validators,
-    eventFormatters,
+    formatters,
     decisions,
     hooks,
     scorers,
@@ -801,7 +800,7 @@ function snapshotOf<O extends ComposableOptions>(given: O): O {
         }),
     ...(agents === undefined ? {} : { agents: { ...agents } }),
     ...(validators === undefined ? {} : { validators: [...validators] }),
-    ...(eventFormatters === undefined ? {} : { eventFormatters: [...eventFormatters] }),
+    ...(formatters === undefined ? {} : { formatters: [...formatters] }),
     ...(decisions?.models === undefined
       ? {}
       : { decisions: { ...decisions, models: { ...decisions.models } } }),

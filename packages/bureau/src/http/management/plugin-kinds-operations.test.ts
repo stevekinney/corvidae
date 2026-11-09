@@ -37,7 +37,7 @@ const inbox = definePlugin({
         start: async () => () => undefined,
       },
     ],
-    eventFormatters: [
+    formatters: [
       {
         name: 'reviews',
         eventKinds: ['review.requested'],

@@ -264,7 +264,7 @@ describe('plugin composition', () => {
         version: '1.0.0',
         description: name,
         setup: () => ({
-          eventFormatters: [
+          formatters: [
             { name: 'runs', eventKinds: ['run.settled'], format: () => ({ title: name }) },
           ],
         }),

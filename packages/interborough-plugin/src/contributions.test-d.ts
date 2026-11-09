@@ -5,6 +5,7 @@
 
 import type {
   PluginContributions,
+  PluginFormatter,
   PluginPanel,
   PluginReaction,
   PluginScorer,
@@ -39,3 +40,10 @@ export const renamedPanels: PluginContributions = { panels: [panel] };
 
 // @ts-expect-error -- `mcpApps` was renamed `panels`
 export const staleMcpApps: PluginContributions = { mcpApps: [panel] };
+
+declare const formatter: PluginFormatter;
+
+export const renamedFormatters: PluginContributions = { formatters: [formatter] };
+
+// @ts-expect-error -- `eventFormatters` was renamed `formatters`
+export const staleEventFormatters: PluginContributions = { eventFormatters: [formatter] };

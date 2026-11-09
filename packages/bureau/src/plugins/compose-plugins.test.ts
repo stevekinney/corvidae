@@ -147,9 +147,9 @@ const HOST_ENTRY: Record<
     host: { hooks: { actionKinds: [{ plugin: 'p', kind: actionKind('x') }] } },
     contribution: { reactions: [actionKind('x')] },
   },
-  'event-formatter': {
-    host: { eventFormatters: [{ plugin: 'p', formatter: formatter('x') }] },
-    contribution: { eventFormatters: [formatter('x')] },
+  formatter: {
+    host: { formatters: [{ plugin: 'p', formatter: formatter('x') }] },
+    contribution: { formatters: [formatter('x')] },
   },
   'code-agent': {
     host: { agents: { 'p:x': agent() } },

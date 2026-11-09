@@ -2221,7 +2221,7 @@ export const PLUGINS_COPY = {
     'memory-detector': 'Memory detectors',
     scorer: 'Scorers',
     panel: 'Panels',
-    'event-formatter': 'Event formatters',
+    formatter: 'Formatters',
     'code-agent': 'Code agents',
   } as Readonly<Record<string, string>>,
   /** The configuration form, built from the plugin's own schema. */

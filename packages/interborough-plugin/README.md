@@ -102,7 +102,7 @@ The descriptor's members:
 | `memoryDetectors` | Detectors run after the default poisoning detector, on memory admission and on recall. |
 | `scorers` | Scorers that score a sample of completed runs. |
 | `panels` | Interface panels. |
-| `eventFormatters` | Titles and bodies for the activity views. |
+| `formatters` | Titles and bodies for the activity views. |
 | `codeAgents` | Agents defined in code. |
 
 Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
@@ -147,7 +147,7 @@ export default definePlugin({
         },
       },
     ],
-    eventFormatters: [
+    formatters: [
       {
         name: 'completed',
         eventKinds: ['run.completed'],

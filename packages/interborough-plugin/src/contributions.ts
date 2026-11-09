@@ -185,7 +185,7 @@ export interface PluginPanel {
 }
 
 /** A rendering of one event for the host's activity views. */
-export interface PluginEventFormatting {
+export interface PluginFormatting {
   /** One line naming what happened. */
   readonly title: string;
   /** More detail, when the event has any. */
@@ -193,13 +193,13 @@ export interface PluginEventFormatting {
 }
 
 /** Formats the events of the kinds it names. */
-export interface PluginEventFormatter {
+export interface PluginFormatter {
   /** The formatter's name, unique within the plugin. */
   readonly name: string;
   /** The event kinds the formatter handles. */
   readonly eventKinds: readonly string[];
   /** Formats one event of a kind in `eventKinds`. */
-  format(event: PluginEvent): PluginEventFormatting;
+  format(event: PluginEvent): PluginFormatting;
 }
 
 /** An agent defined in code. */
@@ -256,7 +256,7 @@ export interface PluginContributions {
   /** Interface panels. */
   readonly panels?: readonly PluginPanel[];
   /** Event formatters. */
-  readonly eventFormatters?: readonly PluginEventFormatter[];
+  readonly formatters?: readonly PluginFormatter[];
   /** Agents defined in code. */
   readonly codeAgents?: readonly PluginCodeAgent[];
 }

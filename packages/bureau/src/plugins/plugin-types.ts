@@ -227,7 +227,7 @@ export type PluginContributionKind =
   | 'memory-detector'
   | 'scorer'
   | 'panel'
-  | 'event-formatter'
+  | 'formatter'
   | 'code-agent';
 
 /** One contribution a running plugin registered, as composition records it. */

@@ -411,10 +411,10 @@ export function gatedContributions<T extends PluginContributions>(
             evaluate: gated(gate, idOf(judge.name), judge.evaluate.bind(judge)),
           })),
         }),
-    ...(result.eventFormatters === undefined
+    ...(result.formatters === undefined
       ? {}
       : {
-          eventFormatters: result.eventFormatters.map((formatter) => ({
+          formatters: result.formatters.map((formatter) => ({
             ...formatter,
             format: (event: Parameters<typeof formatter.format>[0]) => {
               gate.assertAvailable(idOf(formatter.name));
