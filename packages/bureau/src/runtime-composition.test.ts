@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import {
   createManualRuntimeServices,
+  HOOK_TIER_PRIORITY_BANDS,
   HookRegistry,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
@@ -64,6 +65,7 @@ import { z } from 'zod';
 import {
   activeSkillsFromStepMetadata,
   applyCache,
+  BUREAU_PINNED_LAST_PRIORITY,
   CATALOG_RUN_RECOVERY_KEY_PREFIX,
   createMemoryPersistHook,
   createRunMemoryAuthority,
@@ -809,13 +811,13 @@ describe('memory hook registration (COR-41)', () => {
 /**
  * COR-1265 — Bureau is a hook TIER, not a registry handed to a run raw.
  *
- * `BUREAU_PINNED_LAST_PRIORITY` is restated as a literal rather than exported
- * and imported: the number is a contract these tests exist to pin, and a test
- * that imports the constant it is checking asserts only that the constant
- * equals itself.
+ * `PINNED_LAST` is where a pinned-last Bureau entry lands in a run's plan:
+ * `BUREAU_PINNED_LAST_PRIORITY` with the `bureau` band added (COR-2127). The
+ * ordering it has to keep against every other tier is asserted in
+ * `run-hook-tiers.test.ts`.
  */
 describe('Bureau hook tier composition (COR-1265)', () => {
-  const PINNED_LAST = Number.MIN_SAFE_INTEGER + 2000;
+  const PINNED_LAST = BUREAU_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.bureau;
 
   function planOf(hooks: HookRegistry<OperativeHookMap> | undefined) {
     if (!hooks) throw new Error('run options carried no hook registry');
@@ -891,8 +893,8 @@ describe('Bureau hook tier composition (COR-1265)', () => {
       const trailing = entries.find((entry) => entry.id === 'bureau:scheduled-session-write-back');
 
       // Criterion 8: registered BEFORE the merge, so its priority carries the
-      // same tier offset every other Bureau entry got. With one participant the
-      // offset is zero, so the raw constant is what survives — and the entry
+      // same `bureau` band every other Bureau entry got — the band is fixed, so
+      // it is the same with no agent tier present (COR-2127) — and the entry
       // still sorts last among Bureau's own `onStep` registrations.
       expect(trailing?.priority).toBe(PINNED_LAST);
       const onStep = entries.filter((entry) => entry.hookName === 'onStep');
@@ -1047,8 +1049,10 @@ describe('Bureau hook tier composition (COR-1265)', () => {
         const first = runtime.bureauChildInvariants({ agentResolvesGuardrails });
         const second = runtime.bureauChildInvariants({ agentResolvesGuardrails });
 
-        expect(planOf(first).map((entry) => entry.id)).toEqual([...expected]);
-        expect(second).not.toBe(first);
+        expect(planOf(first.bureau).map((entry) => entry.id)).toEqual([...expected]);
+        expect(second.bureau).not.toBe(first.bureau);
+        // No plugin applies an interceptor to every agent here (COR-2127).
+        expect(first.plugin).toBeUndefined();
       },
     );
 

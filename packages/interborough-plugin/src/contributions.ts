@@ -199,7 +199,9 @@ export interface PluginInterceptorHookOptions<Hook> {
    * Where the hook sorts among the run's hooks at its point: a higher number runs first, and a hook
    * that names none sorts at 0. Operative's guardrails sit behind every other agent hook, so the
    * number is raised to just above them when it is lower, and a plugin can never sort behind them.
-   * It must be a finite number.
+   * It is also held below 1000, the distance between two tiers' bands, so an interceptor sorts
+   * within its own tier: a plugin's hook never runs ahead of Bureau's own invariants, whatever
+   * number it asks for. It must be a finite number.
    */
   readonly priority?: number;
 }
@@ -212,13 +214,22 @@ export type PluginInterceptorHook<Hook> = Hook | PluginInterceptorHookOptions<Ho
 
 /**
  * A set of Operative run hooks a plugin contributes under one name. An agent file chooses it with
- * `interceptors: [plugin:name]`, and it runs for the agents that choose it and no others. Each
- * member is an Operative run hook, one for each point of Operative's hook map, written as the
- * function or as {@link PluginInterceptorHookOptions}.
+ * `interceptors: [plugin:name]`, and it runs for the agents that choose it and no others, unless it
+ * declares `appliesTo: 'every-agent'`. Each member is an Operative run hook, one for each point of
+ * Operative's hook map, written as the function or as {@link PluginInterceptorHookOptions}.
  */
 export interface PluginInterceptor {
   /** Names the interceptor in logs and problem reports, and in the id an agent file lists. */
   readonly name: string;
+  /**
+   * `'every-agent'` runs the set for every run the host starts, whether or not its agent lists it:
+   * file agents, code agents, dispatched agents and their children. The host composes it between
+   * its own hooks and the agent's. An agent file that also lists it gets it once, as a set it
+   * chose. While the plugin needs setup, the set refuses for an agent that lists it, as any chosen
+   * set does, and is skipped for every other agent, so it never fails a run that did not choose it.
+   * Omitted, the set runs only for the agents that list it.
+   */
+  readonly appliesTo?: 'every-agent';
   /** Runs before each generate call. */
   readonly prepareStep?: PluginInterceptorHook<PrepareStepHook>;
   /** Runs before the tool calls of a step execute, and may change them. */

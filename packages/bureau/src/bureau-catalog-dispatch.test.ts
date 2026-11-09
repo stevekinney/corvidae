@@ -23,6 +23,7 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { composeRunHooks, type RunHookTiers } from './run-hook-tiers';
 import {
   type CatalogRunEnded,
   createCatalogDispatcher,
@@ -34,6 +35,9 @@ import { registerGoalAttemptFence } from './goal-attempt-fence';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import { lastPromptOf } from './testing/goal-fixtures.test-support';
+
+/** What the runtime composition's `composeRunHooks` does, with no plugin contributing (COR-2127). */
+const composeTestRunHooks = (tiers: RunHookTiers) => composeRunHooks(undefined, tiers);
 
 function createDispatcher(
   shuttingDown: boolean,
@@ -71,6 +75,7 @@ function durableRuntime(claimed: boolean): RuntimeComposition {
   return {
     durable: { engine: {}, checkpointStore: {} },
     createBureauInvariantHooks: () => undefined,
+    composeRunHooks: composeTestRunHooks,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
     holdToModelPolicy: (options: unknown) => options,
@@ -128,6 +133,7 @@ describe('createCatalogDispatcher — startChildRun', () => {
     const dispatcher = createDispatcher(false, {
       runtime: {
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -255,6 +261,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     const runtime = {
       durable: { engine, checkpointStore },
       createBureauInvariantHooks: () => undefined,
+      composeRunHooks: composeTestRunHooks,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
       holdToModelPolicy: (options: unknown) => options,
@@ -310,6 +317,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     const runtime = {
       durable: { engine: {}, checkpointStore: {} },
       createBureauInvariantHooks: () => undefined,
+      composeRunHooks: composeTestRunHooks,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
       holdToModelPolicy: (options: unknown) => options,
@@ -382,6 +390,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -508,6 +517,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -630,6 +640,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
           }
           return hooks;
         },
+        composeRunHooks: composeTestRunHooks,
         claimCatalogRunRecoveryRecord: async () => {
           // The claim lands, and the goal's ending tombstones it before the engine starts.
           tombstoned = true;
@@ -725,6 +736,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -863,6 +875,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         runtime: {
           durable: { engine, checkpointStore: {} },
           createBureauInvariantHooks: () => undefined,
+          composeRunHooks: composeTestRunHooks,
           mediaOptionsFor: () => ({}),
           withChatPermission: (toolbox: unknown) => toolbox,
           holdToModelPolicy: (options: unknown) => options,
@@ -943,6 +956,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -994,6 +1008,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
 
   const processLocal = {
     createBureauInvariantHooks: () => undefined,
+    composeRunHooks: composeTestRunHooks,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
     holdToModelPolicy: (options: unknown) => options,
@@ -1013,6 +1028,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
     return {
       durable: { engine, checkpointStore },
       createBureauInvariantHooks: () => undefined,
+      composeRunHooks: composeTestRunHooks,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
       holdToModelPolicy: (options: unknown) => options,

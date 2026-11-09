@@ -2,11 +2,7 @@ import type { RunWorkspaceAuthority, ToolRequestContext } from 'armorer';
 import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 import { bindRunWorkspaceAuthority, guardWorkspaceRunOptions } from './run-authority.ts';
 import { normalizeRunRequestContext } from './session-request-context.ts';
-import {
-  CompletableEventTarget,
-  mergeHookRegistries,
-  type RuntimeServices,
-} from '@lostgradient/lifecycle';
+import { CompletableEventTarget, type RuntimeServices } from '@lostgradient/lifecycle';
 import type {
   ActiveRun,
   CombinedOperativeEventMap,
@@ -706,13 +702,13 @@ export function createCatalogDispatcher({
         // A goal attempt's run is also fenced against its goal: it takes no step
         // once the goal ended or its own claim was tombstoned, and none until the
         // goal's record shows this attempt opened as running (goal-attempt-fence.ts).
-        hooks: mergeHookRegistries(
-          runtime.createBureauInvariantHooks(
+        hooks: runtime.composeRunHooks({
+          bureau: runtime.createBureauInvariantHooks(
             goalAttempt === undefined ? undefined : { ...goalAttempt, runId },
             { agentResolvesGuardrails },
           ),
-          withRuntime.hooks,
-        ),
+          agent: withRuntime.hooks,
+        }),
       };
     };
     const resolveDurableAgent = async (): Promise<RunnableAgent<unknown, boolean>> => {
@@ -1497,14 +1493,15 @@ export function createCatalogDispatcher({
         runtime.mediaOptionsFor(ownerOrLocal(principal), 'run'),
       ),
       // Bureau first, so it wins `runFirst` and — being pinned last — still
-      // wins the waterfall. Only the invariants that close over nothing
-      // run-specific travel here; see `createBureauInvariantHooks`.
-      hooks: mergeHookRegistries(
-        runtime.createBureauInvariantHooks(undefined, {
+      // wins the waterfall; the plugin tier between it and the agent's own. Only
+      // the invariants that close over nothing run-specific travel here; see
+      // `createBureauInvariantHooks`.
+      hooks: runtime.composeRunHooks({
+        bureau: runtime.createBureauInvariantHooks(undefined, {
           agentResolvesGuardrails: resolvesOwnGuardrails(agent),
         }),
-        resolvedOptions.hooks,
-      ),
+        agent: resolvedOptions.hooks,
+      }),
     };
     const hasOutput = merged.output !== undefined;
 

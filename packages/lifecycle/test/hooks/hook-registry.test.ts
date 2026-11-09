@@ -199,7 +199,7 @@ describe('registration identity (COR-567)', () => {
     const overlay = new HookRegistry<TestHooks>();
     overlay.on('beforeRun', () => {}, { id: 'agent:custom' });
 
-    const merged = mergeHookRegistries(base, overlay);
+    const merged = mergeHookRegistries({ bureau: base, agent: overlay });
 
     expect(merged.getHandlers('beforeRun').map((entry) => entry.id)).toEqual([
       'bureau:invariant',

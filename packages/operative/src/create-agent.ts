@@ -1034,7 +1034,9 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // neither hooks nor policy, so such an agent keeps the absent
     // `RunOptions.hooks` it always had rather than an empty registry per run.
     //
-    // Only the agent tier participates here. Bureau's tier is composed at
+    // Only the agent tier participates here, so each entry is stamped `agent`
+    // and given that tier's band; a later merge of this plan under Bureau keeps
+    // both (COR-2127). Bureau's tier is composed at
     // Bureau's own dispatch sites, and there is no direct tier on this path:
     // `AgentRunContext` declares no `hooks` field, so a caller of
     // `agent.run()` has no per-call hook surface.
@@ -1042,7 +1044,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     const hooks =
       agentHooks === undefined && !hasPolicy
         ? undefined
-        : mergeHookRegistries(undefined, agentHooks, undefined);
+        : mergeHookRegistries({ agent: agentHooks });
     const toolbox = withDelegatedToolCapabilities(
       hooks !== undefined && hasPolicy
         ? composeAgentRunPolicy({

@@ -16,6 +16,12 @@
  * `source: <plugin>`, which survives `mergeHookRegistries`, so the run's hook plan says which
  * plugin each entry came from.
  *
+ * COR-2127 — an interceptor that declares `appliesTo: 'every-agent'` needs no file to choose it: it
+ * registers for every run Bureau composes, in the `plugin` tier ({@link everyAgentInterceptorsOf}).
+ * A file that lists it anyway gets it in its own agent tier instead, and that run's plugin tier
+ * leaves it out, so it registers once and refuses, as a chosen interceptor does, while its plugin
+ * needs setup.
+ *
  * @module agent-contributions
  */
 
@@ -28,7 +34,7 @@ import {
   type PluginOutputGuardrailEntry,
   type PluginToolGuardrailEntry,
 } from '@lostgradient/interborough-plugin';
-import { HookRegistry } from '@lostgradient/lifecycle';
+import { HOOK_TIER_BAND_WIDTH, HookRegistry } from '@lostgradient/lifecycle';
 import {
   AGENT_POLICY_PINNED_LAST_PRIORITY,
   type GuardrailAdditions,
@@ -408,7 +414,10 @@ export function guardrailAdditionsOf(
  * `contributions.test-d.ts` in `@lostgradient/interborough-plugin` fails when that interface and
  * Operative's hook map disagree.
  */
-const INTERCEPTOR_POINT_SET: Record<Exclude<keyof PluginInterceptor, 'name'>, true> = {
+const INTERCEPTOR_POINT_SET: Record<
+  Exclude<keyof PluginInterceptor, 'name' | 'appliesTo'>,
+  true
+> = {
   prepareStep: true,
   beforeToolExecution: true,
   afterToolExecution: true,
@@ -433,7 +442,7 @@ const INTERCEPTOR_POINT_SET: Record<Exclude<keyof PluginInterceptor, 'name'>, tr
 
 /** The hook points of a {@link PluginInterceptor}: one per point of Operative's hook map. */
 export const INTERCEPTOR_POINTS = Object.keys(INTERCEPTOR_POINT_SET) as ReadonlyArray<
-  Exclude<keyof PluginInterceptor, 'name'>
+  Exclude<keyof PluginInterceptor, 'name' | 'appliesTo'>
 >;
 
 /** One hook of an interceptor, as either of its two written forms. */
@@ -446,6 +455,19 @@ type InterceptorHook = NonNullable<PluginInterceptor[(typeof INTERCEPTOR_POINTS)
  */
 export const INTERCEPTOR_PRIORITY_FLOOR = AGENT_POLICY_PINNED_LAST_PRIORITY + 1;
 
+/**
+ * The highest priority an interceptor hook can sort at: one below the distance between two tiers'
+ * bands ({@link HOOK_TIER_BAND_WIDTH}). A declared priority is added to its tier's band, so a plugin
+ * hook declaring this or less stays in its own band, and the plugin tier sorts between Bureau's
+ * tier and the agent's whatever a plugin asks for.
+ */
+export const INTERCEPTOR_PRIORITY_CEILING = HOOK_TIER_BAND_WIDTH - 1;
+
+/** `priority` held to the range `[INTERCEPTOR_PRIORITY_FLOOR, INTERCEPTOR_PRIORITY_CEILING]`. */
+function clampInterceptorPriority(priority: number): number {
+  return Math.min(Math.max(priority, INTERCEPTOR_PRIORITY_FLOOR), INTERCEPTOR_PRIORITY_CEILING);
+}
+
 /** `hook` as its handler and the registration options it declares. */
 function interceptorHookParts(hook: InterceptorHook): {
   readonly handler: OperativeHookMap[(typeof INTERCEPTOR_POINTS)[number]];
@@ -457,20 +479,23 @@ function interceptorHookParts(hook: InterceptorHook): {
     options: {
       ...(hook.replay === undefined ? {} : { replay: hook.replay }),
       ...(hook.onError === undefined ? {} : { onError: hook.onError }),
-      ...(hook.priority === undefined
-        ? {}
-        : { priority: Math.max(hook.priority, INTERCEPTOR_PRIORITY_FLOOR) }),
+      ...(hook.priority === undefined ? {} : { priority: clampInterceptorPriority(hook.priority) }),
     },
   };
 }
 
 /**
- * Throws `TypeError` unless every hook `interceptor` declares is a function or an object with a
- * `handler` function, a known `replay`, an `onError` function and a finite `priority`, where those
- * are given. The type says so, but a plugin is code the host loads, so a wrong shape would otherwise
- * fail in the middle of a run, or sort as `NaN`.
+ * Throws `TypeError` unless `interceptor`'s `appliesTo` is absent or `'every-agent'`, and every hook
+ * it declares is a function or an object with a `handler` function, a known `replay`, an `onError`
+ * function and a finite `priority`, where those are given. The type says so, but a plugin is code
+ * the host loads, so a wrong shape would otherwise fail in the middle of a run, sort as `NaN`, or
+ * quietly apply to fewer agents than its author meant.
  */
 export function assertInterceptorHooks(id: string, interceptor: PluginInterceptor): void {
+  const appliesTo: unknown = interceptor.appliesTo;
+  if (appliesTo !== undefined && appliesTo !== 'every-agent') {
+    throw new TypeError(`The interceptor "${id}" has an \`appliesTo\` that is not "every-agent".`);
+  }
   for (const point of INTERCEPTOR_POINTS) {
     const hook: unknown = interceptor[point];
     if (hook === undefined || typeof hook === 'function') continue;
@@ -497,12 +522,30 @@ export function assertInterceptorHooks(id: string, interceptor: PluginIntercepto
   }
 }
 
+/** Registers every hook `contributed` declares on `registry`, as {@link interceptorsOf} describes. */
+function registerInterceptor(
+  registry: HookRegistry<OperativeHookMap>,
+  contributed: ContributedInterceptor,
+): void {
+  for (const point of INTERCEPTOR_POINTS) {
+    const handler = contributed.interceptor[point];
+    if (handler === undefined) continue;
+    const { handler: hook, options } = interceptorHookParts(handler);
+    registry.on(point, hook, {
+      id: `${contributed.id}:${point}`,
+      source: contributed.plugin,
+      ...options,
+    });
+  }
+}
+
 /**
  * The agent-tier hook registry for the interceptors `definition` chooses, or `undefined` when it
  * chooses none. Each entry carries `source: <plugin>` and the id `<plugin>:<name>:<hook>`, and the
- * `replay`, `onError` and `priority` its hook declares, the priority raised to
- * {@link INTERCEPTOR_PRIORITY_FLOOR} when it is lower. Every id
- * must resolve (see {@link unresolvedContributions}); one that does not is skipped.
+ * `replay`, `onError` and `priority` its hook declares, the priority held between
+ * {@link INTERCEPTOR_PRIORITY_FLOOR} and {@link INTERCEPTOR_PRIORITY_CEILING}. Every id
+ * must resolve (see {@link unresolvedContributions}); one that does not is skipped. One that applies to
+ * every agent is registered here too, and Bureau leaves it out of that run's plugin tier (COR-2127).
  */
 export function interceptorsOf(
   definition: Pick<AgentFileDefinition, 'interceptors'>,
@@ -512,15 +555,24 @@ export function interceptorsOf(
   for (const id of new Set(definition.interceptors ?? [])) {
     const contributed = contributions.interceptors.get(id);
     if (contributed === undefined) continue;
-    for (const point of INTERCEPTOR_POINTS) {
-      const handler = contributed.interceptor[point];
-      if (handler === undefined) continue;
-      const { handler: hook, options } = interceptorHookParts(handler);
-      registry.on(point, hook, {
-        id: `${id}:${point}`,
-        source: contributed.plugin,
-        ...options,
-      });
+    registerInterceptor(registry, contributed);
+  }
+  return registry.getHookNames().length === 0 ? undefined : registry;
+}
+
+/**
+ * The plugin-tier hook registry (COR-2127): every interceptor `contributions` holds that declares
+ * `appliesTo: 'every-agent'`, registered as {@link interceptorsOf} registers a chosen one, or
+ * `undefined` when there is none. A fresh registry per call, which Bureau composes between its own
+ * tier and the agent's for every run it starts, resumes or dispatches.
+ */
+export function everyAgentInterceptorsOf(
+  contributions: AgentContributions,
+): HookRegistry<OperativeHookMap> | undefined {
+  const registry = new HookRegistry<OperativeHookMap>();
+  for (const contributed of contributions.interceptors.values()) {
+    if (contributed.interceptor.appliesTo === 'every-agent') {
+      registerInterceptor(registry, contributed);
     }
   }
   return registry.getHookNames().length === 0 ? undefined : registry;

@@ -14,10 +14,11 @@ import {
 } from './secret-answers';
 import {
   createDefaultRuntimeServices,
+  HOOK_TIER_PRIORITY_BANDS,
   HookRegistry,
-  mergeHookRegistries,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
+import { composeRunHooks, pluginHookTier, type RunHookTiers } from './run-hook-tiers';
 import type {
   GovernedMemory,
   MemoryAuthority,
@@ -2565,9 +2566,15 @@ export interface RuntimeComposition {
   /**
    * COR-2106 — {@link RuntimeComposition.createBureauInvariantHooks} as a child-run factory: what a
    * run Bureau owns attaches (`bureauInvariantsField`) so that the children it dispatches carry
-   * Bureau's identity and guardrails.
+   * Bureau's identity and guardrails, and (COR-2127) the plugin tier.
    */
   readonly bureauChildInvariants: BureauChildInvariants;
+  /**
+   * COR-2127 — one run's hook plan: the Bureau tier and the agent tier given, with the plugin tier
+   * (every interceptor a plugin applies to every agent) between them. Every Bureau site that hands a
+   * run its hooks composes them here (`run-hook-tiers.ts`).
+   */
+  composeRunHooks(tiers: RunHookTiers): HookRegistry<OperativeHookMap>;
 }
 
 /** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
@@ -2590,7 +2597,8 @@ export interface BureauInvariantOptions {
  */
 /**
  * Priority pinning a Bureau registration behind every other tier's entries on
- * the same hook point (COR-1265, criteria 9 and 10).
+ * the same hook point (COR-1265, criteria 9 and 10), before the `bureau` band
+ * is added.
  *
  * Two dispatch shapes let a later handler decide the outcome: `runLast`
  * returns the last defined result, and the waterfall feeds each handler the
@@ -2601,16 +2609,16 @@ export interface BureauInvariantOptions {
  * authority one: they persist the session once the step's mutations settle, and
  * an agent-tier `onStep` handler is one of those mutations.
  *
- * The tier band works against Bureau here. `mergeHookRegistries` offsets each
- * participant by `(participants - 1 - index) * 1000` and Bureau is always the
- * first participant, so it receives the LARGEST offset — `+2000` with the three
- * tiers a composition can reach. The constant sits that far above
- * `Number.MIN_SAFE_INTEGER` so adding the offset back cannot leave the
- * safe-integer range, and so a merged Bureau entry still lands below anything
- * registered at a priority a caller would plausibly write.
+ * The tier band works against Bureau here. `mergeHookRegistries` adds each
+ * tier's fixed band (`HOOK_TIER_PRIORITY_BANDS`, COR-2127), and Bureau's is the
+ * LARGEST — `+3000`, above the plugin, agent and direct tiers. The constant
+ * sits that band above `Number.MIN_SAFE_INTEGER`, so a merged Bureau entry
+ * stays inside the safe-integer range and still lands below anything
+ * registered at a priority a caller would plausibly write, whichever tiers a
+ * run has.
  *
- * The residual, stated rather than implied: a lower tier that deliberately
- * registers at or below `Number.MIN_SAFE_INTEGER + 2000` sorts after this
+ * The residual, stated rather than implied: a lower tier whose entry, band
+ * included, sits at or below this one's merged priority sorts after it
  * anyway. No finite constant closes that, because a priority is a plain number
  * with no floor, and `-Infinity` closes it only until a second entry carries it
  * — the registry's `b.priority - a.priority` comparator would then return
@@ -2618,7 +2626,8 @@ export interface BureauInvariantOptions {
  * the threat this is defending against; an ordinary registration that happens
  * to outrank Bureau is.
  */
-const BUREAU_PINNED_LAST_PRIORITY = Number.MIN_SAFE_INTEGER + 2000;
+export const BUREAU_PINNED_LAST_PRIORITY =
+  Number.MIN_SAFE_INTEGER + HOOK_TIER_PRIORITY_BANDS.bureau;
 
 /**
  * The ownership tier every registration Bureau makes belongs to (COR-1265) —
@@ -2712,11 +2721,12 @@ const TRAILING_HOOK_PRIORITY = BUREAU_PINNED_LAST_PRIORITY;
  * and the caller here owns that run outright.
  *
  * COR-1265: every caller now merges the result before handing it to a run, so
- * the completed Bureau tier is what becomes `mergeHookRegistries`' first
- * argument. That ordering is the point — registering here AFTER the merge would
+ * the completed Bureau tier is what `composeRunHooks` takes as its `bureau`
+ * tier. That ordering is the point — registering here AFTER the merge would
  * put the trailing hook in the merged registry at its raw priority while every
- * other Bureau entry had already been offset, which is precisely the renumbering
- * this function used to avoid by refusing to merge at all.
+ * other Bureau entry had already been given the `bureau` band, which is
+ * precisely the renumbering this function used to avoid by refusing to merge at
+ * all.
  */
 export function registerTrailingOnStep(
   hooks: HookRegistry<OperativeHookMap>,
@@ -3476,11 +3486,17 @@ async function buildRuntimeComposition(
 
   /**
    * COR-2106 — what a Bureau-owned run hands the children it dispatches
-   * (`bureauInvariantsField`): Bureau's identity and guardrail tier, one fresh registry per child.
-   * The single seam through which Bureau's tier reaches a child; a plugin tier (COR-2127) joins here.
+   * (`bureauInvariantsField`): Bureau's identity and guardrail tier, and (COR-2127) the plugin tier,
+   * fresh registries per child. The single seam through which both reach a child.
    */
-  const bureauChildInvariants: BureauChildInvariants = (request) =>
-    createBureauInvariantHooks(undefined, request);
+  const bureauChildInvariants: BureauChildInvariants = (request) => ({
+    bureau: createBureauInvariantHooks(undefined, request),
+    plugin: pluginHookTier(options.agentContributions, request.agentTier),
+  });
+
+  /** {@link RuntimeComposition.composeRunHooks}. */
+  const composeHooks = (tiers: RunHookTiers): HookRegistry<OperativeHookMap> =>
+    composeRunHooks(options.agentContributions, tiers);
 
   function createRunRuntime(
     request: RunRuntimeRequest,
@@ -4185,7 +4201,7 @@ async function buildRuntimeComposition(
         // registration added to `runRuntime.hooks` after this point cannot
         // reach the run that already holds the copy. COR-1577 — a named agent's own tier
         // follows it, as on a catalog dispatch.
-        hooks: mergeHookRegistries(runRuntime.hooks, sessionAgent?.options.hooks),
+        hooks: composeHooks({ bureau: runRuntime.hooks, agent: sessionAgent?.options.hooks }),
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a recovered run
         // rebuilt here from a persisted session.
@@ -4828,7 +4844,7 @@ async function buildRuntimeComposition(
           mediaOptionsFor(ownerOrLocal(record.principal), 'run'),
         ),
         toolbox,
-        hooks: mergeHookRegistries(invariants, resolution.options.hooks),
+        hooks: composeHooks({ bureau: invariants, agent: resolution.options.hooks }),
         // COR-2106 — children this run dispatches carry Bureau's tier.
         ...bureauInvariantsField(bureauChildInvariants),
       },
@@ -5386,11 +5402,11 @@ async function buildRuntimeComposition(
         // COR-1269 — stamped onto this run's hook-plan observations.
         sessionId,
         // COR-1265 criterion 8 — merged AFTER the trailing registration, so the
-        // Bureau tier is complete before it becomes the merge's first argument
+        // Bureau tier is complete before it becomes the merge's `bureau` tier
         // and the trailing hook is offset with every other Bureau entry rather
         // than beside them at a raw priority.
-        hooks: mergeHookRegistries(
-          registerTrailingOnStep(
+        hooks: composeHooks({
+          bureau: registerTrailingOnStep(
             runRuntime.hooks,
             'bureau:scheduled-session-write-back',
             createScheduledSessionPersistHook(
@@ -5406,8 +5422,8 @@ async function buildRuntimeComposition(
               requestContext,
             ),
           ),
-          fireAgent?.options.hooks,
-        ),
+          agent: fireAgent?.options.hooks,
+        }),
         agentName,
         runId,
       },
@@ -5751,6 +5767,7 @@ async function buildRuntimeComposition(
     readSessionSkillSnapshot,
     createBureauInvariantHooks,
     bureauChildInvariants,
+    composeRunHooks: composeHooks,
     resolveSessionAgentRun,
   };
 

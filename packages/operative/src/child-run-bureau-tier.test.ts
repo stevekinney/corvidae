@@ -54,17 +54,23 @@ function markerHook(marker: string) {
   };
 }
 
-/** A stand-in for Bureau's tier that records what each child asked it for. */
-function makeInvariants(): {
+/**
+ * A stand-in for Bureau's tiers that records what each child asked it for. With `plugin`, it also
+ * hands the child a plugin tier, as a Bureau whose plugins apply an interceptor to every agent does.
+ */
+function makeInvariants(options: { plugin?: boolean } = {}): {
   invariants: BureauChildInvariants;
   requests: BureauChildInvariantRequest[];
 } {
   const requests: BureauChildInvariantRequest[] = [];
   const invariants: BureauChildInvariants = (request) => {
     requests.push(request);
-    const registry = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
-    registry.on('prepareStep', markerHook('BUREAU-IDENTITY'), { id: 'bureau:identity' });
-    return registry;
+    const bureau = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
+    bureau.on('prepareStep', markerHook('BUREAU-IDENTITY'), { id: 'bureau:identity' });
+    if (options.plugin !== true) return { bureau, plugin: undefined };
+    const plugin = new HookRegistry<OperativeHookMap>({ source: 'audit' });
+    plugin.on('prepareStep', markerHook('PLUGIN-TIER'), { id: 'audit:marker:prepareStep' });
+    return { bureau, plugin };
   };
   return { invariants, requests };
 }
@@ -113,7 +119,59 @@ describe('child dispatch under Bureau (COR-2106)', () => {
     expect(seen).toContain('BUREAU-IDENTITY');
     expect(seen).toContain('CHILD-TIER');
     // A `createAgent` child resolves its own guardrails, so Bureau registers none for it.
-    expect(requests).toEqual([{ agentResolvesGuardrails: true }]);
+    expect(requests).toMatchObject([{ agentResolvesGuardrails: true }]);
+  });
+
+  // COR-2127 — the plugin tier reaches a child through the same seam, between Bureau's and the
+  // child's own.
+  it('merges the plugin tier between Bureau’s and the child’s own', async () => {
+    const seen: string[] = [];
+    const childHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    childHooks.on('prepareStep', markerHook('CHILD-TIER'), { id: 'child:marker' });
+    const child = createAgent({
+      name: 'worker',
+      generate: recordingGenerate(seen),
+      hooks: childHooks,
+    });
+    const { invariants } = makeInvariants({ plugin: true });
+
+    await dispatchChildRun(child, 'go', withBureauInvariants(dispatchOptions, invariants)).result();
+
+    expect(seen).toEqual(['BUREAU-IDENTITY', 'PLUGIN-TIER', 'CHILD-TIER']);
+  });
+
+  // COR-2127 — Bureau leaves out of the plugin tier an every-agent set the child's agent lists, and
+  // decides that from the tier the seam hands it: the child's own, never Bureau's or a plugin's.
+  it('hands the invariants factory the child’s own agent tier, which holds what the child lists', async () => {
+    const childHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    childHooks.on('prepareStep', markerHook('CHILD-TIER'), { id: 'audit:listed:prepareStep' });
+    const child = createAgent({
+      name: 'worker',
+      generate: recordingGenerate([]),
+      hooks: childHooks,
+    });
+    const { invariants, requests } = makeInvariants({ plugin: true });
+
+    await dispatchChildRun(child, 'go', withBureauInvariants(dispatchOptions, invariants)).result();
+
+    const [request] = requests;
+    const ids = (request?.agentTier?.getHandlers('prepareStep') ?? []).map((entry) => entry.id);
+    expect(ids).toContain('audit:listed:prepareStep');
+    expect(ids).not.toContain('bureau:identity');
+    expect(ids).not.toContain('audit:marker:prepareStep');
+    expect(request?.agentTier?.describePlan().entries.map((entry) => entry.tier)).not.toContain(
+      'bureau',
+    );
+  });
+
+  it('hands it an agent tier with none of a listed set for a child that lists nothing', async () => {
+    const child = createAgent({ name: 'worker', generate: recordingGenerate([]) });
+    const { invariants, requests } = makeInvariants({ plugin: true });
+
+    await dispatchChildRun(child, 'go', withBureauInvariants(dispatchOptions, invariants)).result();
+
+    const ids = (requests[0]?.agentTier?.getHandlers('prepareStep') ?? []).map((entry) => entry.id);
+    expect(ids).not.toContain('audit:listed:prepareStep');
   });
 
   it('asks for Bureau’s guardrails for a resolver-bearing agent that does not resolve its own', async () => {
@@ -134,7 +192,7 @@ describe('child dispatch under Bureau (COR-2106)', () => {
       withBureauInvariants(dispatchOptions, invariants),
     ).result();
 
-    expect(requests).toEqual([{ agentResolvesGuardrails: false }]);
+    expect(requests).toMatchObject([{ agentResolvesGuardrails: false }]);
     expect(seen).toContain('BUREAU-IDENTITY');
   });
 

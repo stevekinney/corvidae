@@ -76,7 +76,7 @@ type DeclaredHookPoints = keyof {
     K in keyof OperativeHookMap as string extends K ? never : number extends K ? never : K
   ]: OperativeHookMap[K];
 };
-type InterceptorPoints = Exclude<keyof PluginInterceptor, 'name'>;
+type InterceptorPoints = Exclude<keyof PluginInterceptor, 'name' | 'appliesTo'>;
 
 /** Resolves to `true` only when `A` and `B` are the same union of keys. */
 type SameKeys<A extends PropertyKey, B extends PropertyKey> = [A] extends [B]
@@ -91,6 +91,11 @@ export const everyHookPointIsExposed: SameKeys<InterceptorPoints, DeclaredHookPo
 type PointsWithANewOne = DeclaredHookPoints | 'extraPoint';
 // @ts-expect-error -- `extraPoint` is not a member of `PluginInterceptor`
 export const aMissingPointIsCaught: SameKeys<InterceptorPoints, PointsWithANewOne> = true;
+
+// COR-2127 — an interceptor applies to the agents that list it, or to every agent.
+export const everyAgentInterceptor: PluginInterceptor = { name: 'audit', appliesTo: 'every-agent' };
+// @ts-expect-error -- `appliesTo` names no other scope
+export const unknownScope: PluginInterceptor = { name: 'audit', appliesTo: 'some-agents' };
 
 declare const detector: PluginInputGuardrail;
 declare const validator: PluginOutputGuardrail;
