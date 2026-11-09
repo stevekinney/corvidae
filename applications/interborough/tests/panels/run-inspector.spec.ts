@@ -8,8 +8,8 @@ import { runInspector } from '@lostgradient/plugin-inspectors';
 import type { McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { expect, test, type Page } from '@playwright/test';
 
-import { buildMcpAppPage } from '../../src/host/mcp-app-build.ts';
-import { MCP_APP_UI_META } from '../../src/host/mcp-app-mounts.ts';
+import { buildPanelPage } from '../../src/host/panel-build.ts';
+import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
 
 const HOST_ORIGIN = 'http://reference-host.test';
 
@@ -24,7 +24,7 @@ test.beforeAll(async () => {
   });
   if (!bundle.success) throw new AggregateError(bundle.logs, 'The reference host did not build');
   hostScript = await bundle.outputs[0]!.text();
-  const built = await buildMcpAppPage({
+  const built = await buildPanelPage({
     entry: runInspector.entry.href,
     title: runInspector.title,
     styles: runInspector.styles ?? '',

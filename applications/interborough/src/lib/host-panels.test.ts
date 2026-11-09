@@ -2,7 +2,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
-import { getMcpApps, loadPluginApp, pluginToolCaller } from './host-mcp-apps.ts';
+import { getPanels, loadPluginApp, pluginToolCaller } from './host-panels.ts';
 
 type Seen = { path: string; init: RequestInit | undefined };
 
@@ -38,8 +38,8 @@ describe('the panels the host lists', () => {
       },
     ];
     const { fetch, seen } = scripted(() => Response.json({ apps }));
-    expect(await getMcpApps({ fetch })).toEqual(apps);
-    expect(seen[0]?.path).toBe('/host/mcp-apps');
+    expect(await getPanels({ fetch })).toEqual(apps);
+    expect(seen[0]?.path).toBe('/host/panels');
   });
 
   test.each([
@@ -47,7 +47,7 @@ describe('the panels the host lists', () => {
     ['a refusal', () => new Response('no', { status: 403 })],
   ])('throws for %s', async (_name, answer) => {
     const { fetch } = scripted(answer);
-    expect(await rejectionOf(getMcpApps({ fetch }))).toBeInstanceOf(Error);
+    expect(await rejectionOf(getPanels({ fetch }))).toBeInstanceOf(Error);
   });
 });
 

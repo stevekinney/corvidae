@@ -20,7 +20,7 @@ import {
 } from './environment-configuration.ts';
 import { PLUGIN_RUNTIME_DIRECTORY_VARIABLE } from './folder-plugins.ts';
 import { launchCommandEnvironment, shellQuote } from './launch-command.ts';
-import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE } from './mcp-app-mounts.ts';
+import { PANEL_PREBUILT_DIRECTORY_VARIABLE } from './panel-mounts.ts';
 import { serveHost } from './serve.ts';
 import { supervise } from './supervisor.ts';
 
@@ -196,12 +196,12 @@ async function run(arguments_: string[]): Promise<number> {
       ...result.environment,
       [BUILD_DIRECTORY_VARIABLE]: buildDirectory,
       [PLUGIN_RUNTIME_DIRECTORY_VARIABLE]: pluginRuntimeDirectory(executable),
-      [MCP_APP_PREBUILT_DIRECTORY_VARIABLE]: join(
+      [PANEL_PREBUILT_DIRECTORY_VARIABLE]: join(
         dirname(executable),
         '..',
         'share',
         'interborough',
-        'mcp-apps',
+        'panels',
       ),
       ...launchCommandEnvironment({
         command: [executable, ...arguments_].map(shellQuote).join(' '),

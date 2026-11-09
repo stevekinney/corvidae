@@ -147,11 +147,11 @@ export interface PluginEmbedder {
 }
 
 /**
- * An interface panel, an MCP app, that renders inside the host. The host bundles `entry` into one
+ * An interface panel, an MCP App page, that renders inside the host. The host bundles `entry` into one
  * self-contained page and serves it as the `ui://` resource `uri`, under a content security policy
  * that denies every origin and permission.
  */
-export interface PluginMcpApp {
+export interface PluginPanel {
   /** The app's name, unique within the plugin. */
   readonly name: string;
   /** The app's own version; a record that pins it uses the plugin's version without one. */
@@ -179,7 +179,7 @@ export interface PluginMcpApp {
    * The one Bureau MCP tool a client runs to open the page: the host links this tool to the page.
    * It is one of `allowedTools`, and unique across plugins: a tool links to one page, so a plugin
    * whose app opens from a tool another app already opens is skipped with `name-clash`. An app
-   * whose entry does not build leaves the plugin running with an `mcp-app-failed` problem.
+   * whose entry does not build leaves the plugin running with a `panel-failed` problem.
    */
   readonly opensFromTool: string;
 }
@@ -254,7 +254,7 @@ export interface PluginContributions {
   /** Scorers that score a sample of completed runs. */
   readonly scorers?: readonly PluginScorer[];
   /** Interface panels. */
-  readonly mcpApps?: readonly PluginMcpApp[];
+  readonly panels?: readonly PluginPanel[];
   /** Event formatters. */
   readonly eventFormatters?: readonly PluginEventFormatter[];
   /** Agents defined in code. */

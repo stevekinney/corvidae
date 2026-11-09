@@ -231,7 +231,7 @@ export async function runInstalled(
     if (!agent.stream.includes('fixture greeted Ada'))
       throw new Error('Fixture tool output was not deterministic');
     if (!(await Bun.file(marker).exists())) throw new Error('Fixture tool marker was not written');
-    const appsResponse = await processOperations.fetch(`${url}/host/mcp-apps`);
+    const appsResponse = await processOperations.fetch(`${url}/host/panels`);
     const apps = (await appsResponse.json()) as {
       apps: Array<Record<string, unknown>>;
     };

@@ -282,8 +282,8 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
-      contributions.mcpApps,
-      (app) => named(app, 'mcp-app', { allowedTools: app.allowedTools.toSorted(compareText) }),
+      contributions.panels,
+      (app) => named(app, 'panel', { allowedTools: app.allowedTools.toSorted(compareText) }),
       descriptor,
     ),
     ...entriesOf(

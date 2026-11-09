@@ -3,7 +3,13 @@
 // contract is told at compile time. `PluginContributions` has no index signature, so an unknown key
 // is an excess-property error.
 
-import type { PluginContributions, PluginReaction, PluginScorer, PluginTrigger } from './index.ts';
+import type {
+  PluginContributions,
+  PluginPanel,
+  PluginReaction,
+  PluginScorer,
+  PluginTrigger,
+} from './index.ts';
 
 declare const trigger: PluginTrigger;
 
@@ -26,3 +32,10 @@ export const renamedScorers: PluginContributions = { scorers: [scorer] };
 
 // @ts-expect-error -- `evalJudges` was renamed `scorers`
 export const staleEvalJudges: PluginContributions = { evalJudges: [scorer] };
+
+declare const panel: PluginPanel;
+
+export const renamedPanels: PluginContributions = { panels: [panel] };
+
+// @ts-expect-error -- `mcpApps` was renamed `panels`
+export const staleMcpApps: PluginContributions = { mcpApps: [panel] };

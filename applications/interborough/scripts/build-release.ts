@@ -14,7 +14,7 @@ import {
 } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildMcpAppPage } from '../src/host/mcp-app-build.ts';
+import { buildPanelPage } from '../src/host/panel-build.ts';
 import { buildApplication } from './build.ts';
 
 const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
@@ -30,7 +30,7 @@ type ReleaseCommand = (arguments_: string[], cwd?: string) => Promise<void>;
 export type ReleaseOperations = {
   readonly runCommand?: ReleaseCommand;
   readonly buildApplication?: typeof buildApplication;
-  readonly buildMcpAppPage?: typeof buildMcpAppPage;
+  readonly buildPanelPage?: typeof buildPanelPage;
   readonly platform?: NodeJS.Platform;
   readonly architecture?: string;
   readonly now?: () => number;
@@ -204,7 +204,7 @@ async function verifyRelocatedHost(
 import { canonicalJson } from '@lostgradient/interborough-plugin/testing';
 const testingExportProof = canonicalJson({ release: 'proof' });
 if (testingExportProof !== '{"release":"proof"}') throw new Error('Testing export map is broken');
-export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', version: '1.0.0', description: 'Release proof', setup: () => ({ mcpApps: [{ name: 'external-proof', title: 'External proof', uri: 'ui://runtime-proof/external/v1', entry: new URL('./app.ts', import.meta.url), styles: '', allowedTools: ['bureau.workflows-list'], opensFromTool: 'bureau.workflows-list' }] }) });
+export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', version: '1.0.0', description: 'Release proof', setup: () => ({ panels: [{ name: 'external-proof', title: 'External proof', uri: 'ui://runtime-proof/external/v1', entry: new URL('./app.ts', import.meta.url), styles: '', allowedTools: ['bureau.workflows-list'], opensFromTool: 'bureau.workflows-list' }] }) });
 `,
   );
   await writeFile(join(plugin, 'app.ts'), 'document.body.textContent = "external runtime";\n');
@@ -264,7 +264,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       throw new Error(`Relocated plugin link targets the wrong runtime: ${target} !== ${expected}`);
     if (
       !(await Bun.file(
-        join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'),
+        join(root, 'share', 'interborough', 'panels', 'run-inspector.json'),
       ).exists())
     )
       throw new Error('Prebuilt inspector is missing');
@@ -309,7 +309,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
         (entry) =>
           typeof entry === 'object' &&
           entry !== null &&
-          Reflect.get(entry, 'kind') === 'mcp-app' &&
+          Reflect.get(entry, 'kind') === 'panel' &&
           Reflect.get(entry, 'id') === 'runtime-proof:external-proof',
       )
     )
@@ -405,15 +405,15 @@ export async function buildRelease(
     await (operations.buildApplication ?? buildApplication)({
       outdir: join(root, 'share', 'interborough', 'browser'),
     });
-    const mcpApps = join(root, 'share', 'interborough', 'mcp-apps');
-    await mkdir(mcpApps, { recursive: true });
+    const panels = join(root, 'share', 'interborough', 'panels');
+    await mkdir(panels, { recursive: true });
     for (const app of [runInspector, pendingReview]) {
-      const page = await (operations.buildMcpAppPage ?? buildMcpAppPage)({
+      const page = await (operations.buildPanelPage ?? buildPanelPage)({
         entry: app.entry.href,
         title: app.title,
         styles: app.styles ?? '',
       });
-      await writeFile(join(mcpApps, `${app.name}.json`), JSON.stringify(page));
+      await writeFile(join(panels, `${app.name}.json`), JSON.stringify(page));
     }
     const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
     await mkdir(runtime, { recursive: true });

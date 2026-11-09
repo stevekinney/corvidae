@@ -518,14 +518,14 @@ test('clears the shell when a current host request rejects its credentials', asy
   pageErrors,
 }) => {
   pageErrors.expect({
-    pattern: loggedFailedResponse(401, /\/host\/mcp-apps/),
+    pattern: loggedFailedResponse(401, /\/host\/panels/),
     reason: 'the test rejects this request to exercise expired credentials',
   });
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
-  await page.route('**/host/mcp-apps', (route) => route.fulfill({ status: 401 }));
+  await page.route('**/host/panels', (route) => route.fulfill({ status: 401 }));
   await page.evaluate(async () => {
-    await fetch('/host/mcp-apps');
+    await fetch('/host/panels');
   });
   await expect(page.locator('[data-view="boot"][data-state="error"]')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Search everything/ })).toHaveCount(0);

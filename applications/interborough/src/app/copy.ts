@@ -2220,7 +2220,7 @@ export const PLUGINS_COPY = {
     embedder: 'Embeddings',
     'memory-detector': 'Memory detectors',
     scorer: 'Scorers',
-    'mcp-app': 'MCP apps',
+    panel: 'Panels',
     'event-formatter': 'Event formatters',
     'code-agent': 'Code agents',
   } as Readonly<Record<string, string>>,
@@ -2434,7 +2434,7 @@ export const PLUGINS_COPY = {
       body: (message: string): string => message,
     },
     /** A page the plugin contributed could not be built; the plugin and its other parts run. */
-    mcpAppFailed: {
+    panelFailed: {
       status: 'Loaded, a page was not built',
       title: 'A page the plugin adds did not build',
       body: (app: string, message: string): string => `The page ${app} is not served. ${message}`,

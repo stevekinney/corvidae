@@ -104,7 +104,7 @@
   import { isRunning, listTasks, type TaskView } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
-  import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
+  import { getPanels, loadPluginApp, pluginToolCaller } from '../../lib/host-panels.ts';
   import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
@@ -1155,10 +1155,10 @@
     }, RUNNING_CALL_TICK_MILLISECONDS);
     return () => clearInterval(timer);
   });
-  const mcpApps = createQuery(
+  const panels = createQuery(
     () => ({
-      queryKey: queryKeys.hostMcpApps(),
-      queryFn: ({ signal }) => getMcpApps({ signal }),
+      queryKey: queryKeys.hostPanels(),
+      queryFn: ({ signal }) => getPanels({ signal }),
       retry: false,
     }),
     undefined,
@@ -1178,7 +1178,7 @@
     return () => observer.disconnect();
   });
   const workflowRevisionPanels = $derived(
-    (mcpApps.data ?? []).filter(
+    (panels.data ?? []).filter(
       (panel) => panel.opensFromAgentTool === 'bureau:workflows-propose-update',
     ),
   );

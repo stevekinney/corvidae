@@ -1,4 +1,4 @@
-import { definePlugin, type PluginMcpApp } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
 
 import { BASE_STYLES, PENDING_REVIEW_STYLES, WORKFLOW_REVISION_STYLES } from './styles.ts';
 
@@ -8,7 +8,7 @@ import { BASE_STYLES, PENDING_REVIEW_STYLES, WORKFLOW_REVISION_STYLES } from './
  * follows the task through `bureau.tasks.events` and aborts it with `bureau.tasks.cancel`.
  * `allowedTools` lists every tool the page calls, which a test keeps true.
  */
-export const runInspector: PluginMcpApp = {
+export const runInspector: PluginPanel = {
   name: 'run-inspector',
   title: 'Run inspector',
   description: 'Liveness, ownership tree, progress, result, and abort for one Bureau task.',
@@ -25,7 +25,7 @@ export const runInspector: PluginMcpApp = {
  * `bureau.reviews.get` and decides it through `bureau.reviews.resolve`. `allowedTools` lists every
  * tool the page calls, which a test keeps true.
  */
-export const pendingReview: PluginMcpApp = {
+export const pendingReview: PluginPanel = {
   name: 'pending-review',
   title: 'Pending reviews',
   description: 'The reviews waiting for the caller: approve, deny, or reject with feedback.',
@@ -37,7 +37,7 @@ export const pendingReview: PluginMcpApp = {
 };
 
 /** The workflow revision review panel opened by an agent's proposed update in Chat. */
-export const workflowRevisionReview: PluginMcpApp = {
+export const workflowRevisionReview: PluginPanel = {
   name: 'workflow-revision-review',
   title: 'Review workflow revision',
   description: 'Compare and apply a proposed workflow revision.',
@@ -60,5 +60,5 @@ export default definePlugin({
   version: '1.0.0',
   description:
     'Adds the run inspector and the pending-review list as interface panels over the run and review tools.',
-  setup: () => ({ mcpApps: [runInspector, pendingReview, workflowRevisionReview] }),
+  setup: () => ({ panels: [runInspector, pendingReview, workflowRevisionReview] }),
 });

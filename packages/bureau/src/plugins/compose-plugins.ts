@@ -214,7 +214,7 @@ interface PluginContributionPlan {
 }
 
 /** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
-const MCP_APP_URI_PATTERN = /^ui:\/\/\S+$/;
+const PANEL_URI_PATTERN = /^ui:\/\/\S+$/;
 
 /**
  * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
@@ -305,22 +305,22 @@ function planOf(
     contribute('memory-detector', detector.name);
   }
   for (const judge of contributions.scorers ?? []) contribute('scorer', judge.name);
-  for (const app of contributions.mcpApps ?? []) {
+  for (const app of contributions.panels ?? []) {
     // A host serves the page by this URI alone, so it must be a `ui://` resource and unique.
-    if (!MCP_APP_URI_PATTERN.test(app.uri)) {
+    if (!PANEL_URI_PATTERN.test(app.uri)) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
+        `setup returned the panel "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
       );
     }
     if (!app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
+        `setup returned the panel "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
       );
     }
     for (const tool of app.hostOnlyTools ?? []) {
       if (!app.allowedTools.includes(tool) || !tool.startsWith('bureau.')) {
         throw new TypeError(
-          `setup returned the MCP app "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
+          `setup returned the panel "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
         );
       }
     }
@@ -334,13 +334,13 @@ function planOf(
       )
     ) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
+        `setup returned the panel "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
       );
     }
-    contribute('mcp-app', app.name);
-    claims.push({ space: 'mcp-app-uri', name: app.uri });
+    contribute('panel', app.name);
+    claims.push({ space: 'panel-uri', name: app.uri });
     // A tool links to one page, so the host cannot serve two apps opened from the same tool.
-    claims.push({ space: 'mcp-app-tool', name: app.opensFromTool });
+    claims.push({ space: 'panel-tool', name: app.opensFromTool });
   }
   for (const formatter of contributions.eventFormatters ?? []) {
     contribute('event-formatter', formatter.name);
@@ -410,7 +410,7 @@ function heldByHost(options: ComposableOptions): Claims {
   // Embedders and memory detectors reach memory only through the host's `memory` factory, which
   // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
   // meets memory's built-in `hashing`, and two plugins' ids are kept apart by the claims above.
-  // Providers reach the host's `models.catalog` factory, not a held name; MCP apps have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.mcpApps()`.
+  // Providers reach the host's `models.catalog` factory, not a held name; panels have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.panels()`.
   return claims;
 }
 

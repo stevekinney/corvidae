@@ -340,9 +340,7 @@ describe('problemView', () => {
     expect(problemView({ code: 'after-start-failed', message: 'it broke' }).status.dot).toBe(
       'warning',
     );
-    expect(
-      problemView({ code: 'mcp-app-failed', app: 'panel', message: 'no entry' }),
-    ).toMatchObject({
+    expect(problemView({ code: 'panel-failed', app: 'panel', message: 'no entry' })).toMatchObject({
       status: { label: 'Loaded, a page was not built', dot: 'warning' },
       body: 'The page panel is not served. no entry',
     });

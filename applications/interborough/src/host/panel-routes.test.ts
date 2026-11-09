@@ -6,15 +6,15 @@
  */
 import { describe, expect, mock, test } from 'bun:test';
 
-import type { ServedMcpApp } from './mcp-app-mounts.ts';
-import { mcpAppRoutes } from './mcp-app-routes.ts';
+import type { ServedPanel } from './panel-mounts.ts';
+import { panelRoutes } from './panel-routes.ts';
 import { createRequestGuard } from './request-guard.ts';
 
 const PORT = 4321;
 const HOST = `127.0.0.1:${PORT}`;
 const PAGE = '<div id="root"></div><script>window.ran = true</script>';
 
-const app = (overrides: Partial<ServedMcpApp> = {}): ServedMcpApp => ({
+const app = (overrides: Partial<ServedPanel> = {}): ServedPanel => ({
   plugin: 'inspectors',
   name: 'run-inspector',
   title: 'Run inspector',
@@ -38,9 +38,9 @@ function bureauDouble(body: unknown = { jsonrpc: '2.0', id: 1, result: RESULT })
 
 function routes(
   callBureau: (request: Request) => Promise<Response>,
-  served: readonly ServedMcpApp[] = [app()],
+  served: readonly ServedPanel[] = [app()],
 ) {
-  return mcpAppRoutes(
+  return panelRoutes(
     served,
     createRequestGuard(() => PORT),
     callBureau,
@@ -49,7 +49,7 @@ function routes(
 
 const PAGE_ROUTE = '/host/plugins/inspectors/apps/run-inspector';
 const CALL_ROUTE = `${PAGE_ROUTE}/tool-calls`;
-const LIST_ROUTE = '/host/mcp-apps';
+const LIST_ROUTE = '/host/panels';
 
 /** The handler the route table holds for a method, called as the server would. */
 async function call(

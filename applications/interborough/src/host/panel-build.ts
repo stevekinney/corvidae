@@ -6,7 +6,7 @@
 import { fileURLToPath } from 'node:url';
 
 /** A built page and the digest of its bytes. */
-export type BuiltMcpApp = {
+export type BuiltPanel = {
   /** The whole document: inline script and styles, no external reference. */
   readonly html: string;
   /** `sha256:<64 hex>`, the form `bureau.interactive-surface.v1` names. */
@@ -29,11 +29,11 @@ export function digestOf(html: string): string {
 }
 
 /** Bundle `entry` and wrap it in a page with `title` and `styles`. */
-export async function buildMcpAppPage(options: {
+export async function buildPanelPage(options: {
   readonly entry: string;
   readonly title: string;
   readonly styles: string;
-}): Promise<BuiltMcpApp> {
+}): Promise<BuiltPanel> {
   const result = await Bun.build({
     entrypoints: [fileURLToPath(options.entry)],
     target: 'browser',

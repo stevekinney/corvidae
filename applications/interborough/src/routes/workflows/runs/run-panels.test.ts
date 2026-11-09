@@ -3,7 +3,7 @@
  * `McpApp`, labelled with its plugin and sandboxed to `allow-scripts`. The host is a table of
  * answers holding one finished run; the frame's window is a double, and the test plays the app by
  * posting the MCP Apps bridge's messages to the page. The real host serving the same run through
- * the real Bureau is `src/host/host-mcp-apps.test.ts`.
+ * the real Bureau is `src/host/host-panels.test.ts`.
  */
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
@@ -54,7 +54,7 @@ let debug: ReturnType<typeof spyOn<Console, 'debug'>>;
 
 /** What the host answers for the finished run: `bureau.tasks.inspect`'s result, or a refusal. */
 function hostAnswer(path: string, init: RequestInit | undefined): Response | undefined {
-  if (path === '/host/mcp-apps') {
+  if (path === '/host/panels') {
     hostRequests.push(path);
     if (!panelsListed) return new Response('Not found', { status: 404 });
     return Response.json({
@@ -254,7 +254,7 @@ describe('a run on a host with no panels', () => {
   test('shows no panel when the host cannot list them', async () => {
     panelsListed = false;
     const view = openRun();
-    await waitUntil(() => hostRequests.includes('/host/mcp-apps'));
+    await waitUntil(() => hostRequests.includes('/host/panels'));
     await waitFor(() => expect(view.container.querySelector('article')).not.toBeNull());
     // Nothing is going to appear, so the check is that the page stays as it was.
     await quietFor(50);

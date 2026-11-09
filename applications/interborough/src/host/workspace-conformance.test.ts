@@ -94,7 +94,7 @@ async function workspace(name: string, members: readonly string[]) {
             setup: (context) => {
               pluginContext = context;
               return {
-                mcpApps: [
+                panels: [
                   {
                     name: 'fixture-panel',
                     title: 'Fixture panel',

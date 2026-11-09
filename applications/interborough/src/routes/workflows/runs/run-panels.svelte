@@ -12,7 +12,7 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RUN_PAGE_COPY } from '../../../app/copy.ts';
-  import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../../lib/host-mcp-apps.ts';
+  import { getPanels, loadPluginApp, pluginToolCaller } from '../../../lib/host-panels.ts';
   import { queryKeys } from '../../../lib/query.ts';
 
   /** The Bureau tool that opens the run inspector, and so the panels that belong to a run. */
@@ -27,8 +27,8 @@
 
   const apps = createQuery(
     () => ({
-      queryKey: queryKeys.hostMcpApps(),
-      queryFn: ({ signal }) => getMcpApps({ signal }),
+      queryKey: queryKeys.hostPanels(),
+      queryFn: ({ signal }) => getPanels({ signal }),
       retry: false,
     }),
     undefined,

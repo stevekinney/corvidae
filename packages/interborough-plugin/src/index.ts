@@ -8,7 +8,7 @@ export type {
   PluginEventFormatting,
   PluginGuardrails,
   PluginInterceptor,
-  PluginMcpApp,
+  PluginPanel,
   PluginProvider,
   PluginReaction,
   PluginReactionContext,

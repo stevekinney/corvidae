@@ -84,20 +84,20 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
     'broken-entry',
     pluginSource(
       'broken-entry',
-      `{ mcpApps: [${appSource('broken', 'bureau.tasks.events', './missing.ts')}] }`,
+      `{ panels: [${appSource('broken', 'bureau.tasks.events', './missing.ts')}] }`,
     ),
     false,
   );
   await writeFolderPlugin(
     plugins,
     'first-opener',
-    pluginSource('first-opener', `{ mcpApps: [${appSource('first', 'bureau.tasks.cancel')}] }`),
+    pluginSource('first-opener', `{ panels: [${appSource('first', 'bureau.tasks.cancel')}] }`),
     true,
   );
   await writeFolderPlugin(
     plugins,
     'second-opener',
-    pluginSource('second-opener', `{ mcpApps: [${appSource('second', 'bureau.tasks.cancel')}] }`),
+    pluginSource('second-opener', `{ panels: [${appSource('second', 'bureau.tasks.cancel')}] }`),
     true,
   );
   await writeFolderPlugin(plugins, 'bureau', pluginSource('bureau', '{}'), false);
@@ -123,7 +123,7 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
     folders.find(({ descriptor }) => descriptor.name === name) ?? undefined;
   const codes = (name: string) => standing(name)?.problems.map(({ code }) => code);
   expect(standing('broken-entry')?.status).toBe('running');
-  expect(codes('broken-entry')).toEqual(['mcp-app-failed']);
+  expect(codes('broken-entry')).toEqual(['panel-failed']);
   expect(standing('first-opener')).toMatchObject({ status: 'running', problems: [] });
   expect(standing('second-opener')?.status).toBe('skipped');
   expect(codes('second-opener')).toEqual(['name-clash']);
@@ -140,7 +140,7 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
   expect(openai?.status).toBe('skipped');
   expect(openai?.problems.map(({ code }) => code)).toEqual(['configuration-invalid']);
   // The apps that built are served; the one that did not, and the clashing one, are not.
-  const uris = (host.bureau.plugins.mcpApps() as readonly { app: { uri: string } }[]).map(
+  const uris = (host.bureau.plugins.panels() as readonly { app: { uri: string } }[]).map(
     ({ app }) => app.uri,
   );
   expect(uris).toContain('ui://bureau/run-inspector/v1');

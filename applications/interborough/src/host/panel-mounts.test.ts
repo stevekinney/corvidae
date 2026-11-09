@@ -1,17 +1,17 @@
-import type { PluginMcpApp } from '@lostgradient/interborough-plugin';
+import type { PluginPanel } from '@lostgradient/interborough-plugin';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { digestOf } from './mcp-app-build.ts';
+import { digestOf } from './panel-build.ts';
 import {
   MCP_APP_MIME_TYPE,
   MCP_APP_UI_META,
-  mcpAppMounts,
-  type ContributedMcpApps,
-} from './mcp-app-mounts.ts';
+  panelMounts,
+  type ContributedPanels,
+} from './panel-mounts.ts';
 
 const directories: string[] = [];
 
@@ -22,8 +22,8 @@ afterEach(async () => {
 });
 
 /** A plugin app whose entry is a one-line module written to a fresh directory. */
-async function app(name: string, overrides: Partial<PluginMcpApp> = {}): Promise<PluginMcpApp> {
-  const directory = await mkdtemp(join(tmpdir(), 'mcp-app-mounts-'));
+async function app(name: string, overrides: Partial<PluginPanel> = {}): Promise<PluginPanel> {
+  const directory = await mkdtemp(join(tmpdir(), 'panel-mounts-'));
   directories.push(directory);
   const entry = join(directory, 'app.ts');
   await writeFile(entry, `document.body.textContent = ${JSON.stringify(name)};\n`);
@@ -40,12 +40,12 @@ async function app(name: string, overrides: Partial<PluginMcpApp> = {}): Promise
   };
 }
 
-const contributed = (...apps: PluginMcpApp[]): ContributedMcpApps =>
+const contributed = (...apps: PluginPanel[]): ContributedPanels =>
   apps.map((each) => ({ plugin: 'test', version: '1.0.0', app: each }));
 
 describe('the MCP apps the host serves', () => {
   it('builds a self-contained, digested page for each contributed app', async () => {
-    const { resources } = await mcpAppMounts(contributed(await app('one'), await app('two')));
+    const { resources } = await panelMounts(contributed(await app('one'), await app('two')));
     expect(resources.map(({ uri }) => uri)).toEqual(['ui://test/one/v1', 'ui://test/two/v1']);
     for (const resource of resources) {
       const meta = resource._meta as { contentDigest: string };
@@ -72,7 +72,7 @@ describe('the MCP apps the host serves', () => {
       join(directory, 'one.json'),
       JSON.stringify({ html, contentDigest: digestOf(html) }),
     );
-    const { resources } = await mcpAppMounts(
+    const { resources } = await panelMounts(
       [{ plugin: 'inspectors', version: '1.0.0', app: candidate }],
       directory,
     );
@@ -85,7 +85,7 @@ describe('the MCP apps the host serves', () => {
     directories.push(directory);
     const candidate = await app('fallback');
     await writeFile(join(directory, 'fallback.json'), '{not-json');
-    const { resources } = await mcpAppMounts(
+    const { resources } = await panelMounts(
       [{ plugin: 'inspectors', version: '1.0.0', app: candidate }],
       directory,
     );
@@ -94,7 +94,7 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('declares deny-by-default security on every app', async () => {
-    const { resources } = await mcpAppMounts(contributed(await app('one')));
+    const { resources } = await panelMounts(contributed(await app('one')));
     expect(resources[0]?._meta).toMatchObject({ ui: MCP_APP_UI_META });
     expect(MCP_APP_UI_META.csp).toEqual({
       connectDomains: [],
@@ -106,7 +106,7 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('links the tool that opens an app to its page, and no other allowed tool', async () => {
-    const { toolMeta } = await mcpAppMounts(
+    const { toolMeta } = await panelMounts(
       contributed(
         await app('one', { allowedTools: ['a.first', 'a.second'], opensFromTool: 'a.second' }),
         await app('two'),
@@ -119,7 +119,7 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('lists each built app with its plugin, its declared tools, and its page, for the panel routes', async () => {
-    const { apps, resources } = await mcpAppMounts(
+    const { apps, resources } = await panelMounts(
       contributed(
         await app('one', { allowedTools: ['a.first', 'a.second'], opensFromTool: 'a.second' }),
       ),
@@ -141,12 +141,12 @@ describe('the MCP apps the host serves', () => {
 
   it('lists no app whose page did not build', async () => {
     const missing = await app('one', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
-    const { apps } = await mcpAppMounts(contributed(missing));
+    const { apps } = await panelMounts(contributed(missing));
     expect(apps).toEqual([]);
   });
 
   it('keeps a title from opening a tag and a style from ending its element', async () => {
-    const { resources } = await mcpAppMounts(
+    const { resources } = await panelMounts(
       contributed(
         await app('one', { title: 'A <b> & more', styles: 'a{}</style><script>x</script>' }),
       ),
@@ -156,7 +156,7 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('serves nothing when no plugin contributes an app', async () => {
-    expect(await mcpAppMounts([])).toEqual({
+    expect(await panelMounts([])).toEqual({
       resources: [],
       toolMeta: {},
       failures: [],
@@ -166,7 +166,7 @@ describe('the MCP apps the host serves', () => {
 
   it('reports an entry that does not build, and still serves the apps that do', async () => {
     const missing = await app('one', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
-    const { resources, toolMeta, failures } = await mcpAppMounts(
+    const { resources, toolMeta, failures } = await panelMounts(
       contributed(missing, await app('two')),
     );
     expect(resources.map(({ uri }) => uri)).toEqual(['ui://test/two/v1']);
@@ -177,7 +177,7 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('reports nothing when every app builds', async () => {
-    const { failures } = await mcpAppMounts(contributed(await app('one')));
+    const { failures } = await panelMounts(contributed(await app('one')));
     expect(failures).toEqual([]);
   });
 });
