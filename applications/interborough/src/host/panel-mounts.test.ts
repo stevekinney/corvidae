@@ -64,7 +64,7 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('uses a prebuilt built-in page without changing its HTML digest contract', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'mcp-app-prebuilt-'));
+    const directory = await mkdtemp(join(tmpdir(), 'panel-prebuilt-'));
     directories.push(directory);
     const candidate = await app('one');
     const html = '<meta charset="utf-8"><div id="root"></div>';
@@ -81,7 +81,7 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('falls back to runtime building when the prebuilt page is absent or invalid', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'mcp-app-prebuilt-fallback-'));
+    const directory = await mkdtemp(join(tmpdir(), 'panel-prebuilt-fallback-'));
     directories.push(directory);
     const candidate = await app('fallback');
     await writeFile(join(directory, 'fallback.json'), '{not-json');

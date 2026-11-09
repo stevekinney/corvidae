@@ -1,5 +1,5 @@
 /**
- * The host's routes behind a plugin's MCP-app panel (COR-1894). The run page mounts a panel through
+ * The host's routes behind a plugin's panel (COR-1894). The run page mounts a panel through
  * Chat's `McpApp`, which owns no client and no credential, so the host supplies both halves of it:
  *
  * - `GET /host/panels` lists the panels the host serves: the plugin, the app, its title and

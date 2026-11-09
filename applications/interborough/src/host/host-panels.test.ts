@@ -1,5 +1,5 @@
 /**
- * COR-1894: a plugin's MCP-app panel against the real host. The inspectors plugin's run inspector
+ * COR-1894: a plugin's panel against the real host. The inspectors plugin's run inspector
  * is served, and its tool calls reach the real Bureau handler in process as the local owner, over
  * a run that has finished. The refusals of `panel-routes.test.ts` are repeated here only where
  * the host's own wiring matters: the guard in front of the real listener and the Bureau's handler

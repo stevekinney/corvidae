@@ -1,5 +1,5 @@
 /**
- * COR-1894: the host routes behind a plugin's MCP-app panel. The page's HTML is served to the
+ * COR-1894: the host routes behind a plugin's panel. The page's HTML is served to the
  * panel's resource loader, and the panel's tool calls reach the Bureau in process only when the
  * app declared the tool. Every refusal is tested with a double for the Bureau's handler, so the
  * assertion that nothing ran is "the double was never called".

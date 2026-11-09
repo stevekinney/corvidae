@@ -85,7 +85,7 @@ import {
  * - `/host/plugins`, `/host/plugins/<name>`, and `/host/plugins/<name>/secrets/<key>`: the plugins the
  *   host loads, the owner's choices for them in `configuration.json` (`plugins`), and the secrets they
  *   declare (`plugin-routes.ts`). A remote host refuses a change with the reason `deployment`.
- *   `/host/panels` and `/host/plugins/<name>/apps/<app>[/tool-calls]` serve a plugin's MCP-app
+ *   `/host/panels` and `/host/plugins/<name>/apps/<app>[/tool-calls]` serve a plugin's
  *   panels (`panel-routes.ts`).
  * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/affected-agents`,
  *   `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
