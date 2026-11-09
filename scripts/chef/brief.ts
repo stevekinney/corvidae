@@ -56,6 +56,7 @@ export const charterRules = [
   '**Context:** keep it small. Write gate output to a log and read a failure with a targeted search. A context past about 250K tokens means: write a handoff brief under `tmp/chef/` and hand off to a fresh session.',
   '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Write logs and evidence under `tmp/chef/<package>/round-<n>/` in the main checkout, with a new directory for each correction round. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.',
   '**Corrections:** after two unsuccessful attempts at the same defect, stop patching and return evidence for causal reassessment.',
+  "**Acceptance criteria:** give every criterion exactly one status in the return. Implemented: the code exists and has not been checked. Verified: a command ran and passed, or a manual check was performed, named in the return. Failed: a check ran and failed. Blocked: an external dependency prevents checking. Not verified: not checked, with the reason. The criteria are the description's plus those in dated revisions and in comments that explicitly amend it; a conflict between them is needs-decision. Number unnumbered criteria AC1, AC2 in the return only, never in the issue.",
 ];
 
 const rootLint = 'bun run lint:root';

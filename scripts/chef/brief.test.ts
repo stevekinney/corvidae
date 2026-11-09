@@ -282,6 +282,9 @@ describe('charter rules', () => {
       'defect-classes.md',
       'review-threads.ts classes',
       'return evidence for causal reassessment',
+      'give every criterion exactly one status in the return',
+      'Not verified: not checked, with the reason',
+      'a conflict between them is needs-decision',
     ]) {
       expect(record.replace(/\s+/g, ' ')).toContain(phrase);
       expect(charterRules.join('\n').toLowerCase()).toContain(phrase.toLowerCase());

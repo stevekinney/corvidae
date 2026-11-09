@@ -125,6 +125,15 @@ passes without the fix is not evidence.
 
 Report: your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Write logs and evidence under `tmp/chef/<package>/round-<n>/` in the main checkout, with a new directory for each correction round. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.
 
+Acceptance criteria: give every criterion exactly one status in the return.
+Implemented: the code exists and has not been checked. Verified: a command
+ran and passed, or a manual check was performed, named in the return.
+Failed: a check ran and failed. Blocked: an external dependency prevents
+checking. Not verified: not checked, with the reason. The criteria are the
+description's plus those in dated revisions and in comments that explicitly
+amend it; a conflict between them is needs-decision. Number unnumbered
+criteria AC1, AC2 in the return only, never in the issue.
+
 Return status: merged, ready-for-review, blocked, or needs-decision.
 Include changed behavior/files; branch, worktree, commit and pull-request URL;
 commands and exit codes; evidence paths; the defect classes that apply and how
