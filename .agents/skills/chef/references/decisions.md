@@ -74,7 +74,7 @@ An explicit owner instruction in the current scope outranks process rules and gu
 
 When Jev does not decide an owner decision, ask the owner directly with a recommendation. In Claude Code, use `AskUserQuestion`: two to four genuinely comparable options per question, the recommended option first with "(Recommended)" in its label, and each description stating the consequence for this codebase, with Jev's probabilities in the description of the options they rate. In Codex, ask the same question directly in the conversation, in that shape. A subagent or worker cannot ask: it returns the question and its recommendation to the coordinator, which asks. Keep working on packages that do not depend on the answer. Never park a decision in a ticket; see [the Linear policy](linear-policy.md).
 
-Ask the questions the readiness pass surfaces in one batch before dispatch, as `SKILL.md` "Understand the work" describes, rather than one at a time as workers reach them.
+Ask the questions the readiness pass surfaces in one batch before dispatch, as [coordination](coordination.md#understand-the-work) describes, rather than one at a time as workers reach them.
 
 ## Recording
 

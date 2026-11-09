@@ -26,9 +26,9 @@ describe('process document word budgets', () => {
     expect(wordsIn('AGENTS.md')).toBeLessThanOrEqual(3800);
   });
 
-  // The coordinator's rewrite of .agents/skills/chef/SKILL.md (about 4,900 words today) enables
-  // this budget: turn it into a test asserting wordsIn(SKILL.md) <= 3000 once that lands.
-  test.todo('.agents/skills/chef/SKILL.md stays within 3,000 words');
+  test('.agents/skills/chef/SKILL.md stays within 3,000 words', () => {
+    expect(wordsIn('.agents/skills/chef/SKILL.md')).toBeLessThanOrEqual(3000);
+  });
 
   const referenceFiles = readdirSync(join(root, references))
     .filter((name) => name.endsWith('.md'))
