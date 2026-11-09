@@ -331,6 +331,13 @@ export function effectiveCodeAgent(
       priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
       replay: 'safe',
     });
+    // COR-2104 — the tool-call validators the override names.
+    hooks.on('beforeToolExecution', guardrails.beforeToolExecution, {
+      id: 'agent:override-guardrails-before-tool-execution',
+      source: AGENT_POLICY_HOOK_SOURCE,
+      priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+      replay: 'safe',
+    });
     return hooks;
   }
 

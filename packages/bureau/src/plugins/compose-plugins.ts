@@ -28,7 +28,12 @@ import type {
 } from '@lostgradient/interborough-plugin';
 import { createPluginStorage, guardrailId, isPluginName } from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
-import { createModelCatalog } from '@lostgradient/operative';
+import {
+  createModelCatalog,
+  type GuardrailEntry,
+  guardrailActionOf,
+  guardrailOf,
+} from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   formatToolId,
@@ -219,6 +224,31 @@ interface PluginContributionPlan {
 /** The points at which a memory guardrail that declares no `gates` runs. */
 const MEMORY_GATES: readonly PluginMemoryGate[] = ['admission', 'recall'];
 
+/** The actions an input, output and tool-call guardrail may carry (COR-2104). */
+const GUARDRAIL_ACTIONS: Readonly<Record<'input' | 'output' | 'tools', readonly string[]>> = {
+  input: ['block', 'warn', 'sanitize', 'tripwire'],
+  output: ['block', 'warn', 'redact', 'tripwire'],
+  tools: ['block', 'warn', 'tripwire'],
+};
+
+/**
+ * The name of a guardrail entry, after checking the action it carries is one its family has, so a
+ * plugin that returns another is skipped at setup instead of failing the runs that use it.
+ */
+function checkedGuardrailName(
+  family: 'input' | 'output' | 'tools',
+  entry: GuardrailEntry<{ readonly name: string }, string>,
+): string {
+  const { name } = guardrailOf(entry);
+  const action = guardrailActionOf(entry, GUARDRAIL_ACTIONS[family][0]!);
+  if (!GUARDRAIL_ACTIONS[family].includes(action)) {
+    throw new TypeError(
+      `setup returned the ${family} guardrail "${name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS[family].join(', ')}.`,
+    );
+  }
+  return name;
+}
+
 /** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
 const PANEL_URI_PATTERN = /^ui:\/\/\S+$/;
 
@@ -280,10 +310,19 @@ function planOf(
     name: string,
   ) => contribute(kind, name, undefined, undefined, guardrailId(plugin, family, name));
   for (const detector of contributions.guardrails?.input ?? []) {
-    guardrail('guardrail', 'input', detector.name);
+    guardrail('guardrail', 'input', checkedGuardrailName('input', detector));
   }
   for (const validator of contributions.guardrails?.output ?? []) {
-    guardrail('guardrail', 'output', validator.name);
+    guardrail('guardrail', 'output', checkedGuardrailName('output', validator));
+  }
+  for (const validator of contributions.guardrails?.tools ?? []) {
+    const action = validator.action ?? 'block';
+    if (!GUARDRAIL_ACTIONS.tools.includes(action)) {
+      throw new TypeError(
+        `setup returned the tools guardrail "${validator.name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS.tools.join(', ')}.`,
+      );
+    }
+    guardrail('guardrail', 'tools', validator.name);
   }
   for (const interceptor of contributions.interceptors ?? []) {
     contribute('interceptor', interceptor.name);
@@ -407,6 +446,9 @@ function heldByHost(options: ComposableOptions): Claims {
     }
     if (held.outputValidator !== undefined) {
       claims.hold({ space: 'guardrail', name: guardrailId(namespace, 'output', name) }, HOST_PARTY);
+    }
+    if (held.toolValidator !== undefined) {
+      claims.hold({ space: 'guardrail', name: guardrailId(namespace, 'tools', name) }, HOST_PARTY);
     }
   }
   for (const id of options.agentContributions?.interceptors.keys() ?? []) {

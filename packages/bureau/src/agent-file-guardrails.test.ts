@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
-import type { OperativeHookMap, OutputValidator } from '@lostgradient/operative';
+import type { OperativeHookMap, OutputValidator, ToolCallValidator } from '@lostgradient/operative';
 import type { InputDetector } from 'armorer';
 
 import {
@@ -236,12 +236,23 @@ const forbiddenValidator: OutputValidator = {
   }),
 };
 
+/** COR-2104 — "Refund cap · blocks refunds over $100", on the fixture's `lookup-order` tool. */
+const orderCap: ToolCallValidator = {
+  name: 'order-cap',
+  description: 'Blocks orders over $100',
+  action: 'block',
+  validate: async (call) =>
+    call.name === 'lookup-order' && ((call.arguments as { amount?: number }).amount ?? 0) > 100
+      ? { valid: false, category: 'order-limit', confidence: 1 }
+      : { valid: true, category: 'order-limit', confidence: 0 },
+};
+
 const stepsSeen: string[] = [];
 
 const contributions = createAgentContributions([
   {
     plugin: 'x',
-    guardrails: { input: [sentinelDetector], output: [forbiddenValidator] },
+    guardrails: { input: [sentinelDetector], output: [forbiddenValidator], tools: [orderCap] },
     interceptors: [
       {
         name: 'audit',
@@ -255,7 +266,11 @@ const contributions = createAgentContributions([
 
 describe('createAgentContributions', () => {
   it('names each contribution plugin:name, whatever its kind', () => {
-    expect([...contributions.guardrails.keys()]).toEqual(['x:check', 'x:no-forbidden']);
+    expect([...contributions.guardrails.keys()]).toEqual([
+      'x:check',
+      'x:no-forbidden',
+      'x:order-cap',
+    ]);
     expect([...contributions.interceptors.keys()]).toEqual(['x:audit']);
   });
 
@@ -342,6 +357,37 @@ describe('guardrailAdditionsOf', () => {
     expect(
       guardrailAdditionsOf({ guardrails: ['x:check', 'x:check', 'x:no-forbidden'] }, contributions),
     ).toEqual({ inputDetectors: [sentinelDetector], outputValidators: [forbiddenValidator] });
+  });
+
+  it('collects a tool-call validator, and an entry with its own action keeps it (COR-2104)', () => {
+    const warned = { guardrail: sentinelDetector, action: 'warn' as const };
+    const own = createAgentContributions([
+      {
+        plugin: 'y',
+        guardrails: {
+          input: [warned],
+          output: [{ guardrail: forbiddenValidator, action: 'redact' }],
+          tools: [{ ...orderCap, name: 'check' }],
+        },
+      },
+    ]);
+    expect([...own.guardrails.keys()]).toEqual(['y:check', 'y:no-forbidden']);
+    expect(guardrailAdditionsOf({ guardrails: ['y:check'] }, own)).toEqual({
+      inputDetectors: [warned],
+      outputValidators: [],
+      toolValidators: [{ ...orderCap, name: 'check' }],
+    });
+    expect(guardrailAdditionsOf({ guardrails: ['x:order-cap'] }, contributions)).toEqual({
+      inputDetectors: [],
+      outputValidators: [],
+      toolValidators: [orderCap],
+    });
+  });
+
+  it('refuses a tool-call validator name contributed twice by one plugin', () => {
+    expect(() =>
+      createAgentContributions([{ plugin: 'y', guardrails: { tools: [orderCap, orderCap] } }]),
+    ).toThrow('"y:order-cap" is contributed more than once');
   });
 });
 
@@ -489,6 +535,81 @@ describe.each(['non-durable', 'durable'] as const)(
         const flaggedReply = await runFileAgent(dispatch, {}, 'Hello', 'FORBIDDEN words');
         expect(flaggedReply.finishReason).toBe('stop-condition');
         expect(flaggedReply.content).toBe('FORBIDDEN words');
+      });
+    });
+
+    describe('a plugin tool-call validator (COR-2104)', () => {
+      async function runOrder(frontmatter: Record<string, string>): Promise<Activity> {
+        const harness = await startFileBureau({
+          scripts: {
+            'claude-opus-5-5': (observation) =>
+              harness.observed.length === 1
+                ? {
+                    content: '',
+                    toolCalls: [{ name: 'lookup-order', arguments: { amount: 150 } }],
+                  }
+                : `seen ${observation.tools.join(',')}`,
+          },
+          overrides: { durable: dispatch === 'durable', agentContributions: contributions },
+        });
+        harnesses.push(harness);
+        await harness.put(
+          'helper.md',
+          agentFileText({ model: KNOWN_MODEL, tools: '[lookup-order]', ...frontmatter }),
+        );
+        await harness.bureau.agents.refresh();
+        const task = await harness.bureau.tasks.start('helper', 'Order it.');
+        const result = await task.result();
+        await waitForTaskState(harness.bureau, task.id);
+        const feed: Activity['feed'][number][] = [];
+        const runFeed = harness.bureau.internals.runEventFeeds.get(task.id);
+        if (runFeed === undefined) throw new Error('Expected the run to have a feed.');
+        for await (const envelope of runFeed.feed.replay()) {
+          feed.push({ kind: envelope.kind, payload: { ...envelope.payload } });
+        }
+        return {
+          finishReason: result.finishReason,
+          content: result.content,
+          generations: harness.observed.length,
+          feed,
+        };
+      }
+
+      /** The outcome of each call the first step made, as its `step.completed` event records it. */
+      const firstStepOutcomes = (activity: Activity) =>
+        activity.feed
+          .filter((event) => event.kind === 'step.completed' && event.payload['step'] === 0)
+          .flatMap((event) => event.payload['results'] as Array<{ outcome: string }>)
+          .map((result) => result.outcome);
+      const executing = (activity: Activity) =>
+        activity.feed.filter((event) => event.kind === 'tools.executing');
+
+      it('applies it when the agent lists it: the call is refused and the run goes on', async () => {
+        const activity = await runOrder({ guardrails: '[x:order-cap]' });
+
+        expect(activity.finishReason).toBe('stop-condition');
+        expect(activity.generations).toBe(2);
+        expect(tripwires(activity)).toHaveLength(0);
+        const fired = activity.feed.filter((event) => event.kind === 'run.guardrail');
+        expect(fired.map((event) => event.payload)).toEqual([
+          expect.objectContaining({
+            guardrailName: 'order-cap',
+            phase: 'tool-call',
+            action: 'block',
+          }),
+        ]);
+        // The call never reached the toolbox, and the step records it as answered with an error.
+        expect(executing(activity)).toEqual([]);
+        expect(firstStepOutcomes(activity)).toEqual(['error']);
+      });
+
+      it('does not apply it when the agent does not list it: the call runs', async () => {
+        const activity = await runOrder({});
+
+        expect(activity.finishReason).toBe('stop-condition');
+        expect(activity.feed.filter((event) => event.kind === 'run.guardrail')).toEqual([]);
+        expect(executing(activity)).toHaveLength(1);
+        expect(firstStepOutcomes(activity)).toEqual(['success']);
       });
     });
 

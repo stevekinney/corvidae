@@ -65,6 +65,19 @@ function userMessagesSinceLastGeneration(
  * from crashing the agent loop.
  */
 export function createInputGuardrail(options: InputGuardrailOptions): PrepareStepHook {
+  return inputGuardrailHook(options, true);
+}
+
+/**
+ * {@link createInputGuardrail}, with `inspectsMedia` deciding whether it also refuses what no
+ * detector reads (an unsafe or undecodable media part). `createGuardrails` runs the detectors of
+ * each action apart (COR-2104), and only the group's own action answers for media, so a detector
+ * with an action of its own does not change what an unsafe asset does.
+ */
+export function inputGuardrailHook(
+  options: InputGuardrailOptions,
+  inspectsMedia: boolean,
+): PrepareStepHook {
   const {
     detectors,
     action = 'block',
@@ -92,13 +105,11 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
       const inspectable = inspectContent(message.content, (partIndex) =>
         context.resolvedSources?.get(`${message.id}:${partIndex}`),
       );
-      const assetFindings = findUnsafeAssets(
-        context,
-        message.id,
-        message.content,
-        unverifiedAssets,
-      );
-      const undecodable = inspectable.uninspectable.map((body): AssetFinding => ({
+      const assetFindings = inspectsMedia
+        ? findUnsafeAssets(context, message.id, message.content, unverifiedAssets)
+        : [];
+      const uninspectable = inspectsMedia ? inspectable.uninspectable : [];
+      const undecodable = uninspectable.map((body): AssetFinding => ({
         blocking: true,
         event: (eventAction, provenance) => ({
           detector: 'content-body',

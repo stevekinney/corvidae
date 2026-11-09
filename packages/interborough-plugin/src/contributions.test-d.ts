@@ -3,7 +3,7 @@
 // contract is told at compile time. `PluginContributions` has no index signature, so an unknown key
 // is an excess-property error.
 
-import type { OutputValidator } from '@lostgradient/operative';
+import type { OutputValidator, ToolCallValidator } from '@lostgradient/operative';
 import type { InputDetector } from 'armorer';
 
 import type {
@@ -90,3 +90,24 @@ export const staleMemoryDetectors: PluginContributions = { memoryDetectors: [det
 
 // @ts-expect-error -- a memory gate is `admission` or `recall`
 export const unknownGate: PluginGuardrails = { memory: [{ ...detector, gates: ['write'] }] };
+
+declare const toolValidator: ToolCallValidator;
+
+// COR-2104 — a tool-call validator joins `guardrails.tools`, and an input or output entry may carry
+// an action of its own.
+export const withActions: PluginGuardrails = {
+  input: [detector, { guardrail: detector, action: 'warn' }, { guardrail: detector }],
+  output: [validator, { guardrail: validator, action: 'redact' }],
+  tools: [toolValidator, { ...toolValidator, action: 'tripwire' }],
+};
+
+// @ts-expect-error -- `redact` is an output action, not an input one
+export const inputRedact: PluginGuardrails = { input: [{ guardrail: detector, action: 'redact' }] };
+
+export const outputSanitize: PluginGuardrails = {
+  // @ts-expect-error -- `sanitize` is an input action, not an output one
+  output: [{ guardrail: validator, action: 'sanitize' }],
+};
+
+// @ts-expect-error -- a tool-call validator's action is `block`, `warn` or `tripwire`
+export const toolRedact: PluginGuardrails = { tools: [{ ...toolValidator, action: 'redact' }] };

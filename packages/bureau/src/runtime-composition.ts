@@ -2648,8 +2648,9 @@ function registerIdentityInvariant(
 }
 
 /**
- * Registers the guardrail invariants: the input scan, the tool-result scan (COR-2103), and the
- * output check, in the order the legacy arrays ran the first and last.
+ * Registers the guardrail invariants: the input scan, the tool-result scan (COR-2103), the output
+ * check, and the tool-call validators (COR-2104), in the order the legacy arrays ran the first and
+ * last.
  *
  * The caller decides WHEN — the per-run composition registers `prepareStep`
  * last of all its `prepareStep` hooks on purpose, so the input guardrail scans a
@@ -2677,6 +2678,13 @@ function registerGuardrailInvariants(
   // so it is pinned last for the same reason as `validateResponse`.
   registry.on('validateToolResult', guardrails.validateToolResult, {
     id: 'bureau:guardrails-validate-tool-result',
+    priority: BUREAU_PINNED_LAST_PRIORITY,
+    replay: 'safe',
+  });
+  // COR-2104 — the tool-call validators. `beforeToolExecution` waterfalls the call list, so they
+  // are pinned last too: they judge the calls every other tier's hook settled on.
+  registry.on('beforeToolExecution', guardrails.beforeToolExecution, {
+    id: 'bureau:guardrails-before-tool-execution',
     priority: BUREAU_PINNED_LAST_PRIORITY,
     replay: 'safe',
   });

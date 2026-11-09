@@ -178,7 +178,18 @@ describe('pluginIdentities', () => {
           input: [{ name: 'no-secrets', detect: async () => ({ safe: true }) } as never],
           output: [
             {
-              name: 'no-forbidden',
+              // An entry with an action of its own is listed by its guardrail's name (COR-2104).
+              guardrail: {
+                name: 'no-forbidden',
+                validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
+              },
+              action: 'warn',
+            },
+          ],
+          tools: [
+            {
+              name: 'refund-cap',
+              action: 'block',
               validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
             },
           ],
@@ -202,6 +213,7 @@ describe('pluginIdentities', () => {
         { kind: 'guardrail', id: 'example:memory/no-secrets', version: '1.2.0', schema: null },
         { kind: 'guardrail', id: 'example:memory/recall-only', version: '1.2.0', schema: null },
         { kind: 'guardrail', id: 'example:output/no-forbidden', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:tools/refund-cap', version: '1.2.0', schema: null },
       ],
     );
   });

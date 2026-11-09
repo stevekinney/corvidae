@@ -2,10 +2,12 @@ import type {
   AfterToolExecutionHook,
   BeforeToolExecutionHook,
   DecisionModel,
+  InputGuardrailEntry,
   OnStepHook,
-  OutputValidator,
+  OutputGuardrailEntry,
   PrepareStepHook,
   RunnableAgent,
+  ToolCallValidator,
   ValidateResponseHook,
   Validator,
 } from '@lostgradient/operative';
@@ -59,10 +61,23 @@ export interface PluginMemoryGuardrail extends InputDetector {
  * different guardrails that may share a name.
  */
 export interface PluginGuardrails {
-  /** Detectors run over the input before a generate call. */
-  readonly input?: readonly InputDetector[];
-  /** Validators run over a response before it is accepted. */
-  readonly output?: readonly OutputValidator[];
+  /**
+   * Detectors run over the input before a generate call, and over each tool result. An entry is a
+   * detector, which takes the action of the group it joins, or `{ guardrail, action }`, whose
+   * `action` (`block`, `warn`, `sanitize` or `tripwire`) it keeps whatever that group's.
+   */
+  readonly input?: readonly InputGuardrailEntry[];
+  /**
+   * Validators run over a response before it is accepted. An entry is a validator, which takes the
+   * action of the group it joins, or `{ guardrail, action }`, whose `action` (`block`, `warn`,
+   * `redact` or `tripwire`) it keeps whatever that group's.
+   */
+  readonly output?: readonly OutputGuardrailEntry[];
+  /**
+   * Validators run over each tool call before it runs. A validator's own `action` (`block`, `warn`
+   * or `tripwire`) decides what its finding does; left out, it takes its group's.
+   */
+  readonly tools?: readonly ToolCallValidator[];
   /**
    * Detectors run after the default poisoning detector, on memory admission, on recall or on both
    * (see {@link PluginMemoryGuardrail.gates}). An agent file cannot choose them: they guard the

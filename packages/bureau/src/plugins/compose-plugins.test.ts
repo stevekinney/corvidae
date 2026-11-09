@@ -6,7 +6,7 @@ import {
   type PluginSetupContext,
   type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
-import { createAgent } from '@lostgradient/operative';
+import { createAgent, guardrailOf } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -358,10 +358,10 @@ describe('composePlugins', () => {
       ]);
       // An agent file names `kit:scan`, which selects the input detector and the output validator.
       const chosen = options.agentContributions?.guardrails.get('kit:scan');
-      expect([chosen?.inputDetector?.name, chosen?.outputValidator?.name]).toEqual([
-        'scan',
-        'scan',
-      ]);
+      expect([
+        chosen?.inputDetector && guardrailOf(chosen.inputDetector).name,
+        chosen?.outputValidator && guardrailOf(chosen.outputValidator).name,
+      ]).toEqual(['scan', 'scan']);
     });
 
     it('refuses a name contributed twice within one family', async () => {
@@ -398,10 +398,10 @@ describe('composePlugins', () => {
 
       expect(records[0]?.status).toBe('running');
       const chosen = options.agentContributions?.guardrails.get('kit:scan');
-      expect([chosen?.inputDetector?.name, chosen?.outputValidator?.name]).toEqual([
-        'scan',
-        'scan',
-      ]);
+      expect([
+        chosen?.inputDetector && guardrailOf(chosen.inputDetector).name,
+        chosen?.outputValidator && guardrailOf(chosen.outputValidator).name,
+      ]).toEqual(['scan', 'scan']);
     });
 
     it.each([[[]], [['write']]])('refuses memory gates %j', async (gates) => {
@@ -416,6 +416,66 @@ describe('composePlugins', () => {
       expect(records[0]?.status).toBe('skipped');
       expect(records[0]?.problems).toEqual([expect.objectContaining({ code: 'setup-failed' })]);
     });
+
+    it('claims a tool-call validator in the tools family, selectable as plugin:name (COR-2104)', async () => {
+      const toolValidator = { name: 'scan', action: 'block' as const, validate };
+      const { options, records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: {
+              input: [{ guardrail: { name: 'scan', detect }, action: 'warn' }],
+              tools: [toolValidator],
+            },
+          })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(records[0]?.contributions.map(({ kind, id }) => `${kind} ${id}`)).toEqual([
+        'guardrail kit:scan',
+        'guardrail kit:scan',
+      ]);
+      const chosen = options.agentContributions?.guardrails.get('kit:scan');
+      expect(chosen?.toolValidator).toMatchObject({ name: 'scan', action: 'block' });
+      expect(chosen?.inputDetector).toMatchObject({ action: 'warn' });
+    });
+
+    it('refuses a tool-call validator name a host entry already holds in that family', async () => {
+      const held = { id: 'kit:scan', plugin: 'kit', toolValidator: { name: 'scan', validate } };
+      const { records } = await composePlugins<ComposableOptions>({
+        agentContributions: {
+          guardrails: new Map([['kit:scan', held as never]]),
+          interceptors: new Map(),
+        },
+        plugins: [
+          pluginEntry('kit', () => ({ guardrails: { tools: [{ name: 'scan', validate }] } })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({ code: 'name-clash', name: 'kit:tools/scan' }),
+      ]);
+    });
+
+    it.each([
+      ['an input entry', { input: [{ guardrail: { name: 'scan', detect }, action: 'redact' }] }],
+      [
+        'an output entry',
+        { output: [{ guardrail: { name: 'scan', validate }, action: 'sanitize' }] },
+      ],
+      ['a tool-call validator', { tools: [{ name: 'scan', validate, action: 'redact' }] }],
+    ])(
+      'skips a plugin whose %s carries an action its family does not have',
+      async (_, guardrails) => {
+        const { records } = await composePlugins<ComposableOptions>({
+          plugins: [pluginEntry('kit', () => ({ guardrails: guardrails as never }))],
+        });
+
+        expect(records[0]?.status).toBe('skipped');
+        expect(records[0]?.problems).toEqual([expect.objectContaining({ code: 'setup-failed' })]);
+      },
+    );
   });
 
   it('skips a malformed plugin instead of failing composition', async () => {

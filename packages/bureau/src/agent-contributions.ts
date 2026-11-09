@@ -7,7 +7,8 @@
  * with the plugin that contributes it. An id the contributions do not hold makes the agent invalid
  * with `reference-unresolved`.
  *
- * A guardrail is one input detector or one output validator, named by its own `name`. An
+ * A guardrail is one input detector, one output validator or one tool-call validator, named by its
+ * own `name`; an input or output entry may carry an action of its own, which travels with it. An
  * interceptor is one `PluginInterceptor`, named by its own `name`. Every run hook it registers carries
  * `source: <plugin>`, which survives `mergeHookRegistries`, so the run's hook plan says which
  * plugin each entry came from.
@@ -17,12 +18,15 @@
 
 import type { PluginGuardrails, PluginInterceptor } from '@lostgradient/interborough-plugin';
 import { HookRegistry } from '@lostgradient/lifecycle';
-import type {
-  GuardrailAdditions,
-  OperativeHookMap,
-  OutputValidator,
+import {
+  type GuardrailAdditions,
+  guardrailOf,
+  type InputGuardrailEntry,
+  type OperativeHookMap,
+  type OutputGuardrailEntry,
+  type ToolCallValidator,
 } from '@lostgradient/operative';
-import { formatToolId, type InputDetector } from 'armorer';
+import { formatToolId } from 'armorer';
 
 import type { AgentFileDefinition, AgentFileIssue } from './agent-file';
 
@@ -37,18 +41,20 @@ export interface AgentContributionSource {
 }
 
 /**
- * The guardrails a plugin contributes under one name: an input detector, an output validator, or
- * both, since names are claimed per family.
+ * The guardrails a plugin contributes under one name: an input detector, an output validator, a
+ * tool-call validator, or more than one, since names are claimed per family.
  */
 export interface ContributedGuardrail {
   /** `plugin:name`, as an agent file writes it. */
   readonly id: string;
   /** The contributing plugin. */
   readonly plugin: string;
-  /** Set for an input detector. */
-  readonly inputDetector?: InputDetector | undefined;
-  /** Set for an output validator. */
-  readonly outputValidator?: OutputValidator | undefined;
+  /** Set for an input detector, with the action it carries, if any. */
+  readonly inputDetector?: InputGuardrailEntry | undefined;
+  /** Set for an output validator, with the action it carries, if any. */
+  readonly outputValidator?: OutputGuardrailEntry | undefined;
+  /** Set for a tool-call validator (COR-2104). */
+  readonly toolValidator?: ToolCallValidator | undefined;
 }
 
 /** One interceptor a plugin contributes. */
@@ -91,11 +97,12 @@ export function createAgentContributions(
     interceptors: contributedInterceptors,
   } of sources) {
     // An agent file names a guardrail as `plugin:name`; a name is claimed per family, so one name
-    // may carry an input detector and an output validator, which a file that lists it applies both.
+    // may carry an input detector, an output validator and a tool-call validator, which a file that
+    // lists it applies all of.
     const guardrail = (
       name: string,
-      family: 'inputDetector' | 'outputValidator',
-      entry: Pick<ContributedGuardrail, 'inputDetector' | 'outputValidator'>,
+      family: 'inputDetector' | 'outputValidator' | 'toolValidator',
+      entry: Pick<ContributedGuardrail, 'inputDetector' | 'outputValidator' | 'toolValidator'>,
     ) => {
       const id = formatToolId({ namespace: plugin, name });
       const held = guardrails.get(id);
@@ -105,10 +112,13 @@ export function createAgentContributions(
       guardrails.set(id, { ...held, id, plugin, ...entry });
     };
     for (const detector of contributed?.input ?? []) {
-      guardrail(detector.name, 'inputDetector', { inputDetector: detector });
+      guardrail(guardrailOf(detector).name, 'inputDetector', { inputDetector: detector });
     }
     for (const validator of contributed?.output ?? []) {
-      guardrail(validator.name, 'outputValidator', { outputValidator: validator });
+      guardrail(guardrailOf(validator).name, 'outputValidator', { outputValidator: validator });
+    }
+    for (const validator of contributed?.tools ?? []) {
+      guardrail(validator.name, 'toolValidator', { toolValidator: validator });
     }
     for (const interceptor of contributedInterceptors ?? []) {
       const id = formatToolId({ namespace: plugin, name: interceptor.name });
@@ -160,17 +170,25 @@ export function guardrailAdditionsOf(
   definition: Pick<AgentFileDefinition, 'guardrails'>,
   contributions: AgentContributions,
 ): GuardrailAdditions | undefined {
-  const inputDetectors: InputDetector[] = [];
-  const outputValidators: OutputValidator[] = [];
+  const inputDetectors: InputGuardrailEntry[] = [];
+  const outputValidators: OutputGuardrailEntry[] = [];
+  const toolValidators: ToolCallValidator[] = [];
   for (const id of new Set(definition.guardrails ?? [])) {
     const contributed = contributions.guardrails.get(id);
     if (contributed?.inputDetector !== undefined) inputDetectors.push(contributed.inputDetector);
     if (contributed?.outputValidator !== undefined) {
       outputValidators.push(contributed.outputValidator);
     }
+    if (contributed?.toolValidator !== undefined) toolValidators.push(contributed.toolValidator);
   }
-  if (inputDetectors.length === 0 && outputValidators.length === 0) return undefined;
-  return { inputDetectors, outputValidators };
+  if (inputDetectors.length === 0 && outputValidators.length === 0 && toolValidators.length === 0) {
+    return undefined;
+  }
+  return {
+    inputDetectors,
+    outputValidators,
+    ...(toolValidators.length === 0 ? {} : { toolValidators }),
+  };
 }
 
 const INTERCEPTOR_HOOK_NAMES = [

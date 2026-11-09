@@ -92,7 +92,7 @@ The descriptor's members:
 | `tools` | Tools agents can call. |
 | `activities` | Activities a shipped workflow calls as `plugin:name`. |
 | `validators` | Goal validators, registered by name and version. |
-| `guardrails` | `input` detectors and `output` validators, added to the ones Operative applies to every agent, and `memory` detectors that guard governed memory (each may declare `gates`: `admission`, `recall`, or both by default). An agent file chooses an `input` or `output` guardrail with `guardrails: [plugin:name]`. |
+| `guardrails` | `input` detectors and `output` validators, added to the ones Operative applies to every agent, `tools` validators that judge each tool call before it runs (COR-2104), and `memory` detectors that guard governed memory (each may declare `gates`: `admission`, `recall`, or both by default). An `input` or `output` entry may be `{ guardrail, action }` to keep an action of its own whatever its group's, and a `tools` validator carries its own `action` (`block`, `warn` or `tripwire`). An agent file chooses an `input`, `output` or `tools` guardrail with `guardrails: [plugin:name]`. |
 | `interceptors` | Run hooks an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
 | `triggers` | New external sources that start work. |

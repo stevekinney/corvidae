@@ -497,6 +497,13 @@ export interface ToolExecutionHookContext {
    * the host dispatches no events.
    */
   reportGuardrail?: ((firing: GuardrailFiring) => void) | undefined;
+  /**
+   * Refuses one of the step's calls on behalf of the guardrail named (COR-2104). The call does not
+   * run, whatever any hook returns after this, and the model is answered with a `GUARDRAIL_BLOCKED`
+   * permission error naming the guardrail in place of the result. The step's other calls still
+   * run. A call id the step does not hold is ignored. Absent where a host builds the context itself.
+   */
+  refuse?: ((callId: string, guardrailName: string) => void) | undefined;
   elicit?:
     | (<T>(message: string, schema: ZodType<T>, options?: ElicitationOptions) => Promise<T | null>)
     | undefined;

@@ -22,6 +22,7 @@ import {
   createDurableActiveRun,
   type DurableRunDeps,
   type GenerateFunction,
+  type GuardrailsOptions,
   GuardrailTripwireError,
   type OperativeHookMap,
   type ProviderDefinition,
@@ -35,6 +36,7 @@ import {
   stopWhen,
   type StreamEventMap,
   SESSION_OWNER_METADATA_KEY,
+  type ToolCallValidator,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -998,6 +1000,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
           'agent:own',
           'bureau:guardrails-validate-response',
           'bureau:guardrails-validate-tool-result',
+          'bureau:guardrails-before-tool-execution',
         ]);
 
         // AB-240's rollback trigger, unmoved: only the hook tier is added. A
@@ -1029,6 +1032,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
           'bureau:guardrails-prepare-step',
           'bureau:guardrails-validate-response',
           'bureau:guardrails-validate-tool-result',
+          'bureau:guardrails-before-tool-execution',
         ],
       ],
       [true, ['bureau:identity']],
@@ -4799,6 +4803,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
         'bureau:guardrails-prepare-step',
         'bureau:guardrails-validate-response',
         'bureau:guardrails-validate-tool-result',
+        'bureau:guardrails-before-tool-execution',
       ],
     ],
     [
@@ -4807,6 +4812,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
         'bureau:guardrails-prepare-step',
         'bureau:guardrails-validate-response',
         'bureau:guardrails-validate-tool-result',
+        'bureau:guardrails-before-tool-execution',
       ],
     ],
   ] as const)(
@@ -6354,6 +6360,52 @@ describe('AB-40: default guardrails preset', () => {
     expect((caught as GuardrailTripwireError).phase).toBe('tool-result');
   });
 
+  it('applies a Bureau-tier tool-call validator to the run’s calls (COR-2104)', async () => {
+    const refundCap: ToolCallValidator = {
+      name: 'refund-cap',
+      validate: async (call) =>
+        call.name === 'refund' && ((call.arguments as { amount?: number }).amount ?? 0) > 100
+          ? { valid: false, category: 'refund-limit', confidence: 1 }
+          : { valid: true, category: 'refund-limit', confidence: 0 },
+    };
+    const refundCall = { id: 'call-1', name: 'refund', arguments: { amount: 150 } };
+    const lookupCall = { id: 'call-2', name: 'lookup', arguments: {} };
+    const runWith = async (guardrails: GuardrailsOptions) => {
+      const runtime = await createRuntimeComposition({
+        generate: async () => ({ content: 'ok', toolCalls: [] }),
+        toolbox: createToolbox([], { context: {} }),
+        guardrails,
+      });
+      const runRuntime = await runtime.createRunRuntime({
+        agentName: 'bureau',
+        message: 'Refund it.',
+        sessionId: `tool-call-${guardrails.mode ?? 'validate'}`,
+      });
+      const handlers = runRuntime.hooks.getHandlers('beforeToolExecution');
+      expect(handlers.map((entry) => entry.id)).toEqual([
+        'bureau:guardrails-before-tool-execution',
+      ]);
+      const refused: Array<[string, string]> = [];
+      const answer = await handlers[0]!.handler({
+        conversation: new Conversation(),
+        step: 1,
+        toolCalls: [refundCall, lookupCall],
+        refuse: (callId, guardrailName) => void refused.push([callId, guardrailName]),
+      });
+      return { answer, refused };
+    };
+
+    const validate = await runWith({ mode: 'validate', tools: { validators: [refundCap] } });
+    expect(validate.answer).toEqual([lookupCall]);
+    expect(validate.refused).toEqual([['call-1', 'refund-cap']]);
+
+    const tripwire = await runWith({ mode: 'tripwire', tools: { validators: [refundCap] } }).catch(
+      (error: unknown) => error,
+    );
+    expect(tripwire).toBeInstanceOf(GuardrailTripwireError);
+    expect((tripwire as GuardrailTripwireError).phase).toBe('tool-call');
+  });
+
   it('does not trip on ordinary input/output when guardrails is omitted', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
@@ -6485,6 +6537,9 @@ describe('COR-567: bureau composes one inspectable hook plan per run', () => {
     ]);
     expect(runRuntime.hooks.getHandlers('validateToolResult').map((entry) => entry.id)).toEqual([
       'bureau:guardrails-validate-tool-result',
+    ]);
+    expect(runRuntime.hooks.getHandlers('beforeToolExecution').map((entry) => entry.id)).toEqual([
+      'bureau:guardrails-before-tool-execution',
     ]);
   });
 

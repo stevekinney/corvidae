@@ -22,7 +22,7 @@
  * | activity (`execute`, `verify`, `compensate`) | refuses without retrying (`nonRetryableErrors`); a refused `verify` fails the result, and a refused `compensate` is a failed compensation | works | refuses |
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
- * | guardrail, `input` and `output` (`detect`, `validate`) | refuses; an agent file that lists it cannot run | works | refuses |
+ * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run contains the refusal as it contains any detector's or validator's error, so the guardrail finds nothing and the input, reply or call it would judge goes on (COR-2104) | works | refuses |
  * | interceptor (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
@@ -44,7 +44,11 @@ import type {
   PluginInterceptor,
   PluginTrigger,
 } from '@lostgradient/interborough-plugin';
-import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
+import {
+  type GuardrailEntry,
+  guardrailOf,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
+} from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
 
 import type { BureauPluginSecrets } from './plugin-types';
@@ -54,6 +58,19 @@ import type { BureauPluginSecrets } from './plugin-types';
  * it did not run, and detected nothing.
  */
 export const PLUGIN_NEEDS_SETUP_CATEGORY = 'plugin-needs-setup';
+
+/**
+ * `entry` with its guardrail replaced by `wrap`'s, keeping the action it carries (COR-2104).
+ */
+function withGuardrail<T, A extends string>(
+  entry: GuardrailEntry<T, A>,
+  wrap: (guardrail: T) => T,
+): GuardrailEntry<T, A> {
+  const guardrail = guardrailOf(entry);
+  return guardrail === entry
+    ? wrap(guardrail)
+    : { ...(entry as object), guardrail: wrap(guardrail) };
+}
 
 /** A plugin's contribution was called while a secret its plugin declared is not set. */
 export class PluginNeedsSetupError extends Error {
@@ -332,15 +349,32 @@ export function gatedContributions<T extends PluginContributions>(
             ...(guardrails.input === undefined
               ? {}
               : {
-                  input: guardrails.input.map((detector) => ({
-                    ...detector,
-                    detect: gated(gate, idOf(detector.name), detector.detect.bind(detector)),
-                  })),
+                  input: guardrails.input.map((entry) =>
+                    withGuardrail(entry, (detector) => ({
+                      ...detector,
+                      detect: gated(gate, idOf(detector.name), detector.detect.bind(detector)),
+                    })),
+                  ),
                 }),
             ...(guardrails.output === undefined
               ? {}
               : {
-                  output: guardrails.output.map((validator) => ({
+                  output: guardrails.output.map((entry) =>
+                    withGuardrail(entry, (validator) => ({
+                      ...validator,
+                      validate: gated(
+                        gate,
+                        idOf(validator.name),
+                        validator.validate.bind(validator),
+                      ),
+                    })),
+                  ),
+                }),
+            ...(guardrails.tools === undefined
+              ? {}
+              : {
+                  // The validator's own `action` is kept by the spread.
+                  tools: guardrails.tools.map((validator) => ({
                     ...validator,
                     validate: gated(gate, idOf(validator.name), validator.validate.bind(validator)),
                   })),

@@ -581,3 +581,164 @@ describe('createGuardrails tool-result scanning (COR-2103)', () => {
     expect(firings).toHaveLength(1);
   });
 });
+
+/**
+ * COR-2104 — a detector or validator may carry an action of its own. It keeps it under either mode;
+ * a bare one takes its group's. The guardrails of each action run apart, the furthest-reaching
+ * first, so one set to warn never lets through what a blocking one refuses.
+ */
+describe('createGuardrails with an action per guardrail', () => {
+  const flaggedResult = {
+    callId: 'call-1',
+    toolCallId: 'call-1',
+    toolName: 'fetch',
+    outcome: 'success' as const,
+    content: 'flagged page',
+    result: 'flagged page',
+  };
+  const toolResultContext = () => ({
+    conversation: new Conversation(),
+    step: 3,
+    toolCalls: [],
+    results: [],
+  });
+
+  it('an input entry set to warn warns in a block group, and a bare one still blocks', async () => {
+    const firings: GuardrailFiring[] = [];
+    const reportGuardrail = (firing: GuardrailFiring) => void firings.push(firing);
+    const warned = createGuardrails({
+      input: {
+        action: 'block',
+        detectors: [{ guardrail: createMockDetector('d', triggeredDetection), action: 'warn' }],
+      },
+    });
+    expect(await warned.prepareStep({ ...createTestContext(), reportGuardrail })).toBeUndefined();
+    expect(firings.map((firing) => firing.action)).toEqual(['warn']);
+
+    const blocked = createGuardrails({
+      input: {
+        action: 'block',
+        detectors: [
+          { guardrail: createMockDetector('warns', triggeredDetection), action: 'warn' },
+          createMockDetector('blocks', triggeredDetection),
+        ],
+      },
+    });
+    const answer = await blocked.prepareStep(createTestContext());
+    expect(answer?.content).toContain('blocked by input guardrail');
+  });
+
+  it('an input entry keeps its own action under mode tripwire', async () => {
+    const own = createGuardrails({
+      mode: 'tripwire',
+      input: {
+        detectors: [{ guardrail: createMockDetector('d', triggeredDetection), action: 'block' }],
+      },
+    });
+    const answer = await own.prepareStep(createTestContext());
+    expect(answer?.content).toContain('blocked');
+
+    const bare = createGuardrails({
+      mode: 'tripwire',
+      input: { detectors: [createMockDetector('d', triggeredDetection)], action: 'block' },
+    });
+    expect(await bare.prepareStep(createTestContext()).catch((error) => error)).toBeInstanceOf(
+      GuardrailTripwireError,
+    );
+  });
+
+  it('a tripwire entry halts before a block entry answers', async () => {
+    const guardrails = createGuardrails({
+      mode: 'validate',
+      input: {
+        action: 'block',
+        detectors: [
+          createMockDetector('blocks', triggeredDetection),
+          { guardrail: createMockDetector('trips', triggeredDetection), action: 'tripwire' },
+        ],
+      },
+    });
+    const thrown = await guardrails.prepareStep(createTestContext()).catch((error) => error);
+    expect(thrown).toMatchObject({ guardrailName: 'trips', phase: 'input' });
+  });
+
+  it('an output entry set to warn warns in a block group, and a bare one still blocks', async () => {
+    const response = { content: 'my email is a@b.c', toolCalls: [] };
+    const warned = createGuardrails({
+      output: {
+        action: 'block',
+        validators: [{ guardrail: createMockValidator('v', invalidValidation), action: 'warn' }],
+      },
+    });
+    expect(await warned.validateResponse(response, createTestContext())).toBeUndefined();
+
+    const blocked = createGuardrails({
+      output: {
+        action: 'redact',
+        validators: [
+          { guardrail: createMockValidator('warns', invalidValidation), action: 'warn' },
+          { guardrail: createMockValidator('blocks', invalidValidation), action: 'block' },
+        ],
+      },
+    });
+    const answer = await blocked.validateResponse(response, createTestContext());
+    expect(answer?.content).toContain('blocked by output guardrail');
+  });
+
+  it('an input entry set to warn passes a tool result in a block group', async () => {
+    const firings: GuardrailFiring[] = [];
+    const guardrails = createGuardrails({
+      input: {
+        action: 'block',
+        detectors: [{ guardrail: createMockDetector('d', triggeredDetection), action: 'warn' }],
+      },
+    });
+    const answer = await guardrails.validateToolResult(flaggedResult, {
+      ...toolResultContext(),
+      reportGuardrail: (firing) => void firings.push(firing),
+    });
+    expect(answer).toBeUndefined();
+    expect(firings).toEqual([expect.objectContaining({ phase: 'tool-result', action: 'warn' })]);
+  });
+
+  it('the group’s own action still refuses a body no detector can decode', async () => {
+    const guardrails = createGuardrails({
+      input: {
+        action: 'block',
+        detectors: [{ guardrail: createMockDetector('d', safeDetection), action: 'warn' }],
+      },
+    });
+    const answer = await guardrails.validateToolResult(
+      {
+        ...flaggedResult,
+        content: null,
+        result: null,
+        parts: [
+          {
+            type: 'document' as const,
+            mimeType: 'text/plain',
+            source: { kind: 'data-url' as const, url: 'data:text/plain;base64,/w==' },
+          },
+        ],
+      },
+      toolResultContext(),
+    );
+    expect(answer?.error?.message).toContain('"content-body"');
+  });
+
+  it('refuses an action its group does not have, rather than leave the guardrail unrun', async () => {
+    const guardrails = createGuardrails({
+      input: {
+        detectors: [
+          {
+            guardrail: createMockDetector('d', triggeredDetection),
+            action: 'redact' as 'block',
+          },
+        ],
+      },
+    });
+    expect(
+      await guardrails.prepareStep(createTestContext()).catch((error) => error),
+    ).toBeInstanceOf(TypeError);
+  });
+});

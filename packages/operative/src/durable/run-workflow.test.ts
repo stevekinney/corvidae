@@ -23,6 +23,8 @@ import { noToolCalls } from '../conditions/predicates';
 import type { MediaCostEstimator } from '../context/types';
 import { GuardrailTripwireError } from '../errors';
 import { SteeringAppliedEvent } from '../events';
+import { createGuardrails } from '../guardrails/create-guardrails';
+import type { ToolCallValidator } from '../guardrails/types';
 import type { OperativeHookMap } from '../hooks';
 import type { EventDispatcher } from '../run-step';
 import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
@@ -47,6 +49,29 @@ const nextTool = createTool({
   input: z.object({}),
   execute: async () => 'ok',
 });
+
+/** COR-2104 — refuses a `refund` over 100. */
+const refundCapValidator: ToolCallValidator = {
+  name: 'refund-cap',
+  validate: async (call) =>
+    call.name === 'refund' && ((call.arguments as { amount?: number }).amount ?? 0) > 100
+      ? { valid: false, category: 'refund-limit', confidence: 1 }
+      : { valid: true, category: 'refund-limit', confidence: 0 },
+};
+
+/** A toolbox with a `refund` tool that records each time it runs. */
+function countingRefundToolbox(ran: string[] = []): { toolbox: RegistryToolbox; ran: string[] } {
+  const refund = createTool({
+    name: 'refund',
+    description: 'Refunds an order',
+    input: z.object({ amount: z.number() }),
+    execute: async () => {
+      ran.push('refund');
+      return 'refunded';
+    },
+  });
+  return { toolbox: createToolbox([refund]), ran };
+}
 
 /** A toolbox with one no-op `next` tool that lets a run take multiple steps. */
 function continuingToolbox(): RegistryToolbox {
@@ -784,6 +809,49 @@ describe('durable agentRun workflow', () => {
       }
     });
 
+    it('a tool-call tripwire yields a clean finishReason: tripwire durable result with phase tool-call, and runs no call (COR-2104)', async () => {
+      const { engine } = await buildEngine(new MemoryStorage(), false);
+      const { toolbox, ran } = countingRefundToolbox();
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on(
+        'beforeToolExecution',
+        createGuardrails({ mode: 'tripwire', tools: { validators: [refundCapValidator] } })
+          .beforeToolExecution,
+      );
+      const services: DurableRunDeps = {
+        toolbox,
+        options: {
+          generate: async () => ({
+            content: '',
+            toolCalls: [{ name: 'refund', arguments: { amount: 150 } }],
+          }),
+          toolbox,
+          conversation: createConversationHistory(),
+          stopWhen: noToolCalls(),
+          hooks,
+        },
+      };
+
+      try {
+        const result = await runToCompletion(
+          engine,
+          { runId: 'run-tripwire-tool-call', prompt: 'Refund it', maximumSteps: 5 },
+          services,
+        );
+        expect(result.finishReason).toBe('tripwire');
+        expect(result.tripwire).toMatchObject({
+          guardrailName: 'refund-cap',
+          category: 'refund-limit',
+          phase: 'tool-call',
+        });
+        expect(ran).toEqual([]);
+        expect(result.wakeupNote).toBeUndefined();
+        expect(result.humanWaitSignal).toBeUndefined();
+      } finally {
+        engine[Symbol.dispose]();
+      }
+    });
+
     it('a durable tripwire does not re-park even after a scheduleWakeup continuation fires', async () => {
       // AB-45 update: under the pre-AB-45 "wakeup only delays completion"
       // behavior this test set a huge un-fired wakeup duration and expected a
@@ -955,6 +1023,73 @@ describe('durable agentRun workflow', () => {
         // The recovered transcript carries step 0 from engine A plus step 1.
         const checkpoint = await b.checkpointStore.loadCheckpoint(aRunId);
         expect(checkpoint.steps.map((s) => s.content)).toEqual(['A step 0', 'recovered step 1']);
+      } finally {
+        b.engine[Symbol.dispose]();
+      }
+    });
+
+    it('keeps a call refused in a committed step refused across a crash/recover cycle (COR-2104)', async () => {
+      const storage = new MemoryStorage();
+      const runId = 'dddddddd-0000-4000-8000-000000000004';
+      const refundServices = (generate: GenerateFunction, ran: string[]): DurableRunDeps => {
+        const { toolbox } = countingRefundToolbox(ran);
+        const hooks = new HookRegistry<OperativeHookMap>();
+        hooks.on(
+          'beforeToolExecution',
+          createGuardrails({ mode: 'validate', tools: { validators: [refundCapValidator] } })
+            .beforeToolExecution,
+        );
+        return {
+          toolbox,
+          options: {
+            generate,
+            toolbox,
+            conversation: createConversationHistory(),
+            stopWhen: noToolCalls(),
+            hooks,
+          },
+        };
+      };
+
+      // Engine A: step 0's refund is refused (and committed); step 1's generate hangs.
+      const ranA: string[] = [];
+      const a = await buildEngine(storage, false);
+      const handle = await startRun(
+        a.engine,
+        { runId, prompt: 'Refund it' },
+        refundServices(
+          async ({ step }) =>
+            step === 0
+              ? { content: '', toolCalls: [{ name: 'refund', arguments: { amount: 150 } }] }
+              : new Promise<never>(() => {}),
+          ranA,
+        ),
+      );
+      void handle.result().catch(() => {});
+      await a.waitForCursorSave(runId, 1);
+      expect(ranA).toEqual([]);
+      a.engine[Symbol.dispose]();
+
+      // A fresh process recovers the run; the refused step is not run again.
+      const ranB: string[] = [];
+      const recoveredSteps: number[] = [];
+      const b = await buildEngine(storage, false, async () => ({
+        status: 'available',
+        services: refundServices(async ({ step }) => {
+          recoveredSteps.push(step);
+          return { content: 'refused, as expected', toolCalls: [] };
+        }, ranB),
+      }));
+      try {
+        const handles = await b.engine.recoverAll();
+        const result = (await handles[0]!.result()) as { finishReason: string };
+        expect(result.finishReason).toBe('stop-condition');
+        expect(recoveredSteps).toEqual([1]);
+        expect(ranB).toEqual([]);
+        const checkpoint = await b.checkpointStore.loadCheckpoint(runId);
+        const transcript = JSON.stringify(checkpoint.conversation);
+        expect(transcript).toContain('GUARDRAIL_BLOCKED');
+        expect(transcript).toContain('Tool call blocked by guardrail \\"refund-cap\\".');
       } finally {
         b.engine[Symbol.dispose]();
       }

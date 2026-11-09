@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { type DefinitionSchema, definitionSchemaToJsonSchema } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -229,8 +230,8 @@ function guardrailNamed(item: Named, family: GuardrailFamily) {
  * record, file or setting can name, its id, version and schema digest. A contribution that
  * declares no version of its own takes the plugin's. The entries are ordered, so equal plugins
  * produce equal snapshots. Every guardrail is a `guardrail` with no schema, and its id records its
- * family (`plugin:input/name`, `plugin:output/name`, `plugin:memory/name`); an agent file lists an
- * input or output guardrail as `plugin:name`. Decision routers carry no name a record or file can
+ * family (`plugin:input/name`, `plugin:output/name`, `plugin:tools/name`, `plugin:memory/name`); an
+ * agent file lists an input, output or tool-call guardrail as `plugin:name`. Decision routers carry no name a record or file can
  * refer to, so they are not listed.
  */
 export async function pluginIdentities(
@@ -298,12 +299,17 @@ export async function pluginIdentities(
     ),
     ...entriesOf(
       contributions.guardrails?.input,
-      (detector) => guardrailNamed(detector, 'input'),
+      (entry) => guardrailNamed(guardrailOf(entry), 'input'),
       descriptor,
     ),
     ...entriesOf(
       contributions.guardrails?.output,
-      (validator) => guardrailNamed(validator, 'output'),
+      (entry) => guardrailNamed(guardrailOf(entry), 'output'),
+      descriptor,
+    ),
+    ...entriesOf(
+      contributions.guardrails?.tools,
+      (validator) => guardrailNamed(validator, 'tools'),
       descriptor,
     ),
     ...entriesOf(
