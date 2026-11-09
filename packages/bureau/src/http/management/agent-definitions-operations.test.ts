@@ -415,7 +415,7 @@ describe('results', () => {
     expect(afterwards.result).toMatchObject({ a2a: true });
   });
 
-  it('takes the definition a read answers back as an update, with a approvals added (COR-1913)', async () => {
+  it('takes the definition a read answers back as an update, with approvals added (COR-1913)', async () => {
     const served = await serve();
     const hash = await seed(served);
     const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });

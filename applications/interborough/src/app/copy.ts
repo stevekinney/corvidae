@@ -3112,6 +3112,10 @@ export const AUDIT_COPY = {
     model: 'Model',
     description: 'Description',
     skills: 'Skills',
+    // The agent file's keys after COR-2137, worded as the agent editor words them.
+    effort: 'Default effort',
+    children: 'Child agents',
+    card: 'Skill descriptors',
   },
   toolsAdded: (names: string): string => `added ${names}`,
   toolsRemoved: (names: string): string => `removed ${names}`,
