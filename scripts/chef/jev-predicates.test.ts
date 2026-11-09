@@ -71,14 +71,24 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   'flake-verdict': { test: 'x > y', basePassed: false, rerunPassed: true, error: 'timeout' },
   'drift-action': { identifier: 'COR-9', kind: 'merged-open', state: 'In Review', pullRequest: 5 },
   escalate: { corrections: 2, lastFailure: 'same type error' },
+  'criteria-binary': { identifier: 'COR-9', criteria: 'AC1. `bun test x` passes.' },
+  'verification-exact': { identifier: 'COR-9', verification: '`bun test x`', files: ['x.ts'] },
+  'unanswered-question': {
+    identifier: 'COR-9',
+    brief: 'b',
+    decisions: 'TBD',
+    openQuestions: 'none',
+  },
+  'premise-stale': { identifier: 'COR-9', title: 't', findings: ['missing file x.ts'] },
+  'already-done': { identifier: 'COR-9', title: 't', mergedPullRequests: [12], findings: [] },
 };
 
 describe('registry', () => {
-  test('holds the seven predicates with unique ids', () => {
+  test('holds the twelve predicates with unique ids', () => {
     expect(PREDICATES.map((predicate) => predicate.id).toSorted()).toEqual(
       Object.keys(SAMPLES).toSorted(),
     );
-    expect(new Set(PREDICATES.map((predicate) => predicate.id)).size).toBe(7);
+    expect(new Set(PREDICATES.map((predicate) => predicate.id)).size).toBe(12);
   });
 
   test.each(Object.entries(SAMPLES))('%s describes a sample', (id, evidence) => {
@@ -273,7 +283,7 @@ describe('command line', () => {
   test('list names every predicate', async () => {
     const result = await run(['list', '--json']);
     expect(result.code).toBe(0);
-    expect(JSON.parse(result.output)).toHaveLength(7);
+    expect(JSON.parse(result.output)).toHaveLength(12);
     const text = await run(['list']);
     expect(text.output).toContain('thread-triage (routine)');
   });

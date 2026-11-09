@@ -221,6 +221,86 @@ export const PREDICATES: Predicate[] = [
       mode: { type: 'yes-no' },
     }),
   },
+  {
+    id: 'criteria-binary',
+    kind: 'routine',
+    describe: (evidence) => ({
+      question:
+        'Is every acceptance criterion of this issue binary and independently checkable? Yes when ' +
+        'each criterion can only be met or not met and names the test or command that checks it; ' +
+        'no when any criterion is subjective, vague, compound without a check, or unverifiable.',
+      state: summarize(evidence, [
+        ['issue', 'identifier'],
+        ['acceptance criteria', 'criteria'],
+      ]),
+      mode: { type: 'yes-no' },
+    }),
+  },
+  {
+    id: 'verification-exact',
+    kind: 'routine',
+    describe: (evidence) => ({
+      question:
+        'Does the Verification section of this issue give exact commands a worker can run as ' +
+        'written? Yes when every step is a complete command in a code span or block; no when a ' +
+        'step is prose, a placeholder, or names a command that cannot run from the repository root.',
+      state: summarize(evidence, [
+        ['issue', 'identifier'],
+        ['verification', 'verification'],
+        ['files', 'files'],
+      ]),
+      mode: { type: 'yes-no' },
+    }),
+  },
+  {
+    id: 'unanswered-question',
+    kind: 'routine',
+    describe: (evidence) => ({
+      question:
+        'Does this issue still hold an unanswered question? Yes when Decisions or any other ' +
+        'section leaves a choice open, defers it ("TBD", "to be decided", a trailing question), or ' +
+        'an Open questions section lists anything; no when every question is answered and recorded.',
+      state: summarize(evidence, [
+        ['issue', 'identifier'],
+        ['brief', 'brief'],
+        ['decisions', 'decisions'],
+        ['open questions', 'openQuestions'],
+      ]),
+      mode: { type: 'yes-no' },
+    }),
+  },
+  {
+    id: 'premise-stale',
+    kind: 'routine',
+    describe: (evidence) => ({
+      question:
+        'Is the premise of this open issue stale? Yes when the files, symbols or issues it names ' +
+        'are gone or closed, or the code changed under it, so the description no longer matches the ' +
+        'repository; no when the findings are incidental and the premise still holds.',
+      state: summarize(evidence, [
+        ['issue', 'identifier'],
+        ['title', 'title'],
+        ['mechanical findings', 'findings'],
+      ]),
+      mode: { type: 'yes-no' },
+    }),
+  },
+  {
+    id: 'already-done',
+    kind: 'routine',
+    describe: (evidence) => ({
+      question:
+        'Is the work of this open issue already done? Yes when merged pull requests or the current ' +
+        'code deliver its acceptance criteria; no when criteria remain unmet.',
+      state: summarize(evidence, [
+        ['issue', 'identifier'],
+        ['title', 'title'],
+        ['merged pull requests', 'mergedPullRequests'],
+        ['mechanical findings', 'findings'],
+      ]),
+      mode: { type: 'yes-no' },
+    }),
+  },
 ];
 
 export function findPredicate(id: string): Predicate | undefined {
