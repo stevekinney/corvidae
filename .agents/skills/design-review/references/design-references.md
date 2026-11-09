@@ -18,9 +18,9 @@ Canvas boards are usually drawn at one desktop width in light mode. Rather than 
 
 Give the reviewer the shared rules board with every critique, implementation review and drift audit. A page board that needs something the rules cannot give it draws that state itself. Without a shared rules board, every omitted phone or dark state is a finding.
 
-## A claude.ai/design project
+## The Cinder design system artifact
 
-The Cinder design-system project lives at claude.ai/design, project `3e8bc53b-41d7-4dc8-99c0-6181feb05c38`. The `DesignSync` tool reads it, but it needs design-system authorization that a non-interactive session cannot grant: ask the owner up front to run `/design-login` in an interactive `claude` terminal, and keep working meanwhile. Do not promise a comparison until a `list_files` call succeeds.
+Cinder's design system is the Design System artifact `https://claude.ai/artifact/MBv7uzDQAJT1Lp7qRETrN7`, generated from `components/cinder` and the playground's examples. Its index sets `"editing": "code"`, so it is read-only on its page; change Cinder and regenerate it instead. `tokens.json` `meta.ref` names the commit it was built from, so check it against `main` before treating it as current. Read it with `Artifact` `action: "read"` and a `path`. Start with `project/README.md`, the usage rules. Then read `project/tokens.json`, which holds every public `--cinder-*` token with its light and dark values, and `project/components/<Export>/README.md`, which holds a component's guidelines and props. Each `project/components/<Export>/preview.html` mounts the real component's examples. The earlier claude.ai/design project (`3e8bc53b-41d7-4dc8-99c0-6181feb05c38`) returned "project not found" for the owner's login on 2026-11-09, and standalone Claude Design closes on December 14, 2026, so don't use it.
 
 ## None
 
