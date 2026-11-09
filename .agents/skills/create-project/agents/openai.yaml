@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Create project'
+  short_description: 'Turn a goal into one COR project with its issues, created only after approval'
+  default_prompt: 'Use $create-project to draft this as a COR project and its issues from the templates, interrogate the drafts, check for duplicates and the Definition of Ready, and create them only after I approve the whole draft.'

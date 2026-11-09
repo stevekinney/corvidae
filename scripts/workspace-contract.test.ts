@@ -547,6 +547,7 @@ describe('internal workspace architecture', () => {
       'add-dependency',
       'add-workspace',
       'chef',
+      'create-project',
       'create-task',
       'validate-monorepo',
     ]) {
