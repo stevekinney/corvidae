@@ -18,7 +18,10 @@ import { join } from 'node:path';
 import { HOOK_TIER_PRIORITY_BANDS, HookRegistry } from '@lostgradient/lifecycle';
 import {
   AGENT_POLICY_PINNED_LAST_PRIORITY,
+  createAgent,
   createAgentSession,
+  hasDefinitionResolver,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
   type DurableRunDeps,
   type HookPlanEntryDescription,
   type OperativeHookMap,
@@ -95,11 +98,15 @@ function planOf(services: unknown): readonly HookPlanEntryDescription[] {
 }
 
 /** The plan of a durably dispatched catalog run, recovered as a restarted Bureau resumes it. */
-async function recoveredCatalogPlan(runtime: Runtime, runId: string) {
+async function recoveredCatalogPlan(
+  runtime: Runtime,
+  runId: string,
+  options: () => Promise<RunOptions> | RunOptions = catalogOptions,
+) {
   runtime.setCatalogAgentRunOptionsResolver(async () => ({
     status: 'resolved',
     generationMode: 'selectable',
-    options: catalogOptions(),
+    options: await options(),
     definitionRevision: 1,
   }));
   await runtime.persistCatalogRunRecoveryRecord(runId, {
@@ -228,6 +235,40 @@ describe('the plugin tier in a run’s plan (COR-2127)', () => {
         id: 'bureau:guardrails-validate-response',
         tier: 'bureau',
         priority: BUREAU_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.bureau,
+      },
+    ]);
+  });
+
+  // The production path: `createAgent` already composed its own plan, stamped `agent`, and its
+  // guardrails registered in that band; Bureau merging it again must not add the band twice, which
+  // would put the agent's entries in the plugin band.
+  it('keeps a createAgent plan in the agent band when Bureau merges it again', async () => {
+    const agentHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    agentHooks.on('prepareStep', async () => undefined, { id: 'agent:own', replay: 'safe' });
+    const agent = createAgent({
+      name: 'echo',
+      hooks: agentHooks,
+      generate: async () => ({ content: 'from the agent', toolCalls: [] }),
+    });
+    if (!hasDefinitionResolver(agent)) throw new Error('expected an agent with a resolver');
+
+    const entries = await recoveredCatalogPlan(
+      await open(everyAgentContributions()),
+      'create-agent-run',
+      () => agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('hello', {}),
+    );
+
+    expect(pointPlan(entries, 'prepareStep').filter(({ tier }) => tier !== 'bureau')).toEqual([
+      {
+        id: 'audit:every:prepareStep',
+        tier: 'plugin',
+        priority: HOOK_TIER_PRIORITY_BANDS.plugin,
+      },
+      { id: 'agent:own', tier: 'agent', priority: HOOK_TIER_PRIORITY_BANDS.agent },
+      {
+        id: 'agent:guardrails-prepare-step',
+        tier: 'agent',
+        priority: AGENT_POLICY_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.agent,
       },
     ]);
   });
