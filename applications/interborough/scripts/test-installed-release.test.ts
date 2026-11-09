@@ -12,9 +12,24 @@ import {
   referencedAssets,
   runInstalled,
   runInstalledRelease,
+  spawn,
   waitForHttp,
   waitForListening,
 } from './test-installed-release.ts';
+
+const spawnedChild = await (async () => {
+  const probe = spawn(
+    '/bin/sh',
+    ['-c', 'echo to-out; echo to-err >&2'],
+    tmpdir(),
+    tmpdir(),
+    'http://127.0.0.1:9',
+  );
+  const stdout = await probe.stdout;
+  const stderr = await probe.stderr;
+  await probe.process.exited;
+  return { stdout, stderr, output: probe.output(), errorOutput: probe.errorOutput?.() };
+})();
 
 describe('installed-release harness arguments', () => {
   test('accepts archive mode and resolves the archive path', () => {
@@ -114,6 +129,15 @@ describe('installed-release harness arguments', () => {
         runFixtureAgent('http://host', async () => new Response('data: {}\n\n', { status: 200 })),
       ),
     ).toThrow('RUN_STARTED');
+  });
+
+  test('captures a spawned child standard output and standard error separately', () => {
+    expect(spawnedChild).toEqual({
+      stdout: 'to-out\n',
+      stderr: 'to-err\n',
+      output: 'to-out\n',
+      errorOutput: 'to-err\n',
+    });
   });
 
   test('covers readiness success, child exit, and HTTP timeout branches', async () => {

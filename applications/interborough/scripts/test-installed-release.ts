@@ -51,7 +51,7 @@ export function referencedAssets(html: string): string[] {
   return [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
 }
 
-function spawn(
+export function spawn(
   executable: string,
   arguments_: readonly string[],
   home: string,
