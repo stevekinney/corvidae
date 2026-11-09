@@ -2,7 +2,7 @@
 
 Read this when a run meets a choice that the evidence does not settle. The command line, wire format, and exit codes are in the header of `scripts/chef/jev.ts`.
 
-Settle each choice with the cheapest authority allowed to settle it: the evidence first, then Jev, then the owner. A choice the repository, the code, or an instruction already settles is decided from that evidence, and you say what was picked.
+Settle each choice with the cheapest authority allowed to settle it: the evidence first, then Jev, then the owner. A choice the repository, the code, or an instruction already settles is decided from that evidence, and you say what was picked. Neither Jev nor the owner is consulted for an answer that is already written down.
 
 - **Jev**: TypeSafe AI's decision model. It returns probabilities for a yes/no, choice, or scale question, and no text. It needs `TYPESAFE_API_KEY`, resolved as in [credentials](credentials.md).
 - **routine call**: a choice inside the authorized scope that the coordinator would otherwise make alone.
@@ -34,7 +34,7 @@ The coordinator still makes these itself, asking Jev with `bun scripts/chef/jev.
 
 `state` summarizes the options and evidence in a few sentences: what was observed, the counts that matter, and what each option costs or risks. Never send secrets, credentials, tokens, environment values, or personal data, and never paste logs or diffs; cite the evidence path in the note. A longer summary goes in `--state-file <path>` under the main checkout's `tmp/chef/`, never in tracked files.
 
-- Exit 0 (decided): act on the answer; `no (p=0.98)` is a decision too.
+- Exit 0 (decided): act on the answer; `no (p=0.98)` is a decision too. For a shared-failure question, a `yes` records the failure as shared and continues to the delivery boundary, and a `no` treats it as this change's blocker.
 - Exit 1 (below the threshold): a routine call goes back to the coordinator, which decides from the evidence and records why (for a shared-failure question, widen the control run first); an owner decision goes to the owner.
 - Exit 2: invalid usage, not an answer.
 - Exit 3 (Jev unavailable): routine calls go back to the coordinator and owner decisions to the owner, with no probabilities. Record that Jev was skipped and why; do not retry in a loop or let the outage stall independent work.

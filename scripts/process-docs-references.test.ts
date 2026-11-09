@@ -220,6 +220,10 @@ describe('the process documents', () => {
       ...paths,
       ...new Bun.Glob('scripts/*.ts').scanSync({ cwd: root }),
       ...new Bun.Glob('scripts/chef/*.ts').scanSync({ cwd: root }),
+      ...new Bun.Glob('.codex/agents/*.toml').scanSync({ cwd: root, dot: true }),
+      ...new Bun.Glob('{applications,components,packages}/*/scripts/**/*.ts').scanSync({
+        cwd: root,
+      }),
       '.github/copilot-instructions.md',
     ];
     const unknown: string[] = [];

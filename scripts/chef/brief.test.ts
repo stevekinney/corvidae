@@ -306,8 +306,21 @@ describe('charter rules', () => {
     ['codex reviews every push automatically', agents, 'codex reviews every push'],
     ['end a turn only on a state change', agents, 'end a turn only on a state change'],
     ['review-threads.ts classes --pr <n>', record, 'review-threads.ts classes --pr <n>` exits 1'],
-    ['return evidence for causal reassessment', agents, 'stop patching a repeating class'],
-    ['not verified: not checked, with the reason', record, 'each verified criterion'],
+    [
+      'two unsuccessful attempts at the same defect or acceptance criterion',
+      record,
+      'attempts per defect/acceptance criterion',
+    ],
+    [
+      'return evidence for causal reassessment',
+      record,
+      'causal reassessment after two unsuccessful attempts',
+    ],
+    [
+      'verified: a named command passed or a manual check was done',
+      record,
+      'name the command or manual check behind each verified criterion',
+    ],
   ];
 
   test('each restate a rule that AGENTS.md or the execution record still carries', () => {

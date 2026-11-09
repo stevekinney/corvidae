@@ -16,7 +16,7 @@ import {
   truncateState,
   type ShadowDependencies,
 } from './jev-predicates.ts';
-import type { FetchLike } from './jev.ts';
+import { defaultThreshold, OWNER_THRESHOLD, ROUTINE_THRESHOLD, type FetchLike } from './jev.ts';
 import { UsageError } from './process-runner.ts';
 
 let sandbox: string;
@@ -90,13 +90,25 @@ describe('registry', () => {
       'utf8',
     );
     const rows = new Map<string, string>();
-    for (const match of decisions.matchAll(/^\| `([\w-]+)` \|.*\| (\w+) \(\d\.\d+\) \|$/gm))
+    for (const match of decisions.matchAll(/^\| `([\w-]+)` \|.*\| (\w+ \(\d\.\d+\)) \|$/gm))
       rows.set(match[1] as string, match[2] as string);
     expect([...rows.entries()].toSorted(([a], [b]) => a.localeCompare(b))).toEqual(
-      PREDICATES.map((predicate): [string, string] => [predicate.id, predicate.kind]).toSorted(
-        ([a], [b]) => a.localeCompare(b),
-      ),
+      PREDICATES.map((predicate): [string, string] => [
+        predicate.id,
+        `${predicate.kind} (${defaultThreshold(predicate.kind)})`,
+      ]).toSorted(([a], [b]) => a.localeCompare(b)),
     );
+  });
+
+  test('states the thresholds jev.ts applies, kind for kind', () => {
+    const decisions = readFileSync(
+      join(import.meta.dir, '../../.agents/skills/chef/references/decisions.md'),
+      'utf8',
+    );
+    expect(decisions).toContain(
+      `Jev decides at a probability of ${ROUTINE_THRESHOLD} or above (\`--kind routine\``,
+    );
+    expect(decisions).toContain(`Jev decides at ${OWNER_THRESHOLD} or above (\`--kind owner\`)`);
   });
 
   test('holds the twelve predicates with unique ids', () => {
