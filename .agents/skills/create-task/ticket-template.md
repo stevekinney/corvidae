@@ -28,7 +28,7 @@
 
 ## Verification
 
-<!-- Exact commands, defaulting to AGENTS.md "Gate on local checks": `bun test` on the touched files, `bun run lint:root`, `bun run typecheck:root` when root or `scripts/` files change, `bunx turbo run lint typecheck --filter=<workspace>`, and `bunx prettier --check` on the changed files. -->
+<!-- Exact commands. The default is `bun scripts/chef/focused-checks.ts`, which runs AGENTS.md "Gate on local checks" in one command; add any test or probe a criterion names. -->
 
 ## Delivery boundary
 
