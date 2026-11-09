@@ -121,7 +121,7 @@ Weft's name grammar has no `:`, so the engine knows a plugin's workflow by its W
 
 ## Watching
 
-`workflowFileDirectory(path, { watch?, watchFactory? })` is a `WorkflowSource`, the same contract the agent files use (see [agent files](agent-files.md#sources)): `load()`, `watch()`, and `write` and `delete` with an `expectedHash`. Bureau calls `load()` after each of its own writes, and `bureau.workflows.refresh()` calls `load()`. `watch: false` means no `fs.watch` and no poll.
+`workflowFileDirectory(path, { watch?, watchFactory? })` is a `WorkflowSource`, the same contract the agent files use (see [agent files](agent-files.md#sources)): `load()`, `watch()`, and `write` and `delete` with an `expectedHash`. Bureau calls `load()` after each of its own writes, and `bureau.workflows.refresh()` calls `load()`. `watch` is `true | false | 'poll'`: `false` means no `fs.watch` and no poll; `'poll'` means no `fs.watch`, with the once-a-second rescan as the only trigger.
 
 `workflowObjectSource({ bucket, prefix }, { client, pollIntervalMilliseconds?, watch?, runtime?, diagnose? })` is the S3 counterpart: every `*.json` object directly under the prefix is a workflow named by the key minus the extension, `client` is a `Bun.S3Client` the caller builds, and the source polls instead of watching (default every second; `watch: false` means no poll). It is Bun only, hashes the bytes with SHA-256 like every source, and uses an object's ETag only as the `If-Match` (or `If-None-Match: *`) condition on a write or delete, so a refused change rejects with a `SourceConflictError` carrying the hash of what is there now. See [Agent files](agent-files.md#sources).
 

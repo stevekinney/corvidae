@@ -182,16 +182,20 @@ describe("close() under watch: 'poll' (COR-2291)", () => {
     expect(context.openedWatchers).toEqual([]);
   });
 
-  it('closes twice, each time the same way', async () => {
+  it('keeps a second close pending too while the scan is in flight, and settles both with it', async () => {
     const context = await pollingCatalog();
     context.hold();
     await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
     await context.reached;
-    const first = context.fixture.catalog.close();
-    const second = context.fixture.catalog.close();
+    const settled: string[] = [];
+    const first = context.fixture.catalog.close().then(() => settled.push('first'));
+    const second = context.fixture.catalog.close().then(() => settled.push('second'));
+    // hang-guard-self-test: only the held scan can settle either close, so any window shows both pending.
+    await quietFor(20);
+    expect(settled).toEqual([]);
     context.release();
-    await first;
-    await second;
+    await Promise.all([first, second]);
+    expect(settled.toSorted()).toEqual(['first', 'second']);
     await context.fixture.catalog.close();
     expect(context.runtime.pendingTimers()).toEqual([]);
   });
