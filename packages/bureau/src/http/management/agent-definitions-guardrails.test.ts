@@ -179,6 +179,30 @@ describe('a configured guardrail on the definition operations', () => {
     expect(await Bun.file(ownerPath(served, 'refused')).exists()).toBe(false);
   });
 
+  it('shows a file whose configuration the schema refuses as invalid, the issue naming the field', async () => {
+    const served = await serve({ overrides: { agentContributions: configured } });
+    await served.put(
+      'refused.md',
+      `---\nmodel: ${DEFINITION.model}\nguardrails: [{id: x:limit, configuration: {maximum: 0}}]\n---\nBody.\n`,
+    );
+    await served.bureau.agents.refresh();
+
+    const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'refused' });
+    expect(got.error).toBeUndefined();
+    expect(got.result).toMatchObject({
+      state: 'invalid',
+      problem: {
+        code: 'invalid-guardrail-configuration',
+        issues: [
+          {
+            path: 'guardrails.0.configuration.maximum',
+            message: expect.stringContaining('"x:limit" refuses `maximum`'),
+          },
+        ],
+      },
+    });
+  });
+
   it('refuses a guardrail listed twice at the boundary', async () => {
     const served = await serve({ overrides: { agentContributions: configured } });
     const response = await callAs(served.owner, 'bureau.agents.definitions.create', {
