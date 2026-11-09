@@ -108,7 +108,7 @@ describe('a built-in agent with saved overrides', () => {
 
   it('refuses a tool the overrides set to Blocked', async () => {
     const harness = await start();
-    await save(harness, { toolApproval: { 'issue-refund': 'blocked' } });
+    await save(harness, { approvals: { 'issue-refund': 'blocked' } });
 
     const result = await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
 
@@ -183,7 +183,7 @@ describe('a built-in agent with saved overrides', () => {
   it('reads the overrides in force from the store when the Bureau starts again', async () => {
     const storage = new MemoryStorage();
     const first = await start({ refunder: refunder() }, storage);
-    await save(first, { toolApproval: { 'issue-refund': 'blocked' } });
+    await save(first, { approvals: { 'issue-refund': 'blocked' } });
     await first.dispose();
     harnesses.splice(harnesses.indexOf(first), 1);
 

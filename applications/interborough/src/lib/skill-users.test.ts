@@ -46,7 +46,7 @@ function detail(id: string, skills: string[] | null, allowedSkills: string[] | n
             models: [],
             tools: [],
             skills,
-            skillDescriptors: [],
+            card: [],
             instructions: null,
           },
   };

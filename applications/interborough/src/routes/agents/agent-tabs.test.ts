@@ -244,7 +244,7 @@ describe('the Instructions tab', () => {
           models: [],
           tools: [],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: 'Answer every message.',
         },
       }),
@@ -390,7 +390,7 @@ describe('the Settings tab', () => {
       { 'bureau.agents.versions.list': () => ({ versions: [] }) },
       {
         ...agent,
-        definition: { ...agent.definition, defaultEffort: 'high' },
+        definition: { ...agent.definition, effort: 'high' },
       },
     );
     const { findByTestId } = mount();

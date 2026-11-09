@@ -278,7 +278,7 @@ describe('the Settings tab, when something goes wrong', () => {
           models: ['anthropic/haiku'],
           tools: [],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: null,
         },
       }),
@@ -424,7 +424,7 @@ describe('what the Settings tab shows of a definition', () => {
       model: 'anthropic/sonnet',
       models: [],
       stepLimit: '12',
-      defaultEffort: null,
+      effort: null,
     });
     expect(settingsOf(detail).stepLimit).toBeNull();
   });
@@ -432,12 +432,11 @@ describe('what the Settings tab shows of a definition', () => {
   test('words the default effort the way the editor does, and leaves it when the file sets none', () => {
     const detail = readyAgent({ id: 'researcher' });
     if (detail.definition === null) throw new Error('expected a definition');
-    expect(settingsOf(detail).defaultEffort).toBeNull();
+    expect(settingsOf(detail).effort).toBeNull();
     expect(
-      settingsOf({ ...detail, definition: { ...detail.definition, defaultEffort: 'xhigh' } })
-        .defaultEffort,
+      settingsOf({ ...detail, definition: { ...detail.definition, effort: 'xhigh' } }).effort,
     ).toBe('Extra high');
-    expect(settingsOf({ ...detail, source: 'code', definition: null }).defaultEffort).toBeNull();
+    expect(settingsOf({ ...detail, source: 'code', definition: null }).effort).toBeNull();
     expect(settingsOf({ ...detail, source: 'code', definition: null })).toMatchObject({
       model: null,
       models: [],

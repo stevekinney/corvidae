@@ -161,7 +161,7 @@ describe('a stored definition', () => {
     description: null,
     model: KNOWN_MODEL,
     tools: [],
-    skillDescriptors: [],
+    card: [],
     a2a: false,
     instructions: '',
   };

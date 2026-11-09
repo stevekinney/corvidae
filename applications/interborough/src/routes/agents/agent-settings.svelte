@@ -150,7 +150,7 @@
           </div>
           <div class="ib-agent-settings__row">
             <dt>{copy.defaultEffortLabel}</dt>
-            <dd data-testid="agent-default-effort">{settings.defaultEffort ?? copy.notSet}</dd>
+            <dd data-testid="agent-default-effort">{settings.effort ?? copy.notSet}</dd>
           </div>
         {/if}
       </dl>

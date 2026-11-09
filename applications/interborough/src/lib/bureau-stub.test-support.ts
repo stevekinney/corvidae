@@ -371,11 +371,11 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       description: 'Finds and cites sources',
       model: 'anthropic/sonnet',
       models: null,
-      defaultEffort: null,
+      effort: null,
       tools: ['lookup-order'],
       allowedSkills: null,
-      childAgents: null,
-      skillDescriptors: [
+      children: null,
+      card: [
         {
           id: 'cite',
           name: 'Cite',
@@ -392,7 +392,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       guardrails: null,
       costBudget: null,
       toolBudget: null,
-      toolApproval: null,
+      approvals: null,
       instructions: 'You are a careful researcher.',
     },
     ...overrides,

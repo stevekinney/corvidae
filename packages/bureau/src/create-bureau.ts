@@ -20026,7 +20026,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   /**
    * COR-1990 — whether the grant a tool approval stored makes the tool's next ask in its chat be
-   * skipped, read as the next call is decided: the agent's `toolApproval` for the tool and the
+   * skipped, read as the next call is decided: the agent's `approvals` for the tool and the
    * chat's permission mode now. Only an agent the file catalog builds reads a grant (that catalog is
    * the one place `approvalGrantsOfRun` is wired in), and that is a file agent and a tried agent,
    * which `files.ephemeral` builds the same way: a file agent is weighed by its file's definition,
@@ -20055,7 +20055,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         runSessionIncarnations.get(review.runId),
       );
       return grantLoosensTool({
-        toolApproval: definition.toolApproval ?? undefined,
+        toolApproval: definition.approvals ?? undefined,
         tools,
         reportedName: review.approval.toolName,
         mode,
@@ -20066,12 +20066,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * The tools and `toolApproval` of the agent `agentName` as its toolbox is built from them: a tried
+   * The tools and `approvals` of the agent `agentName` as its toolbox is built from them: a tried
    * agent's from the registry, a file agent's from its file, and nothing for any other agent.
    */
   async function weighableDefinitionOf(
     agentName: string | undefined,
-  ): Promise<Pick<AgentFileDefinitionInput, 'tools' | 'toolApproval'> | undefined> {
+  ): Promise<Pick<AgentFileDefinitionInput, 'tools' | 'approvals'> | undefined> {
     if (agentName === undefined) return undefined;
     if (isTryAgentName(agentName)) return tryAgents.definitionOf(agentName);
     const detail = await fileAgents?.files.detail(agentName);

@@ -18,7 +18,7 @@
  * step, so a change applies from the next one; a call already in flight finishes. It never falls
  * back to another model either.
  *
- * A file's `defaultEffort` (COR-1961) is the effort a step is sent when the person has steered none.
+ * A file's `effort` (COR-1961) is the effort a step is sent when the person has steered none.
  * It is seeded into a copy of the step's context for the one call, never written to the session's
  * steering, so steering stays what the person changed. The row each step uses decides it: a row that
  * takes the tier unchanged is sent it; one that cannot is judged by the principal's
@@ -198,7 +198,7 @@ export interface FileAgentGenerateOptions {
    */
   readonly policyDenial?: ((row: BackendDescriptor) => ModelPolicyDenial | undefined) | undefined;
   /**
-   * The file's `defaultEffort` (COR-1961): the effort a step is sent when its steering names none.
+   * The file's `effort` (COR-1961): the effort a step is sent when its steering names none.
    * Omitted, the context passes through untouched.
    */
   readonly defaultEffort?: Effort | undefined;

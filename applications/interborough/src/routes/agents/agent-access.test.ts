@@ -145,7 +145,7 @@ describe('the tab', () => {
       {},
       detailWith({
         tools: ['lookup-order', 'issue-refund'],
-        toolApproval: { 'lookup-order': 'never', 'issue-refund': 'never' },
+        approvals: { 'lookup-order': 'never', 'issue-refund': 'never' },
       }),
     );
     const { container, findByTestId } = mount();
@@ -191,7 +191,7 @@ describe('the tab', () => {
         name: 'Researcher',
         model: 'anthropic/sonnet',
         tools: ['lookup-order'],
-        toolApproval: { 'lookup-order': 'always' },
+        approvals: { 'lookup-order': 'always' },
         instructions: 'You are a careful researcher.',
       },
     });
@@ -201,7 +201,7 @@ describe('the tab', () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ defaultEffort: 'high' }),
+      detailWith({ effort: 'high' }),
     );
     const { container, findByRole } = mount();
 
@@ -216,15 +216,15 @@ describe('the tab', () => {
     await fireEvent.click(save);
 
     await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
-    // An update that omits `defaultEffort` keeps the file's; the editor owns the field.
-    expect(updatesOf(served)[0]?.params['definition']).not.toHaveProperty('defaultEffort');
+    // An update that omits `effort` keeps the file's; the editor owns the field.
+    expect(updatesOf(served)[0]?.params['definition']).not.toHaveProperty('effort');
   });
 
   test('drops a tool’s approval in the same write that withdraws the tool', async () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ toolApproval: { 'lookup-order': 'always' } }),
+      detailWith({ approvals: { 'lookup-order': 'always' } }),
     );
     const { findByRole, getByRole } = mount();
 
@@ -234,7 +234,7 @@ describe('the tab', () => {
 
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     const definition = updatesOf(served)[0]?.params['definition'];
-    expect(definition).toMatchObject({ tools: [], toolApproval: null });
+    expect(definition).toMatchObject({ tools: [], approvals: null });
   });
 
   test('saves the budgets and refuses a number the Bureau would refuse', async () => {
@@ -419,7 +419,7 @@ describe('the tab', () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ toolApproval: { 'lookup-order': 'blocked' } }),
+      detailWith({ approvals: { 'lookup-order': 'blocked' } }),
     );
     const { container, findByRole, getByRole } = mount();
 
@@ -438,7 +438,7 @@ describe('the tab', () => {
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
       tools: ['lookup-order', 'issue-refund'],
-      toolApproval: { 'lookup-order': 'blocked' },
+      approvals: { 'lookup-order': 'blocked' },
     });
   });
 
@@ -765,7 +765,7 @@ describe('the states', () => {
           models: [],
           tools: [],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: null,
         },
       }),
@@ -792,7 +792,7 @@ describe('the states', () => {
           models: [],
           tools: ['lookup-order'],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: null,
         },
       }),

@@ -44,13 +44,13 @@ describe('bureau.agents.overrides', () => {
       overrides: {
         instructions: null,
         tools: null,
-        toolApproval: null,
+        approvals: null,
         guardrails: null,
         costBudget: null,
         toolBudget: null,
         model: null,
         models: null,
-        defaultEffort: null,
+        effort: null,
         stepLimit: null,
       },
     });
@@ -88,7 +88,7 @@ describe('bureau.agents.overrides', () => {
     expect(first.result).toMatchObject({ id: 'alpha', version: 1 });
     const second = await save(served, {
       tools: ['lookup-order'],
-      toolApproval: { 'lookup-order': 'always' },
+      approvals: { 'lookup-order': 'always' },
       stepLimit: 20,
       costBudget: { perRunUsd: 2 },
     });
@@ -99,7 +99,7 @@ describe('bureau.agents.overrides', () => {
       'versions',
     );
     expect(versions.map((entry) => [entry['revision'], entry['changedKeys']])).toEqual([
-      [2, ['toolApproval', 'costBudget']],
+      [2, ['approvals', 'costBudget']],
       [1, ['tools', 'stepLimit']],
     ]);
     expect(versions[0]).toMatchObject({
@@ -110,7 +110,7 @@ describe('bureau.agents.overrides', () => {
       referenceDigests: null,
       overrides: {
         tools: ['lookup-order'],
-        toolApproval: { 'lookup-order': 'always' },
+        approvals: { 'lookup-order': 'always' },
         costBudget: { perRunUsd: 2 },
         stepLimit: 20,
         model: null,

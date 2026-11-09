@@ -5,7 +5,7 @@
  * when they are left out. The keys the tab does not edit (`stepLimit`, `references`, `retry`,
  * `compaction`, `hooks`) are left out of the write, which keeps the file's value.
  *
- * `toolApproval` may only name a tool the file lists, or the Bureau refuses the write, so a tool
+ * `approvals` may only name a tool the file lists, or the Bureau refuses the write, so a tool
  * that is not allowed has its approval left out of the write. The approval itself is kept in the
  * form, so allowing the tool again restores what was chosen instead of loosening it.
  *
@@ -85,7 +85,7 @@ export class AgentAccessState {
         .map((tool) => ({ name: tool, catalog: undefined })),
     ];
     this.tools = [...definition.tools];
-    for (const [tool, approval] of Object.entries(definition.toolApproval ?? {})) {
+    for (const [tool, approval] of Object.entries(definition.approvals ?? {})) {
       this.approvals.set(tool, approval);
     }
     this.allowedSkills = [...(definition.allowedSkills ?? [])];
@@ -205,14 +205,14 @@ export class AgentAccessState {
       model: file.model,
       ...(file.models === null ? {} : { models: file.models }),
       tools: this.tools,
-      skillDescriptors: file.skillDescriptors,
+      card: file.card,
       allowedSkills:
         file.allowedSkills === null && this.allowedSkills.length === 0 ? null : this.allowedSkills,
       a2a: file.a2a,
       guardrails: limits.guardrails ?? null,
       costBudget: limits.costBudget ?? null,
       toolBudget: limits.toolBudget ?? null,
-      toolApproval: this.#approvalsToWrite(),
+      approvals: this.#approvalsToWrite(),
       instructions: file.instructions,
     };
   }

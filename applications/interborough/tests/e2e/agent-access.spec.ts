@@ -84,7 +84,7 @@ test.describe('the Access tab', () => {
       .selectOption('always');
     await save(page);
     expect(await definitionOf(request, id)).toMatchObject({
-      toolApproval: { 'demo:lookup-order': 'always' },
+      approvals: { 'demo:lookup-order': 'always' },
     });
 
     // After: the same chat is held on an approval, and the tool has not run.
@@ -152,7 +152,7 @@ test.describe('the Access tab', () => {
 
     const definition = await definitionOf(request, id);
     expect(definition?.tools).toEqual([]);
-    expect(definition).not.toHaveProperty('toolApproval.demo:lookup-order');
+    expect(definition).not.toHaveProperty('approvals.demo:lookup-order');
   });
 
   test('grants a trusted skill, and cannot grant an untrusted one', async ({ page, request }) => {

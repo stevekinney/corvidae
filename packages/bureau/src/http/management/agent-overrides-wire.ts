@@ -36,7 +36,7 @@ export const agentOverridesOutputSchema = z.object({
   /** The tools the agent may use, by catalog name; the Access tab's allowed set. */
   tools: z.array(z.string()).nullable(),
   /** When each tool asks a person first, by tool name. */
-  toolApproval: agentToolApprovalSchema.nullable(),
+  approvals: agentToolApprovalSchema.nullable(),
   /** The plugin guardrails (`plugin:name`) a run applies. */
   guardrails: agentContributionIdsSchema.nullable(),
   /** What one run, and one chat, may spend. */
@@ -48,7 +48,7 @@ export const agentOverridesOutputSchema = z.object({
   /** The models a chat may be switched to. */
   models: z.array(z.string()).nullable(),
   /** The reasoning effort a chat starts at. */
-  defaultEffort: agentDefaultEffortSchema.nullable(),
+  effort: agentDefaultEffortSchema.nullable(),
   /** The most steps one run may take. */
   stepLimit: z.number().int().nullable(),
 });
@@ -57,13 +57,13 @@ export const agentOverridesOutputSchema = z.object({
 export const agentOverridesInputSchema = z.strictObject({
   instructions: z.string().min(1).nullable().optional(),
   tools: z.array(z.string().min(1)).nullable().optional(),
-  toolApproval: agentToolApprovalSchema.nullable().optional(),
+  approvals: agentToolApprovalSchema.nullable().optional(),
   guardrails: agentContributionIdsSchema.nullable().optional(),
   costBudget: agentCostBudgetSchema.nullable().optional(),
   toolBudget: agentToolBudgetSchema.nullable().optional(),
   model: z.string().min(1).nullable().optional(),
   models: z.array(z.string().min(1)).nullable().optional(),
-  defaultEffort: agentDefaultEffortSchema.nullable().optional(),
+  effort: agentDefaultEffortSchema.nullable().optional(),
   stepLimit: agentStepLimitSchema.nullable().optional(),
 });
 

@@ -1,6 +1,6 @@
 /**
  * Whether a tool asks first, for an agent: the one answer the editor marks. An agent file states
- * when a tool asks in `toolApproval` (`always`, `never`, `on-changes`, `blocked`); a tool the file
+ * when a tool asks in `approvals` (`always`, `never`, `on-changes`, `blocked`); a tool the file
  * leaves out is `on-changes`, and `on-changes` asks exactly when the catalog's `defaultApproval`
  * for the tool is `ask` (Armorer's tier rule: a tool that changes something, is dangerous or
  * declares nothing). A chat's permission mode can change this at run time; this is what the

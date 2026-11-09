@@ -129,12 +129,12 @@ function checkTools(
     );
   }
   const allowed = new Set(overrides.tools ?? agentTools);
-  const strays = Object.keys(overrides.toolApproval ?? {}).flatMap((name) =>
+  const strays = Object.keys(overrides.approvals ?? {}).flatMap((name) =>
     allowed.has(name)
       ? []
       : [
           {
-            path: `toolApproval.${name}`,
+            path: `approvals.${name}`,
             message: `The agent may not use "${name}".`,
             reference: name,
           },

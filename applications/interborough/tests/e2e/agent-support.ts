@@ -16,9 +16,7 @@ export const BASE_DEFINITION = {
   description: 'Made by a specification',
   model: 'anthropic/sonnet',
   tools: ['demo:lookup-order'],
-  skillDescriptors: [
-    { id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] },
-  ],
+  card: [{ id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] }],
   instructions: 'You are an end-to-end agent.',
 } as const;
 
@@ -53,11 +51,11 @@ export type AgentDetailResult = {
   definition: {
     name: string;
     model: string;
-    defaultEffort: string | null;
+    effort: string | null;
     tools: string[];
-    skillDescriptors: unknown[];
+    card: unknown[];
     allowedSkills: string[] | null;
-    childAgents: string[] | null;
+    children: string[] | null;
     a2a: boolean;
     instructions: string;
   } | null;

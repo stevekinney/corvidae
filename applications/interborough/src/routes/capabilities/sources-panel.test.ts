@@ -350,7 +350,7 @@ describe('the Sources tab', () => {
       sources: [NOTES, source('petstore', { kind: 'openapi' })],
       agents: {
         notes: [
-          { id: 'writer', name: 'Writer', tools: ['notes__lookup'], toolApproval: ['notes__wipe'] },
+          { id: 'writer', name: 'Writer', tools: ['notes__lookup'], approvals: ['notes__wipe'] },
         ],
       },
     });
@@ -391,7 +391,7 @@ describe('the Sources tab', () => {
     const host = serve({
       sources: [NOTES],
       agents: {
-        notes: [{ id: 'writer', name: 'Writer', tools: ['notes__lookup'], toolApproval: [] }],
+        notes: [{ id: 'writer', name: 'Writer', tools: ['notes__lookup'], approvals: [] }],
       },
     });
     landAt('/capabilities?tab=sources&source=notes');
@@ -403,7 +403,7 @@ describe('the Sources tab', () => {
 
     // An agent file changed while the question was closed: opening it again reads the list again.
     host.agents['notes'] = [
-      { id: 'editor', name: 'Editor', tools: ['notes__wipe'], toolApproval: [] },
+      { id: 'editor', name: 'Editor', tools: ['notes__wipe'], approvals: [] },
     ];
     await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
     await findByText('Editor');

@@ -23,7 +23,7 @@ function definition(instructions: string): AgentFileDefinition {
     description: null,
     model: 'anthropic/claude-opus-5-5',
     tools: [],
-    skillDescriptors: [],
+    card: [],
     a2a: false,
     instructions,
   };
@@ -398,7 +398,7 @@ describe('a stored snapshot whose definition is not valid', () => {
   const invalid: unknown[] = [
     {},
     { model: 'anthropic/claude-opus-5-5' },
-    { ...definition('x'), skillDescriptors: undefined, tools: 'lookup-order' },
+    { ...definition('x'), card: undefined, tools: 'lookup-order' },
     { ...definition('x'), a2a: 'yes' },
   ];
 
@@ -453,13 +453,13 @@ describe('a stored snapshot whose definition is not valid', () => {
       description: null,
       model: 'anthropic/claude-opus-5-5',
       tools: [],
-      skillDescriptors: [],
+      card: [],
       a2a: false,
       instructions: 'Hi.\n',
     });
   });
 
-  it('loads a snapshot written before the A2A opt-in and `skillDescriptors` existed', async () => {
+  it('loads a snapshot written before the A2A opt-in and `card` existed', async () => {
     const { backing, store } = setup();
     // The exact shape of a definition stored before COR-1864: `skills` and `published` keys.
     await backing.set(
@@ -488,7 +488,7 @@ describe('a stored snapshot whose definition is not valid', () => {
       description: 'Helps',
       model: 'anthropic/claude-opus-5-5',
       tools: ['lookup-order'],
-      skillDescriptors: [],
+      card: [],
       a2a: false,
       instructions: 'Hi.\n',
     });

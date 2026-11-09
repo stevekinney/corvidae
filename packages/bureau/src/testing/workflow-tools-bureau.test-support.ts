@@ -72,7 +72,7 @@ export interface WorkflowToolsHarness {
   /**
    * Writes an agent file under the identifier `id` that lists `tools` (the eight workflow tools by
    * default). Each tool is set to `never`, so a call runs without waiting for a person; pass
-   * `approval: 'default'` to leave `toolApproval` out and take the agent default (COR-1913).
+   * `approval: 'default'` to leave `approvals` out and take the agent default (COR-1913).
    */
   putAgent(
     id: string,
@@ -165,7 +165,7 @@ export async function startWorkflowToolsBureau(
         // something (COR-1913), so each tool is set to run without asking.
         ...(tools.length === 0 || agentOptions.approval === 'default'
           ? {}
-          : { toolApproval: `{ ${tools.map((tool) => `${tool}: never`).join(', ')} }` }),
+          : { approvals: `{ ${tools.map((tool) => `${tool}: never`).join(', ')} }` }),
       }),
     );
     await bureau.agents.refresh();

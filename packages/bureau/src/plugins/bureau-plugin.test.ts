@@ -152,8 +152,7 @@ describe('the built-in bureau plugin', () => {
       agentFileText({
         model: KNOWN_MODEL,
         description: 'Finds primary sources',
-        skillDescriptors:
-          '[{id: cite, name: Cite, description: Adds footnotes, tags: [footnoting]}]',
+        card: '[{id: cite, name: Cite, description: Adds footnotes, tags: [footnoting]}]',
       }),
     );
     await writeFile(join(harness.agentsPath, 'broken.md'), 'not an agent file, so it is invalid');

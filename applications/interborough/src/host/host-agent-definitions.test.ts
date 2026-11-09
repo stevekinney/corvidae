@@ -81,16 +81,14 @@ const scripted = createScriptedGenerate([
   { kind: 'respond', response: { content: 'Scripted.', toolCalls: [] } },
 ]);
 
-const skillDescriptors = [
-  { id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] },
-];
+const card = [{ id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] }];
 
 const definition: AgentDefinitionInput = {
   name: 'Researcher',
   description: 'Finds and cites sources',
   model: 'anthropic/sonnet',
   tools: ['demo:lookup-order'],
-  skillDescriptors,
+  card,
   instructions: 'You are a careful researcher.',
 };
 
@@ -148,11 +146,11 @@ describe('the efforts the editor repeats', () => {
 
     const created = await createAgent(
       'researcher',
-      { ...definition, defaultEffort: supported },
+      { ...definition, effort: supported },
       { fetch: fetcher },
     );
     const read = await getAgentDefinition('researcher', { fetch: fetcher });
-    expect(read.definition?.defaultEffort).toBe(supported);
+    expect(read.definition?.effort).toBe(supported);
 
     const kept = await updateAgent(
       'researcher',
@@ -161,16 +159,11 @@ describe('the efforts the editor repeats', () => {
       { fetch: fetcher },
     );
     const afterKept = await getAgentDefinition('researcher', { fetch: fetcher });
-    expect(afterKept.definition?.defaultEffort).toBe(supported);
+    expect(afterKept.definition?.effort).toBe(supported);
 
-    await updateAgent(
-      'researcher',
-      kept.hash,
-      { ...definition, defaultEffort: null },
-      { fetch: fetcher },
-    );
+    await updateAgent('researcher', kept.hash, { ...definition, effort: null }, { fetch: fetcher });
     const afterRemoved = await getAgentDefinition('researcher', { fetch: fetcher });
-    expect(afterRemoved.definition?.defaultEffort).toBeNull();
+    expect(afterRemoved.definition?.effort).toBeNull();
   });
 });
 
@@ -244,7 +237,7 @@ describe('the operations, against the real Bureau', () => {
     expect(read.hash).toBe(created.hash);
     expect(read.a2a).toBe(false);
     expect(read.definition?.model).toBe('anthropic/sonnet');
-    expect(read.definition?.skillDescriptors).toEqual(skillDescriptors);
+    expect(read.definition?.card).toEqual(card);
 
     const updated = await updateAgent(
       'researcher',
@@ -255,7 +248,7 @@ describe('the operations, against the real Bureau', () => {
     expect(updated.hash).not.toBe(created.hash);
     // The update kept the skill descriptors and left the A2A opt-in as the file had it.
     const afterUpdate = await getAgentDefinition('researcher', { fetch: fetcher });
-    expect(afterUpdate.definition?.skillDescriptors).toEqual(skillDescriptors);
+    expect(afterUpdate.definition?.card).toEqual(card);
     expect(afterUpdate.definition?.instructions).toBe('Changed.');
     expect(afterUpdate.a2a).toBe(false);
 

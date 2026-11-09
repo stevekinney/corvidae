@@ -63,7 +63,7 @@ const useSecret = createTool({
   name: 'use-secret',
   description: 'Uses a credential.',
   input: z.object({ credential: z.string() }),
-  // Read-only, so a file agent's default `toolApproval` lets the call run.
+  // Read-only, so a file agent's default `approvals` lets the call run.
   metadata: { acceptsSecrets: true, readOnly: true },
   async execute({ credential }) {
     received.push(credential);

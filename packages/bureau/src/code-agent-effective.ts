@@ -11,16 +11,16 @@
  * Each override replaces the agent's own value:
  *
  * - `instructions` is the system message a run starts with.
- * - `tools`, `toolApproval` and `toolBudget` build the run's toolbox the way an agent file's is
+ * - `tools`, `approvals` and `toolBudget` build the run's toolbox the way an agent file's is
  *   built: from the allowed tools (the agent's own, found in the toolbox its definition resolves
- *   to, and the deployment's tool catalog), asked as `toolApproval` says (a tool it does not list
+ *   to, and the deployment's tool catalog), asked as `approvals` says (a tool it does not list
  *   takes the default, `on-changes`, so a tool is never let through unasked because nothing was
  *   said), counted by `toolBudget`, and signed with the Bureau's agent approval secret. The code
  *   agent's own toolbox options do not carry over, because a toolbox does not expose them: once
  *   any of the three is overridden, the overrides say how every allowed tool asks. A tool the
  *   run's own composition added to that toolbox (a skill tool) is kept as it was.
  * - `model` is the default model, `models` the models a chat may be switched to, and
- *   `defaultEffort` the effort a step is sent when its steering names none. They are applied by the
+ *   `effort` the effort a step is sent when its steering names none. They are applied by the
  *   generate a file agent runs with, so the model policy is read at each step.
  * - `costBudget` is what one run, and one chat, may spend; `stepLimit` is the most steps one run
  *   may take.
@@ -83,7 +83,7 @@ export interface EffectiveCodeAgentDeployment {
   readonly modelPolicy: () => BureauModelPolicyOptions | undefined;
   /**
    * Turns a catalog row into the generate a run calls. Without it no generate can be built for a
-   * model, so `model`, `models` and `defaultEffort` leave the agent's own generate in place.
+   * model, so `model`, `models` and `effort` leave the agent's own generate in place.
    */
   readonly resolveGenerate?: ((row: BackendDescriptor) => GenerateFunction) | undefined;
   /**
@@ -97,7 +97,7 @@ export interface EffectiveCodeAgentDeployment {
   readonly approvalSecret?: string | undefined;
   /** Resolves the secrets a rebuilt toolbox's tools ask for. */
   readonly secretResolver?: ToolSecretResolver | undefined;
-  /** What to do with a step whose model cannot do `defaultEffort`; see the file agent generate. */
+  /** What to do with a step whose model cannot do `effort`; see the file agent generate. */
   readonly effortFallbackMode?: FileAgentGenerateOptions['effortFallbackMode'];
   /** The Bureau's services, whose clock a deferred run reads before its options resolve. */
   readonly runtime?: RuntimeServices | undefined;
@@ -108,8 +108,8 @@ export function hasAgentOverrides(overrides: AgentOverrides): boolean {
   return Object.values(overrides).some((value) => value !== undefined);
 }
 
-const TOOLBOX_KEYS = ['tools', 'toolApproval', 'toolBudget'] as const;
-const GENERATE_KEYS = ['model', 'models', 'defaultEffort'] as const;
+const TOOLBOX_KEYS = ['tools', 'approvals', 'toolBudget'] as const;
+const GENERATE_KEYS = ['model', 'models', 'effort'] as const;
 
 /** The name a call reports `configuration` by, and the name it was registered under. */
 function namesOf(configuration: ToolConfiguration): readonly string[] {
@@ -228,7 +228,7 @@ export function effectiveCodeAgent(
       resolveGenerate,
       costBudgeted: overrides.costBudget !== undefined,
       policyDenial: (row: BackendDescriptor) => modelPolicyDenialOf(row, deployment.modelPolicy()),
-      defaultEffort: overrides.defaultEffort,
+      defaultEffort: overrides.effort,
       effortFallbackMode: deployment.effortFallbackMode,
     };
     if (defaultRow !== undefined) {
@@ -276,7 +276,7 @@ export function effectiveCodeAgent(
       if (!ownConfigurations.has(configuration)) entries.push(configuration);
     }
     return createToolbox(entries, {
-      policy: createToolApprovalHooks(overrides.toolApproval, { tools: governed }),
+      policy: createToolApprovalHooks(overrides.approvals, { tools: governed }),
       ...(overrides.toolBudget === undefined
         ? {}
         : { budget: toolboxBudgetOf(overrides.toolBudget) }),

@@ -70,11 +70,11 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'description',
   'model',
   'models',
-  'defaultEffort',
+  'effort',
   'tools',
-  'skillDescriptors',
+  'card',
   'allowedSkills',
-  'childAgents',
+  'children',
   'a2a',
   'stepLimit',
   'retry',
@@ -84,7 +84,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'interceptors',
   'costBudget',
   'toolBudget',
-  'toolApproval',
+  'approvals',
 ] as const;
 
 /** Why a file cannot be used as an agent. Carried on the listing, and on a refused write. */
@@ -114,7 +114,7 @@ export interface AgentFileIssue {
   /**
    * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
    * or interceptor for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
-   * (COR-1975), a model for `model-policy-denied` (COR-1980) or the model a `defaultEffort` is refused on (COR-1961), as
+   * (COR-1975), a model for `model-policy-denied` (COR-1980) or the model an `effort` is refused on (COR-1961), as
    * `<provider>/<model-or-alias>` exactly as the file wrote it. Absent on every other issue.
    */
   readonly reference?: string;
@@ -126,9 +126,9 @@ export interface AgentFileProblem {
   readonly message: string;
   /**
    * Every schema failure, for `invalid-frontmatter`; the missing names, for `unknown-tool`; the
-   * names `toolApproval` gives a value that `tools` does not list, for `unknown-approval-tool`;
+   * names `approvals` gives a value that `tools` does not list, for `unknown-approval-tool`;
    * the skills a write could not grant, for `skill-not-grantable`; the models the model policy
-   * forbids, for `model-policy-denied` (COR-1980); `defaultEffort` and the model that cannot do
+   * forbids, for `model-policy-denied` (COR-1980); `effort` and the model that cannot do
    * it, for `effort-not-supported` (COR-1961).
    */
   readonly issues?: readonly AgentFileIssue[];
@@ -170,7 +170,7 @@ export const agentChildAgentsSchema = z
   .refine((names) => unique(names), { message: 'child agent names must be unique' });
 
 /**
- * A file's `defaultEffort` (COR-1961): the reasoning effort a chat of the agent starts at, one of
+ * A file's `effort` (COR-1961): the reasoning effort a chat of the agent starts at, one of
  * Operative's tiers. It is the local enum of {@link Effort} rather than an import of a runtime
  * value, and {@link AgentDefaultEffortMatchesEffort} holds the two equal. Whether the file's
  * default model can do the tier depends on the model catalog, which a write asks
@@ -256,7 +256,7 @@ export const agentToolBudgetSchema = z
   });
 
 /**
- * A file's `toolApproval` (COR-1913): a tool name mapped to when it asks a person before it runs,
+ * A file's `approvals` (COR-1913): a tool name mapped to when it asks a person before it runs,
  * one of `never`, `on-changes`, `always` or `blocked` (see {@link ToolApprovalMode}). A name the
  * file's `tools` does not list is `unknown-approval-tool`, which the catalog reports because it
  * reads both keys; the schema alone cannot.
@@ -347,6 +347,18 @@ function isModelEntry(entry: string): boolean {
 }
 
 /**
+ * The frontmatter keys that were renamed, from the old name to the new one (COR-2126, COR-2137). A
+ * file that still uses an old name is refused at that key's own path.
+ */
+const RENAMED_FRONTMATTER_KEYS: Readonly<Record<string, string>> = {
+  hooks: 'interceptors',
+  defaultEffort: 'effort',
+  toolApproval: 'approvals',
+  childAgents: 'children',
+  skillDescriptors: 'card',
+};
+
+/**
  * The frontmatter of an agent file. Unknown top-level keys are allowed so a file may carry
  * fields another tool reads; Bureau keeps them when it rewrites the file and ignores them.
  */
@@ -367,14 +379,14 @@ export const agentFileFrontmatterSchema = z
      * The reasoning effort a chat of this agent starts at (COR-1961). Absent, no effort is sent and
      * the provider's own default applies. A write checks it against the default `model`.
      */
-    defaultEffort: agentDefaultEffortSchema.nullish(),
+    effort: agentDefaultEffortSchema.nullish(),
     /** Names from the deployment's tool catalog. */
     tools: z
       .array(z.string().min(1))
       .refine(unique, { message: 'tool names must be unique' })
       .nullish(),
     /** Descriptive Agent Card skills (COR-1301), never executable skills. */
-    skillDescriptors: z
+    card: z
       .array(agentSkillDescriptorSchema)
       .refine((descriptors) => unique(descriptors.map((descriptor) => descriptor.id)), {
         message: 'skill ids must be unique',
@@ -382,12 +394,12 @@ export const agentFileFrontmatterSchema = z
       .nullish(),
     /**
      * The executable skills a run may activate, by name (COR-1975). Absent, the file grants none
-     * and the agent has no skills. Not `skills`, the name `skillDescriptors` had, which an old file
+     * and the agent has no skills. Not `skills`, the name `card` had before it was `skillDescriptors`, which an old file
      * may still carry and Bureau ignores.
      */
     allowedSkills: agentAllowedSkillsSchema.nullish(),
     /** Agent identifiers this file may dispatch as durable child runs. */
-    childAgents: agentChildAgentsSchema.nullish(),
+    children: agentChildAgentsSchema.nullish(),
     /**
      * Whether the agent opts into A2A, the agent-to-agent protocol. A strict boolean; defaults to
      * `false`. Chat and every other surface serve a ready agent whatever this says.
@@ -431,7 +443,7 @@ export const agentFileFrontmatterSchema = z
      * When each tool asks a person before it runs. A tool the map leaves out asks on changes. Each
      * name must be one of `tools`.
      */
-    toolApproval: agentToolApprovalSchema.nullish(),
+    approvals: agentToolApprovalSchema.nullish(),
     /**
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
@@ -440,14 +452,17 @@ export const agentFileFrontmatterSchema = z
   })
   .superRefine((frontmatter, context) => {
     checkModelsList(frontmatter, context);
-    // The key was named `hooks` before COR-2126. Unknown keys are kept, so without this refusal a
-    // file that still says `hooks:` would load and silently run no interceptors.
-    if (Object.hasOwn(frontmatter, 'hooks')) {
-      context.addIssue({
-        code: 'custom',
-        path: ['hooks'],
-        message: '`hooks` was renamed to `interceptors`; rename the key',
-      });
+    // Each of these keys was named otherwise before COR-2126 and COR-2137. Unknown keys are kept, so
+    // without this refusal a file that still says `hooks:` would load and silently run no
+    // interceptors, and one that says `toolApproval:` would load and ask nothing.
+    for (const [oldKey, newKey] of Object.entries(RENAMED_FRONTMATTER_KEYS)) {
+      if (Object.hasOwn(frontmatter, oldKey)) {
+        context.addIssue({
+          code: 'custom',
+          path: [oldKey],
+          message: `\`${oldKey}\` was renamed to \`${newKey}\`; rename the key`,
+        });
+      }
     }
   });
 
@@ -506,14 +521,18 @@ const agentFileDefinitionObjectSchema = z.object({
   /** The models a session may be switched to (COR-1559); absent for a snapshot that has none. */
   models: z.array(z.string().min(1)).optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  defaultEffort: agentDefaultEffortSchema.optional(),
+  effort: agentDefaultEffortSchema.optional(),
   tools: z.array(z.string().min(1)).default([]),
-  /** Absent from a snapshot written before the field was renamed from `skills`; read as none. */
-  skillDescriptors: z.array(agentSkillDescriptorSchema).default([]),
+  /**
+   * Absent from a snapshot written before the field was renamed from `skills`; read as none. Not
+   * defaulted here, because the transform below must tell an absent `card` from an empty one to
+   * decide whether a stored `skillDescriptors` applies.
+   */
+  card: z.array(agentSkillDescriptorSchema).optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   allowedSkills: agentAllowedSkillsSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  childAgents: agentChildAgentsSchema.optional(),
+  children: agentChildAgentsSchema.optional(),
   /** Absent from a snapshot written before the A2A opt-in existed; read as `false`. */
   a2a: z.boolean().default(false),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
@@ -547,12 +566,21 @@ const agentFileDefinitionObjectSchema = z.object({
    * same interceptors (see the transform below); it is never part of the output.
    */
   hooks: agentContributionIdsSchema.optional(),
+  /**
+   * What `effort`, `approvals`, `children` and `card` were called before COR-2137. A stored
+   * definition that names one reads as the same value under the new name, and the new name wins
+   * when both are present (see the transform below); none is ever part of the output.
+   */
+  defaultEffort: agentDefaultEffortSchema.optional(),
+  toolApproval: agentToolApprovalSchema.optional(),
+  childAgents: agentChildAgentsSchema.optional(),
+  skillDescriptors: z.array(agentSkillDescriptorSchema).optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   costBudget: agentCostBudgetSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   toolBudget: agentToolBudgetSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  toolApproval: agentToolApprovalSchema.optional(),
+  approvals: agentToolApprovalSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
@@ -563,14 +591,28 @@ const agentFileDefinitionObjectSchema = z.object({
  * a snapshot written before that field existed still resumes; a stored value that is not valid
  * is refused at the boundary rather than failing later as a `TypeError`.
  *
- * A stored definition that still names `hooks`, the key `interceptors` replaced in COR-2126, reads
- * as the same interceptors.
+ * A stored definition that still names `hooks`, `defaultEffort`, `toolApproval`, `childAgents` or
+ * `skillDescriptors`, the keys `interceptors` (COR-2126), `effort`, `approvals`, `children` and
+ * `card` (COR-2137) replaced, reads as the same value under the new name. The new name wins when a
+ * stored definition holds both. The old name is never written back.
  */
 export const agentFileDefinitionSchema = agentFileDefinitionObjectSchema.transform(
-  ({ hooks, ...definition }) =>
-    hooks === undefined || definition.interceptors !== undefined
-      ? definition
-      : { ...definition, interceptors: hooks },
+  ({ hooks, defaultEffort, toolApproval, childAgents, skillDescriptors, ...definition }) => ({
+    ...definition,
+    card: definition.card ?? skillDescriptors ?? [],
+    ...(definition.interceptors === undefined && hooks !== undefined
+      ? { interceptors: hooks }
+      : {}),
+    ...(definition.effort === undefined && defaultEffort !== undefined
+      ? { effort: defaultEffort }
+      : {}),
+    ...(definition.approvals === undefined && toolApproval !== undefined
+      ? { approvals: toolApproval }
+      : {}),
+    ...(definition.children === undefined && childAgents !== undefined
+      ? { children: childAgents }
+      : {}),
+  }),
 );
 
 /** A file's `costBudget`; see {@link agentCostBudgetSchema}. */
@@ -628,10 +670,10 @@ export interface AgentFileDefinition {
    * elsewhere. Absent when the file sets none: no effort is sent. It wins over the deployment
    * policy's default effort, which does not apply to a file agent's run.
    */
-  readonly defaultEffort?: Effort;
+  readonly effort?: Effort;
   readonly tools: readonly string[];
   /** Descriptive Agent Card skills (COR-1301), never executable skills. */
-  readonly skillDescriptors: readonly AgentSkillDescriptor[];
+  readonly card: readonly AgentSkillDescriptor[];
   /**
    * The executable skills a run of the agent may activate, by name. Absent when the file lists
    * none: the agent has no skills. An empty list grants none too, and is kept, because it is what
@@ -639,7 +681,7 @@ export interface AgentFileDefinition {
    */
   readonly allowedSkills?: readonly string[];
   /** Agent identifiers this file may dispatch as durable child runs. */
-  readonly childAgents?: readonly string[];
+  readonly children?: readonly string[];
   /** Whether the agent opts into A2A. This part only records it; the A2A mount reads it. */
   readonly a2a: boolean;
   /** The most steps one run may take. Absent when the file sets none: Operative's default applies. */
@@ -672,12 +714,12 @@ export interface AgentFileDefinition {
    */
   readonly toolBudget?: AgentToolBudget;
   /**
-   * When each tool asks a person before it runs, as the file's `toolApproval` states it, with the
+   * When each tool asks a person before it runs, as the file's `approvals` states it, with the
    * names in alphabetical order. Absent when the file sets none, which asks on changes for every
    * tool. Every name is one of `tools`; the catalog refuses the file otherwise
    * (`unknown-approval-tool`).
    */
-  readonly toolApproval?: Readonly<Record<string, ToolApprovalMode>>;
+  readonly approvals?: Readonly<Record<string, ToolApprovalMode>>;
   /**
    * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
    * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
@@ -695,11 +737,11 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   description: true,
   model: true,
   models: true,
-  defaultEffort: true,
+  effort: true,
   tools: true,
-  skillDescriptors: true,
+  card: true,
   allowedSkills: true,
-  childAgents: true,
+  children: true,
   a2a: true,
   stepLimit: true,
   retry: true,
@@ -709,7 +751,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   interceptors: true,
   costBudget: true,
   toolBudget: true,
-  toolApproval: true,
+  approvals: true,
   examples: true,
   instructions: true,
 };
@@ -742,20 +784,20 @@ export interface AgentFileDefinitionInput {
   /** See {@link AgentFileDefinition.models}. Omitting it on an update removes it, as for `tools`. */
   readonly models?: readonly string[] | undefined;
   /**
-   * See {@link AgentFileDefinition.defaultEffort}. An update that omits it keeps the file's value;
+   * See {@link AgentFileDefinition.effort}. An update that omits it keeps the file's value;
    * `null` removes it.
    */
-  readonly defaultEffort?: Effort | null | undefined;
+  readonly effort?: Effort | null | undefined;
   readonly tools?: readonly string[] | undefined;
-  /** See {@link AgentFileDefinition.skillDescriptors}. */
-  readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
+  /** See {@link AgentFileDefinition.card}. */
+  readonly card?: readonly AgentSkillDescriptor[] | undefined;
   /**
    * See {@link AgentFileDefinition.allowedSkills}. An update that omits it keeps the file's value;
    * `null` removes it, and an empty list grants none.
    */
   readonly allowedSkills?: readonly string[] | null | undefined;
-  /** See {@link AgentFileDefinition.childAgents}. */
-  readonly childAgents?: readonly string[] | null | undefined;
+  /** See {@link AgentFileDefinition.children}. */
+  readonly children?: readonly string[] | null | undefined;
   /** See {@link AgentFileDefinition.a2a}. An update that omits it keeps the file's value. */
   readonly a2a?: boolean | undefined;
   /**
@@ -799,10 +841,10 @@ export interface AgentFileDefinitionInput {
    */
   readonly toolBudget?: AgentToolBudget | null | undefined;
   /**
-   * See {@link AgentFileDefinition.toolApproval}. An update that omits it keeps the file's value;
+   * See {@link AgentFileDefinition.approvals}. An update that omits it keeps the file's value;
    * `null`, or an empty map, removes it.
    */
-  readonly toolApproval?: Readonly<Record<string, ToolApprovalMode>> | null | undefined;
+  readonly approvals?: Readonly<Record<string, ToolApprovalMode>> | null | undefined;
   readonly instructions: string;
 }
 
@@ -919,20 +961,20 @@ function toolBudgetOf(budget: AgentToolBudget): AgentToolBudget {
  * the same thing are the same definition, and `undefined` for an empty map, which says nothing.
  */
 function toolApprovalOf(
-  toolApproval: Readonly<Record<string, ToolApprovalMode>>,
+  approvals: Readonly<Record<string, ToolApprovalMode>>,
 ): Readonly<Record<string, ToolApprovalMode>> | undefined {
-  const entries = Object.entries(toolApproval).toSorted(([left], [right]) =>
+  const entries = Object.entries(approvals).toSorted(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
   return entries.length === 0 ? undefined : Object.fromEntries(entries);
 }
 
-/** `{ toolApproval }` for a map that says something, and nothing for one that does not. */
+/** `{ approvals }` for a map that says something, and nothing for one that does not. */
 function optionalToolApproval(
-  toolApproval: Readonly<Record<string, ToolApprovalMode>> | null | undefined,
-): { readonly toolApproval?: Readonly<Record<string, ToolApprovalMode>> } {
-  const held = toolApproval == null ? undefined : toolApprovalOf(toolApproval);
-  return held === undefined ? {} : { toolApproval: held };
+  approvals: Readonly<Record<string, ToolApprovalMode>> | null | undefined,
+): { readonly approvals?: Readonly<Record<string, ToolApprovalMode>> } {
+  const held = approvals == null ? undefined : toolApprovalOf(approvals);
+  return held === undefined ? {} : { approvals: held };
 }
 
 /** A compaction without the keys it leaves out, so a definition holds exactly what a file wrote. */
@@ -956,12 +998,12 @@ function toDefinition(
     description: frontmatter.description ?? null,
     model: frontmatter.model,
     ...(frontmatter.models == null ? {} : { models: frontmatter.models }),
-    ...(frontmatter.defaultEffort == null ? {} : { defaultEffort: frontmatter.defaultEffort }),
+    ...(frontmatter.effort == null ? {} : { effort: frontmatter.effort }),
     tools: frontmatter.tools ?? [],
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
-    skillDescriptors: (frontmatter.skillDescriptors ?? []) as readonly AgentSkillDescriptor[],
+    card: (frontmatter.card ?? []) as readonly AgentSkillDescriptor[],
     ...(frontmatter.allowedSkills == null ? {} : { allowedSkills: frontmatter.allowedSkills }),
-    ...(frontmatter.childAgents == null ? {} : { childAgents: frontmatter.childAgents }),
+    ...(frontmatter.children == null ? {} : { children: frontmatter.children }),
     a2a: frontmatter.a2a ?? false,
     ...(frontmatter.stepLimit == null ? {} : { stepLimit: frontmatter.stepLimit }),
     ...(frontmatter.retry == null ? {} : { retry: retryOf(frontmatter.retry) }),
@@ -975,7 +1017,7 @@ function toDefinition(
     ...(frontmatter.interceptors == null || frontmatter.interceptors.length === 0
       ? {}
       : { interceptors: [...frontmatter.interceptors] }),
-    ...optionalToolApproval(frontmatter.toolApproval),
+    ...optionalToolApproval(frontmatter.approvals),
     ...(frontmatter.costBudget == null ? {} : { costBudget: costBudgetOf(frontmatter.costBudget) }),
     ...(frontmatter.toolBudget == null ? {} : { toolBudget: toolBudgetOf(frontmatter.toolBudget) }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
@@ -1066,17 +1108,17 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   }
   known['model'] = definition.model;
   if (definition.models !== undefined) known['models'] = [...definition.models];
-  if (definition.defaultEffort != null) known['defaultEffort'] = definition.defaultEffort;
+  if (definition.effort != null) known['effort'] = definition.effort;
   if (definition.tools !== undefined && definition.tools.length > 0) {
     known['tools'] = [...definition.tools];
   }
-  if (definition.skillDescriptors !== undefined && definition.skillDescriptors.length > 0) {
-    known['skillDescriptors'] = definition.skillDescriptors.map((descriptor) => ({
+  if (definition.card !== undefined && definition.card.length > 0) {
+    known['card'] = definition.card.map((descriptor) => ({
       ...descriptor,
     }));
   }
   if (definition.allowedSkills != null) known['allowedSkills'] = [...definition.allowedSkills];
-  if (definition.childAgents != null) known['childAgents'] = [...definition.childAgents];
+  if (definition.children != null) known['children'] = [...definition.children];
   if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
   if (definition.stepLimit != null) known['stepLimit'] = definition.stepLimit;
   if (definition.retry != null) known['retry'] = retryOf(definition.retry);
@@ -1092,9 +1134,8 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   }
   if (definition.costBudget != null) known['costBudget'] = costBudgetOf(definition.costBudget);
   if (definition.toolBudget != null) known['toolBudget'] = toolBudgetOf(definition.toolBudget);
-  const toolApproval =
-    definition.toolApproval == null ? undefined : toolApprovalOf(definition.toolApproval);
-  if (toolApproval !== undefined) known['toolApproval'] = toolApproval;
+  const approvals = definition.approvals == null ? undefined : toolApprovalOf(definition.approvals);
+  if (approvals !== undefined) known['approvals'] = approvals;
   return known;
 }
 
@@ -1117,11 +1158,11 @@ export function resolveAgentFileDefinition(
     description: input.description ?? null,
     model: input.model,
     ...(input.models === undefined ? {} : { models: input.models }),
-    ...(input.defaultEffort == null ? {} : { defaultEffort: input.defaultEffort }),
+    ...(input.effort == null ? {} : { effort: input.effort }),
     tools: input.tools ?? [],
-    skillDescriptors: input.skillDescriptors ?? [],
+    card: input.card ?? [],
     ...(input.allowedSkills == null ? {} : { allowedSkills: [...input.allowedSkills] }),
-    ...(input.childAgents == null ? {} : { childAgents: [...input.childAgents] }),
+    ...(input.children == null ? {} : { children: [...input.children] }),
     a2a: input.a2a ?? false,
     ...(input.stepLimit == null ? {} : { stepLimit: input.stepLimit }),
     ...(input.retry == null ? {} : { retry: retryOf(input.retry) }),
@@ -1137,7 +1178,7 @@ export function resolveAgentFileDefinition(
       : { interceptors: [...input.interceptors] }),
     ...(input.costBudget == null ? {} : { costBudget: costBudgetOf(input.costBudget) }),
     ...(input.toolBudget == null ? {} : { toolBudget: toolBudgetOf(input.toolBudget) }),
-    ...optionalToolApproval(input.toolApproval),
+    ...optionalToolApproval(input.approvals),
     instructions: input.instructions,
   };
 }
@@ -1146,14 +1187,14 @@ export function resolveAgentFileDefinition(
 export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `defaultEffort`, `allowedSkills`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`, `interceptors`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and
+  // An update that omits `effort`, `allowedSkills`, `stepLimit`, `retry`, `compaction`, `references`,
+  // `guardrails`, `interceptors`, `costBudget`, `toolBudget` or `approvals` keeps the file's value, and
   // a version that has none must remove it: `null` says so.
   return {
     ...input,
-    defaultEffort: definition.defaultEffort ?? null,
+    effort: definition.effort ?? null,
     allowedSkills: definition.allowedSkills ?? null,
-    childAgents: definition.childAgents ?? null,
+    children: definition.children ?? null,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry ?? null,
     compaction: definition.compaction ?? null,
@@ -1162,7 +1203,7 @@ export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefi
     interceptors: definition.interceptors ?? null,
     costBudget: definition.costBudget ?? null,
     toolBudget: definition.toolBudget ?? null,
-    toolApproval: definition.toolApproval ?? null,
+    approvals: definition.approvals ?? null,
   };
 }
 
@@ -1181,16 +1222,16 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`defaultEffort`, `allowedSkills`, `childAgents`, `a2a`, `stepLimit`, `retry`, `compaction`,
-  // `references`, `guardrails`, `interceptors`, `costBudget`, `toolBudget`, `toolApproval`) is not a change
+  // A key the caller leaves out (`effort`, `allowedSkills`, `children`, `a2a`, `stepLimit`, `retry`, `compaction`,
+  // `references`, `guardrails`, `interceptors`, `costBudget`, `toolBudget`, `approvals`) is not a change
   // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
     ...input,
     ...(keptA2a ? { a2a: before.a2a } : {}),
-    ...(input.defaultEffort === undefined ? { defaultEffort: before.defaultEffort } : {}),
+    ...(input.effort === undefined ? { effort: before.effort } : {}),
     ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
-    ...(input.childAgents === undefined ? { childAgents: before.childAgents } : {}),
+    ...(input.children === undefined ? { children: before.children } : {}),
     ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
     ...(input.retry === undefined ? { retry: before.retry } : {}),
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
@@ -1199,7 +1240,7 @@ export function serializeUpdatedAgentFile(
     ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
     ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
     ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
-    ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
+    ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
   const { examples: _kept, ...beforeKnown } = before;
@@ -1217,9 +1258,9 @@ export function serializeUpdatedAgentFile(
       knownFrontmatter({
         ...input,
         ...(keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { a2a: before.a2a } : {}),
-        ...(input.defaultEffort === undefined ? { defaultEffort: before.defaultEffort } : {}),
+        ...(input.effort === undefined ? { effort: before.effort } : {}),
         ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
-        ...(input.childAgents === undefined ? { childAgents: before.childAgents } : {}),
+        ...(input.children === undefined ? { children: before.children } : {}),
         ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
         ...(input.retry === undefined ? { retry: before.retry } : {}),
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
@@ -1228,7 +1269,7 @@ export function serializeUpdatedAgentFile(
         ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
         ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
         ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
-        ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
+        ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,
       existing.lineEnding,

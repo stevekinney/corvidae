@@ -39,7 +39,7 @@ export const lookupTool = createTool({
   name: 'lookup-order',
   description: 'Looks an order up',
   input: z.object({}),
-  // Read-only, so a file agent's default `toolApproval` (`on-changes`) lets a call run.
+  // Read-only, so a file agent's default `approvals` (`on-changes`) lets a call run.
   metadata: { readOnly: true },
   execute: async () => 'order',
 });

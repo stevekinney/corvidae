@@ -246,9 +246,7 @@ describe('previewToolSourceRemoval and removeToolSource', () => {
       Response.json({
         id: 'notes',
         tools: ['notes__wipe'],
-        affectedAgents: [
-          { id: 'writer', name: 'Writer', tools: ['notes__wipe'], toolApproval: [] },
-        ],
+        affectedAgents: [{ id: 'writer', name: 'Writer', tools: ['notes__wipe'], approvals: [] }],
       }),
     );
     const preview = await previewToolSourceRemoval('notes', { fetch });

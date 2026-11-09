@@ -29,7 +29,7 @@ const DEFINITION: AgentFileDefinition = {
   description: null,
   model: 'anthropic/claude-opus-5-5',
   tools: [],
-  skillDescriptors: [],
+  card: [],
   a2a: false,
   instructions: 'One.\n',
 };
@@ -77,7 +77,7 @@ describe('changedDefinitionKeys', () => {
         instructions: 'Two.\n',
         tools: ['lookup-order'],
         name: 'Renamed',
-        skillDescriptors: [],
+        card: [],
       }),
     ).toEqual(['name', 'tools', 'instructions']);
     expect(changedDefinitionKeys(DEFINITION, { ...DEFINITION, tools: [] })).toEqual([]);
@@ -89,7 +89,7 @@ describe('changedDefinitionKeys', () => {
       'description',
       'model',
       'tools',
-      'skillDescriptors',
+      'card',
       'a2a',
       'instructions',
     ]);

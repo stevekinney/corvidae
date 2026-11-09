@@ -43,7 +43,7 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
     readonly agentDetail?: (
       id: string,
     ) => Promise<
-      { readonly definition?: { readonly childAgents?: readonly string[] } | null } | undefined
+      { readonly definition?: { readonly children?: readonly string[] } | null } | undefined
     >;
   },
 ) {
@@ -82,8 +82,8 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
       if (access?.runAgent !== undefined && typeof runId === 'string') {
         const caller = await access.runAgent(runId);
         const detail = caller === undefined ? undefined : await access.agentDetail?.(caller);
-        if (detail?.definition?.childAgents !== undefined) {
-          const allowed = new Set(detail.definition.childAgents);
+        if (detail?.definition?.children !== undefined) {
+          const allowed = new Set(detail.definition.children);
           visible = agents.filter(({ name }) => allowed.has(name));
         }
       }
