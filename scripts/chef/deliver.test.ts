@@ -69,39 +69,67 @@ const mergedReport = (overrides: Partial<MergeGateReport> = {}): MergeGateReport
 });
 
 /** The merge gate and the closeout steps, recording what each was asked. */
-function seams(overrides: { merge?: MergeGateReport; refusal?: string; usageError?: string } = {}) {
+function seams(
+  overrides: {
+    merge?: MergeGateReport;
+    refusal?: string;
+    usageError?: string;
+    /** The identifier whose state change Linear rejects. */
+    failState?: string;
+  } = {},
+) {
   const record = {
     merges: [] as MergeGateOptions[],
     removals: [] as string[],
     requests: [] as string[],
+    /** The identifier each comment and state change was made on, in order. */
+    writes: [] as string[],
   };
-  let state = 'In Progress';
-  let comment = '';
+  const states = new Map<string, string>();
+  const comments = new Map<string, { body: string; identifier: string }>();
+  const stateOf = (identifier: string) => states.get(identifier) ?? 'In Progress';
   const client: LinearClient = {
     async request<T>(document: string, variables: Record<string, unknown> = {}): Promise<T> {
       record.requests.push(document.split(/[ (]/)[1] ?? document);
-      const issue = {
-        id: 'uuid-9',
-        identifier: 'COR-9',
+      const identifier = String(variables['id'] ?? variables['issueId']).replace(/^uuid-/, '');
+      const issue = (key: string) => ({
+        id: `uuid-${key}`,
+        identifier: key,
         title: 'T',
         description: null,
         updatedAt: 'x',
-        state: { id: state === 'Done' ? 's-done' : 's-doing', name: state },
+        state: {
+          id: stateOf(key) === 'Done' ? 's-done' : 's-doing',
+          name: stateOf(key),
+        },
         team: { id: 'team', key: 'COR', parent: null },
-      };
-      if (document.includes('IssueRead')) return { issue } as T;
+      });
+      if (document.includes('IssueRead')) return { issue: issue(identifier) } as T;
       if (document.includes('CommentPost')) {
-        comment = String(variables['body']);
-        return { commentCreate: { success: true, comment: { id: 'c1' } } } as T;
+        const id = `c${comments.size + 1}`;
+        comments.set(id, { body: String(variables['body']), identifier });
+        record.writes.push(`comment ${identifier}`);
+        return { commentCreate: { success: true, comment: { id } } } as T;
       }
-      if (document.includes('CommentRead'))
-        return { comment: { id: 'c1', body: comment, issue: { identifier: 'COR-9' } } } as T;
+      if (document.includes('CommentRead')) {
+        const found = comments.get(String(variables['id']));
+        return {
+          comment: found && {
+            id: variables['id'],
+            body: found.body,
+            issue: { identifier: found.identifier },
+          },
+        } as T;
+      }
       if (document.includes('TeamStates'))
         return {
           workflowStates: { nodes: [{ id: 's-done', name: 'Done', team: { id: 'team' } }] },
         } as T;
       if (document.includes('IssueSetState')) {
-        state = 'Done';
+        if (identifier === overrides.failState)
+          throw new LinearError('Linear rejected the request: nope');
+        states.set(identifier, 'Done');
+        record.writes.push(`state ${identifier}`);
         return { issueUpdate: { success: true } } as T;
       }
       throw new LinearError(`unexpected request ${document}`);
@@ -140,7 +168,7 @@ describe('deliver', () => {
       mainHealthWarning: null,
       failedStep: null,
       detail: null,
-      issue: null,
+      issues: [],
     });
     expect(record.merges).toHaveLength(1);
     expect(record.merges[0]).toMatchObject({ pr: 12, dryRun: false, checkMainHealth: true });
@@ -164,7 +192,7 @@ describe('deliver', () => {
   ])('a %s refusal is reported under its step, with nothing merged', async (step, detail) => {
     const { partial, record } = seams({ merge: refusal(step, detail) });
     const report = await deliver(
-      { ...options, issue: 'COR-9', completionFile: join(sandbox, 'done.md') },
+      { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
       partial,
     );
     expect(report).toMatchObject({ merged: false, failedStep: step, detail });
@@ -210,12 +238,90 @@ describe('deliver', () => {
   test('closes the issue with the completion comment and the Done state, read back', async () => {
     const { partial, record } = seams();
     const report = await deliver(
-      { ...options, issue: 'COR-9', completionFile: join(sandbox, 'done.md') },
+      { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
       partial,
     );
-    expect(report).toMatchObject({ merged: true, failedStep: null, issue: 'Done' });
+    expect(report).toMatchObject({
+      merged: true,
+      failedStep: null,
+      issues: [{ identifier: 'COR-9', state: 'Done' }],
+    });
     expect(record.requests).toContain('CommentPost');
     expect(record.requests).toContain('IssueSetState');
+    expect(renderDeliver(report)).toContain('issues: COR-9 Done');
+  });
+
+  test('closes several issues in order, each with its own comment and then Done', async () => {
+    const { partial, record } = seams();
+    const second = join(sandbox, 'second.md');
+    writeFileSync(second, sampleReport.replace('cor-9-widgets', 'cor-10-gadgets'));
+    const report = await deliver(
+      {
+        ...options,
+        issues: ['COR-9', 'COR-10'],
+        completionFiles: [join(sandbox, 'done.md'), second],
+      },
+      partial,
+    );
+    expect(report).toMatchObject({
+      merged: true,
+      failedStep: null,
+      issues: [
+        { identifier: 'COR-9', state: 'Done' },
+        { identifier: 'COR-10', state: 'Done' },
+      ],
+    });
+    expect(record.writes).toEqual([
+      'comment COR-9',
+      'state COR-9',
+      'comment COR-10',
+      'state COR-10',
+    ]);
+    expect(renderDeliver(report)).toContain('issues: COR-9 Done, COR-10 Done');
+  });
+
+  test('a failed comment names its issue exactly once', async () => {
+    const { partial } = seams();
+    const unread: LinearClient = {
+      async request<T>(document: string, variables: Record<string, unknown> = {}): Promise<T> {
+        if (document.includes('CommentPost'))
+          return { commentCreate: { success: false, comment: null } } as T;
+        return partial.client.request<T>(document, variables);
+      },
+    };
+    const report = await deliver(
+      { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+      { ...partial, client: unread },
+    );
+    expect(report).toMatchObject({ merged: true, failedStep: 'issue', issues: [] });
+    expect(report.detail).toBe('COR-9: the comment was not created.');
+  });
+
+  test('a failure on the second issue keeps the first closed and names the second', async () => {
+    const { partial, record } = seams({ failState: 'COR-10' });
+    const second = join(sandbox, 'second.md');
+    writeFileSync(second, sampleReport);
+    const report = await deliver(
+      {
+        ...options,
+        issues: ['COR-9', 'COR-10', 'COR-11'],
+        completionFiles: [join(sandbox, 'done.md'), second, second],
+        removeWorktree: { provider: 'claude', name: 'alpha' },
+      },
+      partial,
+    );
+    expect(report).toMatchObject({
+      merged: true,
+      mergeCommit: MERGE_COMMIT,
+      failedStep: 'issue',
+      issues: [{ identifier: 'COR-9', state: 'Done' }],
+    });
+    expect(report.detail).toStartWith('COR-10:');
+    expect(report.detail).toContain('nope');
+    expect(record.writes).toEqual(['comment COR-9', 'state COR-9', 'comment COR-10']);
+    expect(record.removals).toEqual([]);
+    expect(renderDeliver(report)).toContain('issues: COR-9 Done');
+    expect(renderDeliver(report)).toContain('FAILED at issue: COR-10:');
   });
 
   test('a Linear failure after the merge is step issue with merged true, and removal is skipped', async () => {
@@ -228,14 +334,15 @@ describe('deliver', () => {
     const report = await deliver(
       {
         ...options,
-        issue: 'COR-9',
-        completionFile: join(sandbox, 'done.md'),
+        issues: ['COR-9'],
+        completionFiles: [join(sandbox, 'done.md')],
         removeWorktree: { provider: 'claude', name: 'alpha' },
       },
       { ...partial, client: broken },
     );
     expect(report).toMatchObject({ merged: true, failedStep: 'issue', mergeCommit: MERGE_COMMIT });
     expect(report.detail).toContain('nope');
+    expect(report.issues).toEqual([]);
     expect(record.removals).toEqual([]);
   });
 
@@ -293,10 +400,49 @@ describe('the completion file', () => {
     const { partial, record } = seams();
     writeFileSync(join(sandbox, 'plain.md'), 'Delivered.\n');
     const error = await rejectionOf(
-      deliver({ ...options, issue: 'COR-9', completionFile: join(sandbox, 'plain.md') }, partial),
+      deliver(
+        { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'plain.md')] },
+        partial,
+      ),
     );
     expect(error).toBeInstanceOf(UsageError);
     expect(String(error)).toContain('not an execution report');
+    expect(record.merges).toEqual([]);
+  });
+
+  test('refuses an invalid second report before any merge or Linear write', async () => {
+    const { partial, record } = seams();
+    writeFileSync(join(sandbox, 'plain.md'), 'Delivered.\n');
+    const error = await rejectionOf(
+      deliver(
+        {
+          ...options,
+          issues: ['COR-9', 'COR-10'],
+          completionFiles: [join(sandbox, 'done.md'), join(sandbox, 'plain.md')],
+        },
+        partial,
+      ),
+    );
+    expect(error).toBeInstanceOf(UsageError);
+    expect(String(error)).toContain('plain.md');
+    expect(record.merges).toEqual([]);
+    expect(record.requests).toEqual([]);
+  });
+
+  test('refuses unequal counts, a missing file and a repeated issue before any merge', async () => {
+    const { partial, record } = seams();
+    const done = join(sandbox, 'done.md');
+    const refused = async (issues: string[], completionFiles: string[]) => {
+      const error = await rejectionOf(deliver({ ...options, issues, completionFiles }, partial));
+      expect(error).toBeInstanceOf(UsageError);
+      return String(error);
+    };
+    expect(await refused(['COR-9', 'COR-10'], [done])).toContain('pair in order');
+    expect(await refused([], [done])).toContain('pair in order');
+    expect(await refused(['COR-9'], [join(sandbox, 'absent.md')])).toContain(
+      'No such completion file',
+    );
+    expect(await refused(['COR-9', 'COR-9'], [done, done])).toContain('given twice');
     expect(record.merges).toEqual([]);
   });
 });
@@ -327,6 +473,19 @@ describe('run', () => {
     expect(await usage('--pr', 'x', ...base)).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', '--worktree', sandbox)).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--issue', 'COR-1')).toBeInstanceOf(UsageError);
+    expect(
+      await usage(
+        '--pr',
+        '1',
+        ...base,
+        '--issue',
+        'COR-1',
+        '--issue',
+        'COR-2',
+        '--completion-file',
+        'a.md',
+      ),
+    ).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--remove-worktree')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--name', 'x')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--bogus')).toBeInstanceOf(UsageError);
@@ -367,6 +526,37 @@ describe('run', () => {
       usageLog: '/tmp/u.tsv',
       transcripts: ['/a'],
     });
+  });
+
+  test('--issue and --completion-file repeat, pair in order and close each issue', async () => {
+    const { partial, record } = seams();
+    const second = join(sandbox, 'second.md');
+    writeFileSync(second, sampleReport);
+    const result = await run(
+      argv([
+        '--issue',
+        'COR-9',
+        '--completion-file',
+        join(sandbox, 'done.md'),
+        '--issue',
+        'COR-10',
+        '--completion-file',
+        second,
+        '--json',
+      ]),
+      partial,
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.output).issues).toEqual([
+      { identifier: 'COR-9', state: 'Done' },
+      { identifier: 'COR-10', state: 'Done' },
+    ]);
+    expect(record.writes).toEqual([
+      'comment COR-9',
+      'state COR-9',
+      'comment COR-10',
+      'state COR-10',
+    ]);
   });
 
   test('exits 0 with one JSON object for a merge and 1 naming the failed step otherwise', async () => {
