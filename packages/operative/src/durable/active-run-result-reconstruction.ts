@@ -8,6 +8,7 @@ import {
   AgentRunError,
   BudgetExceededError,
   ElicitationDeniedError,
+  type GuardrailPhase,
   GuardrailTripwireError,
   MaximumStepsExceededError,
 } from '../errors';
@@ -478,7 +479,7 @@ interface FinalizeArgs {
     | {
         guardrailName: string;
         category: string;
-        phase: 'input' | 'output';
+        phase: GuardrailPhase;
         confidence: number;
         detail?: string;
       }

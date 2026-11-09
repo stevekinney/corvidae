@@ -1,6 +1,6 @@
 import type { MultiModalContent } from 'conversationalist';
 
-import type { AgentRunErrorCode, AgentRunErrorKind } from '../errors';
+import type { AgentRunErrorCode, AgentRunErrorKind, GuardrailPhase } from '../errors';
 import { GuardrailTripwireError } from '../errors';
 import { finishReasonOfError } from '../finish-reason';
 import {
@@ -117,7 +117,7 @@ export interface AgentRunWorkflowResult {
     | {
         guardrailName: string;
         category: string;
-        phase: 'input' | 'output';
+        phase: GuardrailPhase;
         confidence: number;
         detail?: string;
       }

@@ -26,7 +26,7 @@ import type { RunCostBudget } from './cost-budget';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { EffectiveContextRecord } from './effective-context-record';
-import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
+import type { AgentRunErrorCode, AgentRunErrorKind, GuardrailPhase } from './errors';
 import type { GeneratedMediaAdmitter, StepGeneratedMediaAdmitter } from './generated-media';
 import type { AssetSafetyPolicy } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
@@ -468,14 +468,18 @@ export interface GuardrailFiring {
   readonly guardrailName: string;
   /** What it found, such as `prompt-injection` or `pii`. */
   readonly category: string;
-  /** Whether it checked the request (`input`) or the reply (`output`). */
-  readonly phase: 'input' | 'output';
+  /**
+   * Where it checked: the request (`input`), the reply (`output`), a tool call (`tool-call`), or
+   * what a tool answered (`tool-result`).
+   */
+  readonly phase: GuardrailPhase;
   /** How sure the guardrail was, from 0 to 1. */
   readonly confidence: number;
   /**
-   * The action the guardrail is set to take: `block` and `sanitize` for an input, `block` and
-   * `redact` for an output, or `warn`, which lets the step through. A `redact` or `sanitize` that
-   * has nothing to substitute falls back to a block.
+   * The action the guardrail is set to take: `block` and `sanitize` for an input or a tool result,
+   * `block` and `redact` for an output, or `warn`, which lets the step through. A `redact` or
+   * `sanitize` that has nothing to substitute falls back to a block, and a tool result's
+   * `sanitize` always does.
    */
   readonly action: 'block' | 'warn' | 'sanitize' | 'redact';
 }
@@ -487,6 +491,12 @@ export interface ToolExecutionHookContext {
   conversation: Conversation;
   step: number;
   toolCalls: ToolCall[];
+  /**
+   * Reports that a guardrail acted on the step's tool calls and the run is going on, which the run
+   * publishes as a `run.guardrail` event (see {@link StepContext.reportGuardrail}). Absent where
+   * the host dispatches no events.
+   */
+  reportGuardrail?: ((firing: GuardrailFiring) => void) | undefined;
   elicit?:
     | (<T>(message: string, schema: ZodType<T>, options?: ElicitationOptions) => Promise<T | null>)
     | undefined;
@@ -500,6 +510,12 @@ export interface ToolExecutionResultContext {
   step: number;
   toolCalls: readonly ToolCall[];
   results: readonly ToolExecutionResult[];
+  /**
+   * Reports that a guardrail acted on a tool's result and the run is going on, which the run
+   * publishes as a `run.guardrail` event (see {@link StepContext.reportGuardrail}). The tool-result
+   * guardrail calls it in validate mode. Absent where the host dispatches no events.
+   */
+  reportGuardrail?: ((firing: GuardrailFiring) => void) | undefined;
   elicit?:
     | (<T>(message: string, schema: ZodType<T>, options?: ElicitationOptions) => Promise<T | null>)
     | undefined;

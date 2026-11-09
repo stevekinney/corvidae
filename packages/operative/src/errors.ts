@@ -533,14 +533,21 @@ export class OutputSchemaConversionError extends AgentRunError {
   }
 }
 
+/**
+ * Where a guardrail checked the run: the request before a generate call (`input`), the reply after
+ * it (`output`), a tool call before it runs (`tool-call`), or what a tool answered before the model
+ * is shown it (`tool-result`). Durable run records store it, so a value is never removed.
+ */
+export type GuardrailPhase = 'input' | 'output' | 'tool-call' | 'tool-result';
+
 /** Identifying details of the guardrail that tripped the wire. */
 export interface GuardrailTripwireDetail {
   /** The name of the detector (input) or validator (output) that tripped. */
   guardrailName: string;
   /** The category the detector/validator reported (e.g. 'prompt-injection', 'pii'). */
   category: string;
-  /** Whether the tripwire fired on the input (pre-generate) or output (post-generate) side. */
-  phase: 'input' | 'output';
+  /** Where the tripwire fired; see {@link GuardrailPhase}. */
+  phase: GuardrailPhase;
   confidence: number;
   detail?: string | undefined;
 }
@@ -556,7 +563,7 @@ export interface GuardrailTripwireDetail {
 export class GuardrailTripwireError extends AgentRunError implements GuardrailTripwireDetail {
   readonly guardrailName: string;
   readonly category: string;
-  readonly phase: 'input' | 'output';
+  readonly phase: GuardrailPhase;
   readonly confidence: number;
   readonly detail?: string | undefined;
 

@@ -19,6 +19,8 @@ export { createDefaultGuardrailsPreset } from './default-preset';
 export { createInputGuardrail } from './input-guardrail';
 export { createOutputGuardrail } from './output-guardrail';
 export { createSessionTaintTracker } from './session-taint';
+export { GUARDRAIL_BLOCKED_CODE, createToolResultGuardrail } from './tool-result-guardrail';
+export type { ToolResultGuardrailOptions } from './tool-result-guardrail';
 export type {
   AssetSafetyPolicy,
   DetectionResult,

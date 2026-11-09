@@ -166,6 +166,7 @@ export type {
   ClassifiedError,
   ErrorCategory,
   GeneratedMediaNotAdmittedReason,
+  GuardrailPhase,
   GuardrailTripwireDetail,
   ResponsePartsMismatchSource,
   SerializedAgentRunError,
