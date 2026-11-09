@@ -244,10 +244,10 @@ export class AgentEditorState {
   #seededTools: readonly string[] = [];
 
   /**
-   * What the file says about retries, compaction and run hooks, which the editor shows no control
+   * What the file says about retries, compaction and interceptors, which the editor shows no control
    * for: carried through a save, and into a copy.
    */
-  readonly #carried: Pick<AgentDefinitionInput, 'retry' | 'compaction' | 'hooks'>;
+  readonly #carried: Pick<AgentDefinitionInput, 'retry' | 'compaction' | 'interceptors'>;
 
   /** What the person typed into the identifier field, or `null` while it follows the name. */
   #typedIdentifier = $state<string | null>(null);
@@ -279,7 +279,7 @@ export class AgentEditorState {
     this.#carried = {
       ...(definition?.retry == null ? {} : { retry: definition.retry }),
       ...(definition?.compaction == null ? {} : { compaction: definition.compaction }),
-      ...(definition?.hooks == null ? {} : { hooks: definition.hooks }),
+      ...(definition?.interceptors == null ? {} : { interceptors: definition.interceptors }),
     };
     this.#writtenModel = definition?.model ?? '';
     // The option the file's model names. A model the catalog lacks stays the selection under the

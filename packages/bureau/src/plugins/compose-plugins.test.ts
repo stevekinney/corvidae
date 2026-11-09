@@ -121,17 +121,17 @@ const HOST_ENTRY: Record<
   },
   guardrail: {
     host: {
-      agentContributions: { guardrails: new Map([['p:x', {} as never]]), runHooks: new Map() },
+      agentContributions: { guardrails: new Map([['p:x', {} as never]]), interceptors: new Map() },
     },
     contribution: {
       guardrails: { inputDetectors: [{ name: 'x', detect: async () => ({}) as never }] },
     },
   },
-  'run-hooks': {
+  interceptor: {
     host: {
-      agentContributions: { guardrails: new Map(), runHooks: new Map([['p:x', {} as never]]) },
+      agentContributions: { guardrails: new Map(), interceptors: new Map([['p:x', {} as never]]) },
     },
-    contribution: { runHooks: [{ name: 'x' }] },
+    contribution: { interceptors: [{ name: 'x' }] },
   },
   'decision-router': {
     host: {
@@ -200,7 +200,7 @@ describe('composePlugins', () => {
           },
         ],
         guardrails: { inputDetectors: [{ name: 'scan', detect: async () => ({}) as never }] },
-        runHooks: [{ name: 'audit' }],
+        interceptors: [{ name: 'audit' }],
         decisionRouters: [{ name: 'router', kinds: new Set(), decide: async () => ({}) as never }],
         hookActionKinds: [
           {
@@ -235,7 +235,7 @@ describe('composePlugins', () => {
       { name: 'kit:tidy', version: '1' },
     ]);
     expect([...(options.agentContributions?.guardrails.keys() ?? [])]).toEqual(['kit:scan']);
-    expect([...(options.agentContributions?.runHooks.keys() ?? [])]).toEqual(['kit:audit']);
+    expect([...(options.agentContributions?.interceptors.keys() ?? [])]).toEqual(['kit:audit']);
     expect(Object.keys(options.decisions?.models ?? {})).toEqual(['kit:router']);
     // A delivery of the kind pins the plugin's version, since the kind declares none.
     expect(
@@ -299,10 +299,10 @@ describe('composePlugins', () => {
         evalJudges: [judge('judge')],
         embedders: [{ name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => []) }],
         memoryDetectors: [{ name: 'tags', detect: async () => ({}) as never }],
-        runHooks: [{ name: 'audit' }],
+        interceptors: [{ name: 'audit' }],
       }));
     const bare = await composePlugins<ComposableOptions>({ plugins: [contributing()] });
-    expect(bare.records[0]?.contributions).toEqual([{ kind: 'run-hooks', id: 'kit:audit' }]);
+    expect(bare.records[0]?.contributions).toEqual([{ kind: 'interceptor', id: 'kit:audit' }]);
     expect(bare.options.hooks).toBeUndefined();
     expect(bare.options.onlineEvals).toBeUndefined();
 
@@ -316,8 +316,8 @@ describe('composePlugins', () => {
       'embedder',
       'eval-judge',
       'hook-action',
+      'interceptor',
       'memory-detector',
-      'run-hooks',
     ]);
     for (const kind of ['embedder', 'eval-judge', 'hook-action'] as const) {
       expect(registersKind(kind, {})).toBe(false);
@@ -342,7 +342,7 @@ describe('composePlugins', () => {
         pluginEntry('flat', () => ({
           embedders: [{ name: 'zero', dimensions: 0, embed: async () => [] }],
         })),
-        pluginEntry('fine', () => ({ runHooks: [{ name: 'audit' }] })),
+        pluginEntry('fine', () => ({ interceptors: [{ name: 'audit' }] })),
       ],
     });
     // Package plugins first, then the folder plugin.

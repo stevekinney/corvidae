@@ -1,21 +1,21 @@
 /**
- * COR-1877 — the guardrails and run hooks plugins contribute, which an agent file chooses by id.
+ * COR-1877 — the guardrails and interceptors plugins contribute, which an agent file chooses by id.
  *
  * Operative's default guardrail preset guards every agent. An agent file's `guardrails: [ids]` adds
- * plugin guardrails to it, and its `hooks: [ids]` adds plugin run hooks. An id is `plugin:name`,
+ * plugin guardrails to it, and its `interceptors: [ids]` adds plugin interceptors. An id is `plugin:name`,
  * the form Armorer's `formatToolId` writes, and a file writes it without a version: a file floats
  * with the plugin that contributes it. An id the contributions do not hold makes the agent invalid
  * with `reference-unresolved`.
  *
- * A guardrail is one input detector or one output validator, named by its own `name`. A run hook
- * set is one `PluginRunHooks`, named by its own `name`. Every run hook the set registers carries
+ * A guardrail is one input detector or one output validator, named by its own `name`. An
+ * interceptor is one `PluginInterceptor`, named by its own `name`. Every run hook it registers carries
  * `source: <plugin>`, which survives `mergeHookRegistries`, so the run's hook plan says which
  * plugin each entry came from.
  *
  * @module agent-contributions
  */
 
-import type { PluginGuardrails, PluginRunHooks } from '@lostgradient/interborough-plugin';
+import type { PluginGuardrails, PluginInterceptor } from '@lostgradient/interborough-plugin';
 import { HookRegistry } from '@lostgradient/lifecycle';
 import type {
   GuardrailAdditions,
@@ -28,12 +28,12 @@ import type { AgentFileDefinition, AgentFileIssue } from './agent-file';
 
 /** What one plugin contributes that an agent file can choose. */
 export interface AgentContributionSource {
-  /** The plugin's name; the first half of each id and the `source` of each run hook. */
+  /** The plugin's name; the first half of each id and the `source` of each run hook an interceptor registers. */
   readonly plugin: string;
   /** The plugin's guardrails, each selectable by its own name. */
   readonly guardrails?: PluginGuardrails | undefined;
-  /** The plugin's run hook sets, each selectable by its own name. */
-  readonly runHooks?: readonly PluginRunHooks[] | undefined;
+  /** The plugin's interceptors, each selectable by its own name. */
+  readonly interceptors?: readonly PluginInterceptor[] | undefined;
 }
 
 /** One guardrail a plugin contributes: a detector or a validator. */
@@ -48,41 +48,45 @@ export interface ContributedGuardrail {
   readonly outputValidator?: OutputValidator | undefined;
 }
 
-/** One run hook set a plugin contributes. */
-export interface ContributedRunHooks {
+/** One interceptor a plugin contributes. */
+export interface ContributedInterceptor {
   /** `plugin:name`, as an agent file writes it. */
   readonly id: string;
   /** The contributing plugin. */
   readonly plugin: string;
-  /** The hooks themselves. */
-  readonly hooks: PluginRunHooks;
+  /** The interceptor itself. */
+  readonly interceptor: PluginInterceptor;
 }
 
-/** The guardrails and run hooks an agent file may choose, by id. */
+/** The guardrails and interceptors an agent file may choose, by id. */
 export interface AgentContributions {
   /** Every contributed guardrail, by id. */
   readonly guardrails: ReadonlyMap<string, ContributedGuardrail>;
-  /** Every contributed run hook set, by id. */
-  readonly runHooks: ReadonlyMap<string, ContributedRunHooks>;
+  /** Every contributed interceptor, by id. */
+  readonly interceptors: ReadonlyMap<string, ContributedInterceptor>;
 }
 
 /** No contributions: an agent file that lists any is invalid. */
 export const NO_AGENT_CONTRIBUTIONS: AgentContributions = Object.freeze({
   guardrails: new Map<string, ContributedGuardrail>(),
-  runHooks: new Map<string, ContributedRunHooks>(),
+  interceptors: new Map<string, ContributedInterceptor>(),
 });
 
 /**
  * Collects what plugins contribute into the lookup agent files resolve against. Throws `TypeError`
- * when two guardrails share an id, or two run hook sets do: a file names a contribution by id
+ * when two guardrails share an id, or two interceptors do: a file names a contribution by id
  * alone, so an id that means two things would run whichever came first.
  */
 export function createAgentContributions(
   sources: readonly AgentContributionSource[],
 ): AgentContributions {
   const guardrails = new Map<string, ContributedGuardrail>();
-  const runHooks = new Map<string, ContributedRunHooks>();
-  for (const { plugin, guardrails: contributed, runHooks: hookSets } of sources) {
+  const interceptors = new Map<string, ContributedInterceptor>();
+  for (const {
+    plugin,
+    guardrails: contributed,
+    interceptors: contributedInterceptors,
+  } of sources) {
     const guardrail = (entry: Omit<ContributedGuardrail, 'id' | 'plugin'> & { name: string }) => {
       const id = formatToolId({ namespace: plugin, name: entry.name });
       if (guardrails.has(id)) {
@@ -97,15 +101,15 @@ export function createAgentContributions(
     for (const validator of contributed?.outputValidators ?? []) {
       guardrail({ name: validator.name, outputValidator: validator });
     }
-    for (const hooks of hookSets ?? []) {
-      const id = formatToolId({ namespace: plugin, name: hooks.name });
-      if (runHooks.has(id)) {
-        throw new TypeError(`The run hooks "${id}" are contributed more than once.`);
+    for (const interceptor of contributedInterceptors ?? []) {
+      const id = formatToolId({ namespace: plugin, name: interceptor.name });
+      if (interceptors.has(id)) {
+        throw new TypeError(`The interceptor "${id}" is contributed more than once.`);
       }
-      runHooks.set(id, { id, plugin, hooks });
+      interceptors.set(id, { id, plugin, interceptor });
     }
   }
-  return { guardrails, runHooks };
+  return { guardrails, interceptors };
 }
 
 /**
@@ -113,7 +117,7 @@ export function createAgentContributions(
  * `reference-unresolved` problem: each names the key and the position in it.
  */
 export function unresolvedContributions(
-  definition: Pick<AgentFileDefinition, 'guardrails' | 'hooks'>,
+  definition: Pick<AgentFileDefinition, 'guardrails' | 'interceptors'>,
   contributions: AgentContributions,
 ): AgentFileIssue[] {
   const issues: AgentFileIssue[] = [];
@@ -126,11 +130,11 @@ export function unresolvedContributions(
       });
     }
   });
-  (definition.hooks ?? []).forEach((id, index) => {
-    if (!contributions.runHooks.has(id)) {
+  (definition.interceptors ?? []).forEach((id, index) => {
+    if (!contributions.interceptors.has(id)) {
       issues.push({
-        path: `hooks.${index}`,
-        message: `"${id}" is not a contributed run hook set`,
+        path: `interceptors.${index}`,
+        message: `"${id}" is not a contributed interceptor`,
         reference: id,
       });
     }
@@ -160,7 +164,7 @@ export function guardrailAdditionsOf(
   return { inputDetectors, outputValidators };
 }
 
-const RUN_HOOK_NAMES = [
+const INTERCEPTOR_HOOK_NAMES = [
   'prepareStep',
   'beforeToolExecution',
   'afterToolExecution',
@@ -169,20 +173,20 @@ const RUN_HOOK_NAMES = [
 ] as const;
 
 /**
- * The agent-tier hook registry for the run hooks `definition` chooses, or `undefined` when it
+ * The agent-tier hook registry for the interceptors `definition` chooses, or `undefined` when it
  * chooses none. Each entry carries `source: <plugin>` and the id `<plugin>:<name>:<hook>`. Every id
  * must resolve (see {@link unresolvedContributions}); one that does not is skipped.
  */
-export function runHooksOf(
-  definition: Pick<AgentFileDefinition, 'hooks'>,
+export function interceptorsOf(
+  definition: Pick<AgentFileDefinition, 'interceptors'>,
   contributions: AgentContributions,
 ): HookRegistry<OperativeHookMap> | undefined {
   const registry = new HookRegistry<OperativeHookMap>();
-  for (const id of new Set(definition.hooks ?? [])) {
-    const contributed = contributions.runHooks.get(id);
+  for (const id of new Set(definition.interceptors ?? [])) {
+    const contributed = contributions.interceptors.get(id);
     if (contributed === undefined) continue;
-    for (const hookName of RUN_HOOK_NAMES) {
-      const handler = contributed.hooks[hookName];
+    for (const hookName of INTERCEPTOR_HOOK_NAMES) {
+      const handler = contributed.interceptor[hookName];
       if (handler === undefined) continue;
       registry.on(hookName, handler, {
         id: `${id}:${hookName}`,

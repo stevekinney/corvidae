@@ -256,7 +256,7 @@ describe('plugin composition', () => {
       name: 'twice',
       version: '1.0.0',
       description: 'Two run hook sets named alike.',
-      setup: () => ({ runHooks: [{ name: 'audit' }, { name: 'audit' }] }),
+      setup: () => ({ interceptors: [{ name: 'audit' }, { name: 'audit' }] }),
     });
     const formatting = (name: string) =>
       definePlugin({

@@ -298,7 +298,7 @@ export async function pluginIdentities(
     ),
     ...entriesOf(contributions.evalJudges, (judge) => named(judge, 'eval-judge'), descriptor),
     ...entriesOf(contributions.providers, (provider) => named(provider, 'provider'), descriptor),
-    ...entriesOf(contributions.runHooks, (hooks) => named(hooks, 'run-hooks'), descriptor),
+    ...entriesOf(contributions.interceptors, (hooks) => named(hooks, 'interceptor'), descriptor),
     ...entriesOf(
       contributions.eventFormatters,
       (formatter) =>

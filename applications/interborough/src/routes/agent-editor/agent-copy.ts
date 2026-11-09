@@ -53,7 +53,7 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
     stepLimit: null,
     retry: null,
     compaction: null,
-    hooks: null,
+    interceptors: null,
     references: null,
     guardrails: null,
     costBudget: null,

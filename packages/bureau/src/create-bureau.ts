@@ -24488,7 +24488,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                 id: detail.id,
                 tools: detail.definition?.tools ?? detail.codeDefinition?.tools ?? [],
                 guardrails: detail.definition?.guardrails ?? [],
-                hooks: detail.definition?.hooks ?? [],
+                interceptors: detail.definition?.interceptors ?? [],
               },
             ],
       );

@@ -65,7 +65,7 @@ export const TEST_CONTRIBUTIONS = createAgentContributions([
         },
       ],
     },
-    runHooks: [{ name: 'audit' }],
+    interceptors: [{ name: 'audit' }],
   },
   {
     plugin: 'y',
@@ -137,7 +137,7 @@ export interface AgentFileFixtureOptions {
   readonly resolveGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
   /** Replaces how a directory is watched, to observe the watchers the catalog opens. */
   readonly openWatcher?: NonNullable<Parameters<typeof agentFileDirectory>[1]>['watchFactory'];
-  /** The guardrails and run hooks a file may list; none by default. */
+  /** The guardrails and interceptors a file may list; none by default. */
   readonly contributions?: AgentFileCatalogOptions['contributions'];
   /** The model policy in force (COR-1980), read on every write; none by default, so nothing is denied. */
   readonly modelPolicy?: () => BureauModelPolicyOptions | undefined;

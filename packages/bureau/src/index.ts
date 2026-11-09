@@ -75,7 +75,7 @@ export type {
   AgentContributions,
   AgentContributionSource,
   ContributedGuardrail,
-  ContributedRunHooks,
+  ContributedInterceptor,
 } from './agent-contributions';
 export {
   createToolApprovalHooks,

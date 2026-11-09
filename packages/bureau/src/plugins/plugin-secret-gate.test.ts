@@ -279,7 +279,7 @@ describe('the secret-gating outcome matrix', () => {
           inputDetectors: [{ name: 'scan', detect: note('guardrail-input', {}) as never }],
           outputValidators: [{ name: 'check', validate: note('guardrail-output', {}) as never }],
         },
-        runHooks: [{ name: 'audit', onStep: note('run-hooks', undefined) }],
+        interceptors: [{ name: 'audit', onStep: note('interceptor', undefined) }],
         decisionRouters: [
           { name: 'router', kinds: new Set(), decide: note('decision-router', {}) as never },
         ],
@@ -330,7 +330,7 @@ describe('the secret-gating outcome matrix', () => {
         gatedResult.guardrails?.inputDetectors?.[0]?.detect('x', {} as never),
       'guardrail-output': () =>
         gatedResult.guardrails?.outputValidators?.[0]?.validate('x', {} as never),
-      'run-hooks': () => gatedResult.runHooks?.[0]?.onStep?.({} as never),
+      interceptor: () => gatedResult.interceptors?.[0]?.onStep?.({} as never),
       'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
       'hook-action': () => gatedResult.hookActionKinds?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),

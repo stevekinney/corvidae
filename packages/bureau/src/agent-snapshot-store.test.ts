@@ -6,6 +6,7 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
+import { createAgentContributions, interceptorsOf } from './agent-contributions';
 import { AgentSnapshotError, type AgentFileDefinition } from './agent-file';
 import {
   AGENT_RUN_REFERENCE_KEY_PREFIX,
@@ -518,6 +519,30 @@ describe('a snapshot written when `guardrails` named a preset', () => {
       expect(revisions.map((revision) => revision.hash)).toEqual(['aa']);
     },
   );
+});
+
+describe('a snapshot written when `interceptors` was named `hooks` (COR-2126)', () => {
+  it('resumes with the same interceptors, so the run keeps the hooks it started with', async () => {
+    const { backing, store } = setup();
+    await backing.set(
+      `${AGENT_SNAPSHOT_KEY_PREFIX}helper:aa`,
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'helper',
+        hash: 'aa',
+        firstRunAt: '2026-10-01T00:00:00.000Z',
+        lastRunAt: '2026-10-01T00:00:00.000Z',
+        definition: { ...definition('Hi.\n'), hooks: ['x:audit'] },
+      }),
+    );
+    const loaded = await store.load('helper', 'aa');
+    expect(loaded?.definition).toEqual({ ...definition('Hi.\n'), interceptors: ['x:audit'] });
+    const contributions = createAgentContributions([
+      { plugin: 'x', interceptors: [{ name: 'audit', onStep: async () => undefined }] },
+    ]);
+    const registry = interceptorsOf(loaded!.definition, contributions);
+    expect(registry?.getHookNames()).toEqual(['onStep']);
+  });
 });
 
 describe('referencedRevisions', () => {

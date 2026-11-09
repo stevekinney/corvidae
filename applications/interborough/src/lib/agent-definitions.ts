@@ -93,8 +93,8 @@ const definitionSchema = z.object({
   retry: z.looseObject({ attempts: z.number() }).nullable().default(null),
   /** Whether and when a run compacts its conversation; `null` when the file sets none. Carried like `retry`. */
   compaction: z.looseObject({ enabled: z.boolean() }).nullable().default(null),
-  /** The plugin run hook sets (`plugin:name`) the file lists; `null` when it lists none. Carried like `retry`. */
-  hooks: z.array(z.string()).nullable().default(null),
+  /** The plugin interceptors (`plugin:name`) the file lists; `null` when it lists none. Carried like `retry`. */
+  interceptors: z.array(z.string()).nullable().default(null),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: z.array(z.string()).nullable().default(null),
   /** The plugin guardrails (`plugin:name`) the file lists besides the default preset; `null` when it lists none. */
@@ -324,8 +324,8 @@ export type AgentDefinitionInput = {
   readonly retry?: AgentDefinition['retry'];
   /** Whether and when a run compacts its conversation; carried like `retry`. */
   readonly compaction?: AgentDefinition['compaction'];
-  /** The plugin run hook sets (`plugin:name`); carried like `retry`. */
-  readonly hooks?: readonly string[] | null;
+  /** The plugin interceptors (`plugin:name`); carried like `retry`. */
+  readonly interceptors?: readonly string[] | null;
   /** What one run, and one chat, may spend. `null` removes the limit; left out, an update keeps the file's. */
   readonly costBudget?: {
     readonly perRunUsd: number;
