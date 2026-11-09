@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The fields of a contributed kind's configuration (a plugin's trigger kind or hook action kind),
-   * drawn by Cinder's `SchemaForm` from the JSON Schema the Bureau reports (`bureau.plugins.kinds`).
+   * drawn by Cinder's `SchemaForm` from the JSON Schema the Bureau reports (`bureau.plugins.contributions`).
    * The form takes its value once, so it is made again whenever the kind changes (`kindId`), and
    * reports every committed draft: a number still being typed is not reported until it is a number.
    * The form reports nothing before the first edit, so the draft it shows at mount (a choice's first

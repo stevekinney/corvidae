@@ -262,7 +262,7 @@ function planOf(
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
-  for (const kind of contributions.triggerKinds ?? []) contribute('trigger-kind', kind.name);
+  for (const kind of contributions.triggers ?? []) contribute('trigger', kind.name);
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
@@ -372,8 +372,8 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const entry of options.contributionCatalog?.entries('activity') ?? []) {
     claims.hold({ space: 'activity', name: entry.name }, HOST_PARTY);
   }
-  for (const entry of options.contributionCatalog?.entries('trigger-kind') ?? []) {
-    claims.hold({ space: 'trigger-kind', name: entry.name }, HOST_PARTY);
+  for (const entry of options.contributionCatalog?.entries('trigger') ?? []) {
+    claims.hold({ space: 'trigger', name: entry.name }, HOST_PARTY);
   }
   for (const validator of options.validators ?? []) {
     claims.hold({ space: 'validator', name: validator.identity.name }, HOST_PARTY);
@@ -421,7 +421,7 @@ function heldByHost(options: ComposableOptions): Claims {
 export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'tool',
   'activity',
-  'trigger-kind',
+  'trigger',
   'validator',
   'guardrail',
   'interceptor',
@@ -481,7 +481,7 @@ class Contributed {
   ): void {
     const id = (name: string) => formatToolId({ namespace: plugin, name });
     for (const [key, tool] of tools) this.tools[key] = tool;
-    if ((result.activities?.length ?? 0) + (result.triggerKinds?.length ?? 0) > 0) {
+    if ((result.activities?.length ?? 0) + (result.triggers?.length ?? 0) > 0) {
       this.activities.push({ plugin, version, result });
     }
     if (result.guardrails !== undefined || result.interceptors !== undefined) {
@@ -552,9 +552,9 @@ function catalogWith(
         source,
       });
     }
-    for (const kind of result.triggerKinds ?? []) {
+    for (const kind of result.triggers ?? []) {
       catalog.register({
-        kind: 'trigger-kind',
+        kind: 'trigger',
         name: formatToolId({ namespace: plugin, name: kind.name }),
         version: kind.version,
         value: kind,

@@ -75,7 +75,7 @@ export interface PluginTriggerContext {
 }
 
 /** A new kind of trigger, an external source that starts work in the host. */
-export interface PluginTriggerKind {
+export interface PluginTrigger {
   /** The kind's name, unique within the plugin. */
   readonly name: string;
   /** The kind's own version; a record that pins it uses the plugin's version without one. */
@@ -242,7 +242,7 @@ export interface PluginContributions {
   /** Decision models that answer decisions of the kinds they name. */
   readonly decisionRouters?: readonly DecisionModel[];
   /** New kinds of trigger. */
-  readonly triggerKinds?: readonly PluginTriggerKind[];
+  readonly triggers?: readonly PluginTrigger[];
   /** New kinds of hook action. */
   readonly hookActionKinds?: readonly PluginHookActionKind[];
   /** Model providers, each with its catalog rows. */

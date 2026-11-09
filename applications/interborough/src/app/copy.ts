@@ -936,7 +936,7 @@ export const WORKFLOW_COPY = {
     descriptionDescription: 'What this workflow is for, in a sentence.',
     triggerHeading: 'Trigger',
     triggerKindLabel: 'Starts',
-    triggerKinds: { schedule: 'On a schedule', signal: 'When a signal arrives' },
+    triggers: { schedule: 'On a schedule', signal: 'When a signal arrives' },
     /** A trigger kind a plugin contributes, named by its `plugin:name`. */
     contributedTrigger: (id: string): string => `When ${id} fires`,
     /** A trigger kind no running plugin contributes (the plugin is off, or the file is wrong). */
@@ -945,9 +945,9 @@ export const WORKFLOW_COPY = {
     /** Shown while the plugin trigger kinds load and the file's trigger names one. */
     checkingTrigger: (id: string): string => `Checking the trigger ${id}…`,
     /** The plugin trigger kinds could not be read, so the file's own trigger cannot be checked. */
-    triggerKindsFailed: (id: string): string =>
+    triggersFailed: (id: string): string =>
       `The trigger ${id} is kept as the file has it, but the list of plugin triggers did not load, so its settings cannot be shown.`,
-    retryTriggerKinds: 'Try again',
+    retryTriggers: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
     signalNameLabel: 'Signal name',
@@ -2210,7 +2210,7 @@ export const PLUGINS_COPY = {
     tool: 'Tools',
     activity: 'Activities',
     skill: 'Skills',
-    'trigger-kind': 'Triggers',
+    trigger: 'Triggers',
     validator: 'Validators',
     guardrail: 'Guardrails',
     interceptor: 'Interceptors',

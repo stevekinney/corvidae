@@ -42,7 +42,7 @@
 import type {
   PluginContributions,
   PluginInterceptor,
-  PluginTriggerKind,
+  PluginTrigger,
 } from '@lostgradient/interborough-plugin';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
@@ -216,7 +216,7 @@ function gatedInterceptor(
  * the secret is saved again. The returned stop stops whichever is running and follows the gate no
  * more. Every transition runs in order on one chain, so a start and a stop never overlap.
  */
-function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTriggerKind): PluginTriggerKind {
+function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTrigger {
   return {
     ...kind,
     start: async (context) => {
@@ -307,10 +307,10 @@ export function gatedContributions<T extends PluginContributions>(
             };
           }),
         }),
-    ...(result.triggerKinds === undefined
+    ...(result.triggers === undefined
       ? {}
       : {
-          triggerKinds: result.triggerKinds.map((kind) => gatedTriggerKind(gate, kind)),
+          triggers: result.triggers.map((kind) => gatedTriggerKind(gate, kind)),
         }),
     ...(result.validators === undefined
       ? {}

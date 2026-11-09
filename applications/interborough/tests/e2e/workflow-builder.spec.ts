@@ -67,7 +67,7 @@ test.describe('a workflow built from rows', () => {
       await root.getByLabel(BUILDER.descriptionLabel, { exact: true }).fill('Built from rows.');
       await root
         .getByLabel(BUILDER.triggerKindLabel)
-        .selectOption({ label: BUILDER.triggerKinds.signal });
+        .selectOption({ label: BUILDER.triggers.signal });
       await root.getByLabel(BUILDER.signalNameLabel).fill('e2e-built-go');
       // The template's agent step goes, and a signal wait takes its place.
       await root.getByRole('button', { name: BUILDER.addSignal }).click();

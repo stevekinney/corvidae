@@ -648,7 +648,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   workflowSource?: WorkflowSource | readonly WorkflowSource[];
   /**
    * COR-1874 — the versioned catalog (`createVersionedCatalog`) whose `activity` and
-   * `trigger-kind` entries workflow files may use besides the `agent` activity and the `schedule`
+   * `trigger` entries workflow files may use besides the `agent` activity and the `schedule`
    * and `signal` triggers. An entry is named `plugin:name` and holds a plugin's activity or
    * trigger kind. A file names a contributed activity without a version and floats with it; the
    * revision Bureau registers pins the version that is loaded, and a run resumes after a restart

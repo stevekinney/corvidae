@@ -1,10 +1,10 @@
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /**
- * `bureau.plugins.kinds` and `bureau.events.format` (COR-1893): the two reads a client needs to
+ * `bureau.plugins.contributions` and `bureau.events.format` (COR-1893): the two reads a client needs to
  * show what running plugins contribute to workflows and hooks.
  *
- * - `bureau.plugins.kinds` lists the trigger kinds a workflow file's trigger can name besides
+ * - `bureau.plugins.contributions` lists the trigger kinds a workflow file's trigger can name besides
  *   `schedule` and `signal`, and the hook action kinds a hook's `{ type: 'plugin' }` action can
  *   name, each with what it does and the fields its configuration takes as JSON Schema. A client
  *   draws the fields from it and writes the configuration back as the file or the hook holds it.
@@ -24,9 +24,9 @@ import type { BureauEventFormatter } from '../../bureau-event-formatting.ts';
 import type { BureauPlugins } from '../../plugins/plugin-types.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 
-/** What `bureau.plugins.kinds` reads from the handler's `host`. */
+/** What `bureau.plugins.contributions` reads from the handler's `host`. */
 export type BureauPluginKindsOperationHost = {
-  readonly plugins: Pick<BureauPlugins, 'triggerKinds' | 'hookActionKinds'>;
+  readonly plugins: Pick<BureauPlugins, 'triggers' | 'hookActionKinds'>;
 };
 
 /** What `bureau.events.format` reads from the handler's `host`. */
@@ -44,7 +44,7 @@ const configurationSchema = z
 const kindsInput = z.object({});
 
 const kindsOutput = z.object({
-  triggerKinds: z
+  triggers: z
     .array(
       z.object({
         plugin: z.string().describe('The contributing plugin.'),
@@ -70,14 +70,14 @@ const kindsOutput = z.object({
     ),
 });
 
-/** `bureau.plugins.kinds`. */
+/** `bureau.plugins.contributions`. */
 export const pluginKindsOperation = defineOperation<
   typeof kindsInput,
   typeof kindsOutput,
   BureauPluginKindsOperationHost
 >({
-  name: 'bureau.plugins.kinds',
-  authorize: authorizeWorkspaceOperation('bureau.plugins.kinds'),
+  name: 'bureau.plugins.contributions',
+  authorize: authorizeWorkspaceOperation('bureau.plugins.contributions'),
   mcpExposable: false,
   summary: 'List the trigger and hook action kinds plugins contribute',
   description:
@@ -93,7 +93,7 @@ export const pluginKindsOperation = defineOperation<
   unknownKeyPolicy,
   invoke: ({ host }) =>
     Promise.resolve({
-      triggerKinds: host.plugins.triggerKinds().map((kind) => ({ ...kind })),
+      triggers: host.plugins.triggers().map((kind) => ({ ...kind })),
       hookActionKinds: host.plugins.hookActionKinds().map((kind) => ({ ...kind })),
     }),
 });

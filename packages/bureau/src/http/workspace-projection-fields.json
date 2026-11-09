@@ -1498,7 +1498,7 @@
     "$.notifications[].title"
   ],
   "output:bureau.notifications.markread": ["$.updated"],
-  "output:bureau.plugins.kinds": [
+  "output:bureau.plugins.contributions": [
     "$.hookActionKinds",
     "$.hookActionKinds[].configuration",
     "$.hookActionKinds[].configuration|anyOf[0].*",
@@ -1507,14 +1507,14 @@
     "$.hookActionKinds[].kind",
     "$.hookActionKinds[].plugin",
     "$.hookActionKinds[].version",
-    "$.triggerKinds",
-    "$.triggerKinds[].configuration",
-    "$.triggerKinds[].configuration|anyOf[0].*",
-    "$.triggerKinds[].configuration|anyOf[0].*.*",
-    "$.triggerKinds[].description",
-    "$.triggerKinds[].id",
-    "$.triggerKinds[].plugin",
-    "$.triggerKinds[].version"
+    "$.triggers",
+    "$.triggers[].configuration",
+    "$.triggers[].configuration|anyOf[0].*",
+    "$.triggers[].configuration|anyOf[0].*.*",
+    "$.triggers[].description",
+    "$.triggers[].id",
+    "$.triggers[].plugin",
+    "$.triggers[].version"
   ],
   "output:bureau.reviews.get": [
     "$|oneOf[0].ageMilliseconds",

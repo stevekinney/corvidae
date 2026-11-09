@@ -11,14 +11,14 @@
  * @module workflow-trigger-supervisor
  */
 
-import type { PluginTriggerKind } from '@lostgradient/interborough-plugin';
+import type { PluginTrigger } from '@lostgradient/interborough-plugin';
 
 import type { VersionedCatalogEntry } from './versioned-catalog';
 
 /** A file's trigger that should be listening. */
 export interface DesiredTrigger {
   /** The contributed kind, with the plugin it came from. */
-  readonly kind: VersionedCatalogEntry<PluginTriggerKind>;
+  readonly kind: VersionedCatalogEntry<PluginTrigger>;
   /** The file's `trigger` object, `kind` included. */
   readonly trigger: Readonly<Record<string, unknown>>;
 }

@@ -10,7 +10,7 @@ import type { PluginDescriptor } from '../plugin-descriptor.ts';
 
 /** One name a plugin's durable records, files or settings can refer to, with the shape it has. */
 export interface PluginIdentityEntry {
-  /** What the entry is: `configuration`, `tool`, `activity`, `trigger-kind` and the other kinds. */
+  /** What the entry is: `configuration`, `tool`, `activity`, `trigger` and the other kinds. */
   readonly kind: string;
   /** The identifier a file or record names it by: the plugin's name for `configuration`, otherwise `plugin:name`. */
   readonly id: string;
@@ -267,8 +267,8 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
-      contributions.triggerKinds,
-      (kind) => named(kind, 'trigger-kind', kind.configuration),
+      contributions.triggers,
+      (kind) => named(kind, 'trigger', kind.configuration),
       descriptor,
     ),
     ...entriesOf(

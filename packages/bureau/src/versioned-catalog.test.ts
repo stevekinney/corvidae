@@ -87,14 +87,14 @@ describe('createVersionedCatalog registration', () => {
     const catalog = createVersionedCatalog<string>();
 
     const registered = catalog.register({
-      kind: 'trigger-kind',
+      kind: 'trigger',
       name: 'linear:issue-created',
       value: 'trigger',
       source: linear,
     });
 
     expect(registered).toMatchObject({ ok: true, entry: { version: '3.0.0' } });
-    expect(catalog.resolve('trigger-kind', 'linear:issue-created@3.0.0')).toMatchObject({
+    expect(catalog.resolve('trigger', 'linear:issue-created@3.0.0')).toMatchObject({
       ok: true,
     });
   });

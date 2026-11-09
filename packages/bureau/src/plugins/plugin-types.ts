@@ -216,7 +216,7 @@ export type PluginProblem =
 export type PluginContributionKind =
   | 'tool'
   | 'activity'
-  | 'trigger-kind'
+  | 'trigger'
   | 'validator'
   | 'guardrail'
   | 'interceptor'
@@ -315,7 +315,7 @@ export interface PluginListing {
  * name a file's `trigger.kind` uses, what it listens for, and the fields its configuration takes
  * (COR-1893). Carries no function.
  */
-export interface PluginTriggerKindListing {
+export interface PluginTriggerListing {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** `plugin:name`, the `kind` a workflow file's trigger names. */
@@ -386,7 +386,7 @@ export interface BureauPlugins {
    * The trigger kinds of the running plugins, in load order: what a workflow file's trigger can
    * name besides `schedule` and `signal`. Fixed once the Bureau is built.
    */
-  triggerKinds(): readonly PluginTriggerKindListing[];
+  triggers(): readonly PluginTriggerListing[];
   /**
    * The hook action kinds of the running plugins, in load order: what a hook's action
    * `{ type: 'plugin' }` can name. Empty when the Bureau composes no hooks. Fixed once the Bureau

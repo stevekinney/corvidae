@@ -1,5 +1,5 @@
 /**
- * What running plugins add to workflows and hooks (COR-1893): `bureau.plugins.kinds` (the trigger
+ * What running plugins add to workflows and hooks (COR-1893): `bureau.plugins.contributions` (the trigger
  * kinds a workflow file's trigger can name, and the hook action kinds a hook can run, each with its
  * configuration as JSON Schema), parsed at the boundary.
  */
@@ -34,7 +34,7 @@ export type ContributedTriggerKind = z.infer<typeof triggerKindSchema>;
 export type ContributedHookActionKind = z.infer<typeof hookActionKindSchema>;
 
 const kindsSchema = z.object({
-  triggerKinds: z.array(triggerKindSchema),
+  triggers: z.array(triggerKindSchema),
   hookActionKinds: z.array(hookActionKindSchema),
 });
 
@@ -43,7 +43,7 @@ export type ContributedKinds = z.infer<typeof kindsSchema>;
 
 /** The trigger and hook action kinds of the running plugins, each with its configuration schema. */
 export async function listContributedKinds(options?: Options): Promise<ContributedKinds> {
-  return kindsSchema.parse(await callBureau('bureau.plugins.kinds', {}, options));
+  return kindsSchema.parse(await callBureau('bureau.plugins.contributions', {}, options));
 }
 
 /** The id a hook action kind is chosen by: `plugin:kind`. A plugin and a kind name hold no `:`. */

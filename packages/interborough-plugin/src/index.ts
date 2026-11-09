@@ -13,8 +13,8 @@ export type {
   PluginMcpApp,
   PluginProvider,
   PluginSetupResult,
+  PluginTrigger,
   PluginTriggerContext,
-  PluginTriggerKind,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';
 export type { EvalScore, OnlineEvalJudge } from './eval-judge.ts';

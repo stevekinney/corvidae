@@ -857,7 +857,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const desired = new Map<string, DesiredTrigger>();
     for (const file of readyFiles()) {
       if (file.paused) continue;
-      const kind = contributions.triggerKinds.get(file.document.trigger.kind);
+      const kind = contributions.triggers.get(file.document.trigger.kind);
       if (kind !== undefined) desired.set(file.id, { kind, trigger: file.document.trigger });
     }
     return desired;

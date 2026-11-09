@@ -323,7 +323,7 @@ describe('the contributions a catalog holds', () => {
   it('refuses a name that is not plugin:name', () => {
     const catalog = createVersionedCatalog();
     catalog.register({
-      kind: 'trigger-kind',
+      kind: 'trigger',
       name: 'ticker',
       version: '1',
       value: {},
@@ -344,7 +344,7 @@ describe('the contributions a catalog holds', () => {
     expect(() => createWorkflowContributions(activities)).toThrow('has no execute function');
     const kinds = createVersionedCatalog();
     kinds.register({
-      kind: 'trigger-kind',
+      kind: 'trigger',
       name: 'x:ticker',
       version: '1',
       value: { name: 'ticker' },

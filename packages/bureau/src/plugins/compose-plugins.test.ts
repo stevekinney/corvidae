@@ -81,12 +81,12 @@ const HOST_ENTRY: Record<
     },
     contribution: { activities: [{ name: 'x', execute: async () => 'x' }] },
   },
-  'trigger-kind': {
+  trigger: {
     host: {
       contributionCatalog: (() => {
         const catalog = createVersionedCatalog();
         catalog.register({
-          kind: 'trigger-kind',
+          kind: 'trigger',
           name: 'p:x',
           version: '1',
           value: {},
@@ -96,7 +96,7 @@ const HOST_ENTRY: Record<
       })(),
     },
     contribution: {
-      triggerKinds: [
+      triggers: [
         {
           name: 'x',
           version: '1',
@@ -184,7 +184,7 @@ describe('composePlugins', () => {
       description: 'Contributes one of each.',
       setup: () => ({
         activities: [{ name: 'fetch', execute: async () => 'fetched' }],
-        triggerKinds: [
+        triggers: [
           {
             name: 'inbox',
             version: '0.1.0',
@@ -230,7 +230,7 @@ describe('composePlugins', () => {
 
     expect(records[0]?.status).toBe('running');
     expect(options.contributionCatalog?.resolve('activity', 'kit:fetch@1.2.0').ok).toBe(true);
-    expect(options.contributionCatalog?.resolve('trigger-kind', 'kit:inbox@0.1.0').ok).toBe(true);
+    expect(options.contributionCatalog?.resolve('trigger', 'kit:inbox@0.1.0').ok).toBe(true);
     expect(options.validators?.map(({ identity }) => identity)).toEqual([
       { name: 'kit:tidy', version: '1' },
     ]);

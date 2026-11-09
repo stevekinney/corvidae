@@ -133,7 +133,7 @@ export const queryKeys = {
     /** Every goal, a page at a time, read by the runs list and a run's page for a goal's attempts. */
     runs: () => ['goals', 'runs'] as const,
   },
-  /** The trigger and hook action kinds running plugins contribute (`bureau.plugins.kinds`). */
+  /** The trigger and hook action kinds running plugins contribute (`bureau.plugins.contributions`). */
   pluginKinds: () => ['plugin-kinds'] as const,
   /** The caller's hooks (`bureau.hooks.*`) and the event kinds a hook can listen to. */
   hooks: {

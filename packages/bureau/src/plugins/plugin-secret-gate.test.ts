@@ -395,7 +395,7 @@ describe('the secret-gating outcome matrix', () => {
     const [kind] =
       gatedContributions<PluginContributions>(
         {
-          triggerKinds: [
+          triggers: [
             {
               name: 'inbox',
               description: 'Mail arrives.',
@@ -411,7 +411,7 @@ describe('the secret-gating outcome matrix', () => {
         },
         gate,
         (name) => `kit:${name}`,
-      ).triggerKinds ?? [];
+      ).triggers ?? [];
     const controller = new AbortController();
     const context: PluginTriggerContext = {
       configuration: {},

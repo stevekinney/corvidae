@@ -40,7 +40,7 @@ export type HookAction = z.infer<typeof actionSchema>;
 
 /**
  * The built-in kinds of action a person can choose when writing a hook. The kinds running plugins
- * contribute are offered beside them (`bureau.plugins.kinds`) and written as a `plugin` action.
+ * contribute are offered beside them (`bureau.plugins.contributions`) and written as a `plugin` action.
  */
 export const HOOK_ACTION_TYPES = ['webhook', 'start-workflow', 'notify'] as const;
 
