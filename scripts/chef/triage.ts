@@ -273,13 +273,13 @@ export function pathOf(span: string): string | undefined {
   return bare.includes('/') || extensionPattern.test(bare) ? bare : undefined;
 }
 
-/** The identifier-like code spans outside Files that look like symbols, as their last segment. */
+/**
+ * The identifier-like code spans in Current behavior that look like symbols, as their last
+ * segment. Only that section describes existing code; the others may name symbols the issue will
+ * add, which are not stale for being absent.
+ */
 export function symbolsOf(description: string): string[] {
-  const sections = parseSections(description);
-  const text = [...sections]
-    .filter(([name]) => name !== 'files')
-    .map(([, body]) => body)
-    .join('\n');
+  const text = parseSections(description).get('current behavior') ?? '';
   const found = new Set<string>();
   for (const span of inlineSpans(text)) {
     const name = span.replace(/\(\)$/, '');

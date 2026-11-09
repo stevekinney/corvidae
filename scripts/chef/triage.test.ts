@@ -26,7 +26,7 @@ Do the thing.
 
 ## Current behavior
 
-It does not (verified, \`scripts/chef/a.ts:10\`).
+It does not (verified, \`scripts/chef/a.ts:10\`; \`parseThing\` exists).
 
 ## Acceptance criteria
 
@@ -167,12 +167,21 @@ describe('pathOf and symbolsOf', () => {
 
   test('symbolsOf keeps distinctive identifiers outside Files, by last segment', () => {
     const symbols = symbolsOf(
-      goodBody.replace(
-        'Do the thing.',
-        'Use `linear.fetchIssue`, `Runner`, `bun`, `a_b_c()`, `a.ts`.',
-      ),
+      goodBody
+        .replace('Do the thing.', 'Use `linear.fetchIssue`, `Runner`, `bun`, `a_b_c()`, `a.ts`.')
+        .replace('It does not', 'It uses `linear.fetchIssue` and `a_b_c()` and does not'),
     );
     expect(symbols).toEqual(['fetchIssue', 'a_b_c', 'parseThing']);
+  });
+
+  test('symbolsOf ignores symbols a criterion or decision proposes to add', () => {
+    const symbols = symbolsOf(
+      goodBody.replace(
+        '- AC1.',
+        '- AC1: `staleProposalFor()` returns propose-close. `newThing.run`',
+      ),
+    );
+    expect(symbols).toEqual(['parseThing']);
   });
 });
 
@@ -191,6 +200,17 @@ describe('staleFindings', () => {
     expect(findings.map((finding) => finding.code)).toEqual(['missing-file', 'referenced-closed']);
     expect(findings[0]?.message).toContain('scripts/chef/a.test.ts');
     expect(findings[1]?.message).toBe('COR-7 is referenced but is already Done.');
+  });
+
+  test('does not report a new symbol a criterion proposes to add', async () => {
+    const findings = await staleFindings(
+      issue(
+        'COR-1',
+        goodBody.replace('- AC1.', '- AC1: `staleProposalFor()` returns propose-close.'),
+      ),
+      baseContext({ pathExists: () => true }),
+    );
+    expect(codes(findings)).not.toContain('missing-symbol');
   });
 
   test('reports a missing symbol', async () => {
