@@ -170,17 +170,37 @@ describe('pluginIdentities', () => {
     ]);
   });
 
-  test('lists each guardrail an agent file can name, by kind and id', async () => {
+  test('lists each guardrail as a guardrail whose id records its family', async () => {
     const plugin = definePlugin({
       ...base,
       setup: () => ({
         guardrails: {
-          inputDetectors: [{ name: 'no-secrets', detect: async () => ({ safe: true }) } as never],
-          outputValidators: [
+          input: [{ name: 'no-secrets', detect: async () => ({ safe: true }) } as never],
+          output: [
             {
-              name: 'no-forbidden',
+              // An entry with an action of its own is listed by its guardrail's name (COR-2104).
+              guardrail: {
+                name: 'no-forbidden',
+                validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
+              },
+              action: 'warn',
+            },
+          ],
+          tools: [
+            {
+              name: 'refund-cap',
+              action: 'block',
               validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
             },
+          ],
+          // One detector can serve two families under one name: the family is in the identity.
+          memory: [
+            { name: 'no-secrets', detect: async () => ({ safe: true }) } as never,
+            {
+              name: 'recall-only',
+              gates: ['recall'],
+              detect: async () => ({ safe: true }),
+            } as never,
           ],
         },
       }),
@@ -189,8 +209,11 @@ describe('pluginIdentities', () => {
     expect(entries.map(({ kind, id, version, schema }) => ({ kind, id, version, schema }))).toEqual(
       [
         { kind: 'configuration', id: 'example', version: '1.2.0', schema: expect.any(String) },
-        { kind: 'input-guardrail', id: 'example:no-secrets', version: '1.2.0', schema: null },
-        { kind: 'output-guardrail', id: 'example:no-forbidden', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:input/no-secrets', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:memory/no-secrets', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:memory/recall-only', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:output/no-forbidden', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:tools/refund-cap', version: '1.2.0', schema: null },
       ],
     );
   });

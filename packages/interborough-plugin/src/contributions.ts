@@ -2,10 +2,12 @@ import type {
   AfterToolExecutionHook,
   BeforeToolExecutionHook,
   DecisionModel,
+  InputGuardrailEntry,
   OnStepHook,
-  OutputValidator,
+  OutputGuardrailEntry,
   PrepareStepHook,
   RunnableAgent,
+  ToolCallValidator,
   ValidateResponseHook,
   Validator,
 } from '@lostgradient/operative';
@@ -36,12 +38,52 @@ export interface PluginEvent {
   readonly source?: string;
 }
 
-/** Guardrails a plugin adds to the ones Operative applies to every agent. */
+/** A point in governed memory's life at which a memory guardrail runs. */
+export type PluginMemoryGate = 'admission' | 'recall';
+
+/**
+ * A guardrail on governed memory: an Armorer input detector that also says at which points it
+ * runs. One object can serve `guardrails.input` and `guardrails.memory` under one name, because
+ * names are claimed per family.
+ */
+export interface PluginMemoryGuardrail extends InputDetector {
+  /**
+   * Where it runs: `admission` scans content as it is written, `recall` scans each record as it is
+   * recalled. Left out, it runs at both. An empty list is refused, since it would run nowhere.
+   */
+  readonly gates?: readonly PluginMemoryGate[];
+}
+
+/**
+ * Guardrails a plugin adds to the ones Operative applies to every agent, grouped by what they
+ * guard. A guardrail's name is claimed within its family, and the family is recorded in its
+ * identity (`plugin:family/name`), so `acme:input/credentials` and `acme:memory/credentials` are
+ * different guardrails that may share a name.
+ */
 export interface PluginGuardrails {
-  /** Detectors run over the input before a generate call. */
-  readonly inputDetectors?: readonly InputDetector[];
-  /** Validators run over a response before it is accepted. */
-  readonly outputValidators?: readonly OutputValidator[];
+  /**
+   * Detectors run over the input before a generate call, and over each tool result. An entry is a
+   * detector, which takes the action of the group it joins, or `{ guardrail, action }`, whose
+   * `action` (`block`, `warn`, `sanitize` or `tripwire`) it keeps whatever that group's.
+   */
+  readonly input?: readonly InputGuardrailEntry[];
+  /**
+   * Validators run over a response before it is accepted. An entry is a validator, which takes the
+   * action of the group it joins, or `{ guardrail, action }`, whose `action` (`block`, `warn`,
+   * `redact` or `tripwire`) it keeps whatever that group's.
+   */
+  readonly output?: readonly OutputGuardrailEntry[];
+  /**
+   * Validators run over each tool call before it runs. A validator's own `action` (`block`, `warn`
+   * or `tripwire`) decides what its finding does; left out, it takes its group's.
+   */
+  readonly tools?: readonly ToolCallValidator[];
+  /**
+   * Detectors run after the default poisoning detector, on memory admission, on recall or on both
+   * (see {@link PluginMemoryGuardrail.gates}). An agent file cannot choose them: they guard the
+   * host's memory, not one agent.
+   */
+  readonly memory?: readonly PluginMemoryGuardrail[];
 }
 
 /**
@@ -249,8 +291,6 @@ export interface PluginContributions {
   readonly providers?: readonly PluginProvider[];
   /** Embedders the `memory.embedder` setting can name. */
   readonly embedders?: readonly PluginEmbedder[];
-  /** Detectors run after the default poisoning detector, on memory admission and on recall. */
-  readonly memoryDetectors?: readonly InputDetector[];
   /** Scorers that score a sample of completed runs. */
   readonly scorers?: readonly PluginScorer[];
   /** Interface panels. */

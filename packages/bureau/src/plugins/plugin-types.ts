@@ -70,8 +70,17 @@ export interface PluginModelContributions {
 
 /** What plugins contribute to governed memory, for a `memory` factory to build with. */
 export interface PluginMemoryContributions {
-  /** Detectors run after the default poisoning detector, on admission and on recall. */
-  readonly detectors: readonly InputDetector[];
+  /**
+   * The `guardrails.memory` detectors of the running plugins, in load order, split by the gates
+   * each declares (both when it declares none): `admission` run after the default poisoning
+   * detector on every write, and `recall` run after it on every recalled record.
+   */
+  readonly guardrails: {
+    /** The detectors that run on admission. */
+    readonly admission: readonly InputDetector[];
+    /** The detectors that run on recall. */
+    readonly recall: readonly InputDetector[];
+  };
   /** Embedders a `memory.embedder` setting can name, by `plugin:name`. */
   readonly embedders: readonly ContributedEmbedder[];
 }
@@ -212,7 +221,10 @@ export type PluginProblem =
       readonly message: string;
     };
 
-/** A kind of contribution, as the listing names it. */
+/**
+ * A kind of contribution, as the listing names it. A guardrail of the `input` or `output` family
+ * lists as `guardrail`, and one of the `memory` family as `memory-detector`.
+ */
 export type PluginContributionKind =
   | 'tool'
   | 'activity'
@@ -305,7 +317,7 @@ export interface PluginListing {
   /**
    * What it registered; empty unless it is `running` or `needs-setup`. A contribution whose option the host did not
    * give (`hooks` for a hook action kind, `scorers` for a scorer, a `memory` factory for an
-   * embedder or memory detector) is not registered, and is not listed.
+   * embedder or memory guardrail) is not registered, and is not listed.
    */
   readonly contributions: readonly PluginContributionListing[];
 }

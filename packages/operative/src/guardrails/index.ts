@@ -16,27 +16,44 @@ export type {
 } from 'armorer';
 export { createGuardrails } from './create-guardrails';
 export { createDefaultGuardrailsPreset } from './default-preset';
+export { guardrailActionOf, guardrailOf } from './guardrail-entries';
 export { createInputGuardrail } from './input-guardrail';
 export { createOutputGuardrail } from './output-guardrail';
 export { createSessionTaintTracker } from './session-taint';
+export { createToolCallGuardrail } from './tool-call-guardrail';
 export { GUARDRAIL_BLOCKED_CODE, createToolResultGuardrail } from './tool-result-guardrail';
 export type { ToolResultGuardrailOptions } from './tool-result-guardrail';
 export type {
   AssetSafetyPolicy,
   DetectionResult,
   DetectorContext,
+  GuardrailEntry,
   GuardrailHooks,
   GuardrailProvenance,
   GuardrailTriggeredEvent,
+  GuardrailWithAction,
   GuardrailsOptions,
   InputDetector,
+  InputGuardrailAction,
+  InputGuardrailEntry,
+  InputGuardrailGroupOptions,
   InputGuardrailOptions,
+  OutputGuardrailAction,
+  OutputGuardrailEntry,
+  OutputGuardrailGroupOptions,
   OutputGuardrailOptions,
   OutputGuardrailTriggeredEvent,
   OutputValidator,
   SessionTaintOptions,
   SessionTaintTracker,
   SessionTaintedEvent,
+  ToolCallGuardrailAction,
+  ToolCallGuardrailOptions,
+  ToolCallGuardrailTriggeredEvent,
+  ToolCallValidationResult,
+  ToolCallValidator,
+  ToolCallValidatorCall,
+  ToolCallValidatorContext,
   ValidationResult,
   ValidatorContext,
 } from './types';

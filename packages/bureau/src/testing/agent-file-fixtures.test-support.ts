@@ -59,7 +59,7 @@ export const TEST_CONTRIBUTIONS = createAgentContributions([
   {
     plugin: 'x',
     guardrails: {
-      inputDetectors: [
+      input: [
         {
           name: 'check',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
@@ -71,7 +71,7 @@ export const TEST_CONTRIBUTIONS = createAgentContributions([
   {
     plugin: 'y',
     guardrails: {
-      inputDetectors: [
+      input: [
         {
           name: 'other',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),

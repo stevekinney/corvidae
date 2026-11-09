@@ -9,7 +9,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `toolApprovalHooks`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `afterStart(bureau, context)`. |
 | `PluginHostApi` | The structural slice of Bureau `afterStart` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
-| `PluginContributions` | Tools, activities, validators, guardrails, interceptors, decision routers, triggers, reactions, providers (each with its catalog rows), embedders, memory detectors, scorers, panels, formatters, and agents. |
+| `PluginContributions` | Tools, activities, validators, guardrails, interceptors, decision routers, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
 ## Where a plugin lives
@@ -92,14 +92,13 @@ The descriptor's members:
 | `tools` | Tools agents can call. |
 | `activities` | Activities a shipped workflow calls as `plugin:name`. |
 | `validators` | Goal validators, registered by name and version. |
-| `guardrails` | `inputDetectors` and `outputValidators`, added to the ones Operative applies to every agent. |
+| `guardrails` | `input` detectors and `output` validators, added to the ones Operative applies to every agent, `tools` validators that judge each tool call before it runs (COR-2104), and `memory` detectors that guard governed memory (each may declare `gates`: `admission`, `recall`, or both by default). An `input` or `output` entry may be `{ guardrail, action }` to keep an action of its own whatever its group's, and a `tools` validator carries its own `action` (`block`, `warn` or `tripwire`). An agent file chooses an `input`, `output` or `tools` guardrail with `guardrails: [plugin:name]`. |
 | `interceptors` | Run hooks an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
 | `triggers` | New external sources that start work. |
 | `reactions` | New things a hook can do when its event happens. |
 | `providers` | Model providers, each with the catalog rows of its models. |
 | `embedders` | Embedders the `memory.embedder` setting can name. |
-| `memoryDetectors` | Detectors run after the default poisoning detector, on memory admission and on recall. |
 | `scorers` | Scorers that score a sample of completed runs. |
 | `panels` | Interface panels. |
 | `formatters` | Titles and bodies for the activity views. |

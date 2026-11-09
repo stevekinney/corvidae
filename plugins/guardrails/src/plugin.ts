@@ -21,7 +21,7 @@ function isRegularExpression(source: string): boolean {
 export default definePlugin({
   name: 'guardrails',
   title: 'Guardrails',
-  version: '1.0.0',
+  version: '1.1.0',
   description:
     'Adds two output guardrails an agent can list: code-safety flags dangerous code, and grounding flags claims the conversation does not support.',
   configuration: z.object({
@@ -36,7 +36,7 @@ export default definePlugin({
     const { blockedPatterns, groundingThreshold } = configuration;
     return {
       guardrails: {
-        outputValidators: [
+        output: [
           createCodeSafetyValidator({
             blockedPatterns: blockedPatterns.map((source) => new RegExp(source)),
           }),

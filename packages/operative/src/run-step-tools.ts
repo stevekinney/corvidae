@@ -16,6 +16,7 @@ import {
   ToolsExecutingEvent,
 } from './events';
 import type { StepGeneratedMediaAdmitter } from './generated-media';
+import { guardrailRefusedCallResult } from './guardrails/tool-call-guardrail';
 import {
   guardrailBlockedMessage,
   guardrailBlockedResult,
@@ -51,6 +52,21 @@ export interface ToolExecutionDependencies {
    * assistant message to carry it (a response with tool calls and no text).
    */
   firstToolCallMetadata?: Record<string, JSONValue> | undefined;
+}
+
+/** The message a call a `beforeToolExecution` hook left out, without a guardrail's refusal, carries. */
+const SKIPPED_CALL_MESSAGE = 'Tool execution skipped by beforeToolExecution hook';
+
+function skippedCallResult(call: ToolCall): ToolExecutionResult {
+  return {
+    callId: call.id,
+    toolCallId: call.id,
+    ...(call.providerCallId === undefined ? {} : { providerCallId: call.providerCallId }),
+    toolName: call.name,
+    outcome: 'error',
+    content: SKIPPED_CALL_MESSAGE,
+    result: SKIPPED_CALL_MESSAGE,
+  };
 }
 
 export interface ToolExecutionResultSet {
@@ -143,8 +159,16 @@ export async function executeTools(
 
     let callsToExecute = materializedToolCalls;
     let filteredResults: ToolExecutionResult[] = [];
+    // COR-2104 — the calls a guardrail refused, by id, with the guardrail that refused each.
+    const refusedCalls = new Map<string, string>();
 
     if (hooks?.has('beforeToolExecution')) {
+      const refuse = (callId: string, guardrailName: string) => {
+        if (refusedCalls.has(callId)) return;
+        if (materializedToolCalls.some((call) => call.id === callId)) {
+          refusedCalls.set(callId, guardrailName);
+        }
+      };
       try {
         // Iterated by hand rather than dispatched: `beforeToolExecution`
         // waterfalls a FIELD of its context (`toolCalls`) while the rest of
@@ -160,6 +184,7 @@ export async function executeTools(
             toolCalls: [...callsToExecute],
             elicit,
             reportGuardrail: guardrailReporter(emitter, step),
+            refuse,
           };
           const registryResult = await hooks.runHandler('beforeToolExecution', entry, [
             beforeContext,
@@ -167,12 +192,26 @@ export async function executeTools(
           if (registryResult !== undefined) {
             callsToExecute = registryResult as ToolCall[];
           }
+          // A refused call stays out whatever a later hook returns.
+          if (refusedCalls.size > 0) {
+            callsToExecute = callsToExecute.filter((call) => !refusedCalls.has(call.id));
+          }
         }
       } catch (error) {
+        // COR-2104: a tool-call tripwire halts the run before any call of the step runs, as an
+        // input tripwire does, and is never recovered. Every call is answered with a refusal
+        // naming the guardrail, so the conversation stays paired.
+        const tripwire = error instanceof GuardrailTripwireError ? error : undefined;
         const sealedResults = await sealDanglingToolCalls(
           conversation,
           deps.collectAsync,
-          'Tool execution aborted before a result could be produced (beforeToolExecution hook failed)',
+          tripwire === undefined
+            ? 'Tool execution aborted before a result could be produced (beforeToolExecution hook failed)'
+            : (call) =>
+                guardrailRefusedCallResult(
+                  call,
+                  refusedCalls.get(call.id) ?? tripwire.guardrailName,
+                ),
           undefined,
           resultRowScope,
         );
@@ -184,8 +223,9 @@ export async function executeTools(
           sealedResults,
           emittedSettledCallIds,
         );
-        emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
-        return { kind: 'error', error, errorKind: 'tool' };
+        const errorKind = tripwire === undefined ? 'tool' : 'policy';
+        emitter?.dispatch(new RunErrorEvent(step, error, errorKind));
+        return { kind: 'error', error, errorKind };
       }
     }
 
@@ -193,14 +233,20 @@ export async function executeTools(
     // (or to empty) without throwing. Every filtered-out call was already
     // appended to the conversation via appendToolCalls above and now has no
     // path to a result — seal it here rather than leaving it dangling for a
-    // later provider replay to choke on.
+    // later provider replay to choke on. A call a guardrail refused is answered
+    // with a GUARDRAIL_BLOCKED error naming it (COR-2104).
     if (callsToExecute.length < materializedToolCalls.length) {
       const executingIds = new Set(callsToExecute.map((tc) => tc.id));
       const filteredOutCalls = materializedToolCalls.filter((tc) => !executingIds.has(tc.id));
       const synthesizedResults = await sealDanglingToolCalls(
         conversation,
         deps.collectAsync,
-        'Tool execution skipped by beforeToolExecution hook',
+        (call) => {
+          const guardrailName = refusedCalls.get(call.id);
+          return guardrailName === undefined
+            ? skippedCallResult(call)
+            : guardrailRefusedCallResult(call, guardrailName);
+        },
         filteredOutCalls,
         resultRowScope,
       );

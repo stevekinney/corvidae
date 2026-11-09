@@ -185,7 +185,7 @@ Folder plugins (COR-1881) load after the workspace's, from each folder of `<bung
 
 `bun run dev -- --showcase` runs a development host that holds the sample world of the design boards (`src/host/showcase.ts`). Its state lives in `tmp/interborough-showcase` in the repository, or in the directory `INTERBOROUGH_SHOWCASE_HOME` names; it ignores `INTERBOROUGH_HOME`, because the seed empties the home, so the real `~/.interborough` is never touched. On every start `fixtures/sample-world-seed.ts` plays the sample world's story from Oct 12 to Nov 2 on hosts of its own, on an offset clock, so every record is written natively at its moment, and leaves the host running at Monday, Nov 2, a little after 10:45 AM with real timers. A stub model provider (`src/host/stub-provider.ts`) answers every model call with one fixed reply, so no provider key is read, and the sample world's hooks deliver to nothing. The end-to-end showcase specification (`tests/e2e/00-showcase.spec.ts`) opens a host seeded the same way.
 
-The plugins' embedders and memory detectors reach governed memory through `BureauOptions.memory`'s factory (`src/host/memory.ts`), and `/host/paths` reports the secret file of each provider a plugin contributes.
+The plugins' embedders and memory guardrails reach governed memory through `BureauOptions.memory`'s factory (`src/host/memory.ts`), and `/host/paths` reports the secret file of each provider a plugin contributes.
 
 **Catalog edits.** A `catalog` list in `configuration.json` turns a model off, corrects its price or limits, or adds a row the built-in list lacks:
 

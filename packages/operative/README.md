@@ -2848,15 +2848,17 @@ const activeRun = createActiveRun({
 
 ### Guardrails
 
-Guardrails are the trust boundary between the agent loop and everything that can inject untrusted content into it—the user, retrieved memories, ingested documents, and skill resources. Detectors live in `armorer` (shared with the retrieval surfaces); `@lostgradient/operative` wires them into the loop as `prepareStep`/`validateToolResult`/`validateResponse` hooks. Import these functions from the single `@lostgradient/operative` entry point.
+Guardrails are the trust boundary between the agent loop and everything that can inject untrusted content into it—the user, retrieved memories, ingested documents, and skill resources. Detectors live in `armorer` (shared with the retrieval surfaces); `@lostgradient/operative` wires them into the loop as `prepareStep`/`validateToolResult`/`validateResponse` hooks, and tool-call validators as a `beforeToolExecution` hook. Import these functions from the single `@lostgradient/operative` entry point.
 
 ### The Tripwire Model (AB-40)
 
 Every detector/validator returns a `DetectionResult`/`ValidationResult` carrying a `confidence` score. What happens when one triggers is governed by an `action`, configured per guardrail group—`InputGuardrailOptions.action` (`'block' | 'warn' | 'sanitize' | 'tripwire'`, using `DetectionResult.sanitized` for `'sanitize'`) and `OutputGuardrailOptions.action` (`'block' | 'warn' | 'redact' | 'tripwire'`, using `ValidationResult.redacted` for `'redact'`). `GuardrailsOptions.mode` sets both sides at once:
 
 - **`mode: 'validate'`** (default)—a tripped detector/validator substitutes a blocked/sanitized/redacted response and the run continues, per each guardrail's own `action`.
-- **`mode: 'tripwire'`**—overrides `input.action`/`output.action` to `'tripwire'` regardless of what they were set to. A tripped wire throws a `GuardrailTripwireError`, hard-halting the run with `finishReason: 'tripwire'` and a `run.tripwire` event identifying the guardrail, instead of substituting a blocked or redacted response. Use this where a false negative is unacceptable and a human should look at the transcript before the agent takes another step.
-- **A guardrail that acts and lets the run go on** (`mode: 'validate'`: a blocked or sanitized input, a blocked tool result, a blocked or redacted reply, or a `warn`) is a `run.guardrail` event on the run, published on the run event feed (`operative.runs.events`) with the `step`, `guardrailName`, `category`, `phase`, `confidence` and `action`. Like `run.tripwire` it leaves out the flagged text and the guardrail's `detail`. A tripwire fires `run.tripwire` and never `run.guardrail`. A guardrail hook reports through `StepContext.reportGuardrail`, or the `reportGuardrail` on a tool hook's context, which the run supplies. `phase` says where it checked: `input`, `output`, `tool-result`, or `tool-call` (reserved for a tool-call guardrail; nothing reports it yet). Durable run records store the tripwire's phase, so a recovered run reports the same one.
+- **`mode: 'tripwire'`**—overrides `input.action`/`output.action`/`tools.action` to `'tripwire'` regardless of what they were set to. A tripped wire throws a `GuardrailTripwireError`, hard-halting the run with `finishReason: 'tripwire'` and a `run.tripwire` event identifying the guardrail, instead of substituting a blocked or redacted response. Use this where a false negative is unacceptable and a human should look at the transcript before the agent takes another step.
+- **A guardrail that acts and lets the run go on** (`mode: 'validate'`: a blocked or sanitized input, a blocked tool result, a blocked or redacted reply, or a `warn`) is a `run.guardrail` event on the run, published on the run event feed (`operative.runs.events`) with the `step`, `guardrailName`, `category`, `phase`, `confidence` and `action`. Like `run.tripwire` it leaves out the flagged text and the guardrail's `detail`. A tripwire fires `run.tripwire` and never `run.guardrail`. A guardrail hook reports through `StepContext.reportGuardrail`, or the `reportGuardrail` on a tool hook's context, which the run supplies. `phase` says where it checked: `input`, `output`, `tool-result`, or `tool-call`. Durable run records store the tripwire's phase, so a recovered run reports the same one.
+
+**An action per guardrail (COR-2104).** An entry of `input.detectors` or `output.validators` (and of `additionalGuardrails`) is a bare detector or validator, which takes its group's action, or `{ guardrail, action }`, which keeps its own `action` under either mode (an input action for a detector, an output action for a validator). `mode: 'tripwire'` sets a group's action, never an entry's own, so a plugin guardrail set to `warn` warns under the default preset. The guardrails of each action run apart, the furthest-reaching first (`tripwire`, then `block`, then `sanitize` or `redact`, then `warn`), and the first that answers decides, so a detector set to warn never lets through what a blocking one refuses. Only the group's own action answers for what no detector reads (an unsafe or undecodable media part). An action an entry's group does not have throws a `TypeError` when the hook runs, rather than leave the guardrail unrun. `guardrailOf(entry)` and `guardrailActionOf(entry, groupAction)` read an entry. Armorer's `InputDetector` is unchanged.
 
 ### Tool Results (COR-2103)
 
@@ -2869,6 +2871,43 @@ A tool's output (a fetched page, an API response) is how an indirect prompt inje
 Three kinds of result are not scanned yet: the result of an approved call (one a human approved and the run then executed), a durable child-wait result, and the content of a streamed result. They are tracked in [COR-2299](https://linear.app/lost-gradient/issue/COR-2299); until it lands, do not rely on the detectors for them.
 
 `createToolResultGuardrail` is the hook on its own, for a caller composing guardrails by hand. Every host that registers `createGuardrails`' hooks (`createAgent`, Bureau's own tier, and a code agent's override guardrails) registers `validateToolResult` pinned last on its waterfall, beside `validateResponse`, so no later handler overrules it.
+
+### Tool Calls (COR-2104)
+
+An output validator reads the reply's text and thinking, never a tool call's arguments, so a model that writes nothing alarming but calls a tool with something dangerous passes it. `GuardrailsOptions.tools` holds `ToolCallValidator`s, `{ name, description?, action?, validate(call, context) }`, which judge each call (`{ id, name, arguments }`, a copy, so a validator cannot change what runs) before any call of the step runs, through `createGuardrails`' `beforeToolExecution` hook. A validator's own `action` (`block`, `warn` or `tripwire`) decides what its finding does; left out, it is `tools.action` (default `block`), which `mode: 'tripwire'` makes `tripwire`. The furthest-reaching finding on a call decides for it, then the surest validator:
+
+- **`block`**: the call is refused through `ToolExecutionHookContext.refuse(callId, guardrailName)` and never runs. The model is answered with a `GUARDRAIL_BLOCKED` permission error naming the validator (`Tool call blocked by guardrail "<name>".`), the step's other calls run, every call stays paired with one result, and a `run.guardrail` event reports phase `tool-call`.
+- **`warn`**: the call runs, and a `run.guardrail` event reports it.
+- **`tripwire`**: the run halts before any call of the step runs, with `finishReason: 'tripwire'` and one `run.tripwire` event with phase `tool-call`. Every call of the step is sealed with a `GUARDRAIL_BLOCKED` result naming the validator.
+
+A validator that throws or rejects is contained, as a detector is: it finds nothing, and the call is judged by the others. A plugin's validator whose plugin needs setup refuses this way, so it finds nothing until its secret is saved.
+
+`refuse` is on every `beforeToolExecution` context, for any hook that refuses a call on a guardrail's behalf: a refused call stays out whatever a later hook returns, and its result names the guardrail in place of the fixed `Tool execution skipped by beforeToolExecution hook` message a call the hook only filtered gets. `beforeToolExecution` still returns the calls to run. `createToolCallGuardrail` is the hook on its own. Every host that registers `createGuardrails`' hooks registers `beforeToolExecution` pinned last, so it judges the calls every other hook settled on.
+
+```typescript
+import {
+  createAgent,
+  type GenerateFunction,
+  type ToolCallValidator,
+} from '@lostgradient/operative';
+
+declare const generate: GenerateFunction;
+
+const refundCap: ToolCallValidator = {
+  name: 'refund-cap',
+  description: 'Blocks refunds over $100',
+  action: 'block',
+  validate: async (call) => {
+    const amount = (call.arguments as { amount?: number }).amount ?? 0;
+    return call.name === 'refund' && amount > 100
+      ? { valid: false, category: 'refund-limit', confidence: 1 }
+      : { valid: true, category: 'refund-limit', confidence: 0 };
+  },
+};
+
+// The AB-40 preset, plus the refund cap, which blocks rather than trips because it says so.
+const refunds = createAgent({ generate, additionalGuardrails: { toolValidators: [refundCap] } });
+```
 
 `withMinimumTripwireConfidence(detector, threshold)` wraps a detector so it only trips at or above a confidence floor, letting a broad detector stay quiet on low-confidence hits while still reaching the tripwire on high-confidence ones.
 
@@ -2910,9 +2949,9 @@ Output validators run over the response's text and over the text of each `thinki
 
 Pass `guardrails: false` to `bureau`'s options to opt out entirely, or a `GuardrailsOptions` object to replace the preset with your own detectors/validators.
 
-The preset is exported as `createDefaultGuardrailsPreset()`, and `createAgent` applies it too (COR-1367): an agent whose `guardrails` option is omitted resolves its run's guardrails as `inheritedGuardrails ?? createDefaultGuardrailsPreset()`, where `inheritedGuardrails` is the policy a host hands down through `AgentRunContext` (Bureau hands down the deprecated `BureauOptions.guardrails`). `guardrails: false` opts the agent out, and a `GuardrailsOptions` replaces the preset whatever the host says. The guardrails are created per run, registered in the agent's tier (`agent:guardrails-prepare-step`, `agent:guardrails-validate-tool-result`, `agent:guardrails-validate-response`, pinned behind the agent's own hooks), and also scan the agent's skill bodies and resources when `skills` is set.
+The preset is exported as `createDefaultGuardrailsPreset()`, and `createAgent` applies it too (COR-1367): an agent whose `guardrails` option is omitted resolves its run's guardrails as `inheritedGuardrails ?? createDefaultGuardrailsPreset()`, where `inheritedGuardrails` is the policy a host hands down through `AgentRunContext` (Bureau hands down the deprecated `BureauOptions.guardrails`). `guardrails: false` opts the agent out, and a `GuardrailsOptions` replaces the preset whatever the host says. The guardrails are created per run, registered in the agent's tier (`agent:guardrails-prepare-step`, `agent:guardrails-validate-tool-result`, `agent:guardrails-validate-response`, `agent:guardrails-before-tool-execution`, pinned behind the agent's own hooks), and also scan the agent's skill bodies and resources when `skills` is set.
 
-`additionalGuardrails` (COR-1877) adds `inputDetectors` and `outputValidators` to whatever the agent resolved, whether that is the preset, an inherited policy or the agent's own `guardrails`, so an agent can pick up a plugin's guardrail without losing the preset. When the resolved guardrails are `false`, whether the agent's or its host's, they run alone, as a tripwire: asking for a guardrail by name is not undone by an opt-out of the defaults.
+`additionalGuardrails` (COR-1877) adds `inputDetectors`, `outputValidators` and `toolValidators` (COR-2104) to whatever the agent resolved, whether that is the preset, an inherited policy or the agent's own `guardrails`, so an agent can pick up a plugin's guardrail without losing the preset. An input or output entry may carry its own action (see "An action per guardrail"). When the resolved guardrails are `false`, whether the agent's or its host's, they run alone, as a tripwire: asking for a guardrail by name is not undone by an opt-out of the defaults.
 
 ```typescript
 import { createAgent, createPromptInjectionDetector } from '@lostgradient/operative';

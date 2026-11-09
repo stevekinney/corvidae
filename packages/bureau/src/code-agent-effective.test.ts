@@ -5,7 +5,12 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { createAgent, GuardrailTripwireError, type InputDetector } from '@lostgradient/operative';
+import {
+  createAgent,
+  GuardrailTripwireError,
+  type InputDetector,
+  type ToolCallValidator,
+} from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -76,5 +81,89 @@ describe('a code agent with override guardrails', () => {
 
     expect(result.finishReason).toBe('stop-condition');
     expect(reader.generateCalls()).toBe(2);
+  });
+});
+
+/**
+ * COR-2104 — a tool-call validator an override names judges the code agent's calls before they
+ * run: bare, it halts the run at the tool-call phase (the override's additions run as a tripwire);
+ * with `action: 'block'` it refuses the call and the run goes on.
+ */
+describe('a code agent with an override tool-call validator', () => {
+  function refunderWith(action: ToolCallValidator['action']) {
+    const ran: string[] = [];
+    const refundCap: ToolCallValidator = {
+      name: 'refund-cap',
+      ...(action === undefined ? {} : { action }),
+      validate: async (call) =>
+        ((call.arguments as { amount?: number }).amount ?? 0) > 100
+          ? { valid: false, category: 'refund-limit', confidence: 1 }
+          : { valid: true, category: 'refund-limit', confidence: 0 },
+    };
+    let generateCalls = 0;
+    const agent = createAgent({
+      name: 'refunder',
+      guardrails: false,
+      generate: async () => {
+        generateCalls += 1;
+        return generateCalls === 1
+          ? {
+              content: '',
+              toolCalls: [{ id: 'call-1', name: 'refund', arguments: { amount: 150 } }],
+            }
+          : { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([
+        createTool({
+          name: 'refund',
+          description: 'Refunds an order',
+          input: z.object({ amount: z.number() }),
+          execute: async () => {
+            ran.push('refund');
+            return 'refunded';
+          },
+        }),
+      ]),
+    });
+    const effective = effectiveCodeAgent(
+      agent,
+      { guardrails: ['acme:refund-cap'] },
+      {
+        descriptors: () => [],
+        modelPolicy: () => undefined,
+        contributions: {
+          guardrails: new Map([
+            [
+              'acme:refund-cap',
+              { id: 'acme:refund-cap', plugin: 'acme', toolValidator: refundCap },
+            ],
+          ]),
+          interceptors: new Map(),
+        },
+      },
+    );
+    return { effective, ran };
+  }
+
+  it('halts at the tool-call phase, running no call, when the validator has no action of its own', async () => {
+    const { effective, ran } = refunderWith(undefined);
+    const result = await effective.run('Refund it.').result();
+
+    expect(result.finishReason).toBe('tripwire');
+    expect((result.error as GuardrailTripwireError).phase).toBe('tool-call');
+    expect((result.error as GuardrailTripwireError).guardrailName).toBe('refund-cap');
+    expect(ran).toEqual([]);
+  });
+
+  it('refuses the call and goes on when the validator blocks', async () => {
+    const { effective, ran } = refunderWith('block');
+    const result = await effective.run('Refund it.').result();
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(ran).toEqual([]);
+    expect(result.steps[0]?.results[0]).toMatchObject({
+      outcome: 'error',
+      error: { code: 'GUARDRAIL_BLOCKED' },
+    });
   });
 });
