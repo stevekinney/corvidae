@@ -82,12 +82,14 @@ export async function decideBatch(
 ): Promise<DecisionBatchResult> {
   assertValidDecisionBatch(batch);
   const context = batch.context;
-  const entries = [...batch.questions];
+  // Copy every question now, so nothing the caller changes after this call is asked.
+  const entries = [...batch.questions].map(([name, question]) => [name, { ...question }] as const);
   for (const [name, question] of entries) {
     if (!model.kinds.has(question.kind)) {
       throw new TypeError(`${model.name} cannot answer the ${question.kind} question "${name}".`);
     }
   }
+  options?.signal?.throwIfAborted();
 
   if (typeof model.decideBatch === 'function') {
     const snapshot: DecisionBatch = {

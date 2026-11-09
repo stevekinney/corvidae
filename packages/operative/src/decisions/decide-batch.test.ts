@@ -97,6 +97,22 @@ describe('decideBatch without a batch method', () => {
     ).toBe(failure);
   });
 
+  it('asks each question as it was when the batch was passed, not as the caller later changed it', async () => {
+    const changing = { kind: 'boolean' as const, question: 'Is this a refund request?' };
+    let rewrite = () => {};
+    const { model, asked } = oneAtATimeModel((request) => {
+      rewrite();
+      return { value: request.kind === 'boolean', provider: 'scripted', model: 'scripted-1' };
+    });
+    rewrite = () => {
+      changing.question = 'Something else entirely?';
+    };
+
+    await decideBatch(model, batchOf('x', ['first', refund], ['second', changing]));
+
+    expect(asked[1]).toEqual({ ...refund, context: 'x' } as DecisionRequest);
+  });
+
   it('stops before asking anything when the signal is already aborted', async () => {
     const { model, asked } = oneAtATimeModel(() => ({
       value: true,
@@ -167,6 +183,19 @@ describe('decideBatch with a batch method', () => {
       model: 'scripted-2',
     });
     expect(result.usage).toEqual({ prompt: 40, completion: 6, total: 46 });
+  });
+
+  it('never calls the model when the signal is already aborted', async () => {
+    const { model, batches } = batchingModel(() => ({ decisions: new Map() }));
+    const controller = new AbortController();
+    controller.abort(new Error('cancelled'));
+
+    expect(
+      await throwingRejectionOf(
+        decideBatch(model, batchOf('x', ['refund', refund]), { signal: controller.signal }),
+      ),
+    ).toThrow('cancelled');
+    expect(batches).toEqual([]);
   });
 
   it('copies the questions before the first await, so the caller may reuse its map', async () => {
