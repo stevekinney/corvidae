@@ -210,6 +210,7 @@ import {
   hostPathsReport,
   redactDatabase,
   type HostDatabase,
+  type LocalDirectoryOptions,
 } from './locations.ts';
 import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE, mcpAppMounts } from './mcp-app-mounts.ts';
 import { mcpAppRoutes } from './mcp-app-routes.ts';
@@ -361,6 +362,14 @@ export type HostOptions = {
   readonly secretProvider?: SecretProviderFactory;
   /** Opt in to revision-checked remote configuration publication. */
   readonly writableConfiguration?: boolean;
+  /**
+   * How the host watches its local agent and workflow directories, the owner's and each plugin's
+   * (COR-2291). Omitted or `true`, a directory is watched natively with the once-a-second rescan
+   * behind it; `false` watches nothing; `'poll'` opens no native watcher and finds changes by the
+   * rescan alone, for a machine where native watchers are unavailable or slow to close. A remote
+   * home's sources poll their bucket and ignore it.
+   */
+  readonly directoryWatch?: LocalDirectoryOptions['watch'];
   /** The port to listen on; `0` asks for a free one. Defaults to `INTERBOROUGH_PORT`, then 7234. */
   readonly port?: number;
   /** The built application to serve. Defaults to `build/` at the package root. */
@@ -1046,6 +1055,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     const peerToolNames = new Set(Object.keys(peerTools));
     const sourceTools = toolSources.tools();
+    const directoryOptions: LocalDirectoryOptions =
+      options.directoryWatch === undefined ? {} : { watch: options.directoryWatch };
     for (const name of Object.keys(sourceTools)) {
       if (peerToolNames.has(name)) {
         (options.warn ?? ((message) => console.warn(message)))(
@@ -1140,14 +1151,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: createAgentSource(bungalow, agentContent, {
-        ...options.extraTools,
-        ...sourceTools,
-        ...peerTools,
-      }),
+      agentSource: createAgentSource(
+        bungalow,
+        agentContent,
+        {
+          ...options.extraTools,
+          ...sourceTools,
+          ...peerTools,
+        },
+        directoryOptions,
+      ),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
-      pluginAgentSource: createPluginAgentSource,
+      pluginAgentSource: (plugin, shipped) =>
+        createPluginAgentSource(plugin, shipped, directoryOptions),
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,
@@ -1159,9 +1176,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       },
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
-      workflowSource: createWorkflowSource(bungalow, workflowContent),
+      workflowSource: createWorkflowSource(bungalow, workflowContent, directoryOptions),
       // The workflow files a running plugin ships (COR-1977): its `content/workflows`, read-only, beneath the owner's.
-      pluginWorkflowSource: createPluginWorkflowSource,
+      pluginWorkflowSource: (plugin, shipped) =>
+        createPluginWorkflowSource(plugin, shipped, directoryOptions),
       ...(settings === undefined ? {} : { settings }),
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).

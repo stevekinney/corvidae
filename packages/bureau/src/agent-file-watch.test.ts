@@ -7,8 +7,10 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { AgentCatalogChange } from './agent-file-catalog';
 import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
 import { nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
@@ -171,5 +173,199 @@ describe('the safety rescan', () => {
     await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
     await fixture.catalog.refresh();
     expect(listings).toBe(afterClose);
+  });
+});
+
+/**
+ * COR-2291 — `watch: 'poll'` opens no native watcher: the directory's own once-a-second rescan is
+ * the only thing that looks, and it lists the real directory. Every row changes real files, calls
+ * nothing but the manual clock, and waits for the catalog's own change event.
+ */
+describe("the polling-only watch (watch: 'poll')", () => {
+  /** A watcher factory that records its calls and opens nothing: a poll-mode source must not call it. */
+  function countedWatcherFactory() {
+    const calls: string[] = [];
+    const openWatcher = (path: string): never => {
+      calls.push(path);
+      throw new Error(`A native watcher was opened for ${path}.`);
+    };
+    return { calls, openWatcher };
+  }
+
+  async function startPolling(options?: Parameters<typeof createAgentFileFixture>[0]) {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const watchers = countedWatcherFactory();
+    const diagnoses: string[] = [];
+    const fixture = await start({
+      runtime,
+      watch: 'poll',
+      openWatcher: watchers.openWatcher,
+      diagnose: (message) => diagnoses.push(message),
+      ...options,
+    });
+    return { fixture, runtime, watchers, diagnoses };
+  }
+
+  /** Make `act` real changes, then let one interval pass and wait for the change that satisfies `predicate`. */
+  async function afterInterval(
+    context: Awaited<ReturnType<typeof startPolling>>,
+    predicate: Parameters<AgentFileFixture['nextChange']>[0],
+    act: () => Promise<void>,
+  ): Promise<void> {
+    const changed = context.fixture.nextChange(predicate);
+    await act();
+    await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await changed;
+  }
+
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly arrange?: (fixture: AgentFileFixture) => Promise<void>;
+    readonly act: (fixture: AgentFileFixture) => Promise<void>;
+    readonly expected: (change: AgentCatalogChange) => boolean;
+    readonly afterwards: (fixture: AgentFileFixture) => void;
+  }> = [
+    {
+      name: 'an added file',
+      act: (fixture) => fixture.put('late.md', validAgentFile()),
+      expected: (change) => change.added.includes('late'),
+      afterwards: (fixture) => expect(fixture.catalog.find('late')).toBeDefined(),
+    },
+    {
+      name: 'an edit in place',
+      arrange: (fixture) => fixture.put('one.md', validAgentFile('First.\n')),
+      act: (fixture) => fixture.put('one.md', validAgentFile('Second.\n')),
+      expected: (change) => change.changed.includes('one'),
+      afterwards: (fixture) => expect(fixture.catalog.find('one')).toBeDefined(),
+    },
+    {
+      name: 'a file renamed into place over the old one',
+      arrange: (fixture) => fixture.put('one.md', validAgentFile('First.\n')),
+      act: async (fixture) => {
+        await writeFile(join(fixture.directory, '.one.tmp'), validAgentFile('Renamed in.\n'));
+        await rename(join(fixture.directory, '.one.tmp'), join(fixture.directory, 'one.md'));
+      },
+      expected: (change) => change.changed.includes('one'),
+      afterwards: (fixture) => expect(fixture.catalog.find('one')).toBeDefined(),
+    },
+    {
+      name: 'a file renamed to another name',
+      arrange: (fixture) => fixture.put('one.md', validAgentFile()),
+      act: (fixture) =>
+        rename(join(fixture.directory, 'one.md'), join(fixture.directory, 'two.md')),
+      expected: (change) => change.added.includes('two') && change.removed.includes('one'),
+      afterwards: (fixture) => {
+        expect(fixture.catalog.find('one')).toBeUndefined();
+        expect(fixture.catalog.find('two')).toBeDefined();
+      },
+    },
+    {
+      name: 'a removed file',
+      arrange: (fixture) => fixture.put('one.md', validAgentFile()),
+      act: (fixture) => rm(join(fixture.directory, 'one.md')),
+      expected: (change) => change.removed.includes('one'),
+      afterwards: (fixture) => expect(fixture.catalog.list()).toEqual([]),
+    },
+    {
+      name: 'the directory itself deleted',
+      arrange: (fixture) => fixture.put('one.md', validAgentFile()),
+      act: (fixture) => rm(fixture.directory, { recursive: true }),
+      expected: (change) => change.removed.includes('one'),
+      afterwards: (fixture) => expect(fixture.catalog.list()).toEqual([]),
+    },
+  ];
+
+  for (const row of rows) {
+    it(`finds ${row.name} at the interval, through a real scan, and opens no watcher`, async () => {
+      const context = await startPolling();
+      if (row.arrange !== undefined) {
+        await afterInterval(
+          context,
+          (change) => change.added.includes('one'),
+          () => row.arrange!(context.fixture),
+        );
+      }
+      await afterInterval(context, row.expected, () => row.act(context.fixture));
+      row.afterwards(context.fixture);
+      expect(context.watchers.calls).toEqual([]);
+      expect(context.diagnoses).toEqual([]);
+    });
+  }
+
+  it('finds the directory created again, and a file in it', async () => {
+    const context = await startPolling();
+    await afterInterval(
+      context,
+      (change) => change.added.includes('one'),
+      () => context.fixture.put('one.md', validAgentFile()),
+    );
+    await afterInterval(
+      context,
+      (change) => change.removed.includes('one'),
+      () => rm(context.fixture.directory, { recursive: true }),
+    );
+    await afterInterval(
+      context,
+      (change) => change.added.includes('two'),
+      async () => {
+        await mkdir(context.fixture.directory);
+        await context.fixture.put('two.md', validAgentFile());
+      },
+    );
+    expect(context.fixture.catalog.find('two')).toBeDefined();
+    expect(context.watchers.calls).toEqual([]);
+  });
+
+  it('keeps exactly one timer, the existing interval, armed while it watches', async () => {
+    const context = await startPolling();
+    expect(context.runtime.pendingTimers()).toHaveLength(1);
+    await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
+    expect(context.runtime.pendingTimers()).toHaveLength(1);
+  });
+
+  it('reports a scan that throws the way the safety rescan does, and finds the change once it works', async () => {
+    let failing = false;
+    const failure = new Error('the directory could not be listed');
+    const operations = {
+      ...nodeAgentFileOperations,
+      listDirectory: (directory: string) => {
+        if (failing) return Promise.reject(failure);
+        return nodeAgentFileOperations.listDirectory(directory);
+      },
+    };
+    const context = await startPolling({ operations });
+    failing = true;
+    const before = context.diagnoses.length;
+    await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await waitUntil(() => context.diagnoses.length > before, { message: 'the scan failure' });
+    expect(context.diagnoses.at(-1)).toBe('The agent directory could not be scanned.');
+    failing = false;
+    await afterInterval(
+      context,
+      (change) => change.added.includes('after'),
+      () => context.fixture.put('after.md', validAgentFile()),
+    );
+    expect(context.fixture.catalog.find('after')).toBeDefined();
+  });
+
+  it('finds nothing without a watcher or a timer under watch: false, until a scan is asked for', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const watchers = countedWatcherFactory();
+    const fixture = await start({ runtime, watch: false, openWatcher: watchers.openWatcher });
+    await fixture.put('quiet.md', validAgentFile());
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
+    expect(runtime.pendingTimers()).toEqual([]);
+    expect(watchers.calls).toEqual([]);
+    expect(fixture.catalog.find('quiet')).toBeUndefined();
+    await fixture.catalog.refresh();
+    expect(fixture.catalog.find('quiet')).toBeDefined();
+  });
+
+  it('closes twice without error, leaving no timer armed', async () => {
+    const context = await startPolling();
+    await context.fixture.catalog.close();
+    await context.fixture.catalog.close();
+    expect(context.runtime.pendingTimers()).toEqual([]);
+    expect(context.watchers.calls).toEqual([]);
   });
 });

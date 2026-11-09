@@ -1,22 +1,30 @@
+import type { Bungalow } from '@lostgradient/bungalow';
+import { createManualRuntimeServices } from '@lostgradient/bureau';
+import type { DefinitionSource } from '@lostgradient/bureau/sources';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
 import { MemoryStorage, storageStat } from '@lostgradient/storage';
 import {
+  REMOTE_POLL_INTERVAL_MILLISECONDS,
   claimWorkspaceBinding,
+  createAgentSource,
   createHostStorage,
   createPluginAgentSource,
   createPluginSkillSource,
   createPluginWorkflowSource,
+  createWorkflowSource,
   describeContent,
   disposeHostStorage,
   hostPathsReport,
   hostWriteLocks,
   redactDatabase,
+  type LocalDirectoryOptions,
 } from './locations.ts';
 
 describe('the locations the host reports', () => {
@@ -225,3 +233,102 @@ for (const prepare of [false, true]) {
     }
   }
 }
+
+describe('the watch mode of the local directory sources (COR-2291)', () => {
+  /** A home with no bucket: a directory source never asks it for one. */
+  const directoryHome = {} as Bungalow;
+  const content = { kind: 'directory', path: '/never/created/by/this/test' } as const;
+  const shipped = pathToFileURL('/plugins/shipper/content/');
+
+  const factories: ReadonlyArray<{
+    readonly name: string;
+    readonly make: (options: LocalDirectoryOptions) => DefinitionSource | undefined;
+  }> = [
+    {
+      name: 'the owner’s agents',
+      make: (options) => createAgentSource(directoryHome, content, {}, options),
+    },
+    {
+      name: 'the owner’s workflows',
+      make: (options) => createWorkflowSource(directoryHome, content, options),
+    },
+    {
+      name: 'a plugin’s agents',
+      make: (options) => createPluginAgentSource('shipper', shipped, options),
+    },
+    {
+      name: 'a plugin’s workflows',
+      make: (options) => createPluginWorkflowSource('shipper', shipped, options),
+    },
+  ];
+
+  /**
+   * Watch `source` on a manual clock and report what it armed: the native watchers it asked for,
+   * and the timers it holds while it watches. Then stop it, waiting for any scan in flight.
+   */
+  async function armed(
+    make: (options: LocalDirectoryOptions) => DefinitionSource | undefined,
+    watch: LocalDirectoryOptions['watch'],
+  ) {
+    const runtime = createManualRuntimeServices({ origin: '2026-11-09T00:00:00.000Z' });
+    const nativeWatches: string[] = [];
+    const diagnoses: string[] = [];
+    const source = make({
+      ...(watch === undefined ? {} : { watch }),
+      watchFactory: (path) => {
+        nativeWatches.push(path);
+        return { on: () => undefined, close: () => undefined } as never;
+      },
+    });
+    if (source === undefined) throw new Error('The factory built no source.');
+    source.attach?.({ runtime, diagnose: (message) => diagnoses.push(message) });
+    const stop = source.watch(() => undefined);
+    const timers = runtime.pendingTimers().length;
+    // A load waits for the scan the watch began, which arms the native watchers before it reads.
+    await source.load();
+    await stop();
+    return { timers, nativeWatches, diagnoses, timersAfterStop: runtime.pendingTimers().length };
+  }
+
+  for (const { name, make } of factories) {
+    test(`${name} poll without a native watcher under 'poll'`, async () => {
+      const result = await armed(make, 'poll');
+      expect(result.timers).toBe(1);
+      expect(result.nativeWatches).toEqual([]);
+      expect(result.timersAfterStop).toBe(0);
+      expect(result.diagnoses).toEqual([]);
+    });
+
+    test(`${name} watch natively, with the rescan behind it, by default`, async () => {
+      const result = await armed(make, undefined);
+      expect(result.timers).toBe(1);
+      expect(result.nativeWatches.length).toBeGreaterThan(0);
+      expect(result.timersAfterStop).toBe(0);
+    });
+
+    test(`${name} arm nothing under false`, async () => {
+      const result = await armed(make, false);
+      expect(result.timers).toBe(0);
+      expect(result.nativeWatches).toEqual([]);
+    });
+  }
+
+  test('a remote source keeps polling its bucket on its own interval whatever the directory mode is', () => {
+    const home = {
+      s3Client: () =>
+        new Bun.S3Client({
+          accessKeyId: 'test',
+          secretAccessKey: 'test',
+          bucket: 'state',
+          endpoint: 'http://127.0.0.1:9',
+        }),
+    } as unknown as Bungalow;
+    const remote = { kind: 's3', bucket: 'state', prefix: 'agents/' } as const;
+    for (const watch of [false, 'poll'] as const) {
+      expect(createAgentSource(home, remote, {}, { watch }).referencePollMilliseconds).toBe(
+        REMOTE_POLL_INTERVAL_MILLISECONDS,
+      );
+      expect(createWorkflowSource(home, remote, { watch }).kind).toBe('workflow');
+    }
+  });
+});

@@ -25,6 +25,7 @@ import {
 } from '../agent-file-catalog.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
 import type { AgentSource } from '../sources/definition-source.ts';
+import type { DirectorySourceOptions } from '../sources/directory-source.ts';
 import { agentFileDirectory } from '../sources/agent-file-directory.ts';
 import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import { createModels, type Models } from '../models/create-models.ts';
@@ -123,7 +124,7 @@ export interface AgentFileFixtureOptions {
   /** A subdirectory of the temporary root that does not exist yet, to use as the agent directory. */
   readonly subdirectory?: string;
   readonly reserved?: readonly string[];
-  readonly watch?: boolean;
+  readonly watch?: DirectorySourceOptions['watch'];
   /** Replaces the tool catalog, which holds {@link lookupTool} by default. */
   readonly tools?: AgentFileCatalogOptions['tools'];
   readonly operations?: AgentFileOperations;

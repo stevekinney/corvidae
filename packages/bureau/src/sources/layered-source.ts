@@ -92,8 +92,12 @@ function layeredDefinitionSource<TSource extends DefinitionSource>(
 
     watch(listener) {
       const unsubscribes = layers.all.map((source) => source.watch(listener));
-      return () => {
-        for (const unsubscribe of unsubscribes) unsubscribe();
+      return async () => {
+        await Promise.all(
+          unsubscribes.map(async (unsubscribe) => {
+            await unsubscribe();
+          }),
+        );
       };
     },
 

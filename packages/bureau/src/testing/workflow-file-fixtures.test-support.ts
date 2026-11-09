@@ -10,6 +10,7 @@ import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradien
 
 import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import type { WorkflowSource } from '../sources/definition-source.ts';
+import type { DirectorySourceOptions } from '../sources/directory-source.ts';
 import { workflowFileDirectory } from '../sources/workflow-file-directory.ts';
 import type { DefinitionChange } from '../definition-scanner.ts';
 import { createWorkflowFileCatalog, type WorkflowFileCatalog } from '../workflow-file-catalog.ts';
@@ -47,7 +48,7 @@ export interface WorkflowFileFixtureOptions {
   /** A subdirectory of the temporary root that does not exist yet, to use as the directory. */
   readonly subdirectory?: string;
   readonly codeWorkflows?: readonly string[];
-  readonly watch?: boolean;
+  readonly watch?: DirectorySourceOptions['watch'];
   readonly operations?: AgentFileOperations;
   /** A source to run over instead of the fixture's directory; the directory options then do nothing. */
   readonly source?: WorkflowSource;
