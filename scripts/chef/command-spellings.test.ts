@@ -19,7 +19,9 @@ const repositoryRoot = join(import.meta.dir, '../..');
 const skillFiles = [
   '.agents/skills/chef/references/execution-record.md',
   '.agents/skills/chef/references/execution-report.md',
+  '.agents/skills/chef/references/linear-policy.md',
   '.agents/skills/chef/references/planning-and-routing.md',
+  '.agents/skills/chef/references/program-runs.md',
   '.agents/skills/chef/references/review-and-deliver.md',
   '.agents/skills/chef/SKILL.md',
   '.agents/skills/create-project/SKILL.md',
@@ -29,7 +31,9 @@ const skillFiles = [
 const minimumInvocations: Record<string, number> = {
   '.agents/skills/chef/references/execution-record.md': 8,
   '.agents/skills/chef/references/execution-report.md': 3,
+  '.agents/skills/chef/references/linear-policy.md': 5,
   '.agents/skills/chef/references/planning-and-routing.md': 1,
+  '.agents/skills/chef/references/program-runs.md': 6,
   '.agents/skills/chef/references/review-and-deliver.md': 8,
   '.agents/skills/chef/SKILL.md': 4,
   '.agents/skills/create-project/SKILL.md': 3,

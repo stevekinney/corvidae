@@ -2,7 +2,7 @@
 
 The Linear rules a chef run relies on, so the skill works without any personal skills installed. It covers routing, the issue lifecycle, the Definition of Ready, the shapes of the work-session comments, and the read-back rule. Verify routing and workflow states against live Linear before writing, because a table in a document goes stale.
 
-When the `linear-track-work`, `linear-update-project`, `linear-create-issue`, `linear-create-project`, or `scope-work` skills are installed, use them for the writes they cover. Otherwise do the same step with `scripts/chef/linear.ts`, run from the repository root. It reads `LINEAR_API_KEY` through `scripts/chef/credentials.ts`, so no wrapper is needed, and it reads every write back. Each section below says which command performs the step.
+Shape new work with this repository's own skills: [`create-task`](../../create-task/SKILL.md) for one issue and [`create-project`](../../create-project/SKILL.md) for a project with its milestones and issues. Make every other write with `scripts/chef/linear.ts`, run from the repository root: issues (`read`, `state`, `comment`, `append`, `create`, `blockers`, `block`) and projects (`project-read`, `project-state`, `project-update`). Only creating a project or a milestone goes through the Linear MCP tools (`save_project`, `save_milestone`), because `linear.ts` has no command for it. It reads `LINEAR_API_KEY` through `scripts/chef/credentials.ts`, so no wrapper is needed, and it reads every write back. Each section below says which command performs the step.
 
 ## Team routing
 

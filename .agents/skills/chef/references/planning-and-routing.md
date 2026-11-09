@@ -24,7 +24,7 @@ Distinguish the gate that starts a package from the gate it produces. When imple
 
 Give each batch its own binary acceptance criteria, required verification, integration boundary, and tracking closeout. Close independently completed issues as their gates pass even if another batch remains unfinished; preserve real dependencies and explicit user-required whole-program gates.
 
-For Linear work, maintain native blocker relations. When the `scope-work`, `linear-create-issue`, or `linear-create-project` skills are installed, use them for required new execution boundaries; otherwise write the issue yourself with `scripts/chef/linear.ts create`, which refuses a duplicate title and reads the issue back, after checking the draft against the Definition of Ready in [the Linear policy](linear-policy.md). Reuse existing issues rather than cloning them into worker tickets. Run required intake gates for new or materially revised Linear payloads before writing. Coordinator approval within the user's authorized scope does not require asking the user again.
+For Linear work, maintain native blocker relations. Shape a required new execution boundary in the `create-task` issue shape (or the `create-project` shape for a new project), check it against the Definition of Ready in [the Linear policy](linear-policy.md), and write it with `bun scripts/chef/linear.ts create`, which refuses a duplicate title and reads the issue back. Reuse existing issues rather than cloning them into worker tickets. Run required intake gates for new or materially revised Linear payloads before writing. Coordinator approval within the user's authorized scope does not require asking the user again.
 
 ## Design programmes
 
