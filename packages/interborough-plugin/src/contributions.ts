@@ -147,11 +147,11 @@ export interface PluginEmbedder {
 }
 
 /**
- * An interface panel, an MCP app, that renders inside the host. The host bundles `entry` into one
+ * An interface panel, an MCP App page, that renders inside the host. The host bundles `entry` into one
  * self-contained page and serves it as the `ui://` resource `uri`, under a content security policy
  * that denies every origin and permission.
  */
-export interface PluginMcpApp {
+export interface PluginPanel {
   /** The app's name, unique within the plugin. */
   readonly name: string;
   /** The app's own version; a record that pins it uses the plugin's version without one. */
@@ -179,13 +179,13 @@ export interface PluginMcpApp {
    * The one Bureau MCP tool a client runs to open the page: the host links this tool to the page.
    * It is one of `allowedTools`, and unique across plugins: a tool links to one page, so a plugin
    * whose app opens from a tool another app already opens is skipped with `name-clash`. An app
-   * whose entry does not build leaves the plugin running with an `mcp-app-failed` problem.
+   * whose entry does not build leaves the plugin running with a `panel-failed` problem.
    */
   readonly opensFromTool: string;
 }
 
 /** A rendering of one event for the host's activity views. */
-export interface PluginEventFormatting {
+export interface PluginFormatting {
   /** One line naming what happened. */
   readonly title: string;
   /** More detail, when the event has any. */
@@ -193,17 +193,17 @@ export interface PluginEventFormatting {
 }
 
 /** Formats the events of the kinds it names. */
-export interface PluginEventFormatter {
+export interface PluginFormatter {
   /** The formatter's name, unique within the plugin. */
   readonly name: string;
   /** The event kinds the formatter handles. */
   readonly eventKinds: readonly string[];
   /** Formats one event of a kind in `eventKinds`. */
-  format(event: PluginEvent): PluginEventFormatting;
+  format(event: PluginEvent): PluginFormatting;
 }
 
 /** An agent defined in code. */
-export interface PluginCodeAgent {
+export interface PluginAgent {
   /** The agent's name, unique within the plugin. */
   readonly name: string;
   /** The agent itself. */
@@ -254,11 +254,11 @@ export interface PluginContributions {
   /** Scorers that score a sample of completed runs. */
   readonly scorers?: readonly PluginScorer[];
   /** Interface panels. */
-  readonly mcpApps?: readonly PluginMcpApp[];
+  readonly panels?: readonly PluginPanel[];
   /** Event formatters. */
-  readonly eventFormatters?: readonly PluginEventFormatter[];
+  readonly formatters?: readonly PluginFormatter[];
   /** Agents defined in code. */
-  readonly codeAgents?: readonly PluginCodeAgent[];
+  readonly agents?: readonly PluginAgent[];
 }
 
 /** What `setup` returns, with the hook the host calls once Bureau has started. */

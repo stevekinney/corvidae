@@ -100,7 +100,7 @@ if (marker) {
   });
   await writeFile(marker, 'started');
 }
-if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
+if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'panels', 'run-inspector.json'), { force: true });
 // The verifier can stop this process as soon as it sees the link.
 if (behavior !== 'missing-link') {
   await mkdir(join(home, 'plugins'), { recursive: true });
@@ -109,7 +109,7 @@ if (behavior !== 'missing-link') {
 if (behavior === 'poll-error') await Bun.sleep(100);
 const server = Bun.serve({ port, fetch(request) {
   const pathname = new URL(request.url).pathname;
-  if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: behavior === 'not-running' ? 'stopped' : 'running', contributions: behavior === 'missing-contribution' ? [] : [{ kind: 'mcp-app', id: 'runtime-proof:external-proof' }] }] });
+  if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: behavior === 'not-running' ? 'stopped' : 'running', contributions: behavior === 'missing-contribution' ? [] : [{ kind: 'panel', id: 'runtime-proof:external-proof' }] }] });
   if (pathname === '/host/plugins/runtime-proof/apps/external-proof') return Response.json({ html: behavior === 'malformed-html' ? 42 : '<html>external runtime</html>' });
   return new Response('not found', { status: 404 });
 } });
@@ -172,7 +172,7 @@ await new Promise(() => {});
       await writeFile(join(outdir, 'index.html'), '<html>fixture</html>');
       return { directory: outdir, files: ['index.html'], metafile: {} } as never;
     },
-    buildMcpAppPage: async () => ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }),
+    buildPanelPage: async () => ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }),
   };
   return { root, operations, buildArguments };
 }

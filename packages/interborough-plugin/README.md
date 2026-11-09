@@ -9,7 +9,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `toolApprovalHooks`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `afterStart(bureau, context)`. |
 | `PluginHostApi` | The structural slice of Bureau `afterStart` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
-| `PluginContributions` | Tools, activities, validators, guardrails, interceptors, decision routers, trigger kinds, hook action kinds, providers (each with its catalog rows), embedders, memory detectors, eval judges, MCP apps, event formatters, and code agents. |
+| `PluginContributions` | Tools, activities, validators, guardrails, interceptors, decision routers, triggers, reactions, providers (each with its catalog rows), embedders, memory detectors, scorers, panels, formatters, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
 ## Where a plugin lives
@@ -101,9 +101,9 @@ The descriptor's members:
 | `embedders` | Embedders the `memory.embedder` setting can name. |
 | `memoryDetectors` | Detectors run after the default poisoning detector, on memory admission and on recall. |
 | `scorers` | Scorers that score a sample of completed runs. |
-| `mcpApps` | Interface panels. |
-| `eventFormatters` | Titles and bodies for the activity views. |
-| `codeAgents` | Agents defined in code. |
+| `panels` | Interface panels. |
+| `formatters` | Titles and bodies for the activity views. |
+| `agents` | Agents defined in code. |
 
 Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
 
@@ -147,7 +147,7 @@ export default definePlugin({
         },
       },
     ],
-    eventFormatters: [
+    formatters: [
       {
         name: 'completed',
         eventKinds: ['run.completed'],
@@ -161,9 +161,9 @@ export default definePlugin({
 An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. Put the version in the `uri`, so a changed contract is a new resource.
 
 ```ts
-import { definePlugin, type PluginMcpApp } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
 
-const runInspector: PluginMcpApp = {
+const runInspector: PluginPanel = {
   name: 'run-inspector',
   title: 'Run inspector',
   uri: 'ui://example/run-inspector/v1',
@@ -176,11 +176,11 @@ export default definePlugin({
   name: 'inspector',
   version: '1.0.0',
   description: 'A run inspector panel.',
-  setup: () => ({ mcpApps: [runInspector] }),
+  setup: () => ({ panels: [runInspector] }),
 });
 ```
 
-An entry that does not build leaves the plugin `running` with an `mcp-app-failed` problem, and the other contributions keep working.
+An entry that does not build leaves the plugin `running` with a `panel-failed` problem, and the other contributions keep working.
 
 ## Identities: files float, records pin
 
@@ -240,7 +240,7 @@ You greet people with the example:greet tool.
 }
 ```
 
-A running plugin's agents and workflows are listed as `plugin:name`, and a plugin that is disabled or skipped ships nothing. The one exception is a disabled plugin's code agents: the host runs its `setup` once, with scratch storage, no secrets and no host API, keeps only `codeAgents`, and lists each as `unavailable` with the reason `Plugin <title> is disabled`, so a person can read it and duplicate it but no run starts on it. Nothing else the plugin returns is registered, and `afterStart` never runs, so keep `setup` free of side effects. Files reload while the host runs, but they are read-only: the host refuses to write or delete a definition a plugin holds, and says to duplicate it. Duplicate writes an editable copy into the owner's directory, and an owner file's stem has no `:`, so a copy can never claim a plugin's namespace. A workflow file calls a plugin activity as `plugin:name`, with no version.
+A running plugin's agents and workflows are listed as `plugin:name`, and a plugin that is disabled or skipped ships nothing. The one exception is a disabled plugin's code agents: the host runs its `setup` once, with scratch storage, no secrets and no host API, keeps only `agents`, and lists each as `unavailable` with the reason `Plugin <title> is disabled`, so a person can read it and duplicate it but no run starts on it. Nothing else the plugin returns is registered, and `afterStart` never runs, so keep `setup` free of side effects. Files reload while the host runs, but they are read-only: the host refuses to write or delete a definition a plugin holds, and says to duplicate it. Duplicate writes an editable copy into the owner's directory, and an owner file's stem has no `:`, so a copy can never claim a plugin's namespace. A workflow file calls a plugin activity as `plugin:name`, with no version.
 
 A file that names a contribution nothing loaded holds (a tool you misspelled, a plugin that is disabled) is invalid with a `reference-unresolved` problem naming the file and the id. The plugin stays `running`.
 
@@ -277,7 +277,7 @@ export default definePlugin({
 });
 ```
 
-A plugin whose declared secret is missing still loads. Every contribution it registered is available but refuses to run, and the plugin is `needs-setup` with one `secret-missing` problem per key. Saving the secret (`PUT /host/plugins/<name>/secrets/<key>`) makes them available at once, and removing it makes them refuse again, with no restart. Because the check is per call, read the secret inside `execute`, not once in `setup`. The only contributions the gate does not cover are providers and MCP apps, which the host handles itself. No listing, response or log line contains a secret's value.
+A plugin whose declared secret is missing still loads. Every contribution it registered is available but refuses to run, and the plugin is `needs-setup` with one `secret-missing` problem per key. Saving the secret (`PUT /host/plugins/<name>/secrets/<key>`) makes them available at once, and removing it makes them refuse again, with no restart. Because the check is per call, read the secret inside `execute`, not once in `setup`. The only contributions the gate does not cover are providers and panels, which the host handles itself. No listing, response or log line contains a secret's value.
 
 `setup`'s `storage` is confined to the key prefix `plugin:<name>:`, so a plugin cannot read another's records.
 
@@ -326,7 +326,7 @@ export default definePlugin({
 | `pinned-version-unavailable` | `running` | Work recorded a version that is not loaded. `id`, `version`, `waitingRuns`. |
 | `setup-failed` | `skipped` | `setup` threw, or returned something that cannot be registered. `message`. |
 | `after-start-failed` | `running` | `afterStart` threw. `message`. |
-| `mcp-app-failed` | `running` | An app's entry did not build. `app`, `message`. |
+| `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `load-failed` | not listed | A folder's code could not load, such as an import nothing provides. `message`. The folder appears in the `unloaded` array. |
 | `development-source` | as its own | Loaded with `--plugin`. `path`. |

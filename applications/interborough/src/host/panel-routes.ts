@@ -1,8 +1,8 @@
 /**
- * The host's routes behind a plugin's MCP-app panel (COR-1894). The run page mounts a panel through
+ * The host's routes behind a plugin's panel (COR-1894). The run page mounts a panel through
  * Chat's `McpApp`, which owns no client and no credential, so the host supplies both halves of it:
  *
- * - `GET /host/mcp-apps` lists the panels the host serves: the plugin, the app, its title and
+ * - `GET /host/panels` lists the panels the host serves: the plugin, the app, its title and
  *   `ui://` URI, and the Bureau tool it opens from. A page finds its panel here.
  * - `GET /host/plugins/<plugin>/apps/<app>` answers `{ html, ui }`, the built page and its
  *   deny-by-default security metadata, which is what `McpApp`'s resource loader returns. It is JSON
@@ -20,22 +20,22 @@
  * tool. An unknown plugin or app answers 404, a body that cannot be used answers 400, and a Bureau
  * that does not answer a `tools/call` result answers 502 with a message that repeats nothing.
  *
- * @module mcp-app-routes
+ * @module panel-routes
  */
 import { MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 
-import { MCP_APP_UI_META, type ServedMcpApp } from './mcp-app-mounts.ts';
+import { MCP_APP_UI_META, type ServedPanel } from './panel-mounts.ts';
 import { decoded } from './plugin-routes.ts';
 import { BodyError, readObject } from './provider-routes.ts';
 
 /** The route that lists the panels the host serves. */
-export const HOST_MCP_APPS_ROUTE = '/host/mcp-apps';
+export const HOST_PANELS_ROUTE = '/host/panels';
 
 /** The route that serves the page of the app it names. */
-const HOST_MCP_APP_ROUTE = '/host/plugins/:name/apps/:app';
+const HOST_PANEL_ROUTE = '/host/plugins/:name/apps/:app';
 
 /** The route that runs a tool for the app it names. */
-const HOST_MCP_APP_TOOL_CALLS_ROUTE = `${HOST_MCP_APP_ROUTE}/tool-calls`;
+const HOST_PANEL_TOOL_CALLS_ROUTE = `${HOST_PANEL_ROUTE}/tool-calls`;
 
 /** The only tools a panel reaches are the Bureau's own MCP tools. */
 const BUREAU_TOOL_PREFIX = 'bureau.';
@@ -90,18 +90,14 @@ function toolErrorOf(message: unknown): Record<string, unknown> | undefined {
  * The routes to merge into the host's `routes`. `apps` is what the host built at startup and
  * `callBureau` reaches the Bureau's handler.
  */
-export function mcpAppRoutes(
-  apps: readonly ServedMcpApp[],
-  refuse: Refuse,
-  callBureau: CallBureau,
-) {
+export function panelRoutes(apps: readonly ServedPanel[], refuse: Refuse, callBureau: CallBureau) {
   // Snapshotted once, so nothing a caller does to the list afterwards changes what a panel may call.
   const served = apps.map((each) => ({ ...each, allowedTools: [...each.allowedTools] }));
   const find = (plugin: string, name: string) =>
     served.find((each) => each.plugin === plugin && each.name === name);
 
   async function callTool(
-    request: Bun.BunRequest<typeof HOST_MCP_APP_TOOL_CALLS_ROUTE>,
+    request: Bun.BunRequest<typeof HOST_PANEL_TOOL_CALLS_ROUTE>,
   ): Promise<Response> {
     const app = find(decoded(request.params.name), decoded(request.params.app));
     if (app === undefined) return refusal(404, 'not-found', 'No such panel.');
@@ -175,7 +171,7 @@ export function mcpAppRoutes(
   }
 
   return {
-    [HOST_MCP_APPS_ROUTE]: {
+    [HOST_PANELS_ROUTE]: {
       GET: (request: Request) =>
         refuse(request) ??
         Response.json(
@@ -192,8 +188,8 @@ export function mcpAppRoutes(
           { headers: JSON_HEADERS },
         ),
     },
-    [HOST_MCP_APP_ROUTE]: {
-      GET: (request: Bun.BunRequest<typeof HOST_MCP_APP_ROUTE>) => {
+    [HOST_PANEL_ROUTE]: {
+      GET: (request: Bun.BunRequest<typeof HOST_PANEL_ROUTE>) => {
         const refused = refuse(request);
         if (refused !== undefined) return refused;
         const app = find(decoded(request.params.name), decoded(request.params.app));
@@ -201,8 +197,8 @@ export function mcpAppRoutes(
         return Response.json({ html: app.html, ui: MCP_APP_UI_META }, { headers: JSON_HEADERS });
       },
     },
-    [HOST_MCP_APP_TOOL_CALLS_ROUTE]: {
-      POST: (request: Bun.BunRequest<typeof HOST_MCP_APP_TOOL_CALLS_ROUTE>) =>
+    [HOST_PANEL_TOOL_CALLS_ROUTE]: {
+      POST: (request: Bun.BunRequest<typeof HOST_PANEL_TOOL_CALLS_ROUTE>) =>
         refuse(request) ?? callTool(request),
     },
   };

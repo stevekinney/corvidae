@@ -1,7 +1,7 @@
 /**
- * COR-1894: a plugin's MCP-app panel against the real host. The inspectors plugin's run inspector
+ * COR-1894: a plugin's panel against the real host. The inspectors plugin's run inspector
  * is served, and its tool calls reach the real Bureau handler in process as the local owner, over
- * a run that has finished. The refusals of `mcp-app-routes.test.ts` are repeated here only where
+ * a run that has finished. The refusals of `panel-routes.test.ts` are repeated here only where
  * the host's own wiring matters: the guard in front of the real listener and the Bureau's handler
  * behind it.
  */
@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 async function start(authenticated = false): Promise<Host> {
-  const home = await mkdtemp(join(tmpdir(), 'interborough-mcp-apps-'));
+  const home = await mkdtemp(join(tmpdir(), 'interborough-panels-'));
   directories.push(home);
   await enableDemoPlugin(home);
   const bungalow = await openBungalow({
@@ -130,7 +130,7 @@ describe('the run inspector’s panel', () => {
 
   test('lists the panels the plugin contributes, and serves the page of one as JSON', async () => {
     const host = await start();
-    const listing = await fetch(new URL('/host/mcp-apps', host.url));
+    const listing = await fetch(new URL('/host/panels', host.url));
     const listed = (await listing.json()) as {
       apps: { plugin: string; app: string; opensFromTool: string }[];
     };
@@ -171,7 +171,7 @@ describe('the run inspector’s panel', () => {
     const host = await start();
     const run = await host.bureau.tasks.start('demo:assistant', 'Who am I?');
     await run.result();
-    // The refusals that run nothing are asserted against a double in `mcp-app-routes.test.ts`.
+    // The refusals that run nothing are asserted against a double in `panel-routes.test.ts`.
     for (const name of ['bureau.reviews.resolve', 'bureau.agents.list', 'read_file']) {
       const response = await toolCall(host, { name, arguments: { taskId: run.id } });
       expect(response.status).toBe(403);

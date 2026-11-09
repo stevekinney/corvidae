@@ -2220,9 +2220,9 @@ export const PLUGINS_COPY = {
     embedder: 'Embeddings',
     'memory-detector': 'Memory detectors',
     scorer: 'Scorers',
-    'mcp-app': 'MCP apps',
-    'event-formatter': 'Event formatters',
-    'code-agent': 'Code agents',
+    panel: 'Panels',
+    formatter: 'Formatters',
+    agent: 'Agents',
   } as Readonly<Record<string, string>>,
   /** The configuration form, built from the plugin's own schema. */
   configuration: {
@@ -2433,11 +2433,12 @@ export const PLUGINS_COPY = {
       title: 'A step after startup failed',
       body: (message: string): string => message,
     },
-    /** A page the plugin contributed could not be built; the plugin and its other parts run. */
-    mcpAppFailed: {
-      status: 'Loaded, a page was not built',
-      title: 'A page the plugin adds did not build',
-      body: (app: string, message: string): string => `The page ${app} is not served. ${message}`,
+    /** A panel the plugin contributed could not be built; the plugin and its other parts run. */
+    panelFailed: {
+      status: 'Loaded, a panel was not built',
+      title: 'A panel the plugin adds did not build',
+      body: (panel: string, message: string): string =>
+        `The panel ${panel} is not served. ${message}`,
     },
   },
   /** The banner every page shows after a startup where a plugin or a folder did not load. */

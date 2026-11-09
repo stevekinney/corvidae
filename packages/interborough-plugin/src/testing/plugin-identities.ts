@@ -282,8 +282,8 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
-      contributions.mcpApps,
-      (app) => named(app, 'mcp-app', { allowedTools: app.allowedTools.toSorted(compareText) }),
+      contributions.panels,
+      (app) => named(app, 'panel', { allowedTools: app.allowedTools.toSorted(compareText) }),
       descriptor,
     ),
     ...entriesOf(
@@ -300,14 +300,14 @@ export async function pluginIdentities(
     ...entriesOf(contributions.providers, (provider) => named(provider, 'provider'), descriptor),
     ...entriesOf(contributions.interceptors, (hooks) => named(hooks, 'interceptor'), descriptor),
     ...entriesOf(
-      contributions.eventFormatters,
+      contributions.formatters,
       (formatter) =>
-        named(formatter, 'event-formatter', {
+        named(formatter, 'formatter', {
           eventKinds: [...formatter.eventKinds].toSorted(compareText),
         }),
       descriptor,
     ),
-    ...entriesOf(contributions.codeAgents, (agent) => named(agent, 'code-agent'), descriptor),
+    ...entriesOf(contributions.agents, (agent) => named(agent, 'agent'), descriptor),
   ];
   return {
     plugin: descriptor.name,

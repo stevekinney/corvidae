@@ -11,16 +11,11 @@ import type { PluginClashParty, PluginContributionKind, PluginProblem } from './
  * A space of names. A contribution kind holds `plugin:name` ids, `plugin` holds plugin names,
  * `event-kind` holds the event kinds a formatter claims, and `provider-name` holds the bare names
  * of model providers, which the host resolves a generate by, so two plugins cannot share one.
- * `mcp-app-uri` holds the `ui://` resource URIs of MCP apps, which a host serves by URI alone, and
- * `mcp-app-tool` holds the tool names an MCP app opens from, because a tool links to one page.
+ * `panel-uri` holds the `ui://` resource URIs of panels, which a host serves by URI alone, and
+ * `panel-tool` holds the tool names a panel opens from, because a tool links to one page.
  */
 export type ClaimSpace =
-  | PluginContributionKind
-  | 'plugin'
-  | 'event-kind'
-  | 'provider-name'
-  | 'mcp-app-uri'
-  | 'mcp-app-tool';
+  PluginContributionKind | 'plugin' | 'event-kind' | 'provider-name' | 'panel-uri' | 'panel-tool';
 
 /** One name in one space. */
 export interface Claim {

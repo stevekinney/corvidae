@@ -89,7 +89,7 @@ describe('a plugin missing a declared secret', () => {
         tools: [
           createTool({ name: 'lookup', description: 'Looks up', execute: async () => 'found' }),
         ],
-        eventFormatters: [
+        formatters: [
           { name: 'fmt', eventKinds: ['kit.happened'], format: () => ({ title: 'Formatted' }) },
         ],
       }),
@@ -146,7 +146,7 @@ describe('a plugin missing a declared secret', () => {
       description: 'Needs an API key.',
       secrets: [KEY],
       setup: () => ({
-        codeAgents: [
+        agents: [
           {
             name: 'writer',
             agent: createAgent({
@@ -300,17 +300,17 @@ describe('the secret-gating outcome matrix', () => {
             evaluate: note('scorer', { pass: true, score: 1, message: '' }),
           },
         ],
-        eventFormatters: [
+        formatters: [
           {
             name: 'fmt',
             eventKinds: ['kit.happened'],
             format: () => {
-              called.push('event-formatter');
+              called.push('formatter');
               return { title: 'Formatted' };
             },
           },
         ],
-        codeAgents: [
+        agents: [
           {
             name: 'writer',
             agent: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
@@ -336,11 +336,11 @@ describe('the secret-gating outcome matrix', () => {
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
       'memory-detector': () => gatedResult.memoryDetectors?.[0]?.detect('x', {} as never),
       scorer: () => gatedResult.scorers?.[0]?.evaluate({} as never),
-      'event-formatter': () => gatedResult.eventFormatters?.[0]?.format(event),
-      'code-agent': () => gatedResult.codeAgents?.[0]?.agent.run('Go.'),
+      formatter: () => gatedResult.formatters?.[0]?.format(event),
+      agent: () => gatedResult.agents?.[0]?.agent.run('Go.'),
       // The definition resolver Bureau starts, recovers and claims a durable run through.
       'code-agent-resolver': () => {
-        const agent = gatedResult.codeAgents?.[0]?.agent;
+        const agent = gatedResult.agents?.[0]?.agent;
         if (agent === undefined || !hasDefinitionResolver(agent)) return 'no resolver';
         return agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('Go.', {});
       },

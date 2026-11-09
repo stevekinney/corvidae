@@ -132,7 +132,7 @@
  * `test`, `tests`, `testing`, `__tests__` or `fixtures`, in every workspace and the root `scripts/`.
  * Not scanned by the rules above: the Playwright specs (`*.playwright.ts`, `*.spec.ts`, `e2e/`, and
  * the helpers in `scripts/browser-fixtures/tests/`), which `test:browser` runs outside `check` and
- * `validate`. Interborough's own (`applications/interborough/tests/e2e` and `tests/mcp-apps`) follow
+ * `validate`. Interborough's own (`applications/interborough/tests/e2e` and `tests/panels`) follow
  * the hang guard all the same, and two rules read them: `playwright-configuration` (the lane's
  * `playwright.config.ts`, Interborough's and `scripts/browser-fixtures`', names
  * `timeout: TEST_TIMEOUT_MILLISECONDS` and `expect: { timeout: HANG_GUARD_MILLISECONDS }`) and
@@ -2187,7 +2187,7 @@ const PLAYWRIGHT_CONFIGURATIONS = [
 /** The directories whose Playwright specs and helpers `playwright-timeout` reads. */
 export const PLAYWRIGHT_SPEC_DIRECTORIES = [
   join('applications', 'interborough', 'tests', 'e2e'),
-  join('applications', 'interborough', 'tests', 'mcp-apps'),
+  join('applications', 'interborough', 'tests', 'panels'),
   join('scripts', 'browser-fixtures', 'tests'),
 ];
 

@@ -2931,7 +2931,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     onPublish: (envelope) => hooksInstance?.dispatch(envelope),
   });
   // COR-1876: the event formatters plugins contribute; a clash between two is refused here.
-  const eventFormatter = createBureauEventFormatter(options.eventFormatters, (message, cause) =>
+  const eventFormatter = createBureauEventFormatter(options.formatters, (message, cause) =>
     diagnostics.diagnose({ level: 'warn', scope: 'events', message: `[bureau] ${message}`, cause }),
   );
   // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent` walks its all-events

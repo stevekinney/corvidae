@@ -73,7 +73,7 @@ export async function assertInstalledAppsInChromium(
   const launch = operations.launch ?? chromium.launch.bind(chromium);
   const fetcher = operations.fetch ?? fetch;
   const referenceHost = await build({
-    entrypoints: [new URL('../tests/mcp-apps/reference-host.ts', import.meta.url).pathname],
+    entrypoints: [new URL('../tests/panels/reference-host.ts', import.meta.url).pathname],
     target: 'browser',
     format: 'esm',
   });

@@ -31,7 +31,7 @@
  * | scorer (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
- * | provider, MCP app | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for an MCP app, which the host serves as a static page from `bureau.plugins.mcpApps()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
+ * | provider, panel | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for a panel, which the host serves as a static page from `bureau.plugins.panels()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
  *
  * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
  * receives needs no secret.
@@ -411,10 +411,10 @@ export function gatedContributions<T extends PluginContributions>(
             evaluate: gated(gate, idOf(judge.name), judge.evaluate.bind(judge)),
           })),
         }),
-    ...(result.eventFormatters === undefined
+    ...(result.formatters === undefined
       ? {}
       : {
-          eventFormatters: result.eventFormatters.map((formatter) => ({
+          formatters: result.formatters.map((formatter) => ({
             ...formatter,
             format: (event: Parameters<typeof formatter.format>[0]) => {
               gate.assertAvailable(idOf(formatter.name));
@@ -422,10 +422,10 @@ export function gatedContributions<T extends PluginContributions>(
             },
           })),
         }),
-    ...(result.codeAgents === undefined
+    ...(result.agents === undefined
       ? {}
       : {
-          codeAgents: result.codeAgents.map(({ name, agent }) => ({
+          agents: result.agents.map(({ name, agent }) => ({
             name,
             agent: gatedAgent(gate, idOf(name), agent),
           })),

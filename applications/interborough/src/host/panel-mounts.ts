@@ -6,10 +6,10 @@
 import type { BureauPlugins } from '@lostgradient/bureau';
 import type { OperationMcpResource } from '@lostgradient/weft';
 
-import { buildMcpAppPage, type BuiltMcpApp } from './mcp-app-build.ts';
+import { buildPanelPage, type BuiltPanel } from './panel-build.ts';
 
 /** Environment variable naming the archive's prebuilt built-in MCP app directory. */
-export const MCP_APP_PREBUILT_DIRECTORY_VARIABLE = 'INTERBOROUGH_MCP_APP_DIRECTORY';
+export const PANEL_PREBUILT_DIRECTORY_VARIABLE = 'INTERBOROUGH_PANEL_DIRECTORY';
 
 /** The MCP App media type. */
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
@@ -26,8 +26,8 @@ export const MCP_APP_UI_META = {
   prefersBorder: false,
 };
 
-/** The apps `bureau.plugins.mcpApps()` lists. */
-export type ContributedMcpApps = ReturnType<BureauPlugins['mcpApps']>;
+/** The apps `bureau.plugins.panels()` lists. */
+export type ContributedPanels = ReturnType<BureauPlugins['panels']>;
 
 /** What failed, with each message a failed bundle logged: Bun's own message is only "Bundle failed". */
 function failureMessage(error: unknown): string {
@@ -42,7 +42,7 @@ function failureMessage(error: unknown): string {
 }
 
 /** One app the host built and serves: what the routes answer from, fixed at startup. */
-export type ServedMcpApp = {
+export type ServedPanel = {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** The app's name within the plugin. */
@@ -64,7 +64,7 @@ export type ServedMcpApp = {
 };
 
 /** An app whose page could not be built: the plugin, the app's name, and why. */
-export type McpAppFailure = {
+export type PanelFailure = {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** The app's name within the plugin. */
@@ -79,7 +79,7 @@ export type McpAppFailure = {
  * skipped with `name-clash`). An app whose page does not build is left out and reported in
  * `failures`, never thrown: a plugin's contribution must not stop the host from starting.
  */
-export async function mcpAppMounts(contributed: ContributedMcpApps, prebuiltDirectory?: string) {
+export async function panelMounts(contributed: ContributedPanels, prebuiltDirectory?: string) {
   const built = await Promise.all(
     contributed.map(async ({ plugin, app }) => {
       try {
@@ -90,10 +90,10 @@ export async function mcpAppMounts(contributed: ContributedMcpApps, prebuiltDire
             ? undefined
             : await Bun.file(`${prebuiltDirectory}/${app.name}.json`)
                 .json()
-                .catch(() => undefined as BuiltMcpApp | undefined);
+                .catch(() => undefined as BuiltPanel | undefined);
         const page =
           prebuilt ??
-          (await buildMcpAppPage({
+          (await buildPanelPage({
             entry: app.entry.href,
             title: app.title,
             styles: app.styles ?? '',
@@ -101,14 +101,14 @@ export async function mcpAppMounts(contributed: ContributedMcpApps, prebuiltDire
         return { plugin, app, page };
       } catch (error) {
         const message = failureMessage(error);
-        return { plugin, app, failure: { plugin, app: app.name, message } satisfies McpAppFailure };
+        return { plugin, app, failure: { plugin, app: app.name, message } satisfies PanelFailure };
       }
     }),
   );
   const toolMeta: Record<string, Readonly<Record<string, unknown>>> = {};
   const resources: (OperationMcpResource & { readonly text: string })[] = [];
-  const failures: McpAppFailure[] = [];
-  const apps: ServedMcpApp[] = [];
+  const failures: PanelFailure[] = [];
+  const apps: ServedPanel[] = [];
   for (const entry of built) {
     if ('failure' in entry) {
       failures.push(entry.failure);

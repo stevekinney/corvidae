@@ -998,11 +998,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   hooks?: BureauHooksOptions;
   /**
    * The event formatters plugins contribute (COR-1876), the entry point plugin composition feeds
-   * with each plugin's `eventFormatters`. {@link Bureau.formatEvent} uses them; an event no
+   * with each plugin's `formatters`. {@link Bureau.formatEvent} uses them; an event no
    * formatter claims is shown by its raw kind. Two formatters that claim one event kind are
    * refused at construction.
    */
-  eventFormatters?: readonly EventFormatterRegistration[];
+  formatters?: readonly EventFormatterRegistration[];
   /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the

@@ -359,7 +359,7 @@ describe('installed-release harness arguments', () => {
           plugins: [{ descriptor: { name: 'installed-fixture' }, status: 'running' }],
           unloaded: [{ error: 'missing-installed-import' }],
         });
-      if (url.endsWith('/host/mcp-apps'))
+      if (url.endsWith('/host/panels'))
         return response({ apps: [{ plugin: 'installed-fixture', app: 'fixture-panel' }] });
       if (url.includes('/fixture-panel'))
         return response({ html: '<main>Installed fixture MCP panel</main>', ui: { csp: {} } });

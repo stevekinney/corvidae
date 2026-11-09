@@ -1,7 +1,7 @@
 /**
- * The host's plugin panels, as the run page mounts them (`GET /host/mcp-apps`,
+ * The host's plugin panels, as the run page mounts them (`GET /host/panels`,
  * `GET /host/plugins/<plugin>/apps/<app>`, `POST /host/plugins/<plugin>/apps/<app>/tool-calls`;
- * `src/host/mcp-app-routes.ts`, COR-1894). Chat's `McpApp` owns no client and no credential, so
+ * `src/host/panel-routes.ts`, COR-1894). Chat's `McpApp` owns no client and no credential, so
  * this module is the loader and the tool-call handler it is given: the page comes from the host,
  * and a panel's call goes to the host, which runs it only when the app declared the tool.
  */
@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { Fetcher } from './bureau-client.ts';
 
 /** The route that lists the panels the host serves. */
-export const HOST_MCP_APPS_ROUTE = '/host/mcp-apps';
+export const HOST_PANELS_ROUTE = '/host/panels';
 
 const appsSchema = z.object({
   apps: z.array(
@@ -27,7 +27,7 @@ const appsSchema = z.object({
 });
 
 /** One panel the host serves: the plugin that contributes it, its name, and the tool it opens from. */
-export type HostMcpApp = z.infer<typeof appsSchema>['apps'][number];
+export type HostPanel = z.infer<typeof appsSchema>['apps'][number];
 
 // The page's security block is read loosely: `McpApp` sanitizes what it declares, and a field this
 // client does not know is the component's to judge.
@@ -62,8 +62,8 @@ const panelPath = (plugin: string, app: string): string =>
   `/host/plugins/${encodeURIComponent(plugin)}/apps/${encodeURIComponent(app)}`;
 
 /** Asks the host which plugin panels it serves. */
-export async function getMcpApps(options: Options = {}): Promise<readonly HostMcpApp[]> {
-  const response = await send(HOST_MCP_APPS_ROUTE, {}, options);
+export async function getPanels(options: Options = {}): Promise<readonly HostPanel[]> {
+  const response = await send(HOST_PANELS_ROUTE, {}, options);
   if (!response.ok) throw new Error(`The host answered ${response.status}.`);
   return appsSchema.parse(await response.json()).apps;
 }

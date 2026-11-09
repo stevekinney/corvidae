@@ -252,11 +252,11 @@ export function problemView(problem: PluginProblem, plugin?: PluginStanding): Pr
         title: words.afterStartFailed.title,
         body: words.afterStartFailed.body(text(problem, 'message')),
       };
-    case 'mcp-app-failed':
+    case 'panel-failed':
       return {
-        status: { label: words.mcpAppFailed.status, dot: WARNING },
-        title: words.mcpAppFailed.title,
-        body: words.mcpAppFailed.body(text(problem, 'app'), text(problem, 'message')),
+        status: { label: words.panelFailed.status, dot: WARNING },
+        title: words.panelFailed.title,
+        body: words.panelFailed.body(text(problem, 'app'), text(problem, 'message')),
       };
     default:
       return {

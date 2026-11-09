@@ -210,8 +210,7 @@ async function countReferences(
     // A schedule or a run of the contribution itself, when it is a code agent.
     const runsIt = (agentName: string | undefined): boolean =>
       agentName !== undefined &&
-      (users.has(agentName) ||
-        (contribution.kind === 'code-agent' && agentName === contribution.id));
+      (users.has(agentName) || (contribution.kind === 'agent' && agentName === contribution.id));
     const key = referenceKey(contribution.id);
     const waiting = new Set(
       waitingRuns
@@ -273,7 +272,7 @@ function registered(record: PluginRecord, kind: PluginContribution['kind'], name
 /** The registry over the records composition produced. */
 export function createPluginRegistry(records: readonly PluginRecord[]): PluginRegistry {
   const laterProblems = new Map<string, PluginProblem[]>();
-  // The MCP apps the host could not build, by plugin name, then app name, with the message.
+  // The panels the host could not build, by plugin name, then app name, with the message.
   const failedApps = new Map<string, Map<string, string>>();
   const pinned: PinnedTally = new Map();
   let reads: PluginReferenceReads | undefined;
@@ -291,7 +290,7 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         waitingRuns: runs.size,
       })),
       ...[...(failedApps.get(name) ?? [])].map(([app, message]): PluginProblem => ({
-        code: 'mcp-app-failed',
+        code: 'panel-failed',
         app,
         message,
       })),
@@ -308,10 +307,10 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         records
           .filter((record) => record.status === 'running')
           .map((record) => record.entry.descriptor.name),
-      mcpApps: () =>
+      panels: () =>
         records.flatMap((record) =>
           record.status === 'running'
-            ? (record.setup?.result.mcpApps ?? [])
+            ? (record.setup?.result.panels ?? [])
                 .filter((app) => !failedApps.get(record.entry.descriptor.name)?.has(app.name))
                 .map((app) => ({
                   plugin: record.entry.descriptor.name,
@@ -348,12 +347,12 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
-      reportMcpAppFailure: (plugin, app, message) => {
+      reportPanelFailure: (plugin, app, message) => {
         const record = records.find(
           (candidate) =>
             candidate.status === 'running' && candidate.entry.descriptor.name === plugin,
         );
-        const declared = record?.setup?.result.mcpApps?.some((each) => each.name === app);
+        const declared = record?.setup?.result.panels?.some((each) => each.name === app);
         if (record?.setup === undefined || declared !== true) return;
         const byApp = failedApps.get(plugin) ?? new Map<string, string>();
         failedApps.set(plugin, byApp);

@@ -59,7 +59,7 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
       // a secret saved after the start applies on the next one.
       const approvalSecret = (await secrets.get(DEMO_APPROVAL_SECRET)) || undefined;
       return {
-        codeAgents: createDemoAgents(approvalSecret, toolApprovalHooks).filter(
+        agents: createDemoAgents(approvalSecret, toolApprovalHooks).filter(
           ({ name }) => provided === undefined || provided.has(name),
         ),
         tools: [createLookupOrderTool(), createIssueRefundTool()],

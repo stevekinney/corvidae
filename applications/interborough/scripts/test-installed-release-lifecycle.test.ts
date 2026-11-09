@@ -54,7 +54,7 @@ async function exerciseJourney(fault: string, port = 43123, relocated = false) {
         `data: {"type":"RUN_STARTED","runId":"public-run-${agentRuns}","metadata":{"@lostgradient/bureau":{"runId":"run-${agentRuns}"}}}\n\ndata: ${JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', delta: wrongOutput ? 'wrong output' : 'fixture greeted Ada' })}\n`,
       );
     }
-    if (path === '/host/mcp-apps')
+    if (path === '/host/panels')
       return response({
         apps:
           fault === 'missing-panel' ? [] : [{ plugin: 'installed-fixture', app: 'fixture-panel' }],

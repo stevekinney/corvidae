@@ -8,11 +8,11 @@
  * later plugin that claims a held name is `skipped` whole with `name-clash`, so none of its
  * contributions is registered. A plugin that passes registers every contribution through the
  * option it belongs to (`contributionCatalog`, `agentContributions`, `validators`, `hooks`,
- * `eventFormatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
+ * `formatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
  * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
- * agents the agent catalog lists as `unavailable` (COR-2009); see `codeAgentsOfDisabledPlugin`.
+ * agents the agent catalog lists as `unavailable` (COR-2009); see `agentsOfDisabledPlugin`.
  *
  * @module compose-plugins
  */
@@ -93,7 +93,7 @@ export interface ComposedPlugins<O extends ComposableOptions> {
   /**
    * COR-2009 — the code agents of the disabled plugins, in load order, which the agent catalog
    * lists `unavailable` (`Plugin Demo is disabled`) so they can be read and duplicated, never run.
-   * See {@link codeAgentsOfDisabledPlugin} for how they are read without the plugin running.
+   * See {@link agentsOfDisabledPlugin} for how they are read without the plugin running.
    */
   readonly unavailableAgents: readonly UnavailableCodeAgent[];
   /**
@@ -214,7 +214,7 @@ interface PluginContributionPlan {
 }
 
 /** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
-const MCP_APP_URI_PATTERN = /^ui:\/\/\S+$/;
+const PANEL_URI_PATTERN = /^ui:\/\/\S+$/;
 
 /**
  * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
@@ -243,7 +243,7 @@ function planOf(
   ) => {
     if (!isPluginName(name)) {
       throw new TypeError(
-        `setup returned a ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
+        `setup returned ${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
       );
     }
     const contributionId = id ?? formatToolId({ namespace: plugin, name });
@@ -305,22 +305,22 @@ function planOf(
     contribute('memory-detector', detector.name);
   }
   for (const judge of contributions.scorers ?? []) contribute('scorer', judge.name);
-  for (const app of contributions.mcpApps ?? []) {
+  for (const app of contributions.panels ?? []) {
     // A host serves the page by this URI alone, so it must be a `ui://` resource and unique.
-    if (!MCP_APP_URI_PATTERN.test(app.uri)) {
+    if (!PANEL_URI_PATTERN.test(app.uri)) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
+        `setup returned the panel "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
       );
     }
     if (!app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
+        `setup returned the panel "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
       );
     }
     for (const tool of app.hostOnlyTools ?? []) {
       if (!app.allowedTools.includes(tool) || !tool.startsWith('bureau.')) {
         throw new TypeError(
-          `setup returned the MCP app "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
+          `setup returned the panel "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
         );
       }
     }
@@ -334,19 +334,19 @@ function planOf(
       )
     ) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
+        `setup returned the panel "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
       );
     }
-    contribute('mcp-app', app.name);
-    claims.push({ space: 'mcp-app-uri', name: app.uri });
+    contribute('panel', app.name);
+    claims.push({ space: 'panel-uri', name: app.uri });
     // A tool links to one page, so the host cannot serve two apps opened from the same tool.
-    claims.push({ space: 'mcp-app-tool', name: app.opensFromTool });
+    claims.push({ space: 'panel-tool', name: app.opensFromTool });
   }
-  for (const formatter of contributions.eventFormatters ?? []) {
-    contribute('event-formatter', formatter.name);
+  for (const formatter of contributions.formatters ?? []) {
+    contribute('formatter', formatter.name);
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
   }
-  for (const agent of contributions.codeAgents ?? []) contribute('code-agent', agent.name);
+  for (const agent of contributions.agents ?? []) contribute('agent', agent.name);
   return { claims, listings, tools };
 }
 
@@ -393,16 +393,16 @@ function heldByHost(options: ComposableOptions): Claims {
       HOST_PARTY,
     );
   }
-  for (const { plugin, formatter } of options.eventFormatters ?? []) {
+  for (const { plugin, formatter } of options.formatters ?? []) {
     claims.hold(
-      { space: 'event-formatter', name: formatToolId({ namespace: plugin, name: formatter.name }) },
+      { space: 'formatter', name: formatToolId({ namespace: plugin, name: formatter.name }) },
       HOST_PARTY,
     );
     for (const kind of formatter.eventKinds)
       claims.hold({ space: 'event-kind', name: kind }, HOST_PARTY);
   }
   for (const name of Object.keys(options.agents ?? {})) {
-    claims.hold({ space: 'code-agent', name }, HOST_PARTY);
+    claims.hold({ space: 'agent', name }, HOST_PARTY);
   }
   for (const judge of options.scorers?.list ?? []) {
     claims.hold({ space: 'scorer', name: judge.name }, HOST_PARTY);
@@ -410,7 +410,7 @@ function heldByHost(options: ComposableOptions): Claims {
   // Embedders and memory detectors reach memory only through the host's `memory` factory, which
   // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
   // meets memory's built-in `hashing`, and two plugins' ids are kept apart by the claims above.
-  // Providers reach the host's `models.catalog` factory, not a held name; MCP apps have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.mcpApps()`.
+  // Providers reach the host's `models.catalog` factory, not a held name; panels have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.panels()`.
   return claims;
 }
 
@@ -427,8 +427,8 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'interceptor',
   'decision-router',
   'reaction',
-  'event-formatter',
-  'code-agent',
+  'formatter',
+  'agent',
   'scorer',
 ]);
 
@@ -463,7 +463,7 @@ class Contributed {
   > = {};
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
-  readonly formatters: NonNullable<BureauOptions['eventFormatters']>[number][] = [];
+  readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
   readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
   readonly agents: Record<string, unknown> = {};
   readonly memory: {
@@ -499,12 +499,11 @@ class Contributed {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
       this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
     }
-    for (const formatter of result.eventFormatters ?? [])
-      this.formatters.push({ plugin, formatter });
+    for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
     for (const judge of result.scorers ?? []) {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
-    for (const { name, agent } of result.codeAgents ?? []) this.agents[id(name)] = agent;
+    for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
     this.providers.push(...providersOf(plugin, result));
     this.memory.detectors.push(...(result.memoryDetectors ?? []));
     for (const embedder of result.embedders ?? []) {
@@ -641,7 +640,7 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
         }),
     ...(contributed.formatters.length === 0
       ? {}
-      : { eventFormatters: [...(options.eventFormatters ?? []), ...contributed.formatters] }),
+      : { formatters: [...(options.formatters ?? []), ...contributed.formatters] }),
     ...(options.scorers === undefined || contributed.scorers.length === 0
       ? {}
       : {
@@ -739,12 +738,12 @@ async function setUp(
  * `unavailable` and `duplicate` can copy one. Only `setup` can say what they are, so it runs once,
  * with nothing it could change or reveal: storage confined to `plugin:<name>:` of a scratch
  * `MemoryStorage` that is dropped after, no secret (every `get` answers `undefined`), and a host
- * API that is never bound, so a call to it rejects. Only `codeAgents` is kept; no other
+ * API that is never bound, so a call to it rejects. Only `agents` is kept; no other
  * contribution is registered, `afterStart` never runs, and none of the agents can start a run. A
  * plugin whose configuration does not parse, or whose `setup` throws, lists none: it is disabled
  * either way, and enabling it reports the failure where a running plugin's would be.
  */
-async function codeAgentsOfDisabledPlugin(
+async function agentsOfDisabledPlugin(
   entry: BureauPluginEntry,
   options: Pick<ComposableOptions, 'pluginConfiguration'>,
 ): Promise<UnavailableCodeAgent[]> {
@@ -765,7 +764,7 @@ async function codeAgentsOfDisabledPlugin(
     };
     const returned: PluginSetupResult = (await descriptor.setup(context as never)) ?? {};
     const message = `Plugin ${descriptor.title ?? descriptor.name} is disabled`;
-    return (returned.codeAgents ?? []).map(({ name, agent }) => ({
+    return (returned.agents ?? []).map(({ name, agent }) => ({
       id: formatToolId({ namespace: descriptor.name, name }),
       plugin: descriptor.name,
       agent,
@@ -781,7 +780,7 @@ function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
     agents,
     validators,
-    eventFormatters,
+    formatters,
     decisions,
     hooks,
     scorers,
@@ -801,7 +800,7 @@ function snapshotOf<O extends ComposableOptions>(given: O): O {
         }),
     ...(agents === undefined ? {} : { agents: { ...agents } }),
     ...(validators === undefined ? {} : { validators: [...validators] }),
-    ...(eventFormatters === undefined ? {} : { eventFormatters: [...eventFormatters] }),
+    ...(formatters === undefined ? {} : { formatters: [...formatters] }),
     ...(decisions?.models === undefined
       ? {}
       : { decisions: { ...decisions, models: { ...decisions.models } } }),
@@ -844,7 +843,7 @@ export async function composePlugins<O extends ComposableOptions>(
     claims.hold({ space: 'plugin', name: entry.descriptor.name }, party);
     const outcome = await setUp(entry, options, storage);
     if (outcome.status === 'disabled') {
-      unavailableAgents.push(...(await codeAgentsOfDisabledPlugin(entry, options)));
+      unavailableAgents.push(...(await agentsOfDisabledPlugin(entry, options)));
     }
     if (outcome.status !== 'set-up') {
       record(outcome.status, outcome.problems);

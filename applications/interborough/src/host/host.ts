@@ -85,8 +85,8 @@ import {
  * - `/host/plugins`, `/host/plugins/<name>`, and `/host/plugins/<name>/secrets/<key>`: the plugins the
  *   host loads, the owner's choices for them in `configuration.json` (`plugins`), and the secrets they
  *   declare (`plugin-routes.ts`). A remote host refuses a change with the reason `deployment`.
- *   `/host/mcp-apps` and `/host/plugins/<name>/apps/<app>[/tool-calls]` serve a plugin's MCP-app
- *   panels (`mcp-app-routes.ts`).
+ *   `/host/panels` and `/host/plugins/<name>/apps/<app>[/tool-calls]` serve a plugin's
+ *   panels (`panel-routes.ts`).
  * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/affected-agents`,
  *   `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
  *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
@@ -212,10 +212,10 @@ import {
   type HostDatabase,
   type LocalDirectoryOptions,
 } from './locations.ts';
-import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE, mcpAppMounts } from './mcp-app-mounts.ts';
-import { mcpAppRoutes } from './mcp-app-routes.ts';
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
+import { PANEL_PREBUILT_DIRECTORY_VARIABLE, panelMounts } from './panel-mounts.ts';
+import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
@@ -1276,15 +1276,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The handler is built once the listener has a port, because the Agent Card of an agent that
     // opts into A2A names the URL it is served at (COR-1819). Until then `/bureau/*` answers 503,
     // which only a client that guessed the port could see.
-    const mcpMounts = await mcpAppMounts(
-      bureau.plugins.mcpApps(),
-      environment[MCP_APP_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
+    const mcpMounts = await panelMounts(
+      bureau.plugins.panels(),
+      environment[PANEL_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
     );
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
     // never stops the host from starting.
     for (const failure of mcpMounts.failures) {
-      bureau.plugins.reportMcpAppFailure(failure.plugin, failure.app, failure.message);
-      log(`Plugin ${failure.plugin}: its MCP app ${failure.app} did not build: ${failure.message}`);
+      bureau.plugins.reportPanelFailure(failure.plugin, failure.app, failure.message);
+      log(`Plugin ${failure.plugin}: its panel ${failure.app} did not build: ${failure.message}`);
     }
     let bureauHandler: BureauHandler | undefined;
     const bureauSockets: BureauHandler['websocket'] = {
@@ -1404,7 +1404,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The nightly clean-up's standing, and "Clean up now" (COR-2009).
       ...cleanUpRoutes(nightlyCleanUp, refuse),
       // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
-      ...mcpAppRoutes(
+      ...panelRoutes(
         mcpMounts.apps,
         refuse,
         async (request) =>

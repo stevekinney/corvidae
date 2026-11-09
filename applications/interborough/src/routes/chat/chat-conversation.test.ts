@@ -1610,7 +1610,7 @@ describe('the files on a row', () => {
             }),
           });
         }
-        if (url === '/host/mcp-apps') {
+        if (url === '/host/panels') {
           appReads += 1;
           return Response.json({ apps: [WORKFLOW_REVISION_PANEL] });
         }

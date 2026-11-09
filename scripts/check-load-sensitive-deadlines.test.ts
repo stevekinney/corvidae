@@ -1207,7 +1207,7 @@ describe('a Playwright spec deadline below the hang guard', () => {
 describe('the Playwright specs that playwright-timeout reads', () => {
   test.each([
     join('applications', 'interborough', 'tests', 'e2e'),
-    join('applications', 'interborough', 'tests', 'mcp-apps'),
+    join('applications', 'interborough', 'tests', 'panels'),
     join('scripts', 'browser-fixtures', 'tests'),
   ])('includes %s, and the directory exists', (directory) => {
     expect(PLAYWRIGHT_SPEC_DIRECTORIES).toContain(directory);
