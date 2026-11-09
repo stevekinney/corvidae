@@ -5,10 +5,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import type { PluginInputGuardrail, PluginToolGuardrail } from '@lostgradient/interborough-plugin';
 import {
   createAgent,
   GuardrailTripwireError,
-  type InputDetector,
   type ToolCallValidator,
 } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
@@ -19,8 +19,9 @@ import { effectiveCodeAgent } from './code-agent-effective';
 
 const SENTINEL = 'ACME-SENTINEL';
 
-const sentinel: InputDetector = {
+const sentinel: PluginInputGuardrail = {
   name: 'acme-sentinel',
+  description: 'Flags the sentinel.',
   detect: async (input) =>
     input.includes(SENTINEL)
       ? { triggered: true, category: 'prompt-injection', confidence: 0.99 }
@@ -92,8 +93,9 @@ describe('a code agent with override guardrails', () => {
 describe('a code agent with an override tool-call validator', () => {
   function refunderWith(action: ToolCallValidator['action']) {
     const ran: string[] = [];
-    const refundCap: ToolCallValidator = {
+    const refundCap: PluginToolGuardrail = {
       name: 'refund-cap',
+      description: 'Caps refunds at $100.',
       ...(action === undefined ? {} : { action }),
       validate: async (call) =>
         ((call.arguments as { amount?: number }).amount ?? 0) > 100

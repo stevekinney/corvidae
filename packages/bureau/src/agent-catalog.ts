@@ -482,6 +482,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     toolNames: () => new Set((files?.tools() ?? []).map((tool) => tool.name)),
     descriptors,
     modelPolicy,
+    contributions: options?.codeAgentRuns?.contributions,
   });
 
   /**

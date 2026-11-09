@@ -23,6 +23,7 @@
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run contains the refusal as it contains any detector's or validator's error, so the guardrail finds nothing and the input, reply or call it would judge goes on (COR-2104) | works | refuses |
+ * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run contains the refusal and goes on (COR-2118) | works | refuses |
  * | interceptor (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
@@ -39,15 +40,20 @@
  * @module plugin-secret-gate
  */
 
-import type {
-  PluginContributions,
-  PluginInterceptor,
-  PluginTrigger,
+import {
+  isGuardrailFactory,
+  type PluginContributions,
+  type PluginGuardrailFactory,
+  type PluginInterceptor,
+  type PluginTrigger,
 } from '@lostgradient/interborough-plugin';
 import {
   type GuardrailEntry,
   guardrailOf,
+  type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type OutputValidator,
+  type ToolCallValidator,
 } from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
 
@@ -70,6 +76,22 @@ function withGuardrail<T, A extends string>(
   return guardrail === entry
     ? wrap(guardrail)
     : { ...(entry as object), guardrail: wrap(guardrail) };
+}
+
+/**
+ * `guardrail` with `wrap` applied: to the guardrail itself, or, for a factory (COR-2118), to every
+ * guardrail its `create` builds, so `create` itself runs ungated and only what it built refuses.
+ */
+function gatedFactoryOr<T, G extends T | PluginGuardrailFactory<T>>(
+  guardrail: G,
+  wrap: (built: T) => T,
+): G {
+  if (!isGuardrailFactory<T>(guardrail)) return wrap(guardrail as T) as G;
+  const factory: PluginGuardrailFactory<T> = guardrail;
+  return {
+    ...factory,
+    create: (configuration: unknown) => wrap(factory.create(configuration)),
+  } as G;
 }
 
 /** A plugin's contribution was called while a secret its plugin declared is not set. */
@@ -350,34 +372,36 @@ export function gatedContributions<T extends PluginContributions>(
               ? {}
               : {
                   input: guardrails.input.map((entry) =>
-                    withGuardrail(entry, (detector) => ({
-                      ...detector,
-                      detect: gated(gate, idOf(detector.name), detector.detect.bind(detector)),
-                    })),
+                    withGuardrail(entry, (detector) =>
+                      gatedFactoryOr(detector, (built: InputDetector) => ({
+                        ...built,
+                        detect: gated(gate, idOf(detector.name), built.detect.bind(built)),
+                      })),
+                    ),
                   ),
                 }),
             ...(guardrails.output === undefined
               ? {}
               : {
                   output: guardrails.output.map((entry) =>
-                    withGuardrail(entry, (validator) => ({
-                      ...validator,
-                      validate: gated(
-                        gate,
-                        idOf(validator.name),
-                        validator.validate.bind(validator),
-                      ),
-                    })),
+                    withGuardrail(entry, (validator) =>
+                      gatedFactoryOr(validator, (built: OutputValidator) => ({
+                        ...built,
+                        validate: gated(gate, idOf(validator.name), built.validate.bind(built)),
+                      })),
+                    ),
                   ),
                 }),
             ...(guardrails.tools === undefined
               ? {}
               : {
                   // The validator's own `action` is kept by the spread.
-                  tools: guardrails.tools.map((validator) => ({
-                    ...validator,
-                    validate: gated(gate, idOf(validator.name), validator.validate.bind(validator)),
-                  })),
+                  tools: guardrails.tools.map((validator) =>
+                    gatedFactoryOr(validator, (built: ToolCallValidator) => ({
+                      ...built,
+                      validate: gated(gate, idOf(validator.name), built.validate.bind(built)),
+                    })),
+                  ),
                 }),
             ...(guardrails.memory === undefined
               ? {}

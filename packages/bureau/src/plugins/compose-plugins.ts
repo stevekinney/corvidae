@@ -26,7 +26,12 @@ import type {
   PluginSetupContext,
   PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
-import { createPluginStorage, guardrailId, isPluginName } from '@lostgradient/interborough-plugin';
+import {
+  createPluginStorage,
+  guardrailId,
+  isGuardrailFactory,
+  isPluginName,
+} from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
 import {
   createModelCatalog,
@@ -232,20 +237,53 @@ const GUARDRAIL_ACTIONS: Readonly<Record<'input' | 'output' | 'tools', readonly 
 };
 
 /**
+ * Checks what every guardrail says about itself (COR-2118): a non-empty `description`, and for a
+ * factory a Zod schema to parse an agent's configuration with, so a plugin that returns neither is
+ * skipped at setup instead of listing a guardrail nobody can tell apart or failing the agents that
+ * choose it.
+ */
+function checkGuardrailContract(family: GuardrailFamily, guardrail: unknown): void {
+  const { name, description, configuration, create } = guardrail as {
+    readonly name?: unknown;
+    readonly description?: unknown;
+    readonly configuration?: unknown;
+    readonly create?: unknown;
+  };
+  if (typeof description !== 'string' || description.trim() === '') {
+    throw new TypeError(
+      `setup returned the ${family} guardrail "${String(name)}" without a description: every guardrail says what it guards.`,
+    );
+  }
+  if (
+    create !== undefined &&
+    (typeof create !== 'function' ||
+      typeof (configuration as { readonly safeParse?: unknown } | undefined)?.safeParse !==
+        'function')
+  ) {
+    throw new TypeError(
+      `setup returned the ${family} guardrail factory "${String(name)}" without a configuration schema and a create function.`,
+    );
+  }
+}
+
+/**
  * The name of a guardrail entry, after checking the action it carries is one its family has, so a
- * plugin that returns another is skipped at setup instead of failing the runs that use it.
+ * plugin that returns another is skipped at setup instead of failing the runs that use it, and the
+ * guardrail's own contract ({@link checkGuardrailContract}).
  */
 function checkedGuardrailName(
   family: 'input' | 'output' | 'tools',
   entry: GuardrailEntry<{ readonly name: string }, string>,
 ): string {
-  const { name } = guardrailOf(entry);
+  const guardrail = guardrailOf(entry);
+  const { name } = guardrail;
   const action = guardrailActionOf(entry, GUARDRAIL_ACTIONS[family][0]!);
   if (!GUARDRAIL_ACTIONS[family].includes(action)) {
     throw new TypeError(
       `setup returned the ${family} guardrail "${name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS[family].join(', ')}.`,
     );
   }
+  checkGuardrailContract(family, guardrail);
   return name;
 }
 
@@ -316,12 +354,14 @@ function planOf(
     guardrail('guardrail', 'output', checkedGuardrailName('output', validator));
   }
   for (const validator of contributions.guardrails?.tools ?? []) {
-    const action = validator.action ?? 'block';
+    // A factory carries no action: the validator it builds carries its own.
+    const action = isGuardrailFactory(validator) ? 'block' : (validator.action ?? 'block');
     if (!GUARDRAIL_ACTIONS.tools.includes(action)) {
       throw new TypeError(
         `setup returned the tools guardrail "${validator.name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS.tools.join(', ')}.`,
       );
     }
+    checkGuardrailContract('tools', validator);
     guardrail('guardrail', 'tools', validator.name);
   }
   for (const interceptor of contributions.interceptors ?? []) {
@@ -363,6 +403,7 @@ function planOf(
         `setup returned the memory guardrail "${detector.name}" with gates ${JSON.stringify(gates)}: gates list "admission", "recall" or both, and are left out to run at both.`,
       );
     }
+    checkGuardrailContract('memory', detector);
     guardrail('memory-detector', 'memory', detector.name);
   }
   for (const judge of contributions.scorers ?? []) contribute('scorer', judge.name);

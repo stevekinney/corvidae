@@ -45,7 +45,7 @@ import { z } from 'zod';
 import {
   AgentFileConflictError,
   AgentFileError,
-  agentContributionIdsSchema,
+  storedAgentGuardrailSelectionsSchema,
   agentDefaultEffortSchema,
   agentLimitsSchema,
   agentToolApprovalSchema,
@@ -74,8 +74,12 @@ export const agentOverridesSchema = z.strictObject({
     .optional(),
   /** When each tool asks a person first, by tool name: the Access tab's Asks column. */
   approvals: agentToolApprovalSchema.optional(),
-  /** The plugin guardrails (`plugin:name`) a run applies. */
-  guardrails: agentContributionIdsSchema.optional(),
+  /**
+   * The plugin guardrails a run applies, each `plugin:name` or `{ id, configuration }` (COR-2118).
+   * A record written before COR-2118 holds ids alone and reads as it is; a save refuses a repeated
+   * id (`code-agent-overrides.ts`), and one an older record repeats applies once.
+   */
+  guardrails: storedAgentGuardrailSelectionsSchema.optional(),
   /**
    * What a run may take, a run and a chat may spend (in US dollars), and a run's tools may use
    * (COR-2138): `steps`, `cost` and `tools`. Each limit named replaces the agent's own; one left out

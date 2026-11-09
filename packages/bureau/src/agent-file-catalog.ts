@@ -116,6 +116,7 @@ import {
   guardrailAdditionsOf,
   NO_AGENT_CONTRIBUTIONS,
   interceptorsOf,
+  refusedGuardrailConfigurations,
   unresolvedContributions,
 } from './agent-contributions';
 import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
@@ -943,6 +944,19 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           code: 'reference-unresolved',
           message: `The definition lists ${unresolved.map((issue) => issue.message).join('; ')}. A guardrail or interceptor is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
           issues: unresolved,
+        },
+      };
+    }
+    const refusedConfigurations = refusedGuardrailConfigurations(
+      definition,
+      options.contributions ?? NO_AGENT_CONTRIBUTIONS,
+    );
+    if (refusedConfigurations.length > 0) {
+      return {
+        problem: {
+          code: 'invalid-guardrail-configuration',
+          message: `The definition configures a guardrail in a way it refuses: ${refusedConfigurations.map((issue) => issue.message).join('; ')}.`,
+          issues: refusedConfigurations,
         },
       };
     }

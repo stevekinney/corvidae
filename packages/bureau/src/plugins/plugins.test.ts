@@ -497,10 +497,15 @@ describe('plugin composition', () => {
       setup: () => ({
         guardrails: {
           memory: [
-            { name: 'both', detect },
-            { name: 'also-both', gates: ['admission', 'recall'], detect },
-            { name: 'writes', gates: ['admission'], detect },
-            { name: 'reads', gates: ['recall'], detect },
+            { name: 'both', description: 'A test guardrail.', detect },
+            {
+              name: 'also-both',
+              description: 'A test guardrail.',
+              gates: ['admission', 'recall'],
+              detect,
+            },
+            { name: 'writes', description: 'A test guardrail.', gates: ['admission'], detect },
+            { name: 'reads', description: 'A test guardrail.', gates: ['recall'], detect },
           ],
         },
         embedders: [

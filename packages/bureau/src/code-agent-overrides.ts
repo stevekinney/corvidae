@@ -7,14 +7,16 @@
  * is the catalog's `overrides` member: it decides which agents those are, checks a save the way an
  * agent file's frontmatter is checked (the tools must be ones the deployment holds, each Asks
  * entry must name an allowed tool, each model must be in the model catalog and allowed by the
- * model policy), and leaves the versions to `agent-override-store.ts`.
+ * model policy, each guardrail is listed once and configured as its schema allows), and leaves the
+ * versions to `agent-override-store.ts`.
  *
  * @module code-agent-overrides
  */
 
 import type { BackendDescriptor } from '@lostgradient/operative';
 
-import { AgentFileError, type AgentFileIssue } from './agent-file';
+import { type AgentContributions, refusedGuardrailConfigurations } from './agent-contributions';
+import { AgentFileError, type AgentFileIssue, agentGuardrailSelectionsSchema } from './agent-file';
 import { resolveModelDescriptor } from './agent-file-catalog';
 import type { AgentFileSaveOptions } from './agent-file-writer';
 import {
@@ -48,8 +50,9 @@ export interface CodeAgentOverrides {
    * plugin's agent or an agent file, `invalid-frontmatter` for overrides that are not well formed,
    * `unknown-tool` for a tool the deployment does not hold, `unknown-approval-tool` for an Asks
    * entry on a tool the agent may not use, `unknown-model` and `model-policy-denied` for a model
-   * the catalog lacks or the policy forbids, and with `AgentFileConflictError` when the overrides
-   * changed since; each writes nothing.
+   * the catalog lacks or the policy forbids, `invalid-frontmatter` for a guardrail listed twice and
+   * `invalid-guardrail-configuration` for a configuration its schema refuses (COR-2118), and with
+   * `AgentFileConflictError` when the overrides changed since; each writes nothing.
    */
   save(
     id: string,
@@ -100,10 +103,21 @@ export interface CodeAgentOverridesOptions {
   readonly descriptors: () => readonly BackendDescriptor[];
   /** The model policy as it is now. */
   readonly modelPolicy: () => BureauModelPolicyOptions | undefined;
+  /**
+   * The guardrails a `guardrails` override may name, whose schemas check its configurations
+   * (COR-2118). Omitted, no configuration is checked, as no guardrail resolves.
+   */
+  readonly contributions?: AgentContributions | undefined;
 }
 
 function refused(
-  code: 'unknown-tool' | 'unknown-approval-tool' | 'unknown-model' | 'model-policy-denied',
+  code:
+    | 'unknown-tool'
+    | 'unknown-approval-tool'
+    | 'unknown-model'
+    | 'model-policy-denied'
+    | 'invalid-frontmatter'
+    | 'invalid-guardrail-configuration',
   message: string,
   issues: readonly AgentFileIssue[],
 ): AgentFileError {
@@ -180,6 +194,34 @@ function checkModels(
   }
 }
 
+/**
+ * Refuses a `guardrails` override that lists an id twice, or configures a guardrail in a way its
+ * schema refuses (COR-2118). A record stored before COR-2118 may repeat an id and still reads; a
+ * save, or a restore of it, is checked as a new save is.
+ */
+function checkGuardrails(overrides: AgentOverrides, contributions: AgentContributions | undefined) {
+  const unique = agentGuardrailSelectionsSchema.safeParse(overrides.guardrails ?? []);
+  if (!unique.success) {
+    throw refused(
+      'invalid-frontmatter',
+      'The overrides list a guardrail more than once.',
+      unique.error.issues.map((issue) => ({
+        path: ['guardrails', ...issue.path.map(String)].join('.'),
+        message: issue.message,
+      })),
+    );
+  }
+  if (contributions === undefined) return;
+  const issues = refusedGuardrailConfigurations(overrides, contributions);
+  if (issues.length > 0) {
+    throw refused(
+      'invalid-guardrail-configuration',
+      'The overrides configure a guardrail in a way it refuses.',
+      issues,
+    );
+  }
+}
+
 /** The `overrides` member of the agent catalog; see {@link CodeAgentOverrides}. */
 export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): CodeAgentOverrides {
   const { store, builtInAgents } = options;
@@ -238,6 +280,7 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
     }
     checkTools(parsed.data, agent.tools, options.toolNames());
     checkModels(parsed.data, options.descriptors(), options.modelPolicy());
+    checkGuardrails(parsed.data, options.contributions);
     return parsed.data;
   }
 

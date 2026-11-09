@@ -10,15 +10,20 @@
 import { formatToolId, fromNamespacedToolName, parseToolId } from 'armorer';
 import { z } from 'zod';
 
-import type {
-  PluginHostApi,
-  PluginSetupContext,
-  PluginSetupResult,
+import {
+  isGuardrailFactory,
+  type PluginGuardrails,
+  type PluginHostApi,
+  type PluginSetupContext,
+  type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
+import { guardrailOf } from '@lostgradient/operative';
 
+import type { AgentContributions } from '../agent-contributions';
 import type {
   BureauPluginEntry,
   BureauPlugins,
+  GuardrailListing,
   PluginContribution,
   PluginContributionListing,
   PluginContributionReferences,
@@ -261,6 +266,69 @@ function jsonSchemaOf(schema: z.ZodType): Readonly<Record<string, unknown>> | nu
   }
 }
 
+/** One guardrail's row: its description, and its configuration schema when it is a factory. */
+function guardrailRow(
+  plugin: string,
+  family: GuardrailListing['family'],
+  guardrail: unknown,
+  source: GuardrailListing['source'],
+): GuardrailListing {
+  const { name, description } = guardrail as {
+    readonly name: string;
+    readonly description?: string;
+  };
+  const configurable = isGuardrailFactory(guardrail);
+  return {
+    id: formatToolId({ namespace: plugin, name }),
+    family,
+    description: description ?? '',
+    configurable,
+    configuration: configurable ? jsonSchemaOf(guardrail.configuration) : null,
+    source,
+    plugin,
+  };
+}
+
+/** The guardrails a plugin's setup returned, family by family. */
+function pluginGuardrailRows(
+  plugin: string,
+  guardrails: PluginGuardrails | undefined,
+  keep: (family: GuardrailListing['family'], name: string) => boolean,
+): GuardrailListing[] {
+  const rows = (family: GuardrailListing['family'], items: readonly unknown[] | undefined) =>
+    (items ?? [])
+      .map((entry) => guardrailOf(entry) as { name: string })
+      .filter((guardrail) => keep(family, guardrail.name))
+      .map((guardrail) => guardrailRow(plugin, family, guardrail, 'plugin'));
+  return [
+    ...rows('input', guardrails?.input),
+    ...rows('output', guardrails?.output),
+    ...rows('tools', guardrails?.tools),
+    ...rows('memory', guardrails?.memory),
+  ];
+}
+
+/**
+ * The guardrails the host gave the Bureau (`BureauOptions.agentContributions`), family by family,
+ * as `bureau.plugins.guardrails()` lists them. Read when the Bureau is built, before it awaits
+ * anything, so a caller that changes its own map afterwards does not change the listing.
+ */
+export function hostGuardrailRows(host: AgentContributions | undefined): GuardrailListing[] {
+  return [...(host?.guardrails.values() ?? [])].flatMap(
+    ({ plugin, inputDetector, outputValidator, toolValidator }) => [
+      ...(inputDetector === undefined
+        ? []
+        : [guardrailRow(plugin, 'input', guardrailOf(inputDetector), 'host')]),
+      ...(outputValidator === undefined
+        ? []
+        : [guardrailRow(plugin, 'output', guardrailOf(outputValidator), 'host')]),
+      ...(toolValidator === undefined
+        ? []
+        : [guardrailRow(plugin, 'tools', toolValidator, 'host')]),
+    ],
+  );
+}
+
 /** Whether `record` registered the contribution `kind` named `plugin:name`. */
 function registered(record: PluginRecord, kind: PluginContribution['kind'], name: string): boolean {
   const id = `${record.entry.descriptor.name}:${name}`;
@@ -270,7 +338,14 @@ function registered(record: PluginRecord, kind: PluginContribution['kind'], name
 }
 
 /** The registry over the records composition produced. */
-export function createPluginRegistry(records: readonly PluginRecord[]): PluginRegistry {
+export function createPluginRegistry(
+  records: readonly PluginRecord[],
+  hostListing: {
+    /** The rows of the guardrails the host gave the Bureau ({@link hostGuardrailRows}), listed first. */
+    readonly guardrails?: readonly GuardrailListing[] | undefined;
+  } = {},
+): PluginRegistry {
+  const hostGuardrails = [...(hostListing.guardrails ?? [])];
   const laterProblems = new Map<string, PluginProblem[]>();
   // The panels the host could not build, by plugin name, then app name, with the message.
   const failedApps = new Map<string, Map<string, string>>();
@@ -347,6 +422,19 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
+      guardrails: () => [
+        ...hostGuardrails,
+        ...records.flatMap((record): GuardrailListing[] =>
+          record.status === 'running'
+            ? pluginGuardrailRows(
+                record.entry.descriptor.name,
+                record.setup?.result.guardrails,
+                (family, name) =>
+                  registered(record, family === 'memory' ? 'memory-detector' : 'guardrail', name),
+              )
+            : [],
+        ),
+      ],
       reportPanelFailure: (plugin, app, message) => {
         const record = records.find(
           (candidate) =>

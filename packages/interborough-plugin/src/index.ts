@@ -6,20 +6,28 @@ export type {
   PluginEvent,
   PluginFormatter,
   PluginFormatting,
+  PluginGuardrailDescription,
+  PluginGuardrailFactory,
   PluginGuardrails,
+  PluginInputGuardrail,
+  PluginInputGuardrailEntry,
   PluginInterceptor,
   PluginMemoryGate,
   PluginMemoryGuardrail,
+  PluginOutputGuardrail,
+  PluginOutputGuardrailEntry,
   PluginPanel,
   PluginProvider,
   PluginReaction,
   PluginReactionContext,
   PluginSetupResult,
+  PluginToolGuardrail,
+  PluginToolGuardrailEntry,
   PluginTrigger,
   PluginTriggerContext,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';
-export { guardrailId } from './guardrail-family.ts';
+export { guardrailId, isGuardrailFactory } from './guardrail-family.ts';
 export type { GuardrailFamily } from './guardrail-family.ts';
 export type {
   PluginAgentListing,

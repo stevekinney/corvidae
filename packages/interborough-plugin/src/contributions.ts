@@ -2,9 +2,11 @@ import type {
   AfterToolExecutionHook,
   BeforeToolExecutionHook,
   DecisionModel,
-  InputGuardrailEntry,
+  GuardrailEntry,
+  InputGuardrailAction,
   OnStepHook,
-  OutputGuardrailEntry,
+  OutputGuardrailAction,
+  OutputValidator,
   PrepareStepHook,
   RunnableAgent,
   ToolCallValidator,
@@ -42,11 +44,80 @@ export interface PluginEvent {
 export type PluginMemoryGate = 'admission' | 'recall';
 
 /**
+ * What every guardrail a plugin contributes says about itself besides its name: what it guards, in
+ * a sentence a person choosing it reads (`bureau.guardrails.list`). It must not be empty.
+ */
+export interface PluginGuardrailDescription {
+  /** What the guardrail guards, for a listing. Not empty. */
+  readonly description: string;
+}
+
+/** An input guardrail: an Armorer input detector with a description. */
+export type PluginInputGuardrail = InputDetector & PluginGuardrailDescription;
+
+/** An output guardrail: an Operative output validator with a description. */
+export type PluginOutputGuardrail = OutputValidator & PluginGuardrailDescription;
+
+/** A tool-call guardrail: an Operative tool-call validator with a description. */
+export type PluginToolGuardrail = ToolCallValidator & PluginGuardrailDescription;
+
+/**
+ * A guardrail an agent configures (COR-2118): instead of one detector or validator, a plugin
+ * contributes what builds one from a configuration. An agent file chooses it as `plugin:name`, or as
+ * `{ id: plugin:name, configuration }`; the host parses that configuration (`{}` for the bare id)
+ * with {@link configuration} and hands the result to {@link create}, once for each agent that
+ * chooses it, so two agents may run it with different settings.
+ *
+ * A field the agent leaves out takes the schema's default, so the schema's defaults are the
+ * plugin-wide ones and an agent's configuration replaces them field by field. A plugin that has a
+ * setting of its own for a field writes it into the schema it returns from `setup`, as that
+ * field's `.default(...)`.
+ *
+ * In an input or output group the factory may be wrapped as `{ guardrail: factory, action }`; the
+ * action is the plugin's, fixed for every guardrail the factory creates, and an agent's
+ * configuration cannot change it. A tool-call factory's guardrail carries its own `action`, as a
+ * tool-call validator does.
+ */
+export interface PluginGuardrailFactory<TGuardrail, TConfiguration = unknown> {
+  /** The guardrail's name, claimed within its family, as for a detector or validator. */
+  readonly name: string;
+  /** What the guardrail guards, for a listing. Not empty. */
+  readonly description: string;
+  /**
+   * The schema an agent's configuration is parsed with. Its JSON Schema is what
+   * `bureau.guardrails.list` shows, and a configuration it refuses makes the agent invalid, naming
+   * the field.
+   */
+  readonly configuration: z.ZodType<TConfiguration>;
+  /**
+   * Builds the guardrail for one agent from its parsed configuration. Its `name` is the factory's;
+   * the host replaces any other.
+   */
+  create(configuration: TConfiguration): TGuardrail;
+}
+
+/** An entry of {@link PluginGuardrails.input}. */
+export type PluginInputGuardrailEntry = GuardrailEntry<
+  PluginInputGuardrail | PluginGuardrailFactory<InputDetector>,
+  InputGuardrailAction
+>;
+
+/** An entry of {@link PluginGuardrails.output}. */
+export type PluginOutputGuardrailEntry = GuardrailEntry<
+  PluginOutputGuardrail | PluginGuardrailFactory<OutputValidator>,
+  OutputGuardrailAction
+>;
+
+/** An entry of {@link PluginGuardrails.tools}. */
+export type PluginToolGuardrailEntry =
+  PluginToolGuardrail | PluginGuardrailFactory<ToolCallValidator>;
+
+/**
  * A guardrail on governed memory: an Armorer input detector that also says at which points it
  * runs. One object can serve `guardrails.input` and `guardrails.memory` under one name, because
  * names are claimed per family.
  */
-export interface PluginMemoryGuardrail extends InputDetector {
+export interface PluginMemoryGuardrail extends InputDetector, PluginGuardrailDescription {
   /**
    * Where it runs: `admission` scans content as it is written, `recall` scans each record as it is
    * recalled. Left out, it runs at both. An empty list is refused, since it would run nowhere.
@@ -58,30 +129,34 @@ export interface PluginMemoryGuardrail extends InputDetector {
  * Guardrails a plugin adds to the ones Operative applies to every agent, grouped by what they
  * guard. A guardrail's name is claimed within its family, and the family is recorded in its
  * identity (`plugin:family/name`), so `acme:input/credentials` and `acme:memory/credentials` are
- * different guardrails that may share a name.
+ * different guardrails that may share a name. Every guardrail has a non-empty `description`; an
+ * input, output or tool-call guardrail may instead be a {@link PluginGuardrailFactory}, which each
+ * agent that chooses it configures.
  */
 export interface PluginGuardrails {
   /**
    * Detectors run over the input before a generate call, and over each tool result. An entry is a
-   * detector, which takes the action of the group it joins, or `{ guardrail, action }`, whose
-   * `action` (`block`, `warn`, `sanitize` or `tripwire`) it keeps whatever that group's.
+   * detector or a factory, which takes the action of the group it joins, or
+   * `{ guardrail, action }`, whose `action` (`block`, `warn`, `sanitize` or `tripwire`) it keeps
+   * whatever that group's.
    */
-  readonly input?: readonly InputGuardrailEntry[];
+  readonly input?: readonly PluginInputGuardrailEntry[];
   /**
-   * Validators run over a response before it is accepted. An entry is a validator, which takes the
-   * action of the group it joins, or `{ guardrail, action }`, whose `action` (`block`, `warn`,
-   * `redact` or `tripwire`) it keeps whatever that group's.
+   * Validators run over a response before it is accepted. An entry is a validator or a factory,
+   * which takes the action of the group it joins, or `{ guardrail, action }`, whose `action`
+   * (`block`, `warn`, `redact` or `tripwire`) it keeps whatever that group's.
    */
-  readonly output?: readonly OutputGuardrailEntry[];
+  readonly output?: readonly PluginOutputGuardrailEntry[];
   /**
-   * Validators run over each tool call before it runs. A validator's own `action` (`block`, `warn`
-   * or `tripwire`) decides what its finding does; left out, it takes its group's.
+   * Validators run over each tool call before it runs, or factories of them. A validator's own
+   * `action` (`block`, `warn` or `tripwire`) decides what its finding does; left out, it takes its
+   * group's.
    */
-  readonly tools?: readonly ToolCallValidator[];
+  readonly tools?: readonly PluginToolGuardrailEntry[];
   /**
    * Detectors run after the default poisoning detector, on memory admission, on recall or on both
    * (see {@link PluginMemoryGuardrail.gates}). An agent file cannot choose them: they guard the
-   * host's memory, not one agent.
+   * host's memory, not one agent, so none is a factory.
    */
   readonly memory?: readonly PluginMemoryGuardrail[];
 }

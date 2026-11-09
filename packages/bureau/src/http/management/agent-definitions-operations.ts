@@ -58,6 +58,8 @@ import {
   agentCostLimitSchema,
   agentReferencesSchema,
   agentContributionIdsSchema,
+  agentGuardrailSelectionsSchema,
+  storedAgentGuardrailSelectionsSchema,
   agentRetrySchema,
   agentToolApprovalSchema,
   agentToolLimitSchema,
@@ -225,8 +227,11 @@ const definitionOutputSchema = z.object({
   compaction: agentCompactionSchema.nullable(),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: agentReferencesSchema.nullable(),
-  /** The plugin guardrails (`plugin:name`) the file lists; `null` when it lists none, and only Operative's default applies. */
-  guardrails: agentContributionIdsSchema.nullable(),
+  /**
+   * The plugin guardrails the file lists, each `plugin:name` or `{ id, configuration }` (COR-2118);
+   * `null` when it lists none, and only Operative's default applies.
+   */
+  guardrails: storedAgentGuardrailSelectionsSchema.nullable(),
   /** The plugin interceptors (`plugin:name`) the file lists; `null` when it lists none. */
   interceptors: agentContributionIdsSchema.nullable(),
   /** When each tool asks a person first; `null` when the file sets none and every tool asks on changes. */
@@ -334,12 +339,13 @@ const definitionInputSchema = z
      */
     references: agentReferencesSchema.nullable().optional(),
     /**
-     * The plugin guardrails (`plugin:name`, no version) the agent runs besides Operative's default
-     * preset, which every agent runs. Omitted, a create lists none and an update keeps the file's
-     * list; `null`, or an empty list, removes it. An id no plugin contributes is refused as
-     * `reference-unresolved`.
+     * The plugin guardrails the agent runs besides Operative's default preset, which every agent
+     * runs: each `plugin:name` (no version) or `{ id, configuration }` (COR-2118), and each id once.
+     * Omitted, a create lists none and an update keeps the file's list; `null`, or an empty list,
+     * removes it. An id no plugin contributes is refused as `reference-unresolved`, and a
+     * configuration the guardrail's schema refuses as `invalid-guardrail-configuration`.
      */
-    guardrails: agentContributionIdsSchema.nullable().optional(),
+    guardrails: agentGuardrailSelectionsSchema.nullable().optional(),
     /**
      * The plugin interceptors (`plugin:name`, no version) the agent runs. Omitted, a create lists none
      * and an update keeps the file's list; `null`, or an empty list, removes it. An id no plugin
@@ -454,7 +460,8 @@ function definitionView(definition: AgentFileDefinition) {
     retry: definition.retry === undefined ? null : { ...definition.retry },
     compaction: definition.compaction === undefined ? null : { ...definition.compaction },
     references: definition.references === undefined ? null : [...definition.references],
-    guardrails: definition.guardrails === undefined ? null : [...definition.guardrails],
+    guardrails:
+      definition.guardrails === undefined ? null : structuredClone([...definition.guardrails]),
     interceptors: definition.interceptors === undefined ? null : [...definition.interceptors],
     approvals: definition.approvals === undefined ? null : { ...definition.approvals },
     instructions: definition.instructions,
