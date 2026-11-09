@@ -53,7 +53,11 @@ import {
 import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
 import type { AgentSource } from '../sources/definition-source';
-import { assertInterceptorHooks, createAgentContributions } from '../agent-contributions';
+import {
+  assertInterceptorHooks,
+  createAgentContributions,
+  guardrailContractFault,
+} from '../agent-contributions';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../types';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
@@ -243,23 +247,14 @@ const GUARDRAIL_ACTIONS: Readonly<Record<'input' | 'output' | 'tools', readonly 
  * choose it.
  */
 function checkGuardrailContract(family: GuardrailFamily, guardrail: unknown): void {
-  const { name, description, configuration, create } = guardrail as {
-    readonly name?: unknown;
-    readonly description?: unknown;
-    readonly configuration?: unknown;
-    readonly create?: unknown;
-  };
-  if (typeof description !== 'string' || description.trim() === '') {
+  const { name } = guardrail as { readonly name?: unknown };
+  const fault = guardrailContractFault(guardrail);
+  if (fault === 'description') {
     throw new TypeError(
       `setup returned the ${family} guardrail "${String(name)}" without a description: every guardrail says what it guards.`,
     );
   }
-  if (
-    create !== undefined &&
-    (typeof create !== 'function' ||
-      typeof (configuration as { readonly safeParse?: unknown } | undefined)?.safeParse !==
-        'function')
-  ) {
+  if (fault === 'factory') {
     throw new TypeError(
       `setup returned the ${family} guardrail factory "${String(name)}" without a configuration schema and a create function.`,
     );

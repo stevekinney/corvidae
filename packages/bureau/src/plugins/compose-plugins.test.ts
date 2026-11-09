@@ -588,6 +588,41 @@ describe('composePlugins', () => {
       ]);
     });
 
+    // `typeof null` is `'object'`: a factory with a null configuration is malformed, and only its
+    // own plugin is skipped.
+    it('skips only the plugin whose guardrail factory has a null configuration', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('broken', () => ({
+            guardrails: {
+              output: [
+                {
+                  name: 'scan',
+                  description: 'A test guardrail.',
+                  configuration: null,
+                  create: () => ({ name: 'scan', validate }),
+                } as never,
+              ],
+            },
+          })),
+          pluginEntry('sound', () => ({
+            guardrails: { input: [{ name: 'scan', description: 'A test guardrail.', detect }] },
+          })),
+        ],
+      });
+
+      expect(records.map((record) => [record.entry.descriptor.name, record.status])).toEqual([
+        ['broken', 'skipped'],
+        ['sound', 'running'],
+      ]);
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining('without a configuration schema'),
+        }),
+      ]);
+    });
+
     it('registers a guardrail factory in its family, selectable as plugin:name', async () => {
       const factory = {
         name: 'scan',

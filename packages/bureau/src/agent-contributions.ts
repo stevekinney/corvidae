@@ -89,6 +89,30 @@ export interface ContributedInterceptor {
   readonly interceptor: PluginInterceptor;
 }
 
+/**
+ * What is wrong with a guardrail's own contract (COR-2118), or `undefined` when nothing is: it has
+ * no non-empty `description`, or it carries a `create` function but no Zod `configuration` schema
+ * to parse an agent's configuration with (or a `create` that is not a function). Plugin composition
+ * and {@link createAgentContributions} both ask this, so a plugin and the host are held to one rule.
+ */
+export function guardrailContractFault(guardrail: unknown): 'description' | 'factory' | undefined {
+  const { description, configuration, create } = guardrail as {
+    readonly description?: unknown;
+    readonly configuration?: unknown;
+    readonly create?: unknown;
+  };
+  if (typeof description !== 'string' || description.trim() === '') return 'description';
+  if (
+    create !== undefined &&
+    (typeof create !== 'function' ||
+      typeof (configuration as { readonly safeParse?: unknown } | null | undefined)?.safeParse !==
+        'function')
+  ) {
+    return 'factory';
+  }
+  return undefined;
+}
+
 /** The guardrails and interceptors an agent file may choose, by id. */
 export interface AgentContributions {
   /** Every contributed guardrail, by id. */
@@ -108,7 +132,8 @@ export const NO_AGENT_CONTRIBUTIONS: AgentContributions = Object.freeze({
  * when two guardrails share an id, or two interceptors do (a file names a contribution by id
  * alone, so an id that means two things would run whichever came first), when an interceptor
  * declares a hook that is neither a function nor a well-formed `{ handler, ... }` object, and for a
- * guardrail without a non-empty `description` (COR-2118), which a listing could not tell apart.
+ * guardrail without a non-empty `description` (COR-2118), which a listing could not tell apart, and
+ * for a factory without a Zod `configuration` and a function `create` ({@link guardrailContractFault}).
  */
 export function createAgentContributions(
   sources: readonly AgentContributionSource[],
@@ -129,11 +154,16 @@ export function createAgentContributions(
       entry: Pick<ContributedGuardrail, 'inputDetector' | 'outputValidator' | 'toolValidator'>,
     ) => {
       const id = formatToolId({ namespace: plugin, name });
-      const { description } = guardrailOf(entry[family] as Parameters<typeof guardrailOf>[0]) as {
-        readonly description?: unknown;
-      };
-      if (typeof description !== 'string' || description.trim() === '') {
+      const fault = guardrailContractFault(
+        guardrailOf(entry[family] as Parameters<typeof guardrailOf>[0]),
+      );
+      if (fault === 'description') {
         throw new TypeError(`The guardrail "${id}" has no description.`);
+      }
+      if (fault === 'factory') {
+        throw new TypeError(
+          `The guardrail "${id}" is a factory without a configuration schema and a create function.`,
+        );
       }
       const held = guardrails.get(id);
       if (held?.[family] !== undefined) {

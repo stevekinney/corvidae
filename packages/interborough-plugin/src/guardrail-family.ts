@@ -21,6 +21,8 @@ export function isGuardrailFactory<T>(
     typeof value === 'object' &&
     value !== null &&
     typeof (value as { readonly create?: unknown }).create === 'function' &&
-    typeof (value as { readonly configuration?: unknown }).configuration === 'object'
+    // `typeof null` is `'object'`, so a factory whose `configuration` is `null` is not one.
+    typeof (value as { readonly configuration?: unknown }).configuration === 'object' &&
+    (value as { readonly configuration?: unknown }).configuration !== null
   );
 }

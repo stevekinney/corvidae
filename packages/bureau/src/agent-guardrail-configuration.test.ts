@@ -119,6 +119,36 @@ async function passes(validator: OutputValidator, reply: string): Promise<boolea
   return result.valid;
 }
 
+describe('createAgentContributions, a host-contributed factory', () => {
+  const validate = async () => ({ valid: true, category: 'ok', confidence: 1 });
+
+  // COR-2118 — plugin composition refuses a malformed factory at setup; the host's own
+  // contributions are held to the same contract, so one fails fast instead of at a run.
+  it.each([
+    ['no configuration schema', { configuration: null, create: () => ({ name: 'x', validate }) }],
+    ['a configuration that is not a schema', { configuration: {}, create: () => ({}) }],
+    ['a create that is not a function', { configuration: z.object({}), create: 'build' }],
+  ])('refuses a factory with %s', (_, shape) => {
+    expect(() =>
+      createAgentContributions([
+        {
+          plugin: 'host',
+          guardrails: {
+            output: [{ name: 'scan', description: 'Scans.', ...shape } as never],
+          },
+        },
+      ]),
+    ).toThrow(/"host:scan" is a factory without a configuration schema and a create function/);
+  });
+
+  it('accepts a well-formed factory', () => {
+    expect(
+      createAgentContributions([{ plugin: 'host', guardrails: { output: [limitFactory] } }])
+        .guardrails.size,
+    ).toBe(1);
+  });
+});
+
 describe('a guardrail factory an agent configures', () => {
   it('builds a guardrail per configuration, so two agents judge one reply differently', async () => {
     const reply = 'x'.repeat(15);
