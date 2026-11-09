@@ -11,8 +11,10 @@ import {
   commentPageLimit,
   createClient,
   LinearError,
+  missingCountLines,
   normalizeMarkdown,
   openBlockers,
+  projectPageLimit,
   run,
   type FetchLike,
 } from './linear.ts';
@@ -82,6 +84,43 @@ function fakeLinear() {
     },
   ];
   const comments: FakeComment[] = [];
+  const projectStatuses = [
+    { id: 'ps-backlog', name: 'Backlog' },
+    { id: 'ps-doing', name: 'In Progress' },
+    { id: 'ps-done', name: 'Completed' },
+  ];
+  const projects = [
+    {
+      id: 'proj-1',
+      slugId: 'slug-one',
+      name: 'Alpha',
+      statusId: 'ps-backlog',
+      updateIds: [] as string[],
+    },
+    {
+      id: 'proj-2',
+      slugId: 'slug-two',
+      name: 'Beta',
+      statusId: 'ps-doing',
+      updateIds: [] as string[],
+    },
+    {
+      id: 'proj-3',
+      slugId: 'slug-three',
+      name: 'Beta',
+      statusId: 'ps-doing',
+      updateIds: [] as string[],
+    },
+  ];
+  const projectUpdates: {
+    id: string;
+    projectId: string;
+    health: string;
+    body: string;
+    createdAt: string;
+  }[] = [];
+  /** State types of the issues in `proj-1`, in addition to COR-1 (unstarted). */
+  const extraProjectIssueTypes: string[] = [];
   const relations: { type: string; issueId: string; relatedIssueId: string }[] = [];
   const log: {
     operation: string;
@@ -103,6 +142,14 @@ function fakeLinear() {
     endlessComments: false,
     /** More relations than one page holds, in either direction. */
     pagedRelations: false,
+    /** `projectUpdate` answers success without changing the status. */
+    ignoreProjectStatus: false,
+    /** A created project update comes back with a changed body. */
+    mangleProjectUpdate: false,
+    /** A created project update comes back with another health. */
+    changeProjectHealth: false,
+    /** More issues, projects or statuses than the pages the reader will walk. */
+    endlessProjectPages: false,
   };
   let counter = 100;
 
@@ -122,6 +169,11 @@ function fakeLinear() {
     identifier: issue.identifier,
     title: issue.title,
     state: states.find((state) => state.id === issue.stateId),
+  });
+
+  const pageInfo = (hasNextPage = switches.endlessProjectPages, endCursor = 'more') => ({
+    hasNextPage,
+    endCursor: hasNextPage ? endCursor : null,
   });
 
   function handle(operation: string, variables: Record<string, any>): unknown {
@@ -308,6 +360,87 @@ function fakeLinear() {
         if (!switches.dropRelation) relations.push(variables['input']);
         return { issueRelationCreate: { success: true } };
       }
+      case 'ProjectList':
+        return {
+          projects: {
+            nodes: projects.map(({ id, name, slugId }) => ({ id, name, slugId })),
+            pageInfo: pageInfo(),
+          },
+        };
+      case 'ProjectRead': {
+        const project = projects.find((candidate) => candidate.id === variables['id']);
+        if (project === undefined) return { project: null };
+        const latest = projectUpdates.filter((update) => update.projectId === project.id).at(-1);
+        return {
+          project: {
+            id: project.id,
+            name: project.name,
+            slugId: project.slugId,
+            status: projectStatuses.find((status) => status.id === project.statusId) ?? null,
+            lastUpdate: latest === undefined ? null : { id: latest.id, health: latest.health },
+          },
+        };
+      }
+      case 'ProjectIssues': {
+        const project = projects.find((candidate) => candidate.id === variables['id']);
+        if (project === undefined) return { project: null };
+        const nodes = [
+          ...issues
+            .filter((issue) => issue.projectId === project.id)
+            .map((issue) => ({
+              state: { type: states.find((s) => s.id === issue.stateId)!.type },
+            })),
+          ...(project.id === 'proj-1'
+            ? extraProjectIssueTypes.map((type) => ({ state: { type } }))
+            : []),
+        ];
+        // Two issues per page, so a count has to follow the cursor.
+        const start = variables['after'] === null ? 0 : Number(variables['after']);
+        const end = start + 2;
+        return {
+          project: {
+            issues: {
+              nodes: nodes.slice(start, end),
+              pageInfo: pageInfo(end < nodes.length || switches.endlessProjectPages, String(end)),
+            },
+          },
+        };
+      }
+      case 'ProjectStatuses':
+        return { projectStatuses: { nodes: projectStatuses, pageInfo: pageInfo() } };
+      case 'ProjectSetStatus': {
+        const project = projects.find((candidate) => candidate.id === variables['id'])!;
+        if (!switches.ignoreProjectStatus) project.statusId = variables['statusId'];
+        return { projectUpdate: { success: true } };
+      }
+      case 'ProjectUpdateMake': {
+        const input = variables['input'];
+        const update = {
+          id: `pu-${(counter += 1)}`,
+          projectId: input.projectId,
+          health: switches.changeProjectHealth ? 'offTrack' : input.health,
+          body: switches.mangleProjectUpdate
+            ? `${input.body}!!`
+            : String(input.body).replace(/^\* /gm, '- ').replace(/_/g, '\\_'),
+          createdAt: '2026-11-09T10:00:00Z',
+        };
+        projectUpdates.push(update);
+        return { projectUpdateCreate: { success: true, projectUpdate: { id: update.id } } };
+      }
+      case 'ProjectUpdateRead': {
+        const update = projectUpdates.find((candidate) => candidate.id === variables['id']);
+        return {
+          projectUpdate:
+            update === undefined
+              ? null
+              : {
+                  id: update.id,
+                  body: update.body,
+                  health: update.health,
+                  project: { id: update.projectId },
+                },
+        };
+      }
       default:
         throw new Error(`fake Linear: unhandled operation ${operation}`);
     }
@@ -341,6 +474,9 @@ function fakeLinear() {
     log,
     switches,
     states,
+    projects,
+    projectUpdates,
+    extraProjectIssueTypes,
   };
 }
 
@@ -1020,5 +1156,255 @@ describe('usage', () => {
       UsageError,
     );
     expect(fake.log).toHaveLength(0);
+  });
+});
+
+const countLines = [
+  'Open: 10',
+  'Ready: 1',
+  'Done this run: 2',
+  'Batches merged: 2',
+  'Batches running: 0',
+  'Blockers: COR-2267',
+].join('\n');
+
+describe('project-read', () => {
+  test('prints name, status, latest update health and issue counts by state type, across pages', async () => {
+    const fake = fakeLinear();
+    fake.extraProjectIssueTypes.push('completed', 'started', 'backlog', 'canceled', 'triage');
+    fake.projectUpdates.push({
+      id: 'pu-1',
+      projectId: 'proj-1',
+      health: 'atRisk',
+      body: 'x',
+      createdAt: '2026-11-08T10:00:00Z',
+    });
+    const result = await run(['project-read', 'Alpha'], dependencies(fake));
+    expect(result.code).toBe(0);
+    expect(result.output).toBe(
+      'Alpha: status=Backlog health=atRisk issues=6\n  completed=1 started=1 unstarted=1 backlog=1 canceled=1 other=1',
+    );
+    // Six issues at two per page: the count followed the cursor.
+    expect(fake.log.filter((entry) => entry.operation === 'ProjectIssues')).toHaveLength(3);
+    const json = JSON.parse(
+      await runOutput(['project-read', 'Alpha', '--json'], dependencies(fake)),
+    );
+    expect(json).toMatchObject({
+      ok: true,
+      project: 'Alpha',
+      status: 'Backlog',
+      health: 'atRisk',
+      counts: { completed: 1, started: 1, unstarted: 1, backlog: 1, canceled: 1, other: 1 },
+    });
+  });
+
+  test('reports health none for a project without an update, and finds it by id and slug id', async () => {
+    const fake = fakeLinear();
+    expect(await runOutput(['project-read', 'proj-2'], dependencies(fake))).toContain(
+      'Beta: status=In Progress health=none issues=0',
+    );
+    expect(await runOutput(['project-read', 'slug-one'], dependencies(fake))).toContain(
+      'Alpha: status=Backlog',
+    );
+  });
+
+  test('refuses an ambiguous name, naming the candidates, and an unknown one', async () => {
+    const fake = fakeLinear();
+    const ambiguous = await run(['project-read', 'beta'], dependencies(fake));
+    expect(ambiguous.code).toBe(1);
+    expect(ambiguous.output).toContain('ambiguous');
+    expect(ambiguous.output).toContain('slug-two');
+    expect(ambiguous.output).toContain('slug-three');
+    const unknown = await run(['project-read', 'Gamma'], dependencies(fake));
+    expect(unknown.code).toBe(1);
+    expect(unknown.output).toContain('No project "Gamma"; available: "Alpha" (slug-one)');
+    const similar = await run(['project-read', 'alph', '--json'], dependencies(fake));
+    expect(similar.code).toBe(1);
+    expect(JSON.parse(similar.output).error).toContain('similar: "Alpha"');
+  });
+
+  test('refuses to report a partial count when the issues never end', async () => {
+    const fake = fakeLinear();
+    const answer = fake.fetch;
+    // Only the issue pages are endless; the project list is read whole.
+    const result = await run(['project-read', 'proj-1'], {
+      environment: { LINEAR_API_KEY: SECRET },
+      fetch: async (url, init) => {
+        const body = JSON.parse(init.body as string) as { query: string };
+        fake.switches.endlessProjectPages = body.query.includes('ProjectIssues');
+        return answer(url, init);
+      },
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('refusing to report a partial list');
+    expect(fake.log.filter((entry) => entry.operation === 'ProjectIssues')).toHaveLength(
+      projectPageLimit,
+    );
+  });
+});
+
+describe('project-state', () => {
+  test('resolves the status by name, sets it and reads it back', async () => {
+    const fake = fakeLinear();
+    const result = await run(['project-state', 'Alpha', 'in progress'], dependencies(fake));
+    expect(result.code).toBe(0);
+    expect(result.output).toBe('Alpha: Backlog -> In Progress (read back).');
+    expect(fake.projects[0]!.statusId).toBe('ps-doing');
+    const json = JSON.parse(
+      await runOutput(['project-state', 'slug-one', 'Completed', '--json'], dependencies(fake)),
+    );
+    expect(json).toMatchObject({ ok: true, from: 'In Progress', to: 'Completed', verified: true });
+  });
+
+  test('refuses an unknown status, listing the available ones, and writes nothing', async () => {
+    const fake = fakeLinear();
+    const result = await run(['project-state', 'Alpha', 'Shipped'], dependencies(fake));
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('Backlog, Completed, In Progress');
+    expect(fake.log.some((entry) => entry.operation === 'ProjectSetStatus')).toBe(false);
+  });
+
+  test('refuses an ambiguous project before any write', async () => {
+    const fake = fakeLinear();
+    const result = await run(['project-state', 'Beta', 'Completed'], dependencies(fake));
+    expect(result.code).toBe(1);
+    expect(fake.log.some((entry) => entry.operation === 'ProjectSetStatus')).toBe(false);
+  });
+
+  test('exits 1 when the read-back shows the status did not change', async () => {
+    const fake = fakeLinear();
+    fake.switches.ignoreProjectStatus = true;
+    const result = await run(['project-state', 'Alpha', 'Completed'], dependencies(fake));
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('read-back mismatch');
+    expect(result.output).toContain('the status is Backlog, expected Completed');
+  });
+});
+
+describe('project-update', () => {
+  test('creates the update with its health and body and reads it back, normalizing the body', async () => {
+    const fake = fakeLinear();
+    const body = `${countLines}\n\n* a bullet with snake_case`;
+    const result = await run(
+      ['project-update', 'Alpha', '--health', 'atRisk', '--file', file('update.md', body)],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('posted with health atRisk (read back)');
+    expect(fake.projectUpdates).toHaveLength(1);
+    expect(fake.projectUpdates[0]).toMatchObject({ projectId: 'proj-1', health: 'atRisk' });
+    const json = JSON.parse(
+      await runOutput(
+        [
+          'project-update',
+          'slug-one',
+          '--health',
+          'onTrack',
+          '--file',
+          file('second.md', countLines),
+          '--json',
+        ],
+        dependencies(fake),
+      ),
+    );
+    expect(json).toMatchObject({ ok: true, health: 'onTrack', verified: true });
+  });
+
+  test('accepts count lines behind a list marker or bold, and names the ones a body lacks', () => {
+    expect(missingCountLines(countLines)).toEqual([]);
+    expect(
+      missingCountLines(
+        countLines
+          .split('\n')
+          .map((line, index) => (index % 2 === 0 ? `- **${line}` : `* ${line}`))
+          .join('\n'),
+      ),
+    ).toEqual([]);
+    expect(missingCountLines('Open: 1\nReady: 2')).toEqual([
+      'Done this run:',
+      'Batches merged:',
+      'Batches running:',
+      'Blockers:',
+    ]);
+    // A label in the middle of a line is not a count line.
+    expect(missingCountLines(`Total Open: 1\n${countLines.replace('Open: 10\n', '')}`)).toEqual([
+      'Open:',
+    ]);
+  });
+
+  test('exits 1 when the body comes back changed', async () => {
+    const fake = fakeLinear();
+    fake.switches.mangleProjectUpdate = true;
+    const result = await run(
+      ['project-update', 'Alpha', '--health', 'onTrack', '--file', file('u.md', countLines)],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('read-back mismatch');
+  });
+
+  test('exits 1 when the health comes back different', async () => {
+    const fake = fakeLinear();
+    fake.switches.changeProjectHealth = true;
+    const result = await run(
+      ['project-update', 'Alpha', '--health', 'onTrack', '--file', file('u.md', countLines)],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('read-back mismatch');
+  });
+
+  test('exits 1 for an unknown or ambiguous project, creating nothing', async () => {
+    const fake = fakeLinear();
+    for (const project of ['Gamma', 'Beta']) {
+      const result = await run(
+        ['project-update', project, '--health', 'onTrack', '--file', file('u.md', countLines)],
+        dependencies(fake),
+      );
+      expect(result.code).toBe(1);
+    }
+    expect(fake.projectUpdates).toHaveLength(0);
+  });
+});
+
+describe('project command usage', () => {
+  test('rejects bad arguments before any request', async () => {
+    const fake = fakeLinear();
+    const deps = dependencies(fake);
+    const good = file('good.md', countLines);
+    const lacking = file('lacking.md', 'Open: 1\nReady: 2\nDone this run: 0');
+    const refused = async (...args: string[]) =>
+      expect(await throwingRejectionOf(run(args, deps))).toThrow(UsageError);
+    await refused('project-read');
+    await refused('project-read', 'Alpha', 'extra');
+    await refused('project-state', 'Alpha');
+    await refused('project-update', 'Alpha', '--file', good);
+    await refused('project-update', 'Alpha', '--health', 'onTrack');
+    await refused('project-update', 'Alpha', '--health', 'green', '--file', good);
+    await refused('project-update', 'Alpha', '--health', 'onTrack', '--file', lacking);
+    await refused('project-update', 'Alpha', '--health', 'onTrack', '--file', file('e.md', ' '));
+    await refused(
+      'project-update',
+      'Alpha',
+      '--health',
+      'onTrack',
+      '--file',
+      join(sandbox, 'no.md'),
+    );
+    await refused('project-read', 'Alpha', '--health', 'onTrack');
+    await refused('read', 'COR-1', '--health', 'onTrack');
+    expect(fake.log).toHaveLength(0);
+  });
+
+  test('names the missing count lines in the usage error', async () => {
+    const lacking = file('lacking.md', 'Open: 1');
+    const error = await rejectionOf(
+      run(
+        ['project-update', 'Alpha', '--health', 'onTrack', '--file', lacking],
+        dependencies(fakeLinear()),
+      ),
+    );
+    expect(error).toBeInstanceOf(UsageError);
+    expect((error as UsageError).message).toContain('Ready: Done this run: Batches merged:');
   });
 });
