@@ -3,10 +3,12 @@ import { z } from 'zod';
 
 import { createScriptedGenerate } from '../test/scripted-generate';
 import {
+  type DecisionBatchContractCase,
   type DecisionContractCase,
+  runDecisionBatchContract,
   runDecisionModelContract,
 } from '../testing/decision-model-contract.test-support';
-import { decisionScenarios } from '../testing/decision-scenarios';
+import { decisionBatchScenarios, decisionScenarios } from '../testing/decision-scenarios';
 import { llmDecisionModel } from './llm-decision-model';
 import type { DecisionModel, DecisionRequest } from './types';
 
@@ -66,6 +68,50 @@ describe('scripted DecisionModel contract', () => {
         new Map(allKindCases.map((c) => [c.request.question + c.request.kind, c.expected])),
       ),
     allKindCases,
+  );
+});
+
+const batchCases: readonly DecisionBatchContractCase[] = decisionBatchScenarios.map((scenario) => ({
+  name: scenario.name,
+  batch: { context: scenario.context, questions: scenario.questions },
+  expected: scenario.expected,
+}));
+
+describe('scripted DecisionModel batch contract, one question at a time', () => {
+  runDecisionBatchContract(
+    (contractCase) =>
+      scriptedDecisionModel(
+        new Map(
+          [...contractCase.batch.questions].map(([name, question]) => [
+            question.question + question.kind,
+            contractCase.expected.get(name),
+          ]),
+        ),
+      ),
+    batchCases,
+  );
+});
+
+describe('llmDecisionModel batch contract over a scripted generate', () => {
+  runDecisionBatchContract(
+    (contractCase) =>
+      llmDecisionModel({
+        descriptor: { provider: 'anthropic', model: 'claude-haiku-5-5' },
+        generate: createScriptedGenerate(
+          [...contractCase.batch.questions].map(([name, question]) => ({
+            kind: 'respond' as const,
+            response: {
+              content: replyFor({
+                name,
+                request: { ...question },
+                expected: contractCase.expected.get(name),
+              }),
+              toolCalls: [],
+            },
+          })),
+        ),
+      }),
+    batchCases,
   );
 });
 

@@ -1,9 +1,12 @@
 import {
+  assertValidDecisionBatch,
   assertValidDecisionRequest,
   DecisionProviderUnavailableError,
   DecisionSchemaError,
   type DecideOptions,
   type Decision,
+  type DecisionBatch,
+  type DecisionBatchResult,
   type DecisionKind,
   type DecisionModel,
   type DecisionRequest,
@@ -268,7 +271,53 @@ export function createTypesafeJev(
         ...(usage === undefined ? {} : { usage }),
       };
     },
+    async decideBatch(
+      batch: DecisionBatch,
+      decideOptions?: DecideOptions,
+    ): Promise<DecisionBatchResult> {
+      assertValidDecisionBatch(batch);
+      // Snapshot before the first `await`; a structured question throws here, before any request.
+      const asked = [...batch.questions].map(([name, entry]) => ({
+        name,
+        expectation: expectationOf({ ...entry }),
+      }));
+      const state = batch.context ?? '';
+      const { peers, adapter } = await ensureLoaded();
+      // Jev names each answer after its question; positional keys keep caller names off the wire
+      // and away from the response's own fields, such as `meta`.
+      const questions = Object.fromEntries(
+        asked.map(({ expectation }, index) => [wireKey(index), question(peers, expectation)]),
+      );
+      const result = await peers.decide({
+        adapter,
+        state,
+        questions,
+        debug: false,
+        ...(decideOptions?.signal === undefined ? {} : { abortSignal: decideOptions.signal }),
+      });
+      const meta = result['meta'];
+      const usage = usageOf(meta);
+      const model = isRecord(meta) && typeof meta['model'] === 'string' ? meta['model'] : JEV_MODEL;
+      const decisions = new Map<string, Decision<unknown>>();
+      asked.forEach(({ name, expectation }, index) => {
+        const key = wireKey(index);
+        const answer = Object.hasOwn(result, key) ? result[key] : undefined;
+        const { value, probability } = interpret(expectation, answer, usage);
+        decisions.set(name, {
+          value,
+          ...(probability === undefined ? {} : { probability }),
+          provider: PROVIDER,
+          model,
+        });
+      });
+      return { decisions, ...(usage === undefined ? {} : { usage }) };
+    },
   };
+}
+
+/** The name the `index`th question of a batch is sent and answered under. */
+function wireKey(index: number): string {
+  return `q${index}`;
 }
 
 /**

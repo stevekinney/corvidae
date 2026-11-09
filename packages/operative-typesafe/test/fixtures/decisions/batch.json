@@ -1,0 +1,57 @@
+{
+  "scenario": "batch",
+  "exchange": {
+    "path": "/v1/systemone",
+    "requestBody": {
+      "model": "jev-latest",
+      "state": "Hi, I was charged twice for my subscription this month. Please send the money back.",
+      "questions": {
+        "q0": {
+          "type": "noul",
+          "instructions": "Is the customer asking for a refund?"
+        },
+        "q1": {
+          "type": "noul",
+          "instructions": "Is the customer reporting an outage?"
+        },
+        "q2": {
+          "type": "choice",
+          "instructions": "Which team should handle this ticket?",
+          "criteria": {
+            "billing": "Payments, invoices, refunds",
+            "tech": "Bugs, outages, integrations",
+            "sales": "Pricing, upgrades, new accounts"
+          }
+        }
+      }
+    },
+    "status": 200,
+    "responseBody": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "q0": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "q1": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "q2": {
+          "type": "choice",
+          "choice": "billing",
+          "confidence": 1,
+          "probabilities": {
+            "billing": 1,
+            "tech": 0,
+            "sales": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 384,
+        "output_tokens": 73
+      }
+    }
+  }
+}

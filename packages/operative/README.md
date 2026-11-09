@@ -1630,7 +1630,37 @@ A `DecisionModel` answers one question and returns a typed `Decision`. A `Decisi
 
 `llmDecisionModel({ generate, descriptor })` serves all four kinds on any `GenerateFunction` by asking for structured output. It validates the answer, retries once with the bad answer and the validation error appended, and throws `DecisionSchemaError` (with `usage` summed across both attempts) after the second failure. An error thrown by `generate` is a provider error: it is not retried and not wrapped. A `structured` request with a bare Standard Schema (one that cannot describe itself as JSON Schema) asks the model for plain JSON, and the retry does the rest.
 
-`typesafeJev({ apiKey, fetch? })` serves `boolean`, `choice`, and `scale` through TypeSafe's Jev model and reports Jev's probability for the answer. It lives in [`@lostgradient/operative-typesafe`](../operative-typesafe/README.md), which carries the optional `@tanstack/ai` and `@tanstack/ai-typesafe` peers it needs; Operative has no dependency on either. `@lostgradient/operative/decision-testing` exports `runDecisionModelContract` and `decisionScenarios`, the contract every `DecisionModel` runs against itself.
+`typesafeJev({ apiKey, fetch? })` serves `boolean`, `choice`, and `scale` through TypeSafe's Jev model and reports Jev's probability for the answer. It lives in [`@lostgradient/operative-typesafe`](../operative-typesafe/README.md), which carries the optional `@tanstack/ai` and `@tanstack/ai-typesafe` peers it needs; Operative has no dependency on either. `@lostgradient/operative/decision-testing` exports `runDecisionModelContract` and `decisionScenarios`, the contract every `DecisionModel` runs against itself, and `runDecisionBatchContract` and `decisionBatchScenarios`, the same for batches.
+
+#### Several questions about one context
+
+`decideBatch(model, batch)` asks every question in a `DecisionBatch` (one `context`, and a `Map` of named questions, each a `DecisionRequest` without its own context) and returns a `DecisionBatchResult`: each question's `Decision` under its name, and the `usage` of the whole batch. A model with a `decideBatch` method answers in one provider request, so the context is sent and billed once; `typesafeJev` does, and Jev bills each extra yes/no question at about 17 input tokens. Any other model, including a wrapper that does not forward the method, is asked one question at a time through `decide`, and the usage is summed. A decision in a batch carries no `usage` of its own. The batch is validated (`assertValidDecisionBatch`) and copied before the first `await`, every question's kind must be in `model.kinds`, and the first failing question rejects the whole batch.
+
+```ts
+import { decideBatch, type DecisionModel } from '@lostgradient/operative';
+
+declare const model: DecisionModel;
+
+const { decisions, usage } = await decideBatch(model, {
+  context: 'Hi, I was charged twice this month. Please send the money back.',
+  questions: new Map([
+    ['refund', { kind: 'boolean', question: 'Is the customer asking for a refund?' }],
+    [
+      'team',
+      {
+        kind: 'choice',
+        question: 'Which team should handle this?',
+        options: [
+          { key: 'billing', label: 'Payments, invoices, refunds' },
+          { key: 'tech', label: 'Bugs, outages, integrations' },
+        ],
+      },
+    ],
+  ]),
+});
+decisions.get('refund')?.value; // true
+usage?.prompt; // input tokens for the whole batch
+```
 
 ### Multi-Agent Patterns
 
