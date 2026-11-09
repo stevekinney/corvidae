@@ -43,7 +43,7 @@ const plugin = definePlugin({
       }),
     ],
     guardrails: {
-      inputDetectors: [
+      input: [
         {
           name: 'scan',
           detect: async () => ({ triggered: false, confidence: 0, category: 'clean' }),

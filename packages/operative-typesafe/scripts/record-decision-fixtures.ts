@@ -15,7 +15,11 @@
 // in operative-typesafe that may read the environment, so the environment read stays out of the
 // package's runtime source.
 
-import { decisionScenarios } from '@lostgradient/operative/decision-testing';
+import { decideBatch } from '@lostgradient/operative';
+import {
+  decisionBatchScenarios,
+  decisionScenarios,
+} from '@lostgradient/operative/decision-testing';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -54,21 +58,9 @@ async function record(): Promise<void> {
   const apiKey = resolveApiKey();
   mkdirSync(FIXTURE_DIRECTORY, { recursive: true });
 
-  for (const scenario of decisionScenarios) {
+  for (const scenario of decisionScenarios.filter((candidate) => wanted(candidate.name))) {
     const exchanges: CapturedExchange[] = [];
-    const recordingFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      const response = await fetch(input, init);
-      const url = new URL(input instanceof Request ? input.url : String(input));
-      exchanges.push({
-        path: url.pathname,
-        requestBody: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
-        status: response.status,
-        responseBody: JSON.parse(await response.clone().text()),
-      });
-      return response;
-    }) as typeof fetch;
-
-    const model = typesafeJev({ apiKey, fetch: recordingFetch });
+    const model = typesafeJev({ apiKey, fetch: recordingFetchInto(exchanges) });
     const decision = await model.decide(scenario.request);
     if (decision.value !== scenario.expected) {
       throw new Error(
@@ -79,13 +71,58 @@ async function record(): Promise<void> {
       throw new Error(`Scenario "${scenario.name}" made ${exchanges.length} requests, expected 1.`);
     }
 
-    const text = `${JSON.stringify({ scenario: scenario.name, exchange: exchanges[0] }, null, 2)}\n`;
-    if (text.includes(apiKey)) {
-      throw new Error(`Scenario "${scenario.name}" would write the API key; no fixture written.`);
-    }
-    writeFileSync(join(FIXTURE_DIRECTORY, `${scenario.name}.json`), text);
-    process.stdout.write(`recorded ${scenario.name}\n`);
+    writeFixture(apiKey, scenario.name, exchanges[0]!);
   }
+
+  for (const scenario of decisionBatchScenarios.filter((candidate) => wanted(candidate.name))) {
+    const exchanges: CapturedExchange[] = [];
+    const model = typesafeJev({ apiKey, fetch: recordingFetchInto(exchanges) });
+    const result = await decideBatch(model, {
+      context: scenario.context,
+      questions: scenario.questions,
+    });
+    for (const [name, expected] of scenario.expected) {
+      const actual = result.decisions.get(name)?.value;
+      if (actual !== expected) {
+        throw new Error(
+          `Batch "${scenario.name}" answered ${JSON.stringify(actual)} to "${name}", expected ${JSON.stringify(expected)}; no fixture written.`,
+        );
+      }
+    }
+    if (exchanges.length !== 1) {
+      throw new Error(`Batch "${scenario.name}" made ${exchanges.length} requests, expected 1.`);
+    }
+    writeFixture(apiKey, scenario.name, exchanges[0]!);
+  }
+}
+
+/** Every scenario when no names are given; otherwise only the scenarios the arguments name. */
+function wanted(name: string): boolean {
+  const names = process.argv.slice(2);
+  return names.length === 0 || names.includes(name);
+}
+
+function recordingFetchInto(exchanges: CapturedExchange[]): typeof fetch {
+  return (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const response = await fetch(input, init);
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    exchanges.push({
+      path: url.pathname,
+      requestBody: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
+      status: response.status,
+      responseBody: JSON.parse(await response.clone().text()),
+    });
+    return response;
+  }) as typeof fetch;
+}
+
+function writeFixture(apiKey: string, name: string, exchange: CapturedExchange): void {
+  const text = `${JSON.stringify({ scenario: name, exchange }, null, 2)}\n`;
+  if (text.includes(apiKey)) {
+    throw new Error(`Scenario "${name}" would write the API key; no fixture written.`);
+  }
+  writeFileSync(join(FIXTURE_DIRECTORY, `${name}.json`), text);
+  process.stdout.write(`recorded ${name}\n`);
 }
 
 await record().catch((error: unknown) => {

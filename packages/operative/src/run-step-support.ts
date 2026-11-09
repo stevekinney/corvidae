@@ -156,26 +156,33 @@ export function resultRowBatch(
  * explicit subset when other calls are still legitimately in flight (e.g.
  * calls a `beforeToolExecution` hook filtered out while `callsToExecute`
  * still awaits execution).
+ *
+ * `reason` is the message every sealed result carries, or a function that answers one call with
+ * its own result (COR-2104: a call a guardrail refused carries a `GUARDRAIL_BLOCKED` error).
  */
 export async function sealDanglingToolCalls(
   conversation: Conversation,
   collectAsync: boolean,
-  reason: string,
+  reason: string | ((call: ToolCall) => ToolExecutionResult),
   calls: ReadonlyArray<ToolCall> = conversation.getPendingToolCalls(),
   rowScope?: ResultRowScope,
   timing?: ToolTimingRecorder,
 ): Promise<ToolExecutionResult[]> {
   if (calls.length === 0) return [];
 
-  const danglingResults = calls.map((tc) => ({
-    callId: tc.id,
-    toolCallId: tc.id,
-    ...(tc.providerCallId === undefined ? {} : { providerCallId: tc.providerCallId }),
-    toolName: tc.name,
-    outcome: 'error' as const,
-    content: reason,
-    result: reason,
-  }));
+  const danglingResults: ToolExecutionResult[] = calls.map((tc) =>
+    typeof reason === 'function'
+      ? reason(tc)
+      : {
+          callId: tc.id,
+          toolCallId: tc.id,
+          ...(tc.providerCallId === undefined ? {} : { providerCallId: tc.providerCallId }),
+          toolName: tc.name,
+          outcome: 'error' as const,
+          content: reason,
+          result: reason,
+        },
+  );
 
   timing?.endAll();
   const batch = resultRowBatch(rowScope, danglingResults, timing);

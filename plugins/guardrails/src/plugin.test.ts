@@ -6,6 +6,7 @@ import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/
 import { agentFileDirectory } from '@lostgradient/bureau/sources';
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
+import { guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -79,7 +80,7 @@ describe('guardrails plugin', () => {
       configuration: guardrails.configuration!.parse({}),
       secrets: { get: async () => undefined },
     } as never);
-    expect(result.guardrails?.outputValidators?.map((validator) => validator.name)).toEqual([
+    expect(result.guardrails?.output?.map((validator) => guardrailOf(validator).name)).toEqual([
       'code-safety',
       'grounding',
     ]);

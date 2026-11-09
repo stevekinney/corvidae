@@ -9,6 +9,7 @@ import type { AgentSkills, AgentSkillsRun } from './agent-policy';
 import { resolveAgentGuardrails, resolvesOwnGuardrails } from './agent-policy';
 import { createAgent } from './create-agent';
 import { createDefaultGuardrailsPreset } from './guardrails/default-preset';
+import { guardrailOf } from './guardrails/guardrail-entries';
 import type { GuardrailsOptions, InputDetector, OutputValidator } from './guardrails/types';
 import { type DefinitionResolvingAgent, OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
 import type { GenerateFunction, RunOptions } from './types';
@@ -72,11 +73,11 @@ describe('resolveAgentGuardrails', () => {
     const resolved = resolveAgentGuardrails(undefined, undefined);
     const preset = createDefaultGuardrailsPreset();
     expect(resolved?.mode).toBe('tripwire');
-    expect(resolved?.input?.detectors.map((detector) => detector.name)).toEqual(
-      preset.input?.detectors.map((detector) => detector.name),
+    expect(resolved?.input?.detectors.map((detector) => guardrailOf(detector).name)).toEqual(
+      preset.input?.detectors.map((detector) => guardrailOf(detector).name),
     );
-    expect(resolved?.output?.validators.map((validator) => validator.name)).toEqual(
-      preset.output?.validators.map((validator) => validator.name),
+    expect(resolved?.output?.validators.map((validator) => guardrailOf(validator).name)).toEqual(
+      preset.output?.validators.map((validator) => guardrailOf(validator).name),
     );
   });
 });
@@ -98,12 +99,12 @@ describe('guardrail additions', () => {
     });
     const preset = createDefaultGuardrailsPreset();
     expect(resolved?.mode).toBe('tripwire');
-    expect(resolved?.input?.detectors.map((detector) => detector.name)).toEqual([
-      ...(preset.input?.detectors.map((detector) => detector.name) ?? []),
+    expect(resolved?.input?.detectors.map((detector) => guardrailOf(detector).name)).toEqual([
+      ...(preset.input?.detectors.map((detector) => guardrailOf(detector).name) ?? []),
       'cor-1367-sentinel',
     ]);
-    expect(resolved?.output?.validators.map((validator) => validator.name)).toEqual([
-      ...(preset.output?.validators.map((validator) => validator.name) ?? []),
+    expect(resolved?.output?.validators.map((validator) => guardrailOf(validator).name)).toEqual([
+      ...(preset.output?.validators.map((validator) => guardrailOf(validator).name) ?? []),
       'cor-1877-extra-output',
     ]);
   });
@@ -225,6 +226,11 @@ describe('createAgent guardrails', () => {
         source: 'agent',
       },
       { hookName: 'validateResponse', id: 'agent:guardrails-validate-response', source: 'agent' },
+      {
+        hookName: 'beforeToolExecution',
+        id: 'agent:guardrails-before-tool-execution',
+        source: 'agent',
+      },
     ]);
   });
 
@@ -304,6 +310,7 @@ describe('createAgent skills seam', () => {
       'agent:guardrails-prepare-step',
       'agent:guardrails-validate-tool-result',
       'agent:guardrails-validate-response',
+      'agent:guardrails-before-tool-execution',
     ]);
   });
 

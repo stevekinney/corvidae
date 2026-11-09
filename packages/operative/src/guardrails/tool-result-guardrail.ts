@@ -126,6 +126,19 @@ export function guardrailBlockedMessage(guardrailName: string): string {
 export function createToolResultGuardrail(
   options: ToolResultGuardrailOptions,
 ): ValidateToolResultHook {
+  return toolResultGuardrailHook(options, options.detectors.length > 0);
+}
+
+/**
+ * {@link createToolResultGuardrail}, with `inspectsMedia` deciding whether it also refuses a media
+ * body no detector can decode, which it does only where some detector reads the result.
+ * `createGuardrails` runs the detectors of each action apart (COR-2104), and only the group's own
+ * action answers for what no detector read, even when every detector carries an action of its own.
+ */
+export function toolResultGuardrailHook(
+  options: ToolResultGuardrailOptions,
+  inspectsMedia: boolean,
+): ValidateToolResultHook {
   const {
     detectors,
     action = 'block',
@@ -137,7 +150,8 @@ export function createToolResultGuardrail(
   return async (result, context) => {
     // A call waiting on approval or input has not run: what it carries is the toolbox's request,
     // not a tool's answer, and replacing it would lose the pending approval.
-    if (detectors.length === 0 || result.outcome === 'action_required') return;
+    if (result.outcome === 'action_required') return;
+    if (detectors.length === 0 && !inspectsMedia) return;
     const detectorContext: DetectorContext = {
       step: context.step,
       conversationLength: context.conversation.getMessages().length,
@@ -165,7 +179,7 @@ export function createToolResultGuardrail(
     // Text a provider would read but no detector could decode is a finding of its own, handled as
     // the input guardrail handles it: a detector's finding is reported first, and the result is
     // refused whatever the action, because warning about it would show the model what nothing read.
-    const undecodable = uninspectable[0];
+    const undecodable = inspectsMedia ? uninspectable[0] : undefined;
     const event: GuardrailTriggeredEvent | undefined =
       flagged ??
       (undecodable === undefined

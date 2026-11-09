@@ -10,6 +10,8 @@ export type {
   PluginInterceptor,
   PluginInterceptorHook,
   PluginInterceptorHookOptions,
+  PluginMemoryGate,
+  PluginMemoryGuardrail,
   PluginPanel,
   PluginProvider,
   PluginReaction,
@@ -19,6 +21,8 @@ export type {
   PluginTriggerContext,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';
+export { guardrailId } from './guardrail-family.ts';
+export type { GuardrailFamily } from './guardrail-family.ts';
 export type {
   PluginAgentListing,
   PluginGoalRequest,

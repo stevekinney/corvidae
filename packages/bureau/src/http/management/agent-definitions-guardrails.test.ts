@@ -25,7 +25,7 @@ const contributions = createAgentContributions([
   {
     plugin: 'x',
     guardrails: {
-      inputDetectors: [
+      input: [
         {
           name: 'check',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),

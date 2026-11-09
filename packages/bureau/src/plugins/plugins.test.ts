@@ -487,14 +487,22 @@ describe('plugin composition', () => {
     expect(refused).toMatchObject({ code: 'BAD_REQUEST' });
   });
 
-  it('builds memory from a factory with the detectors and embedders plugins contribute', async () => {
+  it('builds memory from a factory with the guardrails and embedders plugins contribute, split by gate', async () => {
     const received: unknown[] = [];
+    const detect = async () => ({ detected: false }) as never;
     const remembering = definePlugin({
       name: 'remembering',
       version: '1.0.0',
       description: 'Contributes to memory.',
       setup: () => ({
-        memoryDetectors: [{ name: 'tags', detect: async () => ({ detected: false }) as never }],
+        guardrails: {
+          memory: [
+            { name: 'both', detect },
+            { name: 'also-both', gates: ['admission', 'recall'], detect },
+            { name: 'writes', gates: ['admission'], detect },
+            { name: 'reads', gates: ['recall'], detect },
+          ],
+        },
         embedders: [
           { name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => [0, 0, 0, 1]) },
         ],
@@ -504,15 +512,21 @@ describe('plugin composition', () => {
       plugins: [entry(remembering)],
       memory: (contributions) => {
         received.push({
-          detectors: contributions.detectors.map(({ name }) => name),
+          admission: contributions.guardrails.admission.map(({ name }) => name),
+          recall: contributions.guardrails.recall.map(({ name }) => name),
           embedders: contributions.embedders.map(({ id, dimension }) => ({ id, dimension })),
         });
         return undefined as never;
       },
     });
 
+    // A guardrail with no `gates` runs at both; one gated to `recall` does not run at admission.
     expect(received).toEqual([
-      { detectors: ['tags'], embedders: [{ id: 'remembering:small', dimension: 4 }] },
+      {
+        admission: ['both', 'also-both', 'writes'],
+        recall: ['both', 'also-both', 'reads'],
+        embedders: [{ id: 'remembering:small', dimension: 4 }],
+      },
     ]);
   });
 });

@@ -1,6 +1,12 @@
-import { DecisionProviderUnavailableError, type DecisionRequest } from '@lostgradient/operative';
 import {
+  decideBatch,
+  DecisionProviderUnavailableError,
+  type DecisionRequest,
+} from '@lostgradient/operative';
+import {
+  decisionBatchScenarios,
   decisionScenarios,
+  runDecisionBatchContract,
   runDecisionModelContract,
   type DecisionContractCase,
 } from '@lostgradient/operative/decision-testing';
@@ -92,6 +98,17 @@ describe('typesafeJev contract over recorded fixtures', () => {
     );
   });
 
+  describe('batch contract', () => {
+    runDecisionBatchContract(
+      () => typesafeJev({ apiKey: REPLAY_KEY, fetch: replayFetch }),
+      decisionBatchScenarios.map((scenario) => ({
+        name: scenario.name,
+        batch: { context: scenario.context, questions: scenario.questions },
+        expected: scenario.expected,
+      })),
+    );
+  });
+
   it('replays every recorded fixture and calls no other endpoint', () => {
     expect([...used].toSorted()).toEqual(fixtures.map((fixture) => fixture.scenario).toSorted());
     expect(unmatched).toEqual([]);
@@ -176,6 +193,75 @@ describe('typesafeJev contract over recorded fixtures', () => {
     const decision = await model.decide({ ...choiceRequest, options });
 
     expect(decision.value).toBe('billing');
+  });
+
+  it('answers a batch in one request, billing the shared context once', async () => {
+    let requests = 0;
+    const counting = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requests += 1;
+      return replayFetch(input, init);
+    }) as typeof fetch;
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: counting });
+    const scenario = decisionBatchScenarios.find((candidate) => candidate.name === 'batch')!;
+    const fixture = fixtures.find((candidate) => candidate.scenario === 'batch')!;
+    const body = fixture.exchange.responseBody as {
+      answers: { q1: { noul: number } };
+      usage: { input_tokens: number; output_tokens: number };
+    };
+
+    const result = await decideBatch(model, {
+      context: scenario.context,
+      questions: scenario.questions,
+    });
+
+    expect(requests).toBe(1);
+    expect(result.usage).toEqual({
+      prompt: body.usage.input_tokens,
+      completion: body.usage.output_tokens,
+      total: body.usage.input_tokens + body.usage.output_tokens,
+    });
+    // `outage` is answered false, so its probability is that of "no".
+    expect(result.decisions.get('outage')?.value).toBe(false);
+    expect(result.decisions.get('outage')?.probability).toBeCloseTo(1 - body.answers.q1.noul, 10);
+  });
+
+  it('refuses a structured question in a batch before sending anything', async () => {
+    let requests = 0;
+    const counting = (async () => {
+      requests += 1;
+      throw new Error('must not be called');
+    }) as unknown as typeof fetch;
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: counting });
+    const { context: _context, ...structured } = structuredRequest;
+
+    const failure = await model.decideBatch!({
+      questions: new Map([['triage', structured]]),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(TypeError);
+    expect(requests).toBe(0);
+  });
+
+  it('rejects, naming the question, when Jev leaves a batch question unanswered', async () => {
+    const scenario = decisionBatchScenarios.find((candidate) => candidate.name === 'batch')!;
+    const fixture = fixtures.find((candidate) => candidate.scenario === 'batch')!;
+    const recorded = fixture.exchange.responseBody as { answers: Record<string, unknown> };
+    const { q1: _dropped, ...answers } = recorded.answers;
+    const partial = (async () =>
+      new Response(JSON.stringify({ ...recorded, answers }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as unknown as typeof fetch;
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: partial });
+
+    const failure = await decideBatch(model, {
+      context: scenario.context,
+      questions: scenario.questions,
+    }).catch((error: unknown) => error);
+
+    // The peer refuses a response that omits a question it asked, before the adapter reads it.
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('"q1"');
   });
 
   it('rejects an empty API key at construction, before anything is loaded', () => {

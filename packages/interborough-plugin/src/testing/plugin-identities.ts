@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 
+import { guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { type DefinitionSchema, definitionSchemaToJsonSchema } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { PluginContributions } from '../contributions.ts';
+import type { GuardrailFamily } from '../guardrail-family.ts';
 import type { PluginHostApi } from '../host-api.ts';
 import type { PluginDescriptor } from '../plugin-descriptor.ts';
 
@@ -216,12 +218,21 @@ function named(item: Named, kind: string, schema?: unknown) {
 }
 
 /**
+ * A guardrail's entry: kind `guardrail`, named `family/name`, so the id is `plugin:family/name`.
+ * Names are claimed per family, which lets one detector serve `input` and `memory` under one name.
+ */
+function guardrailNamed(item: Named, family: GuardrailFamily) {
+  return named({ ...item, name: `${family}/${item.name}` }, 'guardrail');
+}
+
+/**
  * The identities a plugin holds: its configuration schema, and for every contribution that a
  * record, file or setting can name, its id, version and schema digest. A contribution that
  * declares no version of its own takes the plugin's. The entries are ordered, so equal plugins
- * produce equal snapshots. Guardrails are listed by the name an agent file lists them under
- * (`input-guardrail` and `output-guardrail`, with no schema). Decision routers and memory detectors
- * carry no name a record or file can refer to, so they are not listed.
+ * produce equal snapshots. Every guardrail is a `guardrail` with no schema, and its id records its
+ * family (`plugin:input/name`, `plugin:output/name`, `plugin:tools/name`, `plugin:memory/name`); an
+ * agent file lists an input, output or tool-call guardrail as `plugin:name`. Decision routers carry no name a record or file can
+ * refer to, so they are not listed.
  */
 export async function pluginIdentities(
   descriptor: PluginDescriptor<z.ZodType>,
@@ -287,13 +298,23 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
-      contributions.guardrails?.inputDetectors,
-      (detector) => named(detector, 'input-guardrail'),
+      contributions.guardrails?.input,
+      (entry) => guardrailNamed(guardrailOf(entry), 'input'),
       descriptor,
     ),
     ...entriesOf(
-      contributions.guardrails?.outputValidators,
-      (validator) => named(validator, 'output-guardrail'),
+      contributions.guardrails?.output,
+      (entry) => guardrailNamed(guardrailOf(entry), 'output'),
+      descriptor,
+    ),
+    ...entriesOf(
+      contributions.guardrails?.tools,
+      (validator) => guardrailNamed(validator, 'tools'),
+      descriptor,
+    ),
+    ...entriesOf(
+      contributions.guardrails?.memory,
+      (detector) => guardrailNamed(detector, 'memory'),
       descriptor,
     ),
     ...entriesOf(contributions.scorers, (judge) => named(judge, 'scorer'), descriptor),

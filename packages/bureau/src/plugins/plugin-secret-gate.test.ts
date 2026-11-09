@@ -9,12 +9,15 @@ import {
 } from '@lostgradient/interborough-plugin';
 import {
   createAgent,
+  createToolCallGuardrail,
+  guardrailOf,
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
 } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog';
@@ -277,8 +280,18 @@ describe('the secret-gating outcome matrix', () => {
           },
         ],
         guardrails: {
-          inputDetectors: [{ name: 'scan', detect: note('guardrail-input', {}) as never }],
-          outputValidators: [{ name: 'check', validate: note('guardrail-output', {}) as never }],
+          // Wrapped with an action of its own, which the gate keeps (COR-2104).
+          input: [
+            {
+              guardrail: { name: 'scan', detect: note('guardrail-input', {}) as never },
+              action: 'warn',
+            },
+          ],
+          output: [{ name: 'check', validate: note('guardrail-output', {}) as never }],
+          tools: [{ name: 'cap', action: 'block', validate: note('guardrail-tools', {}) as never }],
+          memory: [
+            { name: 'tags', gates: ['recall'], detect: note('memory-detector', {}) as never },
+          ],
         },
         // A handler at every point of the hook map, each of which must refuse.
         interceptors: [
@@ -301,7 +314,6 @@ describe('the secret-gating outcome matrix', () => {
           },
         ],
         embedders: [{ name: 'small', dimensions: 1, embed: note('embedder', [[1]]) }],
-        memoryDetectors: [{ name: 'tags', detect: note('memory-detector', {}) as never }],
         scorers: [
           {
             name: 'judge',
@@ -336,9 +348,11 @@ describe('the secret-gating outcome matrix', () => {
       validator: () =>
         gatedResult.validators?.[0]?.validate({} as never, new AbortController().signal),
       'guardrail-input': () =>
-        gatedResult.guardrails?.inputDetectors?.[0]?.detect('x', {} as never),
+        guardrailOf(gatedResult.guardrails!.input![0]!).detect('x', {} as never),
       'guardrail-output': () =>
-        gatedResult.guardrails?.outputValidators?.[0]?.validate('x', {} as never),
+        guardrailOf(gatedResult.guardrails!.output![0]!).validate('x', {} as never),
+      'guardrail-tools': () =>
+        gatedResult.guardrails?.tools?.[0]?.validate({} as never, {} as never),
       ...Object.fromEntries(
         INTERCEPTOR_POINTS.map((point) => [
           `interceptor ${point}`,
@@ -352,7 +366,7 @@ describe('the secret-gating outcome matrix', () => {
       'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
-      'memory-detector': () => gatedResult.memoryDetectors?.[0]?.detect('x', {} as never),
+      'memory-detector': () => gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never),
       scorer: () => gatedResult.scorers?.[0]?.evaluate({} as never),
       formatter: () => gatedResult.formatters?.[0]?.format(event),
       agent: () => gatedResult.agents?.[0]?.agent.run('Go.'),
@@ -389,7 +403,11 @@ describe('the secret-gating outcome matrix', () => {
 
     expect(await outcomes()).toEqual(missing);
     expect(called).toEqual([]);
-    expect(await gatedResult.memoryDetectors?.[0]?.detect('x', {} as never)).toMatchObject({
+    // The gated memory guardrail still says where it runs, and a gated guardrail keeps its action.
+    expect(gatedResult.guardrails?.memory?.[0]?.gates).toEqual(['recall']);
+    expect(gatedResult.guardrails?.input?.[0]).toMatchObject({ action: 'warn' });
+    expect(gatedResult.guardrails?.tools?.[0]).toMatchObject({ name: 'cap', action: 'block' });
+    expect(await gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never)).toMatchObject({
       triggered: false,
       confidence: 0,
     });
@@ -543,5 +561,42 @@ describe('the secret-gating outcome matrix', () => {
       'the gate did not apply the other key',
     );
     expect(gate.missing()).toEqual([KEY]);
+  });
+});
+
+/**
+ * COR-2104 — a needs-setup plugin's tool-call validator follows the guardrail rule: its `validate`
+ * refuses, and the tool-call guardrail contains the refusal as it contains any validator that
+ * throws (as the input pipeline contains a detector's), so it finds nothing and the call runs. Once
+ * the secret is saved it judges calls again.
+ */
+describe('a needs-setup plugin’s tool-call validator', () => {
+  it('finds nothing while its plugin needs setup, and refuses calls once the secret is saved', async () => {
+    const { gate, secrets } = await gateOver();
+    const gatedResult = gatedContributions<PluginContributions>(
+      {
+        guardrails: {
+          tools: [
+            {
+              name: 'cap',
+              action: 'block',
+              validate: async () => ({ valid: false, category: 'limit', confidence: 1 }),
+            },
+          ],
+        },
+      },
+      gate,
+      (name) => `kit:${name}`,
+    );
+    const hook = createToolCallGuardrail({ validators: gatedResult.guardrails?.tools ?? [] });
+    const call = { id: 'call-1', name: 'refund', arguments: { amount: 150 } };
+    const judge = () =>
+      hook({ conversation: new Conversation(), step: 0, toolCalls: [call], refuse: () => {} });
+
+    expect(await judge()).toEqual([call]);
+
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    expect(await judge()).toEqual([]);
   });
 });

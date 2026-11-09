@@ -14,7 +14,11 @@ import type {
   GuardrailHooks,
   GuardrailsOptions,
 } from '@lostgradient/operative';
-import { AGENT_POLICY_HOOK_SOURCE, withActiveSkillToolPolicy } from '@lostgradient/operative';
+import {
+  AGENT_POLICY_HOOK_SOURCE,
+  guardrailOf,
+  withActiveSkillToolPolicy,
+} from '@lostgradient/operative';
 import type { AnyToolbox } from 'armorer';
 import { createToolbox } from 'armorer';
 
@@ -166,7 +170,9 @@ export function createSkillGuardrailOptions(
   const input = configuration.input;
   if (input === undefined) return undefined;
   return {
-    detectors: input.detectors,
+    // Every detector scans skill content under the group's action; an entry's own action
+    // (COR-2104) governs the run's input and tool results, not skill bodies.
+    detectors: input.detectors.map((entry) => guardrailOf(entry)),
     ...(input.action !== undefined ? { action: input.action === 'warn' ? 'warn' : 'block' } : {}),
     getSessionTainted: () => guardrails.taint.isTainted(),
     onTriggered: (event) => {

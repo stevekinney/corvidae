@@ -1,23 +1,23 @@
 {
   "plugin": "guardrails",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "entries": [
     {
       "kind": "configuration",
       "id": "guardrails",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": "sha256:17de777c58f908f8aef77b827e0531a3eea7614722f24ca2684869a80e9d08d9"
     },
     {
-      "kind": "output-guardrail",
-      "id": "guardrails:code-safety",
-      "version": "1.0.0",
+      "kind": "guardrail",
+      "id": "guardrails:output/code-safety",
+      "version": "1.1.0",
       "schema": null
     },
     {
-      "kind": "output-guardrail",
-      "id": "guardrails:grounding",
-      "version": "1.0.0",
+      "kind": "guardrail",
+      "id": "guardrails:output/grounding",
+      "version": "1.1.0",
       "schema": null
     }
   ]

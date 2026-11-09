@@ -20,8 +20,9 @@ import { createDefaultGuardrailsPreset } from './guardrails/default-preset';
 import type {
   GuardrailHooks,
   GuardrailsOptions,
-  InputDetector,
-  OutputValidator,
+  InputGuardrailEntry,
+  OutputGuardrailEntry,
+  ToolCallValidator,
 } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 
@@ -73,13 +74,17 @@ export interface AgentSkills {
 
 /**
  * Detectors and validators added to whatever guardrails an agent's run resolves (COR-1877). They
- * run beside the resolved configuration's own and never replace it.
+ * run beside the resolved configuration's own and never replace it. An entry may carry an action of
+ * its own (COR-2104), which it keeps whatever the resolved configuration's mode and group action;
+ * a bare entry takes the group's.
  */
 export interface GuardrailAdditions {
   /** Detectors run over the input, after the resolved configuration's own. */
-  readonly inputDetectors?: readonly InputDetector[] | undefined;
+  readonly inputDetectors?: readonly InputGuardrailEntry[] | undefined;
   /** Validators run over a response, after the resolved configuration's own. */
-  readonly outputValidators?: readonly OutputValidator[] | undefined;
+  readonly outputValidators?: readonly OutputGuardrailEntry[] | undefined;
+  /** Validators run over each tool call before it runs, after the resolved configuration's own. */
+  readonly toolValidators?: readonly ToolCallValidator[] | undefined;
 }
 
 /**
@@ -94,7 +99,8 @@ function withGuardrailAdditions(
 ): GuardrailsOptions | undefined {
   const detectors = additions.inputDetectors ?? [];
   const validators = additions.outputValidators ?? [];
-  if (detectors.length === 0 && validators.length === 0) {
+  const toolValidators = additions.toolValidators ?? [];
+  if (detectors.length === 0 && validators.length === 0 && toolValidators.length === 0) {
     return resolved === false ? undefined : resolved;
   }
   const base: GuardrailsOptions = resolved === false ? { mode: 'tripwire' } : resolved;
@@ -109,6 +115,14 @@ function withGuardrailAdditions(
           output: {
             ...base.output,
             validators: [...(base.output?.validators ?? []), ...validators],
+          },
+        }),
+    ...(toolValidators.length === 0
+      ? {}
+      : {
+          tools: {
+            ...base.tools,
+            validators: [...(base.tools?.validators ?? []), ...toolValidators],
           },
         }),
   };
@@ -274,6 +288,15 @@ function registerGuardrails(
     id: 'agent:guardrails-validate-response',
     source: AGENT_POLICY_HOOK_SOURCE,
     priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    replay: 'safe',
+  });
+  // COR-2104 — the tool-call validators. Pinned last, so they judge the calls every other agent
+  // hook settled on, and no later agent hook can put back a call they refused.
+  hooks.on('beforeToolExecution', guardrails.beforeToolExecution, {
+    id: 'agent:guardrails-before-tool-execution',
+    source: AGENT_POLICY_HOOK_SOURCE,
+    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    // Reads the calls and the session's taint state; no external write.
     replay: 'safe',
   });
 }
