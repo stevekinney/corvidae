@@ -4,7 +4,7 @@
    * description), Model (the model and its default effort), Instructions, Tools, and Guardrails and
    * limits. A footer holds what acts on the agent as a whole: the A2A switch, a delete for an agent that exists, and cancel. Save is
    * the page header's, and submits this form by its id ({@link AGENT_EDITOR_FORM_ID}).
-   * `skillDescriptors` has no field here; the state carries it through a save unchanged
+   * `card` has no field here; the state carries it through a save unchanged
    * (`agent-editor-state.svelte.ts`).
    *
    * Tools are chosen from a drawer (`agent-editor-tool-picker.svelte`) and listed with a count (`agent-editor-tools.svelte`).

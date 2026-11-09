@@ -78,7 +78,7 @@ async function open(options: {
   readonly childApproval?: string;
   readonly childModel?: boolean;
   readonly agentTools?: Readonly<Record<string, Tool>>;
-  readonly childAgents?: string;
+  readonly children?: string;
   readonly approval?: string;
   readonly rootAuthority?: { readonly levels: number; readonly concurrentChildren: number };
   readonly workspace?: WorkspaceMembershipOptions;
@@ -92,7 +92,7 @@ async function open(options: {
   const approval =
     options.approval === undefined
       ? ''
-      : `toolApproval:\n${options.approval
+      : `approvals:\n${options.approval
           .split(',')
           .map((entry) => {
             const [name, mode] = entry.split('=');
@@ -104,14 +104,14 @@ async function open(options: {
     tools:
       options.parentTools ??
       '[bureau:discover-agents, bureau:child-runs-dispatch, bureau:child-runs-list, bureau:child-runs-get, bureau:child-runs-wait, bureau:child-runs-cancel]',
-    ...(options.childAgents === undefined ? {} : { childAgents: options.childAgents }),
+    ...(options.children === undefined ? {} : { children: options.children }),
   }).replace('---\n', `---\n${approval}`);
   await writeFile(join(directory, 'parent.md'), parentText);
   const workerModel = options.childModel === true ? KNOWN_MODEL : OTHER_MODEL;
   const workerApproval =
     options.childApproval === undefined
       ? ''
-      : `toolApproval:\n${options.childApproval
+      : `approvals:\n${options.childApproval
           .split(',')
           .map((entry) => {
             const [name, mode] = entry.split('=');
@@ -200,7 +200,7 @@ describe('registered child-run tools on file agents', () => {
     let childRunId: string | undefined;
     let sameOwnerA2A: unknown[] = [];
     const { bureau } = await open({
-      childAgents: '[worker]',
+      children: '[worker]',
       approval: 'bureau:child-runs-dispatch=never,bureau:child-runs-cancel=never',
       child: async () => new Promise(() => {}),
       parent: async (context) => {
@@ -318,7 +318,7 @@ describe('registered child-run tools on file agents', () => {
   it('refuses dispatch without a grant and does not expose the registered dispatch tool', async () => {
     let seenTools: readonly string[] = [];
     const { bureau } = await open({
-      childAgents: '[]',
+      children: '[]',
       parent: async ({ toolbox }) => {
         seenTools = toolbox.tools().map((tool) => tool.name);
         return {
@@ -339,7 +339,7 @@ describe('registered child-run tools on file agents', () => {
   it('refuses a registered dispatch for a target outside the child grant', async () => {
     let seenTools: readonly string[] = [];
     const { bureau } = await open({
-      childAgents: '[worker]',
+      children: '[worker]',
       approval: 'bureau:child-runs-dispatch=never',
       parent: async ({ toolbox }) => {
         seenTools = toolbox.tools().map((tool) => tool.name);
@@ -360,7 +360,7 @@ describe('registered child-run tools on file agents', () => {
 
   it('returns a fifth concurrent dispatch refusal from the registered tool', async () => {
     const { bureau } = await open({
-      childAgents: '[worker]',
+      children: '[worker]',
       approval: 'bureau:child-runs-dispatch=never',
       rootAuthority: { levels: 2, concurrentChildren: 4 },
       child: async () => new Promise(() => {}),
@@ -390,7 +390,7 @@ describe('registered child-run tools on file agents', () => {
     let canceledChildRunId: string | undefined;
     let ownerContext: GenerateContext | undefined;
     const { bureau } = await open({
-      childAgents: '[worker]',
+      children: '[worker]',
       rootAuthority: { levels: 2, concurrentChildren: 4 },
       approval: 'bureau:child-runs-cancel=on-changes,bureau:child-runs-dispatch=never',
       child: async () => new Promise(() => {}),
@@ -464,7 +464,7 @@ describe('registered child-run tools on file agents', () => {
     let rootPrimed = false;
     let parentDispatchResult: unknown;
     const { bureau } = await open({
-      childAgents: '[worker]',
+      children: '[worker]',
       childTools: '[issue-refund]',
       childModel: true,
       agentTools: { 'issue-refund': issueRefund },
@@ -528,7 +528,7 @@ describe('registered child-run tools on file agents', () => {
 
   it('denies a different principal access to a dispatched child', async () => {
     const { bureau } = await open({
-      childAgents: '[worker]',
+      children: '[worker]',
       parent: async () => ({ content: 'done', toolCalls: [] }),
     });
     const task = await bureau.tasks.start('parent', 'delegate', { principal: 'alice' });
@@ -554,7 +554,7 @@ describe('registered child-run tools on file agents', () => {
     for (const principal of ['alice', 'bob']) {
       let dispatched = false;
       const { bureau } = await open({
-        childAgents: '[worker]',
+        children: '[worker]',
         approval: 'bureau:child-runs-dispatch=never',
         parent: async () => {
           if (dispatched) return { content: 'done', toolCalls: [] };
@@ -632,7 +632,7 @@ describe('registered child-run tools on file agents', () => {
     const { bureau } = await open({
       workspace,
       parentTools: '[bureau:assets-read, bureau:child-runs-dispatch]',
-      childAgents: '[worker]',
+      children: '[worker]',
       approval: 'bureau:child-runs-dispatch=never',
       parent: async (context) => {
         if (!readChecked) {
@@ -688,7 +688,7 @@ describe('registered child-run tools on file agents', () => {
     let childSources: unknown;
     const { bureau, handler } = await open({
       parentTools: '[bureau:assets-publish, bureau:child-runs-dispatch]',
-      childAgents: '[worker]',
+      children: '[worker]',
       approval: 'bureau:assets-publish=never,bureau:child-runs-dispatch=never',
       child: async (context) => {
         childUser = context.conversation
@@ -797,7 +797,7 @@ describe('registered child-run tools on file agents', () => {
     const { bureau } = await open({
       parentTools: '[bureau:child-runs-dispatch, bureau:child-runs-get, bureau:assets-read]',
       childTools: '[bureau:assets-publish]',
-      childAgents: '[worker]',
+      children: '[worker]',
       approval: 'bureau:child-runs-dispatch=never',
       childApproval: 'bureau:assets-publish=never',
       child: async (context) => {

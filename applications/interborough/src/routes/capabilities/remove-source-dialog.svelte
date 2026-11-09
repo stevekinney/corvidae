@@ -109,7 +109,7 @@
                   }}>{agent.name}</a
                 >
                 <span class="ib-capability__identifier"
-                  >{copy.agentTools([...new Set([...agent.tools, ...agent.toolApproval])])}</span
+                  >{copy.agentTools([...new Set([...agent.tools, ...agent.approvals])])}</span
                 >
               </li>
             {/each}

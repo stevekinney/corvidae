@@ -38,7 +38,7 @@ const definition: AgentDefinitionInput = {
   description: null,
   model: 'anthropic/sonnet',
   tools: ['lookup-order'],
-  skillDescriptors: [],
+  card: [],
   instructions: 'Be careful.',
 };
 
@@ -114,31 +114,31 @@ describe('the default effort', () => {
     stub = installBureauStub({
       'bureau.agents.definitions.get': () => ({
         ...readyAgent(),
-        definition: { ...readyAgent().definition, defaultEffort: 'xhigh' },
+        definition: { ...readyAgent().definition, effort: 'xhigh' },
       }),
     });
     const set = await getAgentDefinition('researcher');
-    expect(set.definition?.defaultEffort).toBe('xhigh');
+    expect(set.definition?.effort).toBe('xhigh');
     stub.restore();
     stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
     const unset = await getAgentDefinition('researcher');
-    expect(unset.definition?.defaultEffort).toBeNull();
+    expect(unset.definition?.effort).toBeNull();
   });
 
   test('get reads a definition from a Bureau that predates the field as having none', async () => {
-    const { defaultEffort: _omitted, ...older } = readyAgent().definition ?? {};
+    const { effort: _omitted, ...older } = readyAgent().definition ?? {};
     stub = installBureauStub({
       'bureau.agents.definitions.get': () => ({ ...readyAgent(), definition: older }),
     });
     const read = await getAgentDefinition('researcher');
-    expect(read.definition?.defaultEffort).toBeNull();
+    expect(read.definition?.effort).toBeNull();
   });
 
   test('get refuses an effort this client does not know', async () => {
     stub = installBureauStub({
       'bureau.agents.definitions.get': () => ({
         ...readyAgent(),
-        definition: { ...readyAgent().definition, defaultEffort: 'extreme' },
+        definition: { ...readyAgent().definition, effort: 'extreme' },
       }),
     });
     const failure = await getAgentDefinition('researcher').then(
@@ -153,13 +153,13 @@ describe('the default effort', () => {
       'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
     });
 
-    await updateAgent('researcher', 'hash-1', { ...definition, defaultEffort: 'high' });
-    await updateAgent('researcher', 'hash-1', { ...definition, defaultEffort: null });
+    await updateAgent('researcher', 'hash-1', { ...definition, effort: 'high' });
+    await updateAgent('researcher', 'hash-1', { ...definition, effort: null });
     await updateAgent('researcher', 'hash-1', definition);
 
-    expect(stub.calls[0]?.params).toMatchObject({ definition: { defaultEffort: 'high' } });
-    expect(stub.calls[1]?.params).toMatchObject({ definition: { defaultEffort: null } });
-    expect(stub.calls[2]?.params).not.toHaveProperty('definition.defaultEffort');
+    expect(stub.calls[0]?.params).toMatchObject({ definition: { effort: 'high' } });
+    expect(stub.calls[1]?.params).toMatchObject({ definition: { effort: null } });
+    expect(stub.calls[2]?.params).not.toHaveProperty('definition.effort');
   });
 });
 
@@ -171,7 +171,7 @@ describe('the operations', () => {
       { method: 'bureau.agents.definitions.get', params: { id: 'researcher' } },
     ]);
     expect(detail.hash).toBe('hash-1');
-    expect(detail.definition?.skillDescriptors[0]?.id).toBe('cite');
+    expect(detail.definition?.card[0]?.id).toBe('cite');
   });
 
   test('get refuses an answer that is not an agent', async () => {
@@ -189,11 +189,11 @@ describe('the operations', () => {
     stub = installBureauStub({
       'bureau.agents.definitions.get': () => ({
         ...agent,
-        definition: agent.definition && { ...agent.definition, skillDescriptors: [skill] },
+        definition: agent.definition && { ...agent.definition, card: [skill] },
       }),
     });
     const detail = await getAgentDefinition('researcher');
-    expect(detail.definition?.skillDescriptors).toEqual([skill]);
+    expect(detail.definition?.card).toEqual([skill]);
   });
 
   test('list follows the pages to the last, and asks for the largest page', async () => {

@@ -261,10 +261,10 @@ describe('the sample world, part A', () => {
     }>('bureau.agents.versions.list', { id: 'tool-runner' });
     expect(versions.map((version) => version.revision)).toEqual([4, 3, 2, 1]);
     expect(versions.map((version) => version.changedKeys)).toEqual([
-      ['instructions', 'tools', 'toolApproval'],
+      ['instructions', 'tools', 'approvals'],
       ['model'],
       ['instructions'],
-      ['instructions', 'tools', 'toolApproval', 'model'],
+      ['instructions', 'tools', 'approvals', 'model'],
     ]);
     const [version4, version3, version2, version1] = versions;
     expectAt(version4?.savedAt, SAMPLE_WORLD_TIMES.toolRunnerVersion4);

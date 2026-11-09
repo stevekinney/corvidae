@@ -74,7 +74,7 @@ export const agentOverridesSchema = z.strictObject({
     })
     .optional(),
   /** When each tool asks a person first, by tool name: the Access tab's Asks column. */
-  toolApproval: agentToolApprovalSchema.optional(),
+  approvals: agentToolApprovalSchema.optional(),
   /** The plugin guardrails (`plugin:name`) a run applies. */
   guardrails: agentContributionIdsSchema.optional(),
   /** What one run, and one chat, may spend. */
@@ -91,7 +91,7 @@ export const agentOverridesSchema = z.strictObject({
     })
     .optional(),
   /** The reasoning effort a chat starts at. */
-  defaultEffort: agentDefaultEffortSchema.optional(),
+  effort: agentDefaultEffortSchema.optional(),
   /** The most steps one run may take. */
   stepLimit: agentStepLimitSchema.optional(),
 });
@@ -234,14 +234,43 @@ function encodeRecord(record: AgentOverrideVersionRecord): string {
   });
 }
 
+/**
+ * The override keys that were renamed in COR-2137, from the old name to the new one. A record saved
+ * before then holds the old names; it reads under the new ones and is never written back with them.
+ */
+const RENAMED_OVERRIDE_KEYS: ReadonlyMap<string, string> = new Map([
+  ['toolApproval', 'approvals'],
+  ['defaultEffort', 'effort'],
+]);
+
+/**
+ * `value` with each renamed override key under its new name. The new name wins when both are
+ * present. Anything that is not a plain object is returned as it is, for the schema to refuse.
+ */
+function withRenamedOverrideKeys(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const renamed: Record<string, unknown> = {};
+  for (const [key, held] of Object.entries(value)) {
+    if (!RENAMED_OVERRIDE_KEYS.has(key)) renamed[key] = held;
+  }
+  for (const [oldKey, newKey] of RENAMED_OVERRIDE_KEYS) {
+    if (Object.hasOwn(value, oldKey) && !Object.hasOwn(renamed, newKey)) {
+      renamed[newKey] = (value as Record<string, unknown>)[oldKey];
+    }
+  }
+  return renamed;
+}
+
 const recordSchema = z.object({
   version: z.number().int().positive(),
   hash: z.string().min(1),
   savedAt: z.string().min(1),
   savedBy: z.string(),
   owner: z.string(),
-  overrides: agentOverridesSchema,
-  changedKeys: z.array(z.string()),
+  overrides: z.preprocess(withRenamedOverrideKeys, agentOverridesSchema),
+  changedKeys: z
+    .array(z.string())
+    .transform((keys) => keys.map((key) => RENAMED_OVERRIDE_KEYS.get(key) ?? key)),
 });
 
 /** A stored record, or `undefined` when `text` is not a valid one. */

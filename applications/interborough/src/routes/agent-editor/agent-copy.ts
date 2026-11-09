@@ -1,6 +1,6 @@
 /**
  * Duplicating an agent (`/agents/new?from=<id>`): the definition a copy's form is filled from, and
- * the identifier it starts with. A file agent is copied whole, so `toolApproval`, the budgets, the
+ * the identifier it starts with. A file agent is copied whole, so `approvals`, the budgets, the
  * guardrails, the model list and the `references` come with it. A built-in agent has no file, so its
  * `codeDefinition` (what the agent states about itself) is read as one; it states no approvals or
  * budgets, so the copy has none. Nothing is written until the person saves the form.
@@ -43,12 +43,12 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
     model: codeDefinition.model ?? codeDefinition.models[0] ?? '',
     models: codeDefinition.models.length === 0 ? null : codeDefinition.models,
     // A built-in agent states no effort.
-    defaultEffort: null,
+    effort: null,
     tools: codeDefinition.tools,
-    skillDescriptors: codeDefinition.skillDescriptors,
+    card: codeDefinition.card,
     // A file agent has only the skills it names, so the copy names what the original can activate.
     allowedSkills: codeDefinition.skills.length === 0 ? null : codeDefinition.skills,
-    childAgents: null,
+    children: null,
     a2a: false,
     stepLimit: null,
     retry: null,
@@ -58,7 +58,7 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
     guardrails: null,
     costBudget: null,
     toolBudget: null,
-    toolApproval: null,
+    approvals: null,
     instructions: codeDefinition.instructions ?? '',
   };
 }

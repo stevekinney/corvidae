@@ -31,7 +31,7 @@ export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
 export const DEFAULT_STEP_LIMIT = 25;
 
 /**
- * The agent's `skillDescriptors` entry. The editor never edits one, but a save sends them back unchanged, so
+ * The agent's `card` entry. The editor never edits one, but a save sends them back unchanged, so
  * a key this page does not know is kept as it was read and never stripped.
  */
 const skillSchema = z.looseObject({
@@ -44,17 +44,17 @@ const skillSchema = z.looseObject({
   outputModes: z.array(z.string()).optional(),
 });
 
-/** An agent definition's `skillDescriptors` entry, as the Bureau reads it back. */
+/** An agent definition's `card` entry, as the Bureau reads it back. */
 export type AgentSkill = z.infer<typeof skillSchema>;
 
-/** When a tool asks a person before it runs (`toolApproval` in an agent file). A tool the file leaves out is `on-changes`. */
+/** When a tool asks a person before it runs (`approvals` in an agent file). A tool the file leaves out is `on-changes`. */
 export const TOOL_APPROVALS = ['never', 'on-changes', 'always', 'blocked'] as const;
 
 /** One of the four answers to "when does this tool ask first?". */
 export type ToolApproval = (typeof TOOL_APPROVALS)[number];
 
 /**
- * The reasoning efforts an agent file may start a chat at (`defaultEffort`), from least to most:
+ * The reasoning efforts an agent file may start a chat at (`effort`), from least to most:
  * the Bureau's `agentDefaultEffortSchema`, which the browser cannot import.
  * `src/host/host-agent-definitions.test.ts` fails if the two drift apart.
  */
@@ -69,7 +69,7 @@ const definitionSchema = z.object({
   model: z.string(),
   /**
    * The models a session of the agent may be switched to (COR-1559), or `null` when the file lists
-   * none. The editor never edits it, but a save sends it back unchanged, as it does `skillDescriptors`: an
+   * none. The editor never edits it, but a save sends it back unchanged, as it does `card`: an
    * update that omits it removes the list.
    */
   models: z.array(z.string()).nullable().default(null),
@@ -77,12 +77,12 @@ const definitionSchema = z.object({
    * The reasoning effort a chat of the agent starts at (COR-1961), or `null` when the file sets none
    * and the provider's own default applies. The default model must support it.
    */
-  defaultEffort: z.enum(EFFORTS).nullable().default(null),
+  effort: z.enum(EFFORTS).nullable().default(null),
   tools: z.array(z.string()),
-  skillDescriptors: z.array(skillSchema),
+  card: z.array(skillSchema),
   /** The executable skills a run may activate; `null` when the file lists none, and the agent has none. */
   allowedSkills: z.array(z.string()).nullable().default(null),
-  childAgents: z.array(z.string()).nullable().optional(),
+  children: z.array(z.string()).nullable().optional(),
   a2a: z.boolean(),
   /** The most steps one run may take; `null` when the file sets none. */
   stepLimit: z.number().int().nullable().default(null),
@@ -118,7 +118,7 @@ const definitionSchema = z.object({
    * When each listed tool asks first, by tool name; `null` when the file sets none. A tool the
    * map leaves out is `on-changes`. Every key is one of `tools`.
    */
-  toolApproval: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
+  approvals: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
   instructions: z.string(),
 });
 
@@ -169,7 +169,7 @@ const detailSchema = z.object({
       tools: z.array(z.string()),
       /** The executable skills the agent can activate, by name. */
       skills: z.array(z.string()),
-      skillDescriptors: z.array(skillSchema),
+      card: z.array(skillSchema),
       instructions: z.string().nullable(),
     })
     .nullable()
@@ -236,7 +236,7 @@ const catalogModelSchema = z.object({
   /** What the model takes and gives, by modality (`text`, `image`, ...): only `input` is read. */
   modalities: z.record(z.string(), z.object({ input: z.boolean() })),
   /**
-   * The efforts the model supports: `portable` is the tiers an agent file's `defaultEffort` may
+   * The efforts the model supports: `portable` is the tiers an agent file's `effort` may
    * name, and the Bureau refuses a save that names another (`effort-not-supported`). It is empty
    * for a model with no effort control.
    */
@@ -300,17 +300,17 @@ export type AgentDefinitionInput = {
    * The reasoning effort a chat of the agent starts at, which the default `model` must support.
    * `null` removes it; left out, an update keeps the file's.
    */
-  readonly defaultEffort?: Effort | null;
+  readonly effort?: Effort | null;
   readonly tools: readonly string[];
   /** Carried through a save unchanged: the editor shows no control for them. */
-  readonly skillDescriptors: readonly AgentSkill[];
+  readonly card: readonly AgentSkill[];
   /**
    * The executable skills a run may activate. An update that leaves it out keeps the file's list,
    * `null` removes it, and an empty list grants none.
    */
   readonly allowedSkills?: readonly string[] | null;
   /** File agents this definition may dispatch as durable children. */
-  readonly childAgents?: readonly string[] | null;
+  readonly children?: readonly string[] | null;
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
   readonly a2a?: boolean;
   /** The most steps a run may take. `null` removes the limit; left out, an update keeps the file's. */
@@ -341,7 +341,7 @@ export type AgentDefinitionInput = {
    * When each tool asks first. `null` removes the map; left out, an update keeps the file's. A
    * key must be one of `tools`, or the Bureau refuses the write.
    */
-  readonly toolApproval?: Readonly<Record<string, ToolApproval>> | null;
+  readonly approvals?: Readonly<Record<string, ToolApproval>> | null;
   /**
    * Documents beside the agent's file that its instructions are read with. Only a create sends it (a
    * copy of an agent that has them); left out, an update keeps the file's.

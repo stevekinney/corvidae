@@ -111,13 +111,10 @@ const AGENT_FILES: Record<string, string> = {
   // Lists a tool of the source and approves it: valid before the removal.
   'reader.md': agentFile([
     'tools: [files__lookup, demo:lookup-order]',
-    'toolApproval: { files__lookup: always }',
+    'approvals: { files__lookup: always }',
   ]),
-  // Names a tool of the source only in toolApproval. It was already invalid, and still names it.
-  'approver.md': agentFile([
-    'tools: [demo:lookup-order]',
-    'toolApproval: { files__wipe: blocked }',
-  ]),
+  // Names a tool of the source only in approvals. It was already invalid, and still names it.
+  'approver.md': agentFile(['tools: [demo:lookup-order]', 'approvals: { files__wipe: blocked }']),
   // Names no tool of the source.
   'bystander.md': agentFile(['tools: [demo:lookup-order]']),
   'plain.md': agentFile([]),
@@ -183,7 +180,7 @@ async function hostWithSourceAndAgents(): Promise<{ host: Host; path: string }> 
 }
 
 describe('removing a saved tool source', () => {
-  test('previews the agents that name its tools, including one named only in toolApproval', async () => {
+  test('previews the agents that name its tools, including one named only in approvals', async () => {
     const { host } = await hostWithSourceAndAgents();
     expect(standingOf(host, 'reader').state).toBe('ready');
 
@@ -198,13 +195,13 @@ describe('removing a saved tool source', () => {
           id: 'approver',
           name: 'approver',
           tools: [],
-          toolApproval: ['files__wipe'],
+          approvals: ['files__wipe'],
         },
         {
           id: 'reader',
           name: 'reader',
           tools: ['files__lookup'],
-          toolApproval: ['files__lookup'],
+          approvals: ['files__lookup'],
         },
       ],
     });

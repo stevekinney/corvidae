@@ -1,5 +1,5 @@
 /**
- * COR-1961 — a run of a file agent with a `defaultEffort` on a Bureau: a step on a model that
+ * COR-1961 — a run of a file agent with an `effort` on a Bureau: a step on a model that
  * cannot do the tier is judged by the run owner's `effortFallbackMode` from the live `modelPolicy`
  * (`reject` when it names none), the failure ends the run with the typed error, and the default
  * never reaches the session's steering.
@@ -27,7 +27,7 @@ const NO_EFFORT = 'openai/gpt-4.1';
 const PICKER = agentFileText({
   model: KNOWN_MODEL,
   models: `[${KNOWN_MODEL}, ${THREE_TIERS}, ${NO_EFFORT}]`,
-  defaultEffort: 'max',
+  effort: 'max',
 });
 
 interface Sighting {

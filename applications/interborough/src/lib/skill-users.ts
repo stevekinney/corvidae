@@ -2,7 +2,7 @@
  * Which agents use each executable skill. The Bureau lists skills without their users, so they are
  * read from each agent (`bureau.agents.definitions.get`): an agent defined in code names its skills
  * in `codeDefinition.skills`, and an agent file in `definition.allowedSkills`. A file's skill cards
- * (`skillDescriptors`) are descriptive and name nothing.
+ * (`card`) are descriptive and name nothing.
  */
 import { getAgentDefinition } from './agent-definitions.ts';
 import { listAgents } from './bureau-client.ts';

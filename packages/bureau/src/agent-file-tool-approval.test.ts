@@ -1,5 +1,5 @@
 /**
- * COR-1913 — an agent file's `toolApproval`: what it accepts, how a write keeps it, that a name
+ * COR-1913 — an agent file's `approvals`: what it accepts, how a write keeps it, that a name
  * outside `tools` makes the file unusable (`unknown-approval-tool`) on a scan and on a write, and
  * that a stored definition from before the key loads.
  */
@@ -37,80 +37,80 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe('toolApproval in the frontmatter', () => {
+describe('approvals in the frontmatter', () => {
   it('parses each value, and a file without the key has none', () => {
     const file = parsed(
-      '---\nmodel: a/b\ntools: [a, b, c, d]\ntoolApproval:\n  a: never\n  b: on-changes\n  c: always\n  d: blocked\n---\n',
+      '---\nmodel: a/b\ntools: [a, b, c, d]\napprovals:\n  a: never\n  b: on-changes\n  c: always\n  d: blocked\n---\n',
     );
-    expect(file.definition.toolApproval).toEqual({
+    expect(file.definition.approvals).toEqual({
       a: 'never',
       b: 'on-changes',
       c: 'always',
       d: 'blocked',
     });
-    expect(Object.hasOwn(parsed('---\nmodel: a/b\n---\n').definition, 'toolApproval')).toBe(false);
+    expect(Object.hasOwn(parsed('---\nmodel: a/b\n---\n').definition, 'approvals')).toBe(false);
     expect(
-      Object.hasOwn(parsed('---\nmodel: a/b\ntoolApproval:\n---\n').definition, 'toolApproval'),
+      Object.hasOwn(parsed('---\nmodel: a/b\napprovals:\n---\n').definition, 'approvals'),
     ).toBe(false);
     expect(
-      Object.hasOwn(parsed('---\nmodel: a/b\ntoolApproval: {}\n---\n').definition, 'toolApproval'),
+      Object.hasOwn(parsed('---\nmodel: a/b\napprovals: {}\n---\n').definition, 'approvals'),
     ).toBe(false);
   });
 
   it('holds the names in alphabetical order whatever order the file wrote', () => {
     const file = parsed(
-      '---\nmodel: a/b\ntools: [b, a]\ntoolApproval: { b: always, a: never }\n---\n',
+      '---\nmodel: a/b\ntools: [b, a]\napprovals: { b: always, a: never }\n---\n',
     );
-    expect(Object.keys(file.definition.toolApproval ?? {})).toEqual(['a', 'b']);
+    expect(Object.keys(file.definition.approvals ?? {})).toEqual(['a', 'b']);
   });
 
   it('names the field of a value it refuses', () => {
-    expect(issuePaths('toolApproval: { a: sometimes }')).toEqual(['toolApproval.a']);
-    expect(issuePaths('toolApproval: { a: deny }')).toEqual(['toolApproval.a']);
-    expect(issuePaths('toolApproval: { a: true }')).toEqual(['toolApproval.a']);
-    expect(issuePaths('toolApproval: { a: never, b: nope }')).toEqual(['toolApproval.b']);
-    expect(issuePaths('toolApproval: 5')).toEqual(['toolApproval']);
-    expect(issuePaths('toolApproval: [never]')).toEqual(['toolApproval']);
+    expect(issuePaths('approvals: { a: sometimes }')).toEqual(['approvals.a']);
+    expect(issuePaths('approvals: { a: deny }')).toEqual(['approvals.a']);
+    expect(issuePaths('approvals: { a: true }')).toEqual(['approvals.a']);
+    expect(issuePaths('approvals: { a: never, b: nope }')).toEqual(['approvals.b']);
+    expect(issuePaths('approvals: 5')).toEqual(['approvals']);
+    expect(issuePaths('approvals: [never]')).toEqual(['approvals']);
   });
 
   it('does not take a name that is also an Object.prototype member for a name with a value', () => {
     // `constructor` is a name like any other: no inherited value stands for it.
     const file = parsed(
-      '---\nmodel: a/b\ntools: [constructor]\ntoolApproval: { constructor: always }\n---\n',
+      '---\nmodel: a/b\ntools: [constructor]\napprovals: { constructor: always }\n---\n',
     );
-    expect(Object.entries(file.definition.toolApproval ?? {})).toEqual([['constructor', 'always']]);
+    expect(Object.entries(file.definition.approvals ?? {})).toEqual([['constructor', 'always']]);
   });
 });
 
-describe('writing toolApproval', () => {
+describe('writing approvals', () => {
   it('writes a new file that parses back to the same map, in alphabetical order', () => {
     const text = decoder.decode(
       serializeNewAgentFile({
         model: 'a/b',
         tools: ['b', 'a'],
-        toolApproval: { b: 'blocked', a: 'never' },
+        approvals: { b: 'blocked', a: 'never' },
         instructions: 'Body.\n',
       }),
     );
-    expect(text).toContain('toolApproval:');
+    expect(text).toContain('approvals:');
     expect(text.indexOf('a: never')).toBeLessThan(text.indexOf('b: blocked'));
-    expect(parsed(text).definition.toolApproval).toEqual({ a: 'never', b: 'blocked' });
+    expect(parsed(text).definition.approvals).toEqual({ a: 'never', b: 'blocked' });
   });
 
   it('writes no key when the definition sets none, or an empty map', () => {
     expect(
       decoder.decode(serializeNewAgentFile({ model: 'a/b', instructions: 'Body.\n' })),
-    ).not.toContain('toolApproval');
+    ).not.toContain('approvals');
     expect(
       decoder.decode(
-        serializeNewAgentFile({ model: 'a/b', toolApproval: {}, instructions: 'Body.\n' }),
+        serializeNewAgentFile({ model: 'a/b', approvals: {}, instructions: 'Body.\n' }),
       ),
-    ).not.toContain('toolApproval');
+    ).not.toContain('approvals');
   });
 
   it('keeps the map when an update leaves it out, and adds none to a file without one', () => {
     const file = parsed(
-      '---\nmodel: a/b\ntools: [a]\ntoolApproval: { a: always }\ncolor: blue\n---\nBody.\n',
+      '---\nmodel: a/b\ntools: [a]\napprovals: { a: always }\ncolor: blue\n---\nBody.\n',
     );
     const kept = decoder.decode(
       serializeUpdatedAgentFile('helper', file, {
@@ -120,7 +120,7 @@ describe('writing toolApproval', () => {
         instructions: 'Body.\n',
       }),
     );
-    expect(parsed(kept).definition).toMatchObject({ name: 'Named', toolApproval: { a: 'always' } });
+    expect(parsed(kept).definition).toMatchObject({ name: 'Named', approvals: { a: 'always' } });
     expect(kept).toContain('color: blue');
 
     const bare = parsed('---\nmodel: a/b\n---\nBody.\n');
@@ -131,46 +131,46 @@ describe('writing toolApproval', () => {
         instructions: 'Body.\n',
       }),
     );
-    expect(renamed).not.toContain('toolApproval');
+    expect(renamed).not.toContain('approvals');
   });
 
   it('changes a map the update states, and removes one the update sets to null or empty', () => {
-    const file = parsed('---\nmodel: a/b\ntools: [a]\ntoolApproval: { a: never }\n---\nBody.\n');
+    const file = parsed('---\nmodel: a/b\ntools: [a]\napprovals: { a: never }\n---\nBody.\n');
     const changed = parsed(
       decoder.decode(
         serializeUpdatedAgentFile('helper', file, {
           model: 'a/b',
           tools: ['a'],
-          toolApproval: { a: 'blocked' },
+          approvals: { a: 'blocked' },
           instructions: 'Body.\n',
         }),
       ),
     );
-    expect(changed.definition.toolApproval).toEqual({ a: 'blocked' });
+    expect(changed.definition.approvals).toEqual({ a: 'blocked' });
 
-    for (const toolApproval of [null, {}]) {
+    for (const approvals of [null, {}]) {
       const removed = decoder.decode(
         serializeUpdatedAgentFile('helper', changed, {
           model: 'a/b',
           tools: ['a'],
-          toolApproval,
+          approvals,
           instructions: 'Body.\n',
         }),
       );
-      expect(removed).not.toContain('toolApproval');
-      expect(parsed(removed).definition).not.toHaveProperty('toolApproval');
+      expect(removed).not.toContain('approvals');
+      expect(parsed(removed).definition).not.toHaveProperty('approvals');
     }
   });
 
   it('rewrites nothing when the update states the map the file has, in any order', () => {
     const file = parsed(
-      '---\nmodel: a/b\ntools: [a, b]\ntoolApproval: { b: always, a: never }\n---\nBody.\n',
+      '---\nmodel: a/b\ntools: [a, b]\napprovals: { b: always, a: never }\n---\nBody.\n',
     );
     expect(
       serializeUpdatedAgentFile('helper', file, {
         model: 'a/b',
         tools: ['a', 'b'],
-        toolApproval: { a: 'never', b: 'always' },
+        approvals: { a: 'never', b: 'always' },
         instructions: 'Body.\n',
       }),
     ).toBeUndefined();
@@ -183,21 +183,21 @@ describe('a stored definition', () => {
     description: null,
     model: KNOWN_MODEL,
     tools: [],
-    skillDescriptors: [],
+    card: [],
     a2a: false,
     instructions: 'Recorded.\n',
   };
 
   it('loads when it was written before the field existed', () => {
-    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).toolApproval).toBeUndefined();
+    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).approvals).toBeUndefined();
   });
 
   it('keeps a map when it has one, and refuses a value that is not a mode', () => {
     expect(
-      agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, toolApproval: { a: 'always' } }),
-    ).toMatchObject({ toolApproval: { a: 'always' } });
+      agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, approvals: { a: 'always' } }),
+    ).toMatchObject({ approvals: { a: 'always' } });
     expect(
-      agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, toolApproval: { a: 'sometimes' } })
+      agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, approvals: { a: 'sometimes' } })
         .success,
     ).toBe(false);
   });
@@ -222,7 +222,7 @@ describe('a name that tools does not list', () => {
       agentFileText({
         model: KNOWN_MODEL,
         tools: '[lookup-order]',
-        toolApproval: '{ lookup-order: never }',
+        approvals: '{ lookup-order: never }',
       }),
     );
     await fixture.catalog.refresh();
@@ -236,7 +236,7 @@ describe('a name that tools does not list', () => {
       agentFileText({
         model: KNOWN_MODEL,
         tools: '[lookup-order]',
-        toolApproval: '{ lookup-order: never, refund: always, ghost: blocked }',
+        approvals: '{ lookup-order: never, refund: always, ghost: blocked }',
       }),
     );
     await fixture.catalog.refresh();
@@ -247,12 +247,12 @@ describe('a name that tools does not list', () => {
     expect(listing?.problem?.message).toContain('"refund"');
     expect(listing?.problem?.message).toContain('"ghost"');
     expect(listing?.problem?.issues?.map((issue) => issue.path)).toEqual([
-      'toolApproval.ghost',
-      'toolApproval.refund',
+      'approvals.ghost',
+      'approvals.refund',
     ]);
     // An editor can read the file it has to fix.
     const detail = await fixture.catalog.detail('helper');
-    expect(detail?.definition?.toolApproval).toMatchObject({ ghost: 'blocked' });
+    expect(detail?.definition?.approvals).toMatchObject({ ghost: 'blocked' });
   });
 
   it('is not the same problem as a tool the deployment lacks', async () => {
@@ -262,7 +262,7 @@ describe('a name that tools does not list', () => {
       agentFileText({
         model: KNOWN_MODEL,
         tools: '[nowhere]',
-        toolApproval: '{ nowhere: never }',
+        approvals: '{ nowhere: never }',
       }),
     );
     await fixture.catalog.refresh();
@@ -277,7 +277,7 @@ describe('a name that tools does not list', () => {
       fixture.catalog.create('helper', {
         model: KNOWN_MODEL,
         tools: ['lookup-order'],
-        toolApproval: { refund: 'always' },
+        approvals: { refund: 'always' },
         instructions: 'Hi.\n',
       }),
     );
@@ -293,7 +293,7 @@ describe('a name that tools does not list', () => {
       agentFileText({
         model: KNOWN_MODEL,
         tools: '[lookup-order]',
-        toolApproval: '{ lookup-order: always }',
+        approvals: '{ lookup-order: always }',
       }),
     );
     await fixture.catalog.refresh();
@@ -307,7 +307,7 @@ describe('a name that tools does not list', () => {
         { expectedHash: hash },
       ),
     );
-    // The update omits `toolApproval`, so the file's entry is kept, and the tool is gone.
+    // The update omits `approvals`, so the file's entry is kept, and the tool is gone.
     expect((error as AgentFileError).code).toBe('unknown-approval-tool');
   });
 });
@@ -331,19 +331,19 @@ describe('restoring a version', () => {
         name: 'Helper',
         model: KNOWN_MODEL,
         tools: ['lookup-order'],
-        toolApproval: { 'lookup-order': 'always' },
+        approvals: { 'lookup-order': 'always' },
         instructions: 'You are helpful.\n',
       },
       { expectedHash: hash() },
     );
     const [latest] = await fixture.catalog.versions.list('helper');
-    expect(latest?.changedKeys).toContain('toolApproval');
+    expect(latest?.changedKeys).toContain('approvals');
     const updated = await fixture.catalog.detail('helper');
-    expect(updated?.definition?.toolApproval).toEqual({ 'lookup-order': 'always' });
+    expect(updated?.definition?.approvals).toEqual({ 'lookup-order': 'always' });
 
     await fixture.catalog.versions.restore('helper', 1, { expectedHash: hash() });
 
     const restored = await fixture.catalog.detail('helper');
-    expect(restored?.definition).not.toHaveProperty('toolApproval');
+    expect(restored?.definition).not.toHaveProperty('approvals');
   });
 });

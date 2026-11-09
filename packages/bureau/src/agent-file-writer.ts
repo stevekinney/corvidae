@@ -233,14 +233,11 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       );
     }
     const input = agentFileInputOf(definition);
-    const toolApproval =
-      definition.toolApproval === undefined
+    const approvals =
+      definition.approvals === undefined
         ? null
         : Object.fromEntries(
-            Object.entries(definition.toolApproval).map(([tool, mode]) => [
-              unversioned(tool),
-              mode,
-            ]),
+            Object.entries(definition.approvals).map(([tool, mode]) => [unversioned(tool), mode]),
           );
     const bytes =
       serializeUpdatedAgentFile(name, parsed.file, {
@@ -248,7 +245,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         // A file without a `name` is labelled by its identifier, which the copy changes.
         name: Object.hasOwn(raw, 'name') ? definition.name : undefined,
         tools: definition.tools.map(unversioned),
-        toolApproval,
+        approvals,
       }) ?? entry.bytes;
     return { name, bytes };
   }
@@ -329,9 +326,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
             // A key the update leaves out keeps the file's value, and is checked as the file has it.
             ...(definition.compaction === undefined ? { compaction: before.compaction } : {}),
             ...(definition.references === undefined ? { references: before.references } : {}),
-            ...(definition.defaultEffort === undefined
-              ? { defaultEffort: before.defaultEffort }
-              : {}),
+            ...(definition.effort === undefined ? { effort: before.effort } : {}),
             ...(definition.allowedSkills === undefined
               ? { allowedSkills: before.allowedSkills }
               : {}),

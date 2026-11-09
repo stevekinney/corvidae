@@ -157,6 +157,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * The definition keys that were renamed, from the name a stored `changedKeys` may still hold to the
+ * key now (COR-2126, COR-2137), so a version saved earlier names the same key a new one would.
+ */
+const RENAMED_DEFINITION_KEYS: ReadonlyMap<string, string> = new Map([
+  ['hooks', 'interceptors'],
+  ['defaultEffort', 'effort'],
+  ['toolApproval', 'approvals'],
+  ['childAgents', 'children'],
+  ['skillDescriptors', 'card'],
+]);
+
+/**
  * A stored record, or `undefined` when `text` is not a valid one. A record whose definition no
  * longer validates is not a version anyone can restore, so it reads as absent.
  */
@@ -197,7 +209,7 @@ export function parseAgentVersion(text: string | null): AgentVersionRecord | und
     ...(digests === undefined || digests.data.length === 0
       ? {}
       : { referenceDigests: digests.data }),
-    changedKeys: changedKeys as string[],
+    changedKeys: (changedKeys as string[]).map((key) => RENAMED_DEFINITION_KEYS.get(key) ?? key),
   };
 }
 

@@ -52,19 +52,19 @@ afterEach(async () => {
 });
 
 const agents: AgentToolUse[] = [
-  { id: 'reader', name: 'Reader', tools: ['pets__list-pets', 'lookup-order'], toolApproval: [] },
+  { id: 'reader', name: 'Reader', tools: ['pets__list-pets', 'lookup-order'], approvals: [] },
   {
     id: 'both',
     name: 'Both',
     tools: ['pets__delete-pet', 'pets__create-pet'],
-    toolApproval: ['pets__delete-pet'],
+    approvals: ['pets__delete-pet'],
   },
-  { id: 'approval-only', name: 'Approval only', tools: [], toolApproval: ['pets__list-pets'] },
+  { id: 'approval-only', name: 'Approval only', tools: [], approvals: ['pets__list-pets'] },
   {
     id: 'bystander',
     name: 'Bystander',
     tools: ['lookup-order', 'other__list-pets'],
-    toolApproval: [],
+    approvals: [],
   },
 ];
 
@@ -124,7 +124,7 @@ async function failureOf(work: Promise<unknown>): Promise<unknown> {
 }
 
 describe('the agents a removal affects', () => {
-  test('are those whose files name a tool of the source in tools or toolApproval, and no one else', async () => {
+  test('are those whose files name a tool of the source in tools or approvals, and no one else', async () => {
     const { home, keys } = await homeWithPets();
     const { manager, audited } = await started(home, { keys });
 
@@ -132,18 +132,18 @@ describe('the agents a removal affects', () => {
 
     expect(preview.tools).toEqual(['pets__create-pet', 'pets__delete-pet', 'pets__list-pets']);
     expect(preview.affectedAgents).toEqual([
-      { id: 'reader', name: 'Reader', tools: ['pets__list-pets'], toolApproval: [] },
+      { id: 'reader', name: 'Reader', tools: ['pets__list-pets'], approvals: [] },
       {
         id: 'both',
         name: 'Both',
         tools: ['pets__create-pet', 'pets__delete-pet'],
-        toolApproval: ['pets__delete-pet'],
+        approvals: ['pets__delete-pet'],
       },
       {
         id: 'approval-only',
         name: 'Approval only',
         tools: [],
-        toolApproval: ['pets__list-pets'],
+        approvals: ['pets__list-pets'],
       },
     ]);
     // A preview changes and records nothing.
@@ -306,9 +306,9 @@ describe('a sign-in that is starting when its source is removed', () => {
 
 describe('a source that loaded nothing', () => {
   const named: AgentToolUse[] = [
-    { id: 'searcher', name: 'Searcher', tools: ['down__search', 'lookup-order'], toolApproval: [] },
-    { id: 'approver', name: 'Approver', tools: [], toolApproval: ['down__wipe'] },
-    { id: 'near', name: 'Near', tools: ['down-town__search', 'downer__search'], toolApproval: [] },
+    { id: 'searcher', name: 'Searcher', tools: ['down__search', 'lookup-order'], approvals: [] },
+    { id: 'approver', name: 'Approver', tools: [], approvals: ['down__wipe'] },
+    { id: 'near', name: 'Near', tools: ['down-town__search', 'downer__search'], approvals: [] },
   ];
 
   async function expectsTheAgentsToBeFound(
@@ -329,7 +329,7 @@ describe('a source that loaded nothing', () => {
     const ids = ['searcher', 'approver'];
     expect(preview.affectedAgents.map((agent) => agent.id)).toEqual(ids);
     expect(preview.affectedAgents[0]).toMatchObject({ tools: ['down__search'] });
-    expect(preview.affectedAgents[1]).toMatchObject({ toolApproval: ['down__wipe'] });
+    expect(preview.affectedAgents[1]).toMatchObject({ approvals: ['down__wipe'] });
     expect(removed.affectedAgents).toEqual(preview.affectedAgents);
     expect(audited.at(-1)).toMatchObject({
       type: 'tool.source.removed',

@@ -51,7 +51,7 @@ function builtIn(codeDefinition: Partial<NonNullable<AgentDetail['codeDefinition
       models: [],
       tools: ['lookup-order'],
       skills: ['summarize'],
-      skillDescriptors: [],
+      card: [],
       instructions: 'Help the person.',
       ...codeDefinition,
     },
@@ -91,9 +91,9 @@ describe('the seed of a copy', () => {
       description: 'Helps with things',
       model: 'anthropic/claude-haiku-5',
       models: ['anthropic/claude-haiku-5'],
-      defaultEffort: null,
+      effort: null,
       tools: ['lookup-order'],
-      skillDescriptors: [],
+      card: [],
       allowedSkills: ['summarize'],
       a2a: false,
       stepLimit: null,
@@ -104,8 +104,8 @@ describe('the seed of a copy', () => {
       guardrails: null,
       costBudget: null,
       toolBudget: null,
-      toolApproval: null,
-      childAgents: null,
+      approvals: null,
+      children: null,
       instructions: 'Help the person.',
     });
   });
@@ -137,7 +137,7 @@ describe('the seed of a copy', () => {
       a2a: false,
       references: ['notes.md'],
     });
-    expect(seed?.skillDescriptors).toEqual(file.definition?.skillDescriptors ?? []);
+    expect(seed?.card).toEqual(file.definition?.card ?? []);
   });
 
   test('is nothing for an agent with no definition', () => {
@@ -185,7 +185,7 @@ describe('Duplicate, on the new agent page', () => {
             description: 'Helps with things',
             model: 'anthropic/claude-haiku-5',
             tools: ['lookup-order'],
-            skillDescriptors: [],
+            card: [],
             allowedSkills: ['summarize'],
             a2a: false,
             guardrails: null,
@@ -218,7 +218,7 @@ describe('Duplicate, on the new agent page', () => {
       definition: {
         ...definition,
         models: ['anthropic/sonnet', 'anthropic/claude-haiku-5'],
-        defaultEffort: 'high',
+        effort: 'high',
         allowedSkills: ['summarize'],
         a2a: true,
         stepLimit: 12,
@@ -228,7 +228,7 @@ describe('Duplicate, on the new agent page', () => {
         guardrails: ['acme:pii'],
         costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
         toolBudget: { maxCalls: 10, maxDurationSeconds: 30 },
-        toolApproval: { 'lookup-order': 'always' },
+        approvals: { 'lookup-order': 'always' },
       },
     });
     const { findByRole, getByRole } = copyOf('researcher');
@@ -240,7 +240,7 @@ describe('Duplicate, on the new agent page', () => {
       name: 'Researcher copy',
       model: 'anthropic/sonnet',
       models: ['anthropic/sonnet', 'anthropic/claude-haiku-5'],
-      defaultEffort: 'high',
+      effort: 'high',
       allowedSkills: ['summarize'],
       a2a: false,
       stepLimit: 12,
@@ -250,7 +250,7 @@ describe('Duplicate, on the new agent page', () => {
       guardrails: ['acme:pii'],
       costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
       toolBudget: { maxCalls: 10, maxDurationSeconds: 30 },
-      toolApproval: { 'lookup-order': 'always' },
+      approvals: { 'lookup-order': 'always' },
     });
   });
 

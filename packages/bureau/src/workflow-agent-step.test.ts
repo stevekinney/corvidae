@@ -75,7 +75,7 @@ describe('agentStepResultFromRun', () => {
       expect(failure).toBeInstanceOf(WorkflowAgentStepError);
       expect(failure.code).toBe('agent-run-failed');
       expect(failure.message).toContain('"refund"');
-      expect(failure.message).toContain('toolApproval');
+      expect(failure.message).toContain('approvals');
     });
 
     it('fails the step when Armorer could not issue the approval, as in a run with no requester', () => {

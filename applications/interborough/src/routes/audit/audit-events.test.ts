@@ -445,6 +445,13 @@ describe('the pane’s facts', () => {
     expect(changedWords('toolApproval,model', undefined, 'a,b', name)).toBe(
       'Tool approvals · Model · removed a, b',
     );
+    // The key a saved version recorded under the name it had after COR-2137.
+    expect(changedWords('approvals,model', undefined, 'a,b', name)).toBe(
+      'Tool approvals · Model · removed a, b',
+    );
+    expect(changedWords('effort,children,card', undefined, undefined, name)).toBe(
+      'Default effort · Child agents · Skill descriptors',
+    );
     expect(changedWords(undefined, undefined, undefined, name)).toBe('');
     expect(changedWords('retryPolicy', undefined, undefined, name)).toBe('Retry policy');
   });

@@ -602,7 +602,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * COR-1913 — the secret that signs the tool approvals the file agents of
    * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
-   * according to the file's `toolApproval` (`on-changes` for a tool it does not name), and an
+   * according to the file's `approvals` (`on-changes` for a tool it does not name), and an
    * approval is resolved by presenting the signed token that raised it, so the secret must be the
    * same after a restart and in every process that resolves reviews of the same store. Keep it
    * with the deployment's other secrets. Without one a file agent's approval is raised unsigned:
@@ -1380,7 +1380,7 @@ export interface ResolveReviewResult {
   remembered?: boolean;
   /**
    * COR-1990 — set with {@link ResolveReviewResult.remembered}: whether the next ask for the tool in
-   * this chat will be skipped, as the next call is decided now (the agent's `toolApproval` for the
+   * this chat will be skipped, as the next call is decided now (the agent's `approvals` for the
    * tool and the chat's permission mode). `false` when `remembered` is, and `false` for a tool its
    * agent sets to `always` or `blocked`, a chat in `always` mode, and a tool a `read-only` chat
    * denies: the grant is stored for those, but they answer `ask` or `deny` whatever it says. Also

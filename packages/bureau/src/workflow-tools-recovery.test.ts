@@ -38,7 +38,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
       model: KNOWN_MODEL,
       tools: `[${WORKFLOW_TOOL_NAMES.map((tool) => `bureau:${tool}`).join(', ')}]`,
       // The test is about the file written after a restart, so no call waits for a person (COR-1913).
-      toolApproval: `{ ${WORKFLOW_TOOL_NAMES.map((tool) => `bureau:${tool}: never`).join(', ')} }`,
+      approvals: `{ ${WORKFLOW_TOOL_NAMES.map((tool) => `bureau:${tool}: never`).join(', ')} }`,
     }),
   );
   const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });

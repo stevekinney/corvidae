@@ -553,7 +553,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
           models: [],
           tools: [],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: null,
         },
       };

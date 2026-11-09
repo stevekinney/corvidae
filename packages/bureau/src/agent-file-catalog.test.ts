@@ -98,7 +98,7 @@ describe('loading the agent directory', () => {
         `model: ${KNOWN_MODEL}`,
         'description: Finds sources',
         'tools: [lookup-order]',
-        'skillDescriptors:',
+        'card:',
         '  - {id: cite, name: Cite, description: Cites, tags: [research]}',
         '---',
         'Be careful.',
@@ -147,7 +147,7 @@ describe('loading the agent directory', () => {
     const planner = agentFileText({
       name: 'Planner',
       model: KNOWN_MODEL,
-      childAgents: '[reviewer]',
+      children: '[reviewer]',
     });
     await put('reviewer.md', reviewer);
     await put('planner.md', planner);

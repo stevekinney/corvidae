@@ -1,5 +1,5 @@
 /**
- * COR-1913 — a file agent's `toolApproval` on real runs: what each value does to a read-only and a
+ * COR-1913 — a file agent's `approvals` on real runs: what each value does to a read-only and a
  * mutating tool, that a call which asks parks the run on a signed approval, that the approval
  * survives a restart and resumes, and that two concurrent runs of one agent decide separately.
  */
@@ -118,7 +118,7 @@ function pendingOf(bureau: Bureau, runId: string) {
   return bureau.reviews.list().filter((review) => review.runId === runId);
 }
 
-describe('toolApproval on a file agent’s runs', () => {
+describe('approvals on a file agent’s runs', () => {
   type Outcome = 'ran' | 'asked' | 'denied';
   const CASES: ReadonlyArray<{
     readonly value: string | undefined;
@@ -145,7 +145,7 @@ describe('toolApproval on a file agent’s runs', () => {
       agentFileText({
         model: KNOWN_MODEL,
         tools: '[lookup-order, issue-refund]',
-        ...(value === undefined ? {} : { toolApproval: `{ ${tool}: ${value} }` }),
+        ...(value === undefined ? {} : { approvals: `{ ${tool}: ${value} }` }),
       }),
     );
     await harness.bureau.agents.refresh();

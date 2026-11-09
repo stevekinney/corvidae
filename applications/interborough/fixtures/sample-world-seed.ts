@@ -130,28 +130,28 @@ export const TOOL_RUNNER_VERSIONS = [
   {
     instructions: 'You help customers with orders.',
     tools: ['lookup-order', 'triage-refunds'],
-    toolApproval: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
+    approvals: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
     model: 'anthropic/claude-haiku-5-5',
   },
   {
     instructions:
       'You help customers with orders. Look an order up with lookup-order before you answer anything about it.',
     tools: ['lookup-order', 'triage-refunds'],
-    toolApproval: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
+    approvals: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
     model: 'anthropic/claude-haiku-5-5',
   },
   {
     instructions:
       'You help customers with orders. Look an order up with lookup-order before you answer anything about it.',
     tools: ['lookup-order', 'triage-refunds'],
-    toolApproval: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
+    approvals: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
     model: 'anthropic/claude-sonnet-5-5',
   },
   {
     instructions:
       'You help customers with orders. Look an order up with lookup-order before you answer anything about it.\n\nEvery refund over $25 needs a person to approve it first.',
     tools: ['lookup-order', 'issue-refund', 'triage-refunds'],
-    toolApproval: {
+    approvals: {
       'lookup-order': 'never',
       'issue-refund': 'always',
       'triage-refunds': 'on-changes',

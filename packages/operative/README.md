@@ -2261,7 +2261,7 @@ const agent = createAgent({
 });
 ```
 
-It is exclusive with `toolbox` (a type error, and `createAgent` throws for a cast) and with `permissions`, which sets the same `policy`: put `createHeadlessPermissionPolicyHooks(permissions)` in the function to have both. Bureau uses it for a file agent's `toolApproval`.
+It is exclusive with `toolbox` (a type error, and `createAgent` throws for a cast) and with `permissions`, which sets the same `policy`: put `createHeadlessPermissionPolicyHooks(permissions)` in the function to have both. Bureau uses it for a file agent's `approvals`.
 
 ### Model Catalog (AB-64)
 

@@ -76,7 +76,7 @@ import { SecretPublicationError } from './workspace-secrets.ts';
  *   {@link retired} in the manager, so no kind of source can use what the loader captured.
  * - **Removal lists the agents it breaks, and rewrites none of them (COR-1931).**
  *   {@link ToolSourceManager.affectedAgents} reads the agent files that name any of the source's
- *   tools, in `tools` or only in `toolApproval`, before anything is removed; {@link
+ *   tools, in `tools` or only in `approvals`, before anything is removed; {@link
  *   ToolSourceManager.remove} answers the same list and records the agents' identifiers in its audit
  *   entry. A file is affected when it names a tool the host loaded from the source or any name
  *   that starts with `<id>__` (a source that failed, awaits a sign-in, or was added since the host
@@ -480,7 +480,7 @@ export type ToolSourceRemovalPreview = {
   readonly id: string;
   /** The names of the tools the host loaded from it, which an agent file lists. */
   readonly tools: readonly string[];
-  /** The agent files that name any of them, in `tools` or in `toolApproval`. */
+  /** The agent files that name any of them, in `tools` or in `approvals`. */
   readonly affectedAgents: readonly AffectedAgent[];
 };
 

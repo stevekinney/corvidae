@@ -279,7 +279,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   const approved = await bureau(request, 'bureau.agents.definitions.update', {
     id: AUTHOR_ID,
     expectedHash: created.hash,
-    definition: { ...created.definition, toolApproval: { [JOURNEY_TOOL_NAME]: 'never' } },
+    definition: { ...created.definition, approvals: { [JOURNEY_TOOL_NAME]: 'never' } },
   });
   expect(approved.fault, 'setting the tool to never').toBeUndefined();
 

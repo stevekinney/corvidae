@@ -113,7 +113,7 @@ const BASE: AgentDefinitionInput = {
   description: 'Looks orders up.',
   model: 'anthropic/sonnet',
   tools: ['demo:lookup-order'],
-  skillDescriptors: [],
+  card: [],
   instructions: 'Look the order up.',
 };
 
@@ -123,7 +123,7 @@ const BASE: AgentDefinitionInput = {
  */
 async function saveAccess(
   fetcher: Fetcher,
-  access: Pick<AgentDefinitionInput, 'toolApproval' | 'costBudget' | 'toolBudget'>,
+  access: Pick<AgentDefinitionInput, 'approvals' | 'costBudget' | 'toolBudget'>,
 ): Promise<void> {
   const detail = await getAgentDefinition('clerk', { fetch: fetcher });
   if (detail.definition === null || detail.hash === null) throw new Error('expected a file');
@@ -136,7 +136,7 @@ async function saveAccess(
       description: file.description,
       model: file.model,
       tools: file.tools,
-      skillDescriptors: file.skillDescriptors,
+      card: file.card,
       a2a: file.a2a,
       instructions: file.instructions,
       ...access,
@@ -186,7 +186,7 @@ describe('a per-tool setting saved on the Access tab, in a chat', () => {
   test('asks first for a tool set to always, before the tool runs', async () => {
     const { host, fetcher } = await start(false);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { toolApproval: { 'demo:lookup-order': 'always' } });
+    await saveAccess(fetcher, { approvals: { 'demo:lookup-order': 'always' } });
 
     const stream = await chat(host, 'thread-always');
 
@@ -198,7 +198,7 @@ describe('a per-tool setting saved on the Access tab, in a chat', () => {
   test('never runs a tool set to blocked', async () => {
     const { host, fetcher } = await start(false);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { toolApproval: { 'demo:lookup-order': 'blocked' } });
+    await saveAccess(fetcher, { approvals: { 'demo:lookup-order': 'blocked' } });
 
     const stream = await chat(host, 'thread-blocked');
 

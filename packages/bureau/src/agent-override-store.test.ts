@@ -218,7 +218,7 @@ describe('the overrides the catalog saves', () => {
       await rejectionOf(
         overrides.save(
           'tool-runner',
-          { tools: ['lookup-order'], toolApproval: { 'issue-refund': 'always' } },
+          { tools: ['lookup-order'], approvals: { 'issue-refund': 'always' } },
           { expectedHash },
         ),
       ),
@@ -239,7 +239,7 @@ describe('the overrides the catalog saves', () => {
     const overrides = overridesFor();
     const saved = await overrides.save(
       'tool-runner',
-      { tools: ['lookup-order', 'issue-refund'], toolApproval: { 'issue-refund': 'always' } },
+      { tools: ['lookup-order', 'issue-refund'], approvals: { 'issue-refund': 'always' } },
       { expectedHash, savedBy: 'api-key:operator' },
     );
     expect(saved.version).toBe(1);

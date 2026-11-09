@@ -317,7 +317,7 @@ describe('results', () => {
         description: 'Writes things',
         model: KNOWN_MODEL,
         tools: ['lookup-order'],
-        skillDescriptors: [],
+        card: [],
         a2a: false,
         instructions: 'Write well.\n',
       },
@@ -415,7 +415,7 @@ describe('results', () => {
     expect(afterwards.result).toMatchObject({ a2a: true });
   });
 
-  it('takes the definition a read answers back as an update, with a toolApproval added (COR-1913)', async () => {
+  it('takes the definition a read answers back as an update, with approvals added (COR-1913)', async () => {
     const served = await serve();
     const hash = await seed(served);
     const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
@@ -424,7 +424,7 @@ describe('results', () => {
     const updated = await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'researcher',
       expectedHash: hash,
-      definition: { ...definition, toolApproval: { 'lookup-order': 'never' } },
+      definition: { ...definition, approvals: { 'lookup-order': 'never' } },
     });
 
     expect(updated.error).toBeUndefined();
@@ -433,12 +433,12 @@ describe('results', () => {
     });
     expect(afterwards.result?.['definition']).toMatchObject({
       tools: ['lookup-order'],
-      toolApproval: { 'lookup-order': 'never' },
+      approvals: { 'lookup-order': 'never' },
     });
     const refused = await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'researcher',
       expectedHash: served.hashOf('researcher'),
-      definition: { ...definition, toolApproval: { ghost: 'never' } },
+      definition: { ...definition, approvals: { ghost: 'never' } },
     });
     expect(refused.error?.data).toMatchObject({ reason: 'unknown-approval-tool' });
   });
@@ -876,7 +876,7 @@ describe('the audit trail', () => {
           // COR-2009: the saved version each write made, what changed, and the tools it added.
           agentName: 'researcher',
           revision: 1,
-          changedKeys: 'name,description,model,tools,skillDescriptors,a2a,instructions',
+          changedKeys: 'name,description,model,tools,card,a2a,instructions',
           toolsAdded: 'lookup-order',
         },
       ],

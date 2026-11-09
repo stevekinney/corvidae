@@ -732,7 +732,7 @@ function copyOfCodeAgent(
     tools: stated.tools.map((tool) =>
       !toolNames.has(tool) && toolNames.has(`${plugin}:${tool}`) ? `${plugin}:${tool}` : tool,
     ),
-    skillDescriptors: stated.skillDescriptors,
+    card: stated.skillDescriptors,
     ...(stated.skills.length === 0 ? {} : { allowedSkills: stated.skills }),
     instructions: stated.instructions ?? '',
   };

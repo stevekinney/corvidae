@@ -1,6 +1,6 @@
 /**
  * COR-1913 — an `agent` step of a workflow runs its agent with no one to ask. A tool call that
- * needs a person's approval cannot get one there, so under the default `toolApproval` (`on-changes`)
+ * needs a person's approval cannot get one there, so under the default `approvals` (`on-changes`)
  * a tool that changes something fails the step visibly instead of looking finished with the change
  * never made. A tool the file sets to `never` runs and applies.
  */
@@ -70,7 +70,7 @@ describe('a workflow’s agent step that calls a tool that changes something', (
     expect(result).toBeUndefined();
     expect(state?.status).toBe('failed');
     expect(state?.error).toContain('"settings-update"');
-    expect(state?.error).toContain('toolApproval');
+    expect(state?.error).toContain('approvals');
     const settings = await harness.bureau.settings.get();
     expect(settings.values[FALLBACK_KEY]).not.toBe(FALLBACK_VALUE);
     // Nothing waits for a person either: no review was raised for a step no one can answer.

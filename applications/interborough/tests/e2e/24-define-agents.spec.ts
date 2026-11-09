@@ -87,7 +87,7 @@ test.describe('a new agent', () => {
     page,
     request,
   }) => {
-    await makeAgent(request, 'e2e-child-agent-preserve', { childAgents: ['demo:echo'] });
+    await makeAgent(request, 'e2e-child-agent-preserve', { children: ['demo:echo'] });
     await page.goto('/agents/e2e-child-agent-preserve/edit');
     await expect(editor(page)).toHaveAttribute('data-state', 'ready');
     await captureForDesignReview(page, {
@@ -99,9 +99,9 @@ test.describe('a new agent', () => {
     await expect(page).toHaveURL(/\/agents\/e2e-child-agent-preserve$/);
 
     const saved = await readAgent(request, 'e2e-child-agent-preserve');
-    expect(saved.definition?.childAgents).toEqual(['demo:echo']);
+    expect(saved.definition?.children).toEqual(['demo:echo']);
     const text = await readFile(await agentFilePath(request, 'e2e-child-agent-preserve'), 'utf8');
-    expect(text).toContain('childAgents:');
+    expect(text).toContain('children:');
     expect(text).toContain('demo:echo');
   });
 
@@ -457,8 +457,8 @@ test.describe('an agent that exists', () => {
 
       const agent = await readAgent(request, 'e2e-edit');
       expect(agent.definition?.instructions).toBe('Edited in the browser.');
-      // The editor never touches `skillDescriptors`, and a save leaves the A2A opt-in as it was.
-      expect(agent.definition?.skillDescriptors).toEqual(BASE_DEFINITION.skillDescriptors);
+      // The editor never touches `card`, and a save leaves the A2A opt-in as it was.
+      expect(agent.definition?.card).toEqual(BASE_DEFINITION.card);
       expect(agent.a2a).toBe(false);
       expect(await readFile(path, 'utf8')).toContain('Edited in the browser.');
     });
@@ -490,7 +490,7 @@ test.describe('an agent that exists', () => {
     page,
     request,
   }) => {
-    await makeAgent(request, 'e2e-effort', { defaultEffort: 'high' });
+    await makeAgent(request, 'e2e-effort', { effort: 'high' });
     await page.goto('/agents/e2e-effort/edit');
     const effort = page.getByLabel(copy.effort.label);
     await expect(effort).toHaveValue('high');
@@ -499,9 +499,9 @@ test.describe('an agent that exists', () => {
     await page.getByRole('button', { name: copy.saveAction }).click();
     await expect(page).toHaveURL(/\/agents\/e2e-effort$/);
     const changed = await readAgent(request, 'e2e-effort');
-    expect(changed.definition?.defaultEffort).toBe('low');
+    expect(changed.definition?.effort).toBe('low');
     expect(await readFile(await agentFilePath(request, 'e2e-effort'), 'utf8')).toContain(
-      'defaultEffort: low',
+      'effort: low',
     );
 
     await page.goto('/agents/e2e-effort?tab=settings');
@@ -512,7 +512,7 @@ test.describe('an agent that exists', () => {
     await page.getByRole('button', { name: copy.saveAction }).click();
     await expect(page).toHaveURL(/\/agents\/e2e-effort$/);
     const cleared = await readAgent(request, 'e2e-effort');
-    expect(cleared.definition?.defaultEffort).toBeNull();
+    expect(cleared.definition?.effort).toBeNull();
     await page.goto('/agents/e2e-effort?tab=settings');
     await expect(page.getByTestId('agent-default-effort')).toHaveText('Not set');
   });

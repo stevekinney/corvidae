@@ -1,5 +1,5 @@
 /**
- * COR-1913 — the policy hook that a file agent's `toolApproval` becomes: what each value decides
+ * COR-1913 — the policy hook that a file agent's `approvals` becomes: what each value decides
  * for a read-only and a mutating tool, and that it composes with the toolbox's own approval policy
  * as the most restrictive of the two, so a per-tool `never` can never loosen a toolbox `ask`.
  */

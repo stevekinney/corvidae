@@ -25,7 +25,7 @@
     editor.chosenModel?.row !== undefined && editor.effortChoices.length === 0,
   );
   /** Nothing to choose: the model has no effort control and the file holds none to change. */
-  const nothingToChoose = $derived(unsupportedByModel && editor.defaultEffort === '');
+  const nothingToChoose = $derived(unsupportedByModel && editor.effort === '');
 
   /**
    * None, then the tiers the model supports. The effort the file holds stays listed when the model
@@ -35,12 +35,12 @@
   const options = $derived([
     { value: '', label: copy.none },
     ...EFFORTS.filter(
-      (effort) => effort === editor.defaultEffort || editor.effortChoices.includes(effort),
+      (effort) => effort === editor.effort || editor.effortChoices.includes(effort),
     ).map((effort) => ({ value: effort, label: EFFORT_LABELS[effort] })),
   ]);
 
   function choose(value: string): void {
-    editor.defaultEffort = EFFORTS.find((effort) => effort === value) ?? '';
+    editor.effort = EFFORTS.find((effort) => effort === value) ?? '';
   }
 </script>
 
@@ -50,7 +50,7 @@
     label={copy.label}
     description={unsupportedByModel ? copy.notSupportedByModel : copy.description}
     {options}
-    value={editor.defaultEffort}
+    value={editor.effort}
     disabled={nothingToChoose}
     error={editor.effortError}
     onchange={(event) => choose(event.currentTarget.value)}

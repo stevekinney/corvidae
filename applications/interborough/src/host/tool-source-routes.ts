@@ -34,7 +34,7 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  *   source's `unmatchedSettings`. The change loads at the next start; remote mode answers 403
  *   `deployment` like every other change here.
  * - `GET /host/tool-sources/<id>/affected-agents` lists the agent files that name the source's
- *   tools, in `tools` or only in `toolApproval`, and changes nothing. A source the configuration
+ *   tools, in `tools` or only in `approvals`, and changes nothing. A source the configuration
  *   does not list answers 404.
  * - `DELETE /host/tool-sources/<id>` removes a source and clears its credentials. It answers the
  *   same list as `affectedAgents`: those agent files are not edited, and read `invalid` with

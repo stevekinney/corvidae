@@ -3106,10 +3106,16 @@ export const AUDIT_COPY = {
   changedWords: {
     instructions: 'Instructions',
     tools: 'Tools',
+    approvals: 'Tool approvals',
+    // What an audit event recorded before `toolApproval` became `approvals` (COR-2137).
     toolApproval: 'Tool approvals',
     model: 'Model',
     description: 'Description',
     skills: 'Skills',
+    // The agent file's keys after COR-2137, worded as the agent editor words them.
+    effort: 'Default effort',
+    children: 'Child agents',
+    card: 'Skill descriptors',
   },
   toolsAdded: (names: string): string => `added ${names}`,
   toolsRemoved: (names: string): string => `removed ${names}`,

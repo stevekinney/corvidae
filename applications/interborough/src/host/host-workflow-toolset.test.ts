@@ -34,7 +34,7 @@ const A2A_KEY = 'fixture-a2a-toolset-key';
 const agentFile = (
   name: string,
   tools: readonly string[],
-  childAgents?: readonly string[],
+  children?: readonly string[],
   allowMutations = false,
 ) =>
   [
@@ -46,10 +46,10 @@ const agentFile = (
     `tools: [${tools.join(', ')}]`,
     ...(allowMutations
       ? [
-          "toolApproval: { 'bureau:child-runs-dispatch': never, 'bureau:workflows-update': never, 'bureau:workflows-start': never }",
+          "approvals: { 'bureau:child-runs-dispatch': never, 'bureau:workflows-update': never, 'bureau:workflows-start': never }",
         ]
       : []),
-    ...(childAgents === undefined ? [] : [`childAgents: [${childAgents.join(', ')}]`]),
+    ...(children === undefined ? [] : [`children: [${children.join(', ')}]`]),
     '---',
     `You are the scripted ${name}.`,
     '',

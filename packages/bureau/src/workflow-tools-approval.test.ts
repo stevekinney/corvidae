@@ -1,6 +1,6 @@
 /**
  * COR-1913 — the workflow and settings tools change the deployment, so a file agent that lists
- * them and states no `toolApproval` is asked about before each call (the agent default is
+ * them and states no `approvals` is asked about before each call (the agent default is
  * `on-changes`), and the read-only ones run. The tools declare their capability and a version,
  * because Armorer cannot issue an approval for a tool that has neither.
  */
@@ -31,7 +31,7 @@ async function start() {
   return harness;
 }
 
-describe('a file agent that states no toolApproval', () => {
+describe('a file agent that states no approvals', () => {
   it.each([
     [
       'bureau:workflows-create',

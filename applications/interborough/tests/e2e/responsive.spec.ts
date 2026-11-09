@@ -485,7 +485,7 @@ test.beforeAll(async ({ playwright }) => {
       description: LONG_DESCRIPTION,
       instructions: LONG_INSTRUCTIONS,
       // The Access tab's largest values, and a tool that asks every time.
-      toolApproval: { 'demo:lookup-order': 'always' },
+      approvals: { 'demo:lookup-order': 'always' },
       costBudget: { perRunUsd: 1_000_000, perChatUsd: 1_000_000 },
       toolBudget: { maxCalls: 100_000, maxDurationSeconds: 86_400 },
     });
