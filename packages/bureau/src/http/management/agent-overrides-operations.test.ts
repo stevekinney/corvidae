@@ -46,12 +46,10 @@ describe('bureau.agents.overrides', () => {
         tools: null,
         approvals: null,
         guardrails: null,
-        costBudget: null,
-        toolBudget: null,
+        limits: null,
         model: null,
         models: null,
         effort: null,
-        stepLimit: null,
       },
     });
     const versions = await callAs(served.owner, 'bureau.agents.versions.list', { id: 'alpha' });
@@ -84,13 +82,12 @@ describe('bureau.agents.overrides', () => {
 
   it('saves each change as the next version, listed newest first with its overrides', async () => {
     const served = await serve();
-    const first = await save(served, { tools: ['lookup-order'], stepLimit: 20 });
+    const first = await save(served, { tools: ['lookup-order'], limits: { steps: 20 } });
     expect(first.result).toMatchObject({ id: 'alpha', version: 1 });
     const second = await save(served, {
       tools: ['lookup-order'],
       approvals: { 'lookup-order': 'always' },
-      stepLimit: 20,
-      costBudget: { perRunUsd: 2 },
+      limits: { steps: 20, cost: { run: 2 } },
     });
     expect(second.result).toMatchObject({ version: 2 });
 
@@ -99,8 +96,8 @@ describe('bureau.agents.overrides', () => {
       'versions',
     );
     expect(versions.map((entry) => [entry['revision'], entry['changedKeys']])).toEqual([
-      [2, ['approvals', 'costBudget']],
-      [1, ['tools', 'stepLimit']],
+      [2, ['approvals', 'limits']],
+      [1, ['tools', 'limits']],
     ]);
     expect(versions[0]).toMatchObject({
       hash: (second.result as { hash: string }).hash,
@@ -111,19 +108,48 @@ describe('bureau.agents.overrides', () => {
       overrides: {
         tools: ['lookup-order'],
         approvals: { 'lookup-order': 'always' },
-        costBudget: { perRunUsd: 2 },
-        stepLimit: 20,
+        limits: { steps: 20, cost: { run: 2 } },
         model: null,
       },
     });
     const now = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
-    expect(now.result).toMatchObject({ version: 2, overrides: { stepLimit: 20 } });
+    expect(now.result).toMatchObject({ version: 2, overrides: { limits: { steps: 20 } } });
+  });
+
+  it('overrides only the limits a save states, and treats a limit left out or null as not overridden', async () => {
+    const served = await serve();
+    await save(served, { limits: { steps: null, cost: { run: 2 }, tools: null } });
+    const now = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
+    expect(now.result).toMatchObject({ version: 1, overrides: { limits: { cost: { run: 2 } } } });
+    const stored = (now.result as { overrides: { limits: Record<string, unknown> } }).overrides;
+    expect(Object.keys(stored.limits)).toEqual(['cost']);
+
+    // Saving no limit at all is not an override of limits: it removes them.
+    await save(served, { limits: { steps: null } });
+    const cleared = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
+    expect(cleared.result).toMatchObject({ overrides: { limits: null } });
+  });
+
+  it('refuses the old override keys and the old field names', async () => {
+    const served = await serve();
+    for (const overrides of [
+      { stepLimit: 5 },
+      { costBudget: { perRunUsd: 1 } },
+      { toolBudget: { maxCalls: 1 } },
+      { limits: { cost: { perRunUsd: 1 } } },
+    ]) {
+      const response = await save(served, overrides);
+      expect([JSON.stringify(overrides), response.error?.data?.httpStatus]).toEqual([
+        JSON.stringify(overrides),
+        400,
+      ]);
+    }
   });
 
   it('restores a version as a new one and leaves the others listed', async () => {
     const served = await serve();
-    await save(served, { stepLimit: 20 });
-    await save(served, { stepLimit: 20, tools: ['lookup-order'] });
+    await save(served, { limits: { steps: 20 } });
+    await save(served, { limits: { steps: 20 }, tools: ['lookup-order'] });
 
     const restored = await callAs(served.owner, 'bureau.agents.versions.restore', {
       id: 'alpha',
@@ -138,15 +164,15 @@ describe('bureau.agents.overrides', () => {
       'versions',
     );
     expect(versions.map((entry) => entry['revision'])).toEqual([3, 2, 1]);
-    expect(versions[0]).toMatchObject({ overrides: { stepLimit: 20, tools: null } });
+    expect(versions[0]).toMatchObject({ overrides: { limits: { steps: 20 }, tools: null } });
   });
 
   it('audits every save and restore that made a version, naming the versions and the tools', async () => {
     const served = await serve();
-    await save(served, { stepLimit: 20 });
-    await save(served, { stepLimit: 20, tools: ['lookup-order'] });
+    await save(served, { limits: { steps: 20 } });
+    await save(served, { limits: { steps: 20 }, tools: ['lookup-order'] });
     // Saving the same overrides makes no version and no entry.
-    await save(served, { stepLimit: 20, tools: ['lookup-order'] });
+    await save(served, { limits: { steps: 20 }, tools: ['lookup-order'] });
     await callAs(served.owner, 'bureau.agents.versions.restore', {
       id: 'alpha',
       revision: 1,
@@ -155,7 +181,7 @@ describe('bureau.agents.overrides', () => {
 
     const page = await served.bureau.audit.query({ runId: 'agent:alpha', type: 'agent.updated' });
     expect(page.records.map((record) => [record.principal, record.detail])).toEqual([
-      ['anonymous:local', { agentName: 'alpha', revision: 1, changedKeys: 'stepLimit' }],
+      ['anonymous:local', { agentName: 'alpha', revision: 1, changedKeys: 'limits' }],
       [
         'anonymous:local',
         {
@@ -182,12 +208,12 @@ describe('bureau.agents.overrides', () => {
   it('refuses a stale save with the current hash and writes nothing', async () => {
     const served = await serve();
     const before = await currentHash(served);
-    await save(served, { stepLimit: 20 });
+    await save(served, { limits: { steps: 20 } });
 
     const stale = await callAs(served.owner, 'bureau.agents.overrides.update', {
       id: 'alpha',
       expectedHash: before,
-      overrides: { stepLimit: 30 },
+      overrides: { limits: { steps: 30 } },
     });
 
     expect(stale.error?.data).toMatchObject({
@@ -209,7 +235,7 @@ describe('bureau.agents.overrides', () => {
     const file = await callAs(served.owner, 'bureau.agents.overrides.update', {
       id: 'researcher',
       expectedHash: 'x',
-      overrides: { stepLimit: 5 },
+      overrides: { limits: { steps: 5 } },
     });
     expect(file.error?.data).toMatchObject({ reason: 'agent-file-read-only' });
     const read = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'researcher' });

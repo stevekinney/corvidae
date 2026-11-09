@@ -80,12 +80,12 @@ describe('the override versions of a built-in agent', () => {
     const store = freshStore();
     const first = await store.save(
       'tool-runner',
-      { stepLimit: 20 },
+      { limits: { steps: 20 } },
       { ...SAVED, expectedHash: hashAgentOverrides({}) },
     );
     const again = await store.save(
       'tool-runner',
-      { stepLimit: 20 },
+      { limits: { steps: 20 } },
       { ...SAVED, expectedHash: first.hash },
     );
     expect(again).toEqual(first);
@@ -96,12 +96,12 @@ describe('the override versions of a built-in agent', () => {
     const store = freshStore();
     const first = await store.save(
       'tool-runner',
-      { stepLimit: 20 },
+      { limits: { steps: 20 } },
       { ...SAVED, expectedHash: hashAgentOverrides({}) },
     );
     const stale = store.save(
       'tool-runner',
-      { stepLimit: 30 },
+      { limits: { steps: 30 } },
       { ...SAVED, expectedHash: hashAgentOverrides({}) },
     );
     expect(await rejectionOf(stale)).toBeInstanceOf(AgentFileConflictError);
@@ -113,8 +113,8 @@ describe('the override versions of a built-in agent', () => {
     const store = freshStore();
     const expectedHash = hashAgentOverrides({});
     const results = await Promise.allSettled([
-      store.save('tool-runner', { stepLimit: 20 }, { ...SAVED, expectedHash }),
-      store.save('tool-runner', { stepLimit: 30 }, { ...SAVED, expectedHash }),
+      store.save('tool-runner', { limits: { steps: 20 } }, { ...SAVED, expectedHash }),
+      store.save('tool-runner', { limits: { steps: 30 } }, { ...SAVED, expectedHash }),
     ]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(await store.list('tool-runner')).toHaveLength(1);
@@ -160,7 +160,7 @@ describe('the override versions of a built-in agent', () => {
     for (let step = 1; step <= AGENT_OVERRIDE_VERSION_LIMIT + 2; step += 1) {
       ({ hash } = await store.save(
         'tool-runner',
-        { stepLimit: step },
+        { limits: { steps: step } },
         { ...SAVED, expectedHash: hash },
       ));
     }
@@ -195,13 +195,15 @@ describe('the overrides the catalog saves', () => {
     expect(await overrides.versions('demo:release-helper')).toEqual([]);
 
     expect(
-      await rejectionOf(overrides.save('demo:release-helper', { stepLimit: 5 }, { expectedHash })),
+      await rejectionOf(
+        overrides.save('demo:release-helper', { limits: { steps: 5 } }, { expectedHash }),
+      ),
     ).toMatchObject({ code: 'agent-file-read-only' });
     expect(
-      await rejectionOf(overrides.save('writer', { stepLimit: 5 }, { expectedHash })),
+      await rejectionOf(overrides.save('writer', { limits: { steps: 5 } }, { expectedHash })),
     ).toMatchObject({ code: 'agent-file-read-only' });
     expect(
-      await rejectionOf(overrides.save('nobody', { stepLimit: 5 }, { expectedHash })),
+      await rejectionOf(overrides.save('nobody', { limits: { steps: 5 } }, { expectedHash })),
     ).toMatchObject({ code: 'agent-file-not-found' });
   });
 
@@ -280,12 +282,12 @@ describe('the override versions of a Bureau', () => {
     const bureau = await open(database, true);
     const first = await bureau.agents.overrides.save(
       'tool-runner',
-      { stepLimit: 10 },
+      { limits: { steps: 10 } },
       { expectedHash: hashAgentOverrides({}) },
     );
     await bureau.agents.overrides.save(
       'tool-runner',
-      { stepLimit: 20 },
+      { limits: { steps: 20 } },
       { expectedHash: first.hash },
     );
     await bureau.dispose();
@@ -294,8 +296,8 @@ describe('the override versions of a Bureau', () => {
     const restarted = await open(database, false);
     const kept = await restarted.agents.overrides.versions('tool-runner');
     expect(kept.map((version) => [version.version, version.overrides])).toEqual([
-      [2, { stepLimit: 20 }],
-      [1, { stepLimit: 10 }],
+      [2, { limits: { steps: 20 } }],
+      [1, { limits: { steps: 10 } }],
     ]);
     const current = await restarted.agents.overrides.get('tool-runner');
     const restored = await restarted.agents.overrides.restore('tool-runner', 1, {

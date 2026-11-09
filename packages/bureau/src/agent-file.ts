@@ -76,14 +76,12 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'allowedSkills',
   'children',
   'a2a',
-  'stepLimit',
+  'limits',
   'retry',
   'compaction',
   'references',
   'guardrails',
   'interceptors',
-  'costBudget',
-  'toolBudget',
   'approvals',
 ] as const;
 
@@ -186,7 +184,7 @@ export type AgentDefaultEffortMatchesEffort = [
 const agentDefaultEffortMatchesEffort: AgentDefaultEffortMatchesEffort = [true, true];
 void agentDefaultEffortMatchesEffort;
 
-/** The most steps an agent file may allow a run (`stepLimit`). */
+/** The most steps an agent file may allow a run (`limits.steps`). */
 export const AGENT_STEP_LIMIT_MAXIMUM = 1000;
 /** The most attempts a file's `retry` may allow one generate call, the first included. */
 export const AGENT_RETRY_ATTEMPTS_MAXIMUM = 10;
@@ -207,53 +205,72 @@ export const agentRetrySchema = z.strictObject({
   jitter: z.boolean().optional(),
 });
 
-/** The most a file's `costBudget.perRunUsd` may allow one run to spend, in US dollars. */
-export const AGENT_COST_BUDGET_MAXIMUM_USD = 1_000_000;
-/** The most thresholds a file's `costBudget.warnAt` may list: Operative's own limit. */
-export const AGENT_COST_BUDGET_MAXIMUM_WARNINGS = RUN_COST_BUDGET_MAXIMUM_WARNINGS;
+/** The most a file's `limits.cost.run` may allow one run to spend, in US dollars. */
+export const AGENT_COST_LIMIT_MAXIMUM_USD = 1_000_000;
+/** The most thresholds a file's `limits.cost.warn` may list: Operative's own limit. */
+export const AGENT_COST_LIMIT_MAXIMUM_WARNINGS = RUN_COST_BUDGET_MAXIMUM_WARNINGS;
 
 /**
- * What one run of the agent may spend (COR-1914). `perRunUsd` is the limit in US dollars, measured
+ * What the agent may spend (COR-1914), in US dollars. `run` is the limit on one run, measured
  * against the run's cost as the model catalog prices each request: a run that reaches it finishes
- * with `budget-exceeded`. `warnAt` lists fractions of it, each strictly between 0 and 1, at which
+ * with `budget-exceeded`. `warn` lists fractions of `run`, each strictly between 0 and 1, at which
  * the run's activity shows one `budget.threshold` event. Any order and repeats are accepted; the
  * definition holds them sorted and without repeats.
  *
- * `perChatUsd` (COR-1915) is the most a chat may spend across its runs, counted from the same
- * per-run estimates the chat's spend ledger records. It is checked when a run starts: once the
+ * `chat` (COR-1915) is the most a chat may spend across its runs, in US dollars, counted from the
+ * same per-run estimates the chat's spend ledger records. It is checked when a run starts: once the
  * chat's earlier runs have spent it, the next run finishes `budget-exceeded` naming `perChatUsd`
- * before it asks the model anything, and a run already under way is not stopped by it. `warnAt`
- * stays a fraction of `perRunUsd`.
+ * (Operative's name for it) before it asks the model anything, and a run already under way is not stopped by it. `warn` stays a
+ * fraction of `run`.
  */
-export const agentCostBudgetSchema = z.strictObject({
-  perRunUsd: z.number().positive().max(AGENT_COST_BUDGET_MAXIMUM_USD),
-  perChatUsd: z.number().positive().max(AGENT_COST_BUDGET_MAXIMUM_USD).optional(),
-  warnAt: z.array(z.number().gt(0).lt(1)).max(AGENT_COST_BUDGET_MAXIMUM_WARNINGS).optional(),
+export const agentCostLimitSchema = z.strictObject({
+  run: z.number().positive().max(AGENT_COST_LIMIT_MAXIMUM_USD),
+  chat: z.number().positive().max(AGENT_COST_LIMIT_MAXIMUM_USD).optional(),
+  warn: z.array(z.number().gt(0).lt(1)).max(AGENT_COST_LIMIT_MAXIMUM_WARNINGS).optional(),
 });
 
-/** The most tool calls a file's `toolBudget.maxCalls` may allow one run. */
-export const AGENT_TOOL_BUDGET_MAXIMUM_CALLS = 100_000;
-/** The longest a file's `toolBudget.maxDurationSeconds` may allow one run, in seconds (one day). */
-export const AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS = 86_400;
+/** The most tool calls a file's `limits.tools.calls` may allow one run. */
+export const AGENT_TOOL_LIMIT_MAXIMUM_CALLS = 100_000;
+/** The longest a file's `limits.tools.seconds` may allow one run, in seconds (one day). */
+export const AGENT_TOOL_LIMIT_MAXIMUM_SECONDS = 86_400;
 
 /**
- * What one run's tools may use (COR-1915): `maxCalls` is how many tool calls the run may make, and
- * `maxDurationSeconds` how long the run's tools may be called, counted from the start of the run.
- * The first call after either limit is reached ends the run with the finish reason
- * `budget-exceeded`. At least one of the two is required.
+ * What one run's tools may use (COR-1915): `calls` is how many tool calls the run may make, and
+ * `seconds` how long the run's tools may be called, counted from the start of the run. The first
+ * call after either limit is reached ends the run with the finish reason `budget-exceeded`. At
+ * least one of the two is required.
  */
-export const agentToolBudgetSchema = z
+export const agentToolLimitSchema = z
   .strictObject({
-    maxCalls: z.number().int().min(1).max(AGENT_TOOL_BUDGET_MAXIMUM_CALLS).optional(),
-    maxDurationSeconds: z
-      .number()
-      .positive()
-      .max(AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS)
-      .optional(),
+    calls: z.number().int().min(1).max(AGENT_TOOL_LIMIT_MAXIMUM_CALLS).optional(),
+    seconds: z.number().positive().max(AGENT_TOOL_LIMIT_MAXIMUM_SECONDS).optional(),
   })
-  .refine((budget) => budget.maxCalls !== undefined || budget.maxDurationSeconds !== undefined, {
-    message: 'toolBudget needs maxCalls, maxDurationSeconds, or both',
+  .refine((limit) => limit.calls !== undefined || limit.seconds !== undefined, {
+    message: 'limits.tools needs calls, seconds, or both',
   });
+
+/**
+ * A file's `limits` as the frontmatter states it: {@link agentLimitsSchema} with each limit also
+ * allowed to be empty (`null`), as the top-level keys it replaced were, so `cost:` with nothing
+ * after it is no limit rather than a refusal.
+ */
+const agentLimitsFileSchema = z.strictObject({
+  steps: agentStepLimitSchema.nullish(),
+  cost: agentCostLimitSchema.nullish(),
+  tools: agentToolLimitSchema.nullish(),
+});
+
+/**
+ * A file's `limits` (COR-2138): `steps` is the most steps one run may take, `cost` what the agent
+ * may spend in US dollars ({@link agentCostLimitSchema}), and `tools` what one run's tools may use
+ * ({@link agentToolLimitSchema}). Each is optional, and a limit the file leaves out is not applied.
+ * They were the top-level keys `stepLimit`, `costBudget` and `toolBudget`.
+ */
+export const agentLimitsSchema = z.strictObject({
+  steps: agentStepLimitSchema.optional(),
+  cost: agentCostLimitSchema.optional(),
+  tools: agentToolLimitSchema.optional(),
+});
 
 /**
  * A file's `approvals` (COR-1913): a tool name mapped to when it asks a person before it runs,
@@ -347,7 +364,7 @@ function isModelEntry(entry: string): boolean {
 }
 
 /**
- * The frontmatter keys that were renamed, from the old name to the new one (COR-2126, COR-2137). A
+ * The frontmatter keys that were renamed, from the old name to the new one (COR-2126, COR-2137, COR-2138). A
  * file that still uses an old name is refused at that key's own path.
  */
 const RENAMED_FRONTMATTER_KEYS: Readonly<Record<string, string>> = {
@@ -356,6 +373,9 @@ const RENAMED_FRONTMATTER_KEYS: Readonly<Record<string, string>> = {
   toolApproval: 'approvals',
   childAgents: 'children',
   skillDescriptors: 'card',
+  stepLimit: 'limits.steps',
+  costBudget: 'limits.cost',
+  toolBudget: 'limits.tools',
 };
 
 /**
@@ -405,8 +425,15 @@ export const agentFileFrontmatterSchema = z
      * `false`. Chat and every other surface serve a ready agent whatever this says.
      */
     a2a: z.boolean().nullish(),
-    /** The most steps one run may take. An integer from 1 to 1000; absent, Operative's default. */
-    stepLimit: agentStepLimitSchema.nullish(),
+    /**
+     * What a run, a chat and a run's tools may use (COR-2138): `steps` is the most steps one run may
+     * take, an integer from 1 to 1000 (absent, Operative's default); `cost` is what the agent may
+     * spend in US dollars, `run` for one run, `chat` for a chat, and `warn` as fractions of `run`
+     * (absent, a run has no spend limit, and the agent's `model` must have a price in the model
+     * catalog or the file is not usable); `tools` is what one run's tools may use, `calls`, `seconds`
+     * or both (absent, a run's tools have no limit).
+     */
+    limits: agentLimitsFileSchema.nullish(),
     /** How a run retries a failed generate call. Absent, it does not. */
     retry: agentRetrySchema.nullish(),
     /**
@@ -430,16 +457,6 @@ export const agentFileFrontmatterSchema = z
      */
     interceptors: agentContributionIdsSchema.nullish(),
     /**
-     * What one run may spend. Absent, a run has no spend limit. The agent's `model` must have a
-     * price in the model catalog, or the file is not usable.
-     */
-    costBudget: agentCostBudgetSchema.nullish(),
-    /**
-     * What one run's tools may use: a count of calls, a length of time, or both. Absent, a run's
-     * tools have no limit.
-     */
-    toolBudget: agentToolBudgetSchema.nullish(),
-    /**
      * When each tool asks a person before it runs. A tool the map leaves out asks on changes. Each
      * name must be one of `tools`.
      */
@@ -452,7 +469,7 @@ export const agentFileFrontmatterSchema = z
   })
   .superRefine((frontmatter, context) => {
     checkModelsList(frontmatter, context);
-    // Each of these keys was named otherwise before COR-2126 and COR-2137. Unknown keys are kept, so
+    // Each of these keys was named otherwise before COR-2126, COR-2137 and COR-2138. Unknown keys are kept, so
     // without this refusal a file that still says `hooks:` would load and silently run no
     // interceptors, and one that says `toolApproval:` would load and ask nothing.
     for (const [oldKey, newKey] of Object.entries(RENAMED_FRONTMATTER_KEYS)) {
@@ -514,6 +531,52 @@ export function checkModelsList(
   }
 }
 
+/** The inner names a stored `costBudget` and `toolBudget` used, by the names `limits` gives them. */
+const LEGACY_COST_BUDGET_FIELDS: ReadonlyMap<string, string> = new Map([
+  ['perRunUsd', 'run'],
+  ['perChatUsd', 'chat'],
+  ['warnAt', 'warn'],
+]);
+const LEGACY_TOOL_BUDGET_FIELDS: ReadonlyMap<string, string> = new Map([
+  ['maxCalls', 'calls'],
+  ['maxDurationSeconds', 'seconds'],
+]);
+
+/** `value` with each field in `names` under its new name; anything but a plain object is returned. */
+function withRenamedFields(value: unknown, names: ReadonlyMap<string, string>): unknown {
+  if (!isPlainRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, held]) => [names.get(key) ?? key, held]),
+  );
+}
+
+/**
+ * `value` with the top-level `stepLimit`, `costBudget` and `toolBudget` that a definition, an
+ * override record or a saved version held before COR-2138 folded into `limits` as `steps`, `cost`
+ * and `tools`, each field of the two budgets under its new name. A limit that `limits` already holds
+ * wins over the old key's, and the old keys are never part of the result. Anything that is not a
+ * plain object, or that holds none of the old keys, is returned as it is, for the schema to judge.
+ */
+export function withFoldedLegacyLimits(value: unknown): unknown {
+  if (!isPlainRecord(value)) return value;
+  if (!['stepLimit', 'costBudget', 'toolBudget'].some((key) => Object.hasOwn(value, key))) {
+    return value;
+  }
+  const { stepLimit, costBudget, toolBudget, ...rest } = value;
+  // A `limits` that is not an object is left for the schema to refuse, as it was written.
+  if (rest['limits'] !== undefined && !isPlainRecord(rest['limits'])) return rest;
+  const limits: Record<string, unknown> = { ...(rest['limits'] as object | undefined) };
+  const legacy: readonly [string, unknown][] = [
+    ['steps', stepLimit],
+    ['cost', withRenamedFields(costBudget, LEGACY_COST_BUDGET_FIELDS)],
+    ['tools', withRenamedFields(toolBudget, LEGACY_TOOL_BUDGET_FIELDS)],
+  ];
+  for (const [name, held] of legacy) {
+    if (held !== undefined && !Object.hasOwn(limits, name)) limits[name] = held;
+  }
+  return Object.keys(limits).length === 0 ? rest : { ...rest, limits };
+}
+
 const agentFileDefinitionObjectSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable().default(null),
@@ -535,8 +598,12 @@ const agentFileDefinitionObjectSchema = z.object({
   children: agentChildAgentsSchema.optional(),
   /** Absent from a snapshot written before the A2A opt-in existed; read as `false`. */
   a2a: z.boolean().default(false),
-  /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  stepLimit: agentStepLimitSchema.optional(),
+  /**
+   * Absent from a snapshot written before the field existed, and from a file that has none. A
+   * snapshot written before COR-2138 holds `stepLimit`, `costBudget` and `toolBudget` instead; the
+   * preprocessing of {@link agentFileDefinitionSchema} folds them into this.
+   */
+  limits: agentLimitsSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   retry: agentRetrySchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
@@ -576,10 +643,6 @@ const agentFileDefinitionObjectSchema = z.object({
   childAgents: agentChildAgentsSchema.optional(),
   skillDescriptors: z.array(agentSkillDescriptorSchema).optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  costBudget: agentCostBudgetSchema.optional(),
-  /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  toolBudget: agentToolBudgetSchema.optional(),
-  /** Absent from a snapshot written before the field existed, and from a file that has none. */
   approvals: agentToolApprovalSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
@@ -595,42 +658,82 @@ const agentFileDefinitionObjectSchema = z.object({
  * `skillDescriptors`, the keys `interceptors` (COR-2126), `effort`, `approvals`, `children` and
  * `card` (COR-2137) replaced, reads as the same value under the new name. The new name wins when a
  * stored definition holds both. The old name is never written back.
+ *
+ * One that holds `stepLimit`, `costBudget` or `toolBudget` (COR-2138) reads as the same limits under
+ * `limits.steps`, `limits.cost` (`perRunUsd`, `perChatUsd` and `warnAt` read as `run`, `chat` and
+ * `warn`) and `limits.tools` (`maxCalls` and `maxDurationSeconds` read as `calls` and `seconds`). A
+ * limit that `limits` already holds wins.
  */
-export const agentFileDefinitionSchema = agentFileDefinitionObjectSchema.transform(
-  ({ hooks, defaultEffort, toolApproval, childAgents, skillDescriptors, ...definition }) => ({
-    ...definition,
-    card: definition.card ?? skillDescriptors ?? [],
-    ...(definition.interceptors === undefined && hooks !== undefined
-      ? { interceptors: hooks }
-      : {}),
-    ...(definition.effort === undefined && defaultEffort !== undefined
-      ? { effort: defaultEffort }
-      : {}),
-    ...(definition.approvals === undefined && toolApproval !== undefined
-      ? { approvals: toolApproval }
-      : {}),
-    ...(definition.children === undefined && childAgents !== undefined
-      ? { children: childAgents }
-      : {}),
-  }),
+export const agentFileDefinitionSchema = z.preprocess(
+  withFoldedLegacyLimits,
+  agentFileDefinitionObjectSchema.transform(
+    ({ hooks, defaultEffort, toolApproval, childAgents, skillDescriptors, ...definition }) => ({
+      ...definition,
+      card: definition.card ?? skillDescriptors ?? [],
+      ...(definition.interceptors === undefined && hooks !== undefined
+        ? { interceptors: hooks }
+        : {}),
+      ...(definition.effort === undefined && defaultEffort !== undefined
+        ? { effort: defaultEffort }
+        : {}),
+      ...(definition.approvals === undefined && toolApproval !== undefined
+        ? { approvals: toolApproval }
+        : {}),
+      ...(definition.children === undefined && childAgents !== undefined
+        ? { children: childAgents }
+        : {}),
+    }),
+  ),
 );
 
-/** A file's `costBudget`; see {@link agentCostBudgetSchema}. */
-export interface AgentCostBudget {
+/** A file's `limits.cost`; see {@link agentCostLimitSchema}. */
+export interface AgentCostLimit {
   /** The most one run may spend, in US dollars. */
-  readonly perRunUsd: number;
-  /** The most a chat may spend across its runs, in US dollars; see {@link agentCostBudgetSchema}. */
-  readonly perChatUsd?: number | undefined;
-  /** Fractions of `perRunUsd` at which the run warns, ascending and without repeats. */
-  readonly warnAt?: readonly number[] | undefined;
+  readonly run: number;
+  /** The most a chat may spend across its runs, in US dollars; see {@link agentCostLimitSchema}. */
+  readonly chat?: number | undefined;
+  /** Fractions of `run` at which the run warns, ascending and without repeats. */
+  readonly warn?: readonly number[] | undefined;
 }
 
-/** A file's `toolBudget`; see {@link agentToolBudgetSchema}. */
-export interface AgentToolBudget {
+/** A file's `limits.tools`; see {@link agentToolLimitSchema}. */
+export interface AgentToolLimit {
   /** The most tool calls one run may make. */
-  readonly maxCalls?: number | undefined;
+  readonly calls?: number | undefined;
   /** The most seconds, from the start of the run, its tools may be called. */
-  readonly maxDurationSeconds?: number | undefined;
+  readonly seconds?: number | undefined;
+}
+
+/**
+ * A file's `limits` (COR-2138), as a definition holds them: each limit the file sets, and none that
+ * it leaves out. See {@link agentLimitsSchema}.
+ */
+export interface AgentLimits {
+  /** The most steps one run may take. Absent when the file sets none: Operative's default applies. */
+  readonly steps?: number | undefined;
+  /**
+   * What the agent may spend, as the file's `limits.cost` states it, with `warn` sorted and without
+   * repeats. Absent when the file sets none: a run has no spend limit.
+   */
+  readonly cost?: AgentCostLimit | undefined;
+  /**
+   * What one run's tools may use, as the file's `limits.tools` states it. Absent when the file sets
+   * none: a run's tools have no limit.
+   */
+  readonly tools?: AgentToolLimit | undefined;
+}
+
+/**
+ * The `limits` an update sends. A sub-key left out keeps the file's value, and `null` removes it,
+ * so one surface can change the spend and tool limits without restating the step limit.
+ */
+export interface AgentLimitsInput {
+  /** See {@link AgentLimits.steps}. */
+  readonly steps?: number | null | undefined;
+  /** See {@link AgentLimits.cost}. */
+  readonly cost?: AgentCostLimit | null | undefined;
+  /** See {@link AgentLimits.tools}. */
+  readonly tools?: AgentToolLimit | null | undefined;
 }
 
 /** A file's `retry`, as written. */
@@ -684,8 +787,11 @@ export interface AgentFileDefinition {
   readonly children?: readonly string[];
   /** Whether the agent opts into A2A. This part only records it; the A2A mount reads it. */
   readonly a2a: boolean;
-  /** The most steps one run may take. Absent when the file sets none: Operative's default applies. */
-  readonly stepLimit?: number;
+  /**
+   * What the agent may spend, use and take, as the file's `limits` states it. Absent when the file
+   * sets none: a run takes Operative's default steps, has no spend limit, and its tools have none.
+   */
+  readonly limits?: AgentLimits;
   /** How a run retries a failed generate call. Absent when the file sets none: it does not retry. */
   readonly retry?: AgentRetry;
   /** Whether and when a run compacts its conversation. Absent when the file sets none: it does not. */
@@ -703,16 +809,6 @@ export interface AgentFileDefinition {
   readonly guardrails?: readonly string[];
   /** The ids (`plugin:name`) of the plugin interceptors the agent runs. Absent when the file lists none. */
   readonly interceptors?: readonly string[];
-  /**
-   * What one run of the agent may spend, as the file's `costBudget` states it, with `warnAt`
-   * sorted and without repeats. Absent when the file sets none: a run has no spend limit.
-   */
-  readonly costBudget?: AgentCostBudget;
-  /**
-   * What one run's tools may use, as the file's `toolBudget` states it. Absent when the file sets
-   * none: a run's tools have no limit.
-   */
-  readonly toolBudget?: AgentToolBudget;
   /**
    * When each tool asks a person before it runs, as the file's `approvals` states it, with the
    * names in alphabetical order. Absent when the file sets none, which asks on changes for every
@@ -743,14 +839,12 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   allowedSkills: true,
   children: true,
   a2a: true,
-  stepLimit: true,
+  limits: true,
   retry: true,
   compaction: true,
   references: true,
   guardrails: true,
   interceptors: true,
-  costBudget: true,
-  toolBudget: true,
   approvals: true,
   examples: true,
   instructions: true,
@@ -801,10 +895,10 @@ export interface AgentFileDefinitionInput {
   /** See {@link AgentFileDefinition.a2a}. An update that omits it keeps the file's value. */
   readonly a2a?: boolean | undefined;
   /**
-   * See {@link AgentFileDefinition.stepLimit}. An update that omits it keeps the file's value; `null`
-   * removes it.
+   * See {@link AgentFileDefinition.limits}. An update that omits it keeps the file's value, and one
+   * that omits a sub-key keeps that limit; `null` removes the limits, or the sub-key's limit.
    */
-  readonly stepLimit?: number | null | undefined;
+  readonly limits?: AgentLimitsInput | null | undefined;
   /**
    * See {@link AgentFileDefinition.retry}. An update that omits it keeps the file's value; `null`
    * removes it.
@@ -830,16 +924,6 @@ export interface AgentFileDefinitionInput {
    * or an empty list, removes it.
    */
   readonly interceptors?: readonly string[] | null | undefined;
-  /**
-   * See {@link AgentFileDefinition.costBudget}. An update that omits it keeps the file's value;
-   * `null` removes it.
-   */
-  readonly costBudget?: AgentCostBudget | null | undefined;
-  /**
-   * See {@link AgentFileDefinition.toolBudget}. An update that omits it keeps the file's value;
-   * `null` removes it.
-   */
-  readonly toolBudget?: AgentToolBudget | null | undefined;
   /**
    * See {@link AgentFileDefinition.approvals}. An update that omits it keeps the file's value;
    * `null`, or an empty map, removes it.
@@ -934,26 +1018,63 @@ function retryOf(retry: AgentRetry): AgentRetry {
 }
 
 /**
- * A cost budget as a definition holds it: `warnAt` sorted and without repeats, and left out when it
+ * A cost limit as a definition holds it: `warn` sorted and without repeats, and left out when it
  * lists none, so two files that say the same thing are the same definition.
  */
-function costBudgetOf(budget: AgentCostBudget): AgentCostBudget {
-  const warnAt = [...new Set(budget.warnAt ?? [])].toSorted((left, right) => left - right);
+function costLimitOf(limit: AgentCostLimit): AgentCostLimit {
+  const warn = [...new Set(limit.warn ?? [])].toSorted((left, right) => left - right);
   return {
-    perRunUsd: budget.perRunUsd,
-    ...(budget.perChatUsd === undefined ? {} : { perChatUsd: budget.perChatUsd }),
-    ...(warnAt.length === 0 ? {} : { warnAt }),
+    run: limit.run,
+    ...(limit.chat === undefined ? {} : { chat: limit.chat }),
+    ...(warn.length === 0 ? {} : { warn }),
   };
 }
 
-/** A tool budget without the keys it leaves out, so a definition holds exactly what a file wrote. */
-function toolBudgetOf(budget: AgentToolBudget): AgentToolBudget {
+/** A tool limit without the keys it leaves out, so a definition holds exactly what a file wrote. */
+function toolLimitOf(limit: AgentToolLimit): AgentToolLimit {
   return {
-    ...(budget.maxCalls === undefined ? {} : { maxCalls: budget.maxCalls }),
-    ...(budget.maxDurationSeconds === undefined
-      ? {}
-      : { maxDurationSeconds: budget.maxDurationSeconds }),
+    ...(limit.calls === undefined ? {} : { calls: limit.calls }),
+    ...(limit.seconds === undefined ? {} : { seconds: limit.seconds }),
   };
+}
+
+/**
+ * `limits` as a definition holds them: each limit that is set, normalized, and `undefined` when none
+ * is, so a file that writes `limits: {}` is the same definition as one that writes no `limits`.
+ */
+function limitsOf(limits: AgentLimitsInput): AgentLimits | undefined {
+  const held: AgentLimits = {
+    ...(limits.steps == null ? {} : { steps: limits.steps }),
+    ...(limits.cost == null ? {} : { cost: costLimitOf(limits.cost) }),
+    ...(limits.tools == null ? {} : { tools: toolLimitOf(limits.tools) }),
+  };
+  return Object.keys(held).length === 0 ? undefined : held;
+}
+
+/**
+ * The limits an update leaves the file with: the file's own when the update sends none, none when
+ * it sends `null`, and otherwise each sub-key the update names, with the file's value for each it
+ * leaves out.
+ */
+function updatedLimits(
+  before: AgentLimits | undefined,
+  input: AgentLimitsInput | null | undefined,
+): AgentLimits | undefined {
+  if (input === undefined) return before;
+  if (input === null) return undefined;
+  return limitsOf({
+    steps: input.steps === undefined ? before?.steps : input.steps,
+    cost: input.cost === undefined ? before?.cost : input.cost,
+    tools: input.tools === undefined ? before?.tools : input.tools,
+  });
+}
+
+/** `{ limits }` for limits that say something, and nothing for those that do not. */
+function limitsField(limits: AgentLimitsInput | null | undefined): {
+  readonly limits?: AgentLimits;
+} {
+  const held = limits == null ? undefined : limitsOf(limits);
+  return held === undefined ? {} : { limits: held };
 }
 
 /**
@@ -1005,7 +1126,7 @@ function toDefinition(
     ...(frontmatter.allowedSkills == null ? {} : { allowedSkills: frontmatter.allowedSkills }),
     ...(frontmatter.children == null ? {} : { children: frontmatter.children }),
     a2a: frontmatter.a2a ?? false,
-    ...(frontmatter.stepLimit == null ? {} : { stepLimit: frontmatter.stepLimit }),
+    ...limitsField(frontmatter.limits),
     ...(frontmatter.retry == null ? {} : { retry: retryOf(frontmatter.retry) }),
     ...(frontmatter.compaction == null ? {} : { compaction: compactionOf(frontmatter.compaction) }),
     ...(frontmatter.references == null || frontmatter.references.length === 0
@@ -1018,8 +1139,6 @@ function toDefinition(
       ? {}
       : { interceptors: [...frontmatter.interceptors] }),
     ...optionalToolApproval(frontmatter.approvals),
-    ...(frontmatter.costBudget == null ? {} : { costBudget: costBudgetOf(frontmatter.costBudget) }),
-    ...(frontmatter.toolBudget == null ? {} : { toolBudget: toolBudgetOf(frontmatter.toolBudget) }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
@@ -1120,7 +1239,8 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.allowedSkills != null) known['allowedSkills'] = [...definition.allowedSkills];
   if (definition.children != null) known['children'] = [...definition.children];
   if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
-  if (definition.stepLimit != null) known['stepLimit'] = definition.stepLimit;
+  const limits = definition.limits == null ? undefined : limitsOf(definition.limits);
+  if (limits !== undefined) known['limits'] = limits;
   if (definition.retry != null) known['retry'] = retryOf(definition.retry);
   if (definition.compaction != null) known['compaction'] = compactionOf(definition.compaction);
   if (definition.references != null && definition.references.length > 0) {
@@ -1132,8 +1252,6 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.interceptors != null && definition.interceptors.length > 0) {
     known['interceptors'] = [...definition.interceptors];
   }
-  if (definition.costBudget != null) known['costBudget'] = costBudgetOf(definition.costBudget);
-  if (definition.toolBudget != null) known['toolBudget'] = toolBudgetOf(definition.toolBudget);
   const approvals = definition.approvals == null ? undefined : toolApprovalOf(definition.approvals);
   if (approvals !== undefined) known['approvals'] = approvals;
   return known;
@@ -1164,7 +1282,7 @@ export function resolveAgentFileDefinition(
     ...(input.allowedSkills == null ? {} : { allowedSkills: [...input.allowedSkills] }),
     ...(input.children == null ? {} : { children: [...input.children] }),
     a2a: input.a2a ?? false,
-    ...(input.stepLimit == null ? {} : { stepLimit: input.stepLimit }),
+    ...limitsField(input.limits),
     ...(input.retry == null ? {} : { retry: retryOf(input.retry) }),
     ...(input.compaction == null ? {} : { compaction: compactionOf(input.compaction) }),
     ...(input.references == null || input.references.length === 0
@@ -1176,8 +1294,6 @@ export function resolveAgentFileDefinition(
     ...(input.interceptors == null || input.interceptors.length === 0
       ? {}
       : { interceptors: [...input.interceptors] }),
-    ...(input.costBudget == null ? {} : { costBudget: costBudgetOf(input.costBudget) }),
-    ...(input.toolBudget == null ? {} : { toolBudget: toolBudgetOf(input.toolBudget) }),
     ...optionalToolApproval(input.approvals),
     instructions: input.instructions,
   };
@@ -1187,22 +1303,20 @@ export function resolveAgentFileDefinition(
 export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `effort`, `allowedSkills`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`, `interceptors`, `costBudget`, `toolBudget` or `approvals` keeps the file's value, and
+  // An update that omits `effort`, `allowedSkills`, `limits`, `retry`, `compaction`, `references`,
+  // `guardrails`, `interceptors` or `approvals` keeps the file's value, and
   // a version that has none must remove it: `null` says so.
   return {
     ...input,
     effort: definition.effort ?? null,
     allowedSkills: definition.allowedSkills ?? null,
     children: definition.children ?? null,
-    stepLimit: definition.stepLimit ?? null,
+    limits: definition.limits ?? null,
     retry: definition.retry ?? null,
     compaction: definition.compaction ?? null,
     references: definition.references ?? null,
     guardrails: definition.guardrails ?? null,
     interceptors: definition.interceptors ?? null,
-    costBudget: definition.costBudget ?? null,
-    toolBudget: definition.toolBudget ?? null,
     approvals: definition.approvals ?? null,
   };
 }
@@ -1222,8 +1336,8 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`effort`, `allowedSkills`, `children`, `a2a`, `stepLimit`, `retry`, `compaction`,
-  // `references`, `guardrails`, `interceptors`, `costBudget`, `toolBudget`, `approvals`) is not a change
+  // A key the caller leaves out (`effort`, `allowedSkills`, `children`, `a2a`, `limits`, `retry`, `compaction`,
+  // `references`, `guardrails`, `interceptors`, `approvals`) is not a change
   // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
@@ -1232,14 +1346,12 @@ export function serializeUpdatedAgentFile(
     ...(input.effort === undefined ? { effort: before.effort } : {}),
     ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
     ...(input.children === undefined ? { children: before.children } : {}),
-    ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
+    limits: updatedLimits(before.limits, input.limits),
     ...(input.retry === undefined ? { retry: before.retry } : {}),
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
     ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
     ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
-    ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
-    ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
     ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
@@ -1261,14 +1373,12 @@ export function serializeUpdatedAgentFile(
         ...(input.effort === undefined ? { effort: before.effort } : {}),
         ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
         ...(input.children === undefined ? { children: before.children } : {}),
-        ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
+        limits: updatedLimits(before.limits, input.limits),
         ...(input.retry === undefined ? { retry: before.retry } : {}),
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
         ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
         ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
-        ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
-        ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
         ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,

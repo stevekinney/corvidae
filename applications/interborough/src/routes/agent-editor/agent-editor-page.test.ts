@@ -344,9 +344,7 @@ describe('a new agent', () => {
             card: [],
             a2a: false,
             guardrails: null,
-            stepLimit: null,
-            costBudget: null,
-            toolBudget: null,
+            limits: { steps: null, cost: null, tools: null },
             instructions: 'Be careful.',
           },
         },
@@ -487,9 +485,7 @@ describe('an agent that exists', () => {
         ],
         a2a: true,
         guardrails: null,
-        stepLimit: null,
-        costBudget: null,
-        toolBudget: null,
+        limits: { steps: null, cost: null, tools: null },
         instructions: 'Changed.',
       },
     });
@@ -1092,9 +1088,7 @@ describe('the header Save', () => {
     expect(update?.params).toMatchObject({
       definition: {
         guardrails: ['acme:tripwire'],
-        stepLimit: 12,
-        costBudget: { perRunUsd: 1.5 },
-        toolBudget: { maxCalls: 30 },
+        limits: { steps: 12, cost: { run: 1.5 }, tools: { calls: 30 } },
       },
     });
   });

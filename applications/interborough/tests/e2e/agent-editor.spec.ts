@@ -377,8 +377,7 @@ test.describe('Duplicate', () => {
         model: 'anthropic/claude-sonnet-5',
         tools: ['demo:lookup-order'],
         card: [],
-        stepLimit: 12,
-        costBudget: { perRunUsd: 2 },
+        limits: { steps: 12, cost: { run: 2 } },
         approvals: { 'demo:lookup-order': 'always' },
         instructions: 'Ask first.',
       },
@@ -398,8 +397,7 @@ test.describe('Duplicate', () => {
     });
     expect(detail.result).toMatchObject({
       definition: {
-        stepLimit: 12,
-        costBudget: { perRunUsd: 2 },
+        limits: { steps: 12, cost: { run: 2 } },
         approvals: { 'demo:lookup-order': 'always' },
         instructions: 'Ask first.',
       },

@@ -112,7 +112,7 @@ test.describe('the Access tab', () => {
     await page.getByLabel('Tool calls per run').fill('1');
     await save(page);
     expect(await definitionOf(request, id)).toMatchObject({
-      toolBudget: { maxCalls: 1 },
+      limits: { tools: { calls: 1 } },
     });
 
     const thread = newThreadId('access-budget');

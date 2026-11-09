@@ -1,5 +1,5 @@
 /**
- * COR-1865 — `stepLimit` and `retry` over `bureau.agents.definitions.*`: a create writes them, `get`
+ * COR-1865 — `limits.steps` and `retry` over `bureau.agents.definitions.*`: a create writes them, `get`
  * shows them (`null` for a file that sets none), an update that leaves them out keeps the file's
  * values and `null` removes them, and an out-of-range value is refused before anything is written.
  */
@@ -18,34 +18,34 @@ import {
 
 afterEach(disposeServed);
 
-describe('stepLimit and retry on the definition operations', () => {
+describe('limits.steps and retry on the definition operations', () => {
   it('creates an agent with both, and shows them on get', async () => {
     const served = await serve();
     const retry = { attempts: 3, delayMilliseconds: 200, jitter: true };
     const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'patient',
-      definition: { ...DEFINITION, stepLimit: 8, retry },
+      definition: { ...DEFINITION, limits: { steps: 8 }, retry },
     });
     expect(created.error).toBeUndefined();
 
     const text = await readFile(ownerPath(served, 'patient'), 'utf8');
-    expect(text).toContain('stepLimit: 8');
+    expect(text).toContain('steps: 8');
     const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'patient' });
-    expect(got.result?.['definition']).toMatchObject({ stepLimit: 8, retry });
+    expect(got.result?.['definition']).toMatchObject({ limits: { steps: 8 }, retry });
   });
 
   it('shows null for a file that sets neither', async () => {
     const served = await serve();
     await seed(served);
     const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
-    expect(got.result?.['definition']).toMatchObject({ stepLimit: null, retry: null });
+    expect(got.result?.['definition']).toMatchObject({ limits: { steps: null }, retry: null });
   });
 
   it('keeps both when an update leaves them out, and removes them for null', async () => {
     const served = await serve();
     await served.put(
       'patient.md',
-      `---\nmodel: ${DEFINITION.model}\nstepLimit: 8\nretry: {attempts: 2}\n---\nBody.\n`,
+      `---\nmodel: ${DEFINITION.model}\nlimits: { steps: 8 }\nretry: {attempts: 2}\n---\nBody.\n`,
     );
     await served.bureau.agents.refresh();
     const hash = served.hashOf('patient');
@@ -60,7 +60,7 @@ describe('stepLimit and retry on the definition operations', () => {
     });
     expect(afterKeep.result?.['definition']).toMatchObject({
       name: 'Patient',
-      stepLimit: 8,
+      limits: { steps: 8 },
       retry: { attempts: 2 },
     });
 
@@ -71,21 +71,21 @@ describe('stepLimit and retry on the definition operations', () => {
         model: DEFINITION.model,
         name: 'Patient',
         instructions: 'Body.\n',
-        stepLimit: null,
+        limits: { steps: null },
         retry: null,
       },
     });
     expect(cleared.error).toBeUndefined();
     const text = await readFile(ownerPath(served, 'patient'), 'utf8');
-    expect(text).not.toContain('stepLimit');
+    expect(text).not.toContain('limits');
     expect(text).not.toContain('retry');
   });
 
   it('refuses an out-of-range value and writes nothing', async () => {
     const served = await serve();
     for (const definition of [
-      { ...DEFINITION, stepLimit: 0 },
-      { ...DEFINITION, stepLimit: 1001 },
+      { ...DEFINITION, limits: { steps: 0 } },
+      { ...DEFINITION, limits: { steps: 1001 } },
       { ...DEFINITION, retry: { attempts: 11 } },
       { ...DEFINITION, retry: { attempts: 2, delayMilliseconds: 60001 } },
       { ...DEFINITION, retry: { attempts: 2, backoff: 2 } },

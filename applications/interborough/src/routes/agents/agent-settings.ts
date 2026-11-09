@@ -30,7 +30,7 @@ export function settingsOf(detail: AgentDetail): AgentSettingsView {
   return {
     model: definition.model,
     models: definition.models ?? [],
-    stepLimit: definition.stepLimit === null ? null : String(definition.stepLimit),
+    stepLimit: definition.limits.steps === null ? null : String(definition.limits.steps),
     effort: definition.effort === null ? null : EFFORT_LABELS[definition.effort],
   };
 }

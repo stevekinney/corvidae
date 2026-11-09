@@ -33,7 +33,7 @@ const CATALOG = createModelCatalog().descriptors.map((row) =>
 const BUDGETED = agentFileText({
   model: KNOWN_MODEL,
   tools: '[lookup-order]',
-  costBudget: '{ perRunUsd: 5 }',
+  limits: '{ cost: { run: 5 } }',
 });
 const UNBUDGETED = agentFileText({ model: KNOWN_MODEL, tools: '[lookup-order]' });
 
@@ -105,7 +105,7 @@ describe('a steer to a model with no price', () => {
     const error = await rejectionOf(steer(harness, first.contextId, 'switch', GPT_4_1));
 
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain('costBudget');
+    expect((error as Error).message).toContain('limits.cost');
     expect((error as Error).message).toContain('gpt-4.1');
     expect(await harness.bureau.contexts.steering(first.contextId)).toMatchObject({ model: null });
   });
@@ -122,7 +122,7 @@ describe('a steer to a model with no price', () => {
       }),
     );
 
-    expect((error as Error).message).toContain('costBudget');
+    expect((error as Error).message).toContain('limits.cost');
   });
 
   it('answers bureau.contexts.steer InvalidParams naming the override field and the budget', async () => {
@@ -141,7 +141,7 @@ describe('a steer to a model with no price', () => {
     expect(body.error?.data?.['issues']).toEqual([
       expect.objectContaining({
         path: ['override'],
-        message: expect.stringContaining('costBudget'),
+        message: expect.stringContaining('limits.cost'),
       }),
     ]);
   });
@@ -226,7 +226,7 @@ describe('a model that two providers serve, one of them without a price (COR-192
       }),
     );
 
-    expect((error as Error).message).toContain('costBudget');
+    expect((error as Error).message).toContain('limits.cost');
     expect((error as Error).message).toContain('twin');
     expect(await harness.bureau.contexts.steering(first.contextId)).toMatchObject({ model: null });
   });
@@ -239,7 +239,7 @@ describe('a model that two providers serve, one of them without a price (COR-192
     const admitted = await steer(harness, first.contextId, 'priced', OPUS_5);
     const second = await runPicker(harness, first.contextId);
 
-    expect((refused as Error).message).toContain('costBudget');
+    expect((refused as Error).message).toContain('limits.cost');
     expect(admitted.outcome).toBe('accepted');
     expect(harness.bureau.tasks.detail(second.id)?.status).not.toBe('error');
     expect(calls).toEqual(['claude-opus-5-5', 'claude-opus-5']);
@@ -287,7 +287,7 @@ describe('retrying a switch that was admitted (COR-1921)', () => {
       const fresh = await rejectionOf(steer(harness, first.contextId, 'another', OPUS_5));
 
       expect(retried.outcome).toBe('replayed');
-      expect((fresh as Error).message).toContain('costBudget');
+      expect((fresh as Error).message).toContain('limits.cost');
     },
   );
 });
@@ -315,7 +315,7 @@ describe('an agent that is tried and not saved', () => {
     name: 'Sketch',
     model: KNOWN_MODEL,
     tools: ['lookup-order'],
-    costBudget: { perRunUsd: 5 },
+    limits: { cost: { run: 5 } },
     instructions: 'You are a sketch of an agent.\n',
   };
 
@@ -325,7 +325,7 @@ describe('an agent that is tried and not saved', () => {
     await waitForTaskState(harness.bureau, tried.taskId);
 
     const refused = await rejectionOf(steer(harness, tried.contextId, 'switch', GPT_4_1));
-    expect((refused as Error).message).toContain('costBudget');
+    expect((refused as Error).message).toContain('limits.cost');
 
     // The catalog gains a price afterwards, so the switch is admitted; the agent was built before
     // that, and still cannot count the model.

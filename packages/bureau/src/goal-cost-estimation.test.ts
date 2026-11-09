@@ -128,10 +128,10 @@ describe('the estimator a budgeted file agent is built with (COR-1914)', () => {
       },
     };
     for (const row of [...rows, withLongContext]) {
-      const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, row, []);
+      const { costEstimation } = costBudgetOptions({ run: 1 }, row, []);
       expect(isGoalAttemptCostEstimation(JSON.parse(JSON.stringify(costEstimation)))).toBe(true);
     }
-    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, withLongContext, []);
+    const { costEstimation } = costBudgetOptions({ run: 1 }, withLongContext, []);
     expect(
       getModelPricing(withLongContext.model, costEstimation?.pricing)?.longContext,
     ).toMatchObject({
@@ -143,7 +143,7 @@ describe('the estimator a budgeted file agent is built with (COR-1914)', () => {
   it('accepts, and keeps through JSON, a budgeted agent’s estimator that lists a model as unpriced (COR-1921)', () => {
     const [first, second] = createModelCatalog().descriptors;
     if (first === undefined || second === undefined) throw new Error('Expected two catalog rows.');
-    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, first, [
+    const { costEstimation } = costBudgetOptions({ run: 1 }, first, [
       { ...second, model: 'unpriced-model', pricing: undefined },
     ]);
     const stored = JSON.parse(JSON.stringify(costEstimation));

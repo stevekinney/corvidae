@@ -11,18 +11,18 @@
  * Each override replaces the agent's own value:
  *
  * - `instructions` is the system message a run starts with.
- * - `tools`, `approvals` and `toolBudget` build the run's toolbox the way an agent file's is
+ * - `tools`, `approvals` and `limits.tools` build the run's toolbox the way an agent file's is
  *   built: from the allowed tools (the agent's own, found in the toolbox its definition resolves
  *   to, and the deployment's tool catalog), asked as `approvals` says (a tool it does not list
  *   takes the default, `on-changes`, so a tool is never let through unasked because nothing was
- *   said), counted by `toolBudget`, and signed with the Bureau's agent approval secret. The code
+ *   said), counted by `limits.tools`, and signed with the Bureau's agent approval secret. The code
  *   agent's own toolbox options do not carry over, because a toolbox does not expose them: once
  *   any of the three is overridden, the overrides say how every allowed tool asks. A tool the
  *   run's own composition added to that toolbox (a skill tool) is kept as it was.
  * - `model` is the default model, `models` the models a chat may be switched to, and
  *   `effort` the effort a step is sent when its steering names none. They are applied by the
  *   generate a file agent runs with, so the model policy is read at each step.
- * - `costBudget` is what one run, and one chat, may spend; `stepLimit` is the most steps one run
+ * - `limits.cost` is what one run, and one chat, may spend; `limits.steps` is the most steps one run
  *   may take.
  * - `guardrails` are plugin guardrails added to the agent's own. An override cannot remove a
  *   guardrail the code agent declares itself.
@@ -108,7 +108,6 @@ export function hasAgentOverrides(overrides: AgentOverrides): boolean {
   return Object.values(overrides).some((value) => value !== undefined);
 }
 
-const TOOLBOX_KEYS = ['tools', 'approvals', 'toolBudget'] as const;
 const GENERATE_KEYS = ['model', 'models', 'effort'] as const;
 
 /** The name a call reports `configuration` by, and the name it was registered under. */
@@ -226,7 +225,7 @@ export function effectiveCodeAgent(
     const common = {
       allowed: () => allowed,
       resolveGenerate,
-      costBudgeted: overrides.costBudget !== undefined,
+      costBudgeted: overrides.limits?.cost !== undefined,
       policyDenial: (row: BackendDescriptor) => modelPolicyDenialOf(row, deployment.modelPolicy()),
       defaultEffort: overrides.effort,
       effortFallbackMode: deployment.effortFallbackMode,
@@ -251,7 +250,15 @@ export function effectiveCodeAgent(
   }
 
   function toolboxOf(own: AnyToolbox): AnyToolbox {
-    if (TOOLBOX_KEYS.every((key) => overrides[key] === undefined)) return own;
+    // `limits.steps` and `limits.cost` are not the toolbox's: only the tools, how they ask, and the
+    // tool limit rebuild it.
+    if (
+      overrides.tools === undefined &&
+      overrides.approvals === undefined &&
+      overrides.limits?.tools === undefined
+    ) {
+      return own;
+    }
     const configurations = own.toJSON();
     const ownOf = (name: string) =>
       ownNames.includes(name)
@@ -277,9 +284,9 @@ export function effectiveCodeAgent(
     }
     return createToolbox(entries, {
       policy: createToolApprovalHooks(overrides.approvals, { tools: governed }),
-      ...(overrides.toolBudget === undefined
+      ...(overrides.limits?.tools === undefined
         ? {}
-        : { budget: toolboxBudgetOf(overrides.toolBudget) }),
+        : { budget: toolboxBudgetOf(overrides.limits.tools) }),
       ...(deployment.approvalSecret === undefined
         ? {}
         : { approvalSecret: deployment.approvalSecret }),
@@ -329,7 +336,7 @@ export function effectiveCodeAgent(
   }
 
   function costOf(): Pick<RunOptions, 'costBudget' | 'costEstimation'> | Record<string, never> {
-    const budget = overrides.costBudget;
+    const budget = overrides.limits?.cost;
     if (budget === undefined) return {};
     return models.defaultRow === undefined
       ? { costBudget: runCostBudgetOf(budget) }
@@ -346,7 +353,7 @@ export function effectiveCodeAgent(
       conversation: conversationOf(input, own.conversation),
       ...(hooks === undefined ? {} : { hooks }),
       ...costOf(),
-      ...(overrides.stepLimit === undefined ? {} : { maximumSteps: overrides.stepLimit }),
+      ...(overrides.limits?.steps === undefined ? {} : { maximumSteps: overrides.limits.steps }),
     };
   }
 

@@ -46,11 +46,10 @@ import {
   AgentFileConflictError,
   AgentFileError,
   agentContributionIdsSchema,
-  agentCostBudgetSchema,
   agentDefaultEffortSchema,
-  agentStepLimitSchema,
+  agentLimitsSchema,
   agentToolApprovalSchema,
-  agentToolBudgetSchema,
+  withFoldedLegacyLimits,
 } from './agent-file';
 
 /** Where the override versions live. */
@@ -77,10 +76,16 @@ export const agentOverridesSchema = z.strictObject({
   approvals: agentToolApprovalSchema.optional(),
   /** The plugin guardrails (`plugin:name`) a run applies. */
   guardrails: agentContributionIdsSchema.optional(),
-  /** What one run, and one chat, may spend. */
-  costBudget: agentCostBudgetSchema.optional(),
-  /** What one run's tools may use. */
-  toolBudget: agentToolBudgetSchema.optional(),
+  /**
+   * What a run may take, a run and a chat may spend (in US dollars), and a run's tools may use
+   * (COR-2138): `steps`, `cost` and `tools`. Each limit named replaces the agent's own; one left out
+   * keeps it.
+   */
+  limits: agentLimitsSchema
+    .refine((limits) => Object.keys(limits).length > 0, {
+      message: 'limits needs steps, cost, tools, or any of them',
+    })
+    .optional(),
   /** The model a chat starts on, `<provider>/<model>`. */
   model: z.string().min(1).optional(),
   /** The models a chat may be switched to, `<provider>/<model>`. */
@@ -92,8 +97,6 @@ export const agentOverridesSchema = z.strictObject({
     .optional(),
   /** The reasoning effort a chat starts at. */
   effort: agentDefaultEffortSchema.optional(),
-  /** The most steps one run may take. */
-  stepLimit: agentStepLimitSchema.optional(),
 });
 
 /** One save's overrides; see {@link agentOverridesSchema}. */
@@ -235,8 +238,10 @@ function encodeRecord(record: AgentOverrideVersionRecord): string {
 }
 
 /**
- * The override keys that were renamed in COR-2137, from the old name to the new one. A record saved
- * before then holds the old names; it reads under the new ones and is never written back with them.
+ * The override keys that were renamed in COR-2137 and COR-2138, from the old name to the new one. A
+ * record saved before then holds the old names; it reads under the new ones and is never written
+ * back with them. `limits` is not here, because three old keys became one: see
+ * {@link withFoldedLegacyLimits}.
  */
 const RENAMED_OVERRIDE_KEYS: ReadonlyMap<string, string> = new Map([
   ['toolApproval', 'approvals'],
@@ -261,16 +266,27 @@ function withRenamedOverrideKeys(value: unknown): unknown {
   return renamed;
 }
 
+/** The override key a stored `changedKeys` entry names now; the three old limits are all `limits`. */
+function renamedChangedKey(key: string): string {
+  return LEGACY_LIMIT_KEYS.has(key) ? 'limits' : (RENAMED_OVERRIDE_KEYS.get(key) ?? key);
+}
+
+/** The override keys that held one limit each before COR-2138, which `limits` now holds. */
+const LEGACY_LIMIT_KEYS: ReadonlySet<string> = new Set(['stepLimit', 'costBudget', 'toolBudget']);
+
 const recordSchema = z.object({
   version: z.number().int().positive(),
   hash: z.string().min(1),
   savedAt: z.string().min(1),
   savedBy: z.string(),
   owner: z.string(),
-  overrides: z.preprocess(withRenamedOverrideKeys, agentOverridesSchema),
+  overrides: z.preprocess(
+    (value) => withFoldedLegacyLimits(withRenamedOverrideKeys(value)),
+    agentOverridesSchema,
+  ),
   changedKeys: z
     .array(z.string())
-    .transform((keys) => keys.map((key) => RENAMED_OVERRIDE_KEYS.get(key) ?? key)),
+    .transform((keys) => [...new Set(keys.map((key) => renamedChangedKey(key)))]),
 });
 
 /** A stored record, or `undefined` when `text` is not a valid one. */
