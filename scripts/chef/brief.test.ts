@@ -263,6 +263,12 @@ describe('renderBrief', () => {
 });
 
 describe('charter rules', () => {
+  test('leave merging to the coordinator', () => {
+    const rules = charterRules.join('\n');
+    expect(rules).not.toContain('merge-gate.ts --pr');
+    expect(rules).toContain('You do not merge');
+  });
+
   test('stay in step with references/execution-record.md', () => {
     const record = readFileSync(
       join(import.meta.dir, '../../.agents/skills/chef/references/execution-record.md'),
