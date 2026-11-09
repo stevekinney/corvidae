@@ -58,6 +58,8 @@ export interface PluginProviderContribution {
   readonly plugin: string;
   /** The provider definition the host resolves a generate through. */
   readonly definition: ProviderDefinition;
+  /** The validated plugin configuration handed to every provider factory. */
+  readonly configuration: unknown;
   /** The catalog rows of its models; each row's `provider` is `definition.name`. */
   readonly rows: readonly BackendDescriptor[];
 }
