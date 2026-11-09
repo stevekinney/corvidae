@@ -543,7 +543,13 @@ describe('internal workspace architecture', () => {
   });
 
   test('project skills have one canonical owner for both providers', async () => {
-    for (const name of ['add-dependency', 'add-workspace', 'chef', 'validate-monorepo']) {
+    for (const name of [
+      'add-dependency',
+      'add-workspace',
+      'chef',
+      'create-task',
+      'validate-monorepo',
+    ]) {
       const canonicalDirectory = join(root, '.agents/skills', name);
       const canonicalStatus = await lstat(canonicalDirectory);
       expect(canonicalStatus.isSymbolicLink()).toBe(false);

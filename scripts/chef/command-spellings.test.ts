@@ -21,6 +21,7 @@ const skillFiles = [
   '.agents/skills/chef/references/planning-and-routing.md',
   '.agents/skills/chef/references/review-and-deliver.md',
   '.agents/skills/chef/SKILL.md',
+  '.agents/skills/create-task/SKILL.md',
 ];
 
 const minimumInvocations: Record<string, number> = {
@@ -28,6 +29,7 @@ const minimumInvocations: Record<string, number> = {
   '.agents/skills/chef/references/planning-and-routing.md': 1,
   '.agents/skills/chef/references/review-and-deliver.md': 8,
   '.agents/skills/chef/SKILL.md': 4,
+  '.agents/skills/create-task/SKILL.md': 4,
 };
 
 describe('the spelling checker', () => {

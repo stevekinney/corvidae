@@ -310,6 +310,43 @@ describe('report rule', () => {
   });
 });
 
+describe('the create-task ticket template', () => {
+  const template = readFileSync(
+    join(import.meta.dir, '../../.agents/skills/create-task/ticket-template.md'),
+    'utf8',
+  );
+
+  test('has exactly the agreed headings, in order', () => {
+    expect([...template.matchAll(/^(#{2,3}) (.+)$/gm)].map((match) => match[0])).toEqual([
+      '## Objective',
+      '## Context',
+      '## Requirements',
+      '## Acceptance Criteria',
+      '## Scope',
+      '### In scope',
+      '### Out of scope',
+      '## Files',
+      '## Constraints',
+      '## Verification',
+      '## Delivery Boundary',
+      '## Open Questions',
+    ]);
+  });
+
+  test('names the sections the brief extracts, so a filled issue reaches the worker', () => {
+    const filled = template
+      .replace(/<!--[^]*?-->/g, '')
+      .replace(
+        '## Acceptance Criteria\n',
+        '## Acceptance Criteria\n\n- AC1: the thing is observable.\n',
+      )
+      .replace('## Files\n', '## Files\n\n- `scripts/chef/thing.ts`\n');
+    expect(sectionOf(filled, /acceptance\s+criteria/i)).toBe('- AC1: the thing is observable.');
+    const text = renderBrief(issue(filled), { paths: [], verify: [], model: 'Sonnet' });
+    expect(text).toContain('## Files\n\n- `scripts/chef/thing.ts`');
+  });
+});
+
 describe('run', () => {
   const fetchIssue: FetchLike = async () =>
     new Response(JSON.stringify({ data: { issue: issue(description) } }), { status: 200 });
