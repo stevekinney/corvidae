@@ -12,7 +12,7 @@ The first line is the marker `Execution report: <branch> attempt <n>`. Level-2 h
 - **Agent and session:** the provider, the model, and the session or agent id when known; otherwise "not available". Never a transcript path, a worktree path, or any other local path.
 - **Attempt:** the attempt number, the base SHA, and the head SHA.
 - **Branch and pull request:** the branch and the pull request link, or "none" when no pull request opened.
-- **Requirements implemented:** each R-id with one line on what now holds.
+- **Requirements implemented:** the outcomes the issue's brief asked for, one line each on what now holds. Issues carry no separate requirements list, so this restates the brief, not new ids.
 - **Acceptance criteria:** each AC-id with exactly one status from the worker charter's return (Implemented, Verified, Failed, Blocked, Not verified) and its evidence. A Failed criterion may carry a one-line error summary, never a log. Unnumbered criteria are numbered AC1, AC2 here only; the issue is never edited to number them.
 - **Verification:** each command with its real exit code, and each manual check as "Manual: <what was done>". Never write "tests pass" without a run that passed.
 - **Changes:** the changed behavior and the files or workspaces it touched.

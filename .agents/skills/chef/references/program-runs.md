@@ -12,7 +12,7 @@ Read this when chef's scope is a whole Linear project, or any body of work that 
 
 ## Dispatch on a rolling basis
 
-- Release a batch as soon as every blocker of every one of its issues is Done or Canceled, with evidence. Don't wait for the rest of its wave.
+- Release a batch as soon as every blocker of every one of its issues is in a `completed` state, with evidence; a Canceled or Duplicate blocker is a question for the owner. Don't wait for the rest of its wave.
 - The team-size limit in `SKILL.md` covers the whole program, not each wave. When more batches are releasable than slots, take the critical path first, then the batch that unblocks the most downstream issues, then milestone order.
 - Serialize batches that touch the same files or contracts. On a shared host, also serialize heavy repository-wide validation instead of running several copies at once.
 - Delivery runs no gate. Only a batch that is an exception under AGENTS.md "Gate on local checks" (a one-way door, the lock or concurrency infrastructure, `turbo.json` and the root scripts) takes a full `validate` before merging: once, after its review or verification accepts the head and the coverage and host preflights in [review and deliver](review-and-deliver.md) pass. A correction in flight makes any gate already running stale, so don't start one beside it. `main` moving is not a reason to rerun it; `merge-gate.ts` refuses only a real conflict with the base.
@@ -32,7 +32,7 @@ A skipped run costs nothing but the tick, so a short interval is fine; do not st
 
 ## Promote Backlog issues to Ready
 
-- Before claiming an issue, check it against the Definition of Ready in [the Linear policy](linear-policy.md). When it holds and every blocker is Done or Canceled, move it to Ready with a comment naming what was checked, then claim it (In Progress). In a program run, chef promotes issues itself; a separate draining workflow, such as the `drain-linear-project` skill where it is installed, only drains issues that are already Ready and keeps its own rule.
+- Before claiming an issue, check it against the Definition of Ready in [the Linear policy](linear-policy.md). When it holds, move it to Ready with a comment naming what was checked, then claim it (In Progress). In a program run, chef promotes issues itself; a separate draining workflow, such as the `drain-linear-project` skill where it is installed, only drains issues that are already Ready and keeps its own rule.
 - A revision is material when it changes the outcome, an acceptance criterion, the scope or affected surfaces, the delivery boundary, or the team. A material revision clears the intake gate before the issue is claimed: the `intake-curmudgeon` agent where it is installed, otherwise the coordinator's own check of the revised text against the Definition of Ready, recorded in the note. Correcting a file path, naming a verification command the criteria already imply, or a routine status or evidence update is not material and needs no gate.
 - A choice that is genuinely the owner's (product, architecture, or scope) follows [decisions](decisions.md): Jev decides at 0.9 or above, and otherwise it goes to the owner as a question with a recommended option. Never park it in a decision ticket. Keep working on batches that don't depend on the answer.
 - When implementation shows an issue's text is wrong, append a dated revision to its description instead of rewriting history. The intake gate applies when the revision is material.

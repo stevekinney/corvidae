@@ -23,7 +23,7 @@ When the `linear-track-work`, `linear-update-project`, `linear-create-issue`, `l
 
 ## Definition of Ready
 
-An issue is Ready only when it has all of these:
+An issue is Ready only when it has all of these (the `create-task` skill's [ticket template](../../create-task/ticket-template.md) is the shape that meets them):
 
 - exactly one target team, which is `COR`;
 - exactly one Work Type label;
@@ -31,7 +31,8 @@ An issue is Ready only when it has all of these:
 - binary acceptance criteria, each independently checkable;
 - exact verification commands;
 - a delivery boundary, stating what artifact ends the work;
-- no unresolved native blocker.
+- no open question: every question the work raised is answered and recorded under Decisions, with its source;
+- no unresolved native blocker: every blocker's state type is `completed` (a Canceled or Duplicate blocker is a question for the owner, not a release).
 
 A project is Ready only when its document, teams, milestones, execution-boundary issues, native dependency graph, operational risks, and success evidence are complete, and it has at least one unblocked Ready child issue. Project readiness and issue readiness are separate predicates.
 

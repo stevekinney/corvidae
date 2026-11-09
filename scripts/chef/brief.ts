@@ -10,8 +10,9 @@
 //
 // It reads the issue with `linear.ts`'s client and writes `<main checkout>/tmp/chef/briefs/<ID>.md`
 // (gitignored; `--out-dir` replaces the directory) holding:
-//   - the issue's execution brief and acceptance criteria: the description sections under those
-//     headings, or the whole description when it has neither;
+//   - the issue's brief (an "Execution brief" or "Brief" heading) followed by its Current behavior,
+//     Acceptance criteria, Decisions, Out of scope, Constraints and Delivery boundary sections and
+//     every dated revision, or the whole description when it has no brief heading;
 //   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
 //     design rows, the rows its acceptance criteria leave out, and the instruction to build against
 //     the saved boards and return a design-review verdict per row;
@@ -19,7 +20,8 @@
 //     why the relations could not be read;
 //   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
 //     description;
-//   - the verification commands: each `--verify`, else the focused checks for what the worker changed;
+//   - the verification commands: each `--verify`, else the issue's Verification section, else the
+//     focused checks for what the worker changed, with the root lint always among them;
 //   - the charter rules every worker gets (`references/execution-record.md` "Worker charter"): the
 //     merge gate, the review rounds, the turn rule, and the defect-class self-check.
 //
@@ -243,6 +245,26 @@ function designLines(identifier: string, description: string, descriptionInclude
 }
 
 const descriptionLimit = 16_000;
+
+/** The heading that opens an issue's brief: "Execution brief", or "Brief" alone. */
+const briefHeading = /execution\s+brief|^brief$/i;
+
+/**
+ * The sections a brief carries after the issue's own brief, in this order. Each is the issue's
+ * section under a matching heading; Acceptance criteria is the one that is always shown.
+ */
+const carriedSections: { title: string; heading: RegExp; missing?: string }[] = [
+  { title: 'Current behavior', heading: /^current\s+behaviou?r\b/i },
+  {
+    title: 'Acceptance criteria',
+    heading: /acceptance\s+criteria/i,
+    missing: '(none stated; derive them from the execution brief and write them down first)',
+  },
+  { title: 'Decisions', heading: /^decisions?\b/i },
+  { title: 'Out of scope', heading: /^out\s+of\s+scope\b/i },
+  { title: 'Constraints', heading: /^constraints?\b/i },
+  { title: 'Delivery boundary', heading: /^delivery\s+boundary\b/i },
+];
 const pathLimit = 40;
 
 /** The issue's open blockers as read from Linear, or why they could not be read. */
@@ -278,8 +300,7 @@ export function blockerLines(blockers: BlockerRead | undefined): string[] {
 /** Render the brief for `issue`. Pure. */
 export function renderBrief(issue: IssueSummary, options: BriefOptions): string {
   const description = (issue.description ?? '').trim();
-  const execution = sectionOf(description, /execution\s+brief/i);
-  const criteria = sectionOf(description, /acceptance\s+criteria/i);
+  const execution = sectionOf(description, briefHeading);
   const filesSection = sectionOf(description, /^files?\b|files? to (?:change|touch)/i);
   const paths =
     options.paths.length > 0
@@ -287,8 +308,8 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       : (filesSection !== undefined ? pathsIn(filesSection) : []).concat(
           filesSection === undefined ? pathsIn(description) : [],
         );
-  // Without an execution-brief heading, the whole description is the brief: its scope,
-  // verification, and delivery sections would otherwise be dropped.
+  // Without a brief heading, the whole description is the brief: its scope, verification, and
+  // delivery sections would otherwise be dropped.
   const source =
     execution === undefined
       ? description.length > descriptionLimit
@@ -306,16 +327,23 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     '',
   ];
   if (execution !== undefined) {
-    lines.push(
-      '## Acceptance criteria',
-      '',
-      criteria ?? '(none stated; derive them from the execution brief and write them down first)',
-      '',
-    );
+    for (const section of carriedSections) {
+      const body = sectionOf(description, section.heading) ?? section.missing;
+      if (body !== undefined) lines.push(`## ${section.title}`, '', body, '');
+    }
+    // Dated revisions settle decisions and amend criteria, so they travel whole and in order.
+    for (const revision of sectionsOf(description).filter((entry) =>
+      /\brevision\b/i.test(entry.heading),
+    ))
+      lines.push(`## ${revision.heading}`, '', revision.body.trim(), '');
   }
   lines.push(...blockerLines(options.blockers));
   lines.push(...designLines(issue.identifier, description, execution === undefined));
   lines.push('## Files', '');
+  const issueVerification =
+    execution !== undefined && options.verify.length === 0
+      ? sectionOf(description, /^verification\b/i)
+      : undefined;
   lines.push(
     ...(paths.length > 0
       ? paths.slice(0, pathLimit).map((path) => `- \`${path}\``)
@@ -323,7 +351,11 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     '',
     '## Verification',
     '',
-    ...verificationCommands(options.verify).map((command) => `- \`${command}\``),
+    ...(issueVerification === undefined
+      ? verificationCommands(options.verify).map((command) => `- \`${command}\``)
+      : issueVerification.includes(rootLint)
+        ? [issueVerification]
+        : [issueVerification, `- \`${rootLint}\``]),
     '',
     '## Charter rules',
     '',

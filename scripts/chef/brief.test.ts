@@ -320,34 +320,73 @@ describe('the create-task ticket template', () => {
     'utf8',
   );
 
-  test('has exactly the agreed headings, in order', () => {
+  test('has exactly the agreed headings, in order, and no open-questions section', () => {
     expect([...template.matchAll(/^(#{2,3}) (.+)$/gm)].map((match) => match[0])).toEqual([
-      '## Objective',
-      '## Context',
-      '## Requirements',
-      '## Acceptance Criteria',
-      '## Scope',
-      '### In scope',
-      '### Out of scope',
-      '## Files',
+      '## Brief',
+      '## Current behavior',
+      '## Acceptance criteria',
+      '## Decisions',
+      '## Out of scope',
       '## Constraints',
+      '## Files',
       '## Verification',
-      '## Delivery Boundary',
-      '## Open Questions',
+      '## Delivery boundary',
     ]);
   });
 
-  test('names the sections the brief extracts, so a filled issue reaches the worker', () => {
-    const filled = template
-      .replace(/<!--[^]*?-->/g, '')
-      .replace(
-        '## Acceptance Criteria\n',
-        '## Acceptance Criteria\n\n- AC1: the thing is observable.\n',
-      )
-      .replace('## Files\n', '## Files\n\n- `scripts/chef/thing.ts`\n');
-    expect(sectionOf(filled, /acceptance\s+criteria/i)).toBe('- AC1: the thing is observable.');
+  test('every section of a filled template reaches the worker', () => {
+    const filled = template.replace(
+      /^(## (.+))\n\n<!--[^]*?-->/gm,
+      (_match, heading: string, title: string) =>
+        title === 'Files'
+          ? `${heading}\n\n- \`scripts/chef/thing.ts\``
+          : title === 'Verification'
+            ? `${heading}\n\n- \`bun test scripts/chef/thing.test.ts\``
+            : `${heading}\n\nFilled ${title.toLowerCase()}.`,
+    );
     const text = renderBrief(issue(filled), { paths: [], verify: [], model: 'Sonnet' });
-    expect(text).toContain('## Files\n\n- `scripts/chef/thing.ts`');
+    for (const [title, body] of [
+      ['Execution brief', 'Filled brief.'],
+      ['Current behavior', 'Filled current behavior.'],
+      ['Acceptance criteria', 'Filled acceptance criteria.'],
+      ['Decisions', 'Filled decisions.'],
+      ['Out of scope', 'Filled out of scope.'],
+      ['Constraints', 'Filled constraints.'],
+      ['Files', '- `scripts/chef/thing.ts`'],
+      ['Verification', '- `bun test scripts/chef/thing.test.ts`\n- `bun run lint:root`'],
+      ['Delivery boundary', 'Filled delivery boundary.'],
+    ])
+      expect(text).toContain(`## ${title}\n\n${body}`);
+  });
+});
+
+describe('an issue written with a Brief heading and a dated revision', () => {
+  const written = [
+    '## Brief',
+    '',
+    'Refuse the thing.',
+    '',
+    '## Acceptance criteria',
+    '',
+    '- [ ] The thing is refused (test).',
+    '',
+    '## Notes',
+    '',
+    'Not carried.',
+    '',
+    '## Revision 2026-11-09 (decision)',
+    '',
+    'Standalone callers keep the old behavior; add a test.',
+  ].join('\n');
+
+  test('carries the brief, the criteria and the revision, and leaves other sections out', () => {
+    const text = renderBrief(issue(written), { paths: [], verify: [], model: 'Sonnet' });
+    expect(text).toContain('## Execution brief\n\nRefuse the thing.');
+    expect(text).toContain('## Acceptance criteria\n\n- [ ] The thing is refused (test).');
+    expect(text).toContain(
+      '## Revision 2026-11-09 (decision)\n\nStandalone callers keep the old behavior; add a test.',
+    );
+    expect(text).not.toContain('Not carried.');
   });
 });
 

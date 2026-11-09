@@ -1,47 +1,35 @@
-## Objective
+## Brief
 
-<!-- One or two sentences: the outcome this issue delivers and who or what benefits. -->
+<!-- A few sentences: the outcome this issue delivers and why it matters, so the worker can judge the cases nobody listed. -->
 
-## Context
+## Current behavior
 
-<!-- Why this matters now: the current behavior, the problem it causes, and any linked COR issue or decision. -->
+<!-- What the code does today, with `file:line` evidence or a probe. Mark each claim "verified" (with the evidence) or "assumed", so the worker checks the assumed ones first. -->
 
-## Requirements
+## Acceptance criteria
 
-<!-- R1, R2, …: what must be true when the work is done, one requirement per line. -->
+<!-- AC1, AC2, …: each binary and naming how it is checked (a test or a command). A bug's criteria include the test that fails before the fix; add a criterion for anything that must keep working. These are the requirements; there is no separate list. -->
 
-## Acceptance Criteria
+## Decisions
 
-<!-- AC1, AC2, …: how each requirement is observed; every criterion is binary and checkable by a command or a named manual check. -->
+<!-- Every choice already made, with its source: a COR decision, a dated revision, or the owner's answer during drafting. An unanswered question means the issue is not Ready. -->
 
-## Scope
+## Out of scope
 
-### In scope
-
-<!-- The workspaces, files, and behaviors this issue changes. -->
-
-### Out of scope
-
-<!-- Nearby work this issue deliberately leaves alone, with the COR issue that owns it when one exists. -->
-
-## Files
-
-<!-- Repository paths as code spans, one per line, so `brief.ts` hands them to the worker. -->
+<!-- What the worker must not change, with the COR issue that owns it when one exists. -->
 
 ## Constraints
 
-<!-- Binding prohibitions: what must not change, compatibility that must hold, and any one-way door (persisted format, wire protocol, published export). -->
+<!-- Binding limits only: compatibility that must hold, known traps, and any one-way door (persisted format, wire protocol, published export). -->
+
+## Files
+
+<!-- Starting points as code spans, one per line, so `brief.ts` hands them to the worker. Hints, not a fence: line numbers go stale. -->
 
 ## Verification
 
 <!-- Exact commands, defaulting to AGENTS.md "Gate on local checks": `bun test` on the touched files, `bun run lint:root`, `bun run typecheck:root` when root or `scripts/` files change, `bunx turbo run lint typecheck --filter=<workspace>`, and `bunx prettier --check` on the changed files. -->
 
-## Delivery Boundary
+## Delivery boundary
 
 <!-- The artifact that ends the work: normally a merged pull request; a publication or deployment when one is required. -->
-
-## Open Questions
-
-<!-- Questions only the owner can answer, or "None". -->
-
-None
