@@ -15,6 +15,8 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { environmentConfiguration } from '../environment-configuration.ts';
+
 /** The environment variable that overrides the configuration file. */
 export const URL_ENVIRONMENT_VARIABLE = 'CORVIDAE_DESIGN_SYSTEM_URL';
 
@@ -75,7 +77,10 @@ if (import.meta.main) {
     saveConfiguredUrl(values.set, path);
     console.log(`Saved ${values.set} to ${path}.`);
   } else {
-    const configured = readConfiguredUrl(process.env, path);
+    const configured = readConfiguredUrl(
+      { [URL_ENVIRONMENT_VARIABLE]: environmentConfiguration().designSystemUrl },
+      path,
+    );
     console.log(
       configured
         ? `${configured.url} (from ${configured.source})`
