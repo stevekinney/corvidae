@@ -427,6 +427,63 @@ describe('restore', () => {
     expect(latest?.changedKeys).toEqual(['limits', 'retry']);
   });
 
+  describe('limits', () => {
+    const fullLimits = {
+      steps: 40,
+      cost: { run: 1 },
+      tools: { calls: 5 },
+    };
+
+    /** Save the file with every limit set, then restore the version `restored` held. */
+    async function restoredOnto(fixture: AgentFileFixture, version: number) {
+      await fixture.catalog.update('helper', definition('Version one.\n', { limits: fullLimits }), {
+        expectedHash: hashOf(fixture),
+        savedBy: ALICE,
+      });
+      await fixture.catalog.versions.restore('helper', version, {
+        expectedHash: hashOf(fixture),
+      });
+      const versions = await fixture.catalog.versions.list('helper');
+      return { versions, detail: await fixture.catalog.detail('helper') };
+    }
+
+    it('drops the cost and tools limits the restored version did not have', async () => {
+      const fixture = await seeded();
+      await fixture.catalog.update(
+        'helper',
+        definition('Version one.\n', { limits: { steps: 10 } }),
+        { expectedHash: hashOf(fixture), savedBy: ALICE },
+      );
+      const { versions, detail } = await restoredOnto(fixture, 2);
+
+      expect(detail?.definition?.limits).toEqual({ steps: 10 });
+      expect(versions[0]?.definition.limits).toEqual({ steps: 10 });
+      expect(versions[0]?.definition).toEqual(versions[2]?.definition);
+    });
+
+    it('drops them for a version saved under the old stepLimit key alone', async () => {
+      const base: ConditionalTextValueStore = textValueStore(new MemoryStorage());
+      const fixture = await seeded({ revisionStore: base });
+      const [key] = await base.list(`${AGENT_VERSION_KEY_PREFIX}helper:`);
+      const record = JSON.parse((await base.get(key ?? '')) ?? '{}');
+      record.definition.stepLimit = 10;
+      await base.set(key ?? '', JSON.stringify(record));
+      const { versions, detail } = await restoredOnto(fixture, 1);
+
+      expect(detail?.definition?.limits).toEqual({ steps: 10 });
+      expect(versions[0]?.definition).toEqual(versions[2]?.definition);
+    });
+
+    it('removes every limit when the restored version had none', async () => {
+      const fixture = await seeded();
+      const { versions, detail } = await restoredOnto(fixture, 1);
+
+      expect(Object.hasOwn(detail?.definition ?? {}, 'limits')).toBe(false);
+      expect(Object.hasOwn(versions[0]?.definition ?? {}, 'limits')).toBe(false);
+      expect(versions[0]?.definition).toEqual(versions[2]?.definition);
+    });
+  });
+
   it('fails with a conflict and adds no version when the file has moved', async () => {
     const fixture = await seeded();
     const stale = hashOf(fixture);

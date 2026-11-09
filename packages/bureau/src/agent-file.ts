@@ -1305,13 +1305,18 @@ export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefi
   const { examples: _examples, ...input } = definition;
   // An update that omits `effort`, `allowedSkills`, `limits`, `retry`, `compaction`, `references`,
   // `guardrails`, `interceptors` or `approvals` keeps the file's value, and
-  // a version that has none must remove it: `null` says so.
+  // a version that has none must remove it: `null` says so. `limits` merges per sub-key, so each
+  // of `steps`, `cost` and `tools` is named, and the ones the definition lacks are `null`.
   return {
     ...input,
     effort: definition.effort ?? null,
     allowedSkills: definition.allowedSkills ?? null,
     children: definition.children ?? null,
-    limits: definition.limits ?? null,
+    limits: {
+      steps: definition.limits?.steps ?? null,
+      cost: definition.limits?.cost ?? null,
+      tools: definition.limits?.tools ?? null,
+    },
     retry: definition.retry ?? null,
     compaction: definition.compaction ?? null,
     references: definition.references ?? null,
