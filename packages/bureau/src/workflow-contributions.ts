@@ -1,5 +1,5 @@
 /**
- * COR-1874 — the activities and trigger kinds a Bureau's workflow files can name beyond the
+ * COR-1874 — the activities and triggers a Bureau's workflow files can name beyond the
  * `agent` activity and the `schedule` and `signal` triggers. They come from the versioned catalog
  * (`versioned-catalog.ts`), under the kinds `activity` and `trigger`, as `plugin:name`.
  *
@@ -12,8 +12,8 @@
  * revision it started on, and after a restart it resumes only if exactly that version is loaded;
  * otherwise it is reported `missing` or `version-mismatch` and never run on another version.
  *
- * A trigger kind is not pinned: it binds a file to a source of starts, not a run to code. A run
- * that has started does not need its trigger kind, so a revision whose trigger kind is gone still
+ * A trigger is not pinned: it binds a file to a source of starts, not a run to code. A run
+ * that has started does not need its trigger, so a revision whose trigger is gone still
  * resumes its runs.
  *
  * @module workflow-contributions
@@ -39,9 +39,9 @@ export interface WorkflowContributions {
   readonly activities: Readonly<Record<string, DocumentActivity>>;
   /** The version each contributed activity is loaded at, by the Weft name of its `plugin:name`. */
   readonly activityVersions: Readonly<Record<string, string>>;
-  /** A validator for each contributed trigger kind, by its `plugin:name`. */
+  /** A validator for each contributed trigger, by its `plugin:name`. */
   readonly triggerValidators: Readonly<Record<string, DocumentTriggerValidator>>;
-  /** The contributed trigger kinds, by their `plugin:name`. */
+  /** The contributed triggers, by their `plugin:name`. */
   readonly triggers: ReadonlyMap<string, VersionedCatalogEntry<PluginTrigger>>;
   /**
    * The exact contributed activity `id` (`plugin:name`) at `version`: the entry, or `missing`
@@ -111,7 +111,7 @@ export function createWorkflowContributions(
 ): WorkflowContributions {
   if (catalog === undefined) return NO_WORKFLOW_CONTRIBUTIONS;
   const activityEntries = onePerName<PluginActivity>(catalog.entries('activity'), 'activity');
-  const triggerEntries = onePerName<PluginTrigger>(catalog.entries('trigger'), 'trigger kind');
+  const triggerEntries = onePerName<PluginTrigger>(catalog.entries('trigger'), 'trigger');
   for (const entry of activityEntries) {
     if (typeof entry.value?.execute !== 'function') {
       throw new TypeError(`The activity "${entry.name}" has no execute function.`);
@@ -121,7 +121,7 @@ export function createWorkflowContributions(
     const kind = entry.value;
     if (typeof kind?.start !== 'function' || typeof kind.configuration?.safeParse !== 'function') {
       throw new TypeError(
-        `The trigger kind "${entry.name}" needs a configuration schema and a start function.`,
+        `The trigger "${entry.name}" needs a configuration schema and a start function.`,
       );
     }
   }
