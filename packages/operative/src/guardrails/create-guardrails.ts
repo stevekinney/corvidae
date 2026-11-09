@@ -1,18 +1,26 @@
-import type { GenerateResponse, StepContext } from '../types';
+import type {
+  GenerateResponse,
+  StepContext,
+  ToolExecutionResultContext,
+  ValidateToolResultHook,
+} from '../types';
 import { createInputGuardrail } from './input-guardrail';
 import { createOutputGuardrail } from './output-guardrail';
 import { createSessionTaintTracker } from './session-taint';
+import { createToolResultGuardrail } from './tool-result-guardrail';
 import type { GuardrailHooks, GuardrailsOptions } from './types';
 
 /** Default confidence threshold for tainting a session. */
 const DEFAULT_TAINT_THRESHOLD = 0.9;
 
 /**
- * Creates a coordinated pair of guardrail hooks (input + output) with session tainting.
+ * Creates coordinated guardrail hooks (input, tool result, and output) with session tainting.
  *
  * The factory wires together input detectors, output validators, and a session taint
- * tracker. When a high-confidence detection occurs, the session becomes tainted and
- * escalated detectors/validators are added to subsequent checks.
+ * tracker. The input detectors read user messages before a generate call (`prepareStep`) and
+ * every tool result before the model is shown it (`validateToolResult`, COR-2103). When a
+ * high-confidence detection occurs, the session becomes tainted and escalated
+ * detectors/validators are added to subsequent checks.
  *
  * `mode: 'tripwire'` switches both input and output guardrails to the
  * OpenAI-tripwire model: a tripped detector/validator throws a
@@ -21,7 +29,8 @@ const DEFAULT_TAINT_THRESHOLD = 0.9;
  * `output.action` regardless of what they were individually set to, so
  * callers don't have to set the action on both.
  *
- * Returns `{ prepareStep, validateResponse }` hooks ready for use in `RunOptions`.
+ * Returns `{ prepareStep, validateToolResult, validateResponse }` hooks ready for use in
+ * `RunOptions`, and the session's taint tracker.
  */
 export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
   const { input, output, taint, mode = 'validate' } = options;
@@ -106,5 +115,45 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
     return hook(response, context);
   };
 
-  return { prepareStep, validateResponse, taint: taintTracker };
+  // Build the validateToolResult hook: the input detectors, over what a tool answered.
+  const validateToolResult: ValidateToolResultHook = async (
+    result,
+    context: ToolExecutionResultContext,
+  ) => {
+    if (!input) return;
+    const action = mode === 'tripwire' ? 'tripwire' : (input.action ?? 'block');
+    const hook = createToolResultGuardrail({
+      detectors: [...input.detectors, ...taintTracker.getDetectors()],
+      action,
+      mode: input.mode,
+      getSessionTainted: () => taintTracker.isTainted(),
+      onTriggered: (event) => {
+        // A result the guardrail refuses taints the session whatever its confidence: the tool
+        // reached content a detector would not let through. A warning taints as an input does.
+        const refused = event.action === 'block' || event.action === 'sanitize';
+        if (refused || event.confidence >= taintThreshold) {
+          taintTracker.taint({
+            reason: event.detail ?? `Detection by ${event.detector}`,
+            detector: event.detector,
+            confidence: event.confidence,
+            step: context.step,
+            provenance: event.provenance,
+          });
+        }
+        if (event.action !== 'tripwire') {
+          context.reportGuardrail?.({
+            guardrailName: event.detector,
+            category: event.category,
+            phase: 'tool-result',
+            confidence: event.confidence,
+            action: event.action,
+          });
+        }
+        input.onTriggered?.(event);
+      },
+    });
+    return hook(result, context);
+  };
+
+  return { prepareStep, validateToolResult, validateResponse, taint: taintTracker };
 }

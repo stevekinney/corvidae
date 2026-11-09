@@ -319,6 +319,12 @@ export function effectiveCodeAgent(
       priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
       replay: 'safe',
     });
+    hooks.on('validateToolResult', guardrails.validateToolResult, {
+      id: 'agent:override-guardrails-validate-tool-result',
+      source: AGENT_POLICY_HOOK_SOURCE,
+      priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+      replay: 'safe',
+    });
     hooks.on('validateResponse', guardrails.validateResponse, {
       id: 'agent:override-guardrails-validate-response',
       source: AGENT_POLICY_HOOK_SOURCE,

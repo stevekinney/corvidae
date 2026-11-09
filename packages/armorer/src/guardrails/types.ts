@@ -2,13 +2,15 @@
  * Provenance of content passed through a guardrail detector.
  *
  * `'user-input'` is content a human typed directly into the conversation.
- * The other three tags mark content that entered the conversation via
- * retrieval — a distinct trust boundary from user input, since it was
- * authored by someone (or something) other than the current session's user
- * and may have been crafted specifically to manipulate the model.
+ * `'recalled-memory'`, `'ingested-document'` and `'skill-resource'` mark
+ * content that entered the conversation via retrieval, and `'tool-result'`
+ * marks what a tool answered (a fetched page, an API response). Each is a
+ * distinct trust boundary from user input, since it was authored by someone
+ * (or something) other than the current session's user and may have been
+ * crafted specifically to manipulate the model.
  */
 export type GuardrailProvenance =
-  'user-input' | 'recalled-memory' | 'ingested-document' | 'skill-resource';
+  'user-input' | 'recalled-memory' | 'ingested-document' | 'skill-resource' | 'tool-result';
 
 /** Context provided to detectors for situational awareness. */
 export interface DetectorContext {

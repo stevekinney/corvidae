@@ -262,6 +262,14 @@ function registerGuardrails(
     // Scans and may taint in-process session state; no external write.
     replay: 'safe',
   });
+  // COR-2103 — the input detectors over each tool result. A waterfall, like `validateResponse`, so
+  // pinned last: an agent hook running after it would decide what the guardrail's refusal was worth.
+  hooks.on('validateToolResult', guardrails.validateToolResult, {
+    id: 'agent:guardrails-validate-tool-result',
+    source: AGENT_POLICY_HOOK_SOURCE,
+    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    replay: 'safe',
+  });
   hooks.on('validateResponse', guardrails.validateResponse, {
     id: 'agent:guardrails-validate-response',
     source: AGENT_POLICY_HOOK_SOURCE,

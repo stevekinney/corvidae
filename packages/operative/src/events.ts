@@ -16,6 +16,7 @@ import type { SteeringCommandFailure, SteeringEffectiveState } from './durable/t
 import {
   type AgentRunError,
   type AgentRunErrorKind,
+  type GuardrailPhase,
   toAgentRunError,
   type ValidatorError,
 } from './errors';
@@ -250,7 +251,7 @@ export class RunTripwireEvent extends Event {
   readonly step: number;
   readonly guardrailName: string;
   readonly category: string;
-  readonly phase: 'input' | 'output';
+  readonly phase: GuardrailPhase;
   readonly confidence: number;
   readonly detail?: string | undefined;
   constructor(
@@ -258,7 +259,7 @@ export class RunTripwireEvent extends Event {
     data: {
       guardrailName: string;
       category: string;
-      phase: 'input' | 'output';
+      phase: GuardrailPhase;
       confidence: number;
       detail?: string | undefined;
     },
@@ -275,8 +276,8 @@ export class RunTripwireEvent extends Event {
 
 /**
  * Fired when a `mode: 'validate'` guardrail acts on a step and the run goes on: an input detector
- * blocked or sanitized the request, or an output validator blocked or redacted the reply (or only
- * warned). It is the validate-mode counterpart of {@link RunTripwireEvent}, which a tripwire
+ * blocked or sanitized the request or a tool's result, or an output validator blocked or redacted
+ * the reply (or only warned). It is the validate-mode counterpart of {@link RunTripwireEvent}, which a tripwire
  * guardrail fires as it halts the run, and a tripwire never fires this one.
  *
  * It names the guardrail and how it acted and carries neither the flagged text nor the
@@ -291,14 +292,18 @@ export class RunGuardrailEvent extends Event {
   readonly guardrailName: string;
   /** What it found, such as `prompt-injection` or `pii`. */
   readonly category: string;
-  /** Whether it checked the request (`input`) or the reply (`output`). */
-  readonly phase: 'input' | 'output';
+  /**
+   * Where it checked: the request (`input`), the reply (`output`), a tool call (`tool-call`), or
+   * what a tool answered (`tool-result`).
+   */
+  readonly phase: GuardrailPhase;
   /** How sure the guardrail was, from 0 to 1. */
   readonly confidence: number;
   /**
-   * The action the guardrail is set to take: `block` and `sanitize` for an input, `block` and
-   * `redact` for an output, or `warn`, which lets the step through. A `redact` or `sanitize` that
-   * has nothing to substitute falls back to a block.
+   * The action the guardrail is set to take: `block` and `sanitize` for an input or a tool result,
+   * `block` and `redact` for an output, or `warn`, which lets the step through. A `redact` or
+   * `sanitize` that has nothing to substitute falls back to a block, and a tool result's
+   * `sanitize` always does.
    */
   readonly action: 'block' | 'warn' | 'sanitize' | 'redact';
   constructor(
@@ -306,7 +311,7 @@ export class RunGuardrailEvent extends Event {
     data: {
       guardrailName: string;
       category: string;
-      phase: 'input' | 'output';
+      phase: GuardrailPhase;
       confidence: number;
       action: 'block' | 'warn' | 'sanitize' | 'redact';
     },

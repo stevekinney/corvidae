@@ -375,6 +375,16 @@ describe('a human wait', () => {
         await started.rest();
         await waitForCondition(() => bureau.reviews.list().length === 1, 'the run never parked');
         const nativeRunId = bureau.reviews.list()[0]!.runId;
+        // The review exists from the moment the tool asks, before its step has finished (the
+        // tool-result guardrail, COR-2103, still reads the result); the run is parked once the
+        // step is recorded complete, which is what this attach is meant to see.
+        await waitForCondition(
+          () =>
+            bureau.tasks
+              .detail(nativeRunId)
+              ?.events.some((event) => event.event === 'step.completed') === true,
+          'the parked step never completed',
+        );
 
         const frames = await readAgUiStream(await handler(attachRunRequest(nativeRunId)));
 
