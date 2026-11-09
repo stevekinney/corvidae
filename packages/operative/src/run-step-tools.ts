@@ -207,7 +207,11 @@ export async function executeTools(
           deps.collectAsync,
           tripwire === undefined
             ? 'Tool execution aborted before a result could be produced (beforeToolExecution hook failed)'
-            : (call) => guardrailRefusedCallResult(call, tripwire.guardrailName),
+            : (call) =>
+                guardrailRefusedCallResult(
+                  call,
+                  refusedCalls.get(call.id) ?? tripwire.guardrailName,
+                ),
           undefined,
           resultRowScope,
         );

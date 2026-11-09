@@ -203,6 +203,30 @@ describe('tool-call validators', () => {
     }
   });
 
+  it('a tripwire after a refusal in one step: the refused call names its own guardrail, the rest name the tripwire', async () => {
+    const lookupTripwire: ToolCallValidator = {
+      name: 'lookup-tripwire',
+      validate: async (call) =>
+        call.name === 'lookup'
+          ? { valid: false, category: 'lookup-limit', confidence: 1 }
+          : { valid: true, category: 'lookup-limit', confidence: 0 },
+    };
+    const outcome = await runAgent({
+      additionalGuardrails: { toolValidators: [refundCap('block'), lookupTripwire] },
+    });
+
+    expect(outcome.finishReason).toBe('tripwire');
+    expect(outcome.executed).toEqual([]);
+    const tripwires = ofType(outcome.events, 'run.tripwire');
+    expect(tripwires).toHaveLength(1);
+    expect(tripwires[0]).toMatchObject({ guardrailName: 'lookup-tripwire', phase: 'tool-call' });
+    const rows = toolResultRows(outcome.conversation);
+    expect(rows.map((row) => row.callId)).toEqual(['call-1', 'call-2']);
+    expect(JSON.stringify(rows[0])).toContain('refund-cap');
+    expect(JSON.stringify(rows[0])).not.toContain('lookup-tripwire');
+    expect(JSON.stringify(rows[1])).toContain('lookup-tripwire');
+  });
+
   it.each([
     ['validate mode', validateMode(refundCap('warn'))],
     ['default preset', defaultPreset(refundCap('warn'))],
