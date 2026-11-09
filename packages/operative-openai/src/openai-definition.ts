@@ -35,18 +35,18 @@ export const openaiProvider: ProviderDefinition<
   name: 'openai',
   generate: (
     configuration: OpenAIProviderConfiguration,
-    pluginConfiguration: OpenAIPluginConfiguration,
+    pluginConfiguration?: OpenAIPluginConfiguration,
   ) =>
     createOpenAIProvider({
       ...configuration,
-      baseURL: pluginConfiguration.baseURL ?? configuration.baseURL,
+      baseURL: pluginConfiguration?.baseURL ?? configuration.baseURL,
     }),
   stream: (
     configuration: OpenAIProviderConfiguration,
-    pluginConfiguration: OpenAIPluginConfiguration,
+    pluginConfiguration?: OpenAIPluginConfiguration,
   ) =>
     createOpenAIProviderStream({
       ...configuration,
-      baseURL: pluginConfiguration.baseURL ?? configuration.baseURL,
+      baseURL: pluginConfiguration?.baseURL ?? configuration.baseURL,
     }),
 };

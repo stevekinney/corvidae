@@ -385,6 +385,7 @@ describe('the catalog rows', () => {
       plugin: 'lender',
       name: 'lender',
       definition: { ...anthropicProvider, name: 'lender' },
+      configuration: {},
       rows: [own],
       secretKey: 'lender-api-key',
     };

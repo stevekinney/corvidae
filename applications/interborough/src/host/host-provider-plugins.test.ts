@@ -6,7 +6,7 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  */
 import { openBungalow } from '@lostgradient/bungalow';
 import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createModelCatalog } from '@lostgradient/operative';
+import { createAgent, createModelCatalog } from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -113,7 +113,7 @@ describe('a plugin that contributes a provider', () => {
         const found = definitions.find((candidate) => candidate.name === provider.provider);
         if (found === undefined) throw new Error('No such provider.');
         if (found.generate === undefined) throw new Error('Provider has no generate capability.');
-        return found.generate(provider);
+        return found.generate(provider, {});
       },
     });
 
@@ -287,6 +287,64 @@ describe('changing a provider plugin’s configuration through the plugin routes
     await host.plugins.update('openai', { configuration: null });
 
     expect(openaiPairs(host)).toEqual(all);
+  });
+
+  test('uses the updated endpoint on the next model call after a live plugin update', async () => {
+    const responseBody = {
+      id: 'chatcmpl_reload_test',
+      object: 'chat.completion',
+      created: 0,
+      model: 'gpt-4.1',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    };
+    const requests: string[] = [];
+    const serverA = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        requests.push('A');
+        return Response.json(responseBody);
+      },
+    });
+    const serverB = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        requests.push('B');
+        return Response.json(responseBody);
+      },
+    });
+    try {
+      const home = await prepareHome({
+        configuration: {
+          plugins: { openai: { configuration: { baseURL: `http://127.0.0.1:${serverA.port}` } } },
+        },
+        secrets: { 'openai-api-key': KEY },
+      });
+      const host = await startAt(home);
+      await createAgent({
+        name: 'reload-a',
+        generate: host.generateFor({ provider: 'openai', model: 'gpt-4.1' }),
+      })
+        .run('First')
+        .result();
+
+      await host.plugins.update('openai', {
+        configuration: { baseURL: `http://127.0.0.1:${serverB.port}` },
+      });
+      await createAgent({
+        name: 'reload-b',
+        generate: host.generateFor({ provider: 'openai', model: 'gpt-4.1' }),
+      })
+        .run('Second')
+        .result();
+
+      expect(requests).toEqual(['A', 'B']);
+    } finally {
+      serverA.stop();
+      serverB.stop();
+    }
   });
 
   test('refuses an allowlist entry that matches no model, writes nothing, and keeps the catalog', async () => {
