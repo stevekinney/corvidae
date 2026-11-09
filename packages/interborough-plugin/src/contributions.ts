@@ -36,12 +36,39 @@ export interface PluginEvent {
   readonly source?: string;
 }
 
-/** Guardrails a plugin adds to the ones Operative applies to every agent. */
+/** A point in governed memory's life at which a memory guardrail runs. */
+export type PluginMemoryGate = 'admission' | 'recall';
+
+/**
+ * A guardrail on governed memory: an Armorer input detector that also says at which points it
+ * runs. One object can serve `guardrails.input` and `guardrails.memory` under one name, because
+ * names are claimed per family.
+ */
+export interface PluginMemoryGuardrail extends InputDetector {
+  /**
+   * Where it runs: `admission` scans content as it is written, `recall` scans each record as it is
+   * recalled. Left out, it runs at both. An empty list is refused, since it would run nowhere.
+   */
+  readonly gates?: readonly PluginMemoryGate[];
+}
+
+/**
+ * Guardrails a plugin adds to the ones Operative applies to every agent, grouped by what they
+ * guard. A guardrail's name is claimed within its family, and the family is recorded in its
+ * identity (`plugin:family/name`), so `acme:input/credentials` and `acme:memory/credentials` are
+ * different guardrails that may share a name.
+ */
 export interface PluginGuardrails {
   /** Detectors run over the input before a generate call. */
-  readonly inputDetectors?: readonly InputDetector[];
+  readonly input?: readonly InputDetector[];
   /** Validators run over a response before it is accepted. */
-  readonly outputValidators?: readonly OutputValidator[];
+  readonly output?: readonly OutputValidator[];
+  /**
+   * Detectors run after the default poisoning detector, on memory admission, on recall or on both
+   * (see {@link PluginMemoryGuardrail.gates}). An agent file cannot choose them: they guard the
+   * host's memory, not one agent.
+   */
+  readonly memory?: readonly PluginMemoryGuardrail[];
 }
 
 /**
@@ -249,8 +276,6 @@ export interface PluginContributions {
   readonly providers?: readonly PluginProvider[];
   /** Embedders the `memory.embedder` setting can name. */
   readonly embedders?: readonly PluginEmbedder[];
-  /** Detectors run after the default poisoning detector, on memory admission and on recall. */
-  readonly memoryDetectors?: readonly InputDetector[];
   /** Scorers that score a sample of completed runs. */
   readonly scorers?: readonly PluginScorer[];
   /** Interface panels. */

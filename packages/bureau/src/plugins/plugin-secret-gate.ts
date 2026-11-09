@@ -22,12 +22,12 @@
  * | activity (`execute`, `verify`, `compensate`) | refuses without retrying (`nonRetryableErrors`); a refused `verify` fails the result, and a refused `compensate` is a failed compensation | works | refuses |
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
- * | guardrail (`detect`, `validate`) | refuses; an agent file that lists it cannot run | works | refuses |
+ * | guardrail, `input` and `output` (`detect`, `validate`) | refuses; an agent file that lists it cannot run | works | refuses |
  * | interceptor (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
- * | memory detector (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
+ * | memory guardrail, `guardrails.memory` (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
  * | scorer (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
@@ -50,7 +50,7 @@ import type { DetectionResult, DetectorContext } from 'armorer';
 import type { BureauPluginSecrets } from './plugin-types';
 
 /**
- * The `category` of the result a gated memory detector answers with while its plugin needs setup:
+ * The `category` of the result a gated memory guardrail answers with while its plugin needs setup:
  * it did not run, and detected nothing.
  */
 export const PLUGIN_NEEDS_SETUP_CATEGORY = 'plugin-needs-setup';
@@ -329,20 +329,47 @@ export function gatedContributions<T extends PluginContributions>(
       ? {}
       : {
           guardrails: {
-            ...(guardrails.inputDetectors === undefined
+            ...(guardrails.input === undefined
               ? {}
               : {
-                  inputDetectors: guardrails.inputDetectors.map((detector) => ({
+                  input: guardrails.input.map((detector) => ({
                     ...detector,
                     detect: gated(gate, idOf(detector.name), detector.detect.bind(detector)),
                   })),
                 }),
-            ...(guardrails.outputValidators === undefined
+            ...(guardrails.output === undefined
               ? {}
               : {
-                  outputValidators: guardrails.outputValidators.map((validator) => ({
+                  output: guardrails.output.map((validator) => ({
                     ...validator,
                     validate: gated(gate, idOf(validator.name), validator.validate.bind(validator)),
+                  })),
+                }),
+            ...(guardrails.memory === undefined
+              ? {}
+              : {
+                  memory: guardrails.memory.map((detector) => ({
+                    ...detector,
+                    detect: async (
+                      input: string,
+                      context: DetectorContext,
+                    ): Promise<DetectionResult> => {
+                      // Not run: memory counts a detector's failure as a detection, so a refusal here
+                      // would hold back every write and recall while the plugin needs setup.
+                      if (!gate.available()) {
+                        return {
+                          triggered: false,
+                          confidence: 0,
+                          category: PLUGIN_NEEDS_SETUP_CATEGORY,
+                          detail: new PluginNeedsSetupError(
+                            gate.plugin,
+                            idOf(detector.name),
+                            gate.missing(),
+                          ).message,
+                        };
+                      }
+                      return detector.detect(input, context);
+                    },
                   })),
                 }),
           },
@@ -377,30 +404,6 @@ export function gatedContributions<T extends PluginContributions>(
           embedders: result.embedders.map((embedder) => ({
             ...embedder,
             embed: gated(gate, idOf(embedder.name), embedder.embed),
-          })),
-        }),
-    ...(result.memoryDetectors === undefined
-      ? {}
-      : {
-          memoryDetectors: result.memoryDetectors.map((detector) => ({
-            ...detector,
-            detect: async (input: string, context: DetectorContext): Promise<DetectionResult> => {
-              // Not run: memory counts a detector's failure as a detection, so a refusal here
-              // would hold back every write and recall while the plugin needs setup.
-              if (!gate.available()) {
-                return {
-                  triggered: false,
-                  confidence: 0,
-                  category: PLUGIN_NEEDS_SETUP_CATEGORY,
-                  detail: new PluginNeedsSetupError(
-                    gate.plugin,
-                    idOf(detector.name),
-                    gate.missing(),
-                  ).message,
-                };
-              }
-              return detector.detect(input, context);
-            },
           })),
         }),
     ...(result.scorers === undefined

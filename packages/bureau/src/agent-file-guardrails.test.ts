@@ -241,7 +241,7 @@ const stepsSeen: string[] = [];
 const contributions = createAgentContributions([
   {
     plugin: 'x',
-    guardrails: { inputDetectors: [sentinelDetector], outputValidators: [forbiddenValidator] },
+    guardrails: { input: [sentinelDetector], output: [forbiddenValidator] },
     interceptors: [
       {
         name: 'audit',
@@ -262,19 +262,8 @@ describe('createAgentContributions', () => {
   it('refuses an id contributed twice, because a file names a contribution by id alone', () => {
     expect(() =>
       createAgentContributions([
-        { plugin: 'x', guardrails: { inputDetectors: [sentinelDetector] } },
-        { plugin: 'x', guardrails: { inputDetectors: [sentinelDetector] } },
-      ]),
-    ).toThrow('"x:check" is contributed more than once');
-    expect(() =>
-      createAgentContributions([
-        {
-          plugin: 'x',
-          guardrails: {
-            inputDetectors: [sentinelDetector],
-            outputValidators: [{ ...forbiddenValidator, name: 'check' }],
-          },
-        },
+        { plugin: 'x', guardrails: { input: [sentinelDetector] } },
+        { plugin: 'x', guardrails: { input: [sentinelDetector] } },
       ]),
     ).toThrow('"x:check" is contributed more than once');
     expect(() =>
@@ -282,6 +271,37 @@ describe('createAgentContributions', () => {
         { plugin: 'x', interceptors: [{ name: 'audit' }, { name: 'audit' }] },
       ]),
     ).toThrow('interceptor "x:audit" is contributed more than once');
+  });
+});
+
+describe('guardrail families', () => {
+  it('lets one name serve the input and output families, and a file that lists it applies both', () => {
+    const shared = createAgentContributions([
+      {
+        plugin: 'x',
+        guardrails: {
+          input: [sentinelDetector],
+          output: [{ ...forbiddenValidator, name: 'check' }],
+          // The memory family is the host's, so an agent file cannot list it and it holds no entry.
+          memory: [sentinelDetector],
+        },
+      },
+    ]);
+
+    expect([...shared.guardrails.keys()]).toEqual(['x:check']);
+    expect(unresolvedContributions({ guardrails: ['x:check'] }, shared)).toEqual([]);
+    expect(guardrailAdditionsOf({ guardrails: ['x:check'] }, shared)).toEqual({
+      inputDetectors: [sentinelDetector],
+      outputValidators: [{ ...forbiddenValidator, name: 'check' }],
+    });
+  });
+
+  it('refuses a family-qualified id in an agent file: a file names `plugin:name`', () => {
+    expect(
+      unresolvedContributions({ guardrails: ['x:input/check'] }, contributions).map(
+        ({ reference }) => reference,
+      ),
+    ).toEqual(['x:input/check']);
   });
 });
 

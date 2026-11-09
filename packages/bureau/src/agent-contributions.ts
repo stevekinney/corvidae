@@ -36,7 +36,10 @@ export interface AgentContributionSource {
   readonly interceptors?: readonly PluginInterceptor[] | undefined;
 }
 
-/** One guardrail a plugin contributes: a detector or a validator. */
+/**
+ * The guardrails a plugin contributes under one name: an input detector, an output validator, or
+ * both, since names are claimed per family.
+ */
 export interface ContributedGuardrail {
   /** `plugin:name`, as an agent file writes it. */
   readonly id: string;
@@ -87,19 +90,25 @@ export function createAgentContributions(
     guardrails: contributed,
     interceptors: contributedInterceptors,
   } of sources) {
-    const guardrail = (entry: Omit<ContributedGuardrail, 'id' | 'plugin'> & { name: string }) => {
-      const id = formatToolId({ namespace: plugin, name: entry.name });
-      if (guardrails.has(id)) {
+    // An agent file names a guardrail as `plugin:name`; a name is claimed per family, so one name
+    // may carry an input detector and an output validator, which a file that lists it applies both.
+    const guardrail = (
+      name: string,
+      family: 'inputDetector' | 'outputValidator',
+      entry: Pick<ContributedGuardrail, 'inputDetector' | 'outputValidator'>,
+    ) => {
+      const id = formatToolId({ namespace: plugin, name });
+      const held = guardrails.get(id);
+      if (held?.[family] !== undefined) {
         throw new TypeError(`The guardrail "${id}" is contributed more than once.`);
       }
-      const { name: _name, ...rest } = entry;
-      guardrails.set(id, { id, plugin, ...rest });
+      guardrails.set(id, { ...held, id, plugin, ...entry });
     };
-    for (const detector of contributed?.inputDetectors ?? []) {
-      guardrail({ name: detector.name, inputDetector: detector });
+    for (const detector of contributed?.input ?? []) {
+      guardrail(detector.name, 'inputDetector', { inputDetector: detector });
     }
-    for (const validator of contributed?.outputValidators ?? []) {
-      guardrail({ name: validator.name, outputValidator: validator });
+    for (const validator of contributed?.output ?? []) {
+      guardrail(validator.name, 'outputValidator', { outputValidator: validator });
     }
     for (const interceptor of contributedInterceptors ?? []) {
       const id = formatToolId({ namespace: plugin, name: interceptor.name });

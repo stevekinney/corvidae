@@ -3,10 +3,15 @@
 // contract is told at compile time. `PluginContributions` has no index signature, so an unknown key
 // is an excess-property error.
 
+import type { OutputValidator } from '@lostgradient/operative';
+import type { InputDetector } from 'armorer';
+
 import type {
   PluginAgent,
   PluginContributions,
   PluginFormatter,
+  PluginGuardrails,
+  PluginMemoryGuardrail,
   PluginPanel,
   PluginReaction,
   PluginScorer,
@@ -55,3 +60,33 @@ export const renamedAgents: PluginContributions = { agents: [agent] };
 
 // @ts-expect-error -- `codeAgents` was renamed `agents`
 export const staleCodeAgents: PluginContributions = { codeAgents: [agent] };
+
+declare const detector: InputDetector;
+declare const validator: OutputValidator;
+declare const memoryGuardrail: PluginMemoryGuardrail;
+
+export const renamedGuardrails: PluginContributions = {
+  guardrails: { input: [detector], output: [validator], memory: [memoryGuardrail] },
+};
+
+// A memory guardrail's gates are admission, recall or both, and an input detector is a memory
+// guardrail that declares none.
+export const gatedMemory: PluginGuardrails = {
+  memory: [
+    detector,
+    { ...detector, gates: ['recall'] },
+    { ...detector, gates: ['admission', 'recall'] },
+  ],
+};
+
+// @ts-expect-error -- `inputDetectors` was renamed `guardrails.input`
+export const staleInputDetectors: PluginGuardrails = { inputDetectors: [detector] };
+
+// @ts-expect-error -- `outputValidators` was renamed `guardrails.output`
+export const staleOutputValidators: PluginGuardrails = { outputValidators: [validator] };
+
+// @ts-expect-error -- `memoryDetectors` moved to `guardrails.memory`
+export const staleMemoryDetectors: PluginContributions = { memoryDetectors: [detector] };
+
+// @ts-expect-error -- a memory gate is `admission` or `recall`
+export const unknownGate: PluginGuardrails = { memory: [{ ...detector, gates: ['write'] }] };

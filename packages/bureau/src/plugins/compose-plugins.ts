@@ -18,19 +18,22 @@
  */
 
 import type {
+  GuardrailFamily,
   PluginContributions,
   PluginHostApi,
+  PluginMemoryGate,
   PluginSecrets,
   PluginSetupContext,
   PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
-import { createPluginStorage, isPluginName } from '@lostgradient/interborough-plugin';
+import { createPluginStorage, guardrailId, isPluginName } from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
 import { createModelCatalog } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   formatToolId,
   fromNamespacedToolName,
+  parseToolId,
   PROVIDER_TOOL_NAME_LIMIT,
   readToolTitle,
   toNamespacedToolName,
@@ -213,6 +216,9 @@ interface PluginContributionPlan {
   readonly tools: ReadonlyMap<string, Tool>;
 }
 
+/** The points at which a memory guardrail that declares no `gates` runs. */
+const MEMORY_GATES: readonly PluginMemoryGate[] = ['admission', 'recall'];
+
 /** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
 const PANEL_URI_PATTERN = /^ui:\/\/\S+$/;
 
@@ -240,6 +246,7 @@ function planOf(
     name: string,
     id?: string,
     title?: string,
+    claimName?: string,
   ) => {
     if (!isPluginName(name)) {
       throw new TypeError(
@@ -247,7 +254,7 @@ function planOf(
       );
     }
     const contributionId = id ?? formatToolId({ namespace: plugin, name });
-    claims.push({ space: kind, name: formatToolId({ namespace: plugin, name }) });
+    claims.push({ space: kind, name: claimName ?? formatToolId({ namespace: plugin, name }) });
     listings.push({ kind, id: contributionId, ...(title === undefined ? {} : { title }) });
   };
   for (const tool of contributions.tools ?? []) {
@@ -266,11 +273,17 @@ function planOf(
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
-  for (const detector of contributions.guardrails?.inputDetectors ?? []) {
-    contribute('guardrail', detector.name);
+  // A guardrail's name is claimed within its family, so one name may serve more than one.
+  const guardrail = (
+    kind: 'guardrail' | 'memory-detector',
+    family: GuardrailFamily,
+    name: string,
+  ) => contribute(kind, name, undefined, undefined, guardrailId(plugin, family, name));
+  for (const detector of contributions.guardrails?.input ?? []) {
+    guardrail('guardrail', 'input', detector.name);
   }
-  for (const validator of contributions.guardrails?.outputValidators ?? []) {
-    contribute('guardrail', validator.name);
+  for (const validator of contributions.guardrails?.output ?? []) {
+    guardrail('guardrail', 'output', validator.name);
   }
   for (const interceptor of contributions.interceptors ?? []) {
     contribute('interceptor', interceptor.name);
@@ -301,8 +314,17 @@ function planOf(
     }
     contribute('embedder', embedder.name);
   }
-  for (const detector of contributions.memoryDetectors ?? []) {
-    contribute('memory-detector', detector.name);
+  for (const detector of contributions.guardrails?.memory ?? []) {
+    const { gates } = detector;
+    if (
+      gates !== undefined &&
+      (gates.length === 0 || gates.some((at) => !MEMORY_GATES.includes(at)))
+    ) {
+      throw new TypeError(
+        `setup returned the memory guardrail "${detector.name}" with gates ${JSON.stringify(gates)}: gates list "admission", "recall" or both, and are left out to run at both.`,
+      );
+    }
+    guardrail('memory-detector', 'memory', detector.name);
   }
   for (const judge of contributions.scorers ?? []) contribute('scorer', judge.name);
   for (const app of contributions.panels ?? []) {
@@ -378,8 +400,14 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const validator of options.validators ?? []) {
     claims.hold({ space: 'validator', name: validator.identity.name }, HOST_PARTY);
   }
-  for (const id of options.agentContributions?.guardrails.keys() ?? []) {
-    claims.hold({ space: 'guardrail', name: id }, HOST_PARTY);
+  for (const [id, held] of options.agentContributions?.guardrails ?? []) {
+    const { namespace, name } = parseToolId(id);
+    if (held.inputDetector !== undefined) {
+      claims.hold({ space: 'guardrail', name: guardrailId(namespace, 'input', name) }, HOST_PARTY);
+    }
+    if (held.outputValidator !== undefined) {
+      claims.hold({ space: 'guardrail', name: guardrailId(namespace, 'output', name) }, HOST_PARTY);
+    }
   }
   for (const id of options.agentContributions?.interceptors.keys() ?? []) {
     claims.hold({ space: 'interceptor', name: id }, HOST_PARTY);
@@ -407,7 +435,7 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const judge of options.scorers?.list ?? []) {
     claims.hold({ space: 'scorer', name: judge.name }, HOST_PARTY);
   }
-  // Embedders and memory detectors reach memory only through the host's `memory` factory, which
+  // Embedders and memory guardrails reach memory only through the host's `memory` factory, which
   // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
   // meets memory's built-in `hashing`, and two plugins' ids are kept apart by the claims above.
   // Providers reach the host's `models.catalog` factory, not a held name; panels have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.panels()`.
@@ -434,7 +462,7 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
 
 /**
  * Whether a contribution of `kind` is registered with these options. A hook action kind needs
- * `hooks`, a scorer `scorers`, and an embedder or memory detector a `memory` factory;
+ * `hooks`, a scorer `scorers`, and an embedder or memory guardrail a `memory` factory;
  * without one the contribution goes nowhere, so the listing leaves it out.
  */
 export function registersKind(kind: PluginContributionKind, options: ComposableOptions): boolean {
@@ -467,9 +495,10 @@ class Contributed {
   readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
   readonly agents: Record<string, unknown> = {};
   readonly memory: {
-    detectors: PluginMemoryContributions['detectors'][number][];
+    admission: PluginMemoryContributions['guardrails']['admission'][number][];
+    recall: PluginMemoryContributions['guardrails']['recall'][number][];
     embedders: PluginMemoryContributions['embedders'][number][];
-  } = { detectors: [], embedders: [] };
+  } = { admission: [], recall: [], embedders: [] };
   readonly providers: PluginProviderContribution[] = [];
 
   add(
@@ -505,7 +534,13 @@ class Contributed {
     }
     for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
     this.providers.push(...providersOf(plugin, result));
-    this.memory.detectors.push(...(result.memoryDetectors ?? []));
+    for (const detector of result.guardrails?.memory ?? []) {
+      // The detector itself, not a copy of its fields: it may be an instance whose methods live on
+      // its prototype.
+      const gates = detector.gates ?? MEMORY_GATES;
+      if (gates.includes('admission')) this.memory.admission.push(detector);
+      if (gates.includes('recall')) this.memory.recall.push(detector);
+    }
     for (const embedder of result.embedders ?? []) {
       this.memory.embedders.push({
         id: id(embedder.name),
@@ -576,8 +611,13 @@ function agentContributionsWith(
       interceptors: result.interceptors,
     })),
   );
+  // A name is claimed per family, so a host entry and a plugin's may share an id (`plugin:name`)
+  // and carry different families; the claims keep one family from being held twice.
+  const guardrails = new Map(host?.guardrails);
+  for (const [id, entry] of plugins.guardrails)
+    guardrails.set(id, { ...guardrails.get(id), ...entry });
   return {
-    guardrails: new Map([...(host?.guardrails ?? []), ...plugins.guardrails]),
+    guardrails,
     interceptors: new Map([...(host?.interceptors ?? []), ...plugins.interceptors]),
   };
 }
@@ -608,7 +648,10 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     options.agentContributions,
     contributed.agentSources,
   );
-  const memory = memoryOf(options.memory, contributed.memory);
+  const memory = memoryOf(options.memory, {
+    guardrails: { admission: contributed.memory.admission, recall: contributed.memory.recall },
+    embedders: contributed.memory.embedders,
+  });
   // A factory never reaches the rest of construction: it is replaced by what it built.
   const { memory: _given, ...rest } = options;
   // `rest` is `O` without `memory`, which comes back below as what the factory built.

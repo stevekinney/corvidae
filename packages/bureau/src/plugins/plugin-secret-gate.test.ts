@@ -276,8 +276,11 @@ describe('the secret-gating outcome matrix', () => {
           },
         ],
         guardrails: {
-          inputDetectors: [{ name: 'scan', detect: note('guardrail-input', {}) as never }],
-          outputValidators: [{ name: 'check', validate: note('guardrail-output', {}) as never }],
+          input: [{ name: 'scan', detect: note('guardrail-input', {}) as never }],
+          output: [{ name: 'check', validate: note('guardrail-output', {}) as never }],
+          memory: [
+            { name: 'tags', gates: ['recall'], detect: note('memory-detector', {}) as never },
+          ],
         },
         interceptors: [{ name: 'audit', onStep: note('interceptor', undefined) }],
         decisionRouters: [
@@ -292,7 +295,6 @@ describe('the secret-gating outcome matrix', () => {
           },
         ],
         embedders: [{ name: 'small', dimensions: 1, embed: note('embedder', [[1]]) }],
-        memoryDetectors: [{ name: 'tags', detect: note('memory-detector', {}) as never }],
         scorers: [
           {
             name: 'judge',
@@ -326,15 +328,13 @@ describe('the secret-gating outcome matrix', () => {
       'activity-compensate': () => gatedResult.activities?.[0]?.compensate?.({}, 'fetched'),
       validator: () =>
         gatedResult.validators?.[0]?.validate({} as never, new AbortController().signal),
-      'guardrail-input': () =>
-        gatedResult.guardrails?.inputDetectors?.[0]?.detect('x', {} as never),
-      'guardrail-output': () =>
-        gatedResult.guardrails?.outputValidators?.[0]?.validate('x', {} as never),
+      'guardrail-input': () => gatedResult.guardrails?.input?.[0]?.detect('x', {} as never),
+      'guardrail-output': () => gatedResult.guardrails?.output?.[0]?.validate('x', {} as never),
       interceptor: () => gatedResult.interceptors?.[0]?.onStep?.({} as never),
       'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
-      'memory-detector': () => gatedResult.memoryDetectors?.[0]?.detect('x', {} as never),
+      'memory-detector': () => gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never),
       scorer: () => gatedResult.scorers?.[0]?.evaluate({} as never),
       formatter: () => gatedResult.formatters?.[0]?.format(event),
       agent: () => gatedResult.agents?.[0]?.agent.run('Go.'),
@@ -371,7 +371,9 @@ describe('the secret-gating outcome matrix', () => {
 
     expect(await outcomes()).toEqual(missing);
     expect(called).toEqual([]);
-    expect(await gatedResult.memoryDetectors?.[0]?.detect('x', {} as never)).toMatchObject({
+    // The gated memory guardrail still says where it runs.
+    expect(gatedResult.guardrails?.memory?.[0]?.gates).toEqual(['recall']);
+    expect(await gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never)).toMatchObject({
       triggered: false,
       confidence: 0,
     });

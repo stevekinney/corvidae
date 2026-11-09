@@ -775,9 +775,10 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * instance (`createGovernedMemory` from `@lostgradient/memory`) so it owns
    * the storage, ledger, and policy.
    *
-   * COR-1879: a factory instead builds memory once plugin setup has run, with the detectors and
+   * COR-1879: a factory instead builds memory once plugin setup has run, with the memory guardrails and
    * embedders the running plugins contribute ({@link PluginMemoryContributions}), so the host can
-   * hand them to `createEmbedderRegistry` and the policy's `contributedDetectors`. It is called
+   * hand them to `createEmbedderRegistry` and the policy's `contributedDetectors`, each guardrail at the gates it
+   * declares. It is called
    * once, during construction, with empty lists when no plugin contributes either.
    */
   memory?: GovernedMemory | BureauMemoryFactory;

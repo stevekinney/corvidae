@@ -79,7 +79,7 @@ describe('guardrails plugin', () => {
       configuration: guardrails.configuration!.parse({}),
       secrets: { get: async () => undefined },
     } as never);
-    expect(result.guardrails?.outputValidators?.map((validator) => validator.name)).toEqual([
+    expect(result.guardrails?.output?.map((validator) => validator.name)).toEqual([
       'code-safety',
       'grounding',
     ]);
