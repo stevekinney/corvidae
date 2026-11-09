@@ -277,7 +277,7 @@ function planOf(
   }
   for (const model of contributions.decisionRouters ?? [])
     contribute('decision-router', model.name);
-  for (const kind of contributions.hookActionKinds ?? []) contribute('hook-action', kind.name);
+  for (const kind of contributions.reactions ?? []) contribute('reaction', kind.name);
   for (const provider of contributions.providers ?? []) {
     contribute('provider', provider.name);
     // The host resolves a generate by the bare provider name, so the name is held across plugins.
@@ -389,7 +389,7 @@ function heldByHost(options: ComposableOptions): Claims {
   }
   for (const { plugin, kind } of options.hooks?.actionKinds ?? []) {
     claims.hold(
-      { space: 'hook-action', name: formatToolId({ namespace: plugin, name: kind.name }) },
+      { space: 'reaction', name: formatToolId({ namespace: plugin, name: kind.name }) },
       HOST_PARTY,
     );
   }
@@ -426,7 +426,7 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'guardrail',
   'interceptor',
   'decision-router',
-  'hook-action',
+  'reaction',
   'event-formatter',
   'code-agent',
   'eval-judge',
@@ -439,7 +439,7 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
  */
 export function registersKind(kind: PluginContributionKind, options: ComposableOptions): boolean {
   switch (kind) {
-    case 'hook-action':
+    case 'reaction':
       return options.hooks !== undefined;
     case 'eval-judge':
       return options.onlineEvals !== undefined;
@@ -495,7 +495,7 @@ class Contributed {
       });
     }
     for (const model of result.decisionRouters ?? []) this.decisionModels[id(model.name)] = model;
-    for (const kind of result.hookActionKinds ?? []) {
+    for (const kind of result.reactions ?? []) {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
       this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
     }

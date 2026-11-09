@@ -1597,7 +1597,7 @@ export interface BureauHooksOptions {
   /**
    * The hook action kinds plugins contribute (COR-1876): a hook whose action is
    * `{ type: 'plugin', plugin, kind, configuration? }` runs the named kind. This is the entry point
-   * plugin composition feeds with each plugin's `hookActionKinds`. A plugin and kind name given
+   * plugin composition feeds with each plugin's `reactions`. A plugin and kind name given
    * twice is refused at construction. Omitted, only the built-in actions exist.
    */
   actionKinds?: readonly HookActionKindRegistration[];

@@ -143,9 +143,9 @@ const HOST_ENTRY: Record<
       decisionRouters: [{ name: 'x', kinds: new Set(), decide: async () => ({}) as never }],
     },
   },
-  'hook-action': {
+  reaction: {
     host: { hooks: { actionKinds: [{ plugin: 'p', kind: actionKind('x') }] } },
-    contribution: { hookActionKinds: [actionKind('x')] },
+    contribution: { reactions: [actionKind('x')] },
   },
   'event-formatter': {
     host: { eventFormatters: [{ plugin: 'p', formatter: formatter('x') }] },
@@ -202,7 +202,7 @@ describe('composePlugins', () => {
         guardrails: { inputDetectors: [{ name: 'scan', detect: async () => ({}) as never }] },
         interceptors: [{ name: 'audit' }],
         decisionRouters: [{ name: 'router', kinds: new Set(), decide: async () => ({}) as never }],
-        hookActionKinds: [
+        reactions: [
           {
             name: 'page',
             description: 'Pages someone.',
@@ -295,7 +295,7 @@ describe('composePlugins', () => {
   it('lists only the contributions whose option the host gave', async () => {
     const contributing = () =>
       pluginEntry('kit', () => ({
-        hookActionKinds: [actionKind('page')],
+        reactions: [actionKind('page')],
         evalJudges: [judge('judge')],
         embedders: [{ name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => []) }],
         memoryDetectors: [{ name: 'tags', detect: async () => ({}) as never }],
@@ -315,11 +315,11 @@ describe('composePlugins', () => {
     expect(given.records[0]?.contributions.map(({ kind }) => kind).toSorted()).toEqual([
       'embedder',
       'eval-judge',
-      'hook-action',
       'interceptor',
       'memory-detector',
+      'reaction',
     ]);
-    for (const kind of ['embedder', 'eval-judge', 'hook-action'] as const) {
+    for (const kind of ['embedder', 'eval-judge', 'reaction'] as const) {
       expect(registersKind(kind, {})).toBe(false);
     }
   });

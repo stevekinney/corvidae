@@ -363,10 +363,10 @@ export function gatedContributions<T extends PluginContributions>(
             decide: gated(gate, idOf(model.name), model.decide.bind(model)),
           })),
         }),
-    ...(result.hookActionKinds === undefined
+    ...(result.reactions === undefined
       ? {}
       : {
-          hookActionKinds: result.hookActionKinds.map((kind) => ({
+          reactions: result.reactions.map((kind) => ({
             ...kind,
             run: gated(gate, idOf(kind.name), kind.run.bind(kind)),
           })),

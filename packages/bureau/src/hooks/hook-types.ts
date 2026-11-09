@@ -7,7 +7,7 @@ import type { RunWorkspaceAuthority } from 'armorer';
  */
 
 import type { EncryptedValue } from '@lostgradient/cryptography';
-import type { PluginEvent, PluginHookActionKind } from '@lostgradient/interborough-plugin';
+import type { PluginEvent, PluginReaction } from '@lostgradient/interborough-plugin';
 
 import type { SettingLockReason } from '../settings/settings-schema.ts';
 
@@ -76,7 +76,7 @@ export interface HookActionKindRegistration {
   /** The plugin's name; the `plugin` of a {@link PluginHookAction} that runs the kind. */
   readonly plugin: string;
   /** The kind itself. */
-  readonly kind: PluginHookActionKind;
+  readonly kind: PluginReaction;
   /**
    * COR-1879 — the version a delivery of this kind pins: the kind's own `version`, else its
    * plugin's. A delivery created while one version is registered runs only on that version; one

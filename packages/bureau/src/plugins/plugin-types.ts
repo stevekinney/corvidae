@@ -221,7 +221,7 @@ export type PluginContributionKind =
   | 'guardrail'
   | 'interceptor'
   | 'decision-router'
-  | 'hook-action'
+  | 'reaction'
   | 'provider'
   | 'embedder'
   | 'memory-detector'
@@ -336,7 +336,7 @@ export interface PluginTriggerListing {
  * `plugin` and `kind` an action `{ type: 'plugin' }` names, what it does, and the fields its
  * configuration takes. Carries no function.
  */
-export interface PluginHookActionKindListing {
+export interface PluginReactionListing {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** The kind's name within the plugin. */
@@ -392,7 +392,7 @@ export interface BureauPlugins {
    * `{ type: 'plugin' }` can name. Empty when the Bureau composes no hooks. Fixed once the Bureau
    * is built.
    */
-  hookActionKinds(): readonly PluginHookActionKindListing[];
+  reactions(): readonly PluginReactionListing[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

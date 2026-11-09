@@ -60,9 +60,9 @@ describe('createVersionedCatalog resolution', () => {
     const catalog = createVersionedCatalog<string>();
     catalog.register({ kind: 'activity', name: 'x:y', version: '1', value: 'a', source: linear });
 
-    expect(catalog.resolve('hook-action', 'x:y@1')).toMatchObject({ ok: false, reason: 'missing' });
+    expect(catalog.resolve('reaction', 'x:y@1')).toMatchObject({ ok: false, reason: 'missing' });
     expect(catalog.entries('activity').map((entry) => entry.id)).toEqual(['x:y@1']);
-    expect(catalog.entries('hook-action')).toEqual([]);
+    expect(catalog.entries('reaction')).toEqual([]);
   });
 
   it('treats a reference with no version, or a non-string part, as never matching a version', () => {
@@ -152,7 +152,7 @@ describe('createVersionedCatalog registration', () => {
   it('counts a versionless contribution at its plugin version when checking for a clash', () => {
     const catalog = createVersionedCatalog<string>();
     catalog.register({
-      kind: 'hook-action',
+      kind: 'reaction',
       name: 'x:post',
       version: '3.0.0',
       value: 'a',
@@ -160,7 +160,7 @@ describe('createVersionedCatalog registration', () => {
     });
 
     const clash = catalog.register({
-      kind: 'hook-action',
+      kind: 'reaction',
       name: 'x:post',
       value: 'b',
       source: linear,

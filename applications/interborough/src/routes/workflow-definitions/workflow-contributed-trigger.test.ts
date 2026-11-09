@@ -79,7 +79,7 @@ function open(
     options.answer ??
       (() => ({
         triggers: options.kinds ?? [INBOX_MESSAGE],
-        hookActionKinds: [],
+        reactions: [],
       })),
   );
   router.navigate('/workflows/digest/edit', { replace: true });
@@ -236,7 +236,7 @@ describe('a contributed trigger kind in the builder', () => {
       'inbox:message',
     );
 
-    release({ triggers: [INBOX_MESSAGE], hookActionKinds: [] });
+    release({ triggers: [INBOX_MESSAGE], reactions: [] });
     await waitFor(() =>
       expect((getByLabelText(/mailbox/i) as HTMLInputElement).value).toBe('billing'),
     );
@@ -263,7 +263,7 @@ describe('a contributed trigger kind in the builder', () => {
 
     stub?.on('bureau.plugins.contributions', () => ({
       triggers: [INBOX_MESSAGE],
-      hookActionKinds: [],
+      reactions: [],
     }));
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.builder.retryTriggers }));
     await waitFor(() =>

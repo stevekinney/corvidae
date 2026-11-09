@@ -86,7 +86,7 @@ describe('bureau.plugins.contributions', () => {
       description: 'The mailbox to watch.',
     });
     expect(configuration.required).toEqual(['mailbox']);
-    expect(body.result!['hookActionKinds']).toEqual([]);
+    expect(body.result!['reactions']).toEqual([]);
   });
 
   it('is the only name the operation answers to: no map, grant fixture or projection names the old one', () => {
@@ -118,7 +118,7 @@ describe('plugin registry kinds', () => {
       version: '1.0.0',
       description: 'Pages someone.',
       setup: () => ({
-        hookActionKinds: [
+        reactions: [
           {
             name: 'page',
             version: '0.3.0',
@@ -131,10 +131,10 @@ describe('plugin registry kinds', () => {
     });
     const entry = { descriptor: pager, source: 'package', location: '@example/pager' } as const;
     const bare = await composePlugins({ plugins: [entry] });
-    expect(createPluginRegistry(bare.records).plugins.hookActionKinds()).toEqual([]);
+    expect(createPluginRegistry(bare.records).plugins.reactions()).toEqual([]);
 
     const given = await composePlugins({ plugins: [entry], hooks: {} });
-    const [kind] = createPluginRegistry(given.records).plugins.hookActionKinds();
+    const [kind] = createPluginRegistry(given.records).plugins.reactions();
     expect(kind).toMatchObject({
       plugin: 'pager',
       kind: 'page',

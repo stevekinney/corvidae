@@ -22,7 +22,7 @@ import type {
   PluginContribution,
   PluginContributionListing,
   PluginContributionReferences,
-  PluginHookActionKindListing,
+  PluginReactionListing,
   PluginListing,
   PluginProblem,
   PluginStatus,
@@ -334,11 +334,11 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
-      hookActionKinds: () =>
-        records.flatMap((record): PluginHookActionKindListing[] =>
+      reactions: () =>
+        records.flatMap((record): PluginReactionListing[] =>
           record.status === 'running'
-            ? (record.setup?.result.hookActionKinds ?? [])
-                .filter((kind) => registered(record, 'hook-action', kind.name))
+            ? (record.setup?.result.reactions ?? [])
+                .filter((kind) => registered(record, 'reaction', kind.name))
                 .map((kind) => ({
                   plugin: record.entry.descriptor.name,
                   kind: kind.name,

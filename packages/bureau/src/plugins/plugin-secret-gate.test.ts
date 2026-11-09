@@ -283,12 +283,12 @@ describe('the secret-gating outcome matrix', () => {
         decisionRouters: [
           { name: 'router', kinds: new Set(), decide: note('decision-router', {}) as never },
         ],
-        hookActionKinds: [
+        reactions: [
           {
             name: 'page',
             description: 'Pages',
             configuration: z.object({}),
-            run: note('hook-action', undefined),
+            run: note('reaction', undefined),
           },
         ],
         embedders: [{ name: 'small', dimensions: 1, embed: note('embedder', [[1]]) }],
@@ -332,7 +332,7 @@ describe('the secret-gating outcome matrix', () => {
         gatedResult.guardrails?.outputValidators?.[0]?.validate('x', {} as never),
       interceptor: () => gatedResult.interceptors?.[0]?.onStep?.({} as never),
       'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
-      'hook-action': () => gatedResult.hookActionKinds?.[0]?.run({} as never),
+      reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
       'memory-detector': () => gatedResult.memoryDetectors?.[0]?.detect('x', {} as never),
       'eval-judge': () => gatedResult.evalJudges?.[0]?.evaluate({} as never),

@@ -89,7 +89,7 @@ export interface PluginTrigger {
 }
 
 /** What a hook action kind's `run` receives. */
-export interface PluginHookActionContext {
+export interface PluginReactionContext {
   /** The event the hook fired for. */
   readonly event: PluginEvent;
   /** The action's configuration, parsed with the kind's `configuration` schema. */
@@ -108,7 +108,7 @@ export interface PluginHookActionContext {
 }
 
 /** A new kind of hook action, what a hook does when one of its events happens. */
-export interface PluginHookActionKind {
+export interface PluginReaction {
   /** The kind's name, unique within the plugin. */
   readonly name: string;
   /** The kind's own version; a record that pins it uses the plugin's version without one. */
@@ -118,7 +118,7 @@ export interface PluginHookActionKind {
   /** The schema an action's configuration is parsed with. */
   readonly configuration: z.ZodType;
   /** Carries out the action for one event; a rejection is a failed delivery. */
-  run(context: PluginHookActionContext): Promise<void>;
+  run(context: PluginReactionContext): Promise<void>;
 }
 
 /**
@@ -244,7 +244,7 @@ export interface PluginContributions {
   /** New kinds of trigger. */
   readonly triggers?: readonly PluginTrigger[];
   /** New kinds of hook action. */
-  readonly hookActionKinds?: readonly PluginHookActionKind[];
+  readonly reactions?: readonly PluginReaction[];
   /** Model providers, each with its catalog rows. */
   readonly providers?: readonly PluginProvider[];
   /** Embedders the `memory.embedder` setting can name. */

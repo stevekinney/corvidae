@@ -96,7 +96,7 @@ function open(path: string, handlers: Parameters<typeof installBureauStub>[0] = 
     }),
     'bureau.hooks.create': (params) => ({ ...ALPHA, id: 'created', ...params }),
     'bureau.events.catalog': () => ({ events: CATALOG }),
-    'bureau.plugins.contributions': () => ({ triggers: [], hookActionKinds: [PAGE_KIND] }),
+    'bureau.plugins.contributions': () => ({ triggers: [], reactions: [PAGE_KIND] }),
     ...handlers,
   });
   landAt(path);
@@ -173,7 +173,7 @@ describe('a contributed hook action under Then', () => {
     const view = open('/hooks/new', {
       'bureau.plugins.contributions': () => ({
         triggers: [],
-        hookActionKinds: [
+        reactions: [
           {
             ...PAGE_KIND,
             configuration: {

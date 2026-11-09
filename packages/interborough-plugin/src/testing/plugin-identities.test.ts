@@ -151,7 +151,7 @@ describe('pluginIdentities', () => {
             start: async () => () => {},
           },
         ],
-        hookActionKinds: [
+        reactions: [
           {
             name: 'post',
             version: '2.0.0',
@@ -165,7 +165,7 @@ describe('pluginIdentities', () => {
     const { entries } = await pluginIdentities(plugin);
     expect(entries.map(({ kind, id, version }) => `${kind} ${id} ${version}`)).toEqual([
       'configuration example 1.2.0',
-      'hook-action example:post 2.0.0',
+      'reaction example:post 2.0.0',
       'trigger example:poll 1.2.0',
     ]);
   });

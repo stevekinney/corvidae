@@ -272,8 +272,8 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
-      contributions.hookActionKinds,
-      (kind) => named(kind, 'hook-action', kind.configuration),
+      contributions.reactions,
+      (kind) => named(kind, 'reaction', kind.configuration),
       descriptor,
     ),
     ...entriesOf(

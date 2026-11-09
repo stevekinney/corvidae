@@ -35,7 +35,7 @@ export type ContributedHookActionKind = z.infer<typeof hookActionKindSchema>;
 
 const kindsSchema = z.object({
   triggers: z.array(triggerKindSchema),
-  hookActionKinds: z.array(hookActionKindSchema),
+  reactions: z.array(hookActionKindSchema),
 });
 
 /** Everything the running plugins contribute that a file or a hook can name. */

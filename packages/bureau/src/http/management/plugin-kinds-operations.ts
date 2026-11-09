@@ -26,7 +26,7 @@ import { unaryTransports as transports, unknownKeyPolicy } from './management-sc
 
 /** What `bureau.plugins.contributions` reads from the handler's `host`. */
 export type BureauPluginKindsOperationHost = {
-  readonly plugins: Pick<BureauPlugins, 'triggers' | 'hookActionKinds'>;
+  readonly plugins: Pick<BureauPlugins, 'triggers' | 'reactions'>;
 };
 
 /** What `bureau.events.format` reads from the handler's `host`. */
@@ -55,7 +55,7 @@ const kindsOutput = z.object({
       }),
     )
     .describe('The trigger kinds of the running plugins, in load order.'),
-  hookActionKinds: z
+  reactions: z
     .array(
       z.object({
         plugin: z.string().describe('The contributing plugin: the `plugin` of the action.'),
@@ -94,7 +94,7 @@ export const pluginKindsOperation = defineOperation<
   invoke: ({ host }) =>
     Promise.resolve({
       triggers: host.plugins.triggers().map((kind) => ({ ...kind })),
-      hookActionKinds: host.plugins.hookActionKinds().map((kind) => ({ ...kind })),
+      reactions: host.plugins.reactions().map((kind) => ({ ...kind })),
     }),
 });
 

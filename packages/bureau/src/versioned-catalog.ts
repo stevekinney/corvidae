@@ -20,7 +20,7 @@ export const VERSIONED_CATALOG_KINDS = [
   'validator',
   'eval-judge',
   'decision-router',
-  'hook-action',
+  'reaction',
   'trigger',
   'activity',
 ] as const;

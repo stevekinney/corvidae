@@ -2215,7 +2215,7 @@ export const PLUGINS_COPY = {
     guardrail: 'Guardrails',
     interceptor: 'Interceptors',
     'decision-router': 'Decision routing',
-    'hook-action': 'Hook actions',
+    reaction: 'Hook actions',
     provider: 'Model provider',
     embedder: 'Embeddings',
     'memory-detector': 'Memory detectors',
