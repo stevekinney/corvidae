@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { PluginInterceptor } from '@lostgradient/interborough-plugin';
 import {
+  HOOK_TIER_BAND_WIDTH,
   HOOK_TIER_PRIORITY_BANDS,
   HookRegistry,
   mergeHookRegistries,
@@ -25,6 +26,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import {
   createAgentContributions,
   INTERCEPTOR_POINTS,
+  INTERCEPTOR_PRIORITY_CEILING,
   INTERCEPTOR_PRIORITY_FLOOR,
   interceptorsOf,
 } from './agent-contributions';
@@ -116,6 +118,24 @@ describe('a hook declared as { handler, replay, onError, priority }', () => {
     const plan = planOf({ name: 'probe', onStep: { handler: async () => {}, priority } });
     expect(plan['onStep']?.priority).toBe(INTERCEPTOR_PRIORITY_FLOOR);
     expect(INTERCEPTOR_PRIORITY_FLOOR).toBe(AGENT_POLICY_PINNED_LAST_PRIORITY + 1);
+  });
+
+  it.each([
+    ['one past the ceiling', INTERCEPTOR_PRIORITY_CEILING + 1],
+    ['the highest finite number', Number.MAX_VALUE],
+    ['a very large number', 1e9],
+  ])('lowers a priority %s to the ceiling', (_name, priority) => {
+    const plan = planOf({ name: 'probe', onStep: { handler: async () => {}, priority } });
+    expect(plan['onStep']?.priority).toBe(INTERCEPTOR_PRIORITY_CEILING);
+    expect(INTERCEPTOR_PRIORITY_CEILING).toBe(HOOK_TIER_BAND_WIDTH - 1);
+  });
+
+  it('keeps a priority at the ceiling as written', () => {
+    const plan = planOf({
+      name: 'probe',
+      onStep: { handler: async () => {}, priority: INTERCEPTOR_PRIORITY_CEILING },
+    });
+    expect(plan['onStep']?.priority).toBe(INTERCEPTOR_PRIORITY_CEILING);
   });
 
   it('survives the agent tier’s merge in front of the guardrails the agent registers after it', () => {

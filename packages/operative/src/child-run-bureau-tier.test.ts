@@ -140,6 +140,40 @@ describe('child dispatch under Bureau (COR-2106)', () => {
     expect(seen).toEqual(['BUREAU-IDENTITY', 'PLUGIN-TIER', 'CHILD-TIER']);
   });
 
+  // COR-2127 — Bureau leaves out of the plugin tier an every-agent set the child's agent lists, and
+  // decides that from the tier the seam hands it: the child's own, never Bureau's or a plugin's.
+  it('hands the invariants factory the child’s own agent tier, which holds what the child lists', async () => {
+    const childHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    childHooks.on('prepareStep', markerHook('CHILD-TIER'), { id: 'audit:listed:prepareStep' });
+    const child = createAgent({
+      name: 'worker',
+      generate: recordingGenerate([]),
+      hooks: childHooks,
+    });
+    const { invariants, requests } = makeInvariants({ plugin: true });
+
+    await dispatchChildRun(child, 'go', withBureauInvariants(dispatchOptions, invariants)).result();
+
+    const [request] = requests;
+    const ids = (request?.agentTier?.getHandlers('prepareStep') ?? []).map((entry) => entry.id);
+    expect(ids).toContain('audit:listed:prepareStep');
+    expect(ids).not.toContain('bureau:identity');
+    expect(ids).not.toContain('audit:marker:prepareStep');
+    expect(request?.agentTier?.describePlan().entries.map((entry) => entry.tier)).not.toContain(
+      'bureau',
+    );
+  });
+
+  it('hands it an agent tier with none of a listed set for a child that lists nothing', async () => {
+    const child = createAgent({ name: 'worker', generate: recordingGenerate([]) });
+    const { invariants, requests } = makeInvariants({ plugin: true });
+
+    await dispatchChildRun(child, 'go', withBureauInvariants(dispatchOptions, invariants)).result();
+
+    const ids = (requests[0]?.agentTier?.getHandlers('prepareStep') ?? []).map((entry) => entry.id);
+    expect(ids).not.toContain('audit:listed:prepareStep');
+  });
+
   it('asks for Bureau’s guardrails for a resolver-bearing agent that does not resolve its own', async () => {
     const seen: string[] = [];
     const inner = createAgent({ name: 'worker', generate: recordingGenerate(seen) });

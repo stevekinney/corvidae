@@ -34,7 +34,7 @@ import {
   type PluginOutputGuardrailEntry,
   type PluginToolGuardrailEntry,
 } from '@lostgradient/interborough-plugin';
-import { HookRegistry } from '@lostgradient/lifecycle';
+import { HOOK_TIER_BAND_WIDTH, HookRegistry } from '@lostgradient/lifecycle';
 import {
   AGENT_POLICY_PINNED_LAST_PRIORITY,
   type GuardrailAdditions,
@@ -455,6 +455,19 @@ type InterceptorHook = NonNullable<PluginInterceptor[(typeof INTERCEPTOR_POINTS)
  */
 export const INTERCEPTOR_PRIORITY_FLOOR = AGENT_POLICY_PINNED_LAST_PRIORITY + 1;
 
+/**
+ * The highest priority an interceptor hook can sort at: one below the distance between two tiers'
+ * bands ({@link HOOK_TIER_BAND_WIDTH}). A declared priority is added to its tier's band, so a plugin
+ * hook declaring this or less stays in its own band, and the plugin tier sorts between Bureau's
+ * tier and the agent's whatever a plugin asks for.
+ */
+export const INTERCEPTOR_PRIORITY_CEILING = HOOK_TIER_BAND_WIDTH - 1;
+
+/** `priority` held to the range `[INTERCEPTOR_PRIORITY_FLOOR, INTERCEPTOR_PRIORITY_CEILING]`. */
+function clampInterceptorPriority(priority: number): number {
+  return Math.min(Math.max(priority, INTERCEPTOR_PRIORITY_FLOOR), INTERCEPTOR_PRIORITY_CEILING);
+}
+
 /** `hook` as its handler and the registration options it declares. */
 function interceptorHookParts(hook: InterceptorHook): {
   readonly handler: OperativeHookMap[(typeof INTERCEPTOR_POINTS)[number]];
@@ -466,9 +479,7 @@ function interceptorHookParts(hook: InterceptorHook): {
     options: {
       ...(hook.replay === undefined ? {} : { replay: hook.replay }),
       ...(hook.onError === undefined ? {} : { onError: hook.onError }),
-      ...(hook.priority === undefined
-        ? {}
-        : { priority: Math.max(hook.priority, INTERCEPTOR_PRIORITY_FLOOR) }),
+      ...(hook.priority === undefined ? {} : { priority: clampInterceptorPriority(hook.priority) }),
     },
   };
 }
@@ -531,8 +542,8 @@ function registerInterceptor(
 /**
  * The agent-tier hook registry for the interceptors `definition` chooses, or `undefined` when it
  * chooses none. Each entry carries `source: <plugin>` and the id `<plugin>:<name>:<hook>`, and the
- * `replay`, `onError` and `priority` its hook declares, the priority raised to
- * {@link INTERCEPTOR_PRIORITY_FLOOR} when it is lower. Every id
+ * `replay`, `onError` and `priority` its hook declares, the priority held between
+ * {@link INTERCEPTOR_PRIORITY_FLOOR} and {@link INTERCEPTOR_PRIORITY_CEILING}. Every id
  * must resolve (see {@link unresolvedContributions}); one that does not is skipped. One that applies to
  * every agent is registered here too, and Bureau leaves it out of that run's plugin tier (COR-2127).
  */

@@ -199,7 +199,9 @@ export interface PluginInterceptorHookOptions<Hook> {
    * Where the hook sorts among the run's hooks at its point: a higher number runs first, and a hook
    * that names none sorts at 0. Operative's guardrails sit behind every other agent hook, so the
    * number is raised to just above them when it is lower, and a plugin can never sort behind them.
-   * It must be a finite number.
+   * It is also held below 1000, the distance between two tiers' bands, so an interceptor sorts
+   * within its own tier: a plugin's hook never runs ahead of Bureau's own invariants, whatever
+   * number it asks for. It must be a finite number.
    */
   readonly priority?: number;
 }

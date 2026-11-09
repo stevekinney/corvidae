@@ -49,6 +49,40 @@ function stepAudit(seen: string[]): PluginInterceptor {
   };
 }
 
+/**
+ * A plugin with no secret whose every-agent `onStep` records into `witnessed`, behind `stepAudit` at
+ * a lower priority, so a step it has seen is one the audit set has already had its turn at: the
+ * positive signal a "did not run" assertion waits on before it asserts.
+ */
+function stepWitness(witnessed: string[]) {
+  return definePlugin({
+    name: 'witness',
+    version: '1.0.0',
+    description: 'Records that a step settled.',
+    setup: () => ({
+      interceptors: [
+        {
+          name: 'step-witness',
+          appliesTo: 'every-agent' as const,
+          onStep: {
+            handler: async (step) => {
+              witnessed.push(step.content);
+            },
+            replay: 'safe' as const,
+            priority: -1,
+          },
+        },
+      ],
+    }),
+  });
+}
+
+/** The status of the `audit` plugin, whatever else the Bureau loads. */
+async function auditStatus(bureau: Parameters<typeof listedPlugins>[0]) {
+  const listings = await listedPlugins(bureau);
+  return listings.find((listing) => listing.location === '@example/audit')?.status;
+}
+
 const harnesses: FileBureauHarness[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 afterEach(async () => {
@@ -220,6 +254,7 @@ describe('an every-agent interceptor whose plugin needs setup (COR-2127)', () =>
 
   it('is skipped, so another agent’s steps succeed, and runs once the secret is saved', async () => {
     const seen: string[] = [];
+    const witnessed: string[] = [];
     const secrets = secretsStore();
     const audit = definePlugin({
       name: 'audit',
@@ -234,25 +269,30 @@ describe('an every-agent interceptor whose plugin needs setup (COR-2127)', () =>
     });
     const bureau = await createBureau<AgentDefinitions>({
       agents: { alpha },
-      plugins: [{ descriptor: audit, source: 'package', location: '@example/audit' }],
+      plugins: [
+        { descriptor: audit, source: 'package', location: '@example/audit' },
+        { descriptor: stepWitness(witnessed), source: 'package', location: '@example/witness' },
+      ],
       pluginSecrets: secrets,
       storage: new MemoryStorage(),
     });
     bureaus.push(bureau);
-    const [listing] = await listedPlugins(bureau);
-    expect(listing?.status).toBe('needs-setup');
+    expect(await auditStatus(bureau)).toBe('needs-setup');
 
     const skipped = await runTask(bureau, 'alpha', 'Hello');
 
     expect(skipped.finishReason).not.toBe('error');
     expect(skipped.content).toBe('alpha-done');
+    // `onStep` settles after the result, so the step has to be seen settling before "did not run".
+    await waitUntil(() => witnessed.includes('alpha-done'), {
+      message: 'the witness’s onStep, behind the skipped set’s',
+    });
     expect(seen).toEqual([]);
 
     secrets.save(KEY, 'sk-audit-0123456789');
     await waitUntil(
       async () => {
-        const [current] = await listedPlugins(bureau);
-        return current?.status === 'running';
+        return (await auditStatus(bureau)) === 'running';
       },
       { message: 'the plugin to run once its secret is saved' },
     );
@@ -266,6 +306,7 @@ describe('an every-agent interceptor whose plugin needs setup (COR-2127)', () =>
   // H1's refusal; every other agent skips it.
   it('refuses the step of an agent that lists it, while one that does not succeeds and skips it', async () => {
     const seen: string[] = [];
+    const witnessed: string[] = [];
     const audit = definePlugin({
       name: 'audit',
       version: '1.0.0',
@@ -276,7 +317,10 @@ describe('an every-agent interceptor whose plugin needs setup (COR-2127)', () =>
     const harness = await startFileBureau({
       scripts: { 'claude-opus-5-5': () => 'helper-done' },
       overrides: {
-        plugins: [{ descriptor: audit, source: 'package', location: '@example/audit' }],
+        plugins: [
+          { descriptor: audit, source: 'package', location: '@example/audit' },
+          { descriptor: stepWitness(witnessed), source: 'package', location: '@example/witness' },
+        ],
         pluginSecrets: secretsStore(),
       },
     });
@@ -286,8 +330,7 @@ describe('an every-agent interceptor whose plugin needs setup (COR-2127)', () =>
       agentFileText({ model: KNOWN_MODEL, interceptors: '[audit:step-audit]' }),
     );
     await harness.bureau.agents.refresh();
-    const [listing] = await listedPlugins(harness.bureau);
-    expect(listing?.status).toBe('needs-setup');
+    expect(await auditStatus(harness.bureau)).toBe('needs-setup');
 
     const listed = await runTask(harness.bureau, 'helper', 'Hello');
     const unlisted = await runTask(harness.bureau, 'alpha', 'Hello');
@@ -295,6 +338,10 @@ describe('an every-agent interceptor whose plugin needs setup (COR-2127)', () =>
     expect(listed.finishReason).toBe('error');
     expect(unlisted.finishReason).not.toBe('error');
     expect(unlisted.content).toBe('alpha');
+    // `onStep` settles after the result: wait to see the unlisted agent's step settle first.
+    await waitUntil(() => witnessed.includes('alpha'), {
+      message: 'the witness’s onStep for the agent that does not list the set',
+    });
     expect(seen).toEqual([]);
   });
 });

@@ -37,6 +37,7 @@ import { createConversationHistory } from 'conversationalist';
 import {
   type AgentContributions,
   createAgentContributions,
+  INTERCEPTOR_PRIORITY_CEILING,
   INTERCEPTOR_PRIORITY_FLOOR,
   interceptorsOf,
 } from './agent-contributions';
@@ -341,6 +342,63 @@ describe('the plugin tier in a run’s plan (COR-2127)', () => {
       'audit:every:validateResponse',
     ]);
     expect(second.plugin).not.toBe(first.plugin);
+  });
+});
+
+describe('a plugin interceptor stays inside its tier’s band (COR-2127)', () => {
+  // A declared priority is added to its tier's band, and the bands are one band width apart, so a
+  // priority past the width would carry the entry into the next tier up.
+  const HUGE = 1e9;
+  /** One set at `HUGE` on `prepareStep`, applying to every agent or only to one that lists it. */
+  const greedy = (appliesTo: 'every-agent' | undefined) =>
+    createAgentContributions([
+      {
+        plugin: 'audit',
+        interceptors: [
+          {
+            name: 'greedy',
+            ...(appliesTo === undefined ? {} : { appliesTo }),
+            prepareStep: { handler: async () => undefined, replay: 'safe', priority: HUGE },
+          },
+        ],
+      },
+    ]);
+
+  /** Bureau's identity invariant, as the one Bureau-tier entry a run's `prepareStep` has. */
+  function bureauTier() {
+    const bureau = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
+    bureau.on('prepareStep', async () => undefined, { id: 'bureau:identity', replay: 'safe' });
+    return bureau;
+  }
+
+  it('runs a plugin-tier interceptor at a very high priority after Bureau’s invariants', () => {
+    // The every-agent set is in the plugin tier for an agent that does not list it.
+    const registry = composeRunHooks(greedy('every-agent'), {
+      bureau: bureauTier(),
+      agent: undefined,
+    });
+
+    const order = pointPlan(registry.describePlan().entries, 'prepareStep');
+    expect(order.map(({ id, tier }) => ({ id, tier }))).toEqual([
+      { id: 'bureau:identity', tier: 'bureau' },
+      { id: 'audit:greedy:prepareStep', tier: 'plugin' },
+    ]);
+    expect(order[1]?.priority).toBe(INTERCEPTOR_PRIORITY_CEILING + HOOK_TIER_PRIORITY_BANDS.plugin);
+    expect(order[1]?.priority).toBeLessThan(HOOK_TIER_PRIORITY_BANDS.bureau);
+  });
+
+  it('runs an agent-tier interceptor at a very high priority after Bureau’s invariants', () => {
+    const contributions = greedy(undefined);
+    const plan = composeRunHooks(contributions, {
+      bureau: bureauTier(),
+      agent: interceptorsOf({ interceptors: ['audit:greedy'] }, contributions),
+    }).describePlan().entries;
+
+    const order = pointPlan(plan, 'prepareStep');
+    expect(order.map(({ id }) => id)).toEqual(['bureau:identity', 'audit:greedy:prepareStep']);
+    expect(order[1]?.tier).toBe('agent');
+    expect(order[1]?.priority).toBe(INTERCEPTOR_PRIORITY_CEILING + HOOK_TIER_PRIORITY_BANDS.agent);
+    expect(order[1]?.priority).toBeLessThan(HOOK_TIER_PRIORITY_BANDS.bureau);
   });
 });
 
