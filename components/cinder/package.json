@@ -22,6 +22,8 @@
     "a2ui-catalog:generate": "bun scripts/generate-a2ui-catalog.ts",
     "a2ui-catalog:check": "bun scripts/generate-a2ui-catalog.ts --check",
     "components:generate": "bun scripts/generate-component-artifacts.ts",
+    "design-system:build": "bun scripts/design-system/build.ts",
+    "design-system:url": "bun scripts/design-system/url.ts",
     "check:prop-conventions": "bun scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components",
     "check:test-cleanup": "bun scripts/check-test-cleanup.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
