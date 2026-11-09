@@ -25,7 +25,9 @@
 //              reported and nothing is merged in: the worker resolves it and returns a new head. A
 //              red `main` is a warning in the report, not a refusal;
 //   issue      with `--issue` and `--completion-file`: `linear.ts`'s comment, then the state Done,
-//              each read back. A failure leaves `merged` true and names step `issue`;
+//              each read back. A failure leaves `merged` true and names step `issue`. The
+//              completion file must be an execution report (`references/execution-report.md`):
+//              anything else is refused as invalid usage before the merge;
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
 //
@@ -89,6 +91,43 @@ export interface DeliverDependencies {
   remove: (options: RemoveOptions) => RemoveResult;
 }
 
+/**
+ * The level-2 headings of an execution report, in order. `references/execution-report.md` lists
+ * the same headings, and `deliver.test.ts` keeps the two equal.
+ */
+export const executionReportHeadings = [
+  'Execution status',
+  'Agent and session',
+  'Attempt',
+  'Branch and pull request',
+  'Requirements implemented',
+  'Acceptance criteria',
+  'Verification',
+  'Changes',
+  'Blockers and open questions',
+  'Remaining work',
+];
+
+/**
+ * What keeps `text` from being an execution report: a first line that is not the
+ * `Execution report: <branch> attempt <n>` marker, or a required heading that is missing or out
+ * of order. Empty when it is one.
+ */
+export function executionReportProblems(text: string): string[] {
+  const problems: string[] = [];
+  const first = text.split('\n').find((line) => line.trim() !== '') ?? '';
+  if (!/^Execution report: \S+ attempt [1-9]\d*$/.test(first.trim()))
+    problems.push('the first line is not "Execution report: <branch> attempt <n>"');
+  const headings = [...text.matchAll(/^## (.+?)\s*$/gm)].map((match) => match[1] ?? '');
+  let cursor = 0;
+  for (const heading of executionReportHeadings) {
+    const found = headings.indexOf(heading, cursor);
+    if (found === -1) problems.push(`"## ${heading}" is missing or out of order`);
+    else cursor = found + 1;
+  }
+  return problems;
+}
+
 /** Run the lifecycle. Never throws for a failed step; the report names it. */
 export async function deliver(
   options: DeliverOptions,
@@ -101,8 +140,13 @@ export async function deliver(
   if (options.issue !== undefined) {
     if (options.completionFile === undefined || !existsSync(options.completionFile))
       throw new UsageError(`No such completion file: ${options.completionFile ?? '(none)'}`);
-    if (readFileSync(options.completionFile, 'utf8').trim() === '')
-      throw new UsageError(`${options.completionFile} is empty.`);
+    const completion = readFileSync(options.completionFile, 'utf8');
+    if (completion.trim() === '') throw new UsageError(`${options.completionFile} is empty.`);
+    const problems = executionReportProblems(completion);
+    if (problems.length > 0)
+      throw new UsageError(
+        `${options.completionFile} is not an execution report (references/execution-report.md): ${problems.join('; ')}.`,
+      );
   }
   const report: DeliverReport = {
     pr: options.pr,

@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deliver, renderDeliver, run, type DeliverOptions } from './deliver.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import {
+  deliver,
+  executionReportHeadings,
+  executionReportProblems,
+  renderDeliver,
+  run,
+  type DeliverOptions,
+} from './deliver.ts';
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError } from './process-runner.ts';
@@ -11,6 +19,12 @@ import { Refusal } from './worktree.ts';
 const HEAD = 'a'.repeat(40);
 const BASE = 'c'.repeat(40);
 const MERGE_COMMIT = 'd'.repeat(40);
+
+const sampleReport = [
+  'Execution report: cor-9-widgets attempt 1',
+  '',
+  ...executionReportHeadings.flatMap((heading) => [`## ${heading}`, '', 'Filled in.', '']),
+].join('\n');
 
 let sandbox: string;
 let options: DeliverOptions;
@@ -32,7 +46,7 @@ beforeEach(() => {
     }),
   );
   writeFileSync(join(sandbox, 'comment.md'), 'Accepted.\n');
-  writeFileSync(join(sandbox, 'done.md'), 'Delivered.\n');
+  writeFileSync(join(sandbox, 'done.md'), sampleReport);
   options = { configPath, pr: 12, worktree: sandbox, commentFile: join(sandbox, 'comment.md') };
 });
 
@@ -245,6 +259,45 @@ describe('deliver', () => {
     expect(report).toMatchObject({ merged: true, failedStep: 'worktree' });
     expect(report.detail).toContain('Refusing to remove');
     expect(record.removals).toEqual(['alpha']);
+  });
+});
+
+describe('the completion file', () => {
+  test('lists the same headings, in order, as references/execution-report.md', () => {
+    const reference = readFileSync(
+      join(import.meta.dir, '../../.agents/skills/chef/references/execution-report.md'),
+      'utf8',
+    );
+    const listed = /Level-2 headings, in this order: (.+?)\.\n/.exec(reference)?.[1];
+    expect(listed?.split('; ')).toEqual(executionReportHeadings);
+  });
+
+  test('accepts an execution report', () => {
+    expect(executionReportProblems(sampleReport)).toEqual([]);
+  });
+
+  test('names a missing marker and a missing or out-of-order heading', () => {
+    expect(executionReportProblems('Delivered.\n')).toHaveLength(
+      1 + executionReportHeadings.length,
+    );
+    const swapped = sampleReport
+      .replace('## Verification', '## Placeholder')
+      .replace('## Changes', '## Verification');
+    expect(executionReportProblems(swapped)).toEqual(['"## Changes" is missing or out of order']);
+    expect(executionReportProblems(sampleReport.replace('attempt 1', 'attempt one'))[0]).toContain(
+      'first line',
+    );
+  });
+
+  test('refuses a completion file that is not an execution report, before any merge', async () => {
+    const { partial, record } = seams();
+    writeFileSync(join(sandbox, 'plain.md'), 'Delivered.\n');
+    const error = await rejectionOf(
+      deliver({ ...options, issue: 'COR-9', completionFile: join(sandbox, 'plain.md') }, partial),
+    );
+    expect(error).toBeInstanceOf(UsageError);
+    expect(String(error)).toContain('not an execution report');
+    expect(record.merges).toEqual([]);
   });
 });
 

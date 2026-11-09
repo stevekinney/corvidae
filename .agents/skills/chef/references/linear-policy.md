@@ -39,7 +39,7 @@ Check the predicates against the issue text and `bun scripts/chef/linear.ts bloc
 
 ## Work-session comments
 
-Write each as a Markdown file and post it with `bun scripts/chef/linear.ts comment <ID> --file <md>`, which reads the comment back by id.
+Write each as a Markdown file and post it with `bun scripts/chef/linear.ts comment <ID> --file <md>`, which reads the comment back by id. Completion, blocker, and handoff comments are execution reports in the form [the execution report](execution-report.md) gives.
 
 - A claim records the provider, the session or agent, the branch, the worktree, the base SHA, the scope, the first verification gate, and the current blocker state. Post the claim, then move the issue to In Progress. In a delegated run the coordinator posts the claim at dispatch, and the worker moves its own issue to In Progress when it starts.
 - A checkpoint records the current evidence and the next executable command.

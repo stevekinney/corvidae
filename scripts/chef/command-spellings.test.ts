@@ -18,6 +18,7 @@ import { parseCommandLine } from './worktree-scope.ts';
 const repositoryRoot = join(import.meta.dir, '../..');
 const skillFiles = [
   '.agents/skills/chef/references/execution-record.md',
+  '.agents/skills/chef/references/execution-report.md',
   '.agents/skills/chef/references/planning-and-routing.md',
   '.agents/skills/chef/references/review-and-deliver.md',
   '.agents/skills/chef/SKILL.md',
@@ -26,6 +27,7 @@ const skillFiles = [
 
 const minimumInvocations: Record<string, number> = {
   '.agents/skills/chef/references/execution-record.md': 8,
+  '.agents/skills/chef/references/execution-report.md': 3,
   '.agents/skills/chef/references/planning-and-routing.md': 1,
   '.agents/skills/chef/references/review-and-deliver.md': 8,
   '.agents/skills/chef/SKILL.md': 4,
