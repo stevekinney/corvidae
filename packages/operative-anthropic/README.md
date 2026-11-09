@@ -21,7 +21,7 @@ Its source imports Operative only through `@lostgradient/operative/provider-kit`
 
 ## Registering the provider
 
-A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. `anthropicProvider` passes the configuration object, whole, to `createAnthropicProvider` and `createAnthropicProviderStream`, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory:
+A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration, pluginConfiguration)` and `stream(configuration, pluginConfiguration)`. The second argument is the validated plugin configuration; pass `{}` when the provider has no plugin-level configuration. `anthropicProvider` passes both objects to `createAnthropicProvider` and `createAnthropicProviderStream`, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory:
 
 ```typescript
 import type { ProviderDefinition } from '@lostgradient/operative';
