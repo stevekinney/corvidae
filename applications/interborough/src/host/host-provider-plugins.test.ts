@@ -5,6 +5,7 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  * allowlist from `plugins.<name>.configuration.models`; and a top-level `providers` key is not read.
  */
 import { openBungalow } from '@lostgradient/bungalow';
+import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { definePlugin } from '@lostgradient/interborough-plugin';
 import { createAgent, createModelCatalog } from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -12,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 
 import { startHost, type Host } from './host.ts';
 import { workspacePlugins } from './plugins.ts';
@@ -121,6 +123,85 @@ describe('a plugin that contributes a provider', () => {
     const generate = host.generateFor({ provider: 'lender', model: 'lender-1' });
     expect(await generate({ messages: [] } as never)).toMatchObject({ content: 'lent' });
     expect(handed).toEqual([{ provider: 'lender', model: 'lender-1', apiKey: KEY }]);
+  });
+
+  test('keeps schema defaults and transforms on reload, and rejects invalid stored configuration', async () => {
+    const [seed] = staticRows;
+    if (seed === undefined) throw new Error('The static catalog is empty.');
+    const handed: unknown[] = [];
+    const lender = definePlugin({
+      name: 'configured-lender',
+      version: '1.0.0',
+      description: 'Contributes a provider with schema-parsed configuration.',
+      configuration: z.object({
+        endpoint: z
+          .string()
+          .default('default')
+          .transform((value) => value.toUpperCase()),
+      }),
+      secrets: ['configured-lender-api-key'],
+      setup: () => ({
+        providers: [
+          {
+            name: 'configured-lender',
+            generate: (configuration: unknown, pluginConfiguration: unknown) => {
+              void configuration;
+              handed.push(pluginConfiguration);
+              return async () => ({ content: 'lent', toolCalls: [] });
+            },
+            stream: () => {
+              throw new Error('The fixture provider does not stream.');
+            },
+            rows: [
+              { ...seed, provider: 'configured-lender', model: 'configured-lender-1', aliases: [] },
+            ],
+          },
+        ],
+      }),
+    });
+    const home = await prepareHome({ secrets: { 'configured-lender-api-key': KEY } });
+    const host = await startAt(home, {
+      plugins: [{ descriptor: lender, source: 'package', location: '@fixture/configured-lender' }],
+      resolveProviderGenerate: (
+        definitions,
+        provider,
+        streamEventTarget,
+        streaming,
+        pluginConfiguration,
+      ) =>
+        resolveProviderGenerate(
+          definitions,
+          provider,
+          streamEventTarget,
+          streaming,
+          pluginConfiguration,
+        ),
+    });
+
+    await createAgent({
+      name: 'configured-lender-default',
+      generate: host.generateFor({ provider: 'configured-lender', model: 'configured-lender-1' }),
+    })
+      .run('First')
+      .result();
+    await host.plugins.update('configured-lender', { configuration: { endpoint: 'next' } });
+    await createAgent({
+      name: 'configured-lender-transformed',
+      generate: host.generateFor({ provider: 'configured-lender', model: 'configured-lender-1' }),
+    })
+      .run('Second')
+      .result();
+    expect(handed).toEqual([{ endpoint: 'DEFAULT' }, { endpoint: 'NEXT' }]);
+
+    await writeFile(
+      join(home, 'configuration.json'),
+      JSON.stringify({ plugins: { 'configured-lender': { configuration: { endpoint: 7 } } } }),
+    );
+    const failure = await host.providers.reload().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ProviderConfigurationError);
   });
 
   test('offers nothing from a plugin whose secret is not set', async () => {
