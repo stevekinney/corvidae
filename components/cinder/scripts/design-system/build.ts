@@ -96,7 +96,9 @@ async function buildPreviews(plans: PreviewPlan[]): Promise<ShardReport> {
         const reportFile = join(workDirectory, `shard-${index}.json`);
         const child = Bun.spawn(
           ['bun', shardScript, plansFile, entryDirectory, previewsDirectory, reportFile, ...ids],
-          { cwd: cinderRoot, stdout: 'inherit', stderr: 'inherit' },
+          // From the playground, as the original generator ran: Svelte records each component's
+          // file name relative to the working directory, so this keeps the bundles byte-stable.
+          { cwd: playgroundRoot, stdout: 'inherit', stderr: 'inherit' },
         );
         const exitCode = await child.exited;
         const report = existsSync(reportFile)
