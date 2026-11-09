@@ -387,7 +387,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       stepLimit: null,
       retry: null,
       compaction: null,
-      hooks: null,
+      interceptors: null,
       references: null,
       guardrails: null,
       costBudget: null,

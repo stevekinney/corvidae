@@ -1,5 +1,5 @@
 /**
- * COR-1877 — `guardrails` and `hooks` over `bureau.agents.definitions.*`: a create writes the ids,
+ * COR-1877 — `guardrails` and `interceptors` over `bureau.agents.definitions.*`: a create writes the ids,
  * `get` shows them (`null` for a file that lists none), an update that leaves one out keeps the
  * file's list and `null` removes it, an id no plugin contributes is refused as
  * `reference-unresolved` before anything is written, and the old preset name is refused as a
@@ -32,7 +32,7 @@ const contributions = createAgentContributions([
         },
       ],
     },
-    runHooks: [{ name: 'audit' }],
+    interceptors: [{ name: 'audit' }],
   },
 ]);
 
@@ -40,7 +40,7 @@ function servedWithContributions() {
   return serve({ overrides: { agentContributions: contributions } });
 }
 
-describe.each(['guardrails', 'hooks'] as const)('%s on the definition operations', (key) => {
+describe.each(['guardrails', 'interceptors'] as const)('%s on the definition operations', (key) => {
   const id = key === 'guardrails' ? 'x:check' : 'x:audit';
 
   it('creates an agent that lists an id, and shows it on get', async () => {

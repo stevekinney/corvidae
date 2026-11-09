@@ -115,7 +115,7 @@ import {
   type AgentContributions,
   guardrailAdditionsOf,
   NO_AGENT_CONTRIBUTIONS,
-  runHooksOf,
+  interceptorsOf,
   unresolvedContributions,
 } from './agent-contributions';
 import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
@@ -479,7 +479,7 @@ export interface AgentFileCatalogOptions {
    */
   readonly secretResolver?: ToolSecretResolver | undefined;
   /**
-   * The plugin guardrails and run hooks a file's `guardrails` and `hooks` may list (COR-1877). A
+   * The plugin guardrails and interceptors a file's `guardrails` and `interceptors` may list (COR-1877). A
    * file that lists an id these do not hold is `invalid` with `reference-unresolved`. Omitted,
    * nothing is contributed, so a file that lists any is invalid.
    */
@@ -942,7 +942,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       return {
         problem: {
           code: 'reference-unresolved',
-          message: `The definition lists ${unresolved.map((issue) => issue.message).join('; ')}. A guardrail or run hook is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
+          message: `The definition lists ${unresolved.map((issue) => issue.message).join('; ')}. A guardrail or interceptor is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
           issues: unresolved,
         },
       };
@@ -1055,10 +1055,10 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     return additions === undefined ? {} : { additionalGuardrails: additions };
   }
 
-  function optionalRunHooks(
+  function optionalInterceptors(
     definition: AgentFileDefinition,
-  ): { readonly hooks: NonNullable<ReturnType<typeof runHooksOf>> } | Record<string, never> {
-    const hooks = runHooksOf(definition, options.contributions ?? NO_AGENT_CONTRIBUTIONS);
+  ): { readonly hooks: NonNullable<ReturnType<typeof interceptorsOf>> } | Record<string, never> {
+    const hooks = interceptorsOf(definition, options.contributions ?? NO_AGENT_CONTRIBUTIONS);
     return hooks === undefined ? {} : { hooks };
   }
 
@@ -1149,9 +1149,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // model, and a model that is told "action required" would only ask again.
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       // The default guardrail preset guards every agent; the plugin guardrails the file lists are
-      // added to it (COR-1877), and so are the plugin run hooks to the agent's hook tier.
+      // added to it (COR-1877), and so are the plugin interceptors to the agent's hook tier.
       ...optionalGuardrailAdditions(definition),
-      ...optionalRunHooks(definition),
+      ...optionalInterceptors(definition),
       ...(definition.costBudget === undefined
         ? {}
         : costBudgetOptions(

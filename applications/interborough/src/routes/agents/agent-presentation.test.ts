@@ -162,7 +162,7 @@ describe('an agent’s facts', () => {
     stepLimit: null,
     retry: null,
     compaction: null,
-    hooks: null,
+    interceptors: null,
     references: null,
     guardrails: null,
     costBudget: null,

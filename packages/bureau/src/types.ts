@@ -611,10 +611,10 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentApprovalSecret?: string;
   /**
-   * COR-1877 — the guardrails and run hooks plugins contribute, which an agent file chooses with
-   * `guardrails: [plugin:name]` and `hooks: [plugin:name]`. Build the value with
+   * COR-1877 — the guardrails and interceptors plugins contribute, which an agent file chooses with
+   * `guardrails: [plugin:name]` and `interceptors: [plugin:name]`. Build the value with
    * `createAgentContributions`. Operative's default guardrail preset still guards every agent, and a
-   * chosen guardrail runs beside it; a chosen run hook set joins the agent's hook tier, each entry
+   * chosen guardrail runs beside it; a chosen interceptor joins the agent's hook tier, each entry
    * tagged with its plugin as its `source`. A file that lists an id this does not hold is `invalid`
    * with `reference-unresolved`. Omitted, nothing is contributed, so a file that lists any is
    * invalid. Used only with {@link BureauOptions.agentSource}.

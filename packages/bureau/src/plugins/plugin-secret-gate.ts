@@ -23,7 +23,7 @@
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail (`detect`, `validate`) | refuses; an agent file that lists it cannot run | works | refuses |
- * | run hooks (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
+ * | interceptor (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
@@ -41,7 +41,7 @@
 
 import type {
   PluginContributions,
-  PluginRunHooks,
+  PluginInterceptor,
   PluginTriggerKind,
 } from '@lostgradient/interborough-plugin';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
@@ -183,27 +183,30 @@ function gated<A extends unknown[], R>(
   };
 }
 
-function gatedRunHooks(
+function gatedInterceptor(
   gate: PluginSecretGate,
   contribution: string,
-  hooks: PluginRunHooks,
-): PluginRunHooks {
-  const { prepareStep, beforeToolExecution, afterToolExecution, onStep, validateResponse } = hooks;
+  interceptor: PluginInterceptor,
+): PluginInterceptor {
+  const { prepareStep, beforeToolExecution, afterToolExecution, onStep, validateResponse } =
+    interceptor;
   return {
-    ...hooks,
+    ...interceptor,
     ...(prepareStep === undefined
       ? {}
-      : { prepareStep: gated(gate, contribution, prepareStep.bind(hooks)) }),
+      : { prepareStep: gated(gate, contribution, prepareStep.bind(interceptor)) }),
     ...(beforeToolExecution === undefined
       ? {}
-      : { beforeToolExecution: gated(gate, contribution, beforeToolExecution.bind(hooks)) }),
+      : { beforeToolExecution: gated(gate, contribution, beforeToolExecution.bind(interceptor)) }),
     ...(afterToolExecution === undefined
       ? {}
-      : { afterToolExecution: gated(gate, contribution, afterToolExecution.bind(hooks)) }),
-    ...(onStep === undefined ? {} : { onStep: gated(gate, contribution, onStep.bind(hooks)) }),
+      : { afterToolExecution: gated(gate, contribution, afterToolExecution.bind(interceptor)) }),
+    ...(onStep === undefined
+      ? {}
+      : { onStep: gated(gate, contribution, onStep.bind(interceptor)) }),
     ...(validateResponse === undefined
       ? {}
-      : { validateResponse: gated(gate, contribution, validateResponse.bind(hooks)) }),
+      : { validateResponse: gated(gate, contribution, validateResponse.bind(interceptor)) }),
   };
 }
 
@@ -344,9 +347,13 @@ export function gatedContributions<T extends PluginContributions>(
                 }),
           },
         }),
-    ...(result.runHooks === undefined
+    ...(result.interceptors === undefined
       ? {}
-      : { runHooks: result.runHooks.map((hooks) => gatedRunHooks(gate, idOf(hooks.name), hooks)) }),
+      : {
+          interceptors: result.interceptors.map((interceptor) =>
+            gatedInterceptor(gate, idOf(interceptor.name), interceptor),
+          ),
+        }),
     ...(result.decisionRouters === undefined
       ? {}
       : {

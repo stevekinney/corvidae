@@ -140,8 +140,8 @@ export interface PluginAgentReferences {
   readonly tools: readonly string[];
   /** The guardrails it names (a file's `guardrails`). */
   readonly guardrails: readonly string[];
-  /** The run hook sets it names (a file's `hooks`). */
-  readonly hooks: readonly string[];
+  /** The interceptors it names (a file's `interceptors`). */
+  readonly interceptors: readonly string[];
 }
 
 /** A run waiting on a person, as one pending review shows it. */
@@ -197,8 +197,8 @@ async function countReferences(
         ? agent.tools
         : contribution.kind === 'guardrail'
           ? agent.guardrails
-          : contribution.kind === 'run-hooks'
-            ? agent.hooks
+          : contribution.kind === 'interceptor'
+            ? agent.interceptors
             : [];
     const key = referenceKey(contribution.id);
     return names.some((name) => referenceKey(name) === key);

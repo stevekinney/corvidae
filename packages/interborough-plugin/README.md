@@ -9,7 +9,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `toolApprovalHooks`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `afterStart(bureau, context)`. |
 | `PluginHostApi` | The structural slice of Bureau `afterStart` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
-| `PluginContributions` | Tools, activities, validators, guardrails, run hooks, decision routers, trigger kinds, hook action kinds, providers (each with its catalog rows), embedders, memory detectors, eval judges, MCP apps, event formatters, and code agents. |
+| `PluginContributions` | Tools, activities, validators, guardrails, interceptors, decision routers, trigger kinds, hook action kinds, providers (each with its catalog rows), embedders, memory detectors, eval judges, MCP apps, event formatters, and code agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
 ## Where a plugin lives
@@ -93,7 +93,7 @@ The descriptor's members:
 | `activities` | Activities a shipped workflow calls as `plugin:name`. |
 | `validators` | Goal validators, registered by name and version. |
 | `guardrails` | `inputDetectors` and `outputValidators`, added to the ones Operative applies to every agent. |
-| `runHooks` | Hooks added to every run. |
+| `interceptors` | Run hooks an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
 | `triggerKinds` | New external sources that start work. |
 | `hookActionKinds` | New things a hook can do when its event happens. |

@@ -272,7 +272,9 @@ function planOf(
   for (const validator of contributions.guardrails?.outputValidators ?? []) {
     contribute('guardrail', validator.name);
   }
-  for (const hooks of contributions.runHooks ?? []) contribute('run-hooks', hooks.name);
+  for (const interceptor of contributions.interceptors ?? []) {
+    contribute('interceptor', interceptor.name);
+  }
   for (const model of contributions.decisionRouters ?? [])
     contribute('decision-router', model.name);
   for (const kind of contributions.hookActionKinds ?? []) contribute('hook-action', kind.name);
@@ -379,8 +381,8 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const id of options.agentContributions?.guardrails.keys() ?? []) {
     claims.hold({ space: 'guardrail', name: id }, HOST_PARTY);
   }
-  for (const id of options.agentContributions?.runHooks.keys() ?? []) {
-    claims.hold({ space: 'run-hooks', name: id }, HOST_PARTY);
+  for (const id of options.agentContributions?.interceptors.keys() ?? []) {
+    claims.hold({ space: 'interceptor', name: id }, HOST_PARTY);
   }
   for (const name of Object.keys(options.decisions?.models ?? {})) {
     claims.hold({ space: 'decision-router', name }, HOST_PARTY);
@@ -422,7 +424,7 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'trigger-kind',
   'validator',
   'guardrail',
-  'run-hooks',
+  'interceptor',
   'decision-router',
   'hook-action',
   'event-formatter',
@@ -482,7 +484,7 @@ class Contributed {
     if ((result.activities?.length ?? 0) + (result.triggerKinds?.length ?? 0) > 0) {
       this.activities.push({ plugin, version, result });
     }
-    if (result.guardrails !== undefined || result.runHooks !== undefined) {
+    if (result.guardrails !== undefined || result.interceptors !== undefined) {
       this.agentSources.push({ plugin, result });
     }
     for (const validator of result.validators ?? []) {
@@ -572,12 +574,12 @@ function agentContributionsWith(
     contributed.map(({ plugin, result }) => ({
       plugin,
       guardrails: result.guardrails,
-      runHooks: result.runHooks,
+      interceptors: result.interceptors,
     })),
   );
   return {
     guardrails: new Map([...(host?.guardrails ?? []), ...plugins.guardrails]),
-    runHooks: new Map([...(host?.runHooks ?? []), ...plugins.runHooks]),
+    interceptors: new Map([...(host?.interceptors ?? []), ...plugins.interceptors]),
   };
 }
 

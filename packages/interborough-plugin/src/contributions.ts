@@ -44,9 +44,13 @@ export interface PluginGuardrails {
   readonly outputValidators?: readonly OutputValidator[];
 }
 
-/** Hooks a plugin adds to every run. Each member is an Operative run hook. */
-export interface PluginRunHooks {
-  /** Names the hook set in logs and problem reports. */
+/**
+ * A set of Operative run hooks a plugin contributes under one name. An agent file chooses it with
+ * `interceptors: [plugin:name]`, and it runs for the agents that choose it and no others. Each
+ * member is an Operative run hook.
+ */
+export interface PluginInterceptor {
+  /** Names the interceptor in logs and problem reports, and in the id an agent file lists. */
   readonly name: string;
   /** Runs before each generate call. */
   readonly prepareStep?: PrepareStepHook;
@@ -233,8 +237,8 @@ export interface PluginContributions {
   readonly validators?: readonly Validator[];
   /** Guardrails added to Operative's defaults. */
   readonly guardrails?: PluginGuardrails;
-  /** Hooks added to every run. */
-  readonly runHooks?: readonly PluginRunHooks[];
+  /** Interceptors an agent file chooses by name; they run for the agents that choose them. */
+  readonly interceptors?: readonly PluginInterceptor[];
   /** Decision models that answer decisions of the kinds they name. */
   readonly decisionRouters?: readonly DecisionModel[];
   /** New kinds of trigger. */

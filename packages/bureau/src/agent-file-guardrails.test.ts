@@ -1,8 +1,8 @@
 /**
- * COR-1877 — the plugin guardrails and run hooks an agent file chooses: what `guardrails` and
- * `hooks` accept, how a write keeps them, that a definition without them still loads, that a chosen
+ * COR-1877 — the plugin guardrails and interceptors an agent file chooses: what `guardrails` and
+ * `interceptors` accept, how a write keeps them, that a definition without them still loads, that a chosen
  * guardrail runs beside Operative's default preset on a real run (and an agent that chooses none
- * runs only the preset), that a chosen run hook carries its plugin as its `source`, and that an id
+ * runs only the preset), that a chosen interceptor carries its plugin as its `source`, and that an id
  * nothing contributes makes the agent invalid with `reference-unresolved`.
  */
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -14,7 +14,7 @@ import type { InputDetector } from 'armorer';
 import {
   createAgentContributions,
   guardrailAdditionsOf,
-  runHooksOf,
+  interceptorsOf,
   unresolvedContributions,
 } from './agent-contributions';
 import {
@@ -44,7 +44,7 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe.each(['guardrails', 'hooks'] as const)('%s in the frontmatter', (key) => {
+describe.each(['guardrails', 'interceptors'] as const)('%s in the frontmatter', (key) => {
   it('parses a list of ids, and a file without the key or with an empty one has none', () => {
     expect(parsed(`---\nmodel: a/b\n${key}: [x:check, y:other]\n---\n`).definition[key]).toEqual([
       'x:check',
@@ -64,7 +64,7 @@ describe.each(['guardrails', 'hooks'] as const)('%s in the frontmatter', (key) =
   });
 });
 
-describe.each(['guardrails', 'hooks'] as const)('writing %s', (key) => {
+describe.each(['guardrails', 'interceptors'] as const)('writing %s', (key) => {
   it('writes a new file that parses back to the same ids', () => {
     const text = decoder.decode(
       serializeNewAgentFile({ model: 'a/b', [key]: ['x:check'], instructions: 'Body.\n' }),
@@ -140,6 +140,23 @@ describe.each(['guardrails', 'hooks'] as const)('writing %s', (key) => {
   });
 });
 
+describe('the renamed hooks key', () => {
+  it('refuses a file that still says hooks, at the path hooks, with the rename message', () => {
+    const result = parseAgentFile('helper', '---\nmodel: a/b\nhooks: [x:audit]\n---\nBody.\n');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problem.code).toBe('invalid-frontmatter');
+    expect(result.problem.issues).toEqual([
+      { path: 'hooks', message: expect.stringContaining('renamed to `interceptors`') },
+    ]);
+  });
+
+  it('refuses hooks even when it is empty or null', () => {
+    expect(issuePaths('hooks: []')).toEqual(['hooks']);
+    expect(issuePaths('hooks:')).toEqual(['hooks']);
+  });
+});
+
 describe('a stored definition', () => {
   const OLD_SNAPSHOT = {
     name: 'Helper',
@@ -154,7 +171,7 @@ describe('a stored definition', () => {
   it('loads when it was written before the fields existed', () => {
     const definition = agentFileDefinitionSchema.parse(OLD_SNAPSHOT);
     expect(definition.guardrails).toBeUndefined();
-    expect(definition.hooks).toBeUndefined();
+    expect(definition.interceptors).toBeUndefined();
   });
 
   it('keeps the ids it has', () => {
@@ -162,9 +179,24 @@ describe('a stored definition', () => {
       agentFileDefinitionSchema.parse({
         ...OLD_SNAPSHOT,
         guardrails: ['x:check'],
-        hooks: ['x:audit'],
+        interceptors: ['x:audit'],
       }),
-    ).toMatchObject({ guardrails: ['x:check'], hooks: ['x:audit'] });
+    ).toMatchObject({ guardrails: ['x:check'], interceptors: ['x:audit'] });
+  });
+
+  it('reads the hooks key an older snapshot or saved version wrote as the same interceptors', () => {
+    const definition = agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, hooks: ['x:audit'] });
+    expect(definition.interceptors).toEqual(['x:audit']);
+    expect(definition).not.toHaveProperty('hooks');
+  });
+
+  it('prefers interceptors when a stored definition somehow names both', () => {
+    const definition = agentFileDefinitionSchema.parse({
+      ...OLD_SNAPSHOT,
+      hooks: ['x:old'],
+      interceptors: ['x:audit'],
+    });
+    expect(definition.interceptors).toEqual(['x:audit']);
   });
 
   it.each(['tripwire', 'default', 'off'])(
@@ -210,7 +242,7 @@ const contributions = createAgentContributions([
   {
     plugin: 'x',
     guardrails: { inputDetectors: [sentinelDetector], outputValidators: [forbiddenValidator] },
-    runHooks: [
+    interceptors: [
       {
         name: 'audit',
         onStep: async () => {
@@ -224,7 +256,7 @@ const contributions = createAgentContributions([
 describe('createAgentContributions', () => {
   it('names each contribution plugin:name, whatever its kind', () => {
     expect([...contributions.guardrails.keys()]).toEqual(['x:check', 'x:no-forbidden']);
-    expect([...contributions.runHooks.keys()]).toEqual(['x:audit']);
+    expect([...contributions.interceptors.keys()]).toEqual(['x:audit']);
   });
 
   it('refuses an id contributed twice, because a file names a contribution by id alone', () => {
@@ -246,8 +278,10 @@ describe('createAgentContributions', () => {
       ]),
     ).toThrow('"x:check" is contributed more than once');
     expect(() =>
-      createAgentContributions([{ plugin: 'x', runHooks: [{ name: 'audit' }, { name: 'audit' }] }]),
-    ).toThrow('"x:audit" are contributed more than once');
+      createAgentContributions([
+        { plugin: 'x', interceptors: [{ name: 'audit' }, { name: 'audit' }] },
+      ]),
+    ).toThrow('interceptor "x:audit" is contributed more than once');
   });
 });
 
@@ -255,7 +289,7 @@ describe('unresolvedContributions', () => {
   it('names the key and the position of each id nothing contributes', () => {
     expect(
       unresolvedContributions(
-        { guardrails: ['x:check', 'y:gone'], hooks: ['x:audit', 'x:check', 'x:audit@1'] },
+        { guardrails: ['x:check', 'y:gone'], interceptors: ['x:audit', 'x:check', 'x:audit@1'] },
         contributions,
       ),
     ).toEqual([
@@ -265,13 +299,13 @@ describe('unresolvedContributions', () => {
         reference: 'y:gone',
       },
       {
-        path: 'hooks.1',
-        message: '"x:check" is not a contributed run hook set',
+        path: 'interceptors.1',
+        message: '"x:check" is not a contributed interceptor',
         reference: 'x:check',
       },
       {
-        path: 'hooks.2',
-        message: '"x:audit@1" is not a contributed run hook set',
+        path: 'interceptors.2',
+        message: '"x:audit@1" is not a contributed interceptor',
         reference: 'x:audit@1',
       },
     ]);
@@ -291,13 +325,13 @@ describe('guardrailAdditionsOf', () => {
   });
 });
 
-describe('runHooksOf', () => {
-  it('is nothing for a definition that lists no hooks', () => {
-    expect(runHooksOf({}, contributions)).toBeUndefined();
+describe('interceptorsOf', () => {
+  it('is nothing for a definition that lists no interceptors', () => {
+    expect(interceptorsOf({}, contributions)).toBeUndefined();
   });
 
   it('tags each registry entry with its plugin as the source, and the tag survives a merge', () => {
-    const registry = runHooksOf({ hooks: ['x:audit'] }, contributions);
+    const registry = interceptorsOf({ interceptors: ['x:audit'] }, contributions);
     if (registry === undefined) throw new Error('Expected a registry.');
     const merged = mergeHookRegistries<OperativeHookMap>(
       new HookRegistry<OperativeHookMap>({ source: 'bureau' }),
@@ -372,7 +406,7 @@ function tripwires(activity: Activity): Record<string, unknown>[] {
 }
 
 describe.each(['non-durable', 'durable'] as const)(
-  'a file agent’s plugin guardrails and run hooks, %s dispatch',
+  'a file agent’s plugin guardrails and interceptors, %s dispatch',
   (dispatch) => {
     describe('an agent that lists x:check', () => {
       const listed = { guardrails: '[x:check, x:no-forbidden]' };
@@ -438,8 +472,8 @@ describe.each(['non-durable', 'durable'] as const)(
       });
     });
 
-    it('runs a plugin run hook set the agent lists, and not one it does not', async () => {
-      await runFileAgent(dispatch, { hooks: '[x:audit]' }, 'Hello', 'Hi there.');
+    it('runs a plugin interceptor the agent lists, and not one it does not', async () => {
+      await runFileAgent(dispatch, { interceptors: '[x:audit]' }, 'Hello', 'Hi there.');
       expect(stepsSeen).toEqual(['x:audit']);
 
       stepsSeen.length = 0;
@@ -474,12 +508,12 @@ describe('an id nothing contributes', () => {
     ]);
   });
 
-  it('makes an agent that lists an unknown run hook set invalid, and one with a version too', async () => {
-    const listing = await problemOf({ hooks: '[x:audit@1]' });
+  it('makes an agent that lists an unknown interceptor invalid, and one with a version too', async () => {
+    const listing = await problemOf({ interceptors: '[x:audit@1]' });
 
     expect(listing?.state).toBe('invalid');
     expect(listing?.problem?.code).toBe('reference-unresolved');
-    expect(listing?.problem?.issues?.[0]?.path).toBe('hooks.0');
+    expect(listing?.problem?.issues?.[0]?.path).toBe('interceptors.0');
   });
 
   it('makes an agent that lists any invalid when the Bureau was given no contributions', async () => {

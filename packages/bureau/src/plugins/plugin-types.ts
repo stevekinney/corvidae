@@ -219,7 +219,7 @@ export type PluginContributionKind =
   | 'trigger-kind'
   | 'validator'
   | 'guardrail'
-  | 'run-hooks'
+  | 'interceptor'
   | 'decision-router'
   | 'hook-action'
   | 'provider'
@@ -250,7 +250,7 @@ export interface PluginContribution {
 export interface PluginContributionReferences {
   /**
    * The ready agents whose definition names it: a tool in a file's or a code agent's `tools`, a
-   * guardrail in a file's `guardrails`, a run hook set in a file's `hooks`. No other kind is named
+   * guardrail in a file's `guardrails`, an interceptor in a file's `interceptors`. No other kind is named
    * by an agent, so it counts none.
    */
   readonly agents: number;

@@ -81,7 +81,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'compaction',
   'references',
   'guardrails',
-  'hooks',
+  'interceptors',
   'costBudget',
   'toolBudget',
   'toolApproval',
@@ -113,7 +113,7 @@ export interface AgentFileIssue {
   readonly message: string;
   /**
    * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
-   * or run hook set for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
+   * or interceptor for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
    * (COR-1975), a model for `model-policy-denied` (COR-1980) or the model a `defaultEffort` is refused on (COR-1961), as
    * `<provider>/<model-or-alias>` exactly as the file wrote it. Absent on every other issue.
    */
@@ -145,7 +145,7 @@ export const agentSkillDescriptorSchema = z.strictObject({
 });
 
 /**
- * The contributions a file's `guardrails` and `hooks` keys name: each is a contribution id,
+ * The contributions a file's `guardrails` and `interceptors` keys name: each is a contribution id,
  * `plugin:name` (the form Armorer's `formatToolId` writes), without a version, so a file floats
  * with the plugin that contributes it. Bureau resolves each against the contributions it was given
  * (`BureauOptions.agentContributions`); one it cannot is `reference-unresolved`. An empty list
@@ -414,9 +414,9 @@ export const agentFileFrontmatterSchema = z
      */
     guardrails: agentContributionIdsSchema.nullish(),
     /**
-     * The plugin run hooks (`plugin:name`) the agent runs. Absent, the agent runs none.
+     * The plugin interceptors (`plugin:name`) the agent runs. Absent, the agent runs none.
      */
-    hooks: agentContributionIdsSchema.nullish(),
+    interceptors: agentContributionIdsSchema.nullish(),
     /**
      * What one run may spend. Absent, a run has no spend limit. The agent's `model` must have a
      * price in the model catalog, or the file is not usable.
@@ -438,7 +438,18 @@ export const agentFileFrontmatterSchema = z
      */
     examples: agentExamplesSchema.nullish(),
   })
-  .superRefine((frontmatter, context) => checkModelsList(frontmatter, context));
+  .superRefine((frontmatter, context) => {
+    checkModelsList(frontmatter, context);
+    // The key was named `hooks` before COR-2126. Unknown keys are kept, so without this refusal a
+    // file that still says `hooks:` would load and silently run no interceptors.
+    if (Object.hasOwn(frontmatter, 'hooks')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['hooks'],
+        message: '`hooks` was renamed to `interceptors`; rename the key',
+      });
+    }
+  });
 
 /**
  * The checks a `models` list must pass, which hold whatever the model catalog holds (COR-1559):
@@ -488,12 +499,7 @@ export function checkModelsList(
   }
 }
 
-/**
- * A definition as a snapshot stores it. Read back with the defaults a later field would need, so
- * a snapshot written before that field existed still resumes; a stored value that is not valid
- * is refused at the boundary rather than failing later as a `TypeError`.
- */
-export const agentFileDefinitionSchema = z.object({
+const agentFileDefinitionObjectSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable().default(null),
   model: z.string().min(1),
@@ -535,6 +541,11 @@ export const agentFileDefinitionSchema = z.object({
     ])
     .optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  interceptors: agentContributionIdsSchema.optional(),
+  /**
+   * What `interceptors` was called before COR-2126. A stored definition that names it reads as the
+   * same interceptors (see the transform below); it is never part of the output.
+   */
   hooks: agentContributionIdsSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   costBudget: agentCostBudgetSchema.optional(),
@@ -546,6 +557,21 @@ export const agentFileDefinitionSchema = z.object({
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
 });
+
+/**
+ * A definition as a snapshot stores it. Read back with the defaults a later field would need, so
+ * a snapshot written before that field existed still resumes; a stored value that is not valid
+ * is refused at the boundary rather than failing later as a `TypeError`.
+ *
+ * A stored definition that still names `hooks`, the key `interceptors` replaced in COR-2126, reads
+ * as the same interceptors.
+ */
+export const agentFileDefinitionSchema = agentFileDefinitionObjectSchema.transform(
+  ({ hooks, ...definition }) =>
+    hooks === undefined || definition.interceptors !== undefined
+      ? definition
+      : { ...definition, interceptors: hooks },
+);
 
 /** A file's `costBudget`; see {@link agentCostBudgetSchema}. */
 export interface AgentCostBudget {
@@ -633,8 +659,8 @@ export interface AgentFileDefinition {
    * preset, which every agent runs. Absent when the file lists none.
    */
   readonly guardrails?: readonly string[];
-  /** The ids (`plugin:name`) of the plugin run hooks the agent runs. Absent when the file lists none. */
-  readonly hooks?: readonly string[];
+  /** The ids (`plugin:name`) of the plugin interceptors the agent runs. Absent when the file lists none. */
+  readonly interceptors?: readonly string[];
   /**
    * What one run of the agent may spend, as the file's `costBudget` states it, with `warnAt`
    * sorted and without repeats. Absent when the file sets none: a run has no spend limit.
@@ -680,7 +706,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   compaction: true,
   references: true,
   guardrails: true,
-  hooks: true,
+  interceptors: true,
   costBudget: true,
   toolBudget: true,
   toolApproval: true,
@@ -758,10 +784,10 @@ export interface AgentFileDefinitionInput {
    */
   readonly guardrails?: readonly string[] | null | undefined;
   /**
-   * See {@link AgentFileDefinition.hooks}. An update that omits it keeps the file's value; `null`,
+   * See {@link AgentFileDefinition.interceptors}. An update that omits it keeps the file's value; `null`,
    * or an empty list, removes it.
    */
-  readonly hooks?: readonly string[] | null | undefined;
+  readonly interceptors?: readonly string[] | null | undefined;
   /**
    * See {@link AgentFileDefinition.costBudget}. An update that omits it keeps the file's value;
    * `null` removes it.
@@ -946,9 +972,9 @@ function toDefinition(
     ...(frontmatter.guardrails == null || frontmatter.guardrails.length === 0
       ? {}
       : { guardrails: [...frontmatter.guardrails] }),
-    ...(frontmatter.hooks == null || frontmatter.hooks.length === 0
+    ...(frontmatter.interceptors == null || frontmatter.interceptors.length === 0
       ? {}
-      : { hooks: [...frontmatter.hooks] }),
+      : { interceptors: [...frontmatter.interceptors] }),
     ...optionalToolApproval(frontmatter.toolApproval),
     ...(frontmatter.costBudget == null ? {} : { costBudget: costBudgetOf(frontmatter.costBudget) }),
     ...(frontmatter.toolBudget == null ? {} : { toolBudget: toolBudgetOf(frontmatter.toolBudget) }),
@@ -1061,8 +1087,8 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.guardrails != null && definition.guardrails.length > 0) {
     known['guardrails'] = [...definition.guardrails];
   }
-  if (definition.hooks != null && definition.hooks.length > 0) {
-    known['hooks'] = [...definition.hooks];
+  if (definition.interceptors != null && definition.interceptors.length > 0) {
+    known['interceptors'] = [...definition.interceptors];
   }
   if (definition.costBudget != null) known['costBudget'] = costBudgetOf(definition.costBudget);
   if (definition.toolBudget != null) known['toolBudget'] = toolBudgetOf(definition.toolBudget);
@@ -1106,7 +1132,9 @@ export function resolveAgentFileDefinition(
     ...(input.guardrails == null || input.guardrails.length === 0
       ? {}
       : { guardrails: [...input.guardrails] }),
-    ...(input.hooks == null || input.hooks.length === 0 ? {} : { hooks: [...input.hooks] }),
+    ...(input.interceptors == null || input.interceptors.length === 0
+      ? {}
+      : { interceptors: [...input.interceptors] }),
     ...(input.costBudget == null ? {} : { costBudget: costBudgetOf(input.costBudget) }),
     ...(input.toolBudget == null ? {} : { toolBudget: toolBudgetOf(input.toolBudget) }),
     ...optionalToolApproval(input.toolApproval),
@@ -1119,7 +1147,7 @@ export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefi
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
   // An update that omits `defaultEffort`, `allowedSkills`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`, `hooks`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and
+  // `guardrails`, `interceptors`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and
   // a version that has none must remove it: `null` says so.
   return {
     ...input,
@@ -1131,7 +1159,7 @@ export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefi
     compaction: definition.compaction ?? null,
     references: definition.references ?? null,
     guardrails: definition.guardrails ?? null,
-    hooks: definition.hooks ?? null,
+    interceptors: definition.interceptors ?? null,
     costBudget: definition.costBudget ?? null,
     toolBudget: definition.toolBudget ?? null,
     toolApproval: definition.toolApproval ?? null,
@@ -1154,7 +1182,7 @@ export function serializeUpdatedAgentFile(
 ): Uint8Array | undefined {
   const before = existing.definition;
   // A key the caller leaves out (`defaultEffort`, `allowedSkills`, `childAgents`, `a2a`, `stepLimit`, `retry`, `compaction`,
-  // `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget`, `toolApproval`) is not a change
+  // `references`, `guardrails`, `interceptors`, `costBudget`, `toolBudget`, `toolApproval`) is not a change
   // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
@@ -1168,7 +1196,7 @@ export function serializeUpdatedAgentFile(
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
     ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
-    ...(input.hooks === undefined ? { hooks: before.hooks } : {}),
+    ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
     ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
     ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
     ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
@@ -1197,7 +1225,7 @@ export function serializeUpdatedAgentFile(
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
         ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
-        ...(input.hooks === undefined ? { hooks: before.hooks } : {}),
+        ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
         ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
         ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
         ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),

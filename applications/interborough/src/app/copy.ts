@@ -2213,7 +2213,7 @@ export const PLUGINS_COPY = {
     'trigger-kind': 'Triggers',
     validator: 'Validators',
     guardrail: 'Guardrails',
-    'run-hooks': 'Run hooks',
+    interceptor: 'Interceptors',
     'decision-router': 'Decision routing',
     'hook-action': 'Hook actions',
     provider: 'Model provider',

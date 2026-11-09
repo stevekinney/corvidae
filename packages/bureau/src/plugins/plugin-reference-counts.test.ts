@@ -27,7 +27,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
-/** Plugin `p`: a mutating tool, a guardrail, a run hook set and a code agent. */
+/** Plugin `p`: a mutating tool, a guardrail, an interceptor and a code agent. */
 const plugin = definePlugin({
   name: 'p',
   version: '1.0.0',
@@ -50,7 +50,7 @@ const plugin = definePlugin({
         },
       ],
     },
-    runHooks: [{ name: 'audit', onStep: async () => undefined }],
+    interceptors: [{ name: 'audit', onStep: async () => undefined }],
     codeAgents: [
       {
         name: 'writer',
@@ -101,7 +101,7 @@ describe('the references plugins.list() counts for each contribution', () => {
     await harness.put('helper.md', agentFileText({ model: KNOWN_MODEL, tools: '[p:t]' }));
     await harness.put(
       'guarded.md',
-      agentFileText({ model: KNOWN_MODEL, guardrails: '[p:scan]', hooks: '[p:audit]' }),
+      agentFileText({ model: KNOWN_MODEL, guardrails: '[p:scan]', interceptors: '[p:audit]' }),
     );
     await bureau.agents.refresh();
     const helperSchedule = await bureau.schedules.create({
