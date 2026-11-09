@@ -166,6 +166,41 @@ describe('whole-token matching', () => {
       ['COR-3', 3],
     ]);
   });
+
+  test('a body attaches only the issues it references with a linking word, not passing mentions', () => {
+    // Both shapes are from real merged pull requests (#1055 and #1056) that the first version of
+    // this report misattributed to issues they only mentioned.
+    const issues: OpenIssue[] = [
+      issue('COR-2289', doing),
+      issue('COR-2127', todo),
+      issue('COR-4', todo),
+      issue('COR-5', todo),
+    ];
+    const pullRequests = [
+      pullRequest({
+        number: 1055,
+        title: 'COR-2291: Polling-only catalogs',
+        body: 'Refs COR-2291. Delivers the first four criteria (consuming capture moved to COR-2289).',
+        state: 'MERGED',
+      }),
+      pullRequest({
+        number: 1056,
+        title: 'COR-2106: Refuse resolver-less dispatch',
+        body: "the single named seam (COR-2127's plugin tier joins here)",
+        state: 'MERGED',
+      }),
+      pullRequest({ number: 9, body: 'Refs COR-4, cor-5', state: 'MERGED' }),
+    ];
+    expect(
+      findDrift(issues, pullRequests, NOW, 3).map((finding) => [
+        finding.identifier,
+        finding.pullRequest,
+      ]),
+    ).toEqual([
+      ['COR-4', 9],
+      ['COR-5', 9],
+    ]);
+  });
 });
 
 describe('findings', () => {

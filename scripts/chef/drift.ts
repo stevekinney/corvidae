@@ -10,8 +10,10 @@
 //
 // It reads every issue in the team (or project) that is neither completed nor canceled, following
 // pagination, and the repository's pull requests (`gh pr list --state all --limit 1000`). A pull
-// request belongs to an issue when the issue's identifier appears in its title, branch name or body
-// as a whole token, ignoring case: COR-12 never matches COR-123 or XCOR-12, and does match `cor-12-x`.
+// request belongs to an issue when the issue's identifier appears in its title or branch name as a
+// whole token, ignoring case (COR-12 never matches COR-123 or XCOR-12, and does match `cor-12-x`),
+// or when its body references the issue with a linking word (`Refs COR-12`, `Closes COR-12, COR-13`).
+// A passing mention in the body ("moved to COR-12") does not count.
 // It reports one finding per issue and kind:
 //   merged-open          the issue is not completed although a pull request naming it merged
 //   review-without-pr    the issue is In Review (by name) with no open pull request naming it
@@ -83,13 +85,32 @@ export function mentions(text: string, identifier: string): boolean {
   return new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, 'i').test(text);
 }
 
-/** The pull requests naming `identifier` in their title, branch name or body. */
+/**
+ * The issue identifiers a pull request body references with a linking word (`Refs`, `Closes`,
+ * `Fixes`, `Resolves`, and their variants), upper-cased. A list after the word counts whole:
+ * `Refs COR-1, COR-2 and COR-3`. An identifier merely mentioned in prose does not count, because
+ * bodies name related issues ("moved to COR-2289") that the pull request does not deliver.
+ */
+export function referencedIn(body: string): Set<string> {
+  const found = new Set<string>();
+  const clause =
+    /\b(?:refs?|references?|close[sd]?|closing|fix(?:e[sd])?|resolve[sd]?)\b[:\s]+((?:[A-Za-z][A-Za-z0-9]*-\d+(?:\s*(?:,|&|\band\b)\s*)?)+)/gi;
+  for (const match of body.matchAll(clause))
+    for (const identifier of (match[1] ?? '').match(/[A-Za-z][A-Za-z0-9]*-\d+/g) ?? [])
+      found.add(identifier.toUpperCase());
+  return found;
+}
+
+/**
+ * The pull requests that belong to `identifier`: it names the issue in its title or branch name as a
+ * whole token, or references it in its body with a linking word.
+ */
 export function pullRequestsFor(pullRequests: PullRequest[], identifier: string): PullRequest[] {
   return pullRequests.filter(
     (pullRequest) =>
       mentions(pullRequest.title, identifier) ||
       mentions(pullRequest.headRefName, identifier) ||
-      mentions(pullRequest.body, identifier),
+      referencedIn(pullRequest.body).has(identifier.toUpperCase()),
   );
 }
 
