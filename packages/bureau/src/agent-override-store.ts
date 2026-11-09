@@ -83,7 +83,7 @@ export const agentOverridesSchema = z.strictObject({
    */
   limits: agentLimitsSchema
     .refine((limits) => Object.keys(limits).length > 0, {
-      message: 'limits needs steps, cost, tools, or any of them',
+      message: 'limits must set at least one of steps, cost or tools',
     })
     .optional(),
   /** The model a chat starts on, `<provider>/<model>`. */
