@@ -3,6 +3,7 @@
  * through a `createAgent` agent: which calls execute, what the model is shown next, what the
  * conversation keeps, and which events fire.
  */
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { type Conversation, type Message } from 'conversationalist';
@@ -12,6 +13,7 @@ import type { GuardrailAdditions } from '../src/agent-policy';
 import type { RunEvent } from '../src/agent-run';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createAgent } from '../src/create-agent';
+import { GuardrailTripwireError } from '../src/errors';
 import type {
   GuardrailsOptions,
   InputDetector,
@@ -19,6 +21,7 @@ import type {
   ToolCallValidator,
 } from '../src/guardrails';
 import { GUARDRAIL_BLOCKED_CODE } from '../src/guardrails/tool-result-guardrail';
+import type { OperativeHookMap } from '../src/hooks';
 import type { GenerateFunction, GenerateResponse } from '../src/types';
 
 /** Refuses a `refund` whose amount is over 100. */
@@ -61,6 +64,7 @@ interface Setup {
   readonly amount?: number;
   readonly prompt?: string;
   readonly reply?: string;
+  readonly hooks?: HookRegistry<OperativeHookMap>;
 }
 
 async function runAgent(setup: Setup): Promise<Outcome> {
@@ -109,6 +113,7 @@ async function runAgent(setup: Setup): Promise<Outcome> {
       }),
     ]),
     stopWhen: noToolCalls(),
+    ...(setup.hooks === undefined ? {} : { hooks: setup.hooks }),
     ...(setup.guardrails === undefined ? {} : { guardrails: setup.guardrails }),
     ...(setup.additionalGuardrails === undefined
       ? {}
@@ -204,22 +209,25 @@ describe('tool-call validators', () => {
   });
 
   it('a tripwire after a refusal in one step: the refused call names its own guardrail, the rest name the tripwire', async () => {
-    const lookupTripwire: ToolCallValidator = {
-      name: 'lookup-tripwire',
-      validate: async (call) =>
-        call.name === 'lookup'
-          ? { valid: false, category: 'lookup-limit', confidence: 1 }
-          : { valid: true, category: 'lookup-limit', confidence: 0 },
-    };
-    const outcome = await runAgent({
-      additionalGuardrails: { toolValidators: [refundCap('block'), lookupTripwire] },
+    // Two separate beforeToolExecution hooks, as a validate-mode validator and an override tripwire
+    // validator are: the first refuses call-1, the second then halts the step.
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async ({ toolCalls, refuse }) => {
+      refuse?.('call-1', 'refund-cap');
+      return toolCalls.filter((call) => call.id !== 'call-1');
     });
+    hooks.on('beforeToolExecution', async () => {
+      throw new GuardrailTripwireError('tripped', {
+        guardrailName: 'lookup-tripwire',
+        category: 'lookup-limit',
+        phase: 'tool-call',
+        confidence: 1,
+      });
+    });
+    const outcome = await runAgent({ hooks });
 
     expect(outcome.finishReason).toBe('tripwire');
     expect(outcome.executed).toEqual([]);
-    const tripwires = ofType(outcome.events, 'run.tripwire');
-    expect(tripwires).toHaveLength(1);
-    expect(tripwires[0]).toMatchObject({ guardrailName: 'lookup-tripwire', phase: 'tool-call' });
     const rows = toolResultRows(outcome.conversation);
     expect(rows.map((row) => row.callId)).toEqual(['call-1', 'call-2']);
     expect(JSON.stringify(rows[0])).toContain('refund-cap');
