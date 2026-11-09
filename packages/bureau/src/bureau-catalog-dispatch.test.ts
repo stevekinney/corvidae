@@ -144,6 +144,42 @@ describe('createCatalogDispatcher — startChildRun', () => {
     expect(run.snapshot().id).toBe('child-1');
   });
 
+  // COR-2106 — an agent with no `OPERATIVE_RESOLVE_RUN_OPTIONS` could only run without Bureau's
+  // hooks, so it is refused before the child has a handle, an attribution or a run.
+  it('refuses a child whose agent has no run-options resolver with an error naming it, and starts nothing', () => {
+    let runs = 0;
+    const resolverless = {
+      name: 'worker',
+      hasOutput: false,
+      run: () => {
+        runs += 1;
+        return undefined as never;
+      },
+    };
+    const runAttribution = new Map<string, RunAttribution>();
+    const dispatcher = createCatalogDispatcher({
+      agentCatalog: { find: (name: string) => (name === 'worker' ? resolverless : undefined) },
+      runtime: {} as RuntimeComposition,
+      runtimeServices: createManualRuntimeServices(),
+      getShutdownPromise: () => undefined,
+      catalogRuns: new Set(),
+      runAttribution,
+      detachBestEffortPromise: () => {},
+      createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+      validateAgentRunInput: () => {},
+      onDurableRunAborted: () => {},
+    });
+
+    expect(() => dispatcher.startChildRun({ ...start, agentName: 'worker' })).toThrow(
+      expect.objectContaining({
+        name: 'AgentContractError',
+        message: expect.stringContaining('Agent "worker" exposes no run-options resolver'),
+      }),
+    );
+    expect(runs).toBe(0);
+    expect(runAttribution.size).toBe(0);
+  });
+
   it('refuses to start a child for an agent the catalog does not have', () => {
     const dispatcher = createDispatcher(false);
 

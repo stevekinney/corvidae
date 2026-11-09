@@ -7,6 +7,7 @@ import type { ZodType } from 'zod';
 
 import type { SuccessfulRunResult } from './agent-run';
 import { isSuccessfulRunResult } from './agent-run';
+import { readBureauInvariants, withBureauInvariants } from './bureau-invariants';
 import type { MutableChildRunRegistry } from './child-run';
 import {
   attenuateDelegatedAuthority,
@@ -434,18 +435,25 @@ export function createSubagentTool<
       // "preserve child-start events" criterion) a plain string — a
       // conversation-history `agentInput` is projected to a named, lossy
       // marker rather than widening the event's field.
-      const childRun = dispatchChildRun(agent, agentInput, {
-        agentName,
-        parentRunId,
-        parentAgentName: parentContext?.parentAgentName,
-        signal: context.signal,
-        traceContext: context.traceContext,
-        withTraceContext,
-        emitter: parentContext?.emitter,
-        durable: parentContext?.durable,
-        registry,
-        ...(delegatedAuthority === undefined ? {} : { delegatedAuthority }),
-      });
+      const childRun = dispatchChildRun(
+        agent,
+        agentInput,
+        withBureauInvariants(
+          {
+            agentName,
+            parentRunId,
+            parentAgentName: parentContext?.parentAgentName,
+            signal: context.signal,
+            traceContext: context.traceContext,
+            withTraceContext,
+            emitter: parentContext?.emitter,
+            durable: parentContext?.durable,
+            registry,
+            ...(delegatedAuthority === undefined ? {} : { delegatedAuthority }),
+          },
+          readBureauInvariants(context.executionContext),
+        ),
+      );
       const result = await childRun.result();
 
       // Every non-success terminal (abort, execution error, tripwire,

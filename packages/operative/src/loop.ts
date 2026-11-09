@@ -2,6 +2,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
 import { Conversation, isConversation } from 'conversationalist';
 
+import { readBureauInvariants } from './bureau-invariants';
 import { MaximumStepsExceededError } from './errors';
 import { RunErrorEvent } from './events';
 import { type GeneratedMediaAdmission, retainSeededInput } from './generated-media';
@@ -68,6 +69,7 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     delegatedAuthority: options.delegatedAuthority,
     delegatedToolCapabilities: options.delegatedToolCapabilities,
     parentSignals: options.parentSignals,
+    bureauInvariants: readBureauInvariants(options),
     durableOperationKeys: options.durableOperationKeys ?? false,
     defaultToolChoice: options.toolChoice,
     steering: options.steering,

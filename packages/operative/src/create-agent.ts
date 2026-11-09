@@ -22,6 +22,7 @@ import {
 import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';
 import type { AgentSkillDescriptor } from './agent-skill-descriptor';
+import { readBureauInvariants, withBureauInvariants } from './bureau-invariants';
 import { noToolCalls } from './conditions/predicates';
 import type { ContextEpochSealer } from './context-epoch';
 import type { MediaCostEstimator } from './context/types';
@@ -1090,7 +1091,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
         // tree — see `durable/types.ts`).
         new Conversation(structuredClone(input.conversation), { runtime });
 
-    return {
+    const runOptions: RunOptions = {
       generate,
       toolbox,
       conversation,
@@ -1162,6 +1163,8 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       // port to every tool call as `ToolContext.executionContext.parentSignals`.
       ...(context?.parentSignals !== undefined ? { parentSignals: context.parentSignals } : {}),
     };
+    // COR-2106 — a Bureau-owned run tells the children it dispatches that Bureau owns it.
+    return withBureauInvariants(runOptions, readBureauInvariants(context));
   }
 
   return {

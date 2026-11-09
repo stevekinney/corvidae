@@ -118,6 +118,7 @@ import {
   summarizeSession,
   TOOL_TIMING_METADATA_KEY,
   type ToolTiming,
+  bureauInvariantsField,
 } from '@lostgradient/operative';
 import {
   approvalDecisionMetadata,
@@ -9901,6 +9902,8 @@ async function constructBureau<const D extends AgentDefinitions>(
             generate: runRuntime.generate,
             toolbox: runToolbox,
             conversation,
+            // COR-2106 — children this run dispatches carry Bureau's tier.
+            ...bureauInvariantsField(runtime.bureauChildInvariants),
             // COR-1577 — the named agent's own options (stop conditions, structured output and
             // its retries, …), before the ones Bureau sets below, which win.
             ...copyAgentOwnedRunOptions(sessionAgent?.options),
@@ -12112,6 +12115,8 @@ async function constructBureau<const D extends AgentDefinitions>(
                     generate: runRuntime.generate,
                     toolbox: runRuntime.toolbox,
                     conversation: new Conversation(fullSession.conversationHistory),
+                    // COR-2106 — children this run dispatches carry Bureau's tier.
+                    ...bureauInvariantsField(runtime.bureauChildInvariants),
                     ...copyAgentOwnedRunOptions(reattachedSessionAgent?.options),
                     ...sessionRunMediaOptions(
                       reattachedSessionAgent,

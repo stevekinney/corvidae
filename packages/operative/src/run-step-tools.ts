@@ -6,6 +6,7 @@ import {
 import type { JSONValue, ToolCall } from 'armorer/protocol';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 
+import { withBureauInvariants } from './bureau-invariants';
 import { reclassifyToolError } from './errors';
 import {
   RunErrorEvent,
@@ -244,10 +245,14 @@ export async function executeTools(
           deps.runId !== undefined ||
           deps.delegatedAuthority !== undefined ||
           deps.delegatedToolCapabilities !== undefined ||
-          deps.parentSignals !== undefined
+          deps.parentSignals !== undefined ||
+          deps.bureauInvariants !== undefined
             ? {
                 executionContext: {
-                  ...deps.executeOptions?.executionContext,
+                  ...withBureauInvariants(
+                    deps.executeOptions?.executionContext ?? {},
+                    deps.bureauInvariants,
+                  ),
                   ...(deps.childRegistry !== undefined
                     ? { childRegistry: deps.childRegistry }
                     : {}),
