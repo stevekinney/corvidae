@@ -219,6 +219,11 @@ describe('createAgent guardrails', () => {
     const entries = options.hooks?.describePlan().entries ?? [];
     expect(entries.map(({ hookName, id, source }) => ({ hookName, id, source }))).toEqual([
       { hookName: 'prepareStep', id: 'agent:guardrails-prepare-step', source: 'agent' },
+      {
+        hookName: 'validateToolResult',
+        id: 'agent:guardrails-validate-tool-result',
+        source: 'agent',
+      },
       { hookName: 'validateResponse', id: 'agent:guardrails-validate-response', source: 'agent' },
     ]);
   });
@@ -297,6 +302,7 @@ describe('createAgent skills seam', () => {
     expect(options.hooks?.describePlan().entries.map((entry) => entry.id)).toEqual([
       'fake:skills',
       'agent:guardrails-prepare-step',
+      'agent:guardrails-validate-tool-result',
       'agent:guardrails-validate-response',
     ]);
   });

@@ -84,8 +84,29 @@ const definitionSchema = z.object({
   allowedSkills: z.array(z.string()).nullable().default(null),
   children: z.array(z.string()).nullable().optional(),
   a2a: z.boolean(),
-  /** The most steps one run may take; `null` when the file sets none. */
-  stepLimit: z.number().int().nullable().default(null),
+  /**
+   * What a run may take, spend and use: `steps`, the most steps one run may take; `cost`, what the
+   * agent may spend in US dollars (`run`, `chat`, and `warn`, fractions of `run`); `tools`, what one
+   * run's tools may use (`calls`, `seconds`). Each is `null` when the file sets none.
+   */
+  limits: z
+    .object({
+      steps: z.number().int().nullable().default(null),
+      cost: z
+        .object({
+          run: z.number(),
+          chat: z.number().optional(),
+          /** The fractions of `run` at which a run warns. The editor never edits them; a save sends them back. */
+          warn: z.array(z.number()).optional(),
+        })
+        .nullable()
+        .default(null),
+      tools: z
+        .object({ calls: z.number().optional(), seconds: z.number().optional() })
+        .nullable()
+        .default(null),
+    })
+    .default({ steps: null, cost: null, tools: null }),
   /**
    * How a run retries a failed generate call (`attempts`, `delayMilliseconds`, `jitter`); `null`
    * when the file sets none. The editor never edits it: a save sends it back, and a copy keeps it.
@@ -99,21 +120,6 @@ const definitionSchema = z.object({
   references: z.array(z.string()).nullable().default(null),
   /** The plugin guardrails (`plugin:name`) the file lists besides the default preset; `null` when it lists none. */
   guardrails: z.array(z.string()).nullable().default(null),
-  /** What one run may spend; `null` when the file sets no limit. */
-  costBudget: z
-    .object({
-      perRunUsd: z.number(),
-      perChatUsd: z.number().optional(),
-      /** The fractions of the budget at which a run warns. The editor never edits them; a save sends them back. */
-      warnAt: z.array(z.number()).optional(),
-    })
-    .nullable()
-    .default(null),
-  /** What one run's tools may use; `null` when the file sets no limit. */
-  toolBudget: z
-    .object({ maxCalls: z.number().optional(), maxDurationSeconds: z.number().optional() })
-    .nullable()
-    .default(null),
   /**
    * When each listed tool asks first, by tool name; `null` when the file sets none. A tool the
    * map leaves out is `on-changes`. Every key is one of `tools`.
@@ -124,6 +130,23 @@ const definitionSchema = z.object({
 
 /** The definition of a file agent, as `bureau.agents.definitions.get` shows it. */
 type AgentDefinition = z.infer<typeof definitionSchema>;
+
+/** The limits an update sends: a limit left out keeps the file's, and `null` removes it. */
+export interface AgentLimitsInput {
+  /** The most steps one run may take, in whole steps. */
+  readonly steps?: number | null;
+  /** What the agent may spend, in US dollars: `run`, `chat`, and `warn` as fractions of `run`. */
+  readonly cost?: {
+    readonly run: number;
+    readonly chat?: number;
+    readonly warn?: readonly number[];
+  } | null;
+  /** What one run's tools may use: a count of `calls`, and `seconds` of running. */
+  readonly tools?: {
+    readonly calls?: number;
+    readonly seconds?: number;
+  } | null;
+}
 
 const problemSchema = z.object({
   code: z.string(),
@@ -313,8 +336,11 @@ export type AgentDefinitionInput = {
   readonly children?: readonly string[] | null;
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
   readonly a2a?: boolean;
-  /** The most steps a run may take. `null` removes the limit; left out, an update keeps the file's. */
-  readonly stepLimit?: number | null;
+  /**
+   * What a run may take, spend and use. `null` removes every limit; left out, an update keeps the
+   * file's. Inside it, a limit left out keeps the file's and `null` removes it.
+   */
+  readonly limits?: AgentLimitsInput | null;
   /** The plugin guardrails (`plugin:name`). `null` removes them; left out, an update keeps the file's. */
   readonly guardrails?: readonly string[] | null;
   /**
@@ -326,17 +352,6 @@ export type AgentDefinitionInput = {
   readonly compaction?: AgentDefinition['compaction'];
   /** The plugin interceptors (`plugin:name`); carried like `retry`. */
   readonly interceptors?: readonly string[] | null;
-  /** What one run, and one chat, may spend. `null` removes the limit; left out, an update keeps the file's. */
-  readonly costBudget?: {
-    readonly perRunUsd: number;
-    readonly perChatUsd?: number;
-    readonly warnAt?: readonly number[];
-  } | null;
-  /** What one run's tools may use. `null` removes the limit; left out, an update keeps the file's. */
-  readonly toolBudget?: {
-    readonly maxCalls?: number;
-    readonly maxDurationSeconds?: number;
-  } | null;
   /**
    * When each tool asks first. `null` removes the map; left out, an update keeps the file's. A
    * key must be one of `tools`, or the Bureau refuses the write.

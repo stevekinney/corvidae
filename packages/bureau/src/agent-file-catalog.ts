@@ -84,7 +84,7 @@ import { createAgentSkills } from './agent-skills';
 import {
   AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT,
   AGENT_FILE_SIZE_LIMIT,
-  type AgentCostBudget,
+  type AgentCostLimit,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
   type AgentFileIssue,
@@ -394,18 +394,17 @@ export function readFileAgentBinding(agent: object): FileAgentBinding | undefine
 
 const fileAgentCostBudgets = new WeakMap<
   object,
-  { readonly budget: AgentCostBudget; readonly models: readonly string[] | undefined }
+  { readonly budget: AgentCostLimit; readonly models: readonly string[] | undefined }
 >();
 
 /**
- * The `costBudget` of the file agent `agent` was built from, and the `models` list that says which
+ * The `limits.cost` of the file agent `agent` was built from, and the `models` list that says which
  * rows a session of it may be switched to (COR-1921). Unlike {@link readFileAgentBinding} it also
  * answers for an `ephemeral` agent, whose budget is enforced all the same.
  */
 export function readFileAgentCostBudget(
   agent: object,
-):
-  { readonly budget: AgentCostBudget; readonly models: readonly string[] | undefined } | undefined {
+): { readonly budget: AgentCostLimit; readonly models: readonly string[] | undefined } | undefined {
   return fileAgentCostBudgets.get(agent);
 }
 
@@ -891,14 +890,14 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
     const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
     if (isProblem(resolved)) return { problem: resolved };
-    if (definition.costBudget !== undefined && usdPricingOfRow(resolved) === undefined) {
+    if (definition.limits?.cost !== undefined && usdPricingOfRow(resolved) === undefined) {
       return {
         problem: {
           code: 'invalid-frontmatter',
-          message: `The model "${definition.model}" has no price in US dollars in the model catalog, so the file's costBudget could not be enforced. Use a model that has one, or remove costBudget.`,
+          message: `The model "${definition.model}" has no price in US dollars in the model catalog, so the file's limits.cost could not be enforced. Use a model that has one, or remove limits.cost.`,
           issues: [
             {
-              path: 'costBudget',
+              path: 'limits.cost',
               message: `"${definition.model}" has no price in US dollars in the model catalog`,
             },
           ],
@@ -1088,7 +1087,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         allowed: () =>
           allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
         resolveGenerate: options.resolveGenerate,
-        costBudgeted: definition.costBudget !== undefined,
+        costBudgeted: definition.limits?.cost !== undefined,
         // COR-1980: read at each step, so the policy as it is then binds a file saved before it.
         policyDenial: (row) => modelPolicyDenialOf(row, options.modelPolicy?.()),
         // COR-1961: the file's default effort, seeded per step against the row the step uses.
@@ -1130,9 +1129,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           }),
           // COR-1915: the toolbox is built for this run, so its counters are the run's own. It
           // counts every call the run makes through it, the tools Bureau adds included.
-          ...(definition.toolBudget === undefined
+          ...(definition.limits?.tools === undefined
             ? {}
-            : { budget: toolboxBudgetOf(definition.toolBudget) }),
+            : { budget: toolboxBudgetOf(definition.limits.tools) }),
           ...(options.approvalSecret === undefined
             ? {}
             : { approvalSecret: options.approvalSecret }),
@@ -1148,14 +1147,14 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // added to it (COR-1877), and so are the plugin interceptors to the agent's hook tier.
       ...optionalGuardrailAdditions(definition),
       ...optionalInterceptors(definition),
-      ...(definition.costBudget === undefined
+      ...(definition.limits?.cost === undefined
         ? {}
         : costBudgetOptions(
-            definition.costBudget,
+            definition.limits.cost,
             descriptor,
             allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
           )),
-      ...(definition.stepLimit === undefined ? {} : { maximumSteps: definition.stepLimit }),
+      ...(definition.limits?.steps === undefined ? {} : { maximumSteps: definition.limits.steps }),
       ...contextManagementOf(id, definition, descriptor),
       ...(definition.retry === undefined
         ? {}
@@ -1168,8 +1167,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             },
           }),
     }) as AnyRunnableAgent;
-    if (definition.costBudget !== undefined) {
-      fileAgentCostBudgets.set(agent, { budget: definition.costBudget, models: definition.models });
+    if (definition.limits?.cost !== undefined) {
+      fileAgentCostBudgets.set(agent, {
+        budget: definition.limits.cost,
+        models: definition.models,
+      });
     }
     // An agent that is not tied to a file (`ephemeral`) has no binding, so a run of it records no
     // snapshot and no hash: nothing about it outlives the run's own records.

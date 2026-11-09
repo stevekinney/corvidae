@@ -1,6 +1,6 @@
 /**
- * COR-1915 — an agent file's `toolBudget` (`maxCalls`, `maxDurationSeconds`) and the perChatUsd
- * half of `costBudget` in the file: what the format accepts, how a write keeps, changes and removes
+ * COR-1915 — an agent file's `limits.tools` (`calls`, `seconds`) and the `chat`
+ * half of `limits.cost` in the file: what the format accepts, how a write keeps, changes and removes
  * them, how seconds become Armorer's milliseconds, and that a run over its tool budget finishes
  * `budget-exceeded` with a reason that names the limit.
  */
@@ -27,50 +27,46 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe('toolBudget in the frontmatter', () => {
+describe('limits.tools in the frontmatter', () => {
   it('parses either limit or both, and a file without the key has none', () => {
     expect(
-      parsed('---\nmodel: a/b\ntoolBudget: { maxCalls: 5 }\n---\n').definition.toolBudget,
-    ).toEqual({ maxCalls: 5 });
+      parsed('---\nmodel: a/b\nlimits: { tools: { calls: 5 } }\n---\n').definition.limits?.tools,
+    ).toEqual({ calls: 5 });
     expect(
-      parsed('---\nmodel: a/b\ntoolBudget: { maxDurationSeconds: 90.5 }\n---\n').definition
-        .toolBudget,
-    ).toEqual({ maxDurationSeconds: 90.5 });
+      parsed('---\nmodel: a/b\nlimits: { tools: { seconds: 90.5 } }\n---\n').definition.limits
+        ?.tools,
+    ).toEqual({ seconds: 90.5 });
     expect(
-      parsed('---\nmodel: a/b\ntoolBudget: { maxCalls: 5, maxDurationSeconds: 60 }\n---\n')
-        .definition.toolBudget,
-    ).toEqual({ maxCalls: 5, maxDurationSeconds: 60 });
-    expect(parsed('---\nmodel: a/b\n---\n').definition).not.toHaveProperty('toolBudget');
+      parsed('---\nmodel: a/b\nlimits: { tools: { calls: 5, seconds: 60 } }\n---\n').definition
+        .limits?.tools,
+    ).toEqual({ calls: 5, seconds: 60 });
+    expect(parsed('---\nmodel: a/b\n---\n').definition).not.toHaveProperty('limits');
   });
 
   it('refuses a limit that is not a positive amount, an unknown key, and a budget with no limit', () => {
-    expect(issuePaths('toolBudget: { maxCalls: 0 }')).toEqual(['toolBudget.maxCalls']);
-    expect(issuePaths('toolBudget: { maxCalls: 1.5 }')).toEqual(['toolBudget.maxCalls']);
-    expect(issuePaths('toolBudget: { maxCalls: 1000000 }')).toEqual(['toolBudget.maxCalls']);
-    expect(issuePaths('toolBudget: { maxDurationSeconds: 0 }')).toEqual([
-      'toolBudget.maxDurationSeconds',
-    ]);
-    expect(issuePaths('toolBudget: { maxDurationSeconds: 100000 }')).toEqual([
-      'toolBudget.maxDurationSeconds',
-    ]);
-    expect(issuePaths('toolBudget: { maxCalls: 1, maxDuration: 2 }')).toEqual(['toolBudget']);
-    expect(issuePaths('toolBudget: {}')).toEqual(['toolBudget']);
+    expect(issuePaths('limits: { tools: { calls: 0 } }')).toEqual(['limits.tools.calls']);
+    expect(issuePaths('limits: { tools: { calls: 1.5 } }')).toEqual(['limits.tools.calls']);
+    expect(issuePaths('limits: { tools: { calls: 1000000 } }')).toEqual(['limits.tools.calls']);
+    expect(issuePaths('limits: { tools: { seconds: 0 } }')).toEqual(['limits.tools.seconds']);
+    expect(issuePaths('limits: { tools: { seconds: 100000 } }')).toEqual(['limits.tools.seconds']);
+    expect(issuePaths('limits: { tools: { calls: 1, maxDuration: 2 } }')).toEqual(['limits.tools']);
+    expect(issuePaths('limits: { tools: {} }')).toEqual(['limits.tools']);
   });
 
   it('maps seconds to Armorer’s milliseconds and leaves out a limit the file does not set', () => {
-    expect(toolboxBudgetOf({ maxCalls: 3 })).toEqual({ maxCalls: 3 });
-    expect(toolboxBudgetOf({ maxDurationSeconds: 1.5 })).toEqual({ maxDurationMs: 1500 });
-    expect(toolboxBudgetOf({ maxCalls: 3, maxDurationSeconds: 60 })).toEqual({
+    expect(toolboxBudgetOf({ calls: 3 })).toEqual({ maxCalls: 3 });
+    expect(toolboxBudgetOf({ seconds: 1.5 })).toEqual({ maxDurationMs: 1500 });
+    expect(toolboxBudgetOf({ calls: 3, seconds: 60 })).toEqual({
       maxCalls: 3,
       maxDurationMs: 60_000,
     });
   });
 });
 
-describe('writing toolBudget and perChatUsd', () => {
+describe('writing limits.tools and limits.cost.chat', () => {
   const file = () =>
     parsed(
-      '---\nmodel: a/b\ncostBudget: { perRunUsd: 1, perChatUsd: 4 }\ntoolBudget: { maxCalls: 5 }\ncolor: blue\n---\nBody.\n',
+      '---\nmodel: a/b\nlimits: { cost: { run: 1, chat: 4 }, tools: { calls: 5 } }\ncolor: blue\n---\nBody.\n',
     );
 
   it('keeps both when an update leaves them out, and changes them when it states them', () => {
@@ -82,8 +78,7 @@ describe('writing toolBudget and perChatUsd', () => {
       }),
     );
     expect(parsed(kept).definition).toMatchObject({
-      costBudget: { perRunUsd: 1, perChatUsd: 4 },
-      toolBudget: { maxCalls: 5 },
+      limits: { cost: { run: 1, chat: 4 }, tools: { calls: 5 } },
     });
     expect(kept).toContain('color: blue');
 
@@ -91,36 +86,33 @@ describe('writing toolBudget and perChatUsd', () => {
       decoder.decode(
         serializeUpdatedAgentFile('helper', file(), {
           model: 'a/b',
-          costBudget: { perRunUsd: 1, perChatUsd: 9 },
-          toolBudget: { maxCalls: 2, maxDurationSeconds: 30 },
+          limits: { cost: { run: 1, chat: 9 }, tools: { calls: 2, seconds: 30 } },
           instructions: 'Body.\n',
         }),
       ),
     );
-    expect(changed.definition.costBudget).toEqual({ perRunUsd: 1, perChatUsd: 9 });
-    expect(changed.definition.toolBudget).toEqual({ maxCalls: 2, maxDurationSeconds: 30 });
+    expect(changed.definition.limits?.cost).toEqual({ run: 1, chat: 9 });
+    expect(changed.definition.limits?.tools).toEqual({ calls: 2, seconds: 30 });
   });
 
-  it('removes a toolBudget the update sets to null, and a perChatUsd an update drops', () => {
+  it('removes limits.tools the update sets to null, and a limits.cost.chat an update drops', () => {
     const removed = decoder.decode(
       serializeUpdatedAgentFile('helper', file(), {
         model: 'a/b',
-        costBudget: { perRunUsd: 1 },
-        toolBudget: null,
+        limits: { cost: { run: 1 }, tools: null },
         instructions: 'Body.\n',
       }),
     );
-    expect(removed).not.toContain('toolBudget');
-    expect(removed).not.toContain('perChatUsd');
-    expect(parsed(removed).definition).not.toHaveProperty('toolBudget');
+    expect(removed).not.toContain('tools');
+    expect(removed).not.toContain('chat');
+    expect(parsed(removed).definition.limits).toEqual({ cost: { run: 1 } });
   });
 
   it('rewrites nothing when the update states what the file has', () => {
     expect(
       serializeUpdatedAgentFile('helper', file(), {
         model: 'a/b',
-        costBudget: { perRunUsd: 1, perChatUsd: 4 },
-        toolBudget: { maxCalls: 5 },
+        limits: { cost: { run: 1, chat: 4 }, tools: { calls: 5 } },
         instructions: 'Body.\n',
       }),
     ).toBeUndefined();
@@ -128,7 +120,7 @@ describe('writing toolBudget and perChatUsd', () => {
 });
 
 describe.each(['non-durable', 'durable'] as const)(
-  'a file agent’s toolBudget, %s dispatch',
+  'a file agent’s limits.tools, %s dispatch',
   (dispatch) => {
     const harnesses: FileBureauHarness[] = [];
     afterEach(async () => {
@@ -162,7 +154,7 @@ describe.each(['non-durable', 'durable'] as const)(
     }
 
     it('ends a run that has used its calls as budget-exceeded, naming the limit, and asks the model for nothing more', async () => {
-      const { result, generations } = await run({ toolBudget: '{ maxCalls: 2 }' }, 10);
+      const { result, generations } = await run({ limits: '{ tools: { calls: 2 } }' }, 10);
       expect(result.finishReason).toBe('budget-exceeded');
       expect(result.error instanceof Error ? result.error.message : '').toContain('max calls 2');
       // Two calls ran; the third was refused and the run stopped there.
@@ -170,7 +162,7 @@ describe.each(['non-durable', 'durable'] as const)(
     });
 
     it('lets a run that stays within its calls finish', async () => {
-      const { result, generations } = await run({ toolBudget: '{ maxCalls: 5 }' }, 3);
+      const { result, generations } = await run({ limits: '{ tools: { calls: 5 } }' }, 3);
       expect(result.finishReason).toBe('stop-condition');
       expect(generations).toBe(3);
     });

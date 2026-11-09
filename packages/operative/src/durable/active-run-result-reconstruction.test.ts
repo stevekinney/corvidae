@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MaximumStepsExceededError } from '../errors';
+import { type GuardrailPhase, GuardrailTripwireError, MaximumStepsExceededError } from '../errors';
 import { reconstructTerminalRunError } from './active-run-result-reconstruction';
 import {
   AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
   type AgentRunWorkflowResult,
   normalizeAgentRunWorkflowResult,
+  tripwireDetailFrom,
 } from './run-workflow-result';
 
 /**
@@ -78,4 +79,47 @@ describe('reconstructing the terminal error of a durable run that ended at a ste
       'Agent run exceeded maximumSteps (2).',
     );
   });
+});
+
+/**
+ * COR-2103 — a tripwire's phase is stored on the durable run summary and rebuilt from it. The
+ * tool-result phase (and the tool-call phase a tool-call guardrail will use) round-trip through the
+ * stored record, and a summary written before them, with `input` or `output`, still reads.
+ */
+describe('reconstructing the terminal error of a durable run a guardrail tripped', () => {
+  it.each(['input', 'output', 'tool-call', 'tool-result'] satisfies GuardrailPhase[])(
+    'round-trips phase %s through the stored summary',
+    (phase) => {
+      const tripped = new GuardrailTripwireError('tripped', {
+        guardrailName: 'sentinel',
+        category: 'prompt-injection',
+        phase,
+        confidence: 0.95,
+        detail: 'matched',
+      });
+      const written: AgentRunWorkflowResult = {
+        schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+        runId: `tripwire-${phase}`,
+        steps: 1,
+        content: '',
+        parts: [],
+        finishReason: 'tripwire',
+        errorMessage: tripped.message,
+        tripwire: tripwireDetailFrom(tripped),
+      };
+
+      const summary = normalizeAgentRunWorkflowResult(JSON.parse(JSON.stringify(written)));
+      const rebuilt = reconstructTerminalRunError(summary);
+
+      expect(summary).toEqual(written);
+      expect(rebuilt).toBeInstanceOf(GuardrailTripwireError);
+      expect(rebuilt).toMatchObject({
+        guardrailName: 'sentinel',
+        category: 'prompt-injection',
+        phase,
+        confidence: 0.95,
+        detail: 'matched',
+      });
+    },
+  );
 });

@@ -396,7 +396,7 @@ describe('a built-in agent’s override versions (COR-2009)', () => {
     const catalog = createAgentCatalog({ writer: agent('writer') }, { codeAgentRuns: { runtime } });
     const { hash } = (await catalog.overrides.get('writer'))!;
 
-    await catalog.overrides.save('writer', { stepLimit: 5 }, { expectedHash: hash });
+    await catalog.overrides.save('writer', { limits: { steps: 5 } }, { expectedHash: hash });
 
     const [version] = await catalog.overrides.versions('writer');
     expect(version?.savedAt).toBe('2026-11-02T15:00:00.000Z');

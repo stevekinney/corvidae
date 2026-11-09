@@ -486,8 +486,10 @@ test.beforeAll(async ({ playwright }) => {
       instructions: LONG_INSTRUCTIONS,
       // The Access tab's largest values, and a tool that asks every time.
       approvals: { 'demo:lookup-order': 'always' },
-      costBudget: { perRunUsd: 1_000_000, perChatUsd: 1_000_000 },
-      toolBudget: { maxCalls: 100_000, maxDurationSeconds: 86_400 },
+      limits: {
+        cost: { run: 1_000_000, chat: 1_000_000 },
+        tools: { calls: 100_000, seconds: 86_400 },
+      },
     });
     await runToEnd(request, 'demo:assistant', CHAT_THREAD, 'Say hello');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, MEMORY_THREAD, LONG_MEMORY);

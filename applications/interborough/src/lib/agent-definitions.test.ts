@@ -163,6 +163,57 @@ describe('the default effort', () => {
   });
 });
 
+describe('the limits', () => {
+  test('get reads the steps, cost and tools limits a file sets, and null for each it does not', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent(),
+        definition: {
+          ...readyAgent().definition,
+          limits: { steps: 12, cost: { run: 2, chat: 5, warn: [0.5] }, tools: null },
+        },
+      }),
+    });
+    const set = await getAgentDefinition('researcher');
+    expect(set.definition?.limits).toEqual({
+      steps: 12,
+      cost: { run: 2, chat: 5, warn: [0.5] },
+      tools: null,
+    });
+    stub.restore();
+    stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
+    const unset = await getAgentDefinition('researcher');
+    expect(unset.definition?.limits).toEqual({ steps: null, cost: null, tools: null });
+  });
+
+  test('get reads a definition without limits as having none', async () => {
+    const { limits: _omitted, ...older } = readyAgent().definition ?? {};
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({ ...readyAgent(), definition: older }),
+    });
+    const read = await getAgentDefinition('researcher');
+    expect(read.definition?.limits).toEqual({ steps: null, cost: null, tools: null });
+  });
+
+  test('update sends the limits it is given under that key, and nothing when the definition has none', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
+    });
+
+    await updateAgent('researcher', 'hash-1', {
+      ...definition,
+      limits: { cost: { run: 1 }, tools: { calls: 3, seconds: 60 } },
+    });
+    await updateAgent('researcher', 'hash-1', definition);
+
+    expect(stub.calls[0]?.params).toMatchObject({
+      definition: { limits: { cost: { run: 1 }, tools: { calls: 3, seconds: 60 } } },
+    });
+    expect(stub.calls[0]?.params).not.toHaveProperty('definition.limits.steps');
+    expect(stub.calls[1]?.params).not.toHaveProperty('definition.limits');
+  });
+});
+
 describe('the operations', () => {
   test('get asks for one agent by identifier and parses its detail', async () => {
     stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });

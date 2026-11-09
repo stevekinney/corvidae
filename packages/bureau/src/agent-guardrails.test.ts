@@ -14,10 +14,14 @@ import {
   createAgent,
   createLazyAgent,
   type GenerateFunction,
+  GuardrailTripwireError,
   type GuardrailsOptions,
   type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type RunResult,
 } from '@lostgradient/operative';
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
 import { afterAll, describe, expect, it } from 'bun:test';
 
@@ -141,6 +145,75 @@ describe('guardrails registered exactly once', () => {
     }
   });
 });
+
+/**
+ * COR-2103 — a catalog dispatch scans what a tool answered with the same input detectors. The
+ * agent tier carries them for a `createAgent` agent, Bureau's tier for a lazy one; the durable
+ * dispatch also carries the halt's `tool-result` phase through its stored run record.
+ */
+describe.each(['non-durable', 'durable'] as const)(
+  'tool results under the AB-40 preset, %s dispatch',
+  (dispatch) => {
+    function readerAgent(page: string) {
+      let generateCalls = 0;
+      const agent = createAgent({
+        name: 'reader',
+        generate: async () => {
+          generateCalls += 1;
+          return generateCalls === 1
+            ? { content: '', toolCalls: [{ id: 'call-1', name: 'fetch', arguments: {} }] }
+            : { content: 'done', toolCalls: [] };
+        },
+        toolbox: createToolbox([
+          createTool({
+            name: 'fetch',
+            description: 'Fetches a page',
+            input: z.object({}),
+            execute: async () => ({ body: page }),
+          }),
+        ]),
+      });
+      return { agent, generateCalls: () => generateCalls };
+    }
+
+    async function dispatchReader(
+      wrap: 'agent' | 'lazy',
+      page: string,
+    ): Promise<{ result: RunResult<unknown>; generateCalls: number }> {
+      const reader = readerAgent(page);
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          reader: wrap === 'lazy' ? createLazyAgent(async () => reader.agent) : reader.agent,
+        },
+        storage: new MemoryStorage(),
+        ...(dispatch === 'durable' ? { durable: true } : {}),
+      });
+      try {
+        const result = await runTask(bureau, 'reader', 'Read the page.');
+        return { result, generateCalls: reader.generateCalls() };
+      } finally {
+        await bureau.dispose();
+      }
+    }
+
+    it.each(['agent', 'lazy'] as const)(
+      '%s tier: an injected tool result halts the run at the tool-result phase',
+      async (wrap) => {
+        const { result, generateCalls } = await dispatchReader(wrap, INJECTION);
+        expect(result.finishReason).toBe('tripwire');
+        expect(result.error).toBeInstanceOf(GuardrailTripwireError);
+        expect((result.error as GuardrailTripwireError).phase).toBe('tool-result');
+        expect(generateCalls).toBe(1);
+      },
+    );
+
+    it('a clean tool result runs to completion', async () => {
+      const { result, generateCalls } = await dispatchReader('agent', 'a clean page');
+      expect(result.finishReason).toBe('stop-condition');
+      expect(generateCalls).toBe(2);
+    });
+  },
+);
 
 describe('agent skills', () => {
   const roots: string[] = [];

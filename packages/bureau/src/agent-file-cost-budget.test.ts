@@ -1,7 +1,7 @@
 /**
- * COR-1914 — an agent file's `costBudget`: what it accepts, how a write keeps it, that a file whose
+ * COR-1914 — an agent file's `limits.cost`: what it accepts, how a write keeps it, that a file whose
  * model has no price is not usable, that it is enforced on a real run (ending it with
- * `budget-exceeded` and a reason that names `perRunUsd`), and that a crossed `warnAt` fraction
+ * `budget-exceeded` and a reason that names `perRunUsd`), and that a crossed `warn` fraction
  * shows once in the run's activity (the `operative.runs.events` feed and the audit trail).
  */
 import {
@@ -53,103 +53,96 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe('costBudget in the frontmatter', () => {
-  it('parses perRunUsd with and without warnAt, and a file without the key has none', () => {
+describe('limits.cost in the frontmatter', () => {
+  it('parses run with and without warn, and a file without the key has none', () => {
     expect(
-      parsed('---\nmodel: a/b\ncostBudget:\n  perRunUsd: 0.5\n---\n').definition.costBudget,
-    ).toEqual({ perRunUsd: 0.5 });
+      parsed('---\nmodel: a/b\nlimits:\n  cost:\n    run: 0.5\n---\n').definition.limits?.cost,
+    ).toEqual({ run: 0.5 });
     expect(
-      parsed('---\nmodel: a/b\ncostBudget: { perRunUsd: 2, warnAt: [0.5, 0.9] }\n---\n').definition
-        .costBudget,
-    ).toEqual({ perRunUsd: 2, warnAt: [0.5, 0.9] });
-    expect(Object.hasOwn(parsed('---\nmodel: a/b\n---\n').definition, 'costBudget')).toBe(false);
+      parsed('---\nmodel: a/b\nlimits: { cost: { run: 2, warn: [0.5, 0.9] } }\n---\n').definition
+        .limits?.cost,
+    ).toEqual({ run: 2, warn: [0.5, 0.9] });
+    expect(Object.hasOwn(parsed('---\nmodel: a/b\n---\n').definition, 'limits')).toBe(false);
     expect(
-      Object.hasOwn(parsed('---\nmodel: a/b\ncostBudget:\n---\n').definition, 'costBudget'),
+      Object.hasOwn(
+        parsed('---\nmodel: a/b\nlimits:\n  cost:\n---\n').definition.limits?.cost ?? {},
+        'run',
+      ),
     ).toBe(false);
   });
 
-  it('holds warnAt sorted and without repeats, and drops an empty list', () => {
+  it('holds warn sorted and without repeats, and drops an empty list', () => {
     const unsorted = parsed(
-      '---\nmodel: a/b\ncostBudget: { perRunUsd: 1, warnAt: [0.9, 0.5, 0.9, 0.25] }\n---\n',
+      '---\nmodel: a/b\nlimits: { cost: { run: 1, warn: [0.9, 0.5, 0.9, 0.25] } }\n---\n',
     );
-    expect(unsorted.definition.costBudget).toEqual({ perRunUsd: 1, warnAt: [0.25, 0.5, 0.9] });
-    const empty = parsed('---\nmodel: a/b\ncostBudget: { perRunUsd: 1, warnAt: [] }\n---\n');
-    expect(empty.definition.costBudget).toEqual({ perRunUsd: 1 });
+    expect(unsorted.definition.limits?.cost).toEqual({ run: 1, warn: [0.25, 0.5, 0.9] });
+    const empty = parsed('---\nmodel: a/b\nlimits: { cost: { run: 1, warn: [] } }\n---\n');
+    expect(empty.definition.limits?.cost).toEqual({ run: 1 });
   });
 
   it('names the field of a value it refuses', () => {
-    expect(issuePaths('costBudget: { perRunUsd: 0 }')).toEqual(['costBudget.perRunUsd']);
-    expect(issuePaths('costBudget: { perRunUsd: -1 }')).toEqual(['costBudget.perRunUsd']);
-    expect(issuePaths('costBudget: { perRunUsd: cheap }')).toEqual(['costBudget.perRunUsd']);
-    expect(issuePaths('costBudget: { perRunUsd: 2000000 }')).toEqual(['costBudget.perRunUsd']);
-    expect(issuePaths('costBudget: { warnAt: [0.5] }')).toEqual(['costBudget.perRunUsd']);
-    expect(issuePaths('costBudget: { perRunUsd: 1, warnAt: [0] }')).toEqual([
-      'costBudget.warnAt.0',
+    expect(issuePaths('limits: { cost: { run: 0 } }')).toEqual(['limits.cost.run']);
+    expect(issuePaths('limits: { cost: { run: -1 } }')).toEqual(['limits.cost.run']);
+    expect(issuePaths('limits: { cost: { run: cheap } }')).toEqual(['limits.cost.run']);
+    expect(issuePaths('limits: { cost: { run: 2000000 } }')).toEqual(['limits.cost.run']);
+    expect(issuePaths('limits: { cost: { warn: [0.5] } }')).toEqual(['limits.cost.run']);
+    expect(issuePaths('limits: { cost: { run: 1, warn: [0] } }')).toEqual(['limits.cost.warn.0']);
+    expect(issuePaths('limits: { cost: { run: 1, warn: [0.5, 1] } }')).toEqual([
+      'limits.cost.warn.1',
     ]);
-    expect(issuePaths('costBudget: { perRunUsd: 1, warnAt: [0.5, 1] }')).toEqual([
-      'costBudget.warnAt.1',
-    ]);
-    expect(issuePaths('costBudget: { perRunUsd: 1, warnAt: [1.5] }')).toEqual([
-      'costBudget.warnAt.0',
-    ]);
-    expect(issuePaths('costBudget: 5')).toEqual(['costBudget']);
-    expect(issuePaths('costBudget: [1]')).toEqual(['costBudget']);
+    expect(issuePaths('limits: { cost: { run: 1, warn: [1.5] } }')).toEqual(['limits.cost.warn.0']);
+    expect(issuePaths('limits: { cost: 5 }')).toEqual(['limits.cost']);
+    expect(issuePaths('limits: { cost: [1] }')).toEqual(['limits.cost']);
     const eleven = Array.from({ length: 11 }, (_, index) => (index + 1) / 20).join(', ');
-    expect(issuePaths(`costBudget: { perRunUsd: 1, warnAt: [${eleven}] }`)).toEqual([
-      'costBudget.warnAt',
+    expect(issuePaths(`limits: { cost: { run: 1, warn: [${eleven}] } }`)).toEqual([
+      'limits.cost.warn',
     ]);
   });
 
-  it('parses perChatUsd beside perRunUsd, and refuses one that is not a positive dollar amount', () => {
+  it('parses chat beside run, and refuses one that is not a positive dollar amount', () => {
     expect(
-      parsed('---\nmodel: a/b\ncostBudget: { perRunUsd: 1, perChatUsd: 5 }\n---\n').definition
-        .costBudget,
-    ).toEqual({ perRunUsd: 1, perChatUsd: 5 });
-    expect(issuePaths('costBudget: { perRunUsd: 1, perChatUsd: 0 }')).toEqual([
-      'costBudget.perChatUsd',
-    ]);
-    expect(issuePaths('costBudget: { perRunUsd: 1, perChatUsd: cheap }')).toEqual([
-      'costBudget.perChatUsd',
-    ]);
-    expect(issuePaths('costBudget: { perRunUsd: 1, perChatUsd: 2000000 }')).toEqual([
-      'costBudget.perChatUsd',
-    ]);
+      parsed('---\nmodel: a/b\nlimits: { cost: { run: 1, chat: 5 } }\n---\n').definition.limits
+        ?.cost,
+    ).toEqual({ run: 1, chat: 5 });
+    expect(issuePaths('limits: { cost: { run: 1, chat: 0 } }')).toEqual(['limits.cost.chat']);
+    expect(issuePaths('limits: { cost: { run: 1, chat: cheap } }')).toEqual(['limits.cost.chat']);
+    expect(issuePaths('limits: { cost: { run: 1, chat: 2000000 } }')).toEqual(['limits.cost.chat']);
   });
 });
 
-describe('writing costBudget', () => {
+describe('writing limits.cost', () => {
   it('writes a new file that parses back to the same budget', () => {
     const text = decoder.decode(
       serializeNewAgentFile({
         model: 'a/b',
-        costBudget: { perRunUsd: 0.75, warnAt: [0.5, 0.9] },
+        limits: { cost: { run: 0.75, warn: [0.5, 0.9] } },
         instructions: 'Body.\n',
       }),
     );
-    expect(text).toContain('costBudget:');
-    expect(parsed(text).definition.costBudget).toEqual({ perRunUsd: 0.75, warnAt: [0.5, 0.9] });
+    expect(text).toContain('cost:');
+    expect(parsed(text).definition.limits?.cost).toEqual({ run: 0.75, warn: [0.5, 0.9] });
   });
 
-  it('writes warnAt sorted and without repeats however the caller gave it', () => {
+  it('writes warn sorted and without repeats however the caller gave it', () => {
     const text = decoder.decode(
       serializeNewAgentFile({
         model: 'a/b',
-        costBudget: { perRunUsd: 1, warnAt: [0.9, 0.5, 0.9] },
+        limits: { cost: { run: 1, warn: [0.9, 0.5, 0.9] } },
         instructions: 'Body.\n',
       }),
     );
-    expect(parsed(text).definition.costBudget?.warnAt).toEqual([0.5, 0.9]);
+    expect(parsed(text).definition.limits?.cost?.warn).toEqual([0.5, 0.9]);
     expect(text.indexOf('0.5')).toBeLessThan(text.indexOf('0.9'));
   });
 
   it('writes no key when the definition sets none', () => {
     const text = decoder.decode(serializeNewAgentFile({ model: 'a/b', instructions: 'Body.\n' }));
-    expect(text).not.toContain('costBudget');
+    expect(text).not.toContain('limits');
   });
 
   it('keeps the budget when an update leaves it out, and adds none to a file without one', () => {
     const file = parsed(
-      '---\nmodel: a/b\ncostBudget: { perRunUsd: 1, warnAt: [0.5] }\ncolor: blue\n---\nBody.\n',
+      '---\nmodel: a/b\nlimits: { cost: { run: 1, warn: [0.5] } }\ncolor: blue\n---\nBody.\n',
     );
     const kept = decoder.decode(
       serializeUpdatedAgentFile('helper', file, {
@@ -160,7 +153,7 @@ describe('writing costBudget', () => {
     );
     expect(parsed(kept).definition).toMatchObject({
       name: 'Named',
-      costBudget: { perRunUsd: 1, warnAt: [0.5] },
+      limits: { cost: { run: 1, warn: [0.5] } },
     });
     expect(kept).toContain('color: blue');
 
@@ -172,38 +165,38 @@ describe('writing costBudget', () => {
         instructions: 'Body.\n',
       }),
     );
-    expect(renamed).not.toContain('costBudget');
+    expect(renamed).not.toContain('limits');
   });
 
   it('changes a budget the update states, and removes one the update sets to null', () => {
-    const file = parsed('---\nmodel: a/b\ncostBudget: { perRunUsd: 1 }\n---\nBody.\n');
+    const file = parsed('---\nmodel: a/b\nlimits: { cost: { run: 1 } }\n---\nBody.\n');
     const changed = parsed(
       decoder.decode(
         serializeUpdatedAgentFile('helper', file, {
           model: 'a/b',
-          costBudget: { perRunUsd: 3, warnAt: [0.8] },
+          limits: { cost: { run: 3, warn: [0.8] } },
           instructions: 'Body.\n',
         }),
       ),
     );
-    expect(changed.definition.costBudget).toEqual({ perRunUsd: 3, warnAt: [0.8] });
+    expect(changed.definition.limits?.cost).toEqual({ run: 3, warn: [0.8] });
 
     const removed = decoder.decode(
       serializeUpdatedAgentFile('helper', changed, {
         model: 'a/b',
-        costBudget: null,
+        limits: { cost: null },
         instructions: 'Body.\n',
       }),
     );
-    expect(removed).not.toContain('costBudget');
-    expect(parsed(removed).definition).not.toHaveProperty('costBudget');
+    expect(removed).not.toContain('limits');
+    expect(parsed(removed).definition).not.toHaveProperty('limits');
   });
 
   it('rewrites nothing when the update states the budget the file has, in any order', () => {
     const file = parsed(
-      '---\nmodel: a/b\ncostBudget: { perRunUsd: 1, warnAt: [0.5, 0.9] }\n---\nBody.\n',
+      '---\nmodel: a/b\nlimits: { cost: { run: 1, warn: [0.5, 0.9] } }\n---\nBody.\n',
     );
-    for (const warnAt of [
+    for (const warn of [
       [0.5, 0.9],
       [0.9, 0.5],
       [0.9, 0.5, 0.9],
@@ -211,18 +204,18 @@ describe('writing costBudget', () => {
       expect(
         serializeUpdatedAgentFile('helper', file, {
           model: 'a/b',
-          costBudget: { perRunUsd: 1, warnAt },
+          limits: { cost: { run: 1, warn } },
           instructions: 'Body.\n',
         }),
       ).toBeUndefined();
     }
     const unsorted = parsed(
-      '---\nmodel: a/b\ncostBudget: { perRunUsd: 1, warnAt: [0.9, 0.5] }\n---\nBody.\n',
+      '---\nmodel: a/b\nlimits: { cost: { run: 1, warn: [0.9, 0.5] } }\n---\nBody.\n',
     );
     expect(
       serializeUpdatedAgentFile('helper', unsorted, {
         model: 'a/b',
-        costBudget: { perRunUsd: 1, warnAt: [0.5, 0.9] },
+        limits: { cost: { run: 1, warn: [0.5, 0.9] } },
         instructions: 'Body.\n',
       }),
     ).toBeUndefined();
@@ -241,15 +234,15 @@ describe('a stored definition', () => {
   };
 
   it('loads when it was written before the field existed', () => {
-    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).costBudget).toBeUndefined();
+    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).limits).toBeUndefined();
   });
 
   it('keeps a budget when it has one, and refuses one that is not a budget', () => {
     expect(
-      agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, costBudget: { perRunUsd: 2 } }),
-    ).toMatchObject({ costBudget: { perRunUsd: 2 } });
+      agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, limits: { cost: { run: 2 } } }),
+    ).toMatchObject({ limits: { cost: { run: 2 } } });
     expect(
-      agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, costBudget: { perRunUsd: 0 } })
+      agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, limits: { cost: { run: 0 } } })
         .success,
     ).toBe(false);
   });
@@ -323,7 +316,7 @@ describe('prices from the catalog', () => {
   it('enters a switched model with no price as unpriced, even one Operative’s table knows (COR-1921)', () => {
     const catalog = createModelCatalog().descriptors;
     const known = catalog.find((row) => row.model === 'claude-opus-5')!;
-    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [
+    const { costEstimation } = costBudgetOptions({ run: 1 }, opus, [
       { ...known, pricing: undefined },
     ]);
     const pricing = costEstimation?.pricing;
@@ -337,7 +330,7 @@ describe('prices from the catalog', () => {
 
   it('prices a bare model name by the first row that serves it, and each provider’s row by its own key', () => {
     const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
-    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [
+    const { costEstimation } = costBudgetOptions({ run: 1 }, opus, [
       { ...other, provider: 'twin', pricing: undefined },
       other,
     ]);
@@ -361,7 +354,7 @@ describe('prices from the catalog', () => {
       model: 'anthropic/claude-opus-5',
       pricing: undefined,
     };
-    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [gateway, other]);
+    const { costEstimation } = costBudgetOptions({ run: 1 }, opus, [gateway, other]);
     const pricing = costEstimation?.pricing;
     expect(
       getModelPricing(providerModelPricingKey('anthropic', 'claude-opus-5'), pricing),
@@ -376,11 +369,10 @@ describe('prices from the catalog', () => {
 
   it('counts the default model first, and a switched model at its own price', () => {
     const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
-    const { costEstimation, costBudget } = costBudgetOptions(
-      { perRunUsd: 1, warnAt: [0.5] },
+    const { costEstimation, costBudget } = costBudgetOptions({ run: 1, warn: [0.5] }, opus, [
+      other,
       opus,
-      [other, opus],
-    );
+    ]);
     expect(costEstimation?.model).toBe('claude-opus-5-5');
     expect(costEstimation?.pricing?.customPricing?.['claude-opus-5-5']).toMatchObject({
       promptCostPerMillionTokens: 4,
@@ -402,39 +394,33 @@ describe('unpricedSwitchReason', () => {
   const twinned = [{ ...opus5, provider: 'twin', pricing: undefined }, ...rows];
 
   it('names the model for a budgeted agent switched to a model with no price', () => {
-    expect(unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1' })).toContain(
-      'gpt-4.1',
-    );
+    expect(unpricedSwitchReason({ run: 1 }, unpriced, { model: 'gpt-4.1' })).toContain('gpt-4.1');
     expect(
-      unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1', provider: 'openai' }),
-    ).toContain('costBudget');
+      unpricedSwitchReason({ run: 1 }, unpriced, { model: 'gpt-4.1', provider: 'openai' }),
+    ).toContain('limits.cost');
   });
 
   it('has no objection to a priced model, an agent with no budget, or a model no row serves', () => {
-    expect(
-      unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'claude-opus-5' }),
-    ).toBeUndefined();
+    expect(unpricedSwitchReason({ run: 1 }, unpriced, { model: 'claude-opus-5' })).toBeUndefined();
     expect(unpricedSwitchReason(undefined, unpriced, { model: 'gpt-4.1' })).toBeUndefined();
-    expect(unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'nope' })).toBeUndefined();
+    expect(unpricedSwitchReason({ run: 1 }, unpriced, { model: 'nope' })).toBeUndefined();
     // Another provider's row of the same name is not the one asked for.
     expect(
-      unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1', provider: 'other' }),
+      unpricedSwitchReason({ run: 1 }, unpriced, { model: 'gpt-4.1', provider: 'other' }),
     ).toBeUndefined();
   });
 
   it('judges the row the switch will run: with no provider the first that serves the model', () => {
     // Priced `anthropic` behind unpriced `twin`: no provider runs `twin`, so it is refused.
-    expect(unpricedSwitchReason({ perRunUsd: 1 }, twinned, { model: 'claude-opus-5' })).toContain(
-      'twin',
-    );
+    expect(unpricedSwitchReason({ run: 1 }, twinned, { model: 'claude-opus-5' })).toContain('twin');
     expect(
-      unpricedSwitchReason({ perRunUsd: 1 }, twinned, {
+      unpricedSwitchReason({ run: 1 }, twinned, {
         model: 'claude-opus-5',
         provider: 'twin',
       }),
-    ).toContain('costBudget');
+    ).toContain('limits.cost');
     expect(
-      unpricedSwitchReason({ perRunUsd: 1 }, twinned, {
+      unpricedSwitchReason({ run: 1 }, twinned, {
         model: 'claude-opus-5',
         provider: 'anthropic',
       }),
@@ -460,7 +446,7 @@ describe('a file whose model has no price', () => {
     return fixture;
   }
 
-  const budgeted = agentFileText({ model: KNOWN_MODEL, costBudget: '{ perRunUsd: 1 }' });
+  const budgeted = agentFileText({ model: KNOWN_MODEL, limits: '{ cost: { run: 1 } }' });
 
   it('is usable when the model has a price in US dollars', async () => {
     const fixture = await start(createModelCatalog().descriptors);
@@ -483,8 +469,8 @@ describe('a file whose model has no price', () => {
     const listing = fixture.catalog.list().find((entry) => entry.id === 'helper');
     expect(listing?.state).toBe('invalid');
     expect(listing?.problem?.code).toBe('invalid-frontmatter');
-    expect(listing?.problem?.message).toContain('costBudget');
-    expect(listing?.problem?.issues?.map((issue) => issue.path)).toEqual(['costBudget']);
+    expect(listing?.problem?.message).toContain('limits.cost');
+    expect(listing?.problem?.issues?.map((issue) => issue.path)).toEqual(['limits.cost']);
   });
 
   it('is fine without a budget: the file never needed a price', async () => {
@@ -499,7 +485,7 @@ describe('a file whose model has no price', () => {
     const error = await rejectionOf(
       fixture.catalog.create('helper', {
         model: KNOWN_MODEL,
-        costBudget: { perRunUsd: 1 },
+        limits: { cost: { run: 1 } },
         instructions: 'Hi.\n',
       }),
     );
@@ -531,7 +517,7 @@ describe('restoring a version', () => {
         name: 'Helper',
         model: KNOWN_MODEL,
         guardrails: ['x:check'],
-        costBudget: { perRunUsd: 1, warnAt: [0.5] },
+        limits: { cost: { run: 1, warn: [0.5] } },
         instructions: 'You are helpful.\n',
       },
       { expectedHash: hash() },
@@ -539,18 +525,18 @@ describe('restoring a version', () => {
     const updated = await fixture.catalog.detail('helper');
     expect(updated?.definition).toMatchObject({
       guardrails: ['x:check'],
-      costBudget: { perRunUsd: 1, warnAt: [0.5] },
+      limits: { cost: { run: 1, warn: [0.5] } },
     });
 
     await fixture.catalog.versions.restore('helper', 1, { expectedHash: hash() });
 
     const restoredDetail = await fixture.catalog.detail('helper');
     const restored = restoredDetail?.definition;
-    expect(restored).not.toHaveProperty('costBudget');
+    expect(restored).not.toHaveProperty('limits');
     expect(restored).not.toHaveProperty('guardrails');
   });
 
-  it('lists the keys a save changed, guardrails and costBudget among them', async () => {
+  it('lists the keys a save changed, guardrails and limits among them', async () => {
     const fixture = await createAgentFileFixture({
       watch: false,
       contributions: TEST_CONTRIBUTIONS,
@@ -566,14 +552,14 @@ describe('restoring a version', () => {
         name: 'Helper',
         model: KNOWN_MODEL,
         guardrails: ['x:check'],
-        costBudget: { perRunUsd: 1 },
+        limits: { cost: { run: 1 } },
         instructions: 'You are helpful.\n',
       },
       { expectedHash: hash },
     );
 
     const [latest] = await fixture.catalog.versions.list('helper');
-    expect(latest?.changedKeys).toEqual(['guardrails', 'costBudget']);
+    expect(latest?.changedKeys).toEqual(['limits', 'guardrails']);
   });
 });
 
@@ -581,7 +567,7 @@ describe('restoring a version', () => {
 const TWENTY_CENTS = { prompt: 50_000, completion: 0, total: 50_000 };
 
 describe.each(['non-durable', 'durable'] as const)(
-  'a file agent’s costBudget, %s dispatch',
+  'a file agent’s limits.cost, %s dispatch',
   (dispatch) => {
     const harnesses: FileBureauHarness[] = [];
     afterEach(async () => {
@@ -627,7 +613,7 @@ describe.each(['non-durable', 'durable'] as const)(
       return { result, feed, audit, generations: call };
     }
 
-    const BUDGET = { costBudget: '{ perRunUsd: 0.5, warnAt: [0.9, 0.5] }' };
+    const BUDGET = { limits: '{ cost: { run: 0.5, warn: [0.9, 0.5] } }' };
 
     it('ends a run that has spent its budget as budget-exceeded, with a reason that names perRunUsd', async () => {
       const { result, generations } = await run(BUDGET, 10);

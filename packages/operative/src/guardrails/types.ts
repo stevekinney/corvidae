@@ -6,7 +6,7 @@ import type {
   InputDetector,
 } from 'armorer';
 
-import type { PrepareStepHook, ValidateResponseHook } from '../types';
+import type { PrepareStepHook, ValidateResponseHook, ValidateToolResultHook } from '../types';
 
 /**
  * `DetectorContext`, `DetectionResult`, `InputDetector`, `GuardrailTriggeredEvent`,
@@ -142,7 +142,8 @@ export interface GuardrailsOptions {
    * guardrail's own `action`.
    *
    * `'tripwire'` — OpenAI-tripwire model: input detectors gate the first
-   * generate call and output validators gate post-processing; a tripped wire
+   * generate call and every tool result, and output validators gate
+   * post-processing; a tripped wire
    * throws a `GuardrailTripwireError`, hard-halting the run with a clean
    * `finishReason: 'tripwire'` terminal result and a `run.tripwire` event
    * identifying the guardrail — distinct from `'validate'`'s retry/substitute
@@ -156,6 +157,15 @@ export interface GuardrailsOptions {
 export interface GuardrailHooks {
   prepareStep: PrepareStepHook;
   validateResponse: ValidateResponseHook;
+  /**
+   * COR-2103 — runs the input detectors over each tool result before the model is shown it, with
+   * provenance `'tool-result'`. Under `mode: 'tripwire'` a detection halts the run with phase
+   * `'tool-result'`; otherwise `input.action` decides: `block` and `sanitize` replace the result
+   * with a `GUARDRAIL_BLOCKED` error and always taint the session, and `warn` passes it through,
+   * tainting at or above the taint threshold. A no-op without `input`. Register it on the
+   * `validateToolResult` waterfall last, so no later handler overrules it.
+   */
+  validateToolResult: ValidateToolResultHook;
   /**
    * The session's taint tracker. Retrieval surfaces outside operative's run
    * loop — memory recall, ingested documents, skill resources — don't go

@@ -179,7 +179,7 @@ describe('trying an unsaved agent definition (COR-1911)', () => {
       }),
     );
     const wrongStepLimit = await rejectionOf(
-      bureau.agents.try({ ...DEFINITION, stepLimit: 0 }, 'hi', { principal: ALICE }),
+      bureau.agents.try({ ...DEFINITION, limits: { steps: 0 } }, 'hi', { principal: ALICE }),
     );
 
     for (const error of [wrongModel, wrongTool, wrongStepLimit]) {
@@ -192,7 +192,7 @@ describe('trying an unsaved agent definition (COR-1911)', () => {
     expect((wrongTool as AgentFileError).problem?.issues?.map((issue) => issue.path)).toEqual([
       'tools.1',
     ]);
-    expect((wrongStepLimit as AgentFileError).problem?.issues?.[0]?.path).toBe('stepLimit');
+    expect((wrongStepLimit as AgentFileError).problem?.issues?.[0]?.path).toBe('limits.steps');
     expect(await keysOf(storage)).toEqual(before);
     expect(await bureau.contexts.list()).toEqual([]);
   });

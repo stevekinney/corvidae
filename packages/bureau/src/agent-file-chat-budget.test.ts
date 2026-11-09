@@ -1,5 +1,5 @@
 /**
- * COR-1915 — an agent file's `costBudget.perChatUsd`, enforced on real chats. A chat's runs are
+ * COR-1915 — an agent file's `limits.cost.chat`, enforced on real chats. A chat's runs are
  * recorded in the spend ledger as they end; the run that follows the one that took the chat to its
  * limit finishes `budget-exceeded` naming `perChatUsd`, before the model is asked anything. A run
  * that is under way is never stopped by it, another chat is not affected, and the total survives a
@@ -26,7 +26,7 @@ function messageOf(error: unknown): string {
 }
 
 describe.each(['non-durable', 'durable'] as const)(
-  'a file agent’s perChatUsd, %s dispatch',
+  'a file agent’s limits.cost.chat, %s dispatch',
   (dispatch) => {
     const harnesses: FileBureauHarness[] = [];
     const directories: string[] = [];
@@ -56,7 +56,7 @@ describe.each(['non-durable', 'durable'] as const)(
         'helper.md',
         agentFileText({
           model: KNOWN_MODEL,
-          costBudget: `{ perRunUsd: 5, perChatUsd: ${perChatUsd} }`,
+          limits: `{ cost: { run: 5, chat: ${perChatUsd} } }`,
         }),
       );
       await harness.bureau.agents.refresh();
@@ -144,7 +144,7 @@ describe.each(['non-durable', 'durable'] as const)(
       harnesses.push(harness);
       await harness.put(
         'helper.md',
-        agentFileText({ model: KNOWN_MODEL, costBudget: '{ perRunUsd: 5, perChatUsd: 0.5 }' }),
+        agentFileText({ model: KNOWN_MODEL, limits: '{ cost: { run: 5, chat: 0.5 } }' }),
       );
       await harness.bureau.agents.refresh();
       const { bureau } = harness;
@@ -197,7 +197,7 @@ describe.each(['non-durable', 'durable'] as const)(
       expect(after.generations()).toBe(0);
     });
 
-    it('puts no limit on an agent whose file sets no perChatUsd, and records its runs all the same', async () => {
+    it('puts no limit on an agent whose file sets no limits.cost.chat, and records its runs all the same', async () => {
       const storage = new MemoryStorage();
       const harness = await startFileBureau({
         scripts: { 'claude-opus-5-5': () => ({ content: 'Done.', usage: TWENTY_CENTS }) },
@@ -206,7 +206,7 @@ describe.each(['non-durable', 'durable'] as const)(
       harnesses.push(harness);
       await harness.put(
         'helper.md',
-        agentFileText({ model: KNOWN_MODEL, costBudget: '{ perRunUsd: 5 }' }),
+        agentFileText({ model: KNOWN_MODEL, limits: '{ cost: { run: 5 } }' }),
       );
       await harness.bureau.agents.refresh();
       const first = await turn(harness.bureau);

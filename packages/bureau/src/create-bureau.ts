@@ -1421,7 +1421,7 @@ class ReviewAnswerInvalidError extends BureauError {
 }
 
 /**
- * A steering command was refused because it switches the model of an agent with a `costBudget` to
+ * A steering command was refused because it switches the model of an agent with `limits.cost` to
  * one the catalog has no price for (COR-1921). It is a `BAD_REQUEST` `BureauError`, so the
  * catalog's steer answers `InvalidParams` naming the `override` field and the budget; a fork
  * that carries a model across catches it, and answers the carry as rejected.
@@ -5677,7 +5677,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     return undefined;
   }
 
-  // COR-1915: what each run of a chat spent, which a file agent's `costBudget.perChatUsd` is
+  // COR-1915: what each run of a chat spent, which a file agent's `limits.cost.chat` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
   // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
@@ -9481,7 +9481,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
     const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
     const effectiveMaximumTokens = sessionAgent?.options.maximumTokens;
-    // COR-1915 — the agent's `costBudget.perChatUsd` is measured against what the chat's earlier
+    // COR-1915 — the agent's `limits.cost.chat` is measured against what the chat's earlier
     // runs spent. It is read here, before anything is persisted, so a chat whose spend cannot be
     // read refuses the run instead of starting it unmeasured. The run is told the total once and
     // is stopped by it only before its first step. Two runs that start together both read the
@@ -17143,7 +17143,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   /**
    * COR-1921 — why a session of `agentName`'s agent may not be switched to `override` because the
-   * agent has a `costBudget` and the model's row has no price in the catalog, or `undefined` when
+   * agent has `limits.cost` and the model's row has no price in the catalog, or `undefined` when
    * it may. The agent is a file agent, bound or `ephemeral` (tried): a code-defined agent has no
    * budget. The row judged is the one the agent's generate runs for the switch.
    */
@@ -17375,7 +17375,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * Admits the model a fork carries from its parent. An agent whose `costBudget` cannot count the
+   * Admits the model a fork carries from its parent. An agent whose `limits.cost` cannot count the
    * model (COR-1921: its price left the catalog since) refuses it, and the fork answers the carry
    * as rejected, as it does a model the agent no longer allows, rather than failing half made.
    */

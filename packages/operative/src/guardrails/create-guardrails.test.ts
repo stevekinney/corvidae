@@ -54,9 +54,10 @@ const validValidation: ValidationResult = {
 };
 
 describe('createGuardrails', () => {
-  it('returns prepareStep and validateResponse hooks', () => {
-    const { prepareStep, validateResponse } = createGuardrails({});
+  it('returns prepareStep, validateToolResult and validateResponse hooks', () => {
+    const { prepareStep, validateToolResult, validateResponse } = createGuardrails({});
     expect(typeof prepareStep).toBe('function');
+    expect(typeof validateToolResult).toBe('function');
     expect(typeof validateResponse).toBe('function');
   });
 
@@ -432,5 +433,151 @@ describe('createGuardrails reporting to the run', () => {
     const { firings, reportGuardrail } = reporter();
     await prepareStep({ ...createTestContext(), reportGuardrail });
     expect(firings).toEqual([]);
+  });
+});
+
+describe('createGuardrails tool-result scanning (COR-2103)', () => {
+  const lowConfidence: DetectionResult = { ...triggeredDetection, confidence: 0.5 };
+
+  function toolResultContext() {
+    return { conversation: new Conversation(), step: 3, toolCalls: [], results: [] };
+  }
+
+  const flagged = {
+    callId: 'call-1',
+    toolCallId: 'call-1',
+    toolName: 'fetch',
+    outcome: 'success' as const,
+    content: 'flagged page',
+    result: 'flagged page',
+  };
+
+  it('taints on a block even below the taint threshold', async () => {
+    const taints: SessionTaintedEvent[] = [];
+    const { validateToolResult, taint } = createGuardrails({
+      input: { detectors: [createMockDetector('sentinel', lowConfidence)], action: 'block' },
+      taint: { taintThreshold: 0.9, onTainted: (event) => taints.push(event) },
+    });
+    const replaced = await validateToolResult(flagged, toolResultContext());
+    expect(replaced?.error?.code).toBe('GUARDRAIL_BLOCKED');
+    expect(taint.isTainted()).toBe(true);
+    expect(taints).toEqual([
+      expect.objectContaining({ detector: 'sentinel', step: 3, provenance: 'tool-result' }),
+    ]);
+  });
+
+  it('does not taint on a warning below the taint threshold', async () => {
+    const { validateToolResult, taint } = createGuardrails({
+      input: { detectors: [createMockDetector('sentinel', lowConfidence)], action: 'warn' },
+      taint: { taintThreshold: 0.9 },
+    });
+    expect(await validateToolResult(flagged, toolResultContext())).toBeUndefined();
+    expect(taint.isTainted()).toBe(false);
+  });
+
+  it('adds the escalated detectors once the session is tainted', async () => {
+    const escalated = createMockDetector('escalated', triggeredDetection);
+    const { validateToolResult, taint } = createGuardrails({
+      input: { detectors: [], action: 'block' },
+      taint: { escalatedDetectors: [escalated] },
+    });
+    expect(await validateToolResult(flagged, toolResultContext())).toBeUndefined();
+    taint.taint({ reason: 'test', detector: 'test', confidence: 1, step: 1 });
+    const replaced = await validateToolResult(flagged, toolResultContext());
+    expect(replaced?.error?.message).toContain('"escalated"');
+  });
+
+  it('is a no-op without input detectors configured', async () => {
+    const { validateToolResult } = createGuardrails({
+      output: { validators: [createMockValidator('pii', invalidValidation)] },
+    });
+    expect(await validateToolResult(flagged, toolResultContext())).toBeUndefined();
+  });
+
+  it('throws a tool-result tripwire under mode tripwire whatever input.action says', async () => {
+    const { validateToolResult } = createGuardrails({
+      mode: 'tripwire',
+      input: { detectors: [createMockDetector('sentinel', triggeredDetection)], action: 'warn' },
+    });
+    const thrown = await validateToolResult(flagged, toolResultContext()).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(thrown).toBeInstanceOf(GuardrailTripwireError);
+    expect((thrown as GuardrailTripwireError).phase).toBe('tool-result');
+  });
+
+  describe('a text body no detector can decode', () => {
+    const undecodable = {
+      ...flagged,
+      content: null,
+      result: null,
+      parts: [
+        {
+          type: 'document' as const,
+          mimeType: 'text/plain',
+          source: { kind: 'data-url' as const, url: 'data:text/plain;base64,/w==' },
+        },
+      ],
+    };
+    const clean = createMockDetector('sentinel', safeDetection);
+
+    it('is blocked under validate mode, and taints, as it is in a user message', async () => {
+      const taints: SessionTaintedEvent[] = [];
+      const { validateToolResult, taint } = createGuardrails({
+        mode: 'validate',
+        input: { detectors: [clean], action: 'warn' },
+        taint: { onTainted: (event) => taints.push(event) },
+      });
+      const replaced = await validateToolResult(undecodable, toolResultContext());
+      expect(replaced?.error?.code).toBe('GUARDRAIL_BLOCKED');
+      expect(replaced?.error?.message).toContain('"content-body"');
+      expect(replaced?.parts).toBeUndefined();
+      expect(taint.isTainted()).toBe(true);
+      expect(taints).toEqual([
+        expect.objectContaining({ detector: 'content-body', provenance: 'tool-result' }),
+      ]);
+    });
+
+    it('halts under the default preset with a tool-result tripwire', async () => {
+      const { validateToolResult } = createGuardrails({
+        mode: 'tripwire',
+        input: { detectors: [clean] },
+      });
+      const thrown = await validateToolResult(undecodable, toolResultContext()).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(thrown).toBeInstanceOf(GuardrailTripwireError);
+      expect((thrown as GuardrailTripwireError).phase).toBe('tool-result');
+      expect((thrown as GuardrailTripwireError).guardrailName).toBe('content-body');
+    });
+  });
+
+  it('reports a validate-mode firing at the tool-result phase, and no tripwire firing', async () => {
+    const firings: GuardrailFiring[] = [];
+    const reportGuardrail = (firing: GuardrailFiring) => void firings.push(firing);
+    const validate = createGuardrails({
+      input: { detectors: [createMockDetector('sentinel', triggeredDetection)], action: 'block' },
+    });
+    await validate.validateToolResult(flagged, { ...toolResultContext(), reportGuardrail });
+    expect(firings).toEqual([
+      {
+        guardrailName: 'sentinel',
+        category: 'prompt-injection',
+        phase: 'tool-result',
+        confidence: 0.95,
+        action: 'block',
+      },
+    ]);
+
+    const tripwire = createGuardrails({
+      mode: 'tripwire',
+      input: { detectors: [createMockDetector('sentinel', triggeredDetection)] },
+    });
+    await tripwire
+      .validateToolResult(flagged, { ...toolResultContext(), reportGuardrail })
+      .catch(() => undefined);
+    expect(firings).toHaveLength(1);
   });
 });

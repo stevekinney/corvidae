@@ -6,7 +6,7 @@ import {
 import type { JSONValue, ToolCall } from 'armorer/protocol';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 
-import { reclassifyToolError } from './errors';
+import { GuardrailTripwireError, reclassifyToolError } from './errors';
 import {
   RunErrorEvent,
   StepAbortedEvent,
@@ -16,13 +16,21 @@ import {
   ToolsExecutingEvent,
 } from './events';
 import type { StepGeneratedMediaAdmitter } from './generated-media';
+import {
+  guardrailBlockedMessage,
+  guardrailBlockedResult,
+} from './guardrails/tool-result-guardrail';
 import type { ErrorRecoveryAction } from './hooks/types';
 import { modelFacingToolResult } from './human-wait-parks';
 import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
 import { runScopedExecutionContext } from './run-scoped-execution-context';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
-import { applyWaterfallHandlerErrorPolicy, explicitAbortReason } from './run-step-utilities';
+import {
+  applyWaterfallHandlerErrorPolicy,
+  explicitAbortReason,
+  guardrailReporter,
+} from './run-step-utilities';
 import { admitToolResultMedia, retainToolResultMedia } from './tool-result-media';
 import { ToolTimingRecorder } from './tool-timing';
 import type { GenerateResponse } from './types';
@@ -157,6 +165,7 @@ export async function executeTools(
             step,
             toolCalls: [...callsToExecute],
             elicit,
+            reportGuardrail: guardrailReporter(emitter, step),
           };
           let registryResult: unknown;
           try {
@@ -442,8 +451,8 @@ export async function executeTools(
 
       // Validate tool results guardrail
       if (hooks?.has('validateToolResult')) {
+        const validatedResults: ToolExecutionResult[] = [];
         try {
-          const validatedResults: ToolExecutionResult[] = [];
           for (const originalResult of results) {
             let currentResult = originalResult;
             {
@@ -454,6 +463,7 @@ export async function executeTools(
                 toolCalls: callsToExecute,
                 results,
                 elicit,
+                reportGuardrail: guardrailReporter(emitter, step),
               });
               const replaced = validated !== undefined && validated !== currentResult;
               // A hook can replace the result or mutate it in place, so whatever it leaves is
@@ -472,6 +482,19 @@ export async function executeTools(
           }
           results = validatedResults;
         } catch (error) {
+          // COR-2103: a tool-result tripwire halts the run, as an input or output tripwire does,
+          // and is never recovered. The call stays paired, but not with what tripped it: the
+          // flagged result, and every result after it that no guardrail has read, is withheld.
+          if (error instanceof GuardrailTripwireError) {
+            const message = guardrailBlockedMessage(error.guardrailName);
+            const withheld = results
+              .slice(validatedResults.length)
+              .map((result) => guardrailBlockedResult(result, message));
+            results = [...validatedResults, ...withheld];
+            await commitToolResults(results);
+            emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+            return { kind: 'error', error, errorKind: 'policy' };
+          }
           // Validation failed, but the underlying tool execution already
           // produced real results — seal the tool calls with those
           // (unvalidated) results rather than leaving them dangling.
@@ -519,6 +542,7 @@ export async function executeTools(
             toolCalls: callsToExecute,
             results,
             elicit,
+            reportGuardrail: guardrailReporter(emitter, step),
           });
         } catch (error) {
           emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));

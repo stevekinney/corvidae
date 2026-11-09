@@ -420,7 +420,8 @@ describe('what the Settings tab shows of a definition', () => {
   test('words the step limit when it is set and leaves it when it is not', () => {
     const detail = readyAgent({ id: 'researcher' });
     if (detail.definition === null) throw new Error('expected a definition');
-    expect(settingsOf({ ...detail, definition: { ...detail.definition, stepLimit: 12 } })).toEqual({
+    const limits = { steps: 12, cost: null, tools: null };
+    expect(settingsOf({ ...detail, definition: { ...detail.definition, limits } })).toEqual({
       model: 'anthropic/sonnet',
       models: [],
       stepLimit: '12',
