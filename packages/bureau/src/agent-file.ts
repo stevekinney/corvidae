@@ -1420,6 +1420,8 @@ export type AgentFileErrorCode =
   | 'agent-version-not-found'
   | 'agent-directory-not-configured'
   | 'agent-file-read-only'
+  | 'agent-unavailable'
+  | 'agent-not-overridable'
   | 'agent-file-has-references';
 
 /** A write or read of an agent file that was refused. `problem` carries the detail, when there is any. */

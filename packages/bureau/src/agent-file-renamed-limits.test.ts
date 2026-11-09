@@ -13,7 +13,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { agentFileDefinitionSchema, parseAgentFile, serializeUpdatedAgentFile } from './agent-file';
 import {
-  agentOverrideVersionKey,
+  legacyAgentOverrideVersionKey,
   AGENT_OVERRIDE_KEYS,
   createAgentOverrideStore,
   hashAgentOverrides,
@@ -322,7 +322,7 @@ describe('a saved override record of a built-in agent', () => {
   async function storeHolding(overrides: Record<string, unknown>, changedKeys: string[]) {
     const backing = textValueStore(new MemoryStorage());
     await backing.set(
-      agentOverrideVersionKey('tool-runner', 1),
+      legacyAgentOverrideVersionKey('tool-runner', 1),
       JSON.stringify({
         version: 1,
         hash: 'c'.repeat(64),

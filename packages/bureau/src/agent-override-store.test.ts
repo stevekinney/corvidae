@@ -1,6 +1,6 @@
 /**
- * COR-2009 — the versions of a built-in agent's saved overrides (`agent-override-store.ts`) and the
- * checks the catalog applies before saving them (`code-agent-overrides.ts`).
+ * COR-2009, COR-2228 — the versions of a code agent's saved overrides (`agent-override-store.ts`)
+ * and the checks the catalog applies before saving them (`code-agent-overrides.ts`).
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -14,6 +14,7 @@ import {
   agentOverrideVersionKey,
   createAgentOverrideStore,
   hashAgentOverrides,
+  legacyAgentOverrideVersionKey,
 } from './agent-override-store';
 import { createCodeAgentOverrides } from './code-agent-overrides';
 import type { AgentDefinitions } from './agent-catalog';
@@ -171,40 +172,205 @@ describe('the override versions of a built-in agent', () => {
   });
 });
 
+describe('the formats of a stored override version (COR-2228)', () => {
+  const record = (version: number, overrides: Record<string, unknown>) => ({
+    version,
+    hash: hashAgentOverrides(overrides),
+    savedAt: '2026-10-01T00:00:00.000Z',
+    savedBy: 'anonymous:local',
+    owner: 'anonymous:local',
+    overrides,
+    changedKeys: Object.keys(overrides),
+  });
+  function storeOver(kv = textValueStore(new MemoryStorage())) {
+    return { kv, store: createAgentOverrideStore({ store: kv, nowISO: clock() }) };
+  }
+
+  it('writes version 2 records, under agent: and the percent-encoded identifier', async () => {
+    const { kv, store } = storeOver();
+    const saved = await store.save(
+      'demo:echo',
+      { instructions: 'Echo loudly.' },
+      { ...SAVED, expectedHash: hashAgentOverrides({}) },
+    );
+
+    expect(saved.version).toBe(1);
+    expect(agentOverrideVersionKey('demo:echo', 1)).toBe(
+      'bureau-agent-override-version:v2:agent:demo%3Aecho:1',
+    );
+    expect(await kv.list('')).toEqual(['bureau-agent-override-version:v2:agent:demo%3Aecho:1']);
+    expect(JSON.parse((await kv.get(agentOverrideVersionKey('demo:echo', 1)))!)).toMatchObject({
+      version: 1,
+      overrides: { instructions: 'Echo loudly.' },
+    });
+  });
+
+  it('writes a built-in agent’s first save as a version 2 record too', async () => {
+    const { kv, store } = storeOver();
+    await store.save(
+      'tool-runner',
+      { limits: { steps: 3 } },
+      { ...SAVED, expectedHash: hashAgentOverrides({}) },
+    );
+    expect(await kv.list('')).toEqual(['bureau-agent-override-version:v2:agent:tool-runner:1']);
+  });
+
+  it('keeps one agent’s versions apart from another whose identifier it prefixes', async () => {
+    const { store } = storeOver();
+    const expected = { ...SAVED, expectedHash: hashAgentOverrides({}) };
+    await store.save('demo:echo', { limits: { steps: 1 } }, expected);
+    await store.save('demo', { limits: { steps: 2 } }, expected);
+    await store.save('demo:echo-two', { limits: { steps: 3 } }, expected);
+
+    const echo = await store.list('demo:echo');
+    expect(echo.map((entry) => entry.overrides)).toEqual([{ limits: { steps: 1 } }]);
+    const plain = await store.list('demo');
+    expect(plain.map((entry) => entry.overrides)).toEqual([{ limits: { steps: 2 } }]);
+  });
+
+  it('still reads a version 1 record, with its old field names, as the overrides in force', async () => {
+    const { kv, store } = storeOver();
+    await kv.set(
+      legacyAgentOverrideVersionKey('tool-runner', 1),
+      JSON.stringify(
+        record(1, { instructions: 'Look orders up.', toolApproval: { 'lookup-order': 'always' } }),
+      ),
+    );
+
+    const current = await store.current('tool-runner');
+    expect(current).toMatchObject({
+      version: 1,
+      overrides: { instructions: 'Look orders up.', approvals: { 'lookup-order': 'always' } },
+    });
+    const listed = await store.list('tool-runner');
+    expect(listed.map((entry) => entry.version)).toEqual([1]);
+  });
+
+  it('continues a version 1 agent’s numbering with version 2 records, and keeps its versions', async () => {
+    const { kv, store } = storeOver();
+    for (const [version, steps] of [
+      [1, 10],
+      [2, 20],
+    ] as const) {
+      await kv.set(
+        legacyAgentOverrideVersionKey('tool-runner', version),
+        JSON.stringify(record(version, { limits: { steps } })),
+      );
+    }
+
+    const current = await store.current('tool-runner');
+    expect(current.version).toBe(2);
+    const saved = await store.save(
+      'tool-runner',
+      { limits: { steps: 30 } },
+      { ...SAVED, expectedHash: current.hash },
+    );
+
+    expect(saved.version).toBe(3);
+    const kept = await store.list('tool-runner');
+    expect(kept.map((entry) => entry.version)).toEqual([3, 2, 1]);
+    expect(await kv.get(agentOverrideVersionKey('tool-runner', 3))).not.toBeNull();
+    // Nothing is written back in the first format, and what was there is left as it was.
+    expect(await kv.get(legacyAgentOverrideVersionKey('tool-runner', 3))).toBeNull();
+    expect(await kv.get(legacyAgentOverrideVersionKey('tool-runner', 2))).not.toBeNull();
+    // A version 1 version restores as a version 2 record.
+    const restored = await store.restore('tool-runner', 1, { ...SAVED, expectedHash: saved.hash });
+    expect(restored.version).toBe(4);
+    expect(await kv.get(agentOverrideVersionKey('tool-runner', 4))).not.toBeNull();
+  });
+
+  it('reads the version 2 record where both formats hold one number, however they are listed', async () => {
+    const { kv, store } = storeOver();
+    await kv.set(
+      legacyAgentOverrideVersionKey('tool-runner', 1),
+      JSON.stringify(record(1, { limits: { steps: 1 } })),
+    );
+    await kv.set(
+      agentOverrideVersionKey('tool-runner', 1),
+      JSON.stringify(record(1, { limits: { steps: 2 } })),
+    );
+    await kv.set(
+      legacyAgentOverrideVersionKey('tool-runner', 2),
+      JSON.stringify(record(2, { limits: { steps: 3 } })),
+    );
+
+    const versions = await store.list('tool-runner');
+    expect(versions.map((entry) => [entry.version, entry.overrides])).toEqual([
+      [2, { limits: { steps: 3 } }],
+      [1, { limits: { steps: 2 } }],
+    ]);
+    const { hash } = await store.current('tool-runner');
+    const next = await store.save(
+      'tool-runner',
+      { limits: { steps: 4 } },
+      { ...SAVED, expectedHash: hash },
+    );
+    expect(next.version).toBe(3);
+  });
+
+  it('does not read a version 1 key for a plugin agent', async () => {
+    const { kv, store } = storeOver();
+    await kv.set(
+      'bureau-agent-override-version:v1:demo:echo:1',
+      JSON.stringify(record(1, { limits: { steps: 1 } })),
+    );
+    expect(await store.list('demo:echo')).toEqual([]);
+  });
+});
+
 describe('the overrides the catalog saves', () => {
-  function overridesFor() {
+  let backing = textValueStore(new MemoryStorage());
+  function overridesFor(
+    held: { readonly unavailable?: readonly string[]; readonly files?: readonly string[] } = {},
+  ) {
+    backing = textValueStore(new MemoryStorage());
     return createCodeAgentOverrides({
-      store: freshStore(),
-      builtInAgents: new Map([
-        ['tool-runner', { tools: ['lookup-order'] }],
-        ['demo:release-helper', { tools: [] }],
+      store: createAgentOverrideStore({ store: backing, nowISO: clock() }),
+      codeAgents: new Map([
+        ['tool-runner', { tools: ['lookup-order'], resolvesRuns: true }],
+        ['demo:echo', { tools: [], resolvesRuns: true }],
+        ['scripted', { tools: [], resolvesRuns: false }],
       ]),
-      listsOtherAgent: (id) => id === 'writer',
-      toolNames: () => new Set(['lookup-order', 'issue-refund']),
+      isUnavailable: (id) => (held.unavailable ?? ['demo:release-helper']).includes(id),
+      listsOtherAgent: (id) => (held.files ?? ['writer', 'demo:content-writer']).includes(id),
+      toolNames: () => new Set(['lookup-order', 'issue-refund', 'demo:lookup']),
       descriptors: () => [],
       modelPolicy: () => undefined,
     });
   }
   const expectedHash = hashAgentOverrides({});
 
-  it('takes overrides only for a built-in agent', async () => {
+  it('takes overrides for a code agent the catalog runs, a built-in or a running plugin’s', async () => {
     const overrides = overridesFor();
-    expect(overrides.isBuiltIn('tool-runner')).toBe(true);
-    expect(overrides.isBuiltIn('demo:release-helper')).toBe(false);
-    expect(await overrides.get('demo:release-helper')).toBeUndefined();
-    expect(await overrides.versions('demo:release-helper')).toEqual([]);
+    expect(overrides.isCodeAgent('tool-runner')).toBe(true);
+    expect(overrides.isCodeAgent('demo:echo')).toBe(true);
+    for (const refused of ['demo:release-helper', 'writer', 'nobody']) {
+      expect(overrides.isCodeAgent(refused)).toBe(false);
+      expect(await overrides.get(refused)).toBeUndefined();
+      expect(await overrides.versions(refused)).toEqual([]);
+    }
 
     expect(
-      await rejectionOf(
-        overrides.save('demo:release-helper', { limits: { steps: 5 } }, { expectedHash }),
-      ),
-    ).toMatchObject({ code: 'agent-file-read-only' });
-    expect(
-      await rejectionOf(overrides.save('writer', { limits: { steps: 5 } }, { expectedHash })),
-    ).toMatchObject({ code: 'agent-file-read-only' });
-    expect(
-      await rejectionOf(overrides.save('nobody', { limits: { steps: 5 } }, { expectedHash })),
-    ).toMatchObject({ code: 'agent-file-not-found' });
+      await overrides.save('demo:echo', { instructions: 'Echo loudly.' }, { expectedHash }),
+    ).toMatchObject({ id: 'demo:echo', version: 1 });
+    expect(overrides.inForce('demo:echo')).toEqual({ instructions: 'Echo loudly.' });
+  });
+
+  it.each([
+    ['an agent file', 'writer', 'agent-file-read-only'],
+    ['a plugin’s content agent', 'demo:content-writer', 'agent-file-read-only'],
+    ['the agent of a plugin that is not running', 'demo:release-helper', 'agent-unavailable'],
+    ['a code agent with no definition resolver', 'scripted', 'agent-not-overridable'],
+    ['an identifier that is no agent', 'nobody', 'agent-file-not-found'],
+  ])('refuses %s, and writes no record', async (_kind, id, code) => {
+    const overrides = overridesFor();
+    const saved = overrides.save(id, { limits: { steps: 5 } }, { expectedHash });
+    expect(await rejectionOf(saved)).toBeInstanceOf(AgentFileError);
+    expect(await rejectionOf(saved)).toMatchObject({ code });
+    expect(await rejectionOf(overrides.restore(id, 1, { expectedHash }))).toMatchObject({ code });
+    expect(await backing.list('')).toEqual([]);
+    expect(await overrides.versions(id)).toEqual([]);
+    expect(overrides.inForce(id)).toEqual({});
   });
 
   it('refuses a tool the deployment does not hold, and an Asks entry on a tool not allowed', async () => {
@@ -226,6 +392,16 @@ describe('the overrides the catalog saves', () => {
       ),
     ).toMatchObject({ code: 'unknown-approval-tool' });
     expect(await overrides.versions('tool-runner')).toEqual([]);
+  });
+
+  it('lets a plugin agent’s tools be overridden to its plugin’s own tool by catalog name', async () => {
+    const overrides = overridesFor();
+    expect(
+      await overrides.save('demo:echo', { tools: ['demo:lookup'] }, { expectedHash }),
+    ).toMatchObject({ version: 1 });
+    expect(
+      await rejectionOf(overrides.save('demo:echo', { tools: ['lookup'] }, { expectedHash })),
+    ).toMatchObject({ code: 'unknown-tool' });
   });
 
   it('refuses a model the catalog does not hold', async () => {
