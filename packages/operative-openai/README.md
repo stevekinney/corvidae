@@ -32,7 +32,7 @@ const definitions: ProviderDefinition[] = [openaiProvider];
 
 const generate = definitions
   .find((definition) => definition.name === 'openai')
-  ?.generate?.({ provider: 'openai', model: 'gpt-4o' });
+  ?.generate?.({ provider: 'openai', model: 'gpt-4o' }, {});
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.

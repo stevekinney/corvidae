@@ -583,6 +583,7 @@ class Contributed {
     plugin: string,
     version: string,
     result: PluginSetupResult,
+    configuration: unknown,
     tools: ReadonlyMap<string, Tool>,
     gate: PluginSecretGate | undefined,
   ): void {
@@ -611,7 +612,7 @@ class Contributed {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
     for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
-    this.providers.push(...providersOf(plugin, result));
+    this.providers.push(...providersOf(plugin, configuration, result));
     for (const detector of result.guardrails?.memory ?? []) {
       // The detector itself, not a copy of its fields: it may be an instance whose methods live on
       // its prototype.
@@ -634,10 +635,15 @@ class Contributed {
 }
 
 /** The providers a plugin's setup returned, each with the rows it carries or Operative's static ones. */
-function providersOf(plugin: string, result: PluginSetupResult): PluginProviderContribution[] {
+function providersOf(
+  plugin: string,
+  configuration: unknown,
+  result: PluginSetupResult,
+): PluginProviderContribution[] {
   return (result.providers ?? []).map((provider) => ({
     plugin,
     definition: provider,
+    configuration,
     rows:
       provider.rows ??
       createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
@@ -980,7 +986,11 @@ export async function composePlugins<O extends ComposableOptions>(
       continue;
     }
     const { plan } = outcome;
-    const providers = providersOf(entry.descriptor.name, outcome.result);
+    const providers = providersOf(
+      entry.descriptor.name,
+      outcome.context.configuration,
+      outcome.result,
+    );
     const checked =
       providers.length === 0
         ? []
@@ -1006,6 +1016,7 @@ export async function composePlugins<O extends ComposableOptions>(
       entry.descriptor.name,
       entry.descriptor.version,
       outcome.result,
+      outcome.context.configuration,
       plan.tools,
       outcome.gate,
     );

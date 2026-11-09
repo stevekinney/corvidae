@@ -26,7 +26,11 @@ import type {
   ValidateToolResultHook,
   Validator,
 } from '@lostgradient/operative';
-import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
+import type {
+  BackendDescriptor,
+  ProviderConfigurationBase,
+  ProviderDefinition,
+} from '@lostgradient/operative/provider-kit';
 import type { ActivityDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
@@ -325,7 +329,11 @@ export interface PluginReaction {
  * models appear as. A row's `provider` is the definition's `name`; a row naming another provider
  * is refused when the plugin loads.
  */
-export type PluginProvider = ProviderDefinition & {
+export type PluginProvider<Configuration = unknown> = ProviderDefinition<
+  string,
+  ProviderConfigurationBase,
+  Configuration
+> & {
   /**
    * The catalog rows of the provider's models. Absent offers Operative's static rows for the
    * definition's `name`, which is what a provider package that ships its models there wants.

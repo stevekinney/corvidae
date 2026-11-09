@@ -772,6 +772,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           { provider: contributed.name, model: probe.model, apiKey: key },
           undefined,
           undefined,
+          contributed.configuration,
         );
         await generate({
           conversation,
