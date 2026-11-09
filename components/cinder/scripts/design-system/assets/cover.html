@@ -1,0 +1,59 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cinder</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--cinder-surface-canvas); color: var(--cinder-text-default); font-family: var(--cinder-font-sans); overflow: hidden; }
+  .cover { position: relative; height: 288px; overflow: hidden; }
+  .art { position: absolute; top: 0; left: 480px; width: 480px; height: 288px; overflow: hidden; }
+  .art svg { display: block; width: 480px; height: 288px; }
+  .accent { fill: var(--cinder-accent-solid); }
+  .ink { fill: var(--cinder-text-default); }
+  .tint { fill: var(--cinder-accent-background); }
+  .warn { fill: var(--cinder-status-warning-solid); }
+  .ok { fill: var(--cinder-status-success-solid); }
+  .cut { fill: var(--cinder-surface-canvas); }
+  .surface { rx: var(--cinder-radius-surface); }
+  .control { rx: var(--cinder-radius-control); }
+  .words { position: absolute; left: var(--cinder-space-12); bottom: var(--cinder-space-10); max-width: 440px; }
+  .name { margin: 0; font-size: 120px; line-height: .92; font-weight: var(--cinder-font-semibold); letter-spacing: -.02em; color: var(--cinder-text-default); }
+  .tag { margin: var(--cinder-space-3) 0 0 6px; font-size: 14px; line-height: 20px; color: var(--cinder-text-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      accent-solid 168×216 bled off the top (the one accent) · text-default ink 240×168 bleeding off the right edge · accent-background tint 96×88 bled off the bottom · warning and success solids as 32×24 status chips — about a third of 960×288
+  arrangement one tall accent slab with an ink panel beside it, a tint under the slab, the panel and slab tops staggered by space-12
+  pattern     "geometric, modular, dense UI": rows of control-height-xs (24px) tiles cut into the ink panel in the canvas colour, some merged two-wide like the list rows and controls Cinder draws, at a space-3 row gap
+  scales      sides in space-2 multiples; gutters space-6; tile height control-height-xs; row pitch 36 (24 + space-3); corners radius-surface (12) on blocks, radius-control (8) on tiles and chips
+-->
+<rect class="accent surface" x="24" y="-24" width="168" height="216" rx="12"/>
+<rect class="tint surface" x="24" y="216" width="96" height="88" rx="12"/>
+<rect class="warn control" x="136" y="216" width="32" height="24" rx="8"/>
+<rect class="ok control" x="136" y="252" width="32" height="24" rx="8"/>
+<rect class="ink surface" x="216" y="24" width="288" height="216" rx="12"/>
+<rect class="cut control" x="240" y="48" width="40" height="24" rx="8"/>
+<rect class="cut control" x="288" y="48" width="112" height="24" rx="8"/>
+<rect class="cut control" x="240" y="84" width="40" height="24" rx="8"/>
+<rect class="cut control" x="288" y="84" width="72" height="24" rx="8"/>
+<rect class="cut control" x="368" y="84" width="88" height="24" rx="8"/>
+<rect class="cut control" x="240" y="120" width="40" height="24" rx="8"/>
+<rect class="cut control" x="288" y="120" width="136" height="24" rx="8"/>
+<rect class="cut control" x="240" y="156" width="40" height="24" rx="8"/>
+<rect class="cut control" x="288" y="156" width="96" height="24" rx="8"/>
+<rect class="accent control" x="392" y="192" width="64" height="24" rx="8"/>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">Cinder</h1>
+<p class="tag">Svelte components for dense, operational interfaces.</p>
+</div>
+</div>
+</body>
+</html>
