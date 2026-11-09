@@ -45,7 +45,7 @@ function plugin(name: string, status: string, agents: readonly string[]) {
     status,
     problems: [],
     contributions: agents.map((id) => ({
-      kind: 'code-agent',
+      kind: 'agent',
       id,
       references: { agents: 0, schedules: 0, waitingRuns: 0 },
     })),

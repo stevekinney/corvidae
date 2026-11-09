@@ -175,7 +175,7 @@ describe('the overrides the catalog saves', () => {
   function overridesFor() {
     return createCodeAgentOverrides({
       store: freshStore(),
-      codeAgents: new Map([
+      builtInAgents: new Map([
         ['tool-runner', { tools: ['lookup-order'] }],
         ['demo:release-helper', { tools: [] }],
       ]),

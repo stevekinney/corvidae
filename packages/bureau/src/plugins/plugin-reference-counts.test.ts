@@ -51,7 +51,7 @@ const plugin = definePlugin({
       ],
     },
     interceptors: [{ name: 'audit', onStep: async () => undefined }],
-    codeAgents: [
+    agents: [
       {
         name: 'writer',
         agent: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),

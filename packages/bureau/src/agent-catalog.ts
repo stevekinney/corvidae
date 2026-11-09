@@ -474,7 +474,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
         // COR-2009: a version is stamped on the Bureau's clock when the catalog has one.
         nowISO: options?.codeAgentRuns?.runtime?.clock.nowISO ?? (() => new Date().toISOString()),
       }),
-    codeAgents: new Map(
+    builtInAgents: new Map(
       entries.map((entry) => [entry.name, { tools: codeToolNames(entry.agent) }] as const),
     ),
     listsOtherAgent: (id) =>

@@ -563,7 +563,7 @@ describe('the chat list, a new chat, and the agents', () => {
     status,
     problems: [],
     contributions: agentNames.map((id) => ({
-      kind: 'code-agent',
+      kind: 'agent',
       id,
       references: { agents: 0, schedules: 0, waitingRuns: 0 },
     })),

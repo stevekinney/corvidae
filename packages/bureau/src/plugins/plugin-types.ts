@@ -228,7 +228,7 @@ export type PluginContributionKind =
   | 'scorer'
   | 'panel'
   | 'formatter'
-  | 'code-agent';
+  | 'agent';
 
 /** One contribution a running plugin registered, as composition records it. */
 export interface PluginContribution {

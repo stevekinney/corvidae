@@ -422,10 +422,10 @@ export function gatedContributions<T extends PluginContributions>(
             },
           })),
         }),
-    ...(result.codeAgents === undefined
+    ...(result.agents === undefined
       ? {}
       : {
-          codeAgents: result.codeAgents.map(({ name, agent }) => ({
+          agents: result.agents.map(({ name, agent }) => ({
             name,
             agent: gatedAgent(gate, idOf(name), agent),
           })),

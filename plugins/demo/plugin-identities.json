@@ -3,49 +3,49 @@
   "version": "1.0.0",
   "entries": [
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:assistant",
       "version": "1.0.0",
       "schema": null
     },
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:changelog-writer",
       "version": "1.0.0",
       "schema": null
     },
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:echo",
       "version": "1.0.0",
       "schema": null
     },
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:internal",
       "version": "1.0.0",
       "schema": null
     },
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:model-switcher",
       "version": "1.0.0",
       "schema": null
     },
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:release-helper",
       "version": "1.0.0",
       "schema": null
     },
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:request-human-input",
       "version": "1.0.0",
       "schema": null
     },
     {
-      "kind": "code-agent",
+      "kind": "agent",
       "id": "demo:tool-runner",
       "version": "1.0.0",
       "schema": null

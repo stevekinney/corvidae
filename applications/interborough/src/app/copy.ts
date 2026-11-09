@@ -2222,7 +2222,7 @@ export const PLUGINS_COPY = {
     scorer: 'Scorers',
     panel: 'Panels',
     formatter: 'Formatters',
-    'code-agent': 'Code agents',
+    agent: 'Agents',
   } as Readonly<Record<string, string>>,
   /** The configuration form, built from the plugin's own schema. */
   configuration: {

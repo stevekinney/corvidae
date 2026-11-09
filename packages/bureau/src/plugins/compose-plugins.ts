@@ -12,7 +12,7 @@
  * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
- * agents the agent catalog lists as `unavailable` (COR-2009); see `codeAgentsOfDisabledPlugin`.
+ * agents the agent catalog lists as `unavailable` (COR-2009); see `agentsOfDisabledPlugin`.
  *
  * @module compose-plugins
  */
@@ -93,7 +93,7 @@ export interface ComposedPlugins<O extends ComposableOptions> {
   /**
    * COR-2009 — the code agents of the disabled plugins, in load order, which the agent catalog
    * lists `unavailable` (`Plugin Demo is disabled`) so they can be read and duplicated, never run.
-   * See {@link codeAgentsOfDisabledPlugin} for how they are read without the plugin running.
+   * See {@link agentsOfDisabledPlugin} for how they are read without the plugin running.
    */
   readonly unavailableAgents: readonly UnavailableCodeAgent[];
   /**
@@ -346,7 +346,7 @@ function planOf(
     contribute('formatter', formatter.name);
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
   }
-  for (const agent of contributions.codeAgents ?? []) contribute('code-agent', agent.name);
+  for (const agent of contributions.agents ?? []) contribute('agent', agent.name);
   return { claims, listings, tools };
 }
 
@@ -402,7 +402,7 @@ function heldByHost(options: ComposableOptions): Claims {
       claims.hold({ space: 'event-kind', name: kind }, HOST_PARTY);
   }
   for (const name of Object.keys(options.agents ?? {})) {
-    claims.hold({ space: 'code-agent', name }, HOST_PARTY);
+    claims.hold({ space: 'agent', name }, HOST_PARTY);
   }
   for (const judge of options.scorers?.list ?? []) {
     claims.hold({ space: 'scorer', name: judge.name }, HOST_PARTY);
@@ -428,7 +428,7 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'decision-router',
   'reaction',
   'formatter',
-  'code-agent',
+  'agent',
   'scorer',
 ]);
 
@@ -503,7 +503,7 @@ class Contributed {
     for (const judge of result.scorers ?? []) {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
-    for (const { name, agent } of result.codeAgents ?? []) this.agents[id(name)] = agent;
+    for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
     this.providers.push(...providersOf(plugin, result));
     this.memory.detectors.push(...(result.memoryDetectors ?? []));
     for (const embedder of result.embedders ?? []) {
@@ -738,12 +738,12 @@ async function setUp(
  * `unavailable` and `duplicate` can copy one. Only `setup` can say what they are, so it runs once,
  * with nothing it could change or reveal: storage confined to `plugin:<name>:` of a scratch
  * `MemoryStorage` that is dropped after, no secret (every `get` answers `undefined`), and a host
- * API that is never bound, so a call to it rejects. Only `codeAgents` is kept; no other
+ * API that is never bound, so a call to it rejects. Only `agents` is kept; no other
  * contribution is registered, `afterStart` never runs, and none of the agents can start a run. A
  * plugin whose configuration does not parse, or whose `setup` throws, lists none: it is disabled
  * either way, and enabling it reports the failure where a running plugin's would be.
  */
-async function codeAgentsOfDisabledPlugin(
+async function agentsOfDisabledPlugin(
   entry: BureauPluginEntry,
   options: Pick<ComposableOptions, 'pluginConfiguration'>,
 ): Promise<UnavailableCodeAgent[]> {
@@ -764,7 +764,7 @@ async function codeAgentsOfDisabledPlugin(
     };
     const returned: PluginSetupResult = (await descriptor.setup(context as never)) ?? {};
     const message = `Plugin ${descriptor.title ?? descriptor.name} is disabled`;
-    return (returned.codeAgents ?? []).map(({ name, agent }) => ({
+    return (returned.agents ?? []).map(({ name, agent }) => ({
       id: formatToolId({ namespace: descriptor.name, name }),
       plugin: descriptor.name,
       agent,
@@ -843,7 +843,7 @@ export async function composePlugins<O extends ComposableOptions>(
     claims.hold({ space: 'plugin', name: entry.descriptor.name }, party);
     const outcome = await setUp(entry, options, storage);
     if (outcome.status === 'disabled') {
-      unavailableAgents.push(...(await codeAgentsOfDisabledPlugin(entry, options)));
+      unavailableAgents.push(...(await agentsOfDisabledPlugin(entry, options)));
     }
     if (outcome.status !== 'set-up') {
       record(outcome.status, outcome.problems);

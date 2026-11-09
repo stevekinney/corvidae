@@ -4,6 +4,7 @@
 // is an excess-property error.
 
 import type {
+  PluginAgent,
   PluginContributions,
   PluginFormatter,
   PluginPanel,
@@ -47,3 +48,10 @@ export const renamedFormatters: PluginContributions = { formatters: [formatter] 
 
 // @ts-expect-error -- `eventFormatters` was renamed `formatters`
 export const staleEventFormatters: PluginContributions = { eventFormatters: [formatter] };
+
+declare const agent: PluginAgent;
+
+export const renamedAgents: PluginContributions = { agents: [agent] };
+
+// @ts-expect-error -- `codeAgents` was renamed `agents`
+export const staleCodeAgents: PluginContributions = { codeAgents: [agent] };

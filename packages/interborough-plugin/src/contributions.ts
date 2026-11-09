@@ -203,7 +203,7 @@ export interface PluginFormatter {
 }
 
 /** An agent defined in code. */
-export interface PluginCodeAgent {
+export interface PluginAgent {
   /** The agent's name, unique within the plugin. */
   readonly name: string;
   /** The agent itself. */
@@ -258,7 +258,7 @@ export interface PluginContributions {
   /** Event formatters. */
   readonly formatters?: readonly PluginFormatter[];
   /** Agents defined in code. */
-  readonly codeAgents?: readonly PluginCodeAgent[];
+  readonly agents?: readonly PluginAgent[];
 }
 
 /** What `setup` returns, with the hook the host calls once Bureau has started. */

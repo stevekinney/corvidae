@@ -146,7 +146,7 @@ describe('a plugin missing a declared secret', () => {
       description: 'Needs an API key.',
       secrets: [KEY],
       setup: () => ({
-        codeAgents: [
+        agents: [
           {
             name: 'writer',
             agent: createAgent({
@@ -310,7 +310,7 @@ describe('the secret-gating outcome matrix', () => {
             },
           },
         ],
-        codeAgents: [
+        agents: [
           {
             name: 'writer',
             agent: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
@@ -337,10 +337,10 @@ describe('the secret-gating outcome matrix', () => {
       'memory-detector': () => gatedResult.memoryDetectors?.[0]?.detect('x', {} as never),
       scorer: () => gatedResult.scorers?.[0]?.evaluate({} as never),
       formatter: () => gatedResult.formatters?.[0]?.format(event),
-      'code-agent': () => gatedResult.codeAgents?.[0]?.agent.run('Go.'),
+      agent: () => gatedResult.agents?.[0]?.agent.run('Go.'),
       // The definition resolver Bureau starts, recovers and claims a durable run through.
       'code-agent-resolver': () => {
-        const agent = gatedResult.codeAgents?.[0]?.agent;
+        const agent = gatedResult.agents?.[0]?.agent;
         if (agent === undefined || !hasDefinitionResolver(agent)) return 'no resolver';
         return agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('Go.', {});
       },

@@ -25,7 +25,7 @@ function unreadyAgentNames(snapshot: PluginsSnapshot): ReadonlySet<string> {
   for (const plugin of snapshot.plugins) {
     if (plugin.status === 'running') continue;
     for (const contribution of plugin.contributions) {
-      if (contribution.kind === 'code-agent') names.add(contribution.id);
+      if (contribution.kind === 'agent') names.add(contribution.id);
     }
   }
   return names;

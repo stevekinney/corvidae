@@ -29,7 +29,7 @@
  * @module agents
  */
 
-import type { PluginCodeAgent, PluginSetupContext } from '@lostgradient/interborough-plugin';
+import type { PluginAgent, PluginSetupContext } from '@lostgradient/interborough-plugin';
 import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
 
 import {
@@ -75,7 +75,7 @@ export const CHANGELOG_WRITER_REPLY =
 export function createDemoAgents(
   approvalSecret: string | undefined,
   toolApprovalHooks: PluginSetupContext['toolApprovalHooks'],
-): PluginCodeAgent[] {
+): PluginAgent[] {
   return [
     {
       name: 'assistant',

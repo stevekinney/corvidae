@@ -151,9 +151,9 @@ const HOST_ENTRY: Record<
     host: { formatters: [{ plugin: 'p', formatter: formatter('x') }] },
     contribution: { formatters: [formatter('x')] },
   },
-  'code-agent': {
+  agent: {
     host: { agents: { 'p:x': agent() } },
-    contribution: { codeAgents: [{ name: 'x', agent: agent() }] },
+    contribution: { agents: [{ name: 'x', agent: agent() }] },
   },
   scorer: {
     host: { scorers: { list: [judge('p:x')], sampleRate: 1 } },
@@ -213,7 +213,7 @@ describe('composePlugins', () => {
         scorers: [
           { name: 'judge', version: '1', evaluate: () => ({ pass: true, score: 1, message: '' }) },
         ],
-        codeAgents: [
+        agents: [
           {
             name: 'writer',
             agent: createAgent({ generate: async () => ({ content: '', toolCalls: [] }) }),

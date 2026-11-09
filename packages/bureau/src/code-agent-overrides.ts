@@ -91,7 +91,7 @@ export interface CodeAgentOverridesOptions {
   /** Where the versions live. */
   readonly store: AgentOverrideStore;
   /** The code-defined agents by identifier, with the tools each names. */
-  readonly codeAgents: ReadonlyMap<string, { readonly tools: readonly string[] }>;
+  readonly builtInAgents: ReadonlyMap<string, { readonly tools: readonly string[] }>;
   /** Whether `id` names an agent the catalog lists as something other than a code-defined one. */
   readonly listsOtherAgent: (id: string) => boolean;
   /** The tool names the deployment's tool catalog holds. */
@@ -182,8 +182,8 @@ function checkModels(
 
 /** The `overrides` member of the agent catalog; see {@link CodeAgentOverrides}. */
 export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): CodeAgentOverrides {
-  const { store, codeAgents } = options;
-  const isBuiltIn = (id: string) => codeAgents.has(id) && !id.includes(':');
+  const { store, builtInAgents } = options;
+  const isBuiltIn = (id: string) => builtInAgents.has(id) && !id.includes(':');
   const inForce = new Map<string, AgentOverrides>();
 
   async function loadOne(id: string): Promise<void> {
@@ -211,9 +211,9 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
   }
 
   function requireBuiltIn(id: string): { readonly tools: readonly string[] } {
-    const agent = isBuiltIn(id) ? codeAgents.get(id) : undefined;
+    const agent = isBuiltIn(id) ? builtInAgents.get(id) : undefined;
     if (agent !== undefined) return agent;
-    if (codeAgents.has(id) || options.listsOtherAgent(id)) {
+    if (builtInAgents.has(id) || options.listsOtherAgent(id)) {
       throw new AgentFileError(
         'agent-file-read-only',
         `Agent "${id}" is not a built-in agent, so it takes no overrides.`,
@@ -279,10 +279,10 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
       return (isBuiltIn(id) ? inForce.get(id) : undefined) ?? {};
     },
     ownTools(id) {
-      return (isBuiltIn(id) ? codeAgents.get(id)?.tools : undefined) ?? [];
+      return (isBuiltIn(id) ? builtInAgents.get(id)?.tools : undefined) ?? [];
     },
     async load() {
-      await Promise.all([...codeAgents.keys()].filter(isBuiltIn).map(loadOne));
+      await Promise.all([...builtInAgents.keys()].filter(isBuiltIn).map(loadOne));
     },
   };
 }

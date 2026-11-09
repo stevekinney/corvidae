@@ -39,7 +39,7 @@ function pluginWithAgent(agent: string, status: string) {
     status,
     problems: [],
     contributions: [
-      { kind: 'code-agent', id: agent, references: { agents: 0, schedules: 0, waitingRuns: 0 } },
+      { kind: 'agent', id: agent, references: { agents: 0, schedules: 0, waitingRuns: 0 } },
     ],
     enabled: true,
     configuration: {},

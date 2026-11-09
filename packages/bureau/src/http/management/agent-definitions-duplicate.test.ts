@@ -139,7 +139,7 @@ function demoPlugin(calls: { setup: number; afterStart: number }) {
     setup: () => {
       calls.setup += 1;
       return {
-        codeAgents: [
+        agents: [
           {
             name: 'release-helper',
             agent: createAgent({

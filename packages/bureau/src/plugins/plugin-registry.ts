@@ -210,8 +210,7 @@ async function countReferences(
     // A schedule or a run of the contribution itself, when it is a code agent.
     const runsIt = (agentName: string | undefined): boolean =>
       agentName !== undefined &&
-      (users.has(agentName) ||
-        (contribution.kind === 'code-agent' && agentName === contribution.id));
+      (users.has(agentName) || (contribution.kind === 'agent' && agentName === contribution.id));
     const key = referenceKey(contribution.id);
     const waiting = new Set(
       waitingRuns

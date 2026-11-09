@@ -307,7 +307,7 @@ export async function pluginIdentities(
         }),
       descriptor,
     ),
-    ...entriesOf(contributions.codeAgents, (agent) => named(agent, 'code-agent'), descriptor),
+    ...entriesOf(contributions.agents, (agent) => named(agent, 'agent'), descriptor),
   ];
   return {
     plugin: descriptor.name,
