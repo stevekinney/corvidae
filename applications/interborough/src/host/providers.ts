@@ -83,18 +83,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** The validated configuration a loaded plugin currently has in configuration.json. */
-function pluginConfigurationOf(
-  document: Record<string, unknown>,
-  plugin: string,
-): Record<string, unknown> {
-  const plugins = document['plugins'];
-  if (!isPlainObject(plugins)) return {};
-  const entry = plugins[plugin];
-  if (!isPlainObject(entry) || !isPlainObject(entry['configuration'])) return {};
-  return entry['configuration'];
-}
-
 function parseModels(models: unknown, path: string, field: string): readonly string[] {
   if (!Array.isArray(models)) {
     throw new ProviderConfigurationError(path, field, 'expected a list of model names.');
@@ -371,14 +359,7 @@ export async function loadProviders(input: {
       `The ${provider.name} provider has an allowlist in ${input.configurationLocation} but the secret "${provider.secretKey}" is not set, so it is not offered.`,
     );
   }
-  // Plugin composition supplies the definitions once, but plugin configuration can change while
-  // the host runs. Rebind each contribution to the validated snapshot that produced this load so
-  // every later generate, stream, decide, and key probe observes the same committed configuration.
-  const providers = input.providers.map((provider) => ({
-    ...provider,
-    configuration: pluginConfigurationOf(document, provider.plugin),
-  }));
-  return { providers, allowlists, rows, apiKeys, configurationRevision: revision };
+  return { providers: input.providers, allowlists, rows, apiKeys, configurationRevision: revision };
 }
 
 /** A catalog model, named by its provider and either its model or an alias. */
