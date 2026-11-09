@@ -164,13 +164,40 @@ export function guardrailAdditionsOf(
   return { inputDetectors, outputValidators };
 }
 
-const INTERCEPTOR_HOOK_NAMES = [
-  'prepareStep',
-  'beforeToolExecution',
-  'afterToolExecution',
-  'onStep',
-  'validateResponse',
-] as const;
+/**
+ * Every point a {@link PluginInterceptor} can hook, as the run-time list its two consumers (the
+ * registry {@link interceptorsOf} builds and the secret gate) iterate. The record is keyed by
+ * `PluginInterceptor`'s own members, so the compiler fails here when one is added or removed, and
+ * `contributions.test-d.ts` in `@lostgradient/interborough-plugin` fails when that interface and
+ * Operative's hook map disagree.
+ */
+const INTERCEPTOR_POINT_SET: Record<Exclude<keyof PluginInterceptor, 'name'>, true> = {
+  prepareStep: true,
+  beforeToolExecution: true,
+  afterToolExecution: true,
+  onStep: true,
+  selectTools: true,
+  validateResponse: true,
+  validateToolResult: true,
+  beforeCompaction: true,
+  beforeBackgroundCompaction: true,
+  afterCompaction: true,
+  selectToolChoice: true,
+  beforeGenerate: true,
+  afterGenerate: true,
+  onLLMInput: true,
+  onLLMOutput: true,
+  onRunStart: true,
+  onRunComplete: true,
+  onRunError: true,
+  onRunAbort: true,
+  onError: true,
+};
+
+/** The hook points of a {@link PluginInterceptor}: one per point of Operative's hook map. */
+export const INTERCEPTOR_POINTS = Object.keys(INTERCEPTOR_POINT_SET) as ReadonlyArray<
+  Exclude<keyof PluginInterceptor, 'name'>
+>;
 
 /**
  * The agent-tier hook registry for the interceptors `definition` chooses, or `undefined` when it
@@ -185,11 +212,11 @@ export function interceptorsOf(
   for (const id of new Set(definition.interceptors ?? [])) {
     const contributed = contributions.interceptors.get(id);
     if (contributed === undefined) continue;
-    for (const hookName of INTERCEPTOR_HOOK_NAMES) {
-      const handler = contributed.interceptor[hookName];
+    for (const point of INTERCEPTOR_POINTS) {
+      const handler = contributed.interceptor[point];
       if (handler === undefined) continue;
-      registry.on(hookName, handler, {
-        id: `${id}:${hookName}`,
+      registry.on(point, handler, {
+        id: `${id}:${point}`,
         source: contributed.plugin,
       });
     }

@@ -93,7 +93,7 @@ The descriptor's members:
 | `activities` | Activities a shipped workflow calls as `plugin:name`. |
 | `validators` | Goal validators, registered by name and version. |
 | `guardrails` | `inputDetectors` and `outputValidators`, added to the ones Operative applies to every agent. |
-| `interceptors` | Run hooks an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
+| `interceptors` | Run hooks, at any of Operative's hook points, that an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
 | `triggers` | New external sources that start work. |
 | `reactions` | New things a hook can do when its event happens. |

@@ -23,7 +23,9 @@
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail (`detect`, `validate`) | refuses; an agent file that lists it cannot run | works | refuses |
- * | interceptor (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
+ * | interceptor, a point Operative runs through its hook registry (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `selectTools`, `validateResponse`, `validateToolResult`, the compaction points, `selectToolChoice`, `beforeGenerate`, `afterGenerate`, `onRunStart`) | refuses; the step or the run fails with the refusal, so an agent file that lists the interceptor cannot run | works | refuses |
+ * | interceptor, an observing point (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) | refuses; Operative settles these handlers and discards a failure, so the run's own outcome and error stand and the plugin's handler does not run | works | refuses |
+ * | interceptor, `onError` | refuses; Operative catches a failing recovery hook and the original error propagates, so the handler does not run and recovers nothing | works | refuses |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
@@ -47,6 +49,7 @@ import type {
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
 
+import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import type { BureauPluginSecrets } from './plugin-types';
 
 /**
@@ -188,26 +191,18 @@ function gatedInterceptor(
   contribution: string,
   interceptor: PluginInterceptor,
 ): PluginInterceptor {
-  const { prepareStep, beforeToolExecution, afterToolExecution, onStep, validateResponse } =
-    interceptor;
-  return {
-    ...interceptor,
-    ...(prepareStep === undefined
-      ? {}
-      : { prepareStep: gated(gate, contribution, prepareStep.bind(interceptor)) }),
-    ...(beforeToolExecution === undefined
-      ? {}
-      : { beforeToolExecution: gated(gate, contribution, beforeToolExecution.bind(interceptor)) }),
-    ...(afterToolExecution === undefined
-      ? {}
-      : { afterToolExecution: gated(gate, contribution, afterToolExecution.bind(interceptor)) }),
-    ...(onStep === undefined
-      ? {}
-      : { onStep: gated(gate, contribution, onStep.bind(interceptor)) }),
-    ...(validateResponse === undefined
-      ? {}
-      : { validateResponse: gated(gate, contribution, validateResponse.bind(interceptor)) }),
-  };
+  const gatedPoints: Record<string, unknown> = {};
+  for (const point of INTERCEPTOR_POINTS) {
+    const hook = interceptor[point];
+    if (hook === undefined) continue;
+    gatedPoints[point] = gated(
+      gate,
+      contribution,
+      (hook as (...args: unknown[]) => unknown).bind(interceptor),
+    );
+  }
+  // Each point's gated handler keeps the signature of the one it wraps.
+  return { ...interceptor, ...gatedPoints };
 }
 
 /**

@@ -1,12 +1,23 @@
 import type {
+  AfterGenerateHook,
   AfterToolExecutionHook,
+  BeforeGenerateHook,
   BeforeToolExecutionHook,
   DecisionModel,
+  OnErrorHook,
+  OnLLMInputHook,
+  OnLLMOutputHook,
+  OnRunAbortHook,
+  OnRunCompleteHook,
+  OnRunErrorHook,
+  OnRunStartHook,
   OnStepHook,
+  OperativeHookMap,
   OutputValidator,
   PrepareStepHook,
   RunnableAgent,
   ValidateResponseHook,
+  ValidateToolResultHook,
   Validator,
 } from '@lostgradient/operative';
 import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
@@ -47,7 +58,7 @@ export interface PluginGuardrails {
 /**
  * A set of Operative run hooks a plugin contributes under one name. An agent file chooses it with
  * `interceptors: [plugin:name]`, and it runs for the agents that choose it and no others. Each
- * member is an Operative run hook.
+ * member is an Operative run hook, one for each point of Operative's hook map.
  */
 export interface PluginInterceptor {
   /** Names the interceptor in logs and problem reports, and in the id an agent file lists. */
@@ -60,8 +71,38 @@ export interface PluginInterceptor {
   readonly afterToolExecution?: AfterToolExecutionHook;
   /** Runs after each step finishes. */
   readonly onStep?: OnStepHook;
+  /** Chooses the tools a step offers the model. */
+  readonly selectTools?: OperativeHookMap['selectTools'];
   /** Runs over a response and may reject it. */
   readonly validateResponse?: ValidateResponseHook;
+  /** Runs over each tool result and may replace it. */
+  readonly validateToolResult?: ValidateToolResultHook;
+  /** Runs before compaction; return `false` to cancel it. */
+  readonly beforeCompaction?: OperativeHookMap['beforeCompaction'];
+  /** Runs before a step requests background compaction; return `false` to withdraw the request. */
+  readonly beforeBackgroundCompaction?: OperativeHookMap['beforeBackgroundCompaction'];
+  /** Runs after compaction, with what it removed. */
+  readonly afterCompaction?: OperativeHookMap['afterCompaction'];
+  /** Chooses the tool choice a step sends the model. */
+  readonly selectToolChoice?: OperativeHookMap['selectToolChoice'];
+  /** Runs before the generate call and may change what it is given. */
+  readonly beforeGenerate?: BeforeGenerateHook;
+  /** Runs after the generate call and may change the response. */
+  readonly afterGenerate?: AfterGenerateHook;
+  /** Observes the input of each generate call; its failure does not fail the run. */
+  readonly onLLMInput?: OnLLMInputHook;
+  /** Observes the output of each generate call; its failure does not fail the run. */
+  readonly onLLMOutput?: OnLLMOutputHook;
+  /** Runs when a run starts, before its first step. */
+  readonly onRunStart?: OnRunStartHook;
+  /** Runs when a run completes; its failure does not fail the run. */
+  readonly onRunComplete?: OnRunCompleteHook;
+  /** Runs when a run fails, with the error and the partial results; its failure is not reported. */
+  readonly onRunError?: OnRunErrorHook;
+  /** Runs when a run is aborted; its failure is not reported. */
+  readonly onRunAbort?: OnRunAbortHook;
+  /** Chooses how a failed generate call recovers: `retry`, `skip` or `abort`. */
+  readonly onError?: OnErrorHook;
 }
 
 /** What a trigger kind's `start` receives. */

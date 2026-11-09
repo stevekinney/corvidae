@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog';
+import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import { createBureau } from '../create-bureau';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types';
@@ -279,7 +280,15 @@ describe('the secret-gating outcome matrix', () => {
           inputDetectors: [{ name: 'scan', detect: note('guardrail-input', {}) as never }],
           outputValidators: [{ name: 'check', validate: note('guardrail-output', {}) as never }],
         },
-        interceptors: [{ name: 'audit', onStep: note('interceptor', undefined) }],
+        // A handler at every point of the hook map, each of which must refuse.
+        interceptors: [
+          {
+            name: 'audit',
+            ...Object.fromEntries(
+              INTERCEPTOR_POINTS.map((point) => [point, note('interceptor', undefined)]),
+            ),
+          },
+        ],
         decisionRouters: [
           { name: 'router', kinds: new Set(), decide: note('decision-router', {}) as never },
         ],
@@ -330,7 +339,16 @@ describe('the secret-gating outcome matrix', () => {
         gatedResult.guardrails?.inputDetectors?.[0]?.detect('x', {} as never),
       'guardrail-output': () =>
         gatedResult.guardrails?.outputValidators?.[0]?.validate('x', {} as never),
-      interceptor: () => gatedResult.interceptors?.[0]?.onStep?.({} as never),
+      ...Object.fromEntries(
+        INTERCEPTOR_POINTS.map((point) => [
+          `interceptor ${point}`,
+          () =>
+            (
+              gatedResult.interceptors?.[0]?.[point] as
+                ((...args: unknown[]) => unknown) | undefined
+            )?.({}, {}),
+        ]),
+      ),
       'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
