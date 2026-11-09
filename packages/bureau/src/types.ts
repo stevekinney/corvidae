@@ -115,7 +115,7 @@ import type { BureauDecisions, DecisionsOptions } from './decisions/types';
 import type { BureauSettings, SettingsOptions } from './settings/types';
 import type { Models, ModelsOptions } from './models/create-models';
 import type { BureauNotifications } from './notifications/notification-types';
-import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
+import type { ScorerSampler, ScorerSamplerOptions } from './scorers';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
   SessionSteeringState,
@@ -648,7 +648,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   workflowSource?: WorkflowSource | readonly WorkflowSource[];
   /**
    * COR-1874 — the versioned catalog (`createVersionedCatalog`) whose `activity` and
-   * `trigger-kind` entries workflow files may use besides the `agent` activity and the `schedule`
+   * `trigger` entries workflow files may use besides the `agent` activity and the `schedule`
    * and `signal` triggers. An entry is named `plugin:name` and holds a plugin's activity or
    * trigger kind. A file names a contributed activity without a version and floats with it; the
    * revision Bureau registers pins the version that is loaded, and a run resumes after a restart
@@ -1011,7 +1011,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * alert threshold. Omit, pass no judges, or pass `sampleRate: 0` to
    * disable — the default.
    */
-  onlineEvals?: OnlineEvalSamplerOptions;
+  scorers?: ScorerSamplerOptions;
   /**
    * Managed assets (COR-794) — composes one asset service over the injected
    * asset storage, policy, and ports, running on this bureau's runtime
@@ -1597,7 +1597,7 @@ export interface BureauHooksOptions {
   /**
    * The hook action kinds plugins contribute (COR-1876): a hook whose action is
    * `{ type: 'plugin', plugin, kind, configuration? }` runs the named kind. This is the entry point
-   * plugin composition feeds with each plugin's `hookActionKinds`. A plugin and kind name given
+   * plugin composition feeds with each plugin's `reactions`. A plugin and kind name given
    * twice is refused at construction. Omitted, only the built-in actions exist.
    */
   actionKinds?: readonly HookActionKindRegistration[];
@@ -2886,14 +2886,14 @@ export interface BureauInternals {
   readonly webhookNotifier: WebhookNotifier | undefined;
 
   /**
-   * The online eval sampler (AB-53). Present whenever `options.onlineEvals`
+   * The online eval sampler (AB-53). Present whenever `options.scorers`
    * configures at least one judge with a positive `sampleRate`; `undefined`
    * when online evals are disabled (the default). Use
-   * `onlineEvalSampler.sampledCount()`/`observedCount()` to inspect sampling
-   * state and `onlineEvalSampler.flush()` to await in-flight judge
+   * `scorerSampler.sampledCount()`/`observedCount()` to inspect sampling
+   * state and `scorerSampler.flush()` to await in-flight judge
    * evaluations deterministically.
    */
-  readonly onlineEvalSampler: OnlineEvalSampler | undefined;
+  readonly scorerSampler: ScorerSampler | undefined;
 
   /**
    * AB-369: every run whose cancellation `tasks.cancel` or a task handle's `abort` has requested

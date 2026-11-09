@@ -664,7 +664,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.notifications.dismiss',
         'bureau.notifications.list',
         'bureau.notifications.markread',
-        'bureau.plugins.kinds',
+        'bureau.plugins.contributions',
         'bureau.reviews.get',
         'bureau.reviews.list',
         'bureau.reviews.resolve',

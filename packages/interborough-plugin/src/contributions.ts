@@ -14,9 +14,9 @@ import type { ActivityDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
 
-import type { OnlineEvalJudge } from './eval-judge.ts';
 import type { PluginHostApi } from './host-api.ts';
 import type { PluginSetupContext } from './plugin-descriptor.ts';
+import type { PluginScorer } from './scorer.ts';
 
 /** An event the host publishes, as a trigger, hook action, or formatter receives it. */
 export interface PluginEvent {
@@ -75,7 +75,7 @@ export interface PluginTriggerContext {
 }
 
 /** A new kind of trigger, an external source that starts work in the host. */
-export interface PluginTriggerKind {
+export interface PluginTrigger {
   /** The kind's name, unique within the plugin. */
   readonly name: string;
   /** The kind's own version; a record that pins it uses the plugin's version without one. */
@@ -89,7 +89,7 @@ export interface PluginTriggerKind {
 }
 
 /** What a hook action kind's `run` receives. */
-export interface PluginHookActionContext {
+export interface PluginReactionContext {
   /** The event the hook fired for. */
   readonly event: PluginEvent;
   /** The action's configuration, parsed with the kind's `configuration` schema. */
@@ -108,7 +108,7 @@ export interface PluginHookActionContext {
 }
 
 /** A new kind of hook action, what a hook does when one of its events happens. */
-export interface PluginHookActionKind {
+export interface PluginReaction {
   /** The kind's name, unique within the plugin. */
   readonly name: string;
   /** The kind's own version; a record that pins it uses the plugin's version without one. */
@@ -118,7 +118,7 @@ export interface PluginHookActionKind {
   /** The schema an action's configuration is parsed with. */
   readonly configuration: z.ZodType;
   /** Carries out the action for one event; a rejection is a failed delivery. */
-  run(context: PluginHookActionContext): Promise<void>;
+  run(context: PluginReactionContext): Promise<void>;
 }
 
 /**
@@ -242,17 +242,17 @@ export interface PluginContributions {
   /** Decision models that answer decisions of the kinds they name. */
   readonly decisionRouters?: readonly DecisionModel[];
   /** New kinds of trigger. */
-  readonly triggerKinds?: readonly PluginTriggerKind[];
+  readonly triggers?: readonly PluginTrigger[];
   /** New kinds of hook action. */
-  readonly hookActionKinds?: readonly PluginHookActionKind[];
+  readonly reactions?: readonly PluginReaction[];
   /** Model providers, each with its catalog rows. */
   readonly providers?: readonly PluginProvider[];
   /** Embedders the `memory.embedder` setting can name. */
   readonly embedders?: readonly PluginEmbedder[];
   /** Detectors run after the default poisoning detector, on memory admission and on recall. */
   readonly memoryDetectors?: readonly InputDetector[];
-  /** Judges that score a sample of completed runs. */
-  readonly evalJudges?: readonly OnlineEvalJudge[];
+  /** Scorers that score a sample of completed runs. */
+  readonly scorers?: readonly PluginScorer[];
   /** Interface panels. */
   readonly mcpApps?: readonly PluginMcpApp[];
   /** Event formatters. */

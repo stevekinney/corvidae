@@ -1,6 +1,6 @@
 /**
  * COR-1893: a hook action kind a running plugin contributes is a choice under Then, and its
- * configuration is drawn from the schema the Bureau reports (`bureau.plugins.kinds`). An event in a
+ * configuration is drawn from the schema the Bureau reports (`bureau.plugins.contributions`). An event in a
  * hook's deliveries shows its plain words and its raw kind: a delivery holds no payload, so no
  * formatter's sentence is written for it.
  */
@@ -96,7 +96,7 @@ function open(path: string, handlers: Parameters<typeof installBureauStub>[0] = 
     }),
     'bureau.hooks.create': (params) => ({ ...ALPHA, id: 'created', ...params }),
     'bureau.events.catalog': () => ({ events: CATALOG }),
-    'bureau.plugins.kinds': () => ({ triggerKinds: [], hookActionKinds: [PAGE_KIND] }),
+    'bureau.plugins.contributions': () => ({ triggers: [], reactions: [PAGE_KIND] }),
     ...handlers,
   });
   landAt(path);
@@ -171,9 +171,9 @@ describe('a contributed hook action under Then', () => {
 
   test('creates a hook from an untouched form with the choices it shows', async () => {
     const view = open('/hooks/new', {
-      'bureau.plugins.kinds': () => ({
-        triggerKinds: [],
-        hookActionKinds: [
+      'bureau.plugins.contributions': () => ({
+        triggers: [],
+        reactions: [
           {
             ...PAGE_KIND,
             configuration: {
@@ -203,14 +203,14 @@ describe('a contributed hook action under Then', () => {
 
   test('offers only the built-in actions when the host cannot say what plugins add', async () => {
     const view = open('/hooks/new', {
-      'bureau.plugins.kinds': () => {
+      'bureau.plugins.contributions': () => {
         throw new Error('down');
       },
     });
     const select = (await view.findByLabelText(
       HOOKS_COPY.editor.action.label,
     )) as HTMLSelectElement;
-    await waitFor(() => expect(stub?.callsTo('bureau.plugins.kinds').length).toBe(1));
+    await waitFor(() => expect(stub?.callsTo('bureau.plugins.contributions').length).toBe(1));
     expect(select.options.length).toBe(3);
   });
 });

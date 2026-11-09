@@ -8,7 +8,7 @@
  * later plugin that claims a held name is `skipped` whole with `name-clash`, so none of its
  * contributions is registered. A plugin that passes registers every contribution through the
  * option it belongs to (`contributionCatalog`, `agentContributions`, `validators`, `hooks`,
- * `eventFormatters`, `decisions`, `onlineEvals`, the agent catalog, the agent tool catalog and the
+ * `eventFormatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
  * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
@@ -262,7 +262,7 @@ function planOf(
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
-  for (const kind of contributions.triggerKinds ?? []) contribute('trigger-kind', kind.name);
+  for (const kind of contributions.triggers ?? []) contribute('trigger', kind.name);
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
@@ -277,7 +277,7 @@ function planOf(
   }
   for (const model of contributions.decisionRouters ?? [])
     contribute('decision-router', model.name);
-  for (const kind of contributions.hookActionKinds ?? []) contribute('hook-action', kind.name);
+  for (const kind of contributions.reactions ?? []) contribute('reaction', kind.name);
   for (const provider of contributions.providers ?? []) {
     contribute('provider', provider.name);
     // The host resolves a generate by the bare provider name, so the name is held across plugins.
@@ -304,7 +304,7 @@ function planOf(
   for (const detector of contributions.memoryDetectors ?? []) {
     contribute('memory-detector', detector.name);
   }
-  for (const judge of contributions.evalJudges ?? []) contribute('eval-judge', judge.name);
+  for (const judge of contributions.scorers ?? []) contribute('scorer', judge.name);
   for (const app of contributions.mcpApps ?? []) {
     // A host serves the page by this URI alone, so it must be a `ui://` resource and unique.
     if (!MCP_APP_URI_PATTERN.test(app.uri)) {
@@ -372,8 +372,8 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const entry of options.contributionCatalog?.entries('activity') ?? []) {
     claims.hold({ space: 'activity', name: entry.name }, HOST_PARTY);
   }
-  for (const entry of options.contributionCatalog?.entries('trigger-kind') ?? []) {
-    claims.hold({ space: 'trigger-kind', name: entry.name }, HOST_PARTY);
+  for (const entry of options.contributionCatalog?.entries('trigger') ?? []) {
+    claims.hold({ space: 'trigger', name: entry.name }, HOST_PARTY);
   }
   for (const validator of options.validators ?? []) {
     claims.hold({ space: 'validator', name: validator.identity.name }, HOST_PARTY);
@@ -389,7 +389,7 @@ function heldByHost(options: ComposableOptions): Claims {
   }
   for (const { plugin, kind } of options.hooks?.actionKinds ?? []) {
     claims.hold(
-      { space: 'hook-action', name: formatToolId({ namespace: plugin, name: kind.name }) },
+      { space: 'reaction', name: formatToolId({ namespace: plugin, name: kind.name }) },
       HOST_PARTY,
     );
   }
@@ -404,8 +404,8 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const name of Object.keys(options.agents ?? {})) {
     claims.hold({ space: 'code-agent', name }, HOST_PARTY);
   }
-  for (const judge of options.onlineEvals?.judges ?? []) {
-    claims.hold({ space: 'eval-judge', name: judge.name }, HOST_PARTY);
+  for (const judge of options.scorers?.list ?? []) {
+    claims.hold({ space: 'scorer', name: judge.name }, HOST_PARTY);
   }
   // Embedders and memory detectors reach memory only through the host's `memory` factory, which
   // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
@@ -421,28 +421,28 @@ function heldByHost(options: ComposableOptions): Claims {
 export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'tool',
   'activity',
-  'trigger-kind',
+  'trigger',
   'validator',
   'guardrail',
   'interceptor',
   'decision-router',
-  'hook-action',
+  'reaction',
   'event-formatter',
   'code-agent',
-  'eval-judge',
+  'scorer',
 ]);
 
 /**
  * Whether a contribution of `kind` is registered with these options. A hook action kind needs
- * `hooks`, an eval judge `onlineEvals`, and an embedder or memory detector a `memory` factory;
+ * `hooks`, a scorer `scorers`, and an embedder or memory detector a `memory` factory;
  * without one the contribution goes nowhere, so the listing leaves it out.
  */
 export function registersKind(kind: PluginContributionKind, options: ComposableOptions): boolean {
   switch (kind) {
-    case 'hook-action':
+    case 'reaction':
       return options.hooks !== undefined;
-    case 'eval-judge':
-      return options.onlineEvals !== undefined;
+    case 'scorer':
+      return options.scorers !== undefined;
     case 'embedder':
     case 'memory-detector':
       return typeof options.memory === 'function';
@@ -464,7 +464,7 @@ class Contributed {
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
   readonly formatters: NonNullable<BureauOptions['eventFormatters']>[number][] = [];
-  readonly judges: NonNullable<PluginContributions['evalJudges']>[number][] = [];
+  readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
   readonly agents: Record<string, unknown> = {};
   readonly memory: {
     detectors: PluginMemoryContributions['detectors'][number][];
@@ -481,7 +481,7 @@ class Contributed {
   ): void {
     const id = (name: string) => formatToolId({ namespace: plugin, name });
     for (const [key, tool] of tools) this.tools[key] = tool;
-    if ((result.activities?.length ?? 0) + (result.triggerKinds?.length ?? 0) > 0) {
+    if ((result.activities?.length ?? 0) + (result.triggers?.length ?? 0) > 0) {
       this.activities.push({ plugin, version, result });
     }
     if (result.guardrails !== undefined || result.interceptors !== undefined) {
@@ -495,14 +495,14 @@ class Contributed {
       });
     }
     for (const model of result.decisionRouters ?? []) this.decisionModels[id(model.name)] = model;
-    for (const kind of result.hookActionKinds ?? []) {
+    for (const kind of result.reactions ?? []) {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
       this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
     }
     for (const formatter of result.eventFormatters ?? [])
       this.formatters.push({ plugin, formatter });
-    for (const judge of result.evalJudges ?? []) {
-      this.judges.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
+    for (const judge of result.scorers ?? []) {
+      this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
     for (const { name, agent } of result.codeAgents ?? []) this.agents[id(name)] = agent;
     this.providers.push(...providersOf(plugin, result));
@@ -552,9 +552,9 @@ function catalogWith(
         source,
       });
     }
-    for (const kind of result.triggerKinds ?? []) {
+    for (const kind of result.triggers ?? []) {
       catalog.register({
-        kind: 'trigger-kind',
+        kind: 'trigger',
         name: formatToolId({ namespace: plugin, name: kind.name }),
         version: kind.version,
         value: kind,
@@ -642,12 +642,12 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     ...(contributed.formatters.length === 0
       ? {}
       : { eventFormatters: [...(options.eventFormatters ?? []), ...contributed.formatters] }),
-    ...(options.onlineEvals === undefined || contributed.judges.length === 0
+    ...(options.scorers === undefined || contributed.scorers.length === 0
       ? {}
       : {
-          onlineEvals: {
-            ...options.onlineEvals,
-            judges: [...options.onlineEvals.judges, ...contributed.judges],
+          scorers: {
+            ...options.scorers,
+            list: [...options.scorers.list, ...contributed.scorers],
           },
         }),
     ...(memory === undefined ? {} : { memory }),
@@ -784,7 +784,7 @@ function snapshotOf<O extends ComposableOptions>(given: O): O {
     eventFormatters,
     decisions,
     hooks,
-    onlineEvals,
+    scorers,
     plugins,
     pluginConfiguration,
   } = given;
@@ -808,9 +808,7 @@ function snapshotOf<O extends ComposableOptions>(given: O): O {
     ...(hooks?.actionKinds === undefined
       ? {}
       : { hooks: { ...hooks, actionKinds: [...hooks.actionKinds] } }),
-    ...(onlineEvals === undefined
-      ? {}
-      : { onlineEvals: { ...onlineEvals, judges: [...onlineEvals.judges] } }),
+    ...(scorers === undefined ? {} : { scorers: { ...scorers, list: [...scorers.list] } }),
   };
 }
 

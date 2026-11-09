@@ -605,8 +605,8 @@ export type {
   TaskOriginKind,
   TaskPersonSurface,
 } from './task-origin';
-export type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
-export { createOnlineEvalSampler } from './online-evals';
+export type { ScorerSampler, ScorerSamplerOptions } from './scorers';
+export { createScorerSampler } from './scorers';
 export type { BureauToolbox, DurableComposition, RuntimeComposition } from './runtime-composition';
 export {
   createMemoryPersistHook,

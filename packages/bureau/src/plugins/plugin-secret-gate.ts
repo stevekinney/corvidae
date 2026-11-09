@@ -28,7 +28,7 @@
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
  * | memory detector (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
- * | eval judge (`evaluate`) | refuses; the sample is not scored | works | refuses |
+ * | scorer (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
  * | provider, MCP app | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for an MCP app, which the host serves as a static page from `bureau.plugins.mcpApps()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
@@ -42,7 +42,7 @@
 import type {
   PluginContributions,
   PluginInterceptor,
-  PluginTriggerKind,
+  PluginTrigger,
 } from '@lostgradient/interborough-plugin';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
@@ -216,7 +216,7 @@ function gatedInterceptor(
  * the secret is saved again. The returned stop stops whichever is running and follows the gate no
  * more. Every transition runs in order on one chain, so a start and a stop never overlap.
  */
-function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTriggerKind): PluginTriggerKind {
+function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTrigger {
   return {
     ...kind,
     start: async (context) => {
@@ -307,10 +307,10 @@ export function gatedContributions<T extends PluginContributions>(
             };
           }),
         }),
-    ...(result.triggerKinds === undefined
+    ...(result.triggers === undefined
       ? {}
       : {
-          triggerKinds: result.triggerKinds.map((kind) => gatedTriggerKind(gate, kind)),
+          triggers: result.triggers.map((kind) => gatedTriggerKind(gate, kind)),
         }),
     ...(result.validators === undefined
       ? {}
@@ -363,10 +363,10 @@ export function gatedContributions<T extends PluginContributions>(
             decide: gated(gate, idOf(model.name), model.decide.bind(model)),
           })),
         }),
-    ...(result.hookActionKinds === undefined
+    ...(result.reactions === undefined
       ? {}
       : {
-          hookActionKinds: result.hookActionKinds.map((kind) => ({
+          reactions: result.reactions.map((kind) => ({
             ...kind,
             run: gated(gate, idOf(kind.name), kind.run.bind(kind)),
           })),
@@ -403,10 +403,10 @@ export function gatedContributions<T extends PluginContributions>(
             },
           })),
         }),
-    ...(result.evalJudges === undefined
+    ...(result.scorers === undefined
       ? {}
       : {
-          evalJudges: result.evalJudges.map((judge) => ({
+          scorers: result.scorers.map((judge) => ({
             ...judge,
             evaluate: gated(gate, idOf(judge.name), judge.evaluate.bind(judge)),
           })),

@@ -95,12 +95,12 @@ The descriptor's members:
 | `guardrails` | `inputDetectors` and `outputValidators`, added to the ones Operative applies to every agent. |
 | `interceptors` | Run hooks an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
-| `triggerKinds` | New external sources that start work. |
-| `hookActionKinds` | New things a hook can do when its event happens. |
+| `triggers` | New external sources that start work. |
+| `reactions` | New things a hook can do when its event happens. |
 | `providers` | Model providers, each with the catalog rows of its models. |
 | `embedders` | Embedders the `memory.embedder` setting can name. |
 | `memoryDetectors` | Detectors run after the default poisoning detector, on memory admission and on recall. |
-| `evalJudges` | Judges that score a sample of completed runs. |
+| `scorers` | Scorers that score a sample of completed runs. |
 | `mcpApps` | Interface panels. |
 | `eventFormatters` | Titles and bodies for the activity views. |
 | `codeAgents` | Agents defined in code. |
@@ -122,7 +122,7 @@ export default definePlugin({
         execute: async (argument: { input: unknown }) => ({ found: argument.input }),
       },
     ],
-    triggerKinds: [
+    triggers: [
       {
         name: 'heartbeat',
         description: 'Fires every interval.',
@@ -136,7 +136,7 @@ export default definePlugin({
         },
       },
     ],
-    hookActionKinds: [
+    reactions: [
       {
         name: 'notify',
         description: 'Posts the event somewhere, once per delivery.',

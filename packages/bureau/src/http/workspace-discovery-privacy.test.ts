@@ -25,7 +25,7 @@ const cases = [
       ],
     },
   },
-  { operation: 'bureau.plugins.kinds', input: {} },
+  { operation: 'bureau.plugins.contributions', input: {} },
   { operation: 'bureau.skills.list', input: {} },
 ] as const;
 

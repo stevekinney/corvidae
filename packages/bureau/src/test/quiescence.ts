@@ -64,7 +64,7 @@
  * empty on AB-262's baseline, on the argument that an UNBOUNDED
  * `shutdown()` awaits each owner's real drain as part of `ownerDrains`
  * (`settleOwner('online-evals',
- * () => onlineEvalSampler.dispose())` awaits `Promise.allSettled([
+ * () => scorerSampler.dispose())` awaits `Promise.allSettled([
  * ...activeEvaluations])`; `audit-trail.ts`'s `dispose()` awaits
  * `Promise.allSettled([...activeWrites])`), so nothing genuinely
  * in-flight ever survived to be read: a hung task made the unbounded call
@@ -78,7 +78,7 @@
  * `.wrapStorage` can block a `kv.set` write
  * (an audit write, or — this is the part that took a second design pass,
  * see the test file — an evaluation's OWN audit-record write, never the
- * judge's own generate call: `online-evals.ts`'s `evaluateRun` races EVERY
+ * judge's own generate call: `scorers.ts`'s `evaluateRun` races EVERY
  * judge call against the SAME background-shutdown `AbortSignal`
  * `bureau.shutdown()` fires, so a judge blocked on its own generate call is
  * untracked the instant that signal aborts, regardless of whether the call
@@ -90,7 +90,7 @@
  * returns, whether or not anything is actually still running (the common
  * case: nothing is, and every row below reads empty):
  *
- * - `activeEvaluations` — `bureau.onlineEvalSampler.activeEvaluationSnapshots()`,
+ * - `activeEvaluations` — `bureau.scorerSampler.activeEvaluationSnapshots()`,
  *   already documented as "every evaluation currently in flight" — read
  *   AFTER `shutdown()` returns, so an evaluation blocked on its own
  *   audit-record write (see above) past the bounded wait is still in this
@@ -380,7 +380,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
   // each public surface below — see the module doc for why each is (or is
   // not) folded into `leaked`.
   const activeEvaluations: LeakedResource[] = (
-    bureau.internals.onlineEvalSampler?.activeEvaluationSnapshots() ?? []
+    bureau.internals.scorerSampler?.activeEvaluationSnapshots() ?? []
   ).map((snapshot) => ({
     kind: 'queue-item',
     identifier: snapshot.id,

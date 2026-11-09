@@ -93,7 +93,7 @@ describe('what a plugin adds and what names it', () => {
     const mixed = standing({
       name: 'web-search',
       contributions: [
-        contribution('trigger-kind', 'web-search:changed'),
+        contribution('trigger', 'web-search:changed'),
         contribution('activity', 'web-search:fetch-page'),
         contribution('tool', 'web-search:search@1.0.0', {}, 'Search the web'),
       ],

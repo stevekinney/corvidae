@@ -3,7 +3,7 @@
  * never starts a trigger once it is closed, however far into a reconcile the close lands.
  */
 import { describe, expect, it } from 'bun:test';
-import type { PluginTriggerKind } from '@lostgradient/interborough-plugin';
+import type { PluginTrigger } from '@lostgradient/interborough-plugin';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';
 
@@ -26,9 +26,9 @@ function gate(): { promise: Promise<void>; open: () => void } {
 function recordingKind(
   log: string[],
   hold: (id: string) => Promise<void> | undefined,
-): VersionedCatalogEntry<PluginTriggerKind> {
+): VersionedCatalogEntry<PluginTrigger> {
   return {
-    kind: 'trigger-kind',
+    kind: 'trigger',
     name: 'x:recorder',
     version: '1',
     id: 'x:recorder@1',
@@ -50,7 +50,7 @@ function recordingKind(
 }
 
 function desire(
-  kind: VersionedCatalogEntry<PluginTriggerKind>,
+  kind: VersionedCatalogEntry<PluginTrigger>,
   ids: readonly string[],
 ): Map<string, DesiredTrigger> {
   return new Map(

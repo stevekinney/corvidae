@@ -216,16 +216,16 @@ export type PluginProblem =
 export type PluginContributionKind =
   | 'tool'
   | 'activity'
-  | 'trigger-kind'
+  | 'trigger'
   | 'validator'
   | 'guardrail'
   | 'interceptor'
   | 'decision-router'
-  | 'hook-action'
+  | 'reaction'
   | 'provider'
   | 'embedder'
   | 'memory-detector'
-  | 'eval-judge'
+  | 'scorer'
   | 'mcp-app'
   | 'event-formatter'
   | 'code-agent';
@@ -304,7 +304,7 @@ export interface PluginListing {
   readonly problems: readonly PluginProblem[];
   /**
    * What it registered; empty unless it is `running` or `needs-setup`. A contribution whose option the host did not
-   * give (`hooks` for a hook action kind, `onlineEvals` for an eval judge, a `memory` factory for an
+   * give (`hooks` for a hook action kind, `scorers` for a scorer, a `memory` factory for an
    * embedder or memory detector) is not registered, and is not listed.
    */
   readonly contributions: readonly PluginContributionListing[];
@@ -315,7 +315,7 @@ export interface PluginListing {
  * name a file's `trigger.kind` uses, what it listens for, and the fields its configuration takes
  * (COR-1893). Carries no function.
  */
-export interface PluginTriggerKindListing {
+export interface PluginTriggerListing {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** `plugin:name`, the `kind` a workflow file's trigger names. */
@@ -336,7 +336,7 @@ export interface PluginTriggerKindListing {
  * `plugin` and `kind` an action `{ type: 'plugin' }` names, what it does, and the fields its
  * configuration takes. Carries no function.
  */
-export interface PluginHookActionKindListing {
+export interface PluginReactionListing {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** The kind's name within the plugin. */
@@ -386,13 +386,13 @@ export interface BureauPlugins {
    * The trigger kinds of the running plugins, in load order: what a workflow file's trigger can
    * name besides `schedule` and `signal`. Fixed once the Bureau is built.
    */
-  triggerKinds(): readonly PluginTriggerKindListing[];
+  triggers(): readonly PluginTriggerListing[];
   /**
    * The hook action kinds of the running plugins, in load order: what a hook's action
    * `{ type: 'plugin' }` can name. Empty when the Bureau composes no hooks. Fixed once the Bureau
    * is built.
    */
-  hookActionKinds(): readonly PluginHookActionKindListing[];
+  reactions(): readonly PluginReactionListing[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

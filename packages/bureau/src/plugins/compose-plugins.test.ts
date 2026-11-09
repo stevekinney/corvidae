@@ -81,12 +81,12 @@ const HOST_ENTRY: Record<
     },
     contribution: { activities: [{ name: 'x', execute: async () => 'x' }] },
   },
-  'trigger-kind': {
+  trigger: {
     host: {
       contributionCatalog: (() => {
         const catalog = createVersionedCatalog();
         catalog.register({
-          kind: 'trigger-kind',
+          kind: 'trigger',
           name: 'p:x',
           version: '1',
           value: {},
@@ -96,7 +96,7 @@ const HOST_ENTRY: Record<
       })(),
     },
     contribution: {
-      triggerKinds: [
+      triggers: [
         {
           name: 'x',
           version: '1',
@@ -143,9 +143,9 @@ const HOST_ENTRY: Record<
       decisionRouters: [{ name: 'x', kinds: new Set(), decide: async () => ({}) as never }],
     },
   },
-  'hook-action': {
+  reaction: {
     host: { hooks: { actionKinds: [{ plugin: 'p', kind: actionKind('x') }] } },
-    contribution: { hookActionKinds: [actionKind('x')] },
+    contribution: { reactions: [actionKind('x')] },
   },
   'event-formatter': {
     host: { eventFormatters: [{ plugin: 'p', formatter: formatter('x') }] },
@@ -155,9 +155,9 @@ const HOST_ENTRY: Record<
     host: { agents: { 'p:x': agent() } },
     contribution: { codeAgents: [{ name: 'x', agent: agent() }] },
   },
-  'eval-judge': {
-    host: { onlineEvals: { judges: [judge('p:x')], sampleRate: 1 } },
-    contribution: { evalJudges: [judge('x')] },
+  scorer: {
+    host: { scorers: { list: [judge('p:x')], sampleRate: 1 } },
+    contribution: { scorers: [judge('x')] },
   },
   provider: {
     noHostEntry:
@@ -184,7 +184,7 @@ describe('composePlugins', () => {
       description: 'Contributes one of each.',
       setup: () => ({
         activities: [{ name: 'fetch', execute: async () => 'fetched' }],
-        triggerKinds: [
+        triggers: [
           {
             name: 'inbox',
             version: '0.1.0',
@@ -202,7 +202,7 @@ describe('composePlugins', () => {
         guardrails: { inputDetectors: [{ name: 'scan', detect: async () => ({}) as never }] },
         interceptors: [{ name: 'audit' }],
         decisionRouters: [{ name: 'router', kinds: new Set(), decide: async () => ({}) as never }],
-        hookActionKinds: [
+        reactions: [
           {
             name: 'page',
             description: 'Pages someone.',
@@ -210,7 +210,7 @@ describe('composePlugins', () => {
             run: async () => undefined,
           },
         ],
-        evalJudges: [
+        scorers: [
           { name: 'judge', version: '1', evaluate: () => ({ pass: true, score: 1, message: '' }) },
         ],
         codeAgents: [
@@ -224,13 +224,13 @@ describe('composePlugins', () => {
     const given: ComposableOptions = {
       plugins: [{ descriptor: everything, source: 'package', location: '@example/kit' }],
       hooks: {},
-      onlineEvals: { judges: [], sampleRate: 1 },
+      scorers: { list: [], sampleRate: 1 },
     };
     const { options, records } = await composePlugins(given);
 
     expect(records[0]?.status).toBe('running');
     expect(options.contributionCatalog?.resolve('activity', 'kit:fetch@1.2.0').ok).toBe(true);
-    expect(options.contributionCatalog?.resolve('trigger-kind', 'kit:inbox@0.1.0').ok).toBe(true);
+    expect(options.contributionCatalog?.resolve('trigger', 'kit:inbox@0.1.0').ok).toBe(true);
     expect(options.validators?.map(({ identity }) => identity)).toEqual([
       { name: 'kit:tidy', version: '1' },
     ]);
@@ -243,7 +243,7 @@ describe('composePlugins', () => {
         ({ plugin, kind, version }) => `${plugin}/${kind.name}@${String(version)}`,
       ),
     ).toEqual(['kit/page@1.2.0']);
-    expect(options.onlineEvals?.judges.map(({ name }) => name)).toEqual(['kit:judge']);
+    expect(options.scorers?.list.map(({ name }) => name)).toEqual(['kit:judge']);
     expect(Object.keys(options.agents ?? {})).toEqual(['kit:writer']);
   });
 
@@ -280,7 +280,7 @@ describe('composePlugins', () => {
       const { records } = await composePlugins({
         // Each kind registers only where its option is given.
         hooks: {},
-        onlineEvals: { judges: [], sampleRate: 1 },
+        scorers: { list: [], sampleRate: 1 },
         ...entry.host,
         plugins: [pluginEntry('p', () => entry.contribution)],
       });
@@ -295,8 +295,8 @@ describe('composePlugins', () => {
   it('lists only the contributions whose option the host gave', async () => {
     const contributing = () =>
       pluginEntry('kit', () => ({
-        hookActionKinds: [actionKind('page')],
-        evalJudges: [judge('judge')],
+        reactions: [actionKind('page')],
+        scorers: [judge('judge')],
         embedders: [{ name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => []) }],
         memoryDetectors: [{ name: 'tags', detect: async () => ({}) as never }],
         interceptors: [{ name: 'audit' }],
@@ -304,22 +304,22 @@ describe('composePlugins', () => {
     const bare = await composePlugins<ComposableOptions>({ plugins: [contributing()] });
     expect(bare.records[0]?.contributions).toEqual([{ kind: 'interceptor', id: 'kit:audit' }]);
     expect(bare.options.hooks).toBeUndefined();
-    expect(bare.options.onlineEvals).toBeUndefined();
+    expect(bare.options.scorers).toBeUndefined();
 
     const given = await composePlugins({
       plugins: [contributing()],
       hooks: {},
-      onlineEvals: { judges: [], sampleRate: 1 },
+      scorers: { list: [], sampleRate: 1 },
       memory: () => undefined as never,
     });
     expect(given.records[0]?.contributions.map(({ kind }) => kind).toSorted()).toEqual([
       'embedder',
-      'eval-judge',
-      'hook-action',
       'interceptor',
       'memory-detector',
+      'reaction',
+      'scorer',
     ]);
-    for (const kind of ['embedder', 'eval-judge', 'hook-action'] as const) {
+    for (const kind of ['embedder', 'scorer', 'reaction'] as const) {
       expect(registersKind(kind, {})).toBe(false);
     }
   });

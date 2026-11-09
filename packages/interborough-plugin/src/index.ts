@@ -7,17 +7,16 @@ export type {
   PluginEventFormatter,
   PluginEventFormatting,
   PluginGuardrails,
-  PluginHookActionContext,
-  PluginHookActionKind,
   PluginInterceptor,
   PluginMcpApp,
   PluginProvider,
+  PluginReaction,
+  PluginReactionContext,
   PluginSetupResult,
+  PluginTrigger,
   PluginTriggerContext,
-  PluginTriggerKind,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';
-export type { EvalScore, OnlineEvalJudge } from './eval-judge.ts';
 export type {
   PluginAgentListing,
   PluginGoalRequest,
@@ -33,3 +32,4 @@ export type {
 } from './plugin-descriptor.ts';
 export { isPluginName, pluginNamePattern } from './plugin-name.ts';
 export { createPluginStorage, pluginStoragePrefix } from './plugin-storage.ts';
+export type { PluginScore, PluginScorer } from './scorer.ts';

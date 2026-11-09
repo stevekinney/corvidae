@@ -22,11 +22,11 @@ import type {
   PluginContribution,
   PluginContributionListing,
   PluginContributionReferences,
-  PluginHookActionKindListing,
+  PluginReactionListing,
   PluginListing,
   PluginProblem,
   PluginStatus,
-  PluginTriggerKindListing,
+  PluginTriggerListing,
 } from './plugin-types';
 import type { AgentListing } from '../agent-file-catalog';
 import type { PluginSecretGate } from './plugin-secret-gate';
@@ -320,11 +320,11 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
-      triggerKinds: () =>
-        records.flatMap((record): PluginTriggerKindListing[] =>
+      triggers: () =>
+        records.flatMap((record): PluginTriggerListing[] =>
           record.status === 'running'
-            ? (record.setup?.result.triggerKinds ?? [])
-                .filter((kind) => registered(record, 'trigger-kind', kind.name))
+            ? (record.setup?.result.triggers ?? [])
+                .filter((kind) => registered(record, 'trigger', kind.name))
                 .map((kind) => ({
                   plugin: record.entry.descriptor.name,
                   id: `${record.entry.descriptor.name}:${kind.name}`,
@@ -334,11 +334,11 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
-      hookActionKinds: () =>
-        records.flatMap((record): PluginHookActionKindListing[] =>
+      reactions: () =>
+        records.flatMap((record): PluginReactionListing[] =>
           record.status === 'running'
-            ? (record.setup?.result.hookActionKinds ?? [])
-                .filter((kind) => registered(record, 'hook-action', kind.name))
+            ? (record.setup?.result.reactions ?? [])
+                .filter((kind) => registered(record, 'reaction', kind.name))
                 .map((kind) => ({
                   plugin: record.entry.descriptor.name,
                   kind: kind.name,

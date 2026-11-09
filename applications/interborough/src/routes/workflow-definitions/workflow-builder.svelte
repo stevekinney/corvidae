@@ -95,13 +95,13 @@
     }),
     undefined,
   );
-  const triggerKinds = $derived(contributed.data?.triggerKinds ?? []);
+  const triggers = $derived(contributed.data?.triggers ?? []);
 
   /** The contributed kind the file's trigger names, when a running plugin contributes it. */
   const contributedTrigger = $derived.by(() => {
     const trigger = view?.trigger;
     return trigger?.kind === 'contributed'
-      ? triggerKinds.find((kind) => kind.id === trigger.id)
+      ? triggers.find((kind) => kind.id === trigger.id)
       : undefined;
   });
 
@@ -111,9 +111,9 @@
   );
 
   const triggerOptions = $derived([
-    { value: 'schedule', label: copy.triggerKinds.schedule },
-    { value: 'signal', label: copy.triggerKinds.signal },
-    ...triggerKinds.map((kind) => ({
+    { value: 'schedule', label: copy.triggers.schedule },
+    { value: 'signal', label: copy.triggers.signal },
+    ...triggers.map((kind) => ({
       value: kind.id,
       label: copy.contributedTrigger(kind.id),
     })),
@@ -143,7 +143,7 @@
   function changeTriggerKind(kind: string): void {
     if (kind === 'schedule' || kind === 'signal') {
       onTextChange(setTrigger(text, kind as BuilderTriggerKind, ''));
-    } else if (triggerKinds.some((candidate) => candidate.id === kind)) {
+    } else if (triggers.some((candidate) => candidate.id === kind)) {
       onTextChange(setContributedTrigger(text, kind, {}));
     }
   }
@@ -230,10 +230,10 @@
                 data-testid="contributed-trigger-error"
               >
                 <p class="weft-workflow-builder__note" role="alert">
-                  {copy.triggerKindsFailed(view.trigger.id)}
+                  {copy.triggersFailed(view.trigger.id)}
                 </p>
                 <Button variant="secondary" onclick={() => void contributed.refetch()}>
-                  {copy.retryTriggerKinds}
+                  {copy.retryTriggers}
                 </Button>
               </div>
             {:else if view.trigger?.kind === 'contributed'}

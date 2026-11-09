@@ -29,7 +29,7 @@ describe('definePlugin', () => {
       ...valid,
       configuration: z.object({ teamKey: z.string().default('COR') }),
       setup: ({ configuration }) => ({
-        evalJudges: [
+        scorers: [
           {
             name: configuration.teamKey,
             version: '1.0.0',
@@ -45,7 +45,7 @@ describe('definePlugin', () => {
       host: unstartedHost,
       toolApprovalHooks: () => ({}),
     });
-    expect(result?.evalJudges?.[0]?.name).toBe('COR');
+    expect(result?.scorers?.[0]?.name).toBe('COR');
   });
 
   test('types an activity that declares its own version', async () => {

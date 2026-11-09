@@ -88,7 +88,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.deployment.get', 'shared'],
       ['bureau.events.catalog', 'shared'],
       ['bureau.events.format', 'shared'],
-      ['bureau.plugins.kinds', 'shared'],
+      ['bureau.plugins.contributions', 'shared'],
       ['bureau.skills.list', 'shared'],
     ],
   },

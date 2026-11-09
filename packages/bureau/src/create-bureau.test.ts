@@ -4779,7 +4779,7 @@ describe('createBureau', () => {
 
     expect(bureau.internals.auditTrail).toBeUndefined();
     expect(bureau.internals.webhookNotifier).toBeUndefined();
-    expect(bureau.internals.onlineEvalSampler).toBeUndefined();
+    expect(bureau.internals.scorerSampler).toBeUndefined();
     expect(bureau.completed).toBe(false);
     expect(bureau.signal.aborted).toBe(false);
 
@@ -13161,8 +13161,8 @@ describe('Bureau.shutdown() (AB-207)', () => {
       },
       storage: new MemoryStorage(),
       durable: true,
-      onlineEvals: {
-        judges: [
+      scorers: {
+        list: [
           {
             name: 'gated-judge',
             version: '1.0.0',
@@ -13202,8 +13202,8 @@ describe('Bureau.shutdown() (AB-207)', () => {
 
       expect(shutdownSettled).toBe(true);
       expect(engineDisposed).toBe(true);
-      const onlineEvalsOwner = report.owners.find((owner) => owner.kind === 'online-evals');
-      expect(onlineEvalsOwner?.outcome).toBe('completed');
+      const scorersOwner = report.owners.find((owner) => owner.kind === 'online-evals');
+      expect(scorersOwner?.outcome).toBe('completed');
     } finally {
       asyncDisposeSpy.mockRestore();
     }
@@ -18815,8 +18815,8 @@ describe('AB-260: BureauOptions.runtime composition', () => {
           return new Response(null, { status: 200 });
         }) as unknown as typeof fetch,
       },
-      onlineEvals: {
-        judges: [
+      scorers: {
+        list: [
           {
             name: 'always-breaches',
             version: '1.0.0',
@@ -18838,7 +18838,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
         'webhook delivery for the eval threshold breach was never attempted',
       );
       await bureau.internals.webhookNotifier?.flush();
-      await bureau.internals.onlineEvalSampler?.flush();
+      await bureau.internals.scorerSampler?.flush();
 
       await bureau.dispose();
 
