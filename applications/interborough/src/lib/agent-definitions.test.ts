@@ -97,7 +97,9 @@ describe('the interceptors list', () => {
   });
 
   test('update sends the interceptors under that key', async () => {
-    stub = installBureauStub({ 'bureau.agents.definitions.update': () => ({ hash: 'new' }) });
+    stub = installBureauStub({
+      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
+    });
 
     await updateAgent('researcher', 'hash-1', { ...definition, interceptors: ['acme:audit'] });
 
