@@ -8,7 +8,7 @@
 // files through credentials.ts; it is never printed or written):
 //   bun scripts/chef/linear.ts read <ID> [--json]
 //   bun scripts/chef/linear.ts state <ID> <State Name> [--json]
-//   bun scripts/chef/linear.ts comment <ID> --file <md> [--json]
+//   bun scripts/chef/linear.ts comment <ID> --file <md> [--update <comment-id>] [--json]
 //   bun scripts/chef/linear.ts append <ID> --file <md> [--json]
 //   bun scripts/chef/linear.ts create --team <KEY> [--project <id>] --title <t> --file <md> --label <name>
 //                                [--state <name>] [--json]
@@ -19,6 +19,8 @@
 // (`--json` adds it as `description`).
 // `create` refuses (exit 1) when an issue with the same title already exists in the project, or in
 // the team when no project is named. `block <ID> --by <OTHER>` makes OTHER block ID.
+// `comment --update <comment-id>` replaces that comment's body instead of posting a new one, and
+// refuses (exit 1) a comment on another issue or one that another user wrote.
 //
 // Exit codes: 0 success and read back, 1 refused, not found, API failure or read-back mismatch,
 // 2 invalid CLI usage (including an unavailable LINEAR_API_KEY).
@@ -332,6 +334,59 @@ export async function postComment(
       ? `${identifier}: comment ${id} posted (read back).`
       : `${identifier}: comment ${id} read-back mismatch.`,
     data: { identifier, commentId: id, verified },
+  };
+}
+
+/**
+ * Replace the body of comment `commentId` on `identifier`, then read it back. Refuses a comment on
+ * another issue, and one that another user wrote, so a resumed run never overwrites someone
+ * else's record.
+ */
+export async function updateComment(
+  client: LinearClient,
+  identifier: string,
+  commentId: string,
+  body: string,
+): Promise<Outcome> {
+  const issue = await fetchIssue(client, identifier);
+  const owner = await client.request<{
+    viewer: { id: string };
+    comment: {
+      id: string;
+      user: { id: string } | null;
+      issue: { identifier: string } | null;
+    } | null;
+  }>(
+    `query CommentOwner($id: String!) { viewer { id } comment(id: $id) { id user { id } issue { identifier } } }`,
+    { id: commentId },
+  );
+  const refuse = (reason: string): Outcome => ({
+    ok: false,
+    summary: `${identifier}: comment ${commentId} ${reason}; nothing was changed.`,
+    data: { identifier, commentId, updated: false, reason },
+  });
+  if (owner.comment === null) return refuse('does not exist');
+  if (owner.comment.issue?.identifier !== issue.identifier)
+    return refuse(`belongs to ${owner.comment.issue?.identifier ?? 'no issue'}`);
+  if (owner.comment.user?.id !== owner.viewer.id) return refuse('was written by another user');
+  const updated = await client.request<{ commentUpdate: { success: boolean } }>(
+    `mutation CommentUpdate($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success } }`,
+    { id: commentId, body },
+  );
+  const back = await client.request<{ comment: { id: string; body: string } | null }>(
+    `query CommentRead($id: String!) { comment(id: $id) { id body issue { identifier } } }`,
+    { id: commentId },
+  );
+  const verified =
+    updated.commentUpdate.success &&
+    back.comment !== null &&
+    normalizeMarkdown(back.comment.body) === normalizeMarkdown(body);
+  return {
+    ok: verified,
+    summary: verified
+      ? `${identifier}: comment ${commentId} updated (read back).`
+      : `${identifier}: comment ${commentId} read-back mismatch.`,
+    data: { identifier, commentId, updated: updated.commentUpdate.success, verified },
   };
 }
 
@@ -655,7 +710,18 @@ export async function run(
     );
   const known = ['read', 'state', 'comment', 'append', 'create', 'blockers', 'block'];
   if (!known.includes(command)) throw new UsageError(`Unknown command ${command}.`);
-  const parsed = parse(argv, ['file', 'team', 'project', 'title', 'label', 'state', 'by']);
+  const parsed = parse(argv, [
+    'file',
+    'team',
+    'project',
+    'title',
+    'label',
+    'state',
+    'by',
+    'update',
+  ]);
+  if (command !== 'comment' && parsed.options.has('update'))
+    throw new UsageError('--update applies only to comment.');
   // Validate the arguments before any request, so a usage mistake never costs a network call.
   let plan: (client: LinearClient) => Promise<Outcome>;
   if (command === 'read') {
@@ -667,7 +733,12 @@ export async function run(
   } else if (command === 'comment') {
     const [id] = identifierArgument(parsed, 1);
     const body = readFileOption(parsed);
-    plan = (client) => postComment(client, id as string, body);
+    const update = parsed.options.get('update');
+    if (update === '') throw new UsageError('--update needs a comment id.');
+    plan = (client) =>
+      update === undefined
+        ? postComment(client, id as string, body)
+        : updateComment(client, id as string, update, body);
   } else if (command === 'append') {
     const [id] = identifierArgument(parsed, 1);
     const body = readFileOption(parsed);

@@ -36,6 +36,8 @@ interface FakeComment {
   issueId: string;
   body: string;
   createdAt: string;
+  /** The author; the fake's API key belongs to `user-me`. */
+  userId?: string;
 }
 
 /** A tiny in-memory Linear. Switches inject the ways a write can silently not take. */
@@ -182,6 +184,25 @@ function fakeLinear() {
             issue: { identifier: find(comment.issueId)!.identifier },
           },
         };
+      }
+      case 'CommentOwner': {
+        const comment = comments.find((candidate) => candidate.id === variables['id']);
+        return {
+          viewer: { id: 'user-me' },
+          comment:
+            comment === undefined
+              ? null
+              : {
+                  id: comment.id,
+                  user: { id: comment.userId ?? 'user-me' },
+                  issue: { identifier: find(comment.issueId)!.identifier },
+                },
+        };
+      }
+      case 'CommentUpdate': {
+        const comment = comments.find((candidate) => candidate.id === variables['id'])!;
+        comment.body = switches.mangleComment ? `${variables['body']}!!` : variables['body'];
+        return { commentUpdate: { success: true } };
       }
       case 'IssueSetDescription': {
         const issue = find(variables['id'])!;
@@ -633,6 +654,80 @@ describe('comment', () => {
     expect(
       await runCode(['comment', 'COR-1', '--file', file('c.md', 'hello')], dependencies(fake)),
     ).toBe(1);
+  });
+});
+
+describe('comment --update', () => {
+  const seeded = (userId = 'user-me') => {
+    const fake = fakeLinear();
+    fake.comments.push({
+      id: 'c-old',
+      issueId: 'uuid-1',
+      body: 'Execution report: cor-1 attempt 1\n\nFirst draft.',
+      createdAt: '2026-10-22T11:00:00Z',
+      userId,
+    });
+    return fake;
+  };
+
+  test('replaces my own comment on the issue and reads it back, posting nothing new', async () => {
+    const fake = seeded();
+    const result = await run(
+      ['comment', 'COR-1', '--update', 'c-old', '--file', file('c.md', 'Revised.')],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('comment c-old updated (read back)');
+    expect(fake.comments).toHaveLength(1);
+    expect(fake.comments[0]!.body).toBe('Revised.');
+    expect(fake.log.some((entry) => entry.operation === 'CommentPost')).toBe(false);
+  });
+
+  test("refuses another user's comment and a comment on another issue, changing nothing", async () => {
+    const theirs = seeded('user-other');
+    const refused = await run(
+      ['comment', 'COR-1', '--update', 'c-old', '--file', file('c.md', 'Revised.')],
+      dependencies(theirs),
+    );
+    expect(refused.code).toBe(1);
+    expect(refused.output).toContain('was written by another user');
+    expect(theirs.log.some((entry) => entry.operation === 'CommentUpdate')).toBe(false);
+
+    const elsewhere = seeded();
+    const wrongIssue = await run(
+      ['comment', 'COR-2', '--update', 'c-old', '--file', file('c.md', 'Revised.')],
+      dependencies(elsewhere),
+    );
+    expect(wrongIssue.code).toBe(1);
+    expect(wrongIssue.output).toContain('belongs to COR-1');
+    expect(elsewhere.comments[0]!.body).toContain('First draft.');
+  });
+
+  test('exits 1 when the updated comment reads back differently', async () => {
+    const fake = seeded();
+    fake.switches.mangleComment = true;
+    expect(
+      await runCode(
+        ['comment', 'COR-1', '--update', 'c-old', '--file', file('c.md', 'Revised.')],
+        dependencies(fake),
+      ),
+    ).toBe(1);
+  });
+
+  test('rejects --update without an id, or on another command, before any request', async () => {
+    const fake = seeded();
+    const deps = dependencies(fake);
+    expect(
+      await throwingRejectionOf(
+        run(['comment', 'COR-1', '--update', '', '--file', file('c.md', 'x')], deps),
+      ),
+    ).toThrow(UsageError);
+    expect(
+      await throwingRejectionOf(
+        run(['append', 'COR-1', '--update', 'c-old', '--file', file('c.md', 'x')], deps),
+      ),
+    ).toThrow(UsageError);
+    expect(fake.log).toHaveLength(0);
   });
 });
 
