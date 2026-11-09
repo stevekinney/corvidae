@@ -6,11 +6,12 @@
 import { watch, type FSWatcher } from 'node:fs';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileError } from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
+import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
 import { type AgentFileOperations, nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
   type AgentFileFixture,
@@ -86,6 +87,145 @@ describe('close()', () => {
     expect(opened.length).toBeGreaterThan(0);
     await fixture.catalog.close();
     expect(opened.filter((record) => !record.closed)).toEqual([]);
+  });
+});
+
+describe("close() under watch: 'poll' (COR-2291)", () => {
+  /** A catalog over a manual clock whose directory listings can be held at a gate once `hold()` is called. */
+  async function pollingCatalog() {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const reached = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
+    let listings = 0;
+    let holding = false;
+    const operations: AgentFileOperations = {
+      ...nodeAgentFileOperations,
+      listDirectory: async (directory) => {
+        listings += 1;
+        if (holding) {
+          holding = false;
+          reached.resolve();
+          await gate.promise;
+        }
+        return nodeAgentFileOperations.listDirectory(directory);
+      },
+    };
+    const openedWatchers: string[] = [];
+    const fixture = await start({
+      runtime,
+      watch: 'poll',
+      operations,
+      openWatcher: (path) => {
+        openedWatchers.push(path);
+        return { on: () => undefined, close: () => undefined } as never;
+      },
+    });
+    await fixture.catalog.refresh();
+    return {
+      fixture,
+      runtime,
+      reached: reached.promise,
+      release: () => gate.resolve(),
+      hold: () => {
+        holding = true;
+      },
+      listings: () => listings,
+      openedWatchers,
+    };
+  }
+
+  it('cancels the interval and reports nothing later when no scan is in flight', async () => {
+    const context = await pollingCatalog();
+    let calls = 0;
+    context.fixture.catalog.onChange(() => {
+      calls += 1;
+    });
+    expect(context.runtime.pendingTimers()).toHaveLength(1);
+    await context.fixture.catalog.close();
+    expect(context.runtime.pendingTimers()).toEqual([]);
+    const afterClose = context.listings();
+    await context.fixture.put('late.md', validAgentFile());
+    await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
+    await quietFor(20);
+    expect(context.listings()).toBe(afterClose);
+    expect(calls).toBe(0);
+    expect(context.openedWatchers).toEqual([]);
+  });
+
+  it('stays pending while a scan the interval began is in flight, then leaves nothing running', async () => {
+    const context = await pollingCatalog();
+    let calls = 0;
+    context.fixture.catalog.onChange(() => {
+      calls += 1;
+    });
+    context.hold();
+    // The tick, not a `refresh()`, begins this scan: nothing but the directory's own loop is in it.
+    await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await context.reached;
+    let closed = false;
+    const closing = context.fixture.catalog.close().then(() => {
+      closed = true;
+    });
+    // hang-guard-self-test: nothing but the held scan can settle the close, so any window shows it pending.
+    await quietFor(20);
+    expect(closed).toBe(false);
+    expect(context.runtime.pendingTimers()).toEqual([]);
+    context.release();
+    await closing;
+    expect(closed).toBe(true);
+    const settledListings = context.listings();
+    await context.fixture.put('late.md', validAgentFile());
+    await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
+    await quietFor(20);
+    expect(context.listings()).toBe(settledListings);
+    expect(calls).toBe(0);
+    expect(context.openedWatchers).toEqual([]);
+  });
+
+  it('keeps a second close pending too while the scan is in flight, and settles both with it', async () => {
+    const context = await pollingCatalog();
+    context.hold();
+    await context.runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await context.reached;
+    const settled: string[] = [];
+    const first = context.fixture.catalog.close().then(() => settled.push('first'));
+    const second = context.fixture.catalog.close().then(() => settled.push('second'));
+    // hang-guard-self-test: only the held scan can settle either close, so any window shows both pending.
+    await quietFor(20);
+    expect(settled).toEqual([]);
+    context.release();
+    await Promise.all([first, second]);
+    expect(settled.toSorted()).toEqual(['first', 'second']);
+    await context.fixture.catalog.close();
+    expect(context.runtime.pendingTimers()).toEqual([]);
+  });
+});
+
+describe('a watcher event that lands after close()', () => {
+  it('starts no scan, even when the event was already queued', async () => {
+    let deliver: ((event: string, filename: string | null) => void) | undefined;
+    let listings = 0;
+    const operations: AgentFileOperations = {
+      ...nodeAgentFileOperations,
+      listDirectory: (directory) => {
+        listings += 1;
+        return nodeAgentFileOperations.listDirectory(directory);
+      },
+    };
+    const fixture = await start({
+      operations,
+      openWatcher: (path, listener) => {
+        if (path === fixture.directory) deliver = listener;
+        return { on: () => undefined, close: () => undefined } as never;
+      },
+    });
+    await fixture.catalog.refresh();
+    expect(deliver).toBeDefined();
+    await fixture.catalog.close();
+    const afterClose = listings;
+    deliver?.('change', 'late.md');
+    await quietFor(20);
+    expect(listings).toBe(afterClose);
   });
 });
 

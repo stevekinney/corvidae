@@ -22,15 +22,18 @@ import {
   SourceConflictError,
 } from './definition-source';
 import { assertSafeIdentifier } from './safe-identifier';
-import { createWatchedDirectory } from './watched-directory';
+import { createWatchedDirectory, type DirectoryWatchMode } from './watched-directory';
 
 /** The options both directory constructors take. */
 export interface DirectorySourceOptions {
   /**
-   * Watch the directory with `fs.watch` and a once-a-second rescan. Defaults to `true`; `false`
-   * means no `fs.watch` and no poll, and a change is picked up by the next `load()`.
+   * How the directory is watched (COR-2291). `true`, the default, uses `fs.watch` and a
+   * once-a-second rescan. `false` means no `fs.watch` and no poll, and a change is picked up by
+   * the next `load()`. `'poll'` opens no `fs.watch` at all and relies on the same once-a-second
+   * rescan, which lists the real directory: for a host whose native watchers are unavailable or
+   * slow to close. Closing a polled source waits for a scan already in flight.
    */
-  readonly watch?: boolean | undefined;
+  readonly watch?: DirectoryWatchMode | undefined;
   /**
    * How a directory is watched. Defaults to `fs.watch` without keeping the process alive; a test
    * replaces it to observe the watchers the source opens.
@@ -122,7 +125,8 @@ export function createDirectorySource(
         stopped = true;
         unsubscribe();
         subscribers -= 1;
-        if (subscribers === 0) watched.stopWatching();
+        if (subscribers === 0) return watched.stopWatching();
+        return undefined;
       };
     },
 

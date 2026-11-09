@@ -2,7 +2,11 @@ import type { Bungalow, ContentLocation, DatabaseLocation } from '@lostgradient/
 import type { SettingLockReason } from '@lostgradient/bureau';
 import type { SkillSource } from '@lostgradient/bureau/skills';
 import { DEFAULT_SOURCE_PRECEDENCE } from '@lostgradient/bureau/skills';
-import type { AgentSource, WorkflowSource } from '@lostgradient/bureau/sources';
+import type {
+  AgentSource,
+  DirectorySourceOptions,
+  WorkflowSource,
+} from '@lostgradient/bureau/sources';
 import {
   agentFileDirectory,
   agentObjectSource,
@@ -24,6 +28,22 @@ import { fileURLToPath } from 'node:url';
  * one interval.
  */
 export const REMOTE_POLL_INTERVAL_MILLISECONDS = 30_000;
+
+/**
+ * How a local directory source watches (COR-2291): the `watch` mode and the watcher factory
+ * Bureau's directory sources take, and nothing else. Omitted, a directory is watched natively with
+ * the safety rescan behind it; `'poll'` opens no native watcher and relies on the rescan alone.
+ * A remote source polls its bucket on its own interval and ignores both.
+ */
+export type LocalDirectoryOptions = Pick<DirectorySourceOptions, 'watch' | 'watchFactory'>;
+
+/** The options a directory source takes, from `directory`, leaving out what was not chosen. */
+function directoryOptionsOf(directory: LocalDirectoryOptions): LocalDirectoryOptions {
+  return {
+    ...(directory.watch === undefined ? {} : { watch: directory.watch }),
+    ...(directory.watchFactory === undefined ? {} : { watchFactory: directory.watchFactory }),
+  };
+}
 
 /** One immutable binding for the raw Postgres database, independent of URL spelling or S3 prefix. */
 export const WORKSPACE_BINDING_KEY = 'bungalow:workspace-binding';
@@ -206,8 +226,11 @@ export function createAgentSource(
   bungalow: Bungalow,
   content: ContentLocation,
   tools: Readonly<Record<string, Tool>>,
+  directory: LocalDirectoryOptions = {},
 ): AgentSource {
-  if (content.kind === 'directory') return agentFileDirectory(content.path, { tools });
+  if (content.kind === 'directory') {
+    return agentFileDirectory(content.path, { tools, ...directoryOptionsOf(directory) });
+  }
   return agentObjectSource(
     { bucket: content.bucket, prefix: content.prefix },
     {
@@ -223,9 +246,16 @@ export function createAgentSource(
  * URL, listed as `plugin:name`. A `content` that is not a `file:` URL names nothing a directory can
  * hold, so it has no layer.
  */
-export function createPluginAgentSource(plugin: string, content: URL): AgentSource | undefined {
+export function createPluginAgentSource(
+  plugin: string,
+  content: URL,
+  directory: LocalDirectoryOptions = {},
+): AgentSource | undefined {
   if (content.protocol !== 'file:') return undefined;
-  return agentFileDirectory(join(fileURLToPath(content), 'agents'), { plugin });
+  return agentFileDirectory(join(fileURLToPath(content), 'agents'), {
+    plugin,
+    ...directoryOptionsOf(directory),
+  });
 }
 
 /**
@@ -235,9 +265,13 @@ export function createPluginAgentSource(plugin: string, content: URL): AgentSour
 export function createPluginWorkflowSource(
   plugin: string,
   content: URL,
+  directory: LocalDirectoryOptions = {},
 ): WorkflowSource | undefined {
   if (content.protocol !== 'file:') return undefined;
-  return workflowFileDirectory(join(fileURLToPath(content), 'workflows'), { plugin });
+  return workflowFileDirectory(join(fileURLToPath(content), 'workflows'), {
+    plugin,
+    ...directoryOptionsOf(directory),
+  });
 }
 
 /**
@@ -257,8 +291,14 @@ export function createPluginSkillSource(plugin: string, content: URL): SkillSour
 }
 
 /** The source of workflow definitions at `content`: a directory, or a bucket prefix polled for changes. */
-export function createWorkflowSource(bungalow: Bungalow, content: ContentLocation): WorkflowSource {
-  if (content.kind === 'directory') return workflowFileDirectory(content.path);
+export function createWorkflowSource(
+  bungalow: Bungalow,
+  content: ContentLocation,
+  directory: LocalDirectoryOptions = {},
+): WorkflowSource {
+  if (content.kind === 'directory') {
+    return workflowFileDirectory(content.path, directoryOptionsOf(directory));
+  }
   return workflowObjectSource(
     { bucket: content.bucket, prefix: content.prefix },
     {

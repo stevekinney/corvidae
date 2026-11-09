@@ -82,9 +82,10 @@ export interface DefinitionSource {
    * list nothing: Bureau's catalogs depend on state outside the bytes (a revision record another
    * process raised), so a source that rescans on a timer calls the listener on every rescan, and
    * Bureau settles that state again. A listener may be called before `watch` returns. Returns the
-   * unsubscribe.
+   * unsubscribe, which may return a promise: it settles once no scan the watch began is still
+   * running, and Bureau waits for it when it closes a catalog.
    */
-  watch(listener: (change: DefinitionSourceChange) => void): () => void;
+  watch(listener: (change: DefinitionSourceChange) => void): () => void | Promise<void>;
   /**
    * Create (`expectedHash: null`) or replace the definition `id`. Rejects with a
    * {@link SourceConflictError}, writing nothing, when the definition's current hash is not
