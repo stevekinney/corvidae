@@ -293,11 +293,11 @@ describe('the secret-gating outcome matrix', () => {
         ],
         embedders: [{ name: 'small', dimensions: 1, embed: note('embedder', [[1]]) }],
         memoryDetectors: [{ name: 'tags', detect: note('memory-detector', {}) as never }],
-        evalJudges: [
+        scorers: [
           {
             name: 'judge',
             version: '1',
-            evaluate: note('eval-judge', { pass: true, score: 1, message: '' }),
+            evaluate: note('scorer', { pass: true, score: 1, message: '' }),
           },
         ],
         eventFormatters: [
@@ -335,7 +335,7 @@ describe('the secret-gating outcome matrix', () => {
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
       'memory-detector': () => gatedResult.memoryDetectors?.[0]?.detect('x', {} as never),
-      'eval-judge': () => gatedResult.evalJudges?.[0]?.evaluate({} as never),
+      scorer: () => gatedResult.scorers?.[0]?.evaluate({} as never),
       'event-formatter': () => gatedResult.eventFormatters?.[0]?.format(event),
       'code-agent': () => gatedResult.codeAgents?.[0]?.agent.run('Go.'),
       // The definition resolver Bureau starts, recovers and claims a durable run through.

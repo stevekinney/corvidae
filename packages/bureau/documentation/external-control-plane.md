@@ -658,7 +658,7 @@ Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to
 | `agents` | Agent Cards; `bureau.agents.list` |
 | `id`, `recovery` | `bureau.deployment.get` (identity and recovery status only) |
 | `models` | Internal |
-| `onlineEvalSampler` | Internal; breaches reach deliveries |
+| `scorerSampler` | Internal; breaches reach deliveries |
 | `setRequestAuthorityValidator` | Internal; the authorization predicate is configured on the handler |
 | `ready`, `store`, `memory`, `sessionStore`, `kv`, `signal`, `completed`, `complete`, `dispose`, `shutdown`, `maintain` | Internal host lifecycle |
 

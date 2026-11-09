@@ -14,9 +14,9 @@ import type { ActivityDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
 
-import type { OnlineEvalJudge } from './eval-judge.ts';
 import type { PluginHostApi } from './host-api.ts';
 import type { PluginSetupContext } from './plugin-descriptor.ts';
+import type { PluginScorer } from './scorer.ts';
 
 /** An event the host publishes, as a trigger, hook action, or formatter receives it. */
 export interface PluginEvent {
@@ -251,8 +251,8 @@ export interface PluginContributions {
   readonly embedders?: readonly PluginEmbedder[];
   /** Detectors run after the default poisoning detector, on memory admission and on recall. */
   readonly memoryDetectors?: readonly InputDetector[];
-  /** Judges that score a sample of completed runs. */
-  readonly evalJudges?: readonly OnlineEvalJudge[];
+  /** Scorers that score a sample of completed runs. */
+  readonly scorers?: readonly PluginScorer[];
   /** Interface panels. */
   readonly mcpApps?: readonly PluginMcpApp[];
   /** Event formatters. */

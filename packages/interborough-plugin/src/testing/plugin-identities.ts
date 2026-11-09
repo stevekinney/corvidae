@@ -296,7 +296,7 @@ export async function pluginIdentities(
       (validator) => named(validator, 'output-guardrail'),
       descriptor,
     ),
-    ...entriesOf(contributions.evalJudges, (judge) => named(judge, 'eval-judge'), descriptor),
+    ...entriesOf(contributions.scorers, (judge) => named(judge, 'scorer'), descriptor),
     ...entriesOf(contributions.providers, (provider) => named(provider, 'provider'), descriptor),
     ...entriesOf(contributions.interceptors, (hooks) => named(hooks, 'interceptor'), descriptor),
     ...entriesOf(

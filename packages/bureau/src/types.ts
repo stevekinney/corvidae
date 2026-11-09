@@ -115,7 +115,7 @@ import type { BureauDecisions, DecisionsOptions } from './decisions/types';
 import type { BureauSettings, SettingsOptions } from './settings/types';
 import type { Models, ModelsOptions } from './models/create-models';
 import type { BureauNotifications } from './notifications/notification-types';
-import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
+import type { ScorerSampler, ScorerSamplerOptions } from './scorers';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
   SessionSteeringState,
@@ -1011,7 +1011,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * alert threshold. Omit, pass no judges, or pass `sampleRate: 0` to
    * disable — the default.
    */
-  onlineEvals?: OnlineEvalSamplerOptions;
+  scorers?: ScorerSamplerOptions;
   /**
    * Managed assets (COR-794) — composes one asset service over the injected
    * asset storage, policy, and ports, running on this bureau's runtime
@@ -2886,14 +2886,14 @@ export interface BureauInternals {
   readonly webhookNotifier: WebhookNotifier | undefined;
 
   /**
-   * The online eval sampler (AB-53). Present whenever `options.onlineEvals`
+   * The online eval sampler (AB-53). Present whenever `options.scorers`
    * configures at least one judge with a positive `sampleRate`; `undefined`
    * when online evals are disabled (the default). Use
-   * `onlineEvalSampler.sampledCount()`/`observedCount()` to inspect sampling
-   * state and `onlineEvalSampler.flush()` to await in-flight judge
+   * `scorerSampler.sampledCount()`/`observedCount()` to inspect sampling
+   * state and `scorerSampler.flush()` to await in-flight judge
    * evaluations deterministically.
    */
-  readonly onlineEvalSampler: OnlineEvalSampler | undefined;
+  readonly scorerSampler: ScorerSampler | undefined;
 
   /**
    * AB-369: every run whose cancellation `tasks.cancel` or a task handle's `abort` has requested

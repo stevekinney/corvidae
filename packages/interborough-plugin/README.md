@@ -100,7 +100,7 @@ The descriptor's members:
 | `providers` | Model providers, each with the catalog rows of its models. |
 | `embedders` | Embedders the `memory.embedder` setting can name. |
 | `memoryDetectors` | Detectors run after the default poisoning detector, on memory admission and on recall. |
-| `evalJudges` | Judges that score a sample of completed runs. |
+| `scorers` | Scorers that score a sample of completed runs. |
 | `mcpApps` | Interface panels. |
 | `eventFormatters` | Titles and bodies for the activity views. |
 | `codeAgents` | Agents defined in code. |

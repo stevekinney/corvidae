@@ -225,7 +225,7 @@ export type PluginContributionKind =
   | 'provider'
   | 'embedder'
   | 'memory-detector'
-  | 'eval-judge'
+  | 'scorer'
   | 'mcp-app'
   | 'event-formatter'
   | 'code-agent';
@@ -304,7 +304,7 @@ export interface PluginListing {
   readonly problems: readonly PluginProblem[];
   /**
    * What it registered; empty unless it is `running` or `needs-setup`. A contribution whose option the host did not
-   * give (`hooks` for a hook action kind, `onlineEvals` for an eval judge, a `memory` factory for an
+   * give (`hooks` for a hook action kind, `scorers` for a scorer, a `memory` factory for an
    * embedder or memory detector) is not registered, and is not listed.
    */
   readonly contributions: readonly PluginContributionListing[];

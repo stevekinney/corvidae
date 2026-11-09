@@ -157,7 +157,7 @@ const AGGREGATE_DELIVERY_ID = 'webhook-notifier';
  * AB-216's child-liveness severity ordering
  * (`packages/operative/src/liveness/active-run-liveness.ts`), duplicated at
  * module-local scope rather than imported: this issue's delivery boundary
- * restricts its edit to `online-evals.ts`/`webhook-notifier.ts` and their
+ * restricts its edit to `scorers.ts`/`webhook-notifier.ts` and their
  * tests, and the source ordering is not part of `@lostgradient/operative`'s
  * public `liveness` subpath export.
  */

@@ -1,12 +1,12 @@
 /**
- * Tests for `createOnlineEvalSampler` (AB-53).
+ * Tests for `createScorerSampler` (AB-53).
  *
  * Uses a hand-crafted `Bureau` stub — same pattern as `webhook-notifier.test.ts`
  * — and a fake `WebhookNotifier` so alert delivery is observed without a real
  * durable pipeline. Sampling is driven by an injected RNG so `sampleRate` is
  * exercised deterministically: no test depends on `Math.random`.
  */
-import type { EvalScore, OnlineEvalJudge } from '@lostgradient/interborough-plugin';
+import type { PluginScore, PluginScorer } from '@lostgradient/interborough-plugin';
 import * as lifecycle from '@lostgradient/lifecycle';
 import {
   type Action,
@@ -21,12 +21,12 @@ import type { AuditTrail } from './audit-trail';
 import { ActionEvent } from './events';
 import {
   createDefaultClock,
-  createOnlineEvalSampler,
+  createScorerSampler,
   type EvaluationIdentifierSeam,
   worstAssessment,
   worstProgress,
   worstReachability,
-} from './online-evals';
+} from './scorers';
 import type { Bureau } from './types';
 import type { WebhookDeliveryLivenessSnapshot, WebhookNotifier } from './webhook-notifier';
 
@@ -192,15 +192,15 @@ function scriptedEvaluationIds(ids: string[]): EvaluationIdentifierSeam {
 
 /** A judge whose `evaluate()` never resolves until `resolveAll()` is called. */
 function blockingJudge(name = 'blocking-judge'): {
-  judge: OnlineEvalJudge;
+  judge: PluginScorer;
   resolveAll: () => void;
 } {
   const resolvers: (() => void)[] = [];
-  const judge: OnlineEvalJudge = {
+  const judge: PluginScorer = {
     name,
     version: '1.0.0',
     evaluate: () =>
-      new Promise<EvalScore>((resolve) => {
+      new Promise<PluginScore>((resolve) => {
         resolvers.push(() => resolve({ pass: true, score: 1, message: 'unblocked' }));
       }),
   };
@@ -212,29 +212,29 @@ function blockingJudge(name = 'blocking-judge'): {
   };
 }
 
-function passingMatcher(name = 'exact-match'): OnlineEvalJudge {
+function passingMatcher(name = 'exact-match'): PluginScorer {
   return {
     name,
     version: '1.0.0',
-    evaluate: (): EvalScore => ({ pass: true, score: 1, message: 'matched' }),
+    evaluate: (): PluginScore => ({ pass: true, score: 1, message: 'matched' }),
   };
 }
 
-function failingMatcher(name = 'exact-match', score = 0): OnlineEvalJudge {
+function failingMatcher(name = 'exact-match', score = 0): PluginScorer {
   return {
     name,
     version: '1.0.0',
-    evaluate: (): EvalScore => ({ pass: false, score, message: 'did not match' }),
+    evaluate: (): PluginScore => ({ pass: false, score, message: 'did not match' }),
   };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
-describe('createOnlineEvalSampler', () => {
+describe('createScorerSampler', () => {
   it('is a no-op when no judges are configured', async () => {
     const { bureau } = createStubBureau();
-    const sampler = createOnlineEvalSampler(bureau, undefined, undefined, {
-      judges: [],
+    const sampler = createScorerSampler(bureau, undefined, undefined, {
+      list: [],
       sampleRate: 1,
     });
     expect(sampler.observedCount()).toBe(0);
@@ -246,8 +246,8 @@ describe('createOnlineEvalSampler', () => {
   it('is a no-op when sampleRate is 0', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher()],
       sampleRate: 0,
     });
 
@@ -261,8 +261,8 @@ describe('createOnlineEvalSampler', () => {
 
   it('ignores non-run.completed actions', async () => {
     const { bureau, emit } = createStubBureau();
-    const sampler = createOnlineEvalSampler(bureau, undefined, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, undefined, undefined, {
+      list: [passingMatcher()],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -280,8 +280,8 @@ describe('createOnlineEvalSampler', () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
     // sampleRate 0.5: rolls of 0.1 (sampled), 0.9 (not sampled), 0.4 (sampled).
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher()],
       sampleRate: 0.5,
       rng: scriptedRng([0.1, 0.9, 0.4]),
     });
@@ -302,8 +302,8 @@ describe('createOnlineEvalSampler', () => {
   it('never samples a run when sampleRate is 1 regardless of RNG output', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher()],
       sampleRate: 1,
       rng: scriptedRng([0.999999]),
     });
@@ -319,8 +319,8 @@ describe('createOnlineEvalSampler', () => {
   it('samples a run.completed action at most once, even if the action fires twice', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher()],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -341,8 +341,8 @@ describe('createOnlineEvalSampler', () => {
   it('records every judge score to the audit trail for a sampled run', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher('judge-a'), failingMatcher('judge-b', 0.2)],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher('judge-a'), failingMatcher('judge-b', 0.2)],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -374,13 +374,13 @@ describe('createOnlineEvalSampler', () => {
   it('records the judge name and version on every audit record (COR-1872)', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const judge: OnlineEvalJudge = {
+    const judge: PluginScorer = {
       name: 'linear:triage-quality',
       version: '2.1.0',
-      evaluate: (): EvalScore => ({ pass: true, score: 0.9, message: 'fine' }),
+      evaluate: (): PluginScore => ({ pass: true, score: 0.9, message: 'fine' }),
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [judge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [judge],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -400,15 +400,15 @@ describe('createOnlineEvalSampler', () => {
   it('records a failed judge (throws) as a score-0 audit entry instead of crashing', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const throwingJudge: OnlineEvalJudge = {
+    const throwingJudge: PluginScorer = {
       name: 'flaky-judge',
       version: '1.0.0',
       evaluate: () => {
         throw new Error('judge exploded');
       },
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [throwingJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [throwingJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -429,8 +429,8 @@ describe('createOnlineEvalSampler', () => {
   it('skips sampling when the action detail is not a RunResult-shaped object', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher()],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -451,14 +451,14 @@ describe('createOnlineEvalSampler', () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail } = createStubAuditTrail();
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
-    const breachingJudge: OnlineEvalJudge = {
+    const breachingJudge: PluginScorer = {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.5,
-      evaluate: (): EvalScore => ({ pass: true, score: 0.2, message: 'quality dropped' }),
+      evaluate: (): PluginScore => ({ pass: true, score: 0.2, message: 'quality dropped' }),
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, webhookNotifier, {
-      judges: [breachingJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
+      list: [breachingJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -487,14 +487,14 @@ describe('createOnlineEvalSampler', () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail } = createStubAuditTrail();
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
-    const okJudge: OnlineEvalJudge = {
+    const okJudge: PluginScorer = {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.5,
-      evaluate: (): EvalScore => ({ pass: true, score: 0.5, message: 'fine' }),
+      evaluate: (): PluginScore => ({ pass: true, score: 0.5, message: 'fine' }),
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, webhookNotifier, {
-      judges: [okJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
+      list: [okJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -510,8 +510,8 @@ describe('createOnlineEvalSampler', () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail } = createStubAuditTrail();
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, webhookNotifier, {
-      judges: [failingMatcher('no-threshold-judge', 0.9)],
+    const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
+      list: [failingMatcher('no-threshold-judge', 0.9)],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -528,15 +528,15 @@ describe('createOnlineEvalSampler', () => {
   it('does not fire a webhook when no notifier is configured, even on breach', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const breachingJudge: OnlineEvalJudge = {
+    const breachingJudge: PluginScorer = {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.5,
-      evaluate: (): EvalScore => ({ pass: false, score: 0.1, message: 'bad' }),
+      evaluate: (): PluginScore => ({ pass: false, score: 0.1, message: 'bad' }),
     };
     // No webhookNotifier passed (undefined) — the breach is still recorded.
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [breachingJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [breachingJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -555,14 +555,14 @@ describe('createOnlineEvalSampler', () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail } = createStubAuditTrail();
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
-    const healthyJudge: OnlineEvalJudge = {
+    const healthyJudge: PluginScorer = {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.1,
-      evaluate: (): EvalScore => ({ pass: true, score: 0.95, message: 'excellent' }),
+      evaluate: (): PluginScore => ({ pass: true, score: 0.95, message: 'excellent' }),
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, webhookNotifier, {
-      judges: [healthyJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
+      list: [healthyJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -577,8 +577,8 @@ describe('createOnlineEvalSampler', () => {
   it('stops observing actions after dispose', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher()],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -597,16 +597,16 @@ describe('createOnlineEvalSampler', () => {
     const { auditTrail, records } = createStubAuditTrail();
 
     let releaseJudge: (() => void) | undefined;
-    const gatedJudge: OnlineEvalJudge = {
+    const gatedJudge: PluginScorer = {
       name: 'gated-judge',
       version: '1.0.0',
       evaluate: () =>
-        new Promise<EvalScore>((resolve) => {
+        new Promise<PluginScore>((resolve) => {
           releaseJudge = () => resolve({ pass: true, score: 1, message: 'released' });
         }),
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [gatedJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [gatedJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -640,13 +640,13 @@ describe('createOnlineEvalSampler', () => {
     // A judge that never settles on its own: if `options.signal` were not
     // actually threaded into this judge's race, `flush()` below would hang
     // forever instead of resolving once the signal aborts.
-    const neverSettlingJudge: OnlineEvalJudge = {
+    const neverSettlingJudge: PluginScorer = {
       name: 'never-settling-judge',
       version: '1.0.0',
-      evaluate: () => new Promise<EvalScore>(() => {}),
+      evaluate: () => new Promise<PluginScore>(() => {}),
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [neverSettlingJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [neverSettlingJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
       signal: controller.signal,
@@ -671,25 +671,25 @@ describe('createOnlineEvalSampler', () => {
     const controller = new AbortController();
 
     let releaseFirstJudge: (() => void) | undefined;
-    const firstJudge: OnlineEvalJudge = {
+    const firstJudge: PluginScorer = {
       name: 'first-judge',
       version: '1.0.0',
       evaluate: () =>
-        new Promise<EvalScore>((resolve) => {
+        new Promise<PluginScore>((resolve) => {
           releaseFirstJudge = () => resolve({ pass: true, score: 1, message: 'first' });
         }),
     };
     let secondJudgeCalled = false;
-    const secondJudge: OnlineEvalJudge = {
+    const secondJudge: PluginScorer = {
       name: 'second-judge',
       version: '1.0.0',
-      evaluate: (): EvalScore => {
+      evaluate: (): PluginScore => {
         secondJudgeCalled = true;
         return { pass: true, score: 1, message: 'second' };
       },
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [firstJudge, secondJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [firstJudge, secondJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
       signal: controller.signal,
@@ -728,16 +728,16 @@ describe('createOnlineEvalSampler', () => {
     // the time `raceAgainstAbort`'s internal `whenAborted()` observes it a
     // few synchronous steps later, exercising that already-aborted-at-race
     // -time branch rather than the abort-mid-wait one.
-    const selfAbortingJudge: OnlineEvalJudge = {
+    const selfAbortingJudge: PluginScorer = {
       name: 'self-aborting-judge',
       version: '1.0.0',
       evaluate: () => {
         controller.abort(new Error('aborted by the judge itself'));
-        return new Promise<EvalScore>(() => {});
+        return new Promise<PluginScore>(() => {});
       },
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [selfAbortingJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [selfAbortingJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
       signal: controller.signal,
@@ -761,7 +761,7 @@ describe('createOnlineEvalSampler', () => {
     // is evaluated as a plain argument expression BEFORE `raceAgainstAbort`
     // runs, so a race-only guard cannot prevent the judge from starting.
     let judgeInvoked = false;
-    const trackedJudge: OnlineEvalJudge = {
+    const trackedJudge: PluginScorer = {
       name: 'tracked-judge',
       version: '1.0.0',
       evaluate: () => {
@@ -770,8 +770,8 @@ describe('createOnlineEvalSampler', () => {
       },
     };
 
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [trackedJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [trackedJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
       signal: controller.signal,
@@ -814,13 +814,13 @@ describe('createOnlineEvalSampler', () => {
     };
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
 
-    const breachingJudge: OnlineEvalJudge = {
+    const breachingJudge: PluginScorer = {
       name: 'breaching-judge',
       version: '1.0.0',
       evaluate: () => ({ pass: false, score: 0, message: 'breach' }),
     };
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, webhookNotifier, {
-      judges: [breachingJudge],
+    const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
+      list: [breachingJudge],
       sampleRate: 1,
       rng: scriptedRng([0]),
       signal: controller.signal,
@@ -849,8 +849,8 @@ describe('createOnlineEvalSampler', () => {
   it('calling dispose() twice does not throw and the second call resolves promptly', async () => {
     const { bureau } = createStubBureau();
     const { auditTrail } = createStubAuditTrail();
-    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-      judges: [passingMatcher()],
+    const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+      list: [passingMatcher()],
       sampleRate: 1,
       rng: scriptedRng([0]),
     });
@@ -868,8 +868,8 @@ describe('createOnlineEvalSampler', () => {
       const { bureau, emit } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
       const { judge: judgeA, resolveAll: resolveA } = blockingJudge('judge-a');
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [judgeA],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [judgeA],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),
@@ -893,8 +893,8 @@ describe('createOnlineEvalSampler', () => {
       const { bureau, emit } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
       const { judge, resolveAll } = blockingJudge();
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [judge],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [judge],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),
@@ -916,8 +916,8 @@ describe('createOnlineEvalSampler', () => {
     it('removes an evaluation from activeEvaluationSnapshots() once it settles', async () => {
       const { bureau, emit } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [passingMatcher()],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [passingMatcher()],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),
@@ -933,8 +933,8 @@ describe('createOnlineEvalSampler', () => {
     it('snapshot() reports the instance-level aggregate as healthy with no active evaluations', async () => {
       const { bureau } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [passingMatcher()],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [passingMatcher()],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),
@@ -948,8 +948,8 @@ describe('createOnlineEvalSampler', () => {
     it('subscribeSnapshot() delivers the current aggregate immediately, then again as evaluations start and finish', async () => {
       const { bureau, emit } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [passingMatcher()],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [passingMatcher()],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),
@@ -976,8 +976,8 @@ describe('createOnlineEvalSampler', () => {
     it('subscribeSnapshot() stops delivering after unsubscribe()', async () => {
       const { bureau, emit } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [passingMatcher()],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [passingMatcher()],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),
@@ -1001,8 +1001,8 @@ describe('createOnlineEvalSampler', () => {
     it('subscribeSnapshot() with an already-aborted signal delivers once, synchronously closed', async () => {
       const { bureau } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [passingMatcher()],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [passingMatcher()],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),
@@ -1023,8 +1023,8 @@ describe('createOnlineEvalSampler', () => {
 
     it('the no-op sampler isolates a throwing subscribeSnapshot observer', () => {
       const { bureau } = createStubBureau();
-      const sampler = createOnlineEvalSampler(bureau, undefined, undefined, {
-        judges: [],
+      const sampler = createScorerSampler(bureau, undefined, undefined, {
+        list: [],
         sampleRate: 1,
       });
 
@@ -1039,8 +1039,8 @@ describe('createOnlineEvalSampler', () => {
 
     it('the no-op sampler (no judges) reports a terminal aggregate snapshot and no active evaluations', async () => {
       const { bureau } = createStubBureau();
-      const sampler = createOnlineEvalSampler(bureau, undefined, undefined, {
-        judges: [],
+      const sampler = createScorerSampler(bureau, undefined, undefined, {
+        list: [],
         sampleRate: 1,
       });
 
@@ -1108,7 +1108,7 @@ describe('createOnlineEvalSampler', () => {
   });
 });
 
-// COR-89: `createOnlineEvalSampler` defaults `runtime` to an internal
+// COR-89: `createScorerSampler` defaults `runtime` to an internal
 // `createDefaultRuntimeServices()` instance the caller never sees. The
 // evaluations tracked on that instance's `deferred` ledger must still be
 // drained by the sampler's own `dispose()`, so the hidden ledger is never the
@@ -1123,8 +1123,8 @@ describe('COR-89 — omitted runtime', () => {
       const { bureau, emit } = createStubBureau();
       const { auditTrail } = createStubAuditTrail();
       const { judge, resolveAll } = blockingJudge();
-      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
-        judges: [judge],
+      const sampler = createScorerSampler(bureau, auditTrail, undefined, {
+        list: [judge],
         sampleRate: 1,
         rng: scriptedRng([0]),
         clock: manualClock(),

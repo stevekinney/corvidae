@@ -102,15 +102,15 @@ describe('createVersionedCatalog registration', () => {
   it("prefers the contribution's own version to its plugin's", () => {
     const catalog = createVersionedCatalog<string>();
     catalog.register({
-      kind: 'eval-judge',
+      kind: 'scorer',
       name: 'linear:quality',
       version: '1.2.0',
       value: 'judge',
       source: linear,
     });
 
-    expect(catalog.resolve('eval-judge', 'linear:quality@1.2.0')).toMatchObject({ ok: true });
-    expect(catalog.resolve('eval-judge', 'linear:quality@3.0.0')).toMatchObject({
+    expect(catalog.resolve('scorer', 'linear:quality@1.2.0')).toMatchObject({ ok: true });
+    expect(catalog.resolve('scorer', 'linear:quality@3.0.0')).toMatchObject({
       reason: 'version-mismatch',
     });
   });

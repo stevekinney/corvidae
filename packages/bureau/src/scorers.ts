@@ -29,7 +29,7 @@
  * detection once a per-evaluation deadline exists, without reopening this
  * module later to add it.
  */
-import type { EvalScore, OnlineEvalJudge } from '@lostgradient/interborough-plugin';
+import type { PluginScore, PluginScorer } from '@lostgradient/interborough-plugin';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   BACKGROUND_EVALUATION_POLICY,
@@ -124,7 +124,7 @@ const AGGREGATE_EVALUATION_ID = 'online-eval-sampler';
  * AB-216's child-liveness severity ordering
  * (`packages/operative/src/liveness/active-run-liveness.ts`), duplicated at
  * module-local scope rather than imported: this issue's delivery boundary
- * restricts its edit to `online-evals.ts`/`webhook-notifier.ts` and their
+ * restricts its edit to `scorers.ts`/`webhook-notifier.ts` and their
  * tests, and the source ordering is not part of `@lostgradient/operative`'s
  * public `liveness` subpath export.
  */
@@ -205,10 +205,10 @@ function deriveEvaluationAssessment(
   return 'healthy';
 }
 
-/** Options for {@link createOnlineEvalSampler}. */
-export interface OnlineEvalSamplerOptions {
+/** Options for {@link createScorerSampler}. */
+export interface ScorerSamplerOptions {
   /** Judges/matchers run against each sampled run. */
-  judges: OnlineEvalJudge[];
+  list: PluginScorer[];
   /** Fraction of completed runs to sample, in `[0, 1]`. */
   sampleRate: number;
   /** Injectable RNG returning a value in `[0, 1)`. Defaults to the composed RuntimeServices random. */
@@ -236,8 +236,8 @@ export interface OnlineEvalSamplerOptions {
   evaluationIds?: EvaluationIdentifierSeam;
 }
 
-/** The online eval sampler object returned by {@link createOnlineEvalSampler}. */
-export interface OnlineEvalSampler extends LivenessObservable<EvaluationLivenessSnapshot> {
+/** The online eval sampler object returned by {@link createScorerSampler}. */
+export interface ScorerSampler extends LivenessObservable<EvaluationLivenessSnapshot> {
   /** Number of completed runs the sampler has observed (sampled or not). */
   observedCount(): number;
   /** Number of runs actually sampled (passed the `sampleRate` roll). */
@@ -291,7 +291,7 @@ function isRunResultDetail(detail: unknown): detail is RunResult {
 
 const EVAL_ALERT_TRIGGER = 'eval.threshold-breached';
 
-function breachesThreshold(judge: OnlineEvalJudge, result: EvalScore): boolean {
+function breachesThreshold(judge: PluginScorer, result: PluginScore): boolean {
   if (judge.alertThreshold !== undefined) return result.score < judge.alertThreshold;
   return !result.pass;
 }
@@ -301,7 +301,7 @@ function breachesThreshold(judge: OnlineEvalJudge, result: EvalScore): boolean {
 /**
  * Rejects with `signal`'s abort reason as soon as it aborts, so awaiting
  * `judge.evaluate()` never blocks `evaluateRun()` past the owner's shutdown
- * request even though {@link OnlineEvalJudge.evaluate} itself has no way to
+ * request even though {@link PluginScorer.evaluate} itself has no way to
  * observe the signal. `signal` is the owner's disposal signal and outlives
  * any single evaluation, so the listener is removed via `unregister()` once
  * the race is decided rather than relying on `{ once: true }` alone —
@@ -354,14 +354,14 @@ async function raceAgainstAbort<T>(
  *   delivery pipeline. `undefined` when no webhooks are configured — a
  *   breach is still recorded in the audit trail, just never delivered.
  * @param options - Judges + sample rate + RNG. Returns a no-op sampler when
- *   `options` is `undefined`, `options.judges` is empty, or `sampleRate` is
+ *   `options` is `undefined`, `options.list` is empty, or `sampleRate` is
  *   `0`.
  */
-export function createOnlineEvalSampler<D extends AgentDefinitions = AgentDefinitions>(
+export function createScorerSampler<D extends AgentDefinitions = AgentDefinitions>(
   bureau: Bureau<D>,
   auditTrail: AuditTrail | undefined,
   webhookNotifier: WebhookNotifier | undefined,
-  options: OnlineEvalSamplerOptions | undefined,
+  options: ScorerSamplerOptions | undefined,
   // AB-260: the bureau's single composed `RuntimeServices` instance. Defaults
   // to the real-globals runtime so every pre-existing direct caller of this
   // exported factory (including this package's own test suite) is
@@ -372,8 +372,8 @@ export function createOnlineEvalSampler<D extends AgentDefinitions = AgentDefini
   // tracked on it: every promise passed to `runtime.deferred.track` below is
   // also held in `activeEvaluations`, which `flush()`/`dispose()` awaits.
   runtime: RuntimeServices = createDefaultRuntimeServices(),
-): OnlineEvalSampler {
-  const judges = options?.judges ?? [];
+): ScorerSampler {
+  const judges = options?.list ?? [];
 
   if (judges.length === 0 || !options || options.sampleRate <= 0) {
     const noOpSnapshot: EvaluationLivenessSnapshot = Object.freeze({
@@ -586,8 +586,8 @@ export function createOnlineEvalSampler<D extends AgentDefinitions = AgentDefini
 
   async function recordScore(
     runId: string,
-    judge: OnlineEvalJudge,
-    result: EvalScore,
+    judge: PluginScorer,
+    result: PluginScore,
   ): Promise<void> {
     await auditTrail?.record({
       runId,
@@ -602,7 +602,7 @@ export function createOnlineEvalSampler<D extends AgentDefinitions = AgentDefini
     });
   }
 
-  function fireAlert(runId: string, judge: OnlineEvalJudge, result: EvalScore): void {
+  function fireAlert(runId: string, judge: PluginScorer, result: PluginScore): void {
     webhookNotifier?.notify({
       runId,
       subjectId: `eval:${runId}:${formatVersionedId(judge.name, judge.version)}`,
@@ -627,7 +627,7 @@ export function createOnlineEvalSampler<D extends AgentDefinitions = AgentDefini
       // start (and leak) an evaluation nobody is going to wait on.
       if (signal?.aborted) return;
 
-      let result: EvalScore;
+      let result: PluginScore;
       try {
         result = await raceAgainstAbort(Promise.resolve(judge.evaluate(runResult)), signal);
       } catch (error) {

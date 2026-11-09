@@ -2219,7 +2219,7 @@ export const PLUGINS_COPY = {
     provider: 'Model provider',
     embedder: 'Embeddings',
     'memory-detector': 'Memory detectors',
-    'eval-judge': 'Evaluation judges',
+    scorer: 'Scorers',
     'mcp-app': 'MCP apps',
     'event-formatter': 'Event formatters',
     'code-agent': 'Code agents',

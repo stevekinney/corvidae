@@ -770,7 +770,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 describe('AB-322: fault-forced leftovers populate the corresponding rows', () => {
   it('a judge evaluation blocked (createFaultEngine.wrapStorage, on the evaluation\'s own audit-record write) past a bounded shutdown names it in activeEvaluations, not leaked — the "online-evals" owner is already incomplete', async () => {
     // Deliberately NOT `wrapGenerate` on the judge's own model call: online
-    // evals' `evaluateRun` (`online-evals.ts`) races EVERY judge call
+    // evals' `evaluateRun` (`scorers.ts`) races EVERY judge call
     // against the same background-shutdown `AbortSignal` `bureau.shutdown()`
     // fires — so a judge blocked on ITS OWN generate call is abandoned
     // (untracked) the instant that signal aborts, regardless of whether the
@@ -811,8 +811,8 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
       },
       storage,
       runtime,
-      onlineEvals: {
-        judges: [
+      scorers: {
+        list: [
           {
             name: 'instant-judge',
             version: '1.0.0',
@@ -833,7 +833,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
 
     // `bureau.run()` catalog dispatch (`harness.startRun`) never touches
     // the operative `Store`, so it never emits the `'action'` events
-    // `createOnlineEvalSampler` listens for (or that `audit-trail.ts`
+    // `createScorerSampler` listens for (or that `audit-trail.ts`
     // listens for, below) — only `startSession`'s
     // `createRun`/`createRunFromRequest` path does. `maximumSteps: 1`
     // forces `'run.completed'` on the very first step (`mockGenerate`'s

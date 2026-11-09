@@ -1,7 +1,7 @@
 import type { RunResult } from '@lostgradient/operative';
 
 /** The result of scoring a single completed run against one judge/matcher. */
-export interface EvalScore {
+export interface PluginScore {
   /** Whether the run's output passed this judge's check. */
   pass: boolean;
   /** Score from 0-1 (1 = perfect). */
@@ -15,9 +15,9 @@ export interface EvalScore {
  * `evaluate` receives the completed run's {@link RunResult} — the same shape
  * `evaluation`'s `matchCustomAssertion`/`createLLMJudge` operate on, so an
  * existing offline matcher or LLM judge can be adapted into this shape
- * directly (wrap it, normalize its score to 0-1, return {@link EvalScore}).
+ * directly (wrap it, normalize its score to 0-1, return {@link PluginScore}).
  */
-export interface OnlineEvalJudge {
+export interface PluginScorer {
   /** Name recorded on every audit record and alert payload produced by this judge. */
   name: string;
   /**
@@ -26,7 +26,7 @@ export interface OnlineEvalJudge {
    */
   version: string;
   /** Scores a sampled run. May be async (e.g. an LLM-as-judge call). */
-  evaluate: (runResult: RunResult) => EvalScore | Promise<EvalScore>;
+  evaluate: (runResult: RunResult) => PluginScore | Promise<PluginScore>;
   /**
    * Alert threshold: a score strictly below this fires a webhook. Omit to
    * alert whenever the judge reports `pass: false` instead of on a numeric

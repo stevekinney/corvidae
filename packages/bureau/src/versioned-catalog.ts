@@ -1,6 +1,6 @@
 /**
  * COR-1872 — one catalog for every versioned contribution Bureau resolves by identity: goal
- * validators, online eval judges, decision routers, hook action kinds, workflow trigger kinds and
+ * validators, scorers, decision routers, hook action kinds, workflow trigger kinds and
  * workflow activities.
  *
  * It generalizes the rule `goal-validator-catalog.ts` set for validators (COR-851). A durable
@@ -18,7 +18,7 @@
 /** The kinds of contribution the catalog holds. Each kind is its own namespace of identities. */
 export const VERSIONED_CATALOG_KINDS = [
   'validator',
-  'eval-judge',
+  'scorer',
   'decision-router',
   'reaction',
   'trigger',

@@ -365,7 +365,7 @@ import {
   validateSettingsOptions,
 } from './settings/settings-options';
 import { createModels, validateModelsOptions, type Models } from './models/create-models';
-import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
+import { createScorerSampler, type ScorerSampler } from './scorers';
 import {
   buildTerminalReportFromAbortedEvent,
   buildTerminalReportFromCompletedEvent,
@@ -21728,7 +21728,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // Which owners this bureau actually composes — a report row is emitted
     // ONLY for a composed owner (2026-09-02 coordinator ruling).
     const composedOwnerKinds = ALL_SHUTDOWN_OWNER_KINDS.filter((kind) => {
-      if (kind === 'online-evals') return Boolean(onlineEvalSamplerInstance);
+      if (kind === 'online-evals') return Boolean(scorerSamplerInstance);
       if (kind === 'webhook-notifier') return Boolean(webhookNotifierInstance);
       if (kind === 'audit-trail') return Boolean(auditTrailInstance);
       if (kind === 'event-history') return Boolean(eventHistoryInstance);
@@ -22125,9 +22125,9 @@ async function constructBureau<const D extends AgentDefinitions>(
             const webhookNotifier = webhookNotifierInstance;
             ownerDrains.push(settleOwner('webhook-notifier', () => webhookNotifier.dispose()));
           }
-          if (onlineEvalSamplerInstance) {
-            const onlineEvalSampler = onlineEvalSamplerInstance;
-            ownerDrains.push(settleOwner('online-evals', () => onlineEvalSampler.dispose()));
+          if (scorerSamplerInstance) {
+            const scorerSampler = scorerSamplerInstance;
+            ownerDrains.push(settleOwner('online-evals', () => scorerSampler.dispose()));
           }
           if (assetServiceInstance) {
             // COR-794: aborts every in-flight asset operation and awaits each
@@ -22355,7 +22355,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   // createAuditTrail).
   let auditTrailInstance: AuditTrail | undefined;
   let webhookNotifierInstance: WebhookNotifier | undefined;
-  let onlineEvalSamplerInstance: OnlineEvalSampler | undefined;
+  let scorerSamplerInstance: ScorerSampler | undefined;
   // The durable event history store (AB-91's `ab91-01` slice, AB-310) —
   // built eagerly (unlike `auditTrailInstance`/`webhookNotifierInstance`
   // below, which need `bureau` itself to subscribe to action events) since
@@ -23735,8 +23735,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       get webhookNotifier(): WebhookNotifier | undefined {
         return webhookNotifierInstance;
       },
-      get onlineEvalSampler(): OnlineEvalSampler | undefined {
-        return onlineEvalSamplerInstance;
+      get scorerSampler(): ScorerSampler | undefined {
+        return scorerSamplerInstance;
       },
       abortingTasks: listAbortingRuns,
       whenTaskRecorded: whenRunRecorded,
@@ -24228,22 +24228,18 @@ async function constructBureau<const D extends AgentDefinitions>(
   // notifier exist (a sampled score is recorded to the former; a threshold
   // breach is delivered through the latter). Only created when at least one
   // judge is configured with a positive sample rate — the common case (no
-  // `options.onlineEvals`) costs nothing beyond the `undefined` check inside
-  // `createOnlineEvalSampler`.
-  if (
-    options.onlineEvals &&
-    options.onlineEvals.judges.length > 0 &&
-    options.onlineEvals.sampleRate > 0
-  ) {
-    onlineEvalSamplerInstance = createOnlineEvalSampler(
+  // `options.scorers`) costs nothing beyond the `undefined` check inside
+  // `createScorerSampler`.
+  if (options.scorers && options.scorers.list.length > 0 && options.scorers.sampleRate > 0) {
+    scorerSamplerInstance = createScorerSampler(
       bureau,
       auditTrailInstance,
       webhookNotifierInstance,
       {
-        ...options.onlineEvals,
+        ...options.scorers,
         // AB-207: same bounded-abort wiring as the webhook notifier above, for
         // an in-flight judge invocation.
-        signal: withBackgroundShutdownSignal(options.onlineEvals.signal),
+        signal: withBackgroundShutdownSignal(options.scorers.signal),
       },
       runtimeServices,
     );
