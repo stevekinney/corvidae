@@ -58,6 +58,8 @@ export interface PluginProviderContribution {
   readonly plugin: string;
   /** The provider definition the host resolves a generate through. */
   readonly definition: ProviderDefinition;
+  /** The plugin configuration parsed and validated before setup returned this provider. */
+  readonly configuration: unknown;
   /** The catalog rows of its models; each row's `provider` is `definition.name`. */
   readonly rows: readonly BackendDescriptor[];
 }
@@ -361,6 +363,13 @@ export interface PluginReactionListing {
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }
 
+/** A model provider a running plugin contributes, without exposing executable code or values. */
+export interface PluginProviderListing {
+  readonly plugin: string;
+  readonly name: string;
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+}
+
 /** `bureau.plugins`: the plugins the Bureau was given, in load order. */
 export interface BureauPlugins {
   /**
@@ -405,6 +414,8 @@ export interface BureauPlugins {
    * is built.
    */
   reactions(): readonly PluginReactionListing[];
+  /** The model providers of running plugins, with the plugin configuration schema only. */
+  providers(): readonly PluginProviderListing[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

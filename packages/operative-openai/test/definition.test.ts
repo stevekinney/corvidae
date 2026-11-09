@@ -12,6 +12,6 @@ describe('provider definitions', () => {
   it('accepts a configuration typed as the shared base', () => {
     const configuration: ProviderConfigurationBase = { provider: 'openai', model: 'gpt-4o' };
 
-    expect(typeof openaiProvider.generate?.(configuration)).toBe('function');
+    expect(typeof openaiProvider.generate?.(configuration, {})).toBe('function');
   });
 });

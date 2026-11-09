@@ -1,23 +1,23 @@
 {
   "plugin": "openai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entries": [
     {
       "kind": "configuration",
       "id": "openai",
-      "version": "0.1.0",
-      "schema": "sha256:bd820299252e6e8133d16b688e6aabbe184002d608ff0f272d2399fdb0fa27b3"
+      "version": "0.1.1",
+      "schema": "sha256:fa691d6b1f2bd1579a28236397df29f90155ec2fa9320d90c2999de84b7bdfde"
     },
     {
       "kind": "embedder",
       "id": "openai:text-embedding-3-small",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "schema": "sha256:d66792028b767be869448f684e82f9311959ec517c34035b44f7970d3ca97f56"
     },
     {
       "kind": "provider",
       "id": "openai:openai",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "schema": null
     }
   ]

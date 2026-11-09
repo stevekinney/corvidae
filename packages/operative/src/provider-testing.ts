@@ -116,9 +116,9 @@ export function runProviderContract<Call extends object>(
   }
   // Invoke through `definition` so method-based provider definitions retain their `this` binding.
   const generateFactory = (configuration: Parameters<typeof definition.generate>[0]) =>
-    definition.generate!(configuration);
+    definition.generate!(configuration, undefined);
   const streamFactory = (configuration: Parameters<typeof definition.stream>[0]) =>
-    definition.stream!(configuration);
+    definition.stream!(configuration, undefined);
 
   describe(`${fixtures.name} provider contract`, () => {
     it('names the definition after its provider and fits the string-keyed ProviderDefinition', () => {
