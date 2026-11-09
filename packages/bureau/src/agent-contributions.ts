@@ -8,33 +8,55 @@
  * with `reference-unresolved`.
  *
  * A guardrail is one input detector, one output validator or one tool-call validator, named by its
- * own `name`; an input or output entry may carry an action of its own, which travels with it. An
+ * own `name`; an input or output entry may carry an action of its own, which travels with it. A
+ * plugin may contribute a factory of one instead (COR-2118): a file entry `{ id, configuration }`
+ * configures it, the factory's schema parses that configuration (`{}` for a bare id), and each
+ * agent that chooses it runs the guardrail its `create` builds for it, under the entry's action. An
  * interceptor is one `PluginInterceptor`, named by its own `name`. Every run hook it registers carries
  * `source: <plugin>`, which survives `mergeHookRegistries`, so the run's hook plan says which
  * plugin each entry came from.
  *
- * COR-2127 — an interceptor that declares `appliesTo: 'every-agent'` is not chosen by a file: it
- * registers for every run Bureau composes, in the `plugin` tier ({@link everyAgentInterceptorsOf}),
- * and a file that lists it anyway gets it once, from that tier.
+ * COR-2127 — an interceptor that declares `appliesTo: 'every-agent'` needs no file to choose it: it
+ * registers for every run Bureau composes, in the `plugin` tier ({@link everyAgentInterceptorsOf}).
+ * A file that lists it anyway gets it in its own agent tier instead, and that run's plugin tier
+ * leaves it out, so it registers once and refuses, as a chosen interceptor does, while its plugin
+ * needs setup.
  *
  * @module agent-contributions
  */
 
-import type { PluginGuardrails, PluginInterceptor } from '@lostgradient/interborough-plugin';
+import {
+  isGuardrailFactory,
+  type PluginGuardrailFactory,
+  type PluginGuardrails,
+  type PluginInputGuardrailEntry,
+  type PluginInterceptor,
+  type PluginOutputGuardrailEntry,
+  type PluginToolGuardrailEntry,
+} from '@lostgradient/interborough-plugin';
 import { HookRegistry } from '@lostgradient/lifecycle';
 import {
   AGENT_POLICY_PINNED_LAST_PRIORITY,
   type GuardrailAdditions,
+  type GuardrailEntry,
   guardrailOf,
+  type InputDetector,
   type HookRegistrationOptions,
   type InputGuardrailEntry,
   type OperativeHookMap,
   type OutputGuardrailEntry,
+  type OutputValidator,
   type ToolCallValidator,
 } from '@lostgradient/operative';
 import { formatToolId } from 'armorer';
+import type { z } from 'zod';
 
-import type { AgentFileDefinition, AgentFileIssue } from './agent-file';
+import {
+  type AgentFileDefinition,
+  type AgentFileIssue,
+  type AgentGuardrailSelection,
+  guardrailIdOf,
+} from './agent-file';
 
 /** What one plugin contributes that an agent file can choose. */
 export interface AgentContributionSource {
@@ -55,12 +77,12 @@ export interface ContributedGuardrail {
   readonly id: string;
   /** The contributing plugin. */
   readonly plugin: string;
-  /** Set for an input detector, with the action it carries, if any. */
-  readonly inputDetector?: InputGuardrailEntry | undefined;
-  /** Set for an output validator, with the action it carries, if any. */
-  readonly outputValidator?: OutputGuardrailEntry | undefined;
-  /** Set for a tool-call validator (COR-2104). */
-  readonly toolValidator?: ToolCallValidator | undefined;
+  /** Set for an input detector or a factory of one, with the action it carries, if any. */
+  readonly inputDetector?: PluginInputGuardrailEntry | undefined;
+  /** Set for an output validator or a factory of one, with the action it carries, if any. */
+  readonly outputValidator?: PluginOutputGuardrailEntry | undefined;
+  /** Set for a tool-call validator (COR-2104) or a factory of one (COR-2118). */
+  readonly toolValidator?: PluginToolGuardrailEntry | undefined;
 }
 
 /** One interceptor a plugin contributes. */
@@ -71,6 +93,30 @@ export interface ContributedInterceptor {
   readonly plugin: string;
   /** The interceptor itself. */
   readonly interceptor: PluginInterceptor;
+}
+
+/**
+ * What is wrong with a guardrail's own contract (COR-2118), or `undefined` when nothing is: it has
+ * no non-empty `description`, or it carries a `create` function but no Zod `configuration` schema
+ * to parse an agent's configuration with (or a `create` that is not a function). Plugin composition
+ * and {@link createAgentContributions} both ask this, so a plugin and the host are held to one rule.
+ */
+export function guardrailContractFault(guardrail: unknown): 'description' | 'factory' | undefined {
+  const { description, configuration, create } = guardrail as {
+    readonly description?: unknown;
+    readonly configuration?: unknown;
+    readonly create?: unknown;
+  };
+  if (typeof description !== 'string' || description.trim() === '') return 'description';
+  if (
+    create !== undefined &&
+    (typeof create !== 'function' ||
+      typeof (configuration as { readonly safeParse?: unknown } | null | undefined)?.safeParse !==
+        'function')
+  ) {
+    return 'factory';
+  }
+  return undefined;
 }
 
 /** The guardrails and interceptors an agent file may choose, by id. */
@@ -90,8 +136,10 @@ export const NO_AGENT_CONTRIBUTIONS: AgentContributions = Object.freeze({
 /**
  * Collects what plugins contribute into the lookup agent files resolve against. Throws `TypeError`
  * when two guardrails share an id, or two interceptors do (a file names a contribution by id
- * alone, so an id that means two things would run whichever came first), and when an interceptor
- * declares a hook that is neither a function nor a well-formed `{ handler, ... }` object.
+ * alone, so an id that means two things would run whichever came first), when an interceptor
+ * declares a hook that is neither a function nor a well-formed `{ handler, ... }` object, and for a
+ * guardrail without a non-empty `description` (COR-2118), which a listing could not tell apart, and
+ * for a factory without a Zod `configuration` and a function `create` ({@link guardrailContractFault}).
  */
 export function createAgentContributions(
   sources: readonly AgentContributionSource[],
@@ -112,6 +160,17 @@ export function createAgentContributions(
       entry: Pick<ContributedGuardrail, 'inputDetector' | 'outputValidator' | 'toolValidator'>,
     ) => {
       const id = formatToolId({ namespace: plugin, name });
+      const fault = guardrailContractFault(
+        guardrailOf(entry[family] as Parameters<typeof guardrailOf>[0]),
+      );
+      if (fault === 'description') {
+        throw new TypeError(`The guardrail "${id}" has no description.`);
+      }
+      if (fault === 'factory') {
+        throw new TypeError(
+          `The guardrail "${id}" is a factory without a configuration schema and a create function.`,
+        );
+      }
       const held = guardrails.get(id);
       if (held?.[family] !== undefined) {
         throw new TypeError(`The guardrail "${id}" is contributed more than once.`);
@@ -141,14 +200,16 @@ export function createAgentContributions(
 
 /**
  * The ids `definition` lists that `contributions` does not hold, as the issues of a
- * `reference-unresolved` problem: each names the key and the position in it.
+ * `reference-unresolved` problem: each names the key and the position in it. A `guardrails` entry
+ * is an id or `{ id, configuration }`; either names its guardrail by `id`.
  */
 export function unresolvedContributions(
   definition: Pick<AgentFileDefinition, 'guardrails' | 'interceptors'>,
   contributions: AgentContributions,
 ): AgentFileIssue[] {
   const issues: AgentFileIssue[] = [];
-  (definition.guardrails ?? []).forEach((id, index) => {
+  (definition.guardrails ?? []).forEach((selection, index) => {
+    const id = guardrailIdOf(selection);
     if (!contributions.guardrails.has(id)) {
       issues.push({
         path: `guardrails.${index}`,
@@ -169,10 +230,134 @@ export function unresolvedContributions(
   return issues;
 }
 
+/** The contributed families of `contributed`, each its entry's guardrail, which may be a factory. */
+function familiesOf(contributed: ContributedGuardrail): readonly unknown[] {
+  return [contributed.inputDetector, contributed.outputValidator, contributed.toolValidator]
+    .filter((entry) => entry !== undefined)
+    .map((entry) => guardrailOf(entry));
+}
+
+/** The configuration an entry gives its guardrail: its own, or `{}` for a bare id. */
+function configurationOf(selection: AgentGuardrailSelection): unknown {
+  return typeof selection === 'string' ? {} : selection.configuration;
+}
+
+/** `configuration` parsed with `factory`'s schema, or the issues it refuses it with. */
+function parsedConfiguration(
+  factory: PluginGuardrailFactory<unknown>,
+  configuration: unknown,
+):
+  | { readonly success: true; readonly data: unknown }
+  | { readonly success: false; readonly error: z.ZodError } {
+  return factory.configuration.safeParse(configuration);
+}
+
+/**
+ * The configurations `definition` gives its guardrails that their schemas refuse (COR-2118), as
+ * the issues of an `invalid-guardrail-configuration` problem. Each issue's path names the entry and
+ * the field, `guardrails.<index>.configuration.<field>`, and its `reference` the guardrail. A bare
+ * id is configured with `{}`, so a factory whose schema needs a field refuses it. An entry that
+ * configures a guardrail no factory builds is refused at `guardrails.<index>.configuration`, since
+ * nothing would read what it says. An id `contributions` does not hold is left to
+ * {@link unresolvedContributions}.
+ */
+export function refusedGuardrailConfigurations(
+  definition: { readonly guardrails?: readonly AgentGuardrailSelection[] | undefined },
+  contributions: AgentContributions,
+): AgentFileIssue[] {
+  const issues: AgentFileIssue[] = [];
+  (definition.guardrails ?? []).forEach((selection, index) => {
+    const id = guardrailIdOf(selection);
+    const contributed = contributions.guardrails.get(id);
+    if (contributed === undefined) return;
+    const factories = familiesOf(contributed).filter((guardrail) => isGuardrailFactory(guardrail));
+    const at = `guardrails.${index}.configuration`;
+    if (factories.length === 0) {
+      if (typeof selection !== 'string') {
+        issues.push({ path: at, message: `"${id}" takes no configuration`, reference: id });
+      }
+      return;
+    }
+    const seen = new Set<string>();
+    for (const factory of factories) {
+      const parsed = parsedConfiguration(factory, configurationOf(selection));
+      if (parsed.success) continue;
+      for (const issue of parsed.error.issues) {
+        const field = issue.path.map(String).join('.');
+        const path = field === '' ? at : `${at}.${field}`;
+        const message = `"${id}" refuses ${field === '' ? 'its configuration' : `\`${field}\``}: ${issue.message}`;
+        // One name may build an input and an output guardrail from one schema; say it once.
+        if (seen.has(`${path}\u0000${message}`)) continue;
+        seen.add(`${path}\u0000${message}`);
+        issues.push({ path, message, reference: id });
+      }
+    }
+  });
+  return issues;
+}
+
+/**
+ * What `factory` builds for one agent from `configuration`. Throws `TypeError` naming the guardrail
+ * when the schema refuses it, which a checked definition never does (see
+ * {@link refusedGuardrailConfigurations}): a run must not go on without a guardrail it chose.
+ */
+function created<T>(id: string, factory: PluginGuardrailFactory<T>, configuration: unknown): T {
+  const parsed = parsedConfiguration(factory, configuration);
+  if (!parsed.success) {
+    throw new TypeError(
+      `The configuration of the guardrail "${id}" is refused: ${parsed.error.issues.map((issue) => `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`).join('; ')}.`,
+    );
+  }
+  return factory.create(parsed.data);
+}
+
+/**
+ * The guardrail an entry stands for, with the action it carries: itself when it is a detector or a
+ * validator, or what its factory builds from `configuration`, named by the factory, when it is one.
+ */
+function resolvedEntry<T extends { readonly name: string }, A extends string>(
+  id: string,
+  entry: GuardrailEntry<T | PluginGuardrailFactory<T>, A>,
+  configuration: unknown,
+  named: (guardrail: T, name: string) => T,
+): GuardrailEntry<T, A> {
+  const guardrail = guardrailOf(entry);
+  if (!isGuardrailFactory(guardrail)) return entry as GuardrailEntry<T, A>;
+  const built = named(created(id, guardrail, configuration), guardrail.name);
+  return guardrail === entry ? built : { ...(entry as object), guardrail: built };
+}
+
+/** `detector` under `name`, its own methods called on it. */
+function namedDetector(detector: InputDetector, name: string): InputDetector {
+  return { name, detect: (input, context) => detector.detect(input, context) };
+}
+
+/** `validator` under `name`, its own methods called on it. */
+function namedValidator(validator: OutputValidator, name: string): OutputValidator {
+  return { name, validate: (output, context) => validator.validate(output, context) };
+}
+
+/** `validator` under `name`, with its own description, or else `description`, and its own action. */
+function namedToolValidator(
+  validator: ToolCallValidator,
+  name: string,
+  description: string,
+): ToolCallValidator {
+  return {
+    name,
+    description: validator.description ?? description,
+    ...(validator.action === undefined ? {} : { action: validator.action }),
+    validate: (call, context) => validator.validate(call, context),
+  };
+}
+
 /**
  * The guardrails `definition` chooses, to add to Operative's default preset, or `undefined` when it
  * chooses none. Every id must resolve (see {@link unresolvedContributions}); one that does not is
- * skipped.
+ * skipped. An id listed more than once (a definition stored before COR-2118 may repeat one) applies
+ * once, as its first entry says. A factory builds its guardrail anew from the entry's
+ * configuration on every call, so two agents, or two runs, never share one; it throws `TypeError`
+ * for a configuration the factory's schema refuses (see {@link refusedGuardrailConfigurations}).
  */
 export function guardrailAdditionsOf(
   definition: Pick<AgentFileDefinition, 'guardrails'>,
@@ -181,13 +366,36 @@ export function guardrailAdditionsOf(
   const inputDetectors: InputGuardrailEntry[] = [];
   const outputValidators: OutputGuardrailEntry[] = [];
   const toolValidators: ToolCallValidator[] = [];
-  for (const id of new Set(definition.guardrails ?? [])) {
+  const applied = new Set<string>();
+  for (const selection of definition.guardrails ?? []) {
+    const id = guardrailIdOf(selection);
+    if (applied.has(id)) continue;
+    applied.add(id);
     const contributed = contributions.guardrails.get(id);
-    if (contributed?.inputDetector !== undefined) inputDetectors.push(contributed.inputDetector);
-    if (contributed?.outputValidator !== undefined) {
-      outputValidators.push(contributed.outputValidator);
+    if (contributed === undefined) continue;
+    const configuration = configurationOf(selection);
+    if (contributed.inputDetector !== undefined) {
+      inputDetectors.push(
+        resolvedEntry(id, contributed.inputDetector, configuration, namedDetector),
+      );
     }
-    if (contributed?.toolValidator !== undefined) toolValidators.push(contributed.toolValidator);
+    if (contributed.outputValidator !== undefined) {
+      outputValidators.push(
+        resolvedEntry(id, contributed.outputValidator, configuration, namedValidator),
+      );
+    }
+    if (contributed.toolValidator !== undefined) {
+      const validator = contributed.toolValidator;
+      toolValidators.push(
+        isGuardrailFactory(validator)
+          ? namedToolValidator(
+              created(id, validator, configuration),
+              validator.name,
+              validator.description,
+            )
+          : validator,
+      );
+    }
   }
   if (inputDetectors.length === 0 && outputValidators.length === 0 && toolValidators.length === 0) {
     return undefined;
@@ -325,8 +533,8 @@ function registerInterceptor(
  * chooses none. Each entry carries `source: <plugin>` and the id `<plugin>:<name>:<hook>`, and the
  * `replay`, `onError` and `priority` its hook declares, the priority raised to
  * {@link INTERCEPTOR_PRIORITY_FLOOR} when it is lower. Every id
- * must resolve (see {@link unresolvedContributions}); one that does not is skipped, and so is one
- * that applies to every agent, which the plugin tier already holds for this run (COR-2127).
+ * must resolve (see {@link unresolvedContributions}); one that does not is skipped. One that applies to
+ * every agent is registered here too, and Bureau leaves it out of that run's plugin tier (COR-2127).
  */
 export function interceptorsOf(
   definition: Pick<AgentFileDefinition, 'interceptors'>,
@@ -335,7 +543,7 @@ export function interceptorsOf(
   const registry = new HookRegistry<OperativeHookMap>();
   for (const id of new Set(definition.interceptors ?? [])) {
     const contributed = contributions.interceptors.get(id);
-    if (contributed === undefined || contributed.interceptor.appliesTo === 'every-agent') continue;
+    if (contributed === undefined) continue;
     registerInterceptor(registry, contributed);
   }
   return registry.getHookNames().length === 0 ? undefined : registry;

@@ -105,7 +105,7 @@ function startComposedRun<O, H extends boolean>(
   // Bureau first, so it wins `runFirst` and, being pinned last, still wins the waterfall; the
   // plugin tier between it and the child's own. The factory is attached again so this child's own
   // children inherit it, whatever its resolver did.
-  const tiers = invariants({ agentResolvesGuardrails });
+  const tiers = invariants({ agentResolvesGuardrails, agentTier: resolved.hooks });
   const merged: RunOptions = withBureauInvariants(
     {
       ...resolved,

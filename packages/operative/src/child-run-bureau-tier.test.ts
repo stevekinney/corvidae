@@ -119,7 +119,7 @@ describe('child dispatch under Bureau (COR-2106)', () => {
     expect(seen).toContain('BUREAU-IDENTITY');
     expect(seen).toContain('CHILD-TIER');
     // A `createAgent` child resolves its own guardrails, so Bureau registers none for it.
-    expect(requests).toEqual([{ agentResolvesGuardrails: true }]);
+    expect(requests).toMatchObject([{ agentResolvesGuardrails: true }]);
   });
 
   // COR-2127 — the plugin tier reaches a child through the same seam, between Bureau's and the
@@ -158,7 +158,7 @@ describe('child dispatch under Bureau (COR-2106)', () => {
       withBureauInvariants(dispatchOptions, invariants),
     ).result();
 
-    expect(requests).toEqual([{ agentResolvesGuardrails: false }]);
+    expect(requests).toMatchObject([{ agentResolvesGuardrails: false }]);
     expect(seen).toContain('BUREAU-IDENTITY');
   });
 

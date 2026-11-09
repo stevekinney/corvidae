@@ -74,8 +74,11 @@ export interface HookRegistrationOptions {
    */
   replay?: HookReplayPolicy;
   /**
-   * Which ownership tier registered this entry (COR-1265) — `bureau`,
-   * `agent`, `direct`, or a narrower label a tier gives one registration.
+   * Who registered this entry (COR-1265) — `bureau`, `agent`, `direct`, a
+   * plugin's name, or a narrower label a registrant gives one registration.
+   * The composition tier the entry belongs to is {@link tier}, which can
+   * differ: a plugin's every-agent interceptor has the plugin's name as its
+   * source and `plugin` as its tier (COR-2127).
    *
    * Normally inherited from {@link HookRegistryOptions.source} rather than
    * passed per registration: a tier builds its own registry, names it once,
@@ -183,9 +186,9 @@ export interface HookPlanObservationIdentity {
   hookName: string;
   id: string;
   /**
-   * The tier this entry was registered by, when one is known — see
+   * Who registered this entry, when one is known — see
    * {@link HookRegistrationOptions.source}. Absent on a registry that names no
-   * tier, which is every registry outside a composed run.
+   * source. An observation does not carry the entry's composition tier.
    */
   source?: string;
   /** The plan's version at the moment of this observation — see {@link HookRegistry.revision}. */
@@ -215,7 +218,10 @@ export interface HookPlanEntryDescription {
   readonly priority: number;
   /** The classification in force, with the conservative default resolved. */
   readonly replay: HookReplayPolicy;
-  /** The owning tier, when one claimed it — see {@link HookRegistrationOptions.source}. */
+  /**
+   * Who registered the entry, when one said — see
+   * {@link HookRegistrationOptions.source}. The composition tier is {@link tier}.
+   */
   readonly source?: string;
   /**
    * The composition tier, once a merge stamped one (COR-2127) — see
@@ -281,8 +287,9 @@ export interface HookObserverOptions {
 export interface HookRegistryOptions {
   onError?: HookErrorHandler;
   /**
-   * The ownership tier every entry registered on this registry belongs to
-   * (COR-1265). Set once when a tier builds its registry; `on()` stamps it
+   * Who registered every entry on this registry (COR-1265), as each entry's
+   * `source`; the composition tier is stamped separately, as `tier`, by
+   * `mergeHookRegistries` (COR-2127). Set once when a tier builds its registry; `on()` stamps it
    * onto each entry so it survives into a merged plan, where the registry
    * itself can no longer answer the question. A per-registration
    * {@link HookRegistrationOptions.source} overrides it.

@@ -262,4 +262,39 @@ describe('an every-agent interceptor whose plugin needs setup (COR-2127)', () =>
     await waitUntil(() => seen.length > 0, { message: 'the set’s onStep once it can run' });
     expect(seen).toEqual(['alpha-done']);
   });
+  // Ruling on decision 4 (2026-11-09): an agent that lists an every-agent set chose it, so it keeps
+  // H1's refusal; every other agent skips it.
+  it('refuses the step of an agent that lists it, while one that does not succeeds and skips it', async () => {
+    const seen: string[] = [];
+    const audit = definePlugin({
+      name: 'audit',
+      version: '1.0.0',
+      description: 'Audits every step.',
+      secrets: [KEY],
+      setup: () => ({ interceptors: [stepAudit(seen)] }),
+    });
+    const harness = await startFileBureau({
+      scripts: { 'claude-opus-5-5': () => 'helper-done' },
+      overrides: {
+        plugins: [{ descriptor: audit, source: 'package', location: '@example/audit' }],
+        pluginSecrets: secretsStore(),
+      },
+    });
+    harnesses.push(harness);
+    await harness.put(
+      'helper.md',
+      agentFileText({ model: KNOWN_MODEL, interceptors: '[audit:step-audit]' }),
+    );
+    await harness.bureau.agents.refresh();
+    const [listing] = await listedPlugins(harness.bureau);
+    expect(listing?.status).toBe('needs-setup');
+
+    const listed = await runTask(harness.bureau, 'helper', 'Hello');
+    const unlisted = await runTask(harness.bureau, 'alpha', 'Hello');
+
+    expect(listed.finishReason).toBe('error');
+    expect(unlisted.finishReason).not.toBe('error');
+    expect(unlisted.content).toBe('alpha');
+    expect(seen).toEqual([]);
+  });
 });

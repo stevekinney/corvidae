@@ -428,6 +428,24 @@ describe('the guardrails and limits', () => {
     expect(form.canSave).toBe(false);
   });
 
+  // COR-2118 — the field edits ids; a guardrail the file configures keeps its configuration.
+  test('shows a configured guardrail by its id and saves its configuration back', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const configured = { id: 'acme:grounding', configuration: { threshold: 0.95 } };
+    const form = AgentEditorState.edit(
+      { ...detail, definition: { ...detail.definition, guardrails: ['acme:pii', configured] } },
+      catalogFixture(),
+    );
+    expect(form.guardrails).toBe('acme:pii\nacme:grounding');
+    expect(form.toDefinition().guardrails).toEqual(['acme:pii', configured]);
+
+    form.guardrails = 'acme:grounding\nacme:tripwire';
+    expect(form.toDefinition().guardrails).toEqual([configured, 'acme:tripwire']);
+    form.guardrails = 'acme:tripwire';
+    expect(form.toDefinition().guardrails).toEqual(['acme:tripwire']);
+  });
+
   test('refuses a chat limit when there is no run limit under it', () => {
     const form = withLimits();
     form.spendPerRun = '';

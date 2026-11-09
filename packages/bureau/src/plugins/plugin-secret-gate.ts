@@ -23,10 +23,11 @@
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run contains the refusal as it contains any detector's or validator's error, so the guardrail finds nothing and the input, reply or call it would judge goes on (COR-2104) | works | refuses |
+ * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run contains the refusal and goes on (COR-2118) | works | refuses |
  * | interceptor, a point Operative runs through its hook registry (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `selectTools`, `validateResponse`, `validateToolResult`, the compaction points, `selectToolChoice`, `beforeGenerate`, `afterGenerate`, `onRunStart`) | refuses; the step or the run fails with the refusal, so an agent file that lists the interceptor cannot run | works | refuses |
  * | interceptor, an observing point (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) | refuses; Operative settles these handlers and discards a failure, so the run's own outcome and error stand and the plugin's handler does not run | works | refuses |
  * | interceptor, `onError` | refuses; Operative catches a failing recovery hook and the original error propagates, so the handler does not run. One `try` wraps the loop over the recovery handlers, so the refusal also skips every lower-priority `onError` handler of the run, whatever any `onError` option says | works | refuses |
- * | interceptor with `appliesTo: 'every-agent'`, every point (COR-2127) | skipped: each handler answers `undefined` without running, which every point reads as "no answer", so every agent's run goes on as if the set were absent. An agent file that lists such a set gets it from the plugin tier, so it is skipped there too | works | skipped |
+ * | interceptor with `appliesTo: 'every-agent'`, every point (COR-2127) | refuses, as any interceptor does; for an agent that lists it, the step or the run fails as above. The plugin tier every other agent's run holds turns the refusal into `undefined` without running the handler (`run-hook-tiers.ts`), which every point reads as "no answer", so those runs go on as if the set were absent | works | refuses for an agent that lists it, skipped for every other |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
@@ -46,15 +47,20 @@
  * @module plugin-secret-gate
  */
 
-import type {
-  PluginContributions,
-  PluginInterceptor,
-  PluginTrigger,
+import {
+  isGuardrailFactory,
+  type PluginContributions,
+  type PluginGuardrailFactory,
+  type PluginInterceptor,
+  type PluginTrigger,
 } from '@lostgradient/interborough-plugin';
 import {
   type GuardrailEntry,
   guardrailOf,
+  type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type OutputValidator,
+  type ToolCallValidator,
 } from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
 
@@ -78,6 +84,22 @@ function withGuardrail<T, A extends string>(
   return guardrail === entry
     ? wrap(guardrail)
     : { ...(entry as object), guardrail: wrap(guardrail) };
+}
+
+/**
+ * `guardrail` with `wrap` applied: to the guardrail itself, or, for a factory (COR-2118), to every
+ * guardrail its `create` builds, so `create` itself runs ungated and only what it built refuses.
+ */
+function gatedFactoryOr<T, G extends T | PluginGuardrailFactory<T>>(
+  guardrail: G,
+  wrap: (built: T) => T,
+): G {
+  if (!isGuardrailFactory<T>(guardrail)) return wrap(guardrail as T) as G;
+  const factory: PluginGuardrailFactory<T> = guardrail;
+  return {
+    ...factory,
+    create: (configuration: unknown) => wrap(factory.create(configuration)),
+  } as G;
 }
 
 /** A plugin's contribution was called while a secret its plugin declared is not set. */
@@ -208,34 +230,20 @@ function gated<A extends unknown[], R>(
   };
 }
 
-/**
- * `fn`, which answers `undefined` without being called while `gate` is not available (COR-2127): an
- * interceptor that applies to every agent must not fail the runs of agents that never chose it.
- */
-function skipped<A extends unknown[], R>(
-  gate: PluginSecretGate,
-  fn: (...args: A) => R | Promise<R>,
-): (...args: A) => Promise<R | undefined> {
-  return async (...args) => (gate.available() ? fn(...args) : undefined);
-}
-
 function gatedInterceptor(
   gate: PluginSecretGate,
   contribution: string,
   interceptor: PluginInterceptor,
 ): PluginInterceptor {
   const gatedPoints: Record<string, unknown> = {};
-  const everyAgent = interceptor.appliesTo === 'every-agent';
   for (const point of INTERCEPTOR_POINTS) {
     const hook = interceptor[point];
     if (hook === undefined) continue;
     // Either written form: a function, or `{ handler, replay, onError, priority }`, whose handler
     // is gated and whose other fields are kept, so the gate does not change how the hook sorts,
-    // replays or handles an error. A set that applies to every agent is skipped rather than refused.
-    const gatedHandler = (handler: (...args: never[]) => unknown) => {
-      const bound = (handler as (...args: unknown[]) => unknown).bind(interceptor);
-      return everyAgent ? skipped(gate, bound) : gated(gate, contribution, bound);
-    };
+    // replays or handles an error.
+    const gatedHandler = (handler: (...args: never[]) => unknown) =>
+      gated(gate, contribution, (handler as (...args: unknown[]) => unknown).bind(interceptor));
     gatedPoints[point] =
       typeof hook === 'function'
         ? gatedHandler(hook)
@@ -368,34 +376,36 @@ export function gatedContributions<T extends PluginContributions>(
               ? {}
               : {
                   input: guardrails.input.map((entry) =>
-                    withGuardrail(entry, (detector) => ({
-                      ...detector,
-                      detect: gated(gate, idOf(detector.name), detector.detect.bind(detector)),
-                    })),
+                    withGuardrail(entry, (detector) =>
+                      gatedFactoryOr(detector, (built: InputDetector) => ({
+                        ...built,
+                        detect: gated(gate, idOf(detector.name), built.detect.bind(built)),
+                      })),
+                    ),
                   ),
                 }),
             ...(guardrails.output === undefined
               ? {}
               : {
                   output: guardrails.output.map((entry) =>
-                    withGuardrail(entry, (validator) => ({
-                      ...validator,
-                      validate: gated(
-                        gate,
-                        idOf(validator.name),
-                        validator.validate.bind(validator),
-                      ),
-                    })),
+                    withGuardrail(entry, (validator) =>
+                      gatedFactoryOr(validator, (built: OutputValidator) => ({
+                        ...built,
+                        validate: gated(gate, idOf(validator.name), built.validate.bind(built)),
+                      })),
+                    ),
                   ),
                 }),
             ...(guardrails.tools === undefined
               ? {}
               : {
                   // The validator's own `action` is kept by the spread.
-                  tools: guardrails.tools.map((validator) => ({
-                    ...validator,
-                    validate: gated(gate, idOf(validator.name), validator.validate.bind(validator)),
-                  })),
+                  tools: guardrails.tools.map((validator) =>
+                    gatedFactoryOr(validator, (built: ToolCallValidator) => ({
+                      ...built,
+                      validate: gated(gate, idOf(validator.name), built.validate.bind(built)),
+                    })),
+                  ),
                 }),
             ...(guardrails.memory === undefined
               ? {}

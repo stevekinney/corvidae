@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/plugin-guardrails",
   "private": true,
-  "description": "An Interborough plugin that contributes the code-safety and grounding output validators, which an agent file lists as guardrails:code-safety and guardrails:grounding.",
+  "description": "An Interborough plugin that contributes the code-safety and grounding output validators, which an agent file lists, and may configure, as guardrails:code-safety and guardrails:grounding.",
   "type": "module",
   "exports": {
     ".": "./src/plugin.ts"

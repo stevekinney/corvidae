@@ -116,7 +116,8 @@ describe('renderBrief', () => {
     expect(text).toContain('## Acceptance criteria\n\n- It works.');
     expect(text).not.toContain('Ignore me');
     expect(text).toContain('- `scripts/chef/thing.ts`');
-    expect(text).toContain('- `bun run lint:root`');
+    expect(text).toContain('- `bun scripts/chef/focused-checks.ts`');
+    expect(text).not.toContain('- `bun run lint:root`');
     expect(text).toContain('Model: Sonnet');
     for (const rule of charterRules) expect(text).toContain(rule);
   });
@@ -131,6 +132,13 @@ describe('renderBrief', () => {
     expect(text).not.toContain('thing.test.ts');
     expect(text).toContain('- `bun test a`');
     expect(text).not.toContain('- `bun run typecheck:root`');
+  });
+
+  test('the default verification is the one focused-checks command', () => {
+    expect(verificationCommands([])).toEqual(['bun scripts/chef/focused-checks.ts']);
+    expect(verificationCommands(['bun scripts/chef/focused-checks.ts'])).toEqual([
+      'bun scripts/chef/focused-checks.ts',
+    ]);
   });
 
   test('explicit verification commands always keep the root lint, once', () => {

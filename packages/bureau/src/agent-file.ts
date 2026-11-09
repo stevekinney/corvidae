@@ -94,6 +94,7 @@ export type AgentFileProblemCode =
   | 'unknown-approval-tool'
   | 'missing-reference'
   | 'reference-unresolved'
+  | 'invalid-guardrail-configuration'
   | 'reference-too-large'
   | 'skill-not-grantable'
   | 'model-policy-denied'
@@ -113,7 +114,8 @@ export interface AgentFileIssue {
    * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
    * or interceptor for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
    * (COR-1975), a model for `model-policy-denied` (COR-1980) or the model an `effort` is refused on (COR-1961), as
-   * `<provider>/<model-or-alias>` exactly as the file wrote it. Absent on every other issue.
+   * `<provider>/<model-or-alias>` exactly as the file wrote it, or the guardrail whose configuration
+   * is refused for `invalid-guardrail-configuration` (COR-2118). Absent on every other issue.
    */
   readonly reference?: string;
 }
@@ -127,7 +129,8 @@ export interface AgentFileProblem {
    * names `approvals` gives a value that `tools` does not list, for `unknown-approval-tool`;
    * the skills a write could not grant, for `skill-not-grantable`; the models the model policy
    * forbids, for `model-policy-denied` (COR-1980); `effort` and the model that cannot do
-   * it, for `effort-not-supported` (COR-1961).
+   * it, for `effort-not-supported` (COR-1961); each field a guardrail's schema refuses, at
+   * `guardrails.<index>.configuration.<field>`, for `invalid-guardrail-configuration` (COR-2118).
    */
   readonly issues?: readonly AgentFileIssue[];
 }
@@ -150,6 +153,71 @@ export const agentSkillDescriptorSchema = z.strictObject({
  * says nothing, and a definition holds none.
  */
 export const agentContributionIdsSchema = z.array(z.string().min(1));
+
+/**
+ * A guardrail's configuration as a file writes it (COR-2118): a JSON object, which the guardrail's
+ * own configuration schema parses when the catalog checks the file against the deployment.
+ */
+export const agentGuardrailConfigurationSchema = z
+  .record(z.string(), z.unknown())
+  .refine((configuration) => z.json().safeParse(configuration).success, {
+    message: 'a guardrail configuration holds JSON values only',
+  });
+
+/**
+ * One entry of a file's `guardrails` (COR-2118): a contributed guardrail's id, `plugin:name`, or
+ * `{ id, configuration }`, which also configures it. The bare id configures it with `{}`, so a
+ * guardrail whose schema needs a field must be written in the object form. Only a guardrail a
+ * plugin contributes as a factory takes a configuration.
+ */
+export const agentGuardrailSelectionSchema = z.union([
+  z.string().min(1),
+  z.strictObject({ id: z.string().min(1), configuration: agentGuardrailConfigurationSchema }),
+]);
+
+/** An entry of a file's `guardrails`; see {@link agentGuardrailSelectionSchema}. */
+export type AgentGuardrailSelection =
+  | string
+  | {
+      /** The guardrail, `plugin:name`. */
+      readonly id: string;
+      /** Its configuration, which the guardrail's own schema parses; fields left out take its defaults. */
+      readonly configuration: Readonly<Record<string, unknown>>;
+    };
+
+/** The id an entry of `guardrails` names, whichever form it is written in. */
+export function guardrailIdOf(selection: AgentGuardrailSelection): string {
+  return typeof selection === 'string' ? selection : selection.id;
+}
+
+/**
+ * A `guardrails` list as a stored snapshot, version or override record holds it: what a write
+ * checks, without the refusal of a repeated id, because one written before COR-2118 may repeat an
+ * id and must still read. The first entry of an id wins (`guardrailAdditionsOf`).
+ */
+export const storedAgentGuardrailSelectionsSchema = z.array(agentGuardrailSelectionSchema);
+
+/**
+ * A `guardrails` list as a write checks it: each id once, since two entries of one id would ask
+ * for one guardrail twice with two configurations. A repeat is refused at its own index, naming
+ * the id.
+ */
+export const agentGuardrailSelectionsSchema = storedAgentGuardrailSelectionsSchema.superRefine(
+  (selections, context) => {
+    const seen = new Set<string>();
+    selections.forEach((selection, index) => {
+      const id = guardrailIdOf(selection);
+      if (seen.has(id)) {
+        context.addIssue({
+          code: 'custom',
+          path: [index],
+          message: `"${id}" is listed more than once; list each guardrail once`,
+        });
+      }
+      seen.add(id);
+    });
+  },
+);
 
 /**
  * A file's `allowedSkills` (COR-1975): the executable skills, by name, a run of the agent may
@@ -448,10 +516,11 @@ export const agentFileFrontmatterSchema = z
      */
     references: agentReferencesSchema.nullish(),
     /**
-     * The plugin guardrails (`plugin:name`) the agent runs besides Operative's default preset, which
-     * every agent runs. Absent, the agent runs only the default preset.
+     * The plugin guardrails the agent runs besides Operative's default preset, which every agent
+     * runs, each `plugin:name` or `{ id: plugin:name, configuration }` (COR-2118), and each id once.
+     * Absent, the agent runs only the default preset.
      */
-    guardrails: agentContributionIdsSchema.nullish(),
+    guardrails: agentGuardrailSelectionsSchema.nullish(),
     /**
      * The plugin interceptors (`plugin:name`) the agent runs. Absent, the agent runs none.
      */
@@ -618,11 +687,13 @@ const agentFileDefinitionObjectSchema = z.object({
    * Absent from a snapshot written before the field existed, and from a file that has none. A
    * snapshot or saved version written when `guardrails` named a preset (`tripwire`, `default` or
    * `off`) reads as absent: the run resumes under Operative's always-on default preset, which is
-   * equal to or stricter than what it had. The front matter still refuses the old string.
+   * equal to or stricter than what it had. The front matter still refuses the old string. One
+   * written before COR-2118 holds ids alone, which read as they are; one that repeats an id still
+   * reads, and the first entry of it applies.
    */
   guardrails: z
     .union([
-      agentContributionIdsSchema,
+      storedAgentGuardrailSelectionsSchema,
       z.enum(['tripwire', 'default', 'off']).transform((): undefined => undefined),
     ])
     .optional(),
@@ -803,10 +874,11 @@ export interface AgentFileDefinition {
    */
   readonly references?: readonly string[];
   /**
-   * The ids (`plugin:name`) of the plugin guardrails the agent runs besides Operative's default
-   * preset, which every agent runs. Absent when the file lists none.
+   * The plugin guardrails the agent runs besides Operative's default preset, which every agent
+   * runs: each an id (`plugin:name`) or `{ id, configuration }` (COR-2118). Absent when the file
+   * lists none.
    */
-  readonly guardrails?: readonly string[];
+  readonly guardrails?: readonly AgentGuardrailSelection[];
   /** The ids (`plugin:name`) of the plugin interceptors the agent runs. Absent when the file lists none. */
   readonly interceptors?: readonly string[];
   /**
@@ -918,7 +990,7 @@ export interface AgentFileDefinitionInput {
    * See {@link AgentFileDefinition.guardrails}. An update that omits it keeps the file's value;
    * `null`, or an empty list, removes it.
    */
-  readonly guardrails?: readonly string[] | null | undefined;
+  readonly guardrails?: readonly AgentGuardrailSelection[] | null | undefined;
   /**
    * See {@link AgentFileDefinition.interceptors}. An update that omits it keeps the file's value; `null`,
    * or an empty list, removes it.
@@ -1134,7 +1206,7 @@ function toDefinition(
       : { references: [...frontmatter.references] }),
     ...(frontmatter.guardrails == null || frontmatter.guardrails.length === 0
       ? {}
-      : { guardrails: [...frontmatter.guardrails] }),
+      : { guardrails: structuredClone([...frontmatter.guardrails]) }),
     ...(frontmatter.interceptors == null || frontmatter.interceptors.length === 0
       ? {}
       : { interceptors: [...frontmatter.interceptors] }),
@@ -1247,7 +1319,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
     known['references'] = [...definition.references];
   }
   if (definition.guardrails != null && definition.guardrails.length > 0) {
-    known['guardrails'] = [...definition.guardrails];
+    known['guardrails'] = structuredClone([...definition.guardrails]);
   }
   if (definition.interceptors != null && definition.interceptors.length > 0) {
     known['interceptors'] = [...definition.interceptors];
@@ -1290,7 +1362,7 @@ export function resolveAgentFileDefinition(
       : { references: [...input.references] }),
     ...(input.guardrails == null || input.guardrails.length === 0
       ? {}
-      : { guardrails: [...input.guardrails] }),
+      : { guardrails: structuredClone([...input.guardrails]) }),
     ...(input.interceptors == null || input.interceptors.length === 0
       ? {}
       : { interceptors: [...input.interceptors] }),

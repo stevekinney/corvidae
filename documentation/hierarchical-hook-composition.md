@@ -15,7 +15,7 @@ This document is the contract. The decision behind it is COR-567; the implementa
 
 A run's plan is `mergeHookRegistries({ bureau, plugin, agent, direct })`, each tier's registry under its name and an absent tier left out. The merge copies every entry into a fresh registry, so the plan a dispatched run holds is a _snapshot_: registering on a source registry afterwards changes that tier's future runs and not the one already in flight. Each entry is stamped with its tier as `tier`, separately from its `source`: an every-agent interceptor's source is its plugin's name and its tier is `plugin`.
 
-Every Bureau site that hands a run its hooks composes them through one helper, `composeRunHooks` in `packages/bureau/src/run-hook-tiers.ts`, which builds the plugin tier itself, so a site cannot leave it out; a source guard in `run-hook-tiers.test.ts` fails when any other Bureau file merges registries. An every-agent set that an agent file also lists is registered once, from the plugin tier.
+Every Bureau site that hands a run its hooks composes them through one helper, `composeRunHooks` in `packages/bureau/src/run-hook-tiers.ts`, which builds the plugin tier itself, so a site cannot leave it out; a source guard in `run-hook-tiers.test.ts` fails when any other Bureau file merges registries. An every-agent set that an agent file also lists is registered once, in that agent's tier, and that run's plugin tier leaves it out. While its plugin needs setup it refuses there, as any interceptor an agent chose does; in every other run the plugin tier turns the refusal into "no answer" without running the handler, so a missing secret never fails an agent that did not choose the set.
 
 > [!NOTE] No path populates the agent and direct tiers at once
 >

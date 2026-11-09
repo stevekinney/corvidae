@@ -9,6 +9,12 @@
  * else. A child of a Bureau-owned run receives the same plugin tier from {@link pluginHookTier}
  * through Operative's child seam (`composeBureauInvariantsIntoChild`).
  *
+ * An agent that lists an every-agent interceptor has it in its own tier, gated as a chosen
+ * interceptor is, so it refuses while its plugin needs setup; that run's plugin tier leaves it out,
+ * so it registers once. In every other run the plugin tier turns the plugin's refusal into "no
+ * answer" without running the handler, so a missing secret never fails an agent that did not
+ * choose the set (ruling on COR-2127 decision 4, 2026-11-09).
+ *
  * The plugin tier is built from the contributions at the moment of composition, never persisted: a
  * durable run that resumes after a restart is composed here again and gets the tier the restarted
  * Bureau's plugins contribute.
@@ -16,7 +22,7 @@
  * @module run-hook-tiers
  */
 
-import { type HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
+import { HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
 import type { OperativeHookMap } from '@lostgradient/operative';
 
 import {
@@ -24,6 +30,7 @@ import {
   everyAgentInterceptorsOf,
   NO_AGENT_CONTRIBUTIONS,
 } from './agent-contributions';
+import { PluginNeedsSetupError } from './plugins/plugin-secret-gate';
 
 /** The two tiers a composition site holds for one run; the plugin tier is the helper's to add. */
 export interface RunHookTiers {
@@ -34,13 +41,50 @@ export interface RunHookTiers {
 }
 
 /**
+ * `handler`, answering `undefined` instead of the refusal of `plugin` while that plugin needs setup.
+ * The gate refuses before the plugin's own handler is called, so the handler does not run.
+ */
+function skippingRefusal(
+  plugin: string | undefined,
+  handler: (...args: never[]) => unknown,
+): (...args: never[]) => Promise<unknown> {
+  return async (...args) => {
+    try {
+      return await handler(...args);
+    } catch (error) {
+      if (error instanceof PluginNeedsSetupError && error.plugin === plugin) return undefined;
+      throw error;
+    }
+  };
+}
+
+/**
  * The `plugin` tier for one run: a fresh registry of every interceptor `contributions` holds that
- * applies to every agent, or `undefined` when none does.
+ * applies to every agent, less any entry `agentTier` already holds under the same id (an agent that
+ * lists the set), or `undefined` when nothing is left. Each handler skips its plugin's needs-setup
+ * refusal rather than fail the run.
  */
 export function pluginHookTier(
   contributions: AgentContributions | undefined,
+  agentTier?: HookRegistry<OperativeHookMap>,
 ): HookRegistry<OperativeHookMap> | undefined {
-  return everyAgentInterceptorsOf(contributions ?? NO_AGENT_CONTRIBUTIONS);
+  const everyAgent = everyAgentInterceptorsOf(contributions ?? NO_AGENT_CONTRIBUTIONS);
+  if (everyAgent === undefined) return undefined;
+  const listed = new Set<string>();
+  for (const hookName of agentTier?.getHookNames() ?? []) {
+    for (const entry of agentTier?.getHandlers(hookName) ?? []) listed.add(entry.id);
+  }
+  const tier = new HookRegistry<OperativeHookMap>();
+  for (const hookName of everyAgent.getHookNames()) {
+    for (const entry of everyAgent.getHandlers(hookName)) {
+      if (listed.has(entry.id)) continue;
+      tier.on(hookName, skippingRefusal(entry.options.source, entry.handler), {
+        ...entry.options,
+        id: entry.id,
+      });
+    }
+  }
+  return tier.getHookNames().length === 0 ? undefined : tier;
 }
 
 /**
@@ -53,7 +97,7 @@ export function composeRunHooks(
 ): HookRegistry<OperativeHookMap> {
   return mergeHookRegistries({
     bureau: tiers.bureau,
-    plugin: pluginHookTier(contributions),
+    plugin: pluginHookTier(contributions, tiers.agent),
     agent: tiers.agent,
   });
 }

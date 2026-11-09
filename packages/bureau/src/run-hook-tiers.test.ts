@@ -38,7 +38,9 @@ import {
   type AgentContributions,
   createAgentContributions,
   INTERCEPTOR_PRIORITY_FLOOR,
+  interceptorsOf,
 } from './agent-contributions';
+import { composeRunHooks } from './run-hook-tiers';
 import { BUREAU_PINNED_LAST_PRIORITY, createRuntimeComposition } from './runtime-composition';
 
 afterEach(async () => {
@@ -302,6 +304,29 @@ describe('the plugin tier in a run’s plan (COR-2127)', () => {
     ).toEqual([
       { id: 'audit:every:prepareStep', source: 'audit' },
       { id: 'audit:every:validateResponse', source: 'audit' },
+    ]);
+  });
+
+  // Ruling on decision 4: an agent that lists the set holds it in its own tier, so it refuses while
+  // its plugin needs setup, and the plugin tier leaves it out of that run.
+  it('registers an every-agent set once, in the agent tier, for an agent that lists it', () => {
+    const contributions = everyAgentContributions();
+
+    const listing = composeRunHooks(contributions, {
+      bureau: undefined,
+      agent: interceptorsOf({ interceptors: ['audit:every'] }, contributions),
+    });
+    const other = composeRunHooks(contributions, { bureau: undefined, agent: undefined });
+
+    const tiers = (registry: typeof listing) =>
+      registry.describePlan().entries.map(({ id, tier }) => ({ id, tier }));
+    expect(tiers(listing)).toEqual([
+      { id: 'audit:every:prepareStep', tier: 'agent' },
+      { id: 'audit:every:validateResponse', tier: 'agent' },
+    ]);
+    expect(tiers(other)).toEqual([
+      { id: 'audit:every:prepareStep', tier: 'plugin' },
+      { id: 'audit:every:validateResponse', tier: 'plugin' },
     ]);
   });
 

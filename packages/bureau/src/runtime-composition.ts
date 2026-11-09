@@ -3491,7 +3491,7 @@ async function buildRuntimeComposition(
    */
   const bureauChildInvariants: BureauChildInvariants = (request) => ({
     bureau: createBureauInvariantHooks(undefined, request),
-    plugin: pluginHookTier(options.agentContributions),
+    plugin: pluginHookTier(options.agentContributions, request.agentTier),
   });
 
   /** {@link RuntimeComposition.composeRunHooks}. */

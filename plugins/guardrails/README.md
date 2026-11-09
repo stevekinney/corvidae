@@ -6,17 +6,34 @@ An Interborough plugin that contributes two output guardrails, `guardrails:code-
 guardrails: [guardrails:code-safety, guardrails:grounding]
 ```
 
-An agent that lists nothing still runs the default preset, and neither validator.
+An agent that lists nothing still runs the default preset, and neither validator. Each one is configurable per agent (COR-2118): an entry `{ id, configuration }` sets the fields below for that agent alone, and a field it leaves out takes the plugin's setting.
+
+```yaml
+guardrails:
+  - guardrails:code-safety
+  - id: guardrails:grounding
+    configuration:
+      threshold: 0.95
+```
+
+| Guardrail | Configuration | Default |
+| --- | --- | --- |
+| `guardrails:code-safety` | `blockedPatterns`: regular expressions flagged in addition to the built-in patterns; an agent's list replaces the plugin's. | the plugin's `blockedPatterns` |
+| `guardrails:grounding` | `threshold`: the share of a reply's claims that must appear in the conversation, from 0 to 1. | the plugin's `groundingThreshold` |
+
+A configuration either schema refuses, an unknown field among them, makes the agent invalid with `invalid-guardrail-configuration`, naming the field.
 
 | Guardrail | What it flags |
 | --- | --- |
 | `guardrails:code-safety` | Destructive shell patterns (`rm -rf`), code execution (`eval`, `exec`, `Function`, `subprocess`), dangerous SQL (`DROP TABLE`, `DELETE FROM` without `WHERE`), and pipe-to-shell (`curl \| bash`) in a reply. |
 | `guardrails:grounding` | A reply whose URLs, amounts, measurements, and quoted text mostly do not appear in the conversation so far. |
 
+The plugin's settings are the defaults of every agent that does not set its own:
+
 | Setting | Default | What it is |
 | --- | --- | --- |
-| `blockedPatterns` | `[]` | Regular expressions, matched case-sensitively, that the code-safety validator flags in addition to its built-in patterns. |
-| `groundingThreshold` | `0.8` | The share of a reply's claims that must appear in the conversation, from 0 to 1. |
+| `blockedPatterns` | `[]` | Regular expressions, matched case-sensitively, that the code-safety validator flags in addition to its built-in patterns, for an agent whose configuration names none. |
+| `groundingThreshold` | `0.8` | The share of a reply's claims that must appear in the conversation, from 0 to 1, for an agent whose configuration sets no `threshold`. |
 
 The grounding validator reads the conversation through `ValidatorContext.conversationText()`, which Operative's output guardrail supplies on every step. A caller that builds the context itself and supplies no text grounds against nothing, so every claim is ungrounded.
 

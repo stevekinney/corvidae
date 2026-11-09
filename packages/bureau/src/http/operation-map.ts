@@ -90,6 +90,7 @@ export const OPERATION_MAP = {
   },
   'bureau.events.format': { workspaceClass: 'member-shared-read', member: 'formatEvent' },
   'bureau.plugins.contributions': { workspaceClass: 'member-shared-read', member: 'plugins' },
+  'bureau.guardrails.list': { workspaceClass: 'member-shared-read', member: 'plugins.guardrails' },
   'operative.runs.events': {
     workspaceClass: 'private-owned',
     exempt: 'a transport subscription over a run’s event feed',

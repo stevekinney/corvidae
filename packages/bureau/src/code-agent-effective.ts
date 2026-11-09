@@ -310,6 +310,9 @@ export function effectiveCodeAgent(
   }
 
   function hooksOf(own: RunOptions['hooks']): RunOptions['hooks'] {
+    // COR-2118: a configured guardrail is built for this run from the override's configuration. A
+    // save checks it against the guardrail's schema; one a plugin's later schema no longer accepts
+    // throws here, so the run fails to start rather than run without a guardrail it chose.
     const additions =
       overrides.guardrails === undefined || deployment.contributions === undefined
         ? undefined

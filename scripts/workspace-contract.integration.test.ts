@@ -253,10 +253,10 @@ describe('internal workspace architecture', () => {
     // ignores them and `test:self:slow` runs them, serially after the parallel phase, through
     // `test:slow` (COR-1499).
     expect(scripts['test:self']).toBe(
-      "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' ./scripts/*.test.ts ./scripts/terminal/*.test.ts ./scripts/chef/*.test.ts",
+      "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' ./scripts/*.test.ts ./scripts/terminal/*.test.ts ./scripts/chef/*.test.ts",
     );
     expect(scripts['test:self:slow']).toBe(
-      'bun scripts/bun-test-selected.ts ./scripts/*.slow.test.ts ./scripts/chef/*.slow.test.ts',
+      'bun scripts/bun-test-selected.ts ./scripts/*.slow.test.ts ./scripts/chef/*.slow.test.ts ./scripts/*.integration.test.ts ./scripts/chef/*.integration.test.ts ./scripts/browser-fixtures/scripts/*.integration.test.ts',
     );
     expect(scripts['test:slow']).toBe(
       "bun scripts/run-exclusively.ts 'turbo run test:slow test:self:slow --concurrency=1'",
@@ -595,6 +595,10 @@ describe('internal workspace architecture', () => {
         // names. It decides whether evidence clears a gate; it builds, packs,
         // publishes, and releases nothing.
         if (library === 'evaluation' && command === 'release-gate') continue;
+        // Cinder's `design-system:build` and `design-system:url` generate and locate the Claude
+        // Design system artifact under `tmp/` (components/cinder/README.md "Design system"); they
+        // build no package output and publish nothing from the workspace.
+        if (library === 'cinder' && command.startsWith('design-system:')) continue;
         expect(command).not.toMatch(/build|pack|publish|release|prepare|postinstall/);
       }
       expect(manifest.publishConfig).toBeUndefined();

@@ -52,6 +52,11 @@ const BUREAU_INVARIANTS: unique symbol = Symbol('@lostgradient/operative/bureau-
 export interface BureauChildInvariantRequest {
   /** Whether the child's agent applies its own guardrails. */
   readonly agentResolvesGuardrails: boolean;
+  /**
+   * The child's own hook tier, as its options resolved it, so Bureau can leave out of the plugin
+   * tier an every-agent interceptor the child's agent already lists (COR-2127).
+   */
+  readonly agentTier?: HookRegistry<OperativeHookMap> | undefined;
 }
 
 /**

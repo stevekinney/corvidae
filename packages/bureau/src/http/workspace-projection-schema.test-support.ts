@@ -74,6 +74,7 @@ const CROSS_PRODUCER_NAMES: ReadonlySet<string> = new Set([
   'bureau.events.catalog',
   'bureau.events.format',
   'bureau.plugins.contributions',
+  'bureau.guardrails.list',
   'bureau.skills.list',
   'bureau.health.attention',
   'bureau.settings.get',
