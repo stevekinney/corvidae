@@ -158,6 +158,35 @@ export default definePlugin({
 });
 ```
 
+An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, and a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
+
+```ts
+import { definePlugin } from '@lostgradient/interborough-plugin';
+
+export default definePlugin({
+  name: 'watcher',
+  version: '1.0.0',
+  description: 'Notes failed runs and replaces tool results that name a secret.',
+  setup: () => ({
+    interceptors: [
+      {
+        name: 'audit',
+        onRunError: async ({ error }) => {
+          console.error('A run failed', error);
+        },
+        validateToolResult: {
+          handler: async (result) =>
+            String(result.result).includes('sk-') ? { ...result, result: '[redacted]' } : undefined,
+          replay: 'safe',
+          onError: () => 'continue',
+          priority: 10,
+        },
+      },
+    ],
+  }),
+});
+```
+
 An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. Put the version in the `uri`, so a changed contract is a new resource.
 
 ```ts

@@ -35,6 +35,10 @@
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
  * | provider, panel | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for a panel, which the host serves as a static page from `bureau.plugins.panels()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
  *
+ * An interceptor's hook written as `{ handler, replay, onError, priority }` is gated as the bare
+ * function is: its `handler` refuses, and the fields beside it are kept, so a plugin's own
+ * `onError: () => 'continue'` also swallows the refusal. The handler does not run either way.
+ *
  * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
  * receives needs no secret.
  *
@@ -195,11 +199,15 @@ function gatedInterceptor(
   for (const point of INTERCEPTOR_POINTS) {
     const hook = interceptor[point];
     if (hook === undefined) continue;
-    gatedPoints[point] = gated(
-      gate,
-      contribution,
-      (hook as (...args: unknown[]) => unknown).bind(interceptor),
-    );
+    // Either written form: a function, or `{ handler, replay, onError, priority }`, whose handler
+    // is gated and whose other fields are kept, so the gate does not change how the hook sorts,
+    // replays or handles an error.
+    const gatedHandler = (handler: (...args: never[]) => unknown) =>
+      gated(gate, contribution, (handler as (...args: unknown[]) => unknown).bind(interceptor));
+    gatedPoints[point] =
+      typeof hook === 'function'
+        ? gatedHandler(hook)
+        : { ...hook, handler: gatedHandler(hook.handler) };
   }
   // Each point's gated handler keeps the signature of the one it wraps.
   return { ...interceptor, ...gatedPoints };

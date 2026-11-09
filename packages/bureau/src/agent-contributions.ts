@@ -17,10 +17,12 @@
 
 import type { PluginGuardrails, PluginInterceptor } from '@lostgradient/interborough-plugin';
 import { HookRegistry } from '@lostgradient/lifecycle';
-import type {
-  GuardrailAdditions,
-  OperativeHookMap,
-  OutputValidator,
+import {
+  AGENT_POLICY_PINNED_LAST_PRIORITY,
+  type GuardrailAdditions,
+  type HookRegistrationOptions,
+  type OperativeHookMap,
+  type OutputValidator,
 } from '@lostgradient/operative';
 import { formatToolId, type InputDetector } from 'armorer';
 
@@ -74,8 +76,9 @@ export const NO_AGENT_CONTRIBUTIONS: AgentContributions = Object.freeze({
 
 /**
  * Collects what plugins contribute into the lookup agent files resolve against. Throws `TypeError`
- * when two guardrails share an id, or two interceptors do: a file names a contribution by id
- * alone, so an id that means two things would run whichever came first.
+ * when two guardrails share an id, or two interceptors do (a file names a contribution by id
+ * alone, so an id that means two things would run whichever came first), and when an interceptor
+ * declares a hook that is neither a function nor a well-formed `{ handler, ... }` object.
  */
 export function createAgentContributions(
   sources: readonly AgentContributionSource[],
@@ -106,6 +109,7 @@ export function createAgentContributions(
       if (interceptors.has(id)) {
         throw new TypeError(`The interceptor "${id}" is contributed more than once.`);
       }
+      assertInterceptorHooks(id, interceptor);
       interceptors.set(id, { id, plugin, interceptor });
     }
   }
@@ -199,9 +203,72 @@ export const INTERCEPTOR_POINTS = Object.keys(INTERCEPTOR_POINT_SET) as Readonly
   Exclude<keyof PluginInterceptor, 'name'>
 >;
 
+/** One hook of an interceptor, as either of its two written forms. */
+type InterceptorHook = NonNullable<PluginInterceptor[(typeof INTERCEPTOR_POINTS)[number]]>;
+
+/**
+ * The lowest priority an interceptor hook can sort at. Operative's guardrail registrations sit at
+ * {@link AGENT_POLICY_PINNED_LAST_PRIORITY}, behind every other agent hook, and a plugin's hook
+ * stays in front of them: a lower number a plugin asks for is raised to this one.
+ */
+export const INTERCEPTOR_PRIORITY_FLOOR = AGENT_POLICY_PINNED_LAST_PRIORITY + 1;
+
+/** `hook` as its handler and the registration options it declares. */
+function interceptorHookParts(hook: InterceptorHook): {
+  readonly handler: OperativeHookMap[(typeof INTERCEPTOR_POINTS)[number]];
+  readonly options: Pick<HookRegistrationOptions, 'replay' | 'onError' | 'priority'>;
+} {
+  if (typeof hook === 'function') return { handler: hook, options: {} };
+  return {
+    handler: hook.handler,
+    options: {
+      ...(hook.replay === undefined ? {} : { replay: hook.replay }),
+      ...(hook.onError === undefined ? {} : { onError: hook.onError }),
+      ...(hook.priority === undefined
+        ? {}
+        : { priority: Math.max(hook.priority, INTERCEPTOR_PRIORITY_FLOOR) }),
+    },
+  };
+}
+
+/**
+ * Throws `TypeError` unless every hook `interceptor` declares is a function or an object with a
+ * `handler` function, a known `replay`, an `onError` function and a finite `priority`, where those
+ * are given. The type says so, but a plugin is code the host loads, so a wrong shape would otherwise
+ * fail in the middle of a run, or sort as `NaN`.
+ */
+function assertInterceptorHooks(id: string, interceptor: PluginInterceptor): void {
+  for (const point of INTERCEPTOR_POINTS) {
+    const hook: unknown = interceptor[point];
+    if (hook === undefined || typeof hook === 'function') continue;
+    const where = `The hook "${point}" of the interceptor "${id}"`;
+    if (
+      typeof hook !== 'object' ||
+      hook === null ||
+      typeof Reflect.get(hook, 'handler') !== 'function'
+    ) {
+      throw new TypeError(`${where} must be a function or an object with a \`handler\` function.`);
+    }
+    const replay: unknown = Reflect.get(hook, 'replay');
+    if (replay !== undefined && replay !== 'safe' && replay !== 'effectful') {
+      throw new TypeError(`${where} has a \`replay\` that is neither "safe" nor "effectful".`);
+    }
+    const onError: unknown = Reflect.get(hook, 'onError');
+    if (onError !== undefined && typeof onError !== 'function') {
+      throw new TypeError(`${where} has an \`onError\` that is not a function.`);
+    }
+    const priority: unknown = Reflect.get(hook, 'priority');
+    if (priority !== undefined && !Number.isFinite(priority)) {
+      throw new TypeError(`${where} has a \`priority\` that is not a finite number.`);
+    }
+  }
+}
+
 /**
  * The agent-tier hook registry for the interceptors `definition` chooses, or `undefined` when it
- * chooses none. Each entry carries `source: <plugin>` and the id `<plugin>:<name>:<hook>`. Every id
+ * chooses none. Each entry carries `source: <plugin>` and the id `<plugin>:<name>:<hook>`, and the
+ * `replay`, `onError` and `priority` its hook declares, the priority raised to
+ * {@link INTERCEPTOR_PRIORITY_FLOOR} when it is lower. Every id
  * must resolve (see {@link unresolvedContributions}); one that does not is skipped.
  */
 export function interceptorsOf(
@@ -215,9 +282,11 @@ export function interceptorsOf(
     for (const point of INTERCEPTOR_POINTS) {
       const handler = contributed.interceptor[point];
       if (handler === undefined) continue;
-      registry.on(point, handler, {
+      const { handler: hook, options } = interceptorHookParts(handler);
+      registry.on(point, hook, {
         id: `${id}:${point}`,
         source: contributed.plugin,
+        ...options,
       });
     }
   }
