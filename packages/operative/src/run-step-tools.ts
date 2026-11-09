@@ -27,7 +27,11 @@ import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './messag
 import { runScopedExecutionContext } from './run-scoped-execution-context';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
-import { explicitAbortReason, guardrailReporter } from './run-step-utilities';
+import {
+  applyWaterfallHandlerErrorPolicy,
+  explicitAbortReason,
+  guardrailReporter,
+} from './run-step-utilities';
 import { admitToolResultMedia, retainToolResultMedia } from './tool-result-media';
 import { ToolTimingRecorder } from './tool-timing';
 import type { GenerateResponse } from './types';
@@ -177,7 +181,9 @@ export async function executeTools(
         // with a bare
         // `ToolCall[]` for the second handler. Invocations still go through
         // `runHandler` so an observer sees them like any dispatched hook.
-        for (const entry of hooks.getHandlers('beforeToolExecution')) {
+        // A throwing handler goes through the policy `run()` applies (the handler's own `onError`,
+        // then the registry's), so `'continue'` skips it and `'abort'` or no policy fails the step.
+        for (const [index, entry] of hooks.getHandlers('beforeToolExecution').entries()) {
           const beforeContext = {
             conversation,
             step,
@@ -186,9 +192,25 @@ export async function executeTools(
             reportGuardrail: guardrailReporter(emitter, step),
             refuse,
           };
-          const registryResult = await hooks.runHandler('beforeToolExecution', entry, [
-            beforeContext,
-          ]);
+          let registryResult: unknown;
+          try {
+            registryResult = await hooks.runHandler('beforeToolExecution', entry, [beforeContext]);
+          } catch (handlerError) {
+            // COR-2104: a tool-call tripwire halts the run and is never recovered, so no
+            // `onError` policy, a plugin interceptor's or the registry's, may skip it.
+            if (handlerError instanceof GuardrailTripwireError) throw handlerError;
+            applyWaterfallHandlerErrorPolicy(
+              handlerError,
+              'beforeToolExecution',
+              index,
+              entry.options,
+              hooks.onError,
+              entry.id,
+            );
+            // A `'continue'` skips the handler's result, not a refusal it recorded before it threw:
+            // fall through to the filter below.
+            registryResult = undefined;
+          }
           if (registryResult !== undefined) {
             callsToExecute = registryResult as ToolCall[];
           }

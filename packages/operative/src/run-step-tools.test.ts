@@ -4,7 +4,11 @@
  * answered with a `GUARDRAIL_BLOCKED` error naming the guardrail; the step's other calls run; and
  * every call stays paired with one result, in the order the model made them.
  */
-import { HookRegistry } from '@lostgradient/lifecycle';
+import {
+  type HookRegistrationOptions,
+  HookRegistry,
+  type HookRegistryOptions,
+} from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import type { ToolCall } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
@@ -21,7 +25,20 @@ import type { ToolExecutionHookContext } from './types';
 
 type BeforeHook = (context: ToolExecutionHookContext) => Promise<ToolCall[]>;
 
+/** A hook registered with its own options, as a plugin interceptor's `{ handler, onError }` is. */
+interface RegisteredHook {
+  readonly handler: BeforeHook;
+  readonly options?: HookRegistrationOptions;
+}
+
 async function runWith(...handlers: BeforeHook[]) {
+  return runRegistered(handlers.map((handler) => ({ handler })));
+}
+
+async function runRegistered(
+  registered: readonly RegisteredHook[],
+  registryOptions?: HookRegistryOptions,
+) {
   const executed: string[] = [];
   const tool = (name: string) =>
     createTool({
@@ -33,8 +50,8 @@ async function runWith(...handlers: BeforeHook[]) {
         return `${name} ran`;
       },
     });
-  const hooks = new HookRegistry<OperativeHookMap>();
-  for (const handler of handlers) hooks.on('beforeToolExecution', handler);
+  const hooks = new HookRegistry<OperativeHookMap>(registryOptions);
+  for (const { handler, options } of registered) hooks.on('beforeToolExecution', handler, options);
   const activeRun = createActiveRun({
     generate: createMockGenerate([
       {
@@ -168,5 +185,98 @@ describe('refusing a tool call from beforeToolExecution', () => {
     expect(result.finishReason).toBe('error');
     expect(executed).toEqual([]);
     expect(rows[0]?.content).toContain('beforeToolExecution hook failed');
+  });
+});
+
+describe('a beforeToolExecution hook with its own onError beside a guardrail', () => {
+  const tripwire = () =>
+    new GuardrailTripwireError('tripped', {
+      guardrailName: 'cap',
+      category: 'limit',
+      phase: 'tool-call',
+      confidence: 1,
+    });
+
+  it('a hook that throws with onError continue does not undo a refusal it recorded first', async () => {
+    const { result, executed, rows } = await runRegistered([
+      {
+        handler: async (context) => {
+          context.refuse?.('call-2', 'no-second');
+          throw new Error('hook broke after refusing');
+        },
+        options: { onError: () => 'continue' },
+      },
+    ]);
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(executed).toEqual(['first', 'third']);
+    const second = rows.find((row) => row.callId === 'call-2');
+    expect(second?.error?.code).toBe(GUARDRAIL_BLOCKED_CODE);
+    expect(JSON.stringify(second)).toContain('no-second');
+  });
+
+  it('a refusal recorded by an earlier hook survives a later hook that throws and continues', async () => {
+    const { executed } = await runRegistered([
+      {
+        handler: async (context) => {
+          context.refuse?.('call-1', 'no-first');
+          return context.toolCalls.filter((call) => call.id !== 'call-1');
+        },
+      },
+      {
+        handler: async () => {
+          throw new Error('later hook broke');
+        },
+        options: { onError: () => 'continue' },
+      },
+    ]);
+
+    expect(executed).toEqual(['second', 'third']);
+  });
+
+  it('a guardrail tripwire still halts when a plugin interceptor with onError continue sits beside it', async () => {
+    const { result, executed, rows } = await runRegistered([
+      {
+        // The guardrail registration sets no onError.
+        handler: async () => {
+          throw tripwire();
+        },
+        options: { priority: 10 },
+      },
+      {
+        handler: async (context) => context.toolCalls,
+        options: { onError: () => 'continue', priority: 0 },
+      },
+    ]);
+
+    expect(result.finishReason).toBe('tripwire');
+    expect(executed).toEqual([]);
+    expect(rows.map((row) => row.callId)).toEqual(['call-1', 'call-2', 'call-3']);
+  });
+
+  it('a tripwire is never skipped by an onError continue, the hook’s own or the registry’s', async () => {
+    const own = await runRegistered([
+      {
+        handler: async () => {
+          throw tripwire();
+        },
+        options: { onError: () => 'continue' },
+      },
+    ]);
+    expect(own.result.finishReason).toBe('tripwire');
+    expect(own.executed).toEqual([]);
+
+    const registry = await runRegistered(
+      [
+        {
+          handler: async () => {
+            throw tripwire();
+          },
+        },
+      ],
+      { onError: () => 'continue' },
+    );
+    expect(registry.result.finishReason).toBe('tripwire');
+    expect(registry.executed).toEqual([]);
   });
 });

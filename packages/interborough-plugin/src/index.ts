@@ -8,6 +8,8 @@ export type {
   PluginFormatting,
   PluginGuardrails,
   PluginInterceptor,
+  PluginInterceptorHook,
+  PluginInterceptorHookOptions,
   PluginMemoryGate,
   PluginMemoryGuardrail,
   PluginPanel,

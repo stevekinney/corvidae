@@ -48,7 +48,7 @@ import {
 import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
 import type { AgentSource } from '../sources/definition-source';
-import { createAgentContributions } from '../agent-contributions';
+import { assertInterceptorHooks, createAgentContributions } from '../agent-contributions';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../types';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
@@ -794,6 +794,15 @@ async function setUp(
       toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
+    // A malformed hook skips this plugin here, where every other malformed contribution does:
+    // `createAgentContributions` reads them after every plugin's setup, outside this `try`, and
+    // would fail the whole composition. It runs before the gate below wraps each hook.
+    for (const interceptor of returned.interceptors ?? []) {
+      assertInterceptorHooks(
+        formatToolId({ namespace: descriptor.name, name: interceptor.name }),
+        interceptor,
+      );
+    }
     // Registered now and refused while a declared secret is missing: the options that receive
     // contributions are read once, so one added later would never be seen (COR-1874).
     const result =
