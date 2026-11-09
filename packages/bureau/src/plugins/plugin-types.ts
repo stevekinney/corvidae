@@ -361,6 +361,31 @@ export interface PluginReactionListing {
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }
 
+/**
+ * One guardrail installed in the Bureau (COR-2118), as `bureau.guardrails.list` shows it: what an
+ * agent file can choose, and the memory guardrails no file chooses. A name is claimed per family,
+ * so one `id` may list once for each family it serves. Carries no function.
+ */
+export interface GuardrailListing {
+  /** `plugin:name`, the id an agent file's `guardrails` lists it by. */
+  readonly id: string;
+  /** What it guards: `input`, `output`, `tools` (tool calls) or `memory`, which no file can choose. */
+  readonly family: 'input' | 'output' | 'tools' | 'memory';
+  /** What the guardrail guards, in a sentence. */
+  readonly description: string;
+  /** Whether an agent file can configure it: it is a factory, which takes `{ id, configuration }`. */
+  readonly configurable: boolean;
+  /**
+   * The fields its configuration takes, as JSON Schema, with the defaults a field the agent leaves
+   * out takes; `null` when it takes none, or when the schema cannot be written as one.
+   */
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+  /** Who installed it: a running plugin, or the host through `BureauOptions.agentContributions`. */
+  readonly source: 'plugin' | 'host';
+  /** The contributing plugin's name, the first half of `id`. */
+  readonly plugin: string;
+}
+
 /** `bureau.plugins`: the plugins the Bureau was given, in load order. */
 export interface BureauPlugins {
   /**
@@ -405,6 +430,13 @@ export interface BureauPlugins {
    * is built.
    */
   reactions(): readonly PluginReactionListing[];
+  /**
+   * Every installed guardrail (COR-2118): the host's (`BureauOptions.agentContributions`), then
+   * the running plugins' in load order, each family of a plugin's in the order input, output,
+   * tools, memory. A host's memory guardrails live inside its own memory and are not listed. Fixed
+   * once the Bureau is built.
+   */
+  guardrails(): readonly GuardrailListing[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

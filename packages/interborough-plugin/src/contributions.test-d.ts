@@ -5,17 +5,22 @@
 
 import type { OperativeHookMap, OutputValidator, ToolCallValidator } from '@lostgradient/operative';
 import type { InputDetector } from 'armorer';
+import { z } from 'zod';
 
 import type {
   PluginAgent,
   PluginContributions,
   PluginFormatter,
+  PluginGuardrailFactory,
   PluginGuardrails,
+  PluginInputGuardrail,
   PluginInterceptor,
   PluginMemoryGuardrail,
+  PluginOutputGuardrail,
   PluginPanel,
   PluginReaction,
   PluginScorer,
+  PluginToolGuardrail,
   PluginTrigger,
 } from './index.ts';
 
@@ -87,8 +92,8 @@ type PointsWithANewOne = DeclaredHookPoints | 'extraPoint';
 // @ts-expect-error -- `extraPoint` is not a member of `PluginInterceptor`
 export const aMissingPointIsCaught: SameKeys<InterceptorPoints, PointsWithANewOne> = true;
 
-declare const detector: InputDetector;
-declare const validator: OutputValidator;
+declare const detector: PluginInputGuardrail;
+declare const validator: PluginOutputGuardrail;
 declare const memoryGuardrail: PluginMemoryGuardrail;
 
 export const renamedGuardrails: PluginContributions = {
@@ -117,7 +122,7 @@ export const staleMemoryDetectors: PluginContributions = { memoryDetectors: [det
 // @ts-expect-error -- a memory gate is `admission` or `recall`
 export const unknownGate: PluginGuardrails = { memory: [{ ...detector, gates: ['write'] }] };
 
-declare const toolValidator: ToolCallValidator;
+declare const toolValidator: PluginToolGuardrail;
 
 // COR-2104 — a tool-call validator joins `guardrails.tools`, and an input or output entry may carry
 // an action of its own.
@@ -137,3 +142,50 @@ export const outputSanitize: PluginGuardrails = {
 
 // @ts-expect-error -- a tool-call validator's action is `block`, `warn` or `tripwire`
 export const toolRedact: PluginGuardrails = { tools: [{ ...toolValidator, action: 'redact' }] };
+
+declare const bareDetector: InputDetector;
+declare const bareValidator: OutputValidator;
+declare const bareToolValidator: ToolCallValidator;
+
+// COR-2118 — every guardrail a plugin contributes says what it guards.
+// @ts-expect-error -- an input detector without a description
+export const undescribedInput: PluginGuardrails = { input: [bareDetector] };
+
+// @ts-expect-error -- an output validator without a description
+export const undescribedOutput: PluginGuardrails = { output: [bareValidator] };
+
+// @ts-expect-error -- a tool-call validator without a description
+export const undescribedTool: PluginGuardrails = { tools: [bareToolValidator] };
+
+// @ts-expect-error -- a memory guardrail without a description
+export const undescribedMemory: PluginGuardrails = { memory: [bareDetector] };
+
+// COR-2118 — a factory an agent configures joins any family but memory, bare or with an action.
+const thresholdFactory: PluginGuardrailFactory<OutputValidator, { readonly threshold: number }> = {
+  name: 'grounding',
+  description: 'Flags claims the conversation does not support.',
+  configuration: z.object({ threshold: z.number().default(0.8) }),
+  create: ({ threshold }) => ({
+    name: 'grounding',
+    validate: () => Promise.resolve({ valid: threshold > 0, confidence: 1, category: 'x' }),
+  }),
+};
+
+declare const detectorFactory: PluginGuardrailFactory<InputDetector>;
+declare const toolFactory: PluginGuardrailFactory<ToolCallValidator>;
+
+export const factories: PluginGuardrails = {
+  input: [detectorFactory, { guardrail: detectorFactory, action: 'tripwire' }],
+  output: [thresholdFactory, { guardrail: thresholdFactory, action: 'redact' }],
+  tools: [toolFactory],
+};
+
+// @ts-expect-error -- a factory's description is required
+export const undescribedFactory: PluginGuardrailFactory<InputDetector> = {
+  name: 'x',
+  configuration: z.object({}),
+  create: () => bareDetector,
+};
+
+// @ts-expect-error -- memory guardrails guard the host, so no agent configures one
+export const memoryFactory: PluginGuardrails = { memory: [detectorFactory] };

@@ -13,7 +13,8 @@ import type { Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import {
-  agentContributionIdsSchema,
+  agentGuardrailSelectionsSchema,
+  storedAgentGuardrailSelectionsSchema,
   agentCostLimitSchema,
   agentDefaultEffortSchema,
   agentLimitsSchema,
@@ -38,8 +39,8 @@ export const agentOverridesOutputSchema = z.object({
   tools: z.array(z.string()).nullable(),
   /** When each tool asks a person first, by tool name. */
   approvals: agentToolApprovalSchema.nullable(),
-  /** The plugin guardrails (`plugin:name`) a run applies. */
-  guardrails: agentContributionIdsSchema.nullable(),
+  /** The plugin guardrails a run applies, each `plugin:name` or `{ id, configuration }` (COR-2118). */
+  guardrails: storedAgentGuardrailSelectionsSchema.nullable(),
   /**
    * The limits overridden (COR-2138): `steps`, the most steps one run may take; `cost`, what a run
    * and a chat may spend in US dollars; `tools`, what one run's tools may use. A limit that is not
@@ -59,7 +60,7 @@ export const agentOverridesInputSchema = z.strictObject({
   instructions: z.string().min(1).nullable().optional(),
   tools: z.array(z.string().min(1)).nullable().optional(),
   approvals: agentToolApprovalSchema.nullable().optional(),
-  guardrails: agentContributionIdsSchema.nullable().optional(),
+  guardrails: agentGuardrailSelectionsSchema.nullable().optional(),
   limits: z
     .strictObject({
       steps: agentStepLimitSchema.nullable().optional(),

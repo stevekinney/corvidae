@@ -16,6 +16,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 
 import {
+  guardrailEntryId,
   type AgentCatalog,
   type AgentDefinitionInput,
   type AgentDetail,
@@ -89,7 +90,7 @@ export class AgentAccessState {
       this.approvals.set(tool, approval);
     }
     this.allowedSkills = [...(definition.allowedSkills ?? [])];
-    this.guardrails = (definition.guardrails ?? []).join('\n');
+    this.guardrails = (definition.guardrails ?? []).map(guardrailEntryId).join('\n');
     this.spendPerRun = definition.limits.cost === null ? '' : String(definition.limits.cost.run);
     this.spendPerChat =
       definition.limits.cost?.chat === undefined ? '' : String(definition.limits.cost.chat);
@@ -193,7 +194,7 @@ export class AgentAccessState {
   /** The definition to write: the file's own, with the access this form edits. */
   toDefinition(): AgentDefinitionInput {
     const file = this.#definition;
-    const limits = limitsOf(this.#fields(), file.limits.cost?.warn, false);
+    const limits = limitsOf(this.#fields(), file.limits.cost?.warn, false, file.guardrails);
     return {
       name: file.name,
       description: file.description,

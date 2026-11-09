@@ -182,7 +182,7 @@ import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
-import { createPluginRegistry } from './plugins/plugin-registry';
+import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
 import {
@@ -191,7 +191,12 @@ import {
   createAgentCatalog,
   type CreateAgentCatalogOptions,
 } from './agent-catalog';
-import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
+import {
+  AgentFileError,
+  AgentSnapshotError,
+  type AgentFileDefinitionInput,
+  guardrailIdOf,
+} from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
   allowedDescriptorsOfFileAgent,
@@ -2838,6 +2843,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   if (agentsWithOwnTools !== undefined) options = { ...options, agents: agentsWithOwnTools };
   // COR-1879 — plugin setup runs once the caller's options are known to be usable, and what the
   // running plugins contribute is folded into the options the rest of construction reads.
+  // COR-2118 — the guardrails the host gave, read before plugins' join them (and before any await),
+  // so a listing tells them apart.
+  const hostGuardrails = hostGuardrailRows(options.agentContributions);
   const composedPlugins = await composePlugins({
     ...options,
     plugins: withBuiltInPlugin(options.plugins, bureauTools),
@@ -2846,7 +2854,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
-  const pluginRegistry = createPluginRegistry(composedPlugins.records);
+  const pluginRegistry = createPluginRegistry(composedPlugins.records, {
+    guardrails: hostGuardrails,
+  });
   // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
   // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
   const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
@@ -24523,7 +24533,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               {
                 id: detail.id,
                 tools: detail.definition?.tools ?? detail.codeDefinition?.tools ?? [],
-                guardrails: detail.definition?.guardrails ?? [],
+                guardrails: (detail.definition?.guardrails ?? []).map(guardrailIdOf),
                 interceptors: detail.definition?.interceptors ?? [],
               },
             ],

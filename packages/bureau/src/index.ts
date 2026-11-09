@@ -53,6 +53,7 @@ export type {
   BureauPlugins,
   BureauPluginSecrets,
   BureauPluginSettings,
+  GuardrailListing,
   PluginClashParty,
   PluginContributionKind,
   PluginContributionListing,

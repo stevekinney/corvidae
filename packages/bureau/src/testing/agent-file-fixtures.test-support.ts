@@ -62,6 +62,7 @@ export const TEST_CONTRIBUTIONS = createAgentContributions([
       input: [
         {
           name: 'check',
+          description: 'A test guardrail.',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
         },
       ],
@@ -74,6 +75,7 @@ export const TEST_CONTRIBUTIONS = createAgentContributions([
       input: [
         {
           name: 'other',
+          description: 'A test guardrail.',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
         },
       ],
