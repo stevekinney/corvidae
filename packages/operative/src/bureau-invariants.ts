@@ -12,11 +12,16 @@
  * on the child's agent (`resolvesOwnGuardrails`).
  *
  * The factory rides on a symbol-keyed field, never a declared one, and the
- * symbol is private to this module. It is deliberately not the caller-facing hook
- * field COR-567 Decision 4 declines: a caller's context has no name to write it
- * under, and a `Symbol.for` key a caller invents is ignored. Only the host that
- * built the run attaches it, with {@link withBureauInvariants}. It is never
- * persisted: a recovered run is rebuilt by the same host code that built it.
+ * symbol is private to this module (never `Symbol.for`). It is deliberately not
+ * the caller-facing hook field COR-567 Decision 4 declines: no options or
+ * context type declares it, so plain data a caller supplies (a request body, a
+ * stored record, a context literal) has no name to write it under, and a
+ * `Symbol.for` key a caller invents is ignored. That is the whole guarantee.
+ * It is not "only a host can attach": this module's index exports
+ * {@link withBureauInvariants} and {@link bureauInvariantsField}, so any
+ * in-process caller can attach a factory, as it can register any hook. It is
+ * never persisted: a recovered run is rebuilt by the same host code that built
+ * it.
  *
  * The symbol is private to one loaded copy of this module, which a workspace guarantees. If two copies
  * of Operative were ever loaded, the host's `bureauInvariantsField` and a child's `readBureauInvariants`
@@ -64,8 +69,8 @@ export type BureauChildInvariants = (
  * The field a `RunOptions` literal or a run context spreads in to carry Bureau's child-invariant
  * factory: `{ ...bureauInvariantsField(invariants) }`. Empty when there is none.
  *
- * For the host that owns the run, never for a caller: it is how a run tells the children it
- * dispatches that Bureau owns it.
+ * Meant for the host that owns the run: it is how a run tells the children it dispatches that
+ * Bureau owns it. Nothing enforces that, since the function is exported.
  *
  * @internal
  */

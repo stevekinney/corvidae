@@ -241,6 +241,7 @@ export {
   rowContentForParts,
   runWideParts,
 } from './response-parts';
+export { runScopedExecutionContextOf } from './run-scoped-execution-context';
 export * from './runnable-agent';
 export * from './selection-gate';
 export { admitToolResultMedia } from './tool-result-media';

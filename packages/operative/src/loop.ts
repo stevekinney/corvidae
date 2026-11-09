@@ -2,7 +2,6 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
 import { Conversation, isConversation } from 'conversationalist';
 
-import { readBureauInvariants } from './bureau-invariants';
 import { MaximumStepsExceededError } from './errors';
 import { RunErrorEvent } from './events';
 import { type GeneratedMediaAdmission, retainSeededInput } from './generated-media';
@@ -14,6 +13,7 @@ import {
   makeErrorResult,
   startRunLifecycle,
 } from './run-lifecycle';
+import { runScopedExecutionSourceOf } from './run-scoped-execution-context';
 import {
   DEFAULT_MAXIMUM_STEPS,
   type EventDispatcher,
@@ -45,7 +45,10 @@ export function buildStepDeps(options: RunOptions): StepDeps {
   return {
     generate: options.generate,
     toolbox: options.toolbox,
-    executeOptions: options.executeOptions,
+    // COR-2106 — the run-scoped fields (`executeOptions`, `runId`, the child registry, the
+    // delegated grant and capabilities, the parent signals, Bureau's invariants) are read by the
+    // same function a host uses to resume a parked call.
+    ...runScopedExecutionSourceOf(options),
     signal: options.signal,
     collectAsync: options.collectAsync ?? false,
     retry: options.retry,
@@ -64,12 +67,6 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     schemaRetryMessage: options.schemaRetryMessage,
     parentContext: options.parentContext,
     withTraceContext: options.withTraceContext,
-    runId: options.runId,
-    childRegistry: options.childRegistry,
-    delegatedAuthority: options.delegatedAuthority,
-    delegatedToolCapabilities: options.delegatedToolCapabilities,
-    parentSignals: options.parentSignals,
-    bureauInvariants: readBureauInvariants(options),
     durableOperationKeys: options.durableOperationKeys ?? false,
     defaultToolChoice: options.toolChoice,
     steering: options.steering,
