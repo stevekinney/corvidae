@@ -1,5 +1,11 @@
 export { HookRegistry } from './hook-registry';
-export { mergeHookRegistries } from './merge-hook-registries';
+export {
+  HOOK_TIERS,
+  HOOK_TIER_BAND_WIDTH,
+  HOOK_TIER_PRIORITY_BANDS,
+  mergeHookRegistries,
+  type HookTierRegistries,
+} from './merge-hook-registries';
 export type {
   HookErrorHandler,
   HookMap,
@@ -14,4 +20,5 @@ export type {
   HookRegistrationOptions,
   HookRegistryOptions,
   HookReplayPolicy,
+  HookTier,
 } from './types';

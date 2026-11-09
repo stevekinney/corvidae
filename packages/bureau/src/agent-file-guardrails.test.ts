@@ -399,10 +399,10 @@ describe('interceptorsOf', () => {
   it('tags each registry entry with its plugin as the source, and the tag survives a merge', () => {
     const registry = interceptorsOf({ interceptors: ['x:audit'] }, contributions);
     if (registry === undefined) throw new Error('Expected a registry.');
-    const merged = mergeHookRegistries<OperativeHookMap>(
-      new HookRegistry<OperativeHookMap>({ source: 'bureau' }),
-      registry,
-    );
+    const merged = mergeHookRegistries<OperativeHookMap>({
+      bureau: new HookRegistry<OperativeHookMap>({ source: 'bureau' }),
+      agent: registry,
+    });
     expect(
       merged.describePlan().entries.map(({ hookName, id, source }) => ({ hookName, id, source })),
     ).toEqual([{ hookName: 'onStep', id: 'x:audit:onStep', source: 'x' }]);

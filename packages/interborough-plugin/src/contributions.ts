@@ -137,13 +137,21 @@ export type PluginInterceptorHook<Hook> = Hook | PluginInterceptorHookOptions<Ho
 
 /**
  * A set of Operative run hooks a plugin contributes under one name. An agent file chooses it with
- * `interceptors: [plugin:name]`, and it runs for the agents that choose it and no others. Each
- * member is an Operative run hook, one for each point of Operative's hook map, written as the
- * function or as {@link PluginInterceptorHookOptions}.
+ * `interceptors: [plugin:name]`, and it runs for the agents that choose it and no others, unless it
+ * declares `appliesTo: 'every-agent'`. Each member is an Operative run hook, one for each point of
+ * Operative's hook map, written as the function or as {@link PluginInterceptorHookOptions}.
  */
 export interface PluginInterceptor {
   /** Names the interceptor in logs and problem reports, and in the id an agent file lists. */
   readonly name: string;
+  /**
+   * `'every-agent'` runs the set for every run the host starts, whether or not its agent lists it:
+   * file agents, code agents, dispatched agents and their children. The host composes it between
+   * its own hooks and the agent's, and an agent file that also lists it gets it once. While the
+   * plugin needs setup, such a set is skipped rather than refused, so it never fails another
+   * agent's run. Omitted, the set runs only for the agents that list it.
+   */
+  readonly appliesTo?: 'every-agent';
   /** Runs before each generate call. */
   readonly prepareStep?: PluginInterceptorHook<PrepareStepHook>;
   /** Runs before the tool calls of a step execute, and may change them. */

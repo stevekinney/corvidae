@@ -2,21 +2,25 @@ import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { HookRegistry } from '../../src/hooks/hook-registry';
-import { mergeHookRegistries } from '../../src/hooks/merge-hook-registries';
+import {
+  HOOK_TIER_PRIORITY_BANDS,
+  mergeHookRegistries,
+} from '../../src/hooks/merge-hook-registries';
 import type { HookPlanObservation } from '../../src/hooks/types';
 
 /**
  * The value Bureau pins a registration to when it must hold final narrowing
  * power on a `runLast` or waterfall dispatch — `BUREAU_PINNED_LAST_PRIORITY` in
- * `@lostgradient/bureau`'s `runtime-composition.ts`. Restated as a literal here
- * because lifecycle has no runtime dependencies and cannot import it; the
- * bureau-side tests assert the real constant against the real registrations.
+ * `@lostgradient/bureau`'s `runtime-composition.ts`, derived the same way from
+ * the bands: lifecycle has no runtime dependencies and cannot import Bureau's,
+ * and the bureau-side tests assert the real constant against the real
+ * registrations.
  *
- * `Number.MIN_SAFE_INTEGER` plus the largest tier offset the merge can add
- * (`(3 - 1 - 0) * 1000`, Bureau always being the first participant), so adding
- * that offset back cannot leave the safe-integer range.
+ * `Number.MIN_SAFE_INTEGER` plus Bureau's band, the largest a merge adds
+ * (COR-2127), so the pinned entry stays inside the safe-integer range once the
+ * band is added.
  */
-const PINNED_LAST = Number.MIN_SAFE_INTEGER + 2000;
+const PINNED_LAST = Number.MIN_SAFE_INTEGER + HOOK_TIER_PRIORITY_BANDS.bureau;
 
 type TestHooks = {
   transform: (value: string) => string;
@@ -61,8 +65,8 @@ describe('tier provenance (criterion 17)', () => {
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('transform', (value) => value + '-agent');
 
-    const once = mergeHookRegistries(bureau, agent);
-    const twice = mergeHookRegistries(once);
+    const once = mergeHookRegistries({ bureau, agent });
+    const twice = mergeHookRegistries({ agent: once });
 
     const sources = twice.getHandlers('transform').map((entry) => entry.options.source);
     expect(sources).toEqual(['bureau', 'agent']);
@@ -90,7 +94,7 @@ describe('tier provenance (criterion 17)', () => {
 });
 
 describe('tier ordering (criteria 5 and 7)', () => {
-  it('bands three tiers so the first listed runs first', async () => {
+  it('bands three tiers so the highest runs first', async () => {
     const order: string[] = [];
     const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
     bureau.on('notify', (message) => void order.push(`bureau:${message}`));
@@ -99,17 +103,17 @@ describe('tier ordering (criteria 5 and 7)', () => {
     const direct = new HookRegistry<TestHooks>({ source: 'direct' });
     direct.on('notify', (message) => void order.push(`direct:${message}`));
 
-    // No run can populate all three tiers today — `AgentRunContext` and
-    // `CreateAgentOptions` expose no direct-tier hook surface alongside an
+    // No run can populate the agent and direct tiers at once — `AgentRunContext`
+    // and `CreateAgentOptions` expose no direct-tier hook surface alongside an
     // agent tier. The ordering property is therefore proven here, against
     // the merge itself, rather than through a dispatch that cannot occur.
-    const merged = mergeHookRegistries(bureau, agent, direct);
+    const merged = mergeHookRegistries({ bureau, agent, direct });
     await merged.run('notify', 'x');
 
     expect(order).toEqual(['bureau:x', 'agent:x', 'direct:x']);
   });
 
-  it('offsets by (participants - 1 - index) * 1000, so three tiers give the first +2000', () => {
+  it('adds each tier its fixed band, whichever tiers are present (COR-2127)', () => {
     const bureau = new HookRegistry<TestHooks>();
     bureau.on('transform', (value) => value, { id: 'b' });
     const agent = new HookRegistry<TestHooks>();
@@ -117,11 +121,18 @@ describe('tier ordering (criteria 5 and 7)', () => {
     const direct = new HookRegistry<TestHooks>();
     direct.on('transform', (value) => value, { id: 'd' });
 
-    const three = mergeHookRegistries(bureau, agent, direct);
-    expect(three.getHandlers('transform').map((entry) => entry.priority)).toEqual([2000, 1000, 0]);
+    const three = mergeHookRegistries({ bureau, agent, direct });
+    expect(three.getHandlers('transform').map((entry) => entry.priority)).toEqual([
+      HOOK_TIER_PRIORITY_BANDS.bureau,
+      HOOK_TIER_PRIORITY_BANDS.agent,
+      HOOK_TIER_PRIORITY_BANDS.direct,
+    ]);
 
-    const two = mergeHookRegistries(bureau, agent);
-    expect(two.getHandlers('transform').map((entry) => entry.priority)).toEqual([1000, 0]);
+    const two = mergeHookRegistries({ bureau, agent });
+    expect(two.getHandlers('transform').map((entry) => entry.priority)).toEqual([
+      HOOK_TIER_PRIORITY_BANDS.bureau,
+      HOOK_TIER_PRIORITY_BANDS.agent,
+    ]);
   });
 
   it('lets a pinned-last entry outrank every tier offset', async () => {
@@ -136,7 +147,7 @@ describe('tier ordering (criteria 5 and 7)', () => {
       priority: Number.MAX_SAFE_INTEGER,
     });
 
-    const merged = mergeHookRegistries(bureau, agent);
+    const merged = mergeHookRegistries({ bureau, agent });
     await merged.run('notify', 'x');
 
     expect(order).toEqual(['agent:x', 'bureau:x']);
@@ -152,9 +163,25 @@ describe('tier ordering (criteria 5 and 7)', () => {
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('transform', () => 'widened', { priority: Number.MAX_SAFE_INTEGER });
 
-    const merged = mergeHookRegistries(bureau, agent);
+    const merged = mergeHookRegistries({ bureau, agent });
 
     expect(await merged.run('transform', 'response')).toBe('widened|narrowed');
+  });
+
+  it('gives a pinned-last entry the final value on a waterfall with all four tiers (COR-2127)', async () => {
+    // Each lower tier asks to sort far down, as an ordinary registration would.
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('transform', (value) => `${value}|narrowed`, { priority: PINNED_LAST });
+    const plugin = new HookRegistry<TestHooks>({ source: 'audit' });
+    plugin.on('transform', (value) => `${value}|plugin`, { priority: -1_000_000 });
+    const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+    agent.on('transform', (value) => `${value}|agent`, { priority: -1_000_000 });
+    const direct = new HookRegistry<TestHooks>({ source: 'direct' });
+    direct.on('transform', (value) => `${value}|direct`, { priority: -1_000_000 });
+
+    const merged = mergeHookRegistries({ bureau, plugin, agent, direct });
+
+    expect(await merged.run('transform', 'response')).toBe('response|plugin|agent|direct|narrowed');
   });
 
   it('gives a pinned-last entry the winning value on runLast (criterion 10)', async () => {
@@ -163,7 +190,7 @@ describe('tier ordering (criteria 5 and 7)', () => {
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('transform', () => 'agent', { priority: Number.MAX_SAFE_INTEGER });
 
-    const merged = mergeHookRegistries(bureau, agent);
+    const merged = mergeHookRegistries({ bureau, agent });
 
     expect(await merged.runLast('transform', 'response')).toBe('bureau');
   });
@@ -172,7 +199,7 @@ describe('tier ordering (criteria 5 and 7)', () => {
     const reached: string[] = [];
     // `runFirst` is the veto shape: the first handler to return a defined value
     // ends the question. Bureau's default-priority entries carry the largest
-    // tier offset, so they answer before an agent's or a direct caller's — the
+    // tier band, so they answer before an agent's or a direct caller's — the
     // band alone does this, with no pinned priority anywhere.
     const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
     bureau.on('transform', (value) => {
@@ -190,7 +217,7 @@ describe('tier ordering (criteria 5 and 7)', () => {
       return value;
     });
 
-    const merged = mergeHookRegistries(bureau, agent, direct);
+    const merged = mergeHookRegistries({ bureau, agent, direct });
 
     expect(await merged.runFirst('transform', 'step')).toBe('step|vetoed');
     expect(reached).toEqual(['bureau']);
@@ -232,7 +259,7 @@ describe('error policy through a merge (criterion 12)', () => {
       { id: 'agent:one' },
     );
 
-    const merged = mergeHookRegistries(bureau, agent);
+    const merged = mergeHookRegistries({ bureau, agent });
     await merged.run('notify', 'x');
 
     expect(bureauErrors).toEqual(['bureau:one']);
@@ -263,7 +290,7 @@ describe('error policy through a merge (criterion 12)', () => {
       },
     );
 
-    const merged = mergeHookRegistries(registry);
+    const merged = mergeHookRegistries({ agent: registry });
     await merged.run('notify', 'x');
 
     expect(perEntry).toEqual(['own']);
@@ -276,7 +303,7 @@ describe('error policy through a merge (criterion 12)', () => {
       throw new Error('unhandled');
     });
 
-    const merged = mergeHookRegistries(registry);
+    const merged = mergeHookRegistries({ agent: registry });
 
     expect(await throwingRejectionOf(merged.run('notify', 'x'))).toThrow('unhandled');
   });
@@ -291,7 +318,7 @@ describe('error policy through a merge (criterion 12)', () => {
     });
     registry.on('notify', () => undefined);
 
-    const merged = mergeHookRegistries(registry);
+    const merged = mergeHookRegistries({ agent: registry });
     const durations: number[] = [];
     merged.observe((observation) => {
       if (observation.kind === 'invoked') durations.push(observation.durationMilliseconds);
@@ -311,7 +338,7 @@ describe('snapshot isolation (criteria 6, 11 and 13)', () => {
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('notify', (message) => void order.push(`first:${message}`));
 
-    const merged = mergeHookRegistries(undefined, agent, undefined);
+    const merged = mergeHookRegistries({ agent });
     agent.on('notify', (message) => void order.push(`late:${message}`));
 
     await merged.run('notify', 'x');
@@ -324,7 +351,7 @@ describe('snapshot isolation (criteria 6, 11 and 13)', () => {
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('notify', (message) => void order.push(`first:${message}`));
 
-    const merged = mergeHookRegistries(undefined, agent, undefined);
+    const merged = mergeHookRegistries({ agent });
     agent.clear('notify');
 
     await merged.run('notify', 'x');
@@ -337,8 +364,8 @@ describe('snapshot isolation (criteria 6, 11 and 13)', () => {
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('notify', () => undefined);
 
-    const first = mergeHookRegistries(agent);
-    const second = mergeHookRegistries(agent);
+    const first = mergeHookRegistries({ agent });
+    const second = mergeHookRegistries({ agent });
 
     expect(first).not.toBe(second);
     first.on('notify', () => undefined);
@@ -432,17 +459,31 @@ describe('unclassified-replay diagnostic (COR-1267)', () => {
 });
 
 describe('redacted effective-plan introspection (COR-1270)', () => {
-  it('describes identity, ordering, replay class and tier — and nothing else', () => {
+  it('describes identity, ordering, replay class, source and tier — and nothing else', () => {
     const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
     bureau.on('transform', (value) => value, { id: 'bureau:one', replay: 'safe' });
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('transform', (value) => value, { id: 'agent:one' });
 
-    const plan = mergeHookRegistries(bureau, agent).describePlan();
+    const plan = mergeHookRegistries({ bureau, agent }).describePlan();
 
     expect(plan.entries).toEqual([
-      { hookName: 'transform', id: 'bureau:one', priority: 1000, replay: 'safe', source: 'bureau' },
-      { hookName: 'transform', id: 'agent:one', priority: 0, replay: 'effectful', source: 'agent' },
+      {
+        hookName: 'transform',
+        id: 'bureau:one',
+        priority: HOOK_TIER_PRIORITY_BANDS.bureau,
+        replay: 'safe',
+        source: 'bureau',
+        tier: 'bureau',
+      },
+      {
+        hookName: 'transform',
+        id: 'agent:one',
+        priority: HOOK_TIER_PRIORITY_BANDS.agent,
+        replay: 'effectful',
+        source: 'agent',
+        tier: 'agent',
+      },
     ]);
   });
 

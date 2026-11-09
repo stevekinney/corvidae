@@ -26,6 +26,7 @@
  * | interceptor, a point Operative runs through its hook registry (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `selectTools`, `validateResponse`, `validateToolResult`, the compaction points, `selectToolChoice`, `beforeGenerate`, `afterGenerate`, `onRunStart`) | refuses; the step or the run fails with the refusal, so an agent file that lists the interceptor cannot run | works | refuses |
  * | interceptor, an observing point (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) | refuses; Operative settles these handlers and discards a failure, so the run's own outcome and error stand and the plugin's handler does not run | works | refuses |
  * | interceptor, `onError` | refuses; Operative catches a failing recovery hook and the original error propagates, so the handler does not run. One `try` wraps the loop over the recovery handlers, so the refusal also skips every lower-priority `onError` handler of the run, whatever any `onError` option says | works | refuses |
+ * | interceptor with `appliesTo: 'every-agent'`, every point (COR-2127) | skipped: each handler answers `undefined` without running, which every point reads as "no answer", so every agent's run goes on as if the set were absent. An agent file that lists such a set gets it from the plugin tier, so it is skipped there too | works | skipped |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
@@ -207,20 +208,34 @@ function gated<A extends unknown[], R>(
   };
 }
 
+/**
+ * `fn`, which answers `undefined` without being called while `gate` is not available (COR-2127): an
+ * interceptor that applies to every agent must not fail the runs of agents that never chose it.
+ */
+function skipped<A extends unknown[], R>(
+  gate: PluginSecretGate,
+  fn: (...args: A) => R | Promise<R>,
+): (...args: A) => Promise<R | undefined> {
+  return async (...args) => (gate.available() ? fn(...args) : undefined);
+}
+
 function gatedInterceptor(
   gate: PluginSecretGate,
   contribution: string,
   interceptor: PluginInterceptor,
 ): PluginInterceptor {
   const gatedPoints: Record<string, unknown> = {};
+  const everyAgent = interceptor.appliesTo === 'every-agent';
   for (const point of INTERCEPTOR_POINTS) {
     const hook = interceptor[point];
     if (hook === undefined) continue;
     // Either written form: a function, or `{ handler, replay, onError, priority }`, whose handler
     // is gated and whose other fields are kept, so the gate does not change how the hook sorts,
-    // replays or handles an error.
-    const gatedHandler = (handler: (...args: never[]) => unknown) =>
-      gated(gate, contribution, (handler as (...args: unknown[]) => unknown).bind(interceptor));
+    // replays or handles an error. A set that applies to every agent is skipped rather than refused.
+    const gatedHandler = (handler: (...args: never[]) => unknown) => {
+      const bound = (handler as (...args: unknown[]) => unknown).bind(interceptor);
+      return everyAgent ? skipped(gate, bound) : gated(gate, contribution, bound);
+    };
     gatedPoints[point] =
       typeof hook === 'function'
         ? gatedHandler(hook)

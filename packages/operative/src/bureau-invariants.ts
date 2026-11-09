@@ -55,15 +55,28 @@ export interface BureauChildInvariantRequest {
 }
 
 /**
- * Builds Bureau's invariant hook tier for one child run: its identity and
- * guardrail registrations, as a fresh registry per call so one child's
- * guardrail state never leaks into a sibling's.
+ * The tiers above a child's own that Bureau hands one child run, each a fresh
+ * registry (COR-2106, COR-2127).
+ */
+export interface BureauChildTiers {
+  /** Bureau's identity and guardrail registrations. */
+  readonly bureau: HookRegistry<OperativeHookMap>;
+  /**
+   * The interceptor sets plugins apply to every agent, or `undefined` when no
+   * plugin applies one (COR-2127).
+   */
+  readonly plugin: HookRegistry<OperativeHookMap> | undefined;
+}
+
+/**
+ * Builds the tiers Bureau composes in front of one child run's own: its
+ * identity and guardrail registrations, and the interceptor sets plugins apply
+ * to every agent, as fresh registries per call so one child's guardrail state
+ * never leaks into a sibling's.
  *
  * @internal
  */
-export type BureauChildInvariants = (
-  request: BureauChildInvariantRequest,
-) => HookRegistry<OperativeHookMap>;
+export type BureauChildInvariants = (request: BureauChildInvariantRequest) => BureauChildTiers;
 
 /**
  * The field a `RunOptions` literal or a run context spreads in to carry Bureau's child-invariant

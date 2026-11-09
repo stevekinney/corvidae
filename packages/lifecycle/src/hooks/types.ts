@@ -37,6 +37,14 @@ export type HookErrorHandler = (
  */
 export type HookReplayPolicy = 'safe' | 'effectful';
 
+/**
+ * The tiers a run's hook plan is composed from, highest first (COR-567, COR-2127): `bureau`
+ * enforces and narrows, `plugin` holds the interceptor sets a plugin applies to every agent,
+ * `agent` is the agent's own, and `direct` is a run constructed by hand. Each has a fixed priority
+ * band (`HOOK_TIER_PRIORITY_BANDS`), so an entry sorts the same whichever other tiers a run has.
+ */
+export type HookTier = 'bureau' | 'plugin' | 'agent' | 'direct';
+
 export interface HookRegistrationOptions {
   priority?: number;
   onError?: HookErrorHandler;
@@ -80,6 +88,17 @@ export interface HookRegistrationOptions {
    * a source survives any number of merges without extra handling.
    */
   source?: string;
+  /**
+   * The composition tier this entry belongs to (COR-2127), separate from {@link source}: an
+   * interceptor a plugin applies to every agent has the plugin's name as its source and `plugin`
+   * as its tier.
+   *
+   * Normally stamped by `mergeHookRegistries`, which adds the tier's band to the priority as it
+   * does. An entry that already has a tier keeps it, and its priority, through every later merge,
+   * so a band is added once whichever merge sees the entry first. A registration that names a tier
+   * itself therefore states that its priority already includes that band.
+   */
+  tier?: HookTier;
 }
 
 /**
@@ -198,6 +217,11 @@ export interface HookPlanEntryDescription {
   readonly replay: HookReplayPolicy;
   /** The owning tier, when one claimed it — see {@link HookRegistrationOptions.source}. */
   readonly source?: string;
+  /**
+   * The composition tier, once a merge stamped one (COR-2127) — see
+   * {@link HookRegistrationOptions.tier}.
+   */
+  readonly tier?: HookTier;
 }
 
 /**

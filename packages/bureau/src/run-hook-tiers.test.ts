@@ -1,0 +1,344 @@
+/**
+ * COR-2127 — the plan a Bureau run holds: Bureau's tier, the `plugin` tier, and the agent's own,
+ * each in its fixed band. The behavioral rows of the outcome matrix (which runs an every-agent
+ * interceptor reaches, once, and skipped while its plugin needs setup) are in
+ * `every-agent-interceptors.test.ts`; these are the plan-level rows:
+ *
+ * | case | result |
+ * | -- | -- |
+ * | a run with the plugin tier | its entries show `tier: 'plugin'`, between `bureau` and `agent` |
+ * | a waterfall point with Bureau's pinned-last entries, four tiers | the pinned-last entry still last |
+ * | a run with no plugin tier | Bureau's and the agent's priorities as with one (fixed bands) |
+ * | a durable run resumed after a restart | the plugin tier is composed again |
+ * | a new Bureau composition site | composes through `composeRunHooks` (source guard) |
+ */
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import { HOOK_TIER_PRIORITY_BANDS, HookRegistry } from '@lostgradient/lifecycle';
+import {
+  AGENT_POLICY_PINNED_LAST_PRIORITY,
+  createAgentSession,
+  type DurableRunDeps,
+  type HookPlanEntryDescription,
+  type OperativeHookMap,
+  type RunOptions,
+  type SessionStore,
+} from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
+import { afterEach, describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
+
+import {
+  type AgentContributions,
+  createAgentContributions,
+  INTERCEPTOR_PRIORITY_FLOOR,
+} from './agent-contributions';
+import { BUREAU_PINNED_LAST_PRIORITY, createRuntimeComposition } from './runtime-composition';
+
+afterEach(async () => {
+  // load-proof: the work this lets finish runs on in-memory storage and settles through promise continuations only, as in runtime-composition.test.ts; no timer or I/O is pending
+  await yieldToPortableEventLoop();
+});
+
+/** An every-agent set on `prepareStep` and on the `validateResponse` waterfall. */
+function everyAgentContributions(): AgentContributions {
+  return createAgentContributions([
+    {
+      plugin: 'audit',
+      interceptors: [
+        {
+          name: 'every',
+          appliesTo: 'every-agent',
+          prepareStep: { handler: async () => undefined, replay: 'safe' },
+          validateResponse: { handler: async () => undefined, replay: 'safe' },
+        },
+      ],
+    },
+  ]);
+}
+
+/** A catalog agent's resolved options, with an agent tier of its own on both points. */
+function catalogOptions(): RunOptions {
+  const agentHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+  agentHooks.on('prepareStep', async () => undefined, { id: 'agent:own', replay: 'safe' });
+  agentHooks.on('validateResponse', async () => undefined, { id: 'agent:narrow', replay: 'safe' });
+  return {
+    generate: async () => ({ content: 'from the agent', toolCalls: [] }),
+    toolbox: createToolbox([], { context: {} }),
+    conversation: createConversationHistory({ id: 'catalog-recovered' }),
+    hooks: agentHooks,
+  };
+}
+
+/** A runtime composition over `contributions`, with the identity invariant and the guardrails. */
+async function composition(contributions: AgentContributions | undefined) {
+  return createRuntimeComposition({
+    // A session run and a scheduled fire are rebuilt over the Bureau's own generate and toolbox.
+    generate: async () => ({ content: 'ok', toolCalls: [] }),
+    toolbox: createToolbox([], { context: {} }),
+    identity: { resolve: async () => 'the house agent' },
+    storage: new MemoryStorage(),
+    durable: true,
+    ...(contributions === undefined ? {} : { agentContributions: contributions }),
+  });
+}
+
+type Runtime = Awaited<ReturnType<typeof composition>>;
+
+function planOf(services: unknown): readonly HookPlanEntryDescription[] {
+  const hooks = (services as DurableRunDeps).options.hooks;
+  if (hooks === undefined) throw new Error('run options carried no hook registry');
+  return hooks.describePlan().entries;
+}
+
+/** The plan of a durably dispatched catalog run, recovered as a restarted Bureau resumes it. */
+async function recoveredCatalogPlan(runtime: Runtime, runId: string) {
+  runtime.setCatalogAgentRunOptionsResolver(async () => ({
+    status: 'resolved',
+    generationMode: 'selectable',
+    options: catalogOptions(),
+    definitionRevision: 1,
+  }));
+  await runtime.persistCatalogRunRecoveryRecord(runId, {
+    agentName: 'echo',
+    definitionRevision: 1,
+    input: 'hello',
+  });
+  const result = await runtime.resolveRunServices({
+    workflowId: runId,
+    workflowType: 'agentRun',
+    input: { runId, sessionId: runId, agentName: 'echo' },
+  });
+  if (result.status !== 'available') throw new Error(`not available: ${result.reason}`);
+  return planOf(result.services);
+}
+
+/** The plan of a session run, recovered from its persisted session after a restart. */
+async function recoveredSessionPlan(runtime: Runtime, runId: string) {
+  await saveRecoverableSession(runtime.sessionStore!, runId);
+  const result = await runtime.resolveRunServices({
+    workflowId: runId,
+    workflowType: 'agentRun',
+    input: { runId, sessionId: runId, agentName: 'test-agent' },
+  });
+  if (result.status !== 'available') throw new Error(`not available: ${result.reason}`);
+  return planOf(result.services);
+}
+
+/** The plan of a scheduled fire, rebuilt as a restarted Bureau rebuilds it. */
+async function scheduledPlan(runtime: Runtime, runId: string) {
+  const resolution = await runtime.buildScheduledRunServices(
+    {
+      workflowId: runId,
+      workflowType: 'agentRun',
+      input: {
+        agentName: 'researcher',
+        input: 'nightly digest',
+        scheduleId: 'nightly-digest',
+        sessionId: `${runId}-session`,
+      },
+      schedule: { id: 'nightly-digest' },
+    },
+    runtime.sessionStore!,
+  );
+  if (resolution.status !== 'available') throw new Error(`not available: ${resolution.reason}`);
+  return planOf(resolution.services);
+}
+
+async function saveRecoverableSession(sessionStore: SessionStore, runId: string): Promise<void> {
+  await sessionStore.save(
+    createAgentSession({
+      id: runId,
+      agentName: 'test-agent',
+      conversationHistory: createConversationHistory(),
+      metadata: {
+        lastRunId: runId,
+        lastRunStatus: 'running',
+        lastUserMessage: 'recover this session',
+        lastRequestAuthority: {
+          principalId: `run:${runId}`,
+          tenantId: 'bureau',
+          ownerId: 'test-agent',
+          capabilities: ['tools:execute'],
+          authorizationRevision: 'bureau:1',
+          audience: 'operator',
+        },
+      },
+    }),
+  );
+}
+
+const runtimes: Runtime[] = [];
+afterEach(() => {
+  for (const runtime of runtimes.splice(0)) runtime.durable?.engine[Symbol.dispose]?.();
+});
+
+async function open(contributions: AgentContributions | undefined): Promise<Runtime> {
+  const runtime = await composition(contributions);
+  runtimes.push(runtime);
+  return runtime;
+}
+
+const pointPlan = (entries: readonly HookPlanEntryDescription[], hookName: string) =>
+  entries
+    .filter((entry) => entry.hookName === hookName)
+    .map(({ id, tier, priority }) => ({ id, tier, priority }));
+
+describe('the plugin tier in a run’s plan (COR-2127)', () => {
+  it('shows every-agent entries as tier plugin, between the bureau and agent tiers', async () => {
+    const entries = await recoveredCatalogPlan(
+      await open(everyAgentContributions()),
+      'plugin-tier-run',
+    );
+
+    expect(pointPlan(entries, 'prepareStep')).toEqual([
+      { id: 'bureau:identity', tier: 'bureau', priority: HOOK_TIER_PRIORITY_BANDS.bureau },
+      {
+        id: 'bureau:guardrails-prepare-step',
+        tier: 'bureau',
+        priority: HOOK_TIER_PRIORITY_BANDS.bureau,
+      },
+      {
+        id: 'audit:every:prepareStep',
+        tier: 'plugin',
+        priority: HOOK_TIER_PRIORITY_BANDS.plugin,
+      },
+      { id: 'agent:own', tier: 'agent', priority: HOOK_TIER_PRIORITY_BANDS.agent },
+    ]);
+    expect(entries.find((entry) => entry.id === 'audit:every:prepareStep')?.source).toBe('audit');
+  });
+
+  it('keeps Bureau’s pinned-last entry last on a waterfall point with four tiers', async () => {
+    const entries = await recoveredCatalogPlan(
+      await open(everyAgentContributions()),
+      'pinned-last-run',
+    );
+
+    expect(pointPlan(entries, 'validateResponse')).toEqual([
+      {
+        id: 'audit:every:validateResponse',
+        tier: 'plugin',
+        priority: HOOK_TIER_PRIORITY_BANDS.plugin,
+      },
+      { id: 'agent:narrow', tier: 'agent', priority: HOOK_TIER_PRIORITY_BANDS.agent },
+      {
+        id: 'bureau:guardrails-validate-response',
+        tier: 'bureau',
+        priority: BUREAU_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.bureau,
+      },
+    ]);
+  });
+
+  it('gives Bureau’s and the agent’s entries the same priorities with no plugin tier', async () => {
+    const withPlugin = await recoveredCatalogPlan(
+      await open(everyAgentContributions()),
+      'with-plugin-run',
+    );
+    const withoutPlugin = await recoveredCatalogPlan(await open(undefined), 'without-plugin-run');
+
+    const priorities = (entries: readonly HookPlanEntryDescription[]) =>
+      entries
+        .filter((entry) => entry.tier !== 'plugin')
+        .map(({ hookName, id, priority }) => ({ hookName, id, priority }));
+    expect(withoutPlugin.some((entry) => entry.tier === 'plugin')).toBe(false);
+    expect(priorities(withoutPlugin)).toEqual(priorities(withPlugin));
+  });
+
+  it.each([
+    ['a recovered catalog run', recoveredCatalogPlan],
+    ['a recovered session run', recoveredSessionPlan],
+    ['a scheduled fire', scheduledPlan],
+  ] as const)('composes the plugin tier again for %s after a restart', async (label, planFor) => {
+    const runtime = await open(everyAgentContributions());
+
+    const entries = await planFor(runtime, `resumed-${label.replaceAll(' ', '-')}`);
+
+    expect(
+      entries.filter((entry) => entry.tier === 'plugin').map(({ id, source }) => ({ id, source })),
+    ).toEqual([
+      { id: 'audit:every:prepareStep', source: 'audit' },
+      { id: 'audit:every:validateResponse', source: 'audit' },
+    ]);
+  });
+
+  it('hands a Bureau-owned run’s children the plugin tier through the child seam', async () => {
+    const runtime = await open(everyAgentContributions());
+
+    const first = runtime.bureauChildInvariants({ agentResolvesGuardrails: true });
+    const second = runtime.bureauChildInvariants({ agentResolvesGuardrails: true });
+
+    expect(first.plugin?.describePlan().entries.map((entry) => entry.id)).toEqual([
+      'audit:every:prepareStep',
+      'audit:every:validateResponse',
+    ]);
+    expect(second.plugin).not.toBe(first.plugin);
+  });
+});
+
+describe('the bands keep each tier’s pinned entries in order (COR-2127)', () => {
+  it('sorts Bureau’s pinned-last entry below the agent’s guardrails and every interceptor', () => {
+    const bureauPinned = BUREAU_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.bureau;
+    const agentGuardrails = AGENT_POLICY_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.agent;
+    const agentInterceptorFloor = INTERCEPTOR_PRIORITY_FLOOR + HOOK_TIER_PRIORITY_BANDS.agent;
+    const pluginInterceptorFloor = INTERCEPTOR_PRIORITY_FLOOR + HOOK_TIER_PRIORITY_BANDS.plugin;
+
+    expect(Number.isSafeInteger(bureauPinned)).toBe(true);
+    expect(bureauPinned).toBeLessThan(agentGuardrails);
+    expect(agentGuardrails).toBeLessThan(agentInterceptorFloor);
+    expect(agentInterceptorFloor).toBeLessThan(pluginInterceptorFloor);
+  });
+});
+
+/**
+ * Every Bureau site that hands a run its hooks composes them through `composeRunHooks`, which adds
+ * the plugin tier itself, so a new site cannot forget it. A source guard rather than a behavior,
+ * stated as one: a site that merged its own tiers would still produce a working plan, only without
+ * the plugin tier.
+ */
+describe('one composition helper (COR-2127)', () => {
+  const HELPER = 'run-hook-tiers.ts';
+
+  async function bureauSources(directory: string): Promise<string[]> {
+    const found: string[] = [];
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) found.push(...(await bureauSources(path)));
+      else if (
+        entry.name.endsWith('.ts') &&
+        !/\.test(-d)?\.ts$|\.test-support\.ts$/u.test(entry.name) &&
+        !path.includes(`${join('src', 'test')}/`)
+      ) {
+        found.push(path);
+      }
+    }
+    return found;
+  }
+
+  /** Whether `text` names `mergeHookRegistries` outside a comment. */
+  function mergesDirectly(text: string): boolean {
+    const code = text.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/\/\/.*$/gmu, '');
+    return /\bmergeHookRegistries\b/u.test(code);
+  }
+
+  it('finds no Bureau source file but the helper that merges hook registries itself', async () => {
+    const root = new URL('.', import.meta.url).pathname;
+    const offenders: string[] = [];
+    for (const path of await bureauSources(root)) {
+      if (path.endsWith(`/${HELPER}`)) continue;
+      if (mergesDirectly(await Bun.file(path).text())) offenders.push(path.slice(root.length));
+    }
+
+    expect(offenders).toEqual([]);
+    expect(mergesDirectly(await Bun.file(join(root, HELPER)).text())).toBe(true);
+  });
+
+  it('catches a site that merges its own tiers', () => {
+    expect(mergesDirectly("import { mergeHookRegistries } from '@lostgradient/lifecycle';\n")).toBe(
+      true,
+    );
+    expect(mergesDirectly('// `mergeHookRegistries` is described here only\n')).toBe(false);
+  });
+});

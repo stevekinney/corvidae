@@ -260,7 +260,12 @@ export { createDefaultRuntimeServices, createManualRuntimeServices } from '@lost
 // naming the registry; now it cannot, and re-exporting here spares every
 // caller a direct dependency on @lostgradient/lifecycle for the one type the
 // operative run contract requires. Source owner is still lifecycle.
-export { HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
+export {
+  HOOK_TIERS,
+  HOOK_TIER_PRIORITY_BANDS,
+  HookRegistry,
+  mergeHookRegistries,
+} from '@lostgradient/lifecycle';
 export type {
   CreateManualRuntimeServicesOptions,
   DeferredDrainReport,
@@ -272,6 +277,8 @@ export type {
   HookRegistrationOptions,
   HookRegistryOptions,
   HookReplayPolicy,
+  HookTier,
+  HookTierRegistries,
   ManualRuntimeServices,
   RuntimeClock,
   RuntimeDeferred,

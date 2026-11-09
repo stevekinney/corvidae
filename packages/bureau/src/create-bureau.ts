@@ -6,7 +6,6 @@ import {
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
-  mergeHookRegistries,
   type RuntimeServices,
   type RuntimeTimeoutHandle,
 } from '@lostgradient/lifecycle';
@@ -9935,12 +9934,12 @@ async function constructBureau<const D extends AgentDefinitions>(
           // each of its step boundaries.
           ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
           // COR-1265 criterion 8 — merged AFTER the trailing registration, so
-          // the Bureau tier is complete before it becomes the merge's first
-          // argument. A single-tier merge still copies every entry into a fresh
+          // the Bureau tier is complete before it becomes the merge's `bureau`
+          // tier. The merge copies every entry into a fresh
           // registry, which is what makes the plan a snapshot: a registration
           // added to `runRuntime.hooks` afterwards cannot reach this run.
-          hooks: mergeHookRegistries(
-            registerTrailingOnStep(
+          hooks: runtime.composeRunHooks({
+            bureau: registerTrailingOnStep(
               runRuntime.hooks,
               'bureau:pending-approval-persist',
               createPendingApprovalPersistHook(
@@ -9951,8 +9950,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               ),
             ),
             // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
-            sessionAgent?.options.hooks,
-          ),
+            agent: sessionAgent?.options.hooks,
+          }),
           executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
           // Thread agentName and runId so curated tool.* bubble events are stamped
           // with {agentName, runId, step} metadata (C3) and durable launch input
@@ -12145,10 +12144,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                     runtime: runtimeServices,
                     sessionId: ownedSessionId,
                     // COR-1265 — the Bureau tier, snapshotted.
-                    hooks: mergeHookRegistries(
-                      runRuntime.hooks,
-                      reattachedSessionAgent?.options.hooks,
-                    ),
+                    hooks: runtime.composeRunHooks({
+                      bureau: runRuntime.hooks,
+                      agent: reattachedSessionAgent?.options.hooks,
+                    }),
                     executeOptions: sessionExecuteOptions(
                       reattachedSessionAgent?.options,
                       requestContext,

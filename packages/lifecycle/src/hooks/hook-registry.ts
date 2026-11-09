@@ -491,7 +491,7 @@ export class HookRegistry<M extends HookMap> {
     const entries: HookPlanEntryDescription[] = [];
     for (const hookName of this.handlers.keys()) {
       for (const entry of this.getHandlers(hookName)) {
-        const source = entry.options.source;
+        const { source, tier } = entry.options;
         entries.push({
           hookName,
           id: entry.id,
@@ -500,6 +500,7 @@ export class HookRegistry<M extends HookMap> {
           // the same resolution the `registered` observation reports.
           replay: entry.options.replay ?? 'effectful',
           ...(source === undefined ? {} : { source }),
+          ...(tier === undefined ? {} : { tier }),
         });
       }
     }

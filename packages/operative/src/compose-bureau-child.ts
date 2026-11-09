@@ -23,13 +23,14 @@ import type { RunOptions } from './types';
 
 /**
  * Wraps a child's agent so a run of it carries Bureau's invariants. The single
- * seam where a Bureau-owned parent's tier reaches a child; a later tier (a
- * plugin's) merges here too.
+ * seam where a Bureau-owned parent's tiers reach a child: Bureau's own, and the
+ * interceptor sets plugins apply to every agent (COR-2127).
  *
  * Refuses an agent with no `OPERATIVE_RESOLVE_RUN_OPTIONS` synchronously with an
  * `AgentContractError` that names it. Otherwise the returned agent resolves the
- * child's own options, merges Bureau's registry in front of the child's tier,
- * and starts the run itself, so it never goes through the agent's `run()`.
+ * child's own options, merges Bureau's and the plugin tier's registries in front
+ * of the child's tier, and starts the run itself, so it never goes through the
+ * agent's `run()`.
  *
  * @internal
  */
@@ -101,12 +102,18 @@ function startComposedRun<O, H extends boolean>(
   invariants: BureauChildInvariants,
   agentResolvesGuardrails: boolean,
 ): RunnableAgent<O, H> {
-  // Bureau first, so it wins `runFirst` and, being pinned last, still wins the waterfall. The
-  // factory is attached again so this child's own children inherit it, whatever its resolver did.
+  // Bureau first, so it wins `runFirst` and, being pinned last, still wins the waterfall; the
+  // plugin tier between it and the child's own. The factory is attached again so this child's own
+  // children inherit it, whatever its resolver did.
+  const tiers = invariants({ agentResolvesGuardrails });
   const merged: RunOptions = withBureauInvariants(
     {
       ...resolved,
-      hooks: mergeHookRegistries(invariants({ agentResolvesGuardrails }), resolved.hooks),
+      hooks: mergeHookRegistries({
+        bureau: tiers.bureau,
+        plugin: tiers.plugin,
+        agent: resolved.hooks,
+      }),
     },
     invariants,
   );
