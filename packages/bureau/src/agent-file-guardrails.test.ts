@@ -472,7 +472,7 @@ describe.each(['non-durable', 'durable'] as const)(
       });
     });
 
-    it('runs a plugin run hook set the agent lists, and not one it does not', async () => {
+    it('runs a plugin interceptor the agent lists, and not one it does not', async () => {
       await runFileAgent(dispatch, { interceptors: '[x:audit]' }, 'Hello', 'Hi there.');
       expect(stepsSeen).toEqual(['x:audit']);
 
@@ -508,7 +508,7 @@ describe('an id nothing contributes', () => {
     ]);
   });
 
-  it('makes an agent that lists an unknown run hook set invalid, and one with a version too', async () => {
+  it('makes an agent that lists an unknown interceptor invalid, and one with a version too', async () => {
     const listing = await problemOf({ interceptors: '[x:audit@1]' });
 
     expect(listing?.state).toBe('invalid');

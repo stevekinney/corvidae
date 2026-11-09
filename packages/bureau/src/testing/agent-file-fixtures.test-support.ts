@@ -53,7 +53,7 @@ export const summarizedTool = createTool({
   execute: async () => 'summary',
 });
 
-/** Two guardrails, `x:check` and `y:other`, and a run hook set, `x:audit`, for the tests that list them. */
+/** Two guardrails, `x:check` and `y:other`, and an interceptor, `x:audit`, for the tests that list them. */
 export const TEST_CONTRIBUTIONS = createAgentContributions([
   {
     plugin: 'x',

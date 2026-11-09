@@ -255,7 +255,7 @@ describe('plugin composition', () => {
     const twice = definePlugin({
       name: 'twice',
       version: '1.0.0',
-      description: 'Two run hook sets named alike.',
+      description: 'Two interceptors named alike.',
       setup: () => ({ interceptors: [{ name: 'audit' }, { name: 'audit' }] }),
     });
     const formatting = (name: string) =>

@@ -27,7 +27,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
-/** Plugin `p`: a mutating tool, a guardrail, a run hook set and a code agent. */
+/** Plugin `p`: a mutating tool, a guardrail, an interceptor and a code agent. */
 const plugin = definePlugin({
   name: 'p',
   version: '1.0.0',
