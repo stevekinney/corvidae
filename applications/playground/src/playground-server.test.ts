@@ -587,7 +587,7 @@ const testShellServerRenderer: NonNullable<
  * example's Svelte graph in a new `bun` process, about a second per component on an idle host
  * and over three under load, and this file renders seven components. Paid inside a route
  * test's 5-second budget, that compile timed tests out whenever other work loaded the host.
- * The real render is asserted in `featured-example-server-renderer.test.ts`; here a page only
+ * The real render is asserted in `featured-example-server-renderer.integration.test.ts`; here a page only
  * has to embed what the renderer returns.
  */
 const testFeaturedExampleRenderer: FeaturedExampleRenderer = async (componentName, scenario) => ({
@@ -1648,7 +1648,7 @@ describe('/page/:name', () => {
     expect(html).toContain('id="overview-mount-basic"');
     expect(html).toContain('data-overview-preview-rendered');
     // The stand-in's output, embedded in the overview mount. The real banner render, with its
-    // "Scheduled maintenance is planned" copy, is asserted in featured-example-server-renderer.test.ts.
+    // "Scheduled maintenance is planned" copy, is asserted in featured-example-server-renderer.integration.test.ts.
     expect(html).toContain(
       '<p data-test-featured-example="banner/basic">Featured banner/basic</p>',
     );

@@ -8,7 +8,7 @@
  * in step 1, writes the marker, and kills itself with SIGKILL. The parent then deletes one file,
  * rewrites the other, and boots a Bureau over the same store.
  *
- * Not a test file: it is spawned by `agent-file-crash.test.ts`.
+ * Not a test file: it is spawned by `agent-file-crash.integration.test.ts`.
  */
 import { publishChildFile } from './child-output-file';
 

@@ -12,7 +12,7 @@
  * `verify`, `relaunch-recover`, and `race-recover` are the exceptions: each is
  * a later boot over a store a crashed child left behind, and exits normally.
  *
- * Not a test file: it is spawned by `process-crash-recovery.test.ts`. Each
+ * Not a test file: it is spawned by `process-crash-recovery.integration.test.ts`. Each
  * scenario is a named function below; the `scenarios` table is the extension
  * point for further crash scenarios.
  */

@@ -19,7 +19,7 @@
  * `maintain(now)` reads it. With no claims to lapse, `'none'`
  * keeps the wall clock from deciding any outcome here.
  *
- * Not a test file: it is spawned by `invocation-driven-execution.test.ts`.
+ * Not a test file: it is spawned by `invocation-driven-execution.integration.test.ts`.
  */
 import { join } from 'node:path';
 

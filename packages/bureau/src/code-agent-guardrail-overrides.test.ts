@@ -2,7 +2,8 @@
  * COR-2118 — a built-in agent's `guardrails` override takes the same entries an agent file does: a
  * configured guardrail judges its runs with that configuration, a save that lists an id twice or
  * configures a guardrail in a way its schema refuses writes nothing and names the id or the field,
- * and a record stored with ids alone, or with an id repeated, still reads and applies.
+ * and a record stored with ids alone, or with an id repeated, under a version 1 or a version 2 key,
+ * still reads and applies.
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -13,7 +14,11 @@ import { z } from 'zod';
 
 import { createAgentContributions } from './agent-contributions';
 import { AgentFileError } from './agent-file';
-import { type AgentOverrides, agentOverrideVersionKey } from './agent-override-store';
+import {
+  type AgentOverrides,
+  agentOverrideVersionKey,
+  legacyAgentOverrideVersionKey,
+} from './agent-override-store';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { runTask } from './test';
 
@@ -117,26 +122,39 @@ describe('a built-in agent’s guardrails override', () => {
     ]);
   });
 
-  it('reads and applies a record stored with ids alone, one of them repeated', async () => {
-    const storage = new MemoryStorage();
-    await textValueStore(storage).set(
-      agentOverrideVersionKey('replier', 1),
-      JSON.stringify({
-        version: 1,
-        hash: 'e'.repeat(64),
-        savedAt: '2026-10-01T00:00:00.000Z',
-        savedBy: 'anonymous:local',
-        owner: 'anonymous:local',
-        overrides: { guardrails: ['x:limit', 'x:limit'] },
-        changedKeys: ['guardrails'],
-      }),
-    );
-    const harness = await start(storage);
+  it.each([
+    ['version 1', legacyAgentOverrideVersionKey, ['x:limit', 'x:limit']],
+    ['version 2', agentOverrideVersionKey, ['x:limit', 'x:limit']],
+    [
+      'version 2, configured',
+      agentOverrideVersionKey,
+      [{ id: 'x:limit', configuration: { maximum: 10 } }],
+    ],
+  ] as const)(
+    'reads and applies a %s record stored with its guardrails',
+    async (_, keyOf, guardrails) => {
+      const storage = new MemoryStorage();
+      await textValueStore(storage).set(
+        keyOf('replier', 1),
+        JSON.stringify({
+          version: 1,
+          hash: 'e'.repeat(64),
+          savedAt: '2026-10-01T00:00:00.000Z',
+          savedBy: 'anonymous:local',
+          owner: 'anonymous:local',
+          overrides: { guardrails },
+          changedKeys: ['guardrails'],
+        }),
+      );
+      const harness = await start(storage);
 
-    const stored = await harness.bureau.agents.overrides.get('replier');
-    expect(stored?.overrides).toEqual({ guardrails: ['x:limit', 'x:limit'] });
-    // The default maximum, 20, lets the 15-character reply through: the guardrail ran once.
-    const result = await runTask(harness.bureau, 'replier', 'Hi');
-    expect(result.finishReason).not.toBe('tripwire');
-  });
+      const stored = await harness.bureau.agents.overrides.get('replier');
+      expect(stored?.overrides).toEqual({ guardrails: [...guardrails] } as never);
+      // The default maximum, 20, lets the 15-character reply through and a configured 10 does not;
+      // an id repeated applies once.
+      const configured = typeof guardrails[0] !== 'string';
+      const result = await runTask(harness.bureau, 'replier', 'Hi');
+      expect(result.finishReason === 'tripwire').toBe(configured);
+    },
+  );
 });

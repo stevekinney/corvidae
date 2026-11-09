@@ -16,14 +16,16 @@ const crashedReport = `<?xml version="1.0" encoding="UTF-8"?>
   <testsuite name="src/a.test.ts" file="src/a.test.ts" tests="2" failures="0">
     <testcase name="fine" classname="a" time="0.1" file="src/a.test.ts" />
   </testsuite>
-  <testsuite name="src/session-input-crash-recovery.test.ts" tests="1" failures="1">
+  <testsuite name="src/session-input-crash-recovery.integration.test.ts" tests="1" failures="1">
     <testcase name="(worker crashed)"><failure message="worker process crashed before reporting results" /></testcase>
   </testsuite>
 </testsuites>`;
 
 describe('crashedWorkerFiles', () => {
   test('names the file whose worker crashed and no passing file', () => {
-    expect(crashedWorkerFiles(crashedReport)).toEqual(['src/session-input-crash-recovery.test.ts']);
+    expect(crashedWorkerFiles(crashedReport)).toEqual([
+      'src/session-input-crash-recovery.integration.test.ts',
+    ]);
   });
 
   test('decodes XML entities in the file name', () => {
@@ -50,7 +52,7 @@ describe('workerCrashMessage', () => {
     const message = workerCrashMessage('packages/bureau', [crashedReport], ['/x/bun-1.ips']);
     expect(message).toContain('packages/bureau: 1 test worker crashed');
     expect(message).toContain(
-      'worker crashed while running src/session-input-crash-recovery.test.ts',
+      'worker crashed while running src/session-input-crash-recovery.integration.test.ts',
     );
     expect(message).toContain('/x/bun-1.ips');
   });

@@ -7,14 +7,21 @@
  * selects the test files whose import graph reaches them (`affected-tests-selection.ts`), and runs
  * each workspace's own lanes through Turborepo:
  *
- * - A workspace selected whole (a fallback rule fired, or every test file was reached) runs
- *   `test:gate`, the unchanged lane that keeps its coverage floor.
+ * - A workspace selected whole (a fallback rule fired, or every test file was reached) runs its
+ *   whole `test` lane.
  * - A workspace selected in part runs `test` with `CORVIDAE_TEST_SELECTION` set, so its runner
- *   narrows to the selected files and no floor is judged on a partial file set.
+ *   narrows to the selected files.
  * - A workspace with nothing selected runs nothing.
  *
+ * This is the quick tier. It never runs `test:gate` or `test:coverage` (coverage floors are judged
+ * by `bun run validate`), and it never runs the serial isolated lanes (`test:slow`,
+ * `test:self:slow`), which hold the `*.slow.test.ts` and `*.integration.test.ts` files: tests that
+ * start a process or an out-of-process service, and so depend on how loaded the host is. The
+ * isolated lanes run, narrowed to the selection, only with `--isolated` or when a changed file is
+ * itself one of those tests, so editing one still runs it.
+ *
  * Usage:
- *   bun scripts/affected-tests.ts run [--base <rev>] [--changed <path>...]
+ *   bun scripts/affected-tests.ts run [--isolated] [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --explain [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --json [--base <rev>] [--changed <path>...]
  *
@@ -262,15 +269,28 @@ export interface Invocation {
   extra: string[];
 }
 
+/** The file suffixes of the isolated lanes, which the quick tier skips. */
+export const ISOLATED_SUFFIXES = ['.slow.test.ts', '.integration.test.ts'] as const;
+
+/** Whether a changed path is itself an isolated test, which the quick tier still runs. */
+export function touchesIsolatedTest(changed: readonly string[]): boolean {
+  return changed.some((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)));
+}
+
 /**
- * The turbo invocations that run a selection, fast lanes first, then the serial slow lanes.
+ * The turbo invocations that run a selection: the fast lanes, then, with `isolated`, the serial
+ * isolated lanes.
  *
- * Workspaces selected whole run `test:gate`, the lane that keeps their coverage floor; workspaces
- * selected in part run `test` narrowed by the manifest, which never measures coverage. The root
- * lanes (`test:self`, and the browser fixtures' `test:browser-fixtures`) always run narrowed, since
- * `--filter=//` is the one filter that reaches root tasks.
+ * Workspaces selected whole run their whole `test` lane; workspaces selected in part run `test`
+ * narrowed by the manifest. Neither measures coverage. The root lanes (`test:self`, and the browser
+ * fixtures' `test:browser-fixtures`) always run narrowed, since `--filter=//` is the one filter
+ * that reaches root tasks.
  */
-export function planInvocations(selection: Selection): Invocation[] {
+export function planInvocations(
+  selection: Selection,
+  options: { isolated?: boolean } = {},
+): Invocation[] {
+  const isolated = options.isolated === true;
   const packages = selection.workspaces.filter(
     (workspace) => workspace.runsFrom === 'workspace' && workspace.mode !== 'none',
   );
@@ -291,7 +311,7 @@ export function planInvocations(selection: Selection): Invocation[] {
   const fast: Invocation[] = [];
   const slow: Invocation[] = [];
   if (full.length > 0) {
-    fast.push({ tasks: ['test:gate'], filters: filters(full), narrowed: false, extra: [] });
+    fast.push({ tasks: ['test'], filters: filters(full), narrowed: false, extra: [] });
     slow.push({
       tasks: ['test:slow'],
       filters: filters(full),
@@ -327,11 +347,11 @@ export function planInvocations(selection: Selection): Invocation[] {
       extra: ['--concurrency=1'],
     });
   }
-  return [...fast, ...slow];
+  return isolated ? [...fast, ...slow] : fast;
 }
 
-async function run(root: string, selection: Selection): Promise<number> {
-  const plan = planInvocations(selection);
+async function run(root: string, selection: Selection, isolated: boolean): Promise<number> {
+  const plan = planInvocations(selection, { isolated });
   if (plan.length === 0) {
     console.log(
       'affected-tests: no test file is reachable from the changed files; nothing to run.',
@@ -356,13 +376,19 @@ async function run(root: string, selection: Selection): Promise<number> {
 // --- Command line ------------------------------------------------------------------------------
 
 function parseArguments(argumentsList: readonly string[]) {
-  const options = { command: 'run', base: null as string | null, changed: null as string[] | null };
+  const options = {
+    command: 'run',
+    base: null as string | null,
+    changed: null as string[] | null,
+    isolated: false,
+  };
   let mode: string | null = null;
   for (let index = 0; index < argumentsList.length; index += 1) {
     const token = argumentsList[index] as string;
     if (token === 'run') mode = 'run';
     else if (token === '--explain') mode = 'explain';
     else if (token === '--json') mode = 'json';
+    else if (token === '--isolated') options.isolated = true;
     else if (token === '--base') options.base = argumentsList[++index] ?? null;
     else if (token === '--changed') {
       options.changed = [];
@@ -403,8 +429,14 @@ async function main(): Promise<number> {
     console.log(explain(selection, changed));
     return 0;
   }
+  const isolated = options.isolated || touchesIsolatedTest(changed);
   console.log(explain(selection, changed));
-  return run(root, selection);
+  console.log(
+    isolated
+      ? '\naffected-tests: running the isolated lanes too (--isolated, or a changed file is a slow or integration test).'
+      : '\naffected-tests: quick tier; the isolated lanes (*.slow.test.ts, *.integration.test.ts) run in bun run validate, or here with --isolated.',
+  );
+  return run(root, selection, isolated);
 }
 
 if (import.meta.main) process.exitCode = await main();

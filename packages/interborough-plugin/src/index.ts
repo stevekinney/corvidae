@@ -12,6 +12,8 @@ export type {
   PluginInputGuardrail,
   PluginInputGuardrailEntry,
   PluginInterceptor,
+  PluginInterceptorHook,
+  PluginInterceptorHookOptions,
   PluginMemoryGate,
   PluginMemoryGuardrail,
   PluginOutputGuardrail,

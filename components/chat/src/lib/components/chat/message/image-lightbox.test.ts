@@ -249,7 +249,7 @@ describe('image-lightbox source contract — Modal composition', () => {
     // Per OVERLAY-POLICY.md's SSR rule, this seeding does not put any dialog
     // markup into server HTML either way — Modal's own `{#if mounted}` gate
     // keeps its overlay surface SSR-empty regardless; see
-    // image-lightbox.ssr.test.ts for the executable proof of that contract.
+    // image-lightbox.ssr.integration.test.ts for the executable proof of that contract.
     expect(source).toContain(
       'let hasOpenedOnce = $state(open && untrack(() => images.length) > 0);',
     );

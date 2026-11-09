@@ -2,7 +2,7 @@
  * COR-1283: `createNeonTestProxy`'s non-upgrade-request path, plus the
  * destination-socket error path inside its WebSocket `open` handler. The
  * live-driver proxy's successful forwarding round trip is only exercised by
- * `neon-live.test.ts`, which is `describe.skipIf`'d whenever no real
+ * `neon-live.integration.test.ts`, which is `describe.skipIf`'d whenever no real
  * Postgres endpoint is available — these standalone tests need no live
  * database, so they always run.
  */

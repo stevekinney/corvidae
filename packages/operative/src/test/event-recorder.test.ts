@@ -165,7 +165,7 @@ describe('EventRecorder', () => {
 
     it('produces a byte-identical conversation id in the terminal RunResult across two independently constructed manual runtimes with the same seeds (AB-321)', async () => {
       // AB-263's own reproduction-artifact test (`packages/bureau/src/test/
-      // reproduction-artifact.test.ts`) documented this exact gap:
+      // reproduction-artifact.integration.test.ts`) documented this exact gap:
       // conversationalist's `randomId` environment seam was not wired to
       // AB-92's `RuntimeServices`, so `run.result().conversation`'s id
       // differed run to run even under two identically-seeded manual

@@ -13,7 +13,8 @@
     "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
     "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
-    "test": "bun ../../scripts/bun-test-junit.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:slow": "bun ../../scripts/bun-test-selected.ts --parallel=1 .slow.test.ts .integration.test.ts",
     "test:coverage": "bun ../../scripts/bun-test.ts --coverage --coverage-reporter=text --coverage-reporter=lcov"
   },
   "dependencies": {

@@ -2,7 +2,7 @@
  * COR-1391 — the configuration the work-integrity crash scenarios share.
  *
  * The child (`process-crash-child.ts`) and the parent test
- * (`process-crash-work-integrity.test.ts`) must build the same durable Bureau,
+ * (`process-crash-work-integrity.integration.test.ts`) must build the same durable Bureau,
  * the same idempotent toolbox and the same governed memory over the same
  * sidecar files, or a recovery would not be a recovery of the child's work.
  * Both import this module so there is one definition of each.

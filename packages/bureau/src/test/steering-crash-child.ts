@@ -22,7 +22,7 @@
  * Either way the marker records the session id, its incarnation, and every
  * outcome.
  *
- * Not a test file: it is spawned by `steering-crash-recovery.test.ts`.
+ * Not a test file: it is spawned by `steering-crash-recovery.integration.test.ts`.
  */
 import { publishChildFile } from './child-output-file';
 

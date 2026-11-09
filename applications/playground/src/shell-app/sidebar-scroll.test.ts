@@ -50,7 +50,7 @@ function installSessionStorage(stub: SessionStorageStub | undefined): void {
  * `jest.useFakeTimers()` monkey-patches the process-global timer functions,
  * and the suite runs `--parallel=1` in one shared process, so every caller
  * must save and restore all four globals — mirroring
- * `tooltip.test.ts`'s `triggerDelayedTooltipShow` — or a leftover fake timer
+ * `tooltip.integration.test.ts`'s `triggerDelayedTooltipShow` — or a leftover fake timer
  * breaks every later test file's real timers.
  */
 async function withFakeTimers(run: () => void | Promise<void>): Promise<void> {

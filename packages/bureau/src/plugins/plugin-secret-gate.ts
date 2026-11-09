@@ -24,7 +24,9 @@
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run contains the refusal as it contains any detector's or validator's error, so the guardrail finds nothing and the input, reply or call it would judge goes on (COR-2104) | works | refuses |
  * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run contains the refusal and goes on (COR-2118) | works | refuses |
- * | interceptor (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
+ * | interceptor, a point Operative runs through its hook registry (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `selectTools`, `validateResponse`, `validateToolResult`, the compaction points, `selectToolChoice`, `beforeGenerate`, `afterGenerate`, `onRunStart`) | refuses; the step or the run fails with the refusal, so an agent file that lists the interceptor cannot run | works | refuses |
+ * | interceptor, an observing point (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) | refuses; Operative settles these handlers and discards a failure, so the run's own outcome and error stand and the plugin's handler does not run | works | refuses |
+ * | interceptor, `onError` | refuses; Operative catches a failing recovery hook and the original error propagates, so the handler does not run. One `try` wraps the loop over the recovery handlers, so the refusal also skips every lower-priority `onError` handler of the run, whatever any `onError` option says | works | refuses |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
@@ -33,6 +35,10 @@
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
  * | provider, panel | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for a panel, which the host serves as a static page from `bureau.plugins.panels()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
+ *
+ * An interceptor's hook written as `{ handler, replay, onError, priority }` is gated as the bare
+ * function is: its `handler` refuses, and the fields beside it are kept, so a plugin's own
+ * `onError: () => 'continue'` also swallows the refusal. The handler does not run either way.
  *
  * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
  * receives needs no secret.
@@ -57,6 +63,7 @@ import {
 } from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
 
+import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import type { BureauPluginSecrets } from './plugin-types';
 
 /**
@@ -227,26 +234,22 @@ function gatedInterceptor(
   contribution: string,
   interceptor: PluginInterceptor,
 ): PluginInterceptor {
-  const { prepareStep, beforeToolExecution, afterToolExecution, onStep, validateResponse } =
-    interceptor;
-  return {
-    ...interceptor,
-    ...(prepareStep === undefined
-      ? {}
-      : { prepareStep: gated(gate, contribution, prepareStep.bind(interceptor)) }),
-    ...(beforeToolExecution === undefined
-      ? {}
-      : { beforeToolExecution: gated(gate, contribution, beforeToolExecution.bind(interceptor)) }),
-    ...(afterToolExecution === undefined
-      ? {}
-      : { afterToolExecution: gated(gate, contribution, afterToolExecution.bind(interceptor)) }),
-    ...(onStep === undefined
-      ? {}
-      : { onStep: gated(gate, contribution, onStep.bind(interceptor)) }),
-    ...(validateResponse === undefined
-      ? {}
-      : { validateResponse: gated(gate, contribution, validateResponse.bind(interceptor)) }),
-  };
+  const gatedPoints: Record<string, unknown> = {};
+  for (const point of INTERCEPTOR_POINTS) {
+    const hook = interceptor[point];
+    if (hook === undefined) continue;
+    // Either written form: a function, or `{ handler, replay, onError, priority }`, whose handler
+    // is gated and whose other fields are kept, so the gate does not change how the hook sorts,
+    // replays or handles an error.
+    const gatedHandler = (handler: (...args: never[]) => unknown) =>
+      gated(gate, contribution, (handler as (...args: unknown[]) => unknown).bind(interceptor));
+    gatedPoints[point] =
+      typeof hook === 'function'
+        ? gatedHandler(hook)
+        : { ...hook, handler: gatedHandler(hook.handler) };
+  }
+  // Each point's gated handler keeps the signature of the one it wraps.
+  return { ...interceptor, ...gatedPoints };
 }
 
 /**

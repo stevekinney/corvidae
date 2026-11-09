@@ -99,7 +99,11 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
   ),
   kept(
     'bureau-agent-override-version:v1:',
-    'a built-in agent’s saved overrides and their versions, not a chat’s',
+    'a built-in agent’s saved overrides and their versions in the first format, which is read and no longer written, not a chat’s',
+  ),
+  kept(
+    'bureau-agent-override-version:v2:',
+    'a code agent’s saved overrides and their versions (a built-in agent’s, or a running plugin’s), not a chat’s',
   ),
   kept('bureau-agent-revision:v1:', 'an agent’s definition history, not a chat’s'),
   contentFree('bureau-agent-run:v1:', 'the hash of the definition a run started with'),

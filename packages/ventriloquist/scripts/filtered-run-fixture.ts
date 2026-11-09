@@ -10,7 +10,7 @@ import {
 import { shellProfile } from '../src/bun/fixtures/bun-pipe-stdin.ts';
 
 /**
- * Run by `filtered-run.test.ts` with a test-name filter, never by the default gate (its name is not a
+ * Run by `filtered-run.integration.test.ts` with a test-name filter, never by the default gate (its name is not a
  * test file's). The second scenario starts a process whose command carries a token only the run
  * that started it knows, then stays busy; the filter selects only the first test, and the run must
  * still not end until the second scenario has finished and cleaned up.

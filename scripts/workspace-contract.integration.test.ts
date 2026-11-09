@@ -618,7 +618,8 @@ describe('internal workspace architecture', () => {
     // parents that are absent.
     const offending: string[] = [];
     for await (const path of new Bun.Glob('scripts/**/*.ts').scan({ cwd: root })) {
-      if (path.includes('node_modules') || path.endsWith('workspace-contract.test.ts')) continue;
+      if (path.includes('node_modules') || path.endsWith('workspace-contract.integration.test.ts'))
+        continue;
       const source = await Bun.file(join(root, path)).text();
       // A glob over the directories matches nothing in a missing one; only a directory walk fails.
       if (source.includes('directoryGlob(')) continue;

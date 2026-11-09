@@ -1,5 +1,5 @@
 /**
- * A stand-in for the host, run by `supervisor.test.ts` under the real supervisor. Each start
+ * A stand-in for the host, run by `supervisor.integration.test.ts` under the real supervisor. Each start
  * appends a line to the log named by the first argument. With `exit` and a list of codes it exits
  * with the next code of the list on each start (the last one repeats). With `wait` it writes the
  * file named by the second argument once its signal handler is installed, then waits: SIGINT or SIGTERM ends

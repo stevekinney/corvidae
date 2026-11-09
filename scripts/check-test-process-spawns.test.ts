@@ -6,7 +6,9 @@ import ts from 'typescript';
 
 import {
   findDirectSpawns,
+  findFastLaneSpawn,
   findTestProcessSpawnViolations,
+  isIsolatedTestFile,
   resolveSpecifier,
 } from './check-test-process-spawns';
 
@@ -298,5 +300,69 @@ describe('direct process API calls in a test file', () => {
         "import { runWithHangGuard } from '@lostgradient/testing/hang-guard';\ntest('x', async () => { await runWithHangGuard(['git']); });",
       ),
     ).toHaveLength(1);
+  });
+});
+
+describe('the isolation rule: no process in a fast-lane test file', () => {
+  const fastLane = (fileName: string, source: string) =>
+    findFastLaneSpawn(
+      ts.createSourceFile(join(tmpdir(), fileName), source, ts.ScriptTarget.Latest, true),
+    );
+
+  test('reports a process started anywhere in a *.test.ts file, module scope included', () => {
+    for (const source of [
+      "const result = await Bun.spawn(['git', 'init']).exited;\nit('x', () => {});",
+      "function boot() { return Bun.spawnSync(['bun', '-e', '1']); }\nconst child = boot();\nit('x', () => {});",
+      "it('x', () => { Bun.spawnSync(['ls']); });",
+    ]) {
+      expect(fastLane('fixture.test.ts', source)?.text).toContain(
+        'rename the file to *.integration.test.ts',
+      );
+    }
+  });
+
+  test('leaves the isolated lane alone, whatever it starts', () => {
+    const source = "const result = await Bun.spawn(['git', 'init']).exited;";
+    expect(fastLane('fixture.integration.test.ts', source)).toBeNull();
+    expect(fastLane('fixture.slow.test.ts', source)).toBeNull();
+    expect(isIsolatedTestFile('a/b.integration.test.ts')).toBe(true);
+    expect(isIsolatedTestFile('a/b.test.ts')).toBe(false);
+  });
+
+  test('accepts a helper whose spawner a test stubs, under a spawn-free marker', () => {
+    expect(
+      fastLane(
+        'fixture.test.ts',
+        "function run(spawner = Bun.spawnSync) { return spawner(['ls']); }\n// spawn-free: an injected stub replaces the real spawner here.\nit('x', () => { run(); });",
+      ),
+    ).toBeNull();
+  });
+
+  test('a spawn-free marker never excuses a process API written in the test itself', () => {
+    expect(
+      fastLane(
+        'fixture.test.ts',
+        "// spawn-free: an injected stub replaces the real spawner here.\nit('x', () => { Bun.spawnSync(['ls']); });",
+      ),
+    ).not.toBeNull();
+  });
+
+  test('follows a spawning helper imported from another module', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'check-test-process-spawns-'));
+    try {
+      writeFileSync(
+        join(directory, 'helper.ts'),
+        "export function startServer() { return Bun.spawn(['bun', 'server.ts']); }\n",
+      );
+      const fileName = join(directory, 'server.test.ts');
+      const source =
+        "import { startServer } from './helper.ts';\nconst server = startServer();\nit('x', () => {});";
+      writeFileSync(fileName, source);
+      expect(
+        findFastLaneSpawn(ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true)),
+      ).not.toBeNull();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

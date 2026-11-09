@@ -1,6 +1,6 @@
 /**
  * AB-359, COR-1767 — the child half of the LMDB "event history run ownership survives a process
- * restart" test (`event-history-run-ownership-recovery-lmdb.test.ts`).
+ * restart" test (`event-history-run-ownership-recovery-lmdb.integration.test.ts`).
  *
  * Stands up a real durable Bureau over the LMDB directory given as `argv[2]`, starts one run as
  * principal `alice`, and waits until its model is asked for step 1, which proves step 0 is
@@ -11,7 +11,7 @@
  * It constructs its own `LMDBStorage` on the path its parent passes, as every crash child does; the
  * handle is released when the process is killed.
  *
- * Not a test file: it is spawned by `event-history-run-ownership-recovery-lmdb.test.ts`.
+ * Not a test file: it is spawned by `event-history-run-ownership-recovery-lmdb.integration.test.ts`.
  */
 import { publishChildFile } from './child-output-file';
 

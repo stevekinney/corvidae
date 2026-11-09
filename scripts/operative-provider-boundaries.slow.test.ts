@@ -27,7 +27,7 @@ const taskIds = ['@lostgradient/operative#test', '@lostgradient/bureau#test'] as
 
 async function run(directory: string, command: string[], extraEnvironment = {}): Promise<string> {
   // Every inherited `TURBO_*` variable goes (`TURBO_FORCE`, remote-cache settings, a cache
-  // directory), as in `task-cache.test.ts`: the copy gets its own local cache by flag.
+  // directory), as in `task-cache.integration.test.ts`: the copy gets its own local cache by flag.
   const environment: Record<string, string | undefined> = { ...process.env, ...extraEnvironment };
   for (const key of Object.keys(environment)) {
     if (key.startsWith('TURBO_')) delete environment[key];

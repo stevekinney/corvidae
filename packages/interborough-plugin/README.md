@@ -93,7 +93,7 @@ The descriptor's members:
 | `activities` | Activities a shipped workflow calls as `plugin:name`. |
 | `validators` | Goal validators, registered by name and version. |
 | `guardrails` | `input` detectors and `output` validators, added to the ones Operative applies to every agent, `tools` validators that judge each tool call before it runs (COR-2104), and `memory` detectors that guard governed memory (each may declare `gates`: `admission`, `recall`, or both by default). An `input` or `output` entry may be `{ guardrail, action }` to keep an action of its own whatever its group's, and a `tools` validator carries its own `action` (`block`, `warn` or `tripwire`). An agent file chooses an `input`, `output` or `tools` guardrail with `guardrails: [plugin:name]`. Every guardrail has a non-empty `description`. An `input`, `output` or `tools` guardrail may instead be a `PluginGuardrailFactory` (COR-2118): `{ name, description, configuration, create }`, where `configuration` is the Zod schema an agent's configuration is parsed with and `create` builds the guardrail from the parsed value. An agent file configures it as `{ id: plugin:name, configuration }` (a bare id is configured with `{}`), each agent gets its own guardrail, and a field the agent leaves out takes the schema's default, so a plugin-wide setting belongs in the schema as that field's `.default(...)`. A factory wrapped as `{ guardrail: factory, action }` gives every guardrail it builds that action. |
-| `interceptors` | Run hooks an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
+| `interceptors` | Run hooks, at any of Operative's hook points, that an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them. |
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
 | `triggers` | New external sources that start work. |
 | `reactions` | New things a hook can do when its event happens. |
@@ -151,6 +151,35 @@ export default definePlugin({
         name: 'completed',
         eventKinds: ['run.completed'],
         format: (event) => ({ title: `A run completed on ${event.bureauId}` }),
+      },
+    ],
+  }),
+});
+```
+
+An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, and a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
+
+```ts
+import { definePlugin } from '@lostgradient/interborough-plugin';
+
+export default definePlugin({
+  name: 'watcher',
+  version: '1.0.0',
+  description: 'Notes failed runs and replaces tool results that name a secret.',
+  setup: () => ({
+    interceptors: [
+      {
+        name: 'audit',
+        onRunError: async ({ error }) => {
+          console.error('A run failed', error);
+        },
+        validateToolResult: {
+          handler: async (result) =>
+            String(result.result).includes('sk-') ? { ...result, result: '[redacted]' } : undefined,
+          replay: 'safe',
+          onError: () => 'continue',
+          priority: 10,
+        },
       },
     ],
   }),

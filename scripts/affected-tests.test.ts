@@ -20,7 +20,12 @@ import {
   writeManifest,
 } from './affected-tests-manifest.ts';
 import { selectTests, type Selection } from './affected-tests-selection.ts';
-import { discoverWorkspaces, explain, planInvocations } from './affected-tests.ts';
+import {
+  discoverWorkspaces,
+  explain,
+  planInvocations,
+  touchesIsolatedTest,
+} from './affected-tests.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -552,17 +557,18 @@ describe('selection modes and reporting', () => {
 });
 
 describe('invocation plan and manifest', () => {
-  function plan(files: Record<string, string>, changed: string[]) {
-    return planInvocations(select(files, changed).selection);
+  function plan(files: Record<string, string>, changed: string[], isolated = false) {
+    return planInvocations(select(files, changed).selection, { isolated });
   }
 
-  test('a whole workspace runs test:gate, which keeps its coverage floor', () => {
+  test('a whole workspace runs its whole test lane, never the coverage gate', () => {
     const steps = plan(baseFiles, ['packages/gamma/src/index.ts']);
     expect(steps[0]).toMatchObject({
-      tasks: ['test:gate'],
+      tasks: ['test'],
       filters: ['--filter=@scope/gamma'],
       narrowed: false,
     });
+    expect(steps.flatMap((step) => step.tasks)).not.toContain('test:gate');
   });
 
   test('a partial workspace runs the narrowed test lane, never the coverage lane', () => {
@@ -576,8 +582,20 @@ describe('invocation plan and manifest', () => {
     expect(steps.flatMap((step) => step.tasks)).not.toContain('test:coverage');
   });
 
-  test('the slow lanes follow the fast lanes, serially', () => {
-    const steps = plan(baseFiles, ['packages/alpha/src/extra.ts']);
+  test('the quick tier runs no isolated lane', () => {
+    const tasks = plan(baseFiles, ['packages/alpha/src/extra.ts']).flatMap((step) => step.tasks);
+    expect(tasks).not.toContain('test:slow');
+    expect(tasks).not.toContain('test:self:slow');
+  });
+
+  test('a changed slow or integration test is the one reason the quick tier runs them', () => {
+    expect(touchesIsolatedTest(['packages/alpha/src/extra.ts'])).toBe(false);
+    expect(touchesIsolatedTest(['packages/alpha/src/run.integration.test.ts'])).toBe(true);
+    expect(touchesIsolatedTest(['scripts/tool.slow.test.ts'])).toBe(true);
+  });
+
+  test('with the isolated lanes, they follow the fast lanes, serially', () => {
+    const steps = plan(baseFiles, ['packages/alpha/src/extra.ts'], true);
     const slow = steps.filter((step) => step.tasks.includes('test:slow'));
     expect(slow.length).toBeGreaterThan(0);
     for (const step of slow) expect(step.extra).toEqual(['--concurrency=1']);
@@ -594,7 +612,7 @@ describe('invocation plan and manifest', () => {
       'scripts/tool.ts': 'export const tool = 1;\n',
       'scripts/tool.test.ts': "import { tool } from './tool.ts';\nvoid tool;\n",
     };
-    const steps = plan(files, ['scripts/tool.ts']);
+    const steps = plan(files, ['scripts/tool.ts'], true);
     expect(steps).toContainEqual({
       tasks: ['test:self'],
       filters: ['--filter=//'],
@@ -701,10 +719,14 @@ describe('narrowing `bun test` arguments', () => {
     const manifest = (await Bun.file(join(directory, 'package.json')).json()) as {
       scripts: Record<string, string>;
     };
-    expect(manifest.scripts['test:slow']).toBe(
-      'bun ../../scripts/bun-test-selected.ts .slow.test.ts',
-    );
-    expect(narrowBunTestArguments(['.slow.test.ts'], [file], directory)).toEqual([`./${file}`]);
+    // The lane runs twice: host and scripts files plainly, then UI files under the UI config. The
+    // host run ignores only the UI directories, so this `src/host` file stays in it.
+    const [hostRun] = manifest.scripts['test:slow']!.split(' && ');
+    expect(hostRun).toStartWith('bun ../../scripts/bun-test-selected.ts ');
+    expect(hostRun).not.toContain("'src/host/**'");
+    expect(
+      narrowBunTestArguments(['.slow.test.ts', '.integration.test.ts'], [file], directory),
+    ).toEqual([`./${file}`]);
   });
 
   test('a whole-workspace selection leaves the arguments as they are', () => {
@@ -744,7 +766,12 @@ describe('the repository itself', () => {
           );
           const { roots } = splitBunTestArguments(tokens.slice(wrapperIndex + 1));
           for (const lane of roots) {
-            if (lane.startsWith('--') || lane === '.slow.test.ts') continue;
+            if (
+              lane.startsWith('--') ||
+              lane === '.slow.test.ts' ||
+              lane === '.integration.test.ts'
+            )
+              continue;
             expect(existsSync(join(root, entry.directory, lane)), `${entry.name}: ${lane}`).toBe(
               true,
             );

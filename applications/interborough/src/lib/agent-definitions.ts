@@ -413,10 +413,10 @@ export async function getAgentDefinition(id: string, options?: Options): Promise
 }
 
 /**
- * The model a person chose for a built-in agent, as `provider/model`, or `null` when the agent keeps
- * its own. A built-in agent's definition does not name the model while no provider serves it, so
- * this is how a schedule learns the agent needs one. An identifier that is no built-in agent is a
- * `NotFound` fault.
+ * The model a person chose for a code agent (a built-in agent, or a running plugin's), as
+ * `provider/model`, or `null` when the agent keeps its own. A code agent's definition does not name
+ * the model while no provider serves it, so this is how a schedule learns the agent needs one. An
+ * identifier that is no code agent the catalog runs is a `NotFound` fault.
  */
 export async function getAgentOverrideModel(id: string, options?: Options): Promise<string | null> {
   const answer = z

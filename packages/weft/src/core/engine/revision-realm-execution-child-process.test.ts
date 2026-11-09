@@ -6,8 +6,8 @@
  * ordinary `engine.start()`/`engine.signal()` calls, with
  * `RevisionRealmConfig.transport: 'child-process'` selected per revision.
  * Registry-level and primitive-level proofs for the child-process adapter
- * itself already exist in `child-process-realm.test.ts` and
- * `realm-conformance.test.ts`; this file proves the SAME guarantees are
+ * itself already exist in `child-process-realm.integration.test.ts` and
+ * `realm-conformance.integration.test.ts`; this file proves the SAME guarantees are
  * reachable through the engine, exactly mirroring R2E's own scope statement
  * for the Worker transport.
  *

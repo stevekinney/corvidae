@@ -402,3 +402,52 @@ describe('a built-in agent’s override versions (COR-2009)', () => {
     expect(version?.savedAt).toBe('2026-11-02T15:00:00.000Z');
   });
 });
+
+describe('which agents take overrides (COR-2228)', () => {
+  const unavailable = { code: 'plugin-disabled' as const, message: 'Plugin Demo is disabled' };
+  const catalog = () =>
+    createAgentCatalog(
+      { writer: agent('writer'), 'demo:echo': agent('echo') },
+      {
+        unavailable: [
+          { id: 'demo:release-helper', plugin: 'demo', agent: agent('release'), unavailable },
+        ],
+      },
+    );
+
+  it('holds the built-in agents and the running plugins’, and not a disabled plugin’s', async () => {
+    const { overrides } = catalog();
+    expect(overrides.isCodeAgent('writer')).toBe(true);
+    expect(overrides.isCodeAgent('demo:echo')).toBe(true);
+    expect(overrides.isCodeAgent('demo:release-helper')).toBe(false);
+    expect(overrides.ownTools('demo:echo')).toEqual([]);
+
+    const { hash } = (await overrides.get('demo:echo'))!;
+    expect(
+      await overrides.save('demo:echo', { limits: { steps: 5 } }, { expectedHash: hash }),
+    ).toMatchObject({ id: 'demo:echo', version: 1 });
+  });
+
+  it('refuses a disabled plugin’s agent as unavailable and writes nothing', async () => {
+    const { overrides } = catalog();
+    const saved = overrides.save(
+      'demo:release-helper',
+      { limits: { steps: 5 } },
+      { expectedHash: 'x' },
+    );
+    expect(await saved.catch((error: unknown) => error)).toMatchObject({
+      code: 'agent-unavailable',
+    });
+    expect(await overrides.versions('demo:release-helper')).toEqual([]);
+  });
+
+  it('refuses a code agent with no definition resolver as not overridable', async () => {
+    const bare = { name: 'bare', run: () => undefined } as never;
+    const { overrides } = createAgentCatalog({ bare });
+    const saved = overrides.save('bare', { limits: { steps: 5 } }, { expectedHash: 'x' });
+    expect(await saved.catch((error: unknown) => error)).toMatchObject({
+      code: 'agent-not-overridable',
+    });
+    expect(await overrides.versions('bare')).toEqual([]);
+  });
+});

@@ -13,7 +13,7 @@
  *    finds no running workflow and no unresolved idempotency attempt.
  *
  * The one real-time wait is the claim-lapse wait, derived from the claim TTL as
- * in `process-crash-recovery.test.ts`. Every other wait is `child.exited`, a
+ * in `process-crash-recovery.integration.test.ts`. Every other wait is `child.exited`, a
  * marker file, or a bounded condition poll with a tiny real delay (LMDB's
  * completion callbacks starve under a zero-delay macrotask loop).
  */

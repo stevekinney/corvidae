@@ -2,7 +2,7 @@
  * Fixture for the "Turso's driver import is deferred, not just moved"
  * subprocess gate.
  *
- * Run by `turso-driver-deferred.test.ts`, once per package entry (`./index.ts` or `./web.ts`, passed
+ * Run by `turso-driver-deferred.integration.test.ts`, once per package entry (`./index.ts` or `./web.ts`, passed
  * as the first argument), inside the sandbox
  * `turso-driver-sandbox.test-support.ts` builds, where `@libsql/client` is not installed.
  * Constructing `TursoStorage` must not need `@libsql/client`; only its first

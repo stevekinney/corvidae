@@ -3,7 +3,7 @@
  *
  * Spawns a REAL `bun --watch <entrypoint>` subprocess -- not a manual
  * SIGKILL-and-respawn (`spawnServerSubprocess`/`killAndReboot`'s own
- * scenario in `remote-worker-reconnection.test.ts`) -- durably starts a
+ * scenario in `remote-worker-reconnection.integration.test.ts`) -- durably starts a
  * workflow that parks on `ctx.waitForSignal`, then edits a file the
  * entrypoint imports so `bun --watch` itself detects the change and
  * reloads the process. Empirically confirmed against Bun 1.4.2 before
@@ -21,7 +21,7 @@
  *
  * Ordering is proven by markers this test polls for in the subprocess's
  * accumulated stdout (`waitForMarker`, mirroring
- * `remote-worker-reconnection.test.ts`'s own `waitForTestDispatchUrl`
+ * `remote-worker-reconnection.integration.test.ts`'s own `waitForTestDispatchUrl`
  * pattern) and by polling the real HTTP API for the workflow's terminal
  * state -- never a fixed sleep standing in for either transition.
  *

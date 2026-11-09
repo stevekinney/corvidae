@@ -6,7 +6,7 @@
  * The chat surface renders message bodies through `markdown-preview.svelte`,
  * which is where `@lostgradient/markdown`'s rendering pipeline (shiki/rehype/katex)
  * enters the component tree. That pipeline is SSR-safe at module-evaluation
- * time (see `packages/markdown/src/ssr-import.test.ts`), so the only remaining
+ * time (see `packages/markdown/src/ssr-import.integration.test.ts`), so the only remaining
  * SSR concern is that the *runtime* render — which calls
  * `renderMarkdownWithMath` and touches the DOM via `{@html}` — must not run on
  * the server.
@@ -28,7 +28,7 @@
  * Its only heavy dependency is reached through the cached loader inside an
  * `$effect`, which never runs during SSR. We therefore verify the SSR contract by
  * actually rendering on the server via `renderThenHydrate` and asserting on the
- * produced markup, the same pattern `portal.test.ts` uses for its SSR-omission
+ * produced markup, the same pattern `portal.integration.test.ts` uses for its SSR-omission
  * contract.
  */
 

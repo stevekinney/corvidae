@@ -3,7 +3,7 @@
 // contract is told at compile time. `PluginContributions` has no index signature, so an unknown key
 // is an excess-property error.
 
-import type { OutputValidator, ToolCallValidator } from '@lostgradient/operative';
+import type { OperativeHookMap, OutputValidator, ToolCallValidator } from '@lostgradient/operative';
 import type { InputDetector } from 'armorer';
 import { z } from 'zod';
 
@@ -14,6 +14,7 @@ import type {
   PluginGuardrailFactory,
   PluginGuardrails,
   PluginInputGuardrail,
+  PluginInterceptor,
   PluginMemoryGuardrail,
   PluginOutputGuardrail,
   PluginPanel,
@@ -65,6 +66,31 @@ export const renamedAgents: PluginContributions = { agents: [agent] };
 
 // @ts-expect-error -- `codeAgents` was renamed `agents`
 export const staleCodeAgents: PluginContributions = { codeAgents: [agent] };
+
+// Type-level tripwire (COR-2125): `PluginInterceptor` has one member for every point of Operative's
+// hook map and no other, so a point added to the map cannot be left out of the contract again.
+// `OperativeHookMap` inherits an index signature from `HookMap`, which makes `keyof` of it
+// `string | number`; the mapped type below keeps only the keys it declares.
+type DeclaredHookPoints = keyof {
+  [
+    K in keyof OperativeHookMap as string extends K ? never : number extends K ? never : K
+  ]: OperativeHookMap[K];
+};
+type InterceptorPoints = Exclude<keyof PluginInterceptor, 'name'>;
+
+/** Resolves to `true` only when `A` and `B` are the same union of keys. */
+type SameKeys<A extends PropertyKey, B extends PropertyKey> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : { missingFromFirst: Exclude<B, A> }
+  : { missingFromSecond: Exclude<A, B> };
+
+export const everyHookPointIsExposed: SameKeys<InterceptorPoints, DeclaredHookPoints> = true;
+
+// The control: the comparison fails for a map that has a key the interceptor lacks.
+type PointsWithANewOne = DeclaredHookPoints | 'extraPoint';
+// @ts-expect-error -- `extraPoint` is not a member of `PluginInterceptor`
+export const aMissingPointIsCaught: SameKeys<InterceptorPoints, PointsWithANewOne> = true;
 
 declare const detector: PluginInputGuardrail;
 declare const validator: PluginOutputGuardrail;

@@ -1,7 +1,7 @@
 /**
  * `weft.conformance.targets` / `weft.conformance.report` — the server-side
- * counterpart of `cli/cli-conformance.test.ts` and
- * `cli/conformance-command.test.ts` (COR-1365).
+ * counterpart of `cli/cli-conformance.integration.test.ts` and
+ * `cli/conformance-command.integration.test.ts` (COR-1365).
  *
  * The passing and failing runs here spawn the same worker fixtures those
  * suites do, through the same `runConformanceReport`, so a fixture that

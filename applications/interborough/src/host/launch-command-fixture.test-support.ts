@@ -1,5 +1,5 @@
 /**
- * A stand-in host for `supervisor.test.ts`: it writes the launch command the supervisor handed it
+ * A stand-in host for `supervisor.integration.test.ts`: it writes the launch command the supervisor handed it
  * (`INTERBOROUGH_LAUNCH_COMMAND` and `INTERBOROUGH_LAUNCH_DIRECTORY`) as JSON to the file
  * `INTERBOROUGH_LAUNCH_FIXTURE_OUTPUT` names, then exits 0, which ends the supervisor.
  */

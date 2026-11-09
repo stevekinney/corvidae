@@ -18,7 +18,7 @@
  * `revision-realm.ts`'s module doc for why it does not implement
  * `RevisionRealm`. `wrapFakeRealm`/`wrapWorkerRealm`/`wrapChildProcessRealm`
  * (each adapter's own `*.conformance-harness.ts` — see
- * `realm-conformance.test.ts`) are what bridge each one to the uniform
+ * `realm-conformance.integration.test.ts`) are what bridge each one to the uniform
  * {@link ConformanceRealm} surface this suite is written against; this
  * module knows nothing about any concrete adapter class.
  *
@@ -27,7 +27,7 @@
  * no analogous "the realm's own user code threw" concept distinct from a
  * host-side refusal, so there is nothing for all three to agree on there.
  * Each real adapter's own dedicated test file (`worker-realm.test.ts`,
- * `child-process-realm.test.ts`) already proves that scenario individually.
+ * `child-process-realm.integration.test.ts`) already proves that scenario individually.
  *
  * @module core/realm/realm-conformance.test-support
  */
@@ -87,7 +87,7 @@ export interface ConformanceRealm {
   dispose(): Promise<void>;
 }
 
-/** One realm kind's conformance harness — see `realm-conformance.test.ts` for the three concrete factories. */
+/** One realm kind's conformance harness — see `realm-conformance.integration.test.ts` for the three concrete factories. */
 export interface RealmConformanceHarness {
   readonly label: string;
   create(options?: RealmConformanceCreateOptions): ConformanceRealm;

@@ -25,6 +25,7 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog';
+import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import { createBureau } from '../create-bureau';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types';
@@ -318,7 +319,15 @@ describe('the secret-gating outcome matrix', () => {
             },
           ],
         },
-        interceptors: [{ name: 'audit', onStep: note('interceptor', undefined) }],
+        // A handler at every point of the hook map, each of which must refuse.
+        interceptors: [
+          {
+            name: 'audit',
+            ...Object.fromEntries(
+              INTERCEPTOR_POINTS.map((point) => [point, note('interceptor', undefined)]),
+            ),
+          },
+        ],
         decisionRouters: [
           { name: 'router', kinds: new Set(), decide: note('decision-router', {}) as never },
         ],
@@ -376,7 +385,16 @@ describe('the secret-gating outcome matrix', () => {
           {} as never,
           {} as never,
         ),
-      interceptor: () => gatedResult.interceptors?.[0]?.onStep?.({} as never),
+      ...Object.fromEntries(
+        INTERCEPTOR_POINTS.map((point) => [
+          `interceptor ${point}`,
+          () =>
+            (
+              gatedResult.interceptors?.[0]?.[point] as
+                ((...args: unknown[]) => unknown) | undefined
+            )?.({}, {}),
+        ]),
+      ),
       'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
@@ -437,6 +455,51 @@ describe('the secret-gating outcome matrix', () => {
     secrets.remove(KEY);
     await settleTo(gate, false);
     expect(await outcomes()).toEqual(missing);
+  });
+
+  it('gates the object form of a hook as it gates the function, and keeps what the object declares', async () => {
+    const { gate, secrets } = await gateOver();
+    const called: string[] = [];
+    const onError = () => 'continue' as const;
+    const declared = Object.fromEntries(
+      INTERCEPTOR_POINTS.map((point) => [
+        point,
+        {
+          handler: async () => {
+            called.push(point);
+          },
+          replay: 'safe' as const,
+          onError,
+          priority: 7,
+        },
+      ]),
+    );
+    const [interceptor] =
+      gatedContributions<PluginContributions>(
+        { interceptors: [{ name: 'audit', ...declared }] },
+        gate,
+        (name) => `kit:${name}`,
+      ).interceptors ?? [];
+    const handlerOf = (point: (typeof INTERCEPTOR_POINTS)[number]) => {
+      const hook = interceptor?.[point];
+      if (typeof hook !== 'object') throw new Error(`Expected ${point} to stay an object.`);
+      return hook;
+    };
+
+    for (const point of INTERCEPTOR_POINTS) {
+      const hook = handlerOf(point);
+      expect(hook).toMatchObject({ replay: 'safe', onError, priority: 7 });
+      expect(await rejectionOf((hook.handler as () => Promise<void>)())).toBeInstanceOf(
+        PluginNeedsSetupError,
+      );
+    }
+    expect(called).toEqual([]);
+
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    for (const point of INTERCEPTOR_POINTS)
+      await (handlerOf(point).handler as () => Promise<void>)();
+    expect(called).toEqual([...INTERCEPTOR_POINTS]);
   });
 
   it('starts a trigger kind once the secret is saved, stops it on removal, and starts it again on a second save', async () => {

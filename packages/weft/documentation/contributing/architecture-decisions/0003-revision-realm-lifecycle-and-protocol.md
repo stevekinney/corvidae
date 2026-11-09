@@ -74,7 +74,7 @@ bun test src/core/realm/realm-lifecycle.test.ts
 bun test src/core/realm/realm-protocol.test.ts
 bun test src/core/worker-realm-readiness.test.ts
 bun test src/core/realm/fake-realm.test.ts
-bun test src/core/worker-execution-strategy.test.ts
+bun test src/core/worker-execution-strategy.integration.test.ts
 ```
 
 The last command is the existing generic Worker-execution-mode regression suite; it passes unchanged, proving the opt-in additions did not alter default behavior. From the repository root, `bunx turbo run typecheck lint test --filter=@lostgradient/weft` covers the whole package, and `bun run validate` is the repository-level gate for a full delivery.

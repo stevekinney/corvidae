@@ -64,8 +64,8 @@ bun test src/core/engine/revision-realm-execution.test.ts
 bun test src/core/engine/__tests__/construction.test.ts
 bun test src/core/engine/source-registration.test.ts
 bun test src/core/engine
-bun test src/core/worker-execution-strategy.test.ts
-bun test src/core/engine.test.ts
+bun test src/core/worker-execution-strategy.integration.test.ts
+bun test src/core/engine.integration.test.ts
 bun test src/core/engine-smol-workers.test.ts
 ```
 

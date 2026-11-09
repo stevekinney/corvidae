@@ -1,16 +1,29 @@
 import type {
+  AfterGenerateHook,
   AfterToolExecutionHook,
+  BeforeGenerateHook,
   BeforeToolExecutionHook,
   DecisionModel,
   GuardrailEntry,
+  HookErrorHandler,
+  HookReplayPolicy,
   InputGuardrailAction,
+  OnErrorHook,
+  OnLLMInputHook,
+  OnLLMOutputHook,
+  OnRunAbortHook,
+  OnRunCompleteHook,
+  OnRunErrorHook,
+  OnRunStartHook,
   OnStepHook,
+  OperativeHookMap,
   OutputGuardrailAction,
   OutputValidator,
   PrepareStepHook,
   RunnableAgent,
   ToolCallValidator,
   ValidateResponseHook,
+  ValidateToolResultHook,
   Validator,
 } from '@lostgradient/operative';
 import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
@@ -162,23 +175,92 @@ export interface PluginGuardrails {
 }
 
 /**
+ * How a plugin declares one hook of an interceptor, beyond the handler. Every field but `handler`
+ * is optional, and a hook written as its bare function has none of them.
+ */
+export interface PluginInterceptorHookOptions<Hook> {
+  /** The hook itself. */
+  readonly handler: Hook;
+  /**
+   * Whether the hook may run again when a durable run recovers a step: `safe` for a hook with no
+   * external side effect, `effectful` for one that writes outside the run. It is recorded in the
+   * run's hook plan, and a hook that declares nothing is `effectful`.
+   */
+  readonly replay?: HookReplayPolicy;
+  /**
+   * What to do when the hook throws: `'continue'` runs the next hook as if it had not, and
+   * `'abort'` fails the step as before. A hook with no `onError` fails the step. Operative settles
+   * the observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`,
+   * `onRunAbort`) and `onError` itself without asking, so a failure there never fails the run
+   * whatever this says.
+   */
+  readonly onError?: HookErrorHandler;
+  /**
+   * Where the hook sorts among the run's hooks at its point: a higher number runs first, and a hook
+   * that names none sorts at 0. Operative's guardrails sit behind every other agent hook, so the
+   * number is raised to just above them when it is lower, and a plugin can never sort behind them.
+   * It must be a finite number.
+   */
+  readonly priority?: number;
+}
+
+/**
+ * One hook of a {@link PluginInterceptor}: the function itself, or an object that adds how the
+ * hook replays, handles its own errors and sorts. The two forms are the same hook.
+ */
+export type PluginInterceptorHook<Hook> = Hook | PluginInterceptorHookOptions<Hook>;
+
+/**
  * A set of Operative run hooks a plugin contributes under one name. An agent file chooses it with
  * `interceptors: [plugin:name]`, and it runs for the agents that choose it and no others. Each
- * member is an Operative run hook.
+ * member is an Operative run hook, one for each point of Operative's hook map, written as the
+ * function or as {@link PluginInterceptorHookOptions}.
  */
 export interface PluginInterceptor {
   /** Names the interceptor in logs and problem reports, and in the id an agent file lists. */
   readonly name: string;
   /** Runs before each generate call. */
-  readonly prepareStep?: PrepareStepHook;
+  readonly prepareStep?: PluginInterceptorHook<PrepareStepHook>;
   /** Runs before the tool calls of a step execute, and may change them. */
-  readonly beforeToolExecution?: BeforeToolExecutionHook;
+  readonly beforeToolExecution?: PluginInterceptorHook<BeforeToolExecutionHook>;
   /** Runs after the tool calls of a step execute. */
-  readonly afterToolExecution?: AfterToolExecutionHook;
+  readonly afterToolExecution?: PluginInterceptorHook<AfterToolExecutionHook>;
   /** Runs after each step finishes. */
-  readonly onStep?: OnStepHook;
+  readonly onStep?: PluginInterceptorHook<OnStepHook>;
+  /** Chooses the tools a step offers the model. */
+  readonly selectTools?: PluginInterceptorHook<OperativeHookMap['selectTools']>;
   /** Runs over a response and may reject it. */
-  readonly validateResponse?: ValidateResponseHook;
+  readonly validateResponse?: PluginInterceptorHook<ValidateResponseHook>;
+  /** Runs over each tool result and may replace it. */
+  readonly validateToolResult?: PluginInterceptorHook<ValidateToolResultHook>;
+  /** Runs before compaction; return `false` to cancel it. */
+  readonly beforeCompaction?: PluginInterceptorHook<OperativeHookMap['beforeCompaction']>;
+  /** Runs before a step requests background compaction; return `false` to withdraw the request. */
+  readonly beforeBackgroundCompaction?: PluginInterceptorHook<
+    OperativeHookMap['beforeBackgroundCompaction']
+  >;
+  /** Runs after compaction, with what it removed. */
+  readonly afterCompaction?: PluginInterceptorHook<OperativeHookMap['afterCompaction']>;
+  /** Chooses the tool choice a step sends the model. */
+  readonly selectToolChoice?: PluginInterceptorHook<OperativeHookMap['selectToolChoice']>;
+  /** Runs before the generate call and may change what it is given. */
+  readonly beforeGenerate?: PluginInterceptorHook<BeforeGenerateHook>;
+  /** Runs after the generate call and may change the response. */
+  readonly afterGenerate?: PluginInterceptorHook<AfterGenerateHook>;
+  /** Observes the input of each generate call; its failure does not fail the run. */
+  readonly onLLMInput?: PluginInterceptorHook<OnLLMInputHook>;
+  /** Observes the output of each generate call; its failure does not fail the run. */
+  readonly onLLMOutput?: PluginInterceptorHook<OnLLMOutputHook>;
+  /** Runs when a run starts, before its first step. */
+  readonly onRunStart?: PluginInterceptorHook<OnRunStartHook>;
+  /** Runs when a run completes; its failure does not fail the run. */
+  readonly onRunComplete?: PluginInterceptorHook<OnRunCompleteHook>;
+  /** Runs when a run fails, with the error and the partial results; its failure is not reported. */
+  readonly onRunError?: PluginInterceptorHook<OnRunErrorHook>;
+  /** Runs when a run is aborted; its failure is not reported. */
+  readonly onRunAbort?: PluginInterceptorHook<OnRunAbortHook>;
+  /** Chooses how a failed generate call recovers: `retry`, `skip` or `abort`. */
+  readonly onError?: PluginInterceptorHook<OnErrorHook>;
 }
 
 /** What a trigger kind's `start` receives. */
