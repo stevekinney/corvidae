@@ -15,6 +15,8 @@
 //   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
 //     design rows, the rows its acceptance criteria leave out, and the instruction to build against
 //     the saved boards and return a design-review verdict per row;
+//   - the open blockers: every blocked-by issue whose state type is not `completed`, or "None", or
+//     why the relations could not be read;
 //   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
 //     description;
 //   - the verification commands: each `--verify`, else the focused checks for what the worker changed;
@@ -30,11 +32,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  type Blocker,
   createClient,
   fetchIssue,
   type IssueSummary,
   type LinearDependencies,
   LinearError,
+  openBlockers,
 } from './linear.ts';
 import {
   defaultRunner,
@@ -241,10 +245,34 @@ function designLines(identifier: string, description: string, descriptionInclude
 const descriptionLimit = 16_000;
 const pathLimit = 40;
 
+/** The issue's open blockers as read from Linear, or why they could not be read. */
+export type BlockerRead = { open: Blocker[] } | { unreadable: string };
+
 export interface BriefOptions {
   paths: string[];
   verify: string[];
   model: string;
+  /** Omitted when the blockers were not read; the brief then says so instead of "None". */
+  blockers?: BlockerRead | undefined;
+}
+
+/** The "Open blockers" section: never "None" unless the relations were actually read. */
+export function blockerLines(blockers: BlockerRead | undefined): string[] {
+  const body =
+    blockers === undefined
+      ? ['- (not read; run `bun scripts/chef/linear.ts blockers <ID>` before starting)']
+      : 'unreadable' in blockers
+        ? [`- (could not be read: ${blockers.unreadable})`]
+        : blockers.open.length === 0
+          ? ['None']
+          : [
+              ...blockers.open.map(
+                (blocker) => `- ${blocker.identifier} [${blocker.state}] ${blocker.title}`,
+              ),
+              '',
+              'Do not start while a blocker is open: return blocked. A Canceled or Duplicate blocker is a question for the owner, not a release.',
+            ];
+  return ['## Open blockers', '', ...body, ''];
 }
 
 /** Render the brief for `issue`. Pure. */
@@ -285,6 +313,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       '',
     );
   }
+  lines.push(...blockerLines(options.blockers));
   lines.push(...designLines(issue.identifier, description, execution === undefined));
   lines.push('## Files', '');
   lines.push(
@@ -315,8 +344,16 @@ export async function writeBrief(
   options: BriefOptions & { outDirectory: string },
   dependencies: LinearDependencies = {},
 ): Promise<BriefResult> {
-  const issue = await fetchIssue(createClient(dependencies), identifier);
-  const text = renderBrief(issue, options);
+  const client = createClient(dependencies);
+  const issue = await fetchIssue(client, identifier);
+  let blockers: BlockerRead;
+  try {
+    blockers = { open: await openBlockers(client, issue.identifier) };
+  } catch (error) {
+    if (!(error instanceof LinearError)) throw error;
+    blockers = { unreadable: error.message };
+  }
+  const text = renderBrief(issue, { ...options, blockers });
   mkdirSync(options.outDirectory, { recursive: true });
   const path = join(options.outDirectory, `${issue.identifier}.md`);
   writeFileSync(path, text);

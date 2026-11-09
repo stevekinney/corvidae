@@ -555,7 +555,7 @@ export async function createIssue(client: LinearClient, options: CreateOptions):
 interface RelatedIssue {
   identifier: string;
   title: string;
-  state: { name: string };
+  state: { name: string; type: string };
 }
 
 interface PageInfo {
@@ -571,7 +571,7 @@ interface RelationRead {
   } | null;
 }
 
-const relationDocument = `query IssueRelations($id: String!) { issue(id: $id) { id identifier relations(first: 100) { nodes { type relatedIssue { identifier title state { name } } } pageInfo { hasNextPage } } inverseRelations(first: 100) { nodes { type issue { identifier title state { name } } } pageInfo { hasNextPage } } } }`;
+const relationDocument = `query IssueRelations($id: String!) { issue(id: $id) { id identifier relations(first: 100) { nodes { type relatedIssue { identifier title state { name type } } } pageInfo { hasNextPage } } inverseRelations(first: 100) { nodes { type issue { identifier title state { name type } } } pageInfo { hasNextPage } } } }`;
 
 async function fetchRelations(client: LinearClient, identifier: string) {
   const data = await client.request<RelationRead>(relationDocument, {
@@ -592,6 +592,7 @@ async function fetchRelations(client: LinearClient, identifier: string) {
         identifier: relation.issue.identifier,
         title: relation.issue.title,
         state: relation.issue.state.name,
+        stateType: relation.issue.state.type,
       })),
     blocks: data.issue.relations.nodes
       .filter((relation) => relation.type === 'blocks')
@@ -599,8 +600,27 @@ async function fetchRelations(client: LinearClient, identifier: string) {
         identifier: relation.relatedIssue.identifier,
         title: relation.relatedIssue.title,
         state: relation.relatedIssue.state.name,
+        stateType: relation.relatedIssue.state.type,
       })),
   };
+}
+
+/** An issue that blocks another, with its state's name and its type (`completed`, `canceled`, …). */
+export interface Blocker {
+  identifier: string;
+  title: string;
+  state: string;
+  stateType: string;
+}
+
+/**
+ * The issues blocking `identifier` that are still open. Only a blocker whose state type is
+ * `completed` clears; a canceled or duplicate blocker stays open, because whether it still blocks
+ * is the owner's call, not a silent release. Throws `LinearError` rather than return a partial list.
+ */
+export async function openBlockers(client: LinearClient, identifier: string): Promise<Blocker[]> {
+  const { blockedBy } = await fetchRelations(client, identifier);
+  return blockedBy.filter((blocker) => blocker.stateType !== 'completed');
 }
 
 export async function listBlockers(client: LinearClient, identifier: string): Promise<Outcome> {

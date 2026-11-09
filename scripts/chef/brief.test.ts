@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
+  blockerLines,
   charterRules,
   designLinks,
   designRowIds,
@@ -350,9 +351,73 @@ describe('the create-task ticket template', () => {
   });
 });
 
+describe('open blockers', () => {
+  const blocker = (identifier: string, state: string, stateType: string) => ({
+    identifier,
+    title: `Title of ${identifier}`,
+    state,
+    stateType,
+  });
+
+  test('lists each open blocker and tells the worker not to start', () => {
+    const text = blockerLines({ open: [blocker('COR-3', 'In Progress', 'started')] }).join('\n');
+    expect(text).toContain('## Open blockers\n\n- COR-3 [In Progress] Title of COR-3');
+    expect(text).toContain('return blocked');
+  });
+
+  test('says None only when the relations were read and none is open', () => {
+    expect(blockerLines({ open: [] })).toEqual(['## Open blockers', '', 'None', '']);
+    expect(blockerLines(undefined).join('\n')).toContain('not read');
+    expect(blockerLines({ unreadable: 'more than 100 relations' }).join('\n')).toContain(
+      'could not be read: more than 100 relations',
+    );
+    expect(blockerLines(undefined).join('\n')).not.toContain('None');
+  });
+
+  test('a rendered brief carries the section', () => {
+    const text = renderBrief(issue(description), {
+      paths: [],
+      verify: [],
+      model: 'Sonnet',
+      blockers: { open: [] },
+    });
+    expect(text).toContain('## Open blockers\n\nNone');
+  });
+});
+
 describe('run', () => {
-  const fetchIssue: FetchLike = async () =>
-    new Response(JSON.stringify({ data: { issue: issue(description) } }), { status: 200 });
+  const relations = (open: boolean) => ({
+    issue: {
+      id: 'uuid-7',
+      identifier: 'COR-7',
+      relations: { nodes: [], pageInfo: { hasNextPage: false } },
+      inverseRelations: {
+        nodes: open
+          ? [
+              {
+                type: 'blocks',
+                issue: {
+                  identifier: 'COR-5',
+                  title: 'Earlier',
+                  state: { name: 'Ready', type: 'unstarted' },
+                },
+              },
+            ]
+          : [],
+        pageInfo: { hasNextPage: false },
+      },
+    },
+  });
+  const answer =
+    (open: boolean): FetchLike =>
+    async (_url, init) => {
+      const { query } = JSON.parse(init.body as string) as { query: string };
+      const data = query.includes('IssueRelations')
+        ? relations(open)
+        : { issue: issue(description) };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+  const fetchIssue = answer(false);
   const dependencies = { fetch: fetchIssue, environment: { LINEAR_API_KEY: 'lin_api_test_value' } };
 
   test('writes <ID>.md in the output directory and reports it', async () => {
@@ -361,6 +426,16 @@ describe('run', () => {
     const parsed = JSON.parse(result.output) as { path: string };
     expect(parsed.path).toBe(join(sandbox, 'COR-7.md'));
     expect(readFileSync(parsed.path, 'utf8')).toContain('## Charter rules');
+    expect(readFileSync(parsed.path, 'utf8')).toContain('## Open blockers\n\nNone');
+  });
+
+  test('writes the open blockers it reads from Linear', async () => {
+    const result = await run(['COR-7', '--out-dir', sandbox, '--json'], {
+      ...dependencies,
+      fetch: answer(true),
+    });
+    const parsed = JSON.parse(result.output) as { path: string };
+    expect(readFileSync(parsed.path, 'utf8')).toContain('- COR-5 [Ready] Earlier');
   });
 
   test('reports a missing issue as exit 1 and bad usage as a UsageError', async () => {

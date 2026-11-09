@@ -12,6 +12,7 @@ import {
   createClient,
   LinearError,
   normalizeMarkdown,
+  openBlockers,
   run,
   type FetchLike,
 } from './linear.ts';
@@ -47,9 +48,10 @@ function fakeLinear() {
     { id: 'team-eng', key: 'ENG', parent: null },
   ];
   const states = [
-    { id: 's-todo', name: 'Todo', team: { id: 'team-eng' } },
-    { id: 's-doing', name: 'In Progress', team: { id: 'team-eng' } },
-    { id: 's-done', name: 'Done', team: { id: 'team-cor' } },
+    { id: 's-todo', name: 'Todo', type: 'unstarted', team: { id: 'team-eng' } },
+    { id: 's-doing', name: 'In Progress', type: 'started', team: { id: 'team-eng' } },
+    { id: 's-done', name: 'Done', type: 'completed', team: { id: 'team-cor' } },
+    { id: 's-canceled', name: 'Canceled', type: 'canceled', team: { id: 'team-eng' } },
   ];
   const labels = [
     { id: 'l-feature', name: 'Feature', team: { id: 'team-eng' } },
@@ -937,7 +939,36 @@ describe('blockers and block', () => {
     expect(target).toContain('COR-2 is blocked by 1:\n  COR-1 [Todo] First');
     expect(target).toContain('COR-2 blocks 0:');
     const source = JSON.parse(await runOutput(['blockers', 'COR-1', '--json'], dependencies(fake)));
-    expect(source.blocks).toEqual([{ identifier: 'COR-2', title: 'Second', state: 'Todo' }]);
+    expect(source.blocks).toEqual([
+      { identifier: 'COR-2', title: 'Second', state: 'Todo', stateType: 'unstarted' },
+    ]);
+  });
+
+  test('openBlockers keeps every blocker that is not completed, a canceled one included', async () => {
+    const fake = fakeLinear();
+    fake.issues.push(
+      {
+        ...fake.issues[1]!,
+        id: 'uuid-3',
+        identifier: 'COR-3',
+        title: 'Done one',
+        stateId: 's-done',
+      },
+      {
+        ...fake.issues[1]!,
+        id: 'uuid-4',
+        identifier: 'COR-4',
+        title: 'Dropped',
+        stateId: 's-canceled',
+      },
+    );
+    for (const blocker of ['uuid-1', 'uuid-3', 'uuid-4'])
+      fake.relations.push({ issueId: blocker, relatedIssueId: 'uuid-2', type: 'blocks' });
+    const open = await openBlockers(createClient(dependencies(fake)), 'COR-2');
+    expect(open.map((blocker) => `${blocker.identifier}:${blocker.stateType}`)).toEqual([
+      'COR-1:unstarted',
+      'COR-4:canceled',
+    ]);
   });
 
   test('is idempotent: an existing relation is not created twice', async () => {
