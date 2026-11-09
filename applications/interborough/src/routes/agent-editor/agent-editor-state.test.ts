@@ -126,9 +126,7 @@ describe('a new agent', () => {
       a2a: false,
       // A limit left empty is `null`, which removes it from a file that had one.
       guardrails: null,
-      stepLimit: null,
-      costBudget: null,
-      toolBudget: null,
+      limits: { steps: null, cost: null, tools: null },
       instructions: 'Cite everything.',
     });
     form.a2a = true;
@@ -367,16 +365,18 @@ describe('the guardrails and limits', () => {
         definition: {
           ...detail.definition,
           guardrails: ['acme:tripwire', 'acme:pii'],
-          stepLimit: 12,
-          costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
-          toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
+          limits: {
+            steps: 12,
+            cost: { run: 1.5, chat: 4, warn: [0.5, 0.9] },
+            tools: { calls: 30, seconds: 90 },
+          },
         },
       },
       catalogFixture(),
     );
   };
 
-  test('fills the fields from the file and writes them back, warnAt included', () => {
+  test('fills the fields from the file and writes them back, warn included', () => {
     const form = withLimits();
     expect(form.guardrails).toBe('acme:tripwire\nacme:pii');
     expect(form.stepLimit).toBe('12');
@@ -385,9 +385,11 @@ describe('the guardrails and limits', () => {
     expect(form.limitErrors).toEqual({});
     expect(form.toDefinition()).toMatchObject({
       guardrails: ['acme:tripwire', 'acme:pii'],
-      stepLimit: 12,
-      costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
-      toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
+      limits: {
+        steps: 12,
+        cost: { run: 1.5, chat: 4, warn: [0.5, 0.9] },
+        tools: { calls: 30, seconds: 90 },
+      },
     });
   });
 
@@ -401,12 +403,10 @@ describe('the guardrails and limits', () => {
     form.toolSeconds = '';
     expect(form.toDefinition()).toMatchObject({
       guardrails: null,
-      stepLimit: null,
-      costBudget: null,
-      toolBudget: null,
+      limits: { steps: null, cost: null, tools: null },
     });
     form.toolCalls = '5';
-    expect(form.toDefinition().toolBudget).toEqual({ maxCalls: 5 });
+    expect(form.toDefinition().limits?.tools).toEqual({ calls: 5 });
   });
 
   test('names each field that holds something the Bureau would refuse, and cannot save', () => {

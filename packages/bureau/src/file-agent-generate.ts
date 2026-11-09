@@ -186,7 +186,7 @@ export interface FileAgentGenerateOptions {
   /** Turns a catalog row into the generate a run calls. May throw for a model it cannot set up. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
   /**
-   * The agent has a `costBudget` (COR-1921). A step whose chosen row has no price in US dollars
+   * The agent has `limits.cost` (COR-1921). A step whose chosen row has no price in US dollars
    * then ends the run with `budget-exceeded` before the model is asked: the run's pricing is
    * keyed by name, and a name can reach a row other than the one it was priced from.
    */
@@ -290,7 +290,7 @@ export function createFileAgentGenerate(options: FileAgentGenerateOptions): Gene
     if (costBudgeted === true && usdPricingOfRow(row) === undefined) {
       return Promise.reject(
         new BudgetExceededError(
-          `The session runs on the model "${row.model}" from "${row.provider}", which has no price in US dollars in the model catalog, so its spend cannot be counted against the agent's costBudget.`,
+          `The session runs on the model "${row.model}" from "${row.provider}", which has no price in US dollars in the model catalog, so its spend cannot be counted against the agent's limits.cost.`,
         ),
       );
     }

@@ -107,12 +107,15 @@ export function limitErrorsOf(fields: LimitFields): Readonly<Partial<Record<Limi
 
 /**
  * The limits of `fields` as the Bureau takes them: a field left empty is `null`, which removes the
- * limit. `warnAt` is the file's own, which neither surface edits and a save sends back.
+ * limit. `warn` is the file's own, which neither surface edits and a save sends back. A surface
+ * that does not edit the step limit (`editsSteps` false, the Access tab) leaves `steps` out of
+ * `limits`, so a save keeps the file's step limit instead of removing it.
  */
 export function limitsOf(
   fields: LimitFields,
-  warnAt: readonly number[] | undefined,
-): Pick<AgentDefinitionInput, 'guardrails' | 'stepLimit' | 'costBudget' | 'toolBudget'> {
+  warn: readonly number[] | undefined,
+  editsSteps = true,
+): Pick<AgentDefinitionInput, 'guardrails' | 'limits'> {
   const guardrails = parseGuardrails(fields.guardrails);
   const perRun = parseLimit(fields.spendPerRun, false, LIMIT_BOUNDS.spendUsd) ?? null;
   const perChat = parseLimit(fields.spendPerChat, false, LIMIT_BOUNDS.spendUsd) ?? null;
@@ -120,22 +123,26 @@ export function limitsOf(
   const seconds = parseLimit(fields.toolSeconds, false, LIMIT_BOUNDS.toolSeconds) ?? null;
   return {
     guardrails: guardrails.length === 0 ? null : guardrails,
-    stepLimit: parseLimit(fields.stepLimit, true, LIMIT_BOUNDS.stepLimit) ?? null,
-    costBudget:
-      perRun === null
-        ? null
-        : {
-            perRunUsd: perRun,
-            ...(perChat === null ? {} : { perChatUsd: perChat }),
-            ...(warnAt === undefined ? {} : { warnAt }),
-          },
-    toolBudget:
-      calls === null && seconds === null
-        ? null
-        : {
-            ...(calls === null ? {} : { maxCalls: calls }),
-            ...(seconds === null ? {} : { maxDurationSeconds: seconds }),
-          },
+    limits: {
+      ...(editsSteps
+        ? { steps: parseLimit(fields.stepLimit, true, LIMIT_BOUNDS.stepLimit) ?? null }
+        : {}),
+      cost:
+        perRun === null
+          ? null
+          : {
+              run: perRun,
+              ...(perChat === null ? {} : { chat: perChat }),
+              ...(warn === undefined ? {} : { warn }),
+            },
+      tools:
+        calls === null && seconds === null
+          ? null
+          : {
+              ...(calls === null ? {} : { calls }),
+              ...(seconds === null ? {} : { seconds }),
+            },
+    },
   };
 }
 
@@ -273,7 +280,7 @@ export class AgentEditorState {
     this.children = definition?.children ?? null;
     this.models = definition?.models ?? null;
     this.#writtenEffort = definition?.effort ?? null;
-    this.#warnAt = definition?.costBudget?.warnAt;
+    this.#warnAt = definition?.limits.cost?.warn;
     this.#approvals = definition?.approvals ?? null;
     this.references = definition?.references ?? [];
     this.#carried = {
@@ -311,19 +318,14 @@ export class AgentEditorState {
     this.hash = detail?.hash ?? null;
     this.a2a = definition.a2a;
     this.guardrails = (definition.guardrails ?? []).join('\n');
-    this.stepLimit = definition.stepLimit === null ? '' : String(definition.stepLimit);
-    this.spendPerRun =
-      definition.costBudget === null ? '' : String(definition.costBudget.perRunUsd);
+    this.stepLimit = definition.limits.steps === null ? '' : String(definition.limits.steps);
+    this.spendPerRun = definition.limits.cost === null ? '' : String(definition.limits.cost.run);
     this.spendPerChat =
-      definition.costBudget?.perChatUsd === undefined
-        ? ''
-        : String(definition.costBudget.perChatUsd);
+      definition.limits.cost?.chat === undefined ? '' : String(definition.limits.cost.chat);
     this.toolCalls =
-      definition.toolBudget?.maxCalls === undefined ? '' : String(definition.toolBudget.maxCalls);
+      definition.limits.tools?.calls === undefined ? '' : String(definition.limits.tools.calls);
     this.toolSeconds =
-      definition.toolBudget?.maxDurationSeconds === undefined
-        ? ''
-        : String(definition.toolBudget.maxDurationSeconds);
+      definition.limits.tools?.seconds === undefined ? '' : String(definition.limits.tools.seconds);
   }
 
   /** A form for a new agent, with the first model that can be chosen. */
@@ -521,7 +523,7 @@ export class AgentEditorState {
   }
 
   /** The limits as the Bureau takes them: a field left empty is `null`, which removes the limit. */
-  #limits(): Pick<AgentDefinitionInput, 'guardrails' | 'stepLimit' | 'costBudget' | 'toolBudget'> {
+  #limits(): Pick<AgentDefinitionInput, 'guardrails' | 'limits'> {
     return limitsOf(this, this.#warnAt);
   }
 

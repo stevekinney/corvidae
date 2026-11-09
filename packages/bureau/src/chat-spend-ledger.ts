@@ -1,6 +1,6 @@
 /**
  * The chat spend ledger (COR-1915): what each run of a chat spent, so an agent file's
- * `costBudget.perChatUsd` can stop the run that follows the one that passed it.
+ * `limits.cost.chat` can stop the run that follows the one that passed it.
  *
  * ## Keys
  *

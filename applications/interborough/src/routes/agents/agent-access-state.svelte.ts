@@ -2,7 +2,7 @@
  * The Access tab's form: which tools an agent may call, when each asks first, the skills it may
  * activate, the plugin guardrails it runs, and its spend and tool budgets. It is filled from the agent's file and sends
  * a whole definition back, because `bureau.agents.definitions.update` removes `tools` and `models`
- * when they are left out. The keys the tab does not edit (`stepLimit`, `references`, `retry`,
+ * when they are left out. The keys the tab does not edit (`limits.steps`, `references`, `retry`,
  * `compaction`, `hooks`) are left out of the write, which keeps the file's value.
  *
  * `approvals` may only name a tool the file lists, or the Bureau refuses the write, so a tool
@@ -90,18 +90,13 @@ export class AgentAccessState {
     }
     this.allowedSkills = [...(definition.allowedSkills ?? [])];
     this.guardrails = (definition.guardrails ?? []).join('\n');
-    this.spendPerRun =
-      definition.costBudget === null ? '' : String(definition.costBudget.perRunUsd);
+    this.spendPerRun = definition.limits.cost === null ? '' : String(definition.limits.cost.run);
     this.spendPerChat =
-      definition.costBudget?.perChatUsd === undefined
-        ? ''
-        : String(definition.costBudget.perChatUsd);
+      definition.limits.cost?.chat === undefined ? '' : String(definition.limits.cost.chat);
     this.toolCalls =
-      definition.toolBudget?.maxCalls === undefined ? '' : String(definition.toolBudget.maxCalls);
+      definition.limits.tools?.calls === undefined ? '' : String(definition.limits.tools.calls);
     this.toolSeconds =
-      definition.toolBudget?.maxDurationSeconds === undefined
-        ? ''
-        : String(definition.toolBudget.maxDurationSeconds);
+      definition.limits.tools?.seconds === undefined ? '' : String(definition.limits.tools.seconds);
     this.#baseline = JSON.stringify(this.toDefinition());
   }
 
@@ -198,7 +193,7 @@ export class AgentAccessState {
   /** The definition to write: the file's own, with the access this form edits. */
   toDefinition(): AgentDefinitionInput {
     const file = this.#definition;
-    const limits = limitsOf(this.#fields(), file.costBudget?.warnAt);
+    const limits = limitsOf(this.#fields(), file.limits.cost?.warn, false);
     return {
       name: file.name,
       description: file.description,
@@ -210,8 +205,7 @@ export class AgentAccessState {
         file.allowedSkills === null && this.allowedSkills.length === 0 ? null : this.allowedSkills,
       a2a: file.a2a,
       guardrails: limits.guardrails ?? null,
-      costBudget: limits.costBudget ?? null,
-      toolBudget: limits.toolBudget ?? null,
+      limits: limits.limits ?? null,
       approvals: this.#approvalsToWrite(),
       instructions: file.instructions,
     };

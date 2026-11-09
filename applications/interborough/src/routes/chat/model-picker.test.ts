@@ -421,7 +421,7 @@ describe('choosing a model', () => {
 
   test('says why when the Bureau refuses the request itself, and does not claim the model may have changed', async () => {
     const reason =
-      'The model "claude-haiku-4-5" from "anthropic" has no price in US dollars in the model catalog, so the agent\'s costBudget could not count its spend. Choose a model that has one.';
+      'The model "claude-haiku-4-5" from "anthropic" has no price in US dollars in the model catalog, so the agent\'s limits.cost could not count its spend. Choose a model that has one.';
     serve({
       steer: () => {
         throw new StubFault('InvalidParams', 400, 'invalid params', {

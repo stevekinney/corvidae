@@ -443,20 +443,19 @@ describe('results', () => {
     expect(refused.error?.data).toMatchObject({ reason: 'unknown-approval-tool' });
   });
 
-  it('takes the definition a read answers back as an update, with a perChatUsd and a toolBudget added (COR-1915)', async () => {
+  it('takes the definition a read answers back as an update, with a limits.cost.chat and limits.tools added (COR-1915)', async () => {
     const served = await serve();
     const hash = await seed(served);
     const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
     const definition = read.result?.['definition'] as Record<string, unknown>;
-    expect(definition['toolBudget']).toBeNull();
+    expect(definition['limits']).toEqual({ steps: null, cost: null, tools: null });
 
     const updated = await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'researcher',
       expectedHash: hash,
       definition: {
         ...definition,
-        costBudget: { perRunUsd: 1, perChatUsd: 5 },
-        toolBudget: { maxCalls: 3, maxDurationSeconds: 60 },
+        limits: { cost: { run: 1, chat: 5 }, tools: { calls: 3, seconds: 60 } },
       },
     });
 
@@ -465,15 +464,76 @@ describe('results', () => {
       id: 'researcher',
     });
     expect(afterwards.result?.['definition']).toMatchObject({
-      costBudget: { perRunUsd: 1, perChatUsd: 5 },
-      toolBudget: { maxCalls: 3, maxDurationSeconds: 60 },
+      limits: { cost: { run: 1, chat: 5 }, tools: { calls: 3, seconds: 60 } },
     });
     const refused = await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'researcher',
       expectedHash: served.hashOf('researcher'),
-      definition: { ...definition, toolBudget: {} },
+      definition: { ...definition, limits: { tools: {} } },
     });
     expect(refused.error).toBeDefined();
+  });
+
+  it('keeps the limits an update leaves out of limits, and removes the one it sets to null (COR-2138)', async () => {
+    const served = await serve();
+    const hash = await seed(served);
+    const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
+    const definition = read.result?.['definition'] as Record<string, unknown>;
+    const first = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: hash,
+      definition: {
+        ...definition,
+        limits: { steps: 9, cost: { run: 1 }, tools: { calls: 3 } },
+      },
+    });
+    expect(first.error).toBeUndefined();
+
+    const second = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: first.result?.['hash'],
+      definition: { ...definition, limits: { cost: { run: 2 }, tools: null } },
+    });
+    expect(second.error).toBeUndefined();
+    const afterwards = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'researcher',
+    });
+    expect(afterwards.result?.['definition']).toMatchObject({
+      limits: { steps: 9, cost: { run: 2 }, tools: null },
+    });
+
+    const third = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: second.result?.['hash'],
+      definition: { ...definition, limits: null },
+    });
+    expect(third.error).toBeUndefined();
+    const cleared = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'researcher',
+    });
+    expect(cleared.result?.['definition']).toMatchObject({
+      limits: { steps: null, cost: null, tools: null },
+    });
+  });
+
+  it('refuses the old limit keys and field names on a write (COR-2138)', async () => {
+    const served = await serve();
+    for (const limit of [
+      { stepLimit: 5 },
+      { costBudget: { perRunUsd: 1 } },
+      { toolBudget: { maxCalls: 1 } },
+      { limits: { cost: { perRunUsd: 1 } } },
+      { limits: { tools: { maxDurationSeconds: 1 } } },
+    ]) {
+      const response = await callAs(served.owner, 'bureau.agents.definitions.create', {
+        id: 'strict',
+        definition: { ...DEFINITION, ...limit },
+      });
+      expect([JSON.stringify(limit), response.error?.data?.httpStatus]).toEqual([
+        JSON.stringify(limit),
+        400,
+      ]);
+    }
   });
 
   it('writes nothing for an update that changes nothing, and returns the same hash', async () => {

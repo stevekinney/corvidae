@@ -158,7 +158,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * The definition keys that were renamed, from the name a stored `changedKeys` may still hold to the
- * key now (COR-2126, COR-2137), so a version saved earlier names the same key a new one would.
+ * key now (COR-2126, COR-2137, COR-2138), so a version saved earlier names the same key a new one would.
  */
 const RENAMED_DEFINITION_KEYS: ReadonlyMap<string, string> = new Map([
   ['hooks', 'interceptors'],
@@ -166,6 +166,9 @@ const RENAMED_DEFINITION_KEYS: ReadonlyMap<string, string> = new Map([
   ['toolApproval', 'approvals'],
   ['childAgents', 'children'],
   ['skillDescriptors', 'card'],
+  ['stepLimit', 'limits'],
+  ['costBudget', 'limits'],
+  ['toolBudget', 'limits'],
 ]);
 
 /**
@@ -209,7 +212,10 @@ export function parseAgentVersion(text: string | null): AgentVersionRecord | und
     ...(digests === undefined || digests.data.length === 0
       ? {}
       : { referenceDigests: digests.data }),
-    changedKeys: (changedKeys as string[]).map((key) => RENAMED_DEFINITION_KEYS.get(key) ?? key),
+    // The three old limit keys are all `limits` now, so the list can name it once.
+    changedKeys: [
+      ...new Set((changedKeys as string[]).map((key) => RENAMED_DEFINITION_KEYS.get(key) ?? key)),
+    ],
   };
 }
 

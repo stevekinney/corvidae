@@ -256,8 +256,7 @@ describe('the tab', () => {
     await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
     const definition = updatesOf(served)[0]?.params['definition'];
     expect(definition).toMatchObject({
-      costBudget: { perRunUsd: 0.5 },
-      toolBudget: { maxCalls: 3 },
+      limits: { cost: { run: 0.5 }, tools: { calls: 3 } },
     });
   });
 
@@ -466,8 +465,7 @@ describe('the tab', () => {
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
       guardrails: ['acme:pii', 'acme:tripwire'],
-      costBudget: { perRunUsd: 2, perChatUsd: 9 },
-      toolBudget: { maxDurationSeconds: 30 },
+      limits: { cost: { run: 2, chat: 9 }, tools: { seconds: 30 } },
     });
   });
 
@@ -834,17 +832,16 @@ describe('the form state', () => {
   test('writes the keys it does not edit as they were, and leaves out the ones it must not touch', () => {
     const form = formOf({
       models: ['anthropic/haiku'],
-      costBudget: { perRunUsd: 2, warnAt: [0.5] },
-      stepLimit: 9,
+      limits: { steps: 9, cost: { run: 2, warn: [0.5] } },
     });
     form.spendPerChat = '5';
     const written = form.toDefinition();
     expect(written).toMatchObject({
       models: ['anthropic/haiku'],
-      costBudget: { perRunUsd: 2, perChatUsd: 5, warnAt: [0.5] },
+      limits: { cost: { run: 2, chat: 5, warn: [0.5] } },
     });
     // Left out, the Bureau keeps the file’s step limit.
-    expect('stepLimit' in written).toBe(false);
+    expect(written.limits).not.toHaveProperty('steps');
   });
 
   test('allows a tool after the ones the file lists, and counts what the host offers', () => {

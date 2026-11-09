@@ -114,7 +114,7 @@ for (const [operation, administrative] of cases) {
                         ? {
                             id: 'alpha',
                             expectedHash: override.body?.result?.['hash'],
-                            overrides: { stepLimit: 20 },
+                            overrides: { limits: { steps: 20 } },
                           }
                         : { id: 'workspace-agent' };
     for (const actor of [
