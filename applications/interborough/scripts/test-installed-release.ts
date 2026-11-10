@@ -243,10 +243,13 @@ export async function runInstalled(
     });
     if (operations.spawn === undefined && executable.endsWith('/interborough')) {
       const definitionFile = join(cwd, 'installed-cli-agent.json');
+      const providerFile = join(cwd, 'installed-cli-provider.json');
       await writeFile(
         definitionFile,
         JSON.stringify({ model: 'installed-fixture/scripted', instructions: 'Use the fixture.' }),
       );
+      await writeFile(providerFile, JSON.stringify({ configuration: {} }));
+      const cliJourneyResults: Record<string, unknown> = {};
       const commands: Array<{ args: string[]; json: boolean }> = [
         { args: ['status'], json: true },
         { args: ['doctor'], json: true },
@@ -258,6 +261,10 @@ export async function runInstalled(
       ];
       if (existingHome === undefined) {
         commands.push(
+          {
+            args: ['providers', 'connect', 'installed-fixture', '--input-file', providerFile],
+            json: true,
+          },
           {
             args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
             json: true,
@@ -282,6 +289,7 @@ export async function runInstalled(
           );
         if (command.json) {
           const payload = JSON.parse(result.stdout) as { schemaVersion?: number };
+          cliJourneyResults[command.args.join(' ')] = payload.data;
           if (payload.schemaVersion !== 1)
             throw new Error(`Installed CLI ${command.args.join(' ')} returned an invalid envelope`);
         }
@@ -289,6 +297,7 @@ export async function runInstalled(
       pass(
         'installed CLI status, diagnosis, provider, definition, workflow, and schedule journeys',
         'interborough CLI JSON commands',
+        { commands: Object.keys(cliJourneyResults), results: cliJourneyResults },
       );
     }
     const pluginResponse = await processOperations.fetch(`${url}/host/plugins`);
