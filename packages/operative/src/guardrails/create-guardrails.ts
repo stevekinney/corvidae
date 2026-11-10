@@ -292,7 +292,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
     prepareStep: settling(prepareStep),
     validateToolResult: settling(validateToolResult),
     validateResponse: settling(validateResponse),
-    beforeToolExecution,
+    beforeToolExecution: settling(beforeToolExecution),
     taint: taintTracker,
   };
 }

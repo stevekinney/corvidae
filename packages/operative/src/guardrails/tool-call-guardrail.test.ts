@@ -3,6 +3,7 @@
  * its action (its own, or its group's) decides whether the call is refused, runs with a warning,
  * or halts the run.
  */
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import type { ToolCall } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
@@ -237,6 +238,51 @@ describe('createGuardrails tool-call validators', () => {
     });
     await guardrails.beforeToolExecution(hookContext([REFUND, SMALL_REFUND]).context);
     expect(guardrails.taint.isTainted()).toBe(false);
+  });
+
+  it.each([
+    ['refuses a call', refundCap({ action: 'tripwire' })],
+    [
+      'fails closed',
+      {
+        name: 'broken',
+        action: 'tripwire' as const,
+        validate: async () => {
+          throw new Error('down');
+        },
+      },
+    ],
+  ])('stores the taint before a tripwire that %s throws (COR-2105)', async (_label, validator) => {
+    let written = false;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const guardrails = createGuardrails({
+      taint: {
+        onTainted: async () => {
+          started = true;
+          await gate;
+          written = true;
+        },
+      },
+      tools: { validators: [validator] },
+    });
+    let settled = false;
+    const outcome = guardrails
+      .beforeToolExecution(hookContext([REFUND]).context)
+      .catch((error: unknown) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await waitUntil(() => started);
+    // The tripwire may not throw while the write is still pending.
+    await quietFor(50);
+    expect(settled).toBe(false);
+    release();
+    expect(await outcome).toBeInstanceOf(GuardrailTripwireError);
+    expect(written).toBe(true);
   });
 
   it('taints the session when a validator fails closed', async () => {

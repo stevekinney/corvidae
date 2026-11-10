@@ -5,7 +5,8 @@
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { Conversation, createConversationHistory } from 'conversationalist';
-import { createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 
@@ -411,6 +412,61 @@ describe('a tripwire halt (COR-2105)', () => {
       await next.result().catch(() => undefined);
       expect(seen.every((tainted) => tainted)).toBe(true);
       expect(events).toHaveLength(1);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('a tool-call tripwire halt (COR-2105)', () => {
+  it('stores the taint before the run halts, so a fork starts tainted', async () => {
+    let generations = 0;
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        helper: createAgent({
+          generate: async () => {
+            generations += 1;
+            return generations === 1
+              ? { content: '', toolCalls: [{ id: 'call-1', name: 'lookup', arguments: {} }] }
+              : { content: 'ok', toolCalls: [] };
+          },
+          toolbox: createToolbox([
+            createTool({
+              name: 'lookup',
+              description: 'Looks something up',
+              input: z.object({}),
+              execute: async () => ({}),
+            }),
+          ]) as unknown as Toolbox,
+          guardrails: {
+            mode: 'tripwire',
+            tools: {
+              validators: [
+                {
+                  name: 'lookup-ban',
+                  validate: async () => ({
+                    valid: false,
+                    category: 'forbidden-tool',
+                    confidence: 1,
+                    detail: 'no lookups',
+                  }),
+                },
+              ],
+            },
+          },
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: false,
+    });
+    try {
+      const halted = await bureau.tasks.start('helper', 'look it up', { principal: OWNER });
+      await halted.result().catch(() => undefined);
+      const session = await bureau.internals.sessionStore?.load(halted.contextId);
+      expect(readSessionTaint(session?.metadata)).toMatchObject({
+        category: 'forbidden-tool',
+        runId: halted.id,
+      });
     } finally {
       await bureau.dispose();
     }
