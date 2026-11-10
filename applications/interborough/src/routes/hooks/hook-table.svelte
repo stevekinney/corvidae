@@ -79,9 +79,15 @@
 {/if}
 
 <Table caption={HOOKS_COPY.caption} density="condensed" fit class="ib-records__table">
+  <colgroup>
+    <col style="width: 48%" />
+    <col style="width: 18%" />
+    <col style="width: 22%" />
+    <col style="width: 12%" />
+  </colgroup>
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell class="ib-records__primary">{HOOKS_COPY.hookColumn}</Table.HeaderCell>
+      <Table.HeaderCell>{HOOKS_COPY.hookColumn}</Table.HeaderCell>
       <Table.HeaderCell>{HOOKS_COPY.onlyForColumn}</Table.HeaderCell>
       <Table.HeaderCell>{HOOKS_COPY.lastDeliveryColumn}</Table.HeaderCell>
       <Table.HeaderCell>{HOOKS_COPY.onColumn}</Table.HeaderCell>

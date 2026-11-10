@@ -195,9 +195,16 @@
     />
   {:else}
     <Table caption={copy.listLabel} density="condensed" fit class="ib-records__table">
+      <colgroup>
+        <col style="width: 36%" />
+        <col style="width: 16%" />
+        <col style="width: 18%" />
+        <col style="width: 16%" />
+        <col style="width: 14%" />
+      </colgroup>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell class="ib-records__primary">{copy.list.columns.workflow}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.list.columns.workflow}</Table.HeaderCell>
           <Table.HeaderCell>{copy.list.columns.kind}</Table.HeaderCell>
           <Table.HeaderCell>{copy.list.columns.starts}</Table.HeaderCell>
           <Table.HeaderCell>{copy.list.columns.runs}</Table.HeaderCell>

@@ -20,7 +20,9 @@
    * column split for a real `<table>` (Tags is the flexible column). The
    * widths are those columns' shares of a 1,000px row rather than pixels, so
    * the table fits its container at every width (Cinder's `fit`, row 16c):
-   * at a phone's width seven pixel columns would add up to 826px.
+   * at a phone's width seven pixel columns would add up to 826px. Status
+   * takes a little more than its pixel share so a badge fits at the table's
+   * floor (`workflows.css`).
    *
    * No column is sortable: weft's list order is server-fixed
    * (`createdAt desc, id asc` — plan Ground Truth), so there is no sort
@@ -127,13 +129,13 @@
 <Table caption="Workflows" selectable={selectionEnabled} fit class="weft-workflows-table">
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}
-    <col style="width: 11.6%" />
-    <col style="width: 22%" />
-    <col style="width: 15%" />
+    <col style="width: 14%" />
+    <col style="width: 19%" />
+    <col style="width: 14%" />
     <col style="width: 12%" />
     <col />
-    <col style="width: 9.2%" />
-    <col style="width: 9.2%" />
+    <col style="width: 9.5%" />
+    <col style="width: 9.5%" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>

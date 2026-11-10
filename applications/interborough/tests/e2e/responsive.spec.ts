@@ -315,6 +315,14 @@ async function choosePicker(page: Page, label: RegExp, option: string): Promise<
  * time, so it searches for the long key's start and opens the key.
  */
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  // A record table ends a long value with an ellipsis and keeps the whole of it in the title (row 16c).
+  '/settings/models': async (page) => {
+    await expect(page.locator(`code.ib-model-name__identifier[title="${LONG_MODEL}"]`)).toBeVisible();
+  },
+  '/hooks': async (page) => {
+    await expect(page.locator(`a.ib-hooks__sentence[title*="${LONG_HOOK_URL}"]`)).toBeVisible();
+    await expect(page.locator(`.ib-hooks__name[title="${LONG_HOOK_NAME}"]`).first()).toBeVisible();
+  },
   // The whole log is closed until asked for; open it so its lines are measured too.
   '/runs/:run (steps and logs)': async (page) => {
     const logs = page.locator('[data-section="logs"]');

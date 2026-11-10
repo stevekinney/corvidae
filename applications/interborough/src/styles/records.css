@@ -50,11 +50,6 @@
   min-inline-size: 36rem;
 }
 
-/* The column that names the record (a workflow, an agent, a hook, a model) takes the larger share. */
-.ib-records__primary {
-  inline-size: 34%;
-}
-
 /* One line of a cell that holds more than one (a name above its detail): a long value ends with an
  * ellipsis, and the element's `title` holds the whole of it (row 16c). A cell that holds one value
  * uses Cinder's `truncate` cell instead. */

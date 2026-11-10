@@ -292,9 +292,16 @@
     </EmptyState>
   {:else}
     <Table caption={TASK_COPY.listHeading} density="condensed" fit class="ib-records__table">
+      <colgroup>
+        <col style="width: 22%" />
+        <col style="width: 40%" />
+        <col style="width: 16%" />
+        <col style="width: 11%" />
+        <col style="width: 11%" />
+      </colgroup>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell class="ib-records__primary">{TASK_COPY.listColumns.agent}</Table.HeaderCell>
+          <Table.HeaderCell>{TASK_COPY.listColumns.agent}</Table.HeaderCell>
           <Table.HeaderCell>{TASK_COPY.listColumns.startedBy}</Table.HeaderCell>
           <Table.HeaderCell>{TASK_COPY.listColumns.status}</Table.HeaderCell>
           <Table.HeaderCell>{TASK_COPY.listColumns.when}</Table.HeaderCell>

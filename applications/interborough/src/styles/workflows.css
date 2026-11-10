@@ -104,7 +104,7 @@
  * room to be read: below this floor the table scrolls inside its frame, by its column count and
  * never by a value, within two screens at a phone's width. */
 .weft-workflows-table {
-  min-inline-size: 40rem;
+  min-inline-size: 41rem;
 }
 
 .weft-workflows-table__id-cell {
