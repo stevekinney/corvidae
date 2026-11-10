@@ -357,9 +357,28 @@ export async function runInstalled(
           },
         });
         const authorityUrl = `https://localhost:${authorityServer.port}`;
+        const connection = await runInstalledCliCommand(
+          executable,
+          [
+            'connection',
+            'add',
+            'authority',
+            '--url',
+            authorityUrl,
+            '--credential-reference',
+            'TOKEN',
+          ],
+          home,
+          cwd,
+          registryUrl,
+        );
+        if (connection.exitCode !== 0)
+          throw new Error(
+            `Could not configure installed authority connection: ${connection.stderr}`,
+          );
         const untrusted = await runInstalledCliCommand(
           executable,
-          ['whoami', '--url', authorityUrl, '--credential-reference', 'TOKEN'],
+          ['whoami', '--connection', 'authority'],
           home,
           cwd,
           registryUrl,
@@ -372,15 +391,7 @@ export async function runInstalled(
           );
         const trusted = await runInstalledCliCommand(
           executable,
-          [
-            'whoami',
-            '--url',
-            authorityUrl,
-            '--credential-reference',
-            'TOKEN',
-            '--workspace',
-            'workspace-alice',
-          ],
+          ['whoami', '--connection', 'authority', '--workspace', 'workspace-alice'],
           home,
           cwd,
           registryUrl,
@@ -393,15 +404,7 @@ export async function runInstalled(
           );
         const wrongWorkspace = await runInstalledCliCommand(
           executable,
-          [
-            'whoami',
-            '--url',
-            authorityUrl,
-            '--credential-reference',
-            'TOKEN',
-            '--workspace',
-            'workspace-bob',
-          ],
+          ['whoami', '--connection', 'authority', '--workspace', 'workspace-bob'],
           home,
           cwd,
           registryUrl,
