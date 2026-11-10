@@ -155,6 +155,7 @@ async function runInstalledCliCommand(
   cwd: string,
   registryUrl: string,
   input?: string,
+  extraEnvironment: Record<string, string> = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const child = Bun.spawn([executable, ...arguments_], {
     cwd,
@@ -164,6 +165,7 @@ async function runInstalledCliCommand(
       INTERBOROUGH_HOME: home,
       npm_config_registry: registryUrl,
       BUN_CONFIG_REGISTRY: registryUrl,
+      ...extraEnvironment,
     },
     stdout: 'pipe',
     stderr: 'pipe',
@@ -300,6 +302,123 @@ export async function runInstalled(
           {
             args: ['chat', '--agent', 'installed-cli-agent', '--message', 'hello', '--no-input'],
             json: true,
+          },
+        );
+      }
+      if (existingHome === undefined) {
+        const tlsDirectory = join(prefix, 'authority-tls');
+        await mkdir(tlsDirectory, { recursive: true });
+        const keyPath = join(tlsDirectory, 'key.pem');
+        const certificatePath = join(tlsDirectory, 'certificate.pem');
+        const certificate = Bun.spawnSync([
+          'openssl',
+          'req',
+          '-x509',
+          '-newkey',
+          'rsa:2048',
+          '-nodes',
+          '-keyout',
+          keyPath,
+          '-out',
+          certificatePath,
+          '-days',
+          '1',
+          '-subj',
+          '/CN=localhost',
+        ]);
+        if (certificate.exitCode !== 0)
+          throw new Error(`Could not create authority fixture certificate: ${certificate.stderr}`);
+        const authorityServer = Bun.serve({
+          hostname: '127.0.0.1',
+          port: 0,
+          tls: { key: await readFile(keyPath), cert: await readFile(certificatePath) },
+          async fetch(request) {
+            const key = request.headers.get('x-api-key');
+            if (key !== 'alice' && key !== 'bob')
+              return Response.json({ message: 'unauthorized' }, { status: 401 });
+            const pathname = new URL(request.url).pathname;
+            if (pathname === '/api/v1/principal')
+              return Response.json({
+                result: {
+                  workspace: {
+                    actorId: key,
+                    workspaceId: `workspace-${key}`,
+                    capabilities: ['workspace:use'],
+                  },
+                },
+              });
+            if (pathname === '/host/status')
+              return Response.json({ deploymentId: `deployment-${key}` });
+            if (pathname === '/bureau/jsonrpc')
+              return Response.json({
+                error: { message: 'read-only workspace fixture', data: { httpStatus: 403 } },
+              });
+            return Response.json({ ok: true });
+          },
+        });
+        const authorityUrl = `https://localhost:${authorityServer.port}`;
+        const untrusted = await runInstalledCliCommand(
+          executable,
+          ['whoami', '--url', authorityUrl, '--credential-reference', 'TOKEN'],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice' },
+        );
+        if (untrusted.exitCode !== 1 || !untrusted.stderr.includes('certificate'))
+          throw new Error(
+            `Untrusted authority request did not fail closed: ${untrusted.exitCode} ${untrusted.stderr}`,
+          );
+        const trusted = await runInstalledCliCommand(
+          executable,
+          [
+            'whoami',
+            '--url',
+            authorityUrl,
+            '--credential-reference',
+            'TOKEN',
+            '--workspace',
+            'workspace-alice',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (trusted.exitCode !== 0 || !trusted.stdout.includes('workspace-alice'))
+          throw new Error(
+            `Trusted authority request failed: ${trusted.exitCode} ${trusted.stderr}`,
+          );
+        const wrongWorkspace = await runInstalledCliCommand(
+          executable,
+          [
+            'whoami',
+            '--url',
+            authorityUrl,
+            '--credential-reference',
+            'TOKEN',
+            '--workspace',
+            'workspace-bob',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (wrongWorkspace.exitCode !== 3 || !wrongWorkspace.stderr.includes('workspace'))
+          throw new Error(
+            `Wrong workspace was not refused: ${wrongWorkspace.exitCode} ${wrongWorkspace.stderr}`,
+          );
+        authorityServer.stop(true);
+        pass(
+          'authenticated TLS authority handshake and wrong-workspace refusal',
+          'interborough whoami over TLS',
+          {
+            trustedWorkspace: 'workspace-alice',
+            refusedWorkspace: 'workspace-bob',
           },
         );
       }
