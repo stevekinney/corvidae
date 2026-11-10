@@ -89,8 +89,11 @@ const LONG_SCHEDULE_ID = `responsive-schedule-${String(Date.now())}`;
 const LONG_SCHEDULE_DESCRIPTION = `Responsive ${'s'.repeat(300)}`;
 const LONG_SCHEDULE_ZONE = 'America/Argentina/Buenos_Aires';
 const LONG_REVIEW_TITLE = `Refund ${'w'.repeat(300)}`;
-/** A tag of one unbroken word on the seeded order-processing run, listed by the engine's workflow table. */
-const LONG_TAG = `responsive-tag-${'t'.repeat(200)}`;
+/**
+ * A tag of one unbroken word on the seeded order-processing run, listed by the engine's workflow
+ * table: at the engine's longest (128 bytes).
+ */
+const LONG_TAG = `responsive-tag-${'t'.repeat(113)}`;
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
 const WORKFLOW_FILE = 'e2e-digest';
