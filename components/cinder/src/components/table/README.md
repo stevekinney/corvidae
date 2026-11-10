@@ -69,6 +69,33 @@ A table whose cells hold controls (a select, a switch, a checkbox, a button) sta
 </Table>
 ```
 
+### Tables that fit
+
+A records table whose values can be very long (a storage key, a URL, a model identifier) sets `fit`. The table fills its container with a fixed layout, so a value never widens it: a `truncate` cell ends its text with an ellipsis at its column's width and keeps the whole value in its `title`, and every other cell wraps. Give the columns their shares with `<col>` widths, and a `min-inline-size` on the table when its columns need more room than a phone has: below that floor the table scrolls inside its frame by its column count, never by a value.
+
+```svelte
+<Table caption="Stored values" fit style="min-inline-size: 24rem">
+  <colgroup>
+    <col style="width: 75%" />
+    <col style="width: 25%" />
+  </colgroup>
+  <Table.Header>
+    <Table.Row>
+      <Table.HeaderCell>Key</Table.HeaderCell>
+      <Table.HeaderCell align="right">Size</Table.HeaderCell>
+    </Table.Row>
+  </Table.Header>
+  <Table.Body>
+    {#each values as value (value.key)}
+      <Table.Row>
+        <Table.Cell truncate>{value.key}</Table.Cell>
+        <Table.Cell align="right">{value.size}</Table.Cell>
+      </Table.Row>
+    {/each}
+  </Table.Body>
+</Table>
+```
+
 The leaves are also named exports of `@lostgradient/cinder`.
 
 ## Props
