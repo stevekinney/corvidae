@@ -1,5 +1,5 @@
 /**
- * Turns the demo plugin on for a test home. The plugin is off by default (`enabledByDefault:
+ * Turns the demo plugin on for a test home. The plugin is off by default (`enabled:
  * false`), so a test that talks to `demo:assistant` and the other scripted agents enables it with
  * `enableDemoPlugin` (`demo-plugin-home.ts`) before the host starts. This module holds the plugin
  * lists a test hands the host instead.
@@ -11,7 +11,7 @@ import { workspacePlugins } from './plugins.ts';
 
 /**
  * The workspace's plugins with the demo plugin built without its seeding step, for a test that
- * wants the scripted agents but not the schedule and goal the plugin creates in `afterStart`.
+ * wants the scripted agents but not the schedule and goal the plugin creates in `start`.
  * Pair it with `enableDemoPlugin` (`demo-plugin-home.ts`).
  */
 export function pluginsWithUnseededDemo(): readonly BureauPluginEntry[] {
@@ -30,7 +30,7 @@ export function pluginsWithUnseededDemo(): readonly BureauPluginEntry[] {
 export function pluginsWithEnabledDemo(): readonly BureauPluginEntry[] {
   return workspacePlugins().map((entry) =>
     entry.descriptor.name === 'demo'
-      ? { ...entry, descriptor: { ...entry.descriptor, enabledByDefault: true } }
+      ? { ...entry, descriptor: { ...entry.descriptor, enabled: true } }
       : entry,
   );
 }

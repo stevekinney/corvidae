@@ -1562,6 +1562,7 @@ export function resolveProviderGenerate(
   configuration: ProviderConfiguration,
   streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
   streamingConfiguration: StreamingConfiguration | undefined,
+  pluginConfiguration?: unknown,
 ): GenerateFunction {
   const seen = new Set<string>();
   for (const { name } of definitions) {
@@ -1579,12 +1580,12 @@ export function resolveProviderGenerate(
     if (definition.generate === undefined) {
       throw new TypeError(`Provider "${definition.name}" does not provide generate capability.`);
     }
-    return definition.generate(configuration);
+    return definition.generate(configuration, pluginConfiguration);
   }
   if (definition.stream === undefined) {
     throw new TypeError(`Provider "${definition.name}" does not provide stream capability.`);
   }
-  return withEnhancedStreaming(definition.stream(configuration), {
+  return withEnhancedStreaming(definition.stream(configuration, pluginConfiguration), {
     eventTarget: streamEventTarget,
     onTextDelta: streamingConfiguration?.onTextDelta,
   });
@@ -1594,6 +1595,7 @@ export function resolveProviderGenerate(
 export function resolveProviderDecide(
   definitions: readonly ProviderDefinition[],
   configuration: ProviderConfiguration,
+  pluginConfiguration?: unknown,
 ): DecisionModel {
   const seen = new Set<string>();
   for (const { name } of definitions) {
@@ -1610,7 +1612,7 @@ export function resolveProviderDecide(
   if (definition.decide === undefined) {
     throw new TypeError(`Provider "${definition.name}" does not provide decide capability.`);
   }
-  return definition.decide(configuration);
+  return definition.decide(configuration, pluginConfiguration);
 }
 
 export function applyCache(

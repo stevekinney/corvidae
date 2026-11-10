@@ -5,7 +5,7 @@
  * A code agent (a built-in agent the host defines, or the agent of a running plugin) has no file,
  * so an agent file's history (`agent-version-store.ts`) has nothing to hold for it. What a person
  * changes on a code agent (which tools it may use and how each asks,
- * its guardrails and budgets, its model, the models a chat may switch to, its effort and step
+ * its guardrails, interceptors and budgets, its model, the models a chat may switch to, its effort and step
  * limit, and its instructions) is saved here instead, as a set of overrides over what the agent
  * states about itself. Every save is a new version, numbered from 1 for each agent, so the editor
  * can list them and restore one exactly as it does a file agent's. An agent nobody changed has no
@@ -59,6 +59,7 @@ import { z } from 'zod';
 import {
   AgentFileConflictError,
   AgentFileError,
+  agentContributionIdsSchema,
   storedAgentGuardrailSelectionsSchema,
   agentDefaultEffortSchema,
   agentLimitsSchema,
@@ -97,6 +98,13 @@ export const agentOverridesSchema = z.strictObject({
    * id (`code-agent-overrides.ts`), and one an older record repeats applies once.
    */
   guardrails: storedAgentGuardrailSelectionsSchema.optional(),
+  /**
+   * The plugin interceptors a run applies, each `plugin:name` (COR-2253): the key an agent file
+   * calls `interceptors` (COR-2126), in the agent's own hook tier for the run. A record written
+   * before COR-2253 has no such key and reads as it is, with none applied; the key is left out of
+   * a record's JSON, and so of its hash, when it is not set.
+   */
+  interceptors: agentContributionIdsSchema.optional(),
   /**
    * What a run may take, a run and a chat may spend (in US dollars), and a run's tools may use
    * (COR-2138): `steps`, `cost` and `tools`. Each limit named replaces the agent's own; one left out

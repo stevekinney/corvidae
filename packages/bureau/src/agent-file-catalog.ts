@@ -425,7 +425,7 @@ function skillGrantRefusal(
     : `"${name}", which is not available (${refused.unavailableReason ?? 'unknown reason'})`;
 }
 
-/** What the catalog needs to give a file agent the skills its `allowedSkills` names (COR-1975). */
+/** What the catalog needs to give a file agent the skills its `skills` names (COR-1975). */
 export interface AgentFileSkills {
   /**
    * The deployment's skill catalog as it is now, or `undefined` while it has none. Read when a run
@@ -485,7 +485,7 @@ export interface AgentFileCatalogOptions {
    */
   readonly contributions?: AgentContributions | undefined;
   /**
-   * The executable skills a file's `allowedSkills` draws on (COR-1975). Omitted, no skill can be
+   * The executable skills a file’s `skills` draws on (COR-1975). Omitted, no skill can be
    * granted, and a file that lists one has no skills.
    */
   readonly skills?: AgentFileSkills | undefined;
@@ -766,14 +766,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     definition: AgentFileDefinition,
     before: AgentFileDefinition | undefined,
   ): AgentFileProblem | undefined {
-    const held = new Set(before?.allowedSkills ?? []);
+    const held = new Set(before?.skills ?? []);
     const catalog = options.skills?.catalog();
-    const issues = (definition.allowedSkills ?? []).flatMap((name, index) => {
+    const issues = (definition.skills ?? []).flatMap((name, index) => {
       if (held.has(name)) return [];
       const message = skillGrantRefusal(name, catalog);
-      return message === undefined
-        ? []
-        : [{ path: `allowedSkills.${index}`, message, reference: name }];
+      return message === undefined ? [] : [{ path: `skills.${index}`, message, reference: name }];
     });
     if (issues.length === 0) return undefined;
     return {
@@ -862,7 +860,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   /** The skills of `definition` as a run's `createAgent` option: none for a file that grants none. */
   function fileAgentSkills(definition: AgentFileDefinition): { readonly skills?: AgentSkills } {
     const hostSkills = options.skills;
-    const allowedSkills = definition.allowedSkills;
+    const allowedSkills = definition.skills;
     if (hostSkills === undefined || allowedSkills === undefined || allowedSkills.length === 0) {
       return {};
     }

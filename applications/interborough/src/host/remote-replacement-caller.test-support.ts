@@ -59,7 +59,7 @@ const host = await startHost({
     {
       source: 'package',
       location: '@lostgradient/plugin-demo',
-      descriptor: { ...createDemoPlugin({ seedOnStart: false }), enabledByDefault: true },
+      descriptor: { ...createDemoPlugin({ seedOnStart: false }), enabled: true },
     },
     { source: 'package', location: '@lostgradient/plugin-anthropic', descriptor: anthropic },
   ],

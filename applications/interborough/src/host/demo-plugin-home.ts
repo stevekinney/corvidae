@@ -1,5 +1,5 @@
 /**
- * Turns plugins on or off for a home, the demo plugin above all. The plugin is off by default (`enabledByDefault: false`),
+ * Turns plugins on or off for a home, the demo plugin above all. The plugin is off by default (`enabled: false`),
  * so a host whose scripted agents (`demo:assistant` and the rest) must be there, such as the
  * showcase development host and the end-to-end hosts, enables it in the home's `configuration.json`
  * before the host starts, keeping whatever the file already holds.

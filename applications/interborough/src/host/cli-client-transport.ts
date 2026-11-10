@@ -24,6 +24,10 @@ function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): 
   return Object.assign(new Error(message), properties);
 }
 
+function isMutation(method: string | undefined): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'DELETE' || method === 'PATCH';
+}
+
 function redactCredentials(target: CliTarget, message: string): string {
   const candidates = Object.entries(target.headers).flatMap(([name, value]) => {
     if (value === '') return [];
@@ -79,7 +83,7 @@ export async function request(
         signal: controller.signal,
       });
     } catch (error) {
-      if (init?.method === 'POST' && error instanceof DOMException && error.name === 'AbortError')
+      if (isMutation(init?.method) && error instanceof DOMException && error.name === 'AbortError')
         throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
       throw error;
     }
@@ -125,7 +129,7 @@ export async function request(
     }
     return { data: body };
   } catch (error) {
-    if (init?.method === 'POST' && error instanceof DOMException && error.name === 'AbortError')
+    if (isMutation(init?.method) && error instanceof DOMException && error.name === 'AbortError')
       throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
     throw error;
   } finally {

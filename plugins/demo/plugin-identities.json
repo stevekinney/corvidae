@@ -1,60 +1,66 @@
 {
   "plugin": "demo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "entries": [
     {
       "kind": "agent",
       "id": "demo:assistant",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "agent",
       "id": "demo:changelog-writer",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "agent",
       "id": "demo:echo",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "agent",
       "id": "demo:internal",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "agent",
       "id": "demo:model-switcher",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "agent",
       "id": "demo:release-helper",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "agent",
       "id": "demo:request-human-input",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "agent",
       "id": "demo:tool-runner",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": null
     },
     {
       "kind": "configuration",
       "id": "demo",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "schema": "sha256:93ab7499dc3c616f8db8780fed0d9f69270803cda913882ad2ef3943db8d7225"
+    },
+    {
+      "kind": "interceptor",
+      "id": "demo:audit",
+      "version": "1.1.0",
+      "schema": null
     },
     {
       "kind": "tool",

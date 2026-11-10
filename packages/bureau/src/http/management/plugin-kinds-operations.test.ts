@@ -4,6 +4,7 @@
  * contributed formatter's sentence is served, and an event no formatter claims is served raw.
  */
 import { definePlugin } from '@lostgradient/interborough-plugin';
+import type { ProviderDefinition } from '@lostgradient/operative/provider-kit';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -25,7 +26,14 @@ const inbox = definePlugin({
   name: 'inbox',
   version: '2.0.0',
   description: 'Mail arrives.',
+  configuration: z.object({ baseURL: z.string().url() }),
   setup: () => ({
+    providers: [
+      {
+        name: 'openai-compatible',
+        generate: () => async () => ({ content: 'ok', toolCalls: [] }),
+      } satisfies ProviderDefinition<'openai-compatible'>,
+    ],
     triggers: [
       {
         name: 'message',
@@ -51,6 +59,7 @@ async function open(): Promise<OpenedBureau> {
   const opened = await openBureau({
     bureauOptions: {
       plugins: [{ descriptor: inbox, source: 'package', location: '@example/inbox' }],
+      pluginConfiguration: { inbox: { configuration: { baseURL: 'http://localhost:8080' } } },
     },
   });
   cleanups.push(() => opened.dispose());
@@ -87,6 +96,18 @@ describe('bureau.plugins.contributions', () => {
     });
     expect(configuration.required).toEqual(['mailbox']);
     expect(body.result!['reactions']).toEqual([]);
+    expect(body.result!['providers']).toEqual([
+      {
+        plugin: 'inbox',
+        name: 'openai-compatible',
+        configuration: {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          type: 'object',
+          properties: { baseURL: { type: 'string', format: 'uri' } },
+          required: ['baseURL'],
+        },
+      },
+    ]);
   });
 
   it('is the only name the operation answers to: no map, grant fixture or projection names the old one', () => {

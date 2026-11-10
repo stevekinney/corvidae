@@ -118,7 +118,7 @@ export type PluginSecretStanding = {
 
 /** One plugin as the host reports it: Bureau's listing, with the owner's choices and its secrets. */
 export type PluginStanding = PluginListing & {
-  /** Whether the plugin is enabled in the persisted choices: its `enabledByDefault` until the owner chooses. */
+  /** Whether the plugin is enabled in the persisted choices: its `enabled` until the owner chooses. */
   readonly enabled: boolean;
   /** The stored configuration, or `{}` when none is. */
   readonly configuration: unknown;
@@ -194,6 +194,8 @@ export type PluginSecretChange = {
 export type PluginManager = {
   /** The persisted choices as they were when the manager was created: what `createBureau` composes with. */
   settings(): Readonly<Record<string, BureauPluginSettings>>;
+  /** The current persisted configuration after the plugin descriptor schema parses it. */
+  configuration(name: string): unknown;
   /**
    * Every plugin the host did not skip for a secret it cannot honor, the built-in `bureau` plugin
    * (COR-1890) included. The built-in one is listed here for its standing and is not given to
@@ -466,9 +468,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     entry: BureauPluginEntry,
   ): boolean =>
     entry.descriptor.required === true ||
-    (settingsOf(settings, entry.descriptor.name).enabled ??
-      entry.descriptor.enabledByDefault ??
-      true);
+    (settingsOf(settings, entry.descriptor.name).enabled ?? entry.descriptor.enabled ?? true);
   const configurationIn = (
     settings: Readonly<Record<string, BureauPluginSettings>>,
     name: string,
@@ -560,7 +560,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       version: entry.descriptor.version,
       description: entry.descriptor.description,
       required: entry.descriptor.required === true,
-      enabledByDefault: entry.descriptor.enabledByDefault ?? true,
+      enabledByDefault: entry.descriptor.enabled ?? true,
       secrets: [],
     },
     source: entry.source,
@@ -583,6 +583,22 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
 
   return {
     settings: () => loaded,
+    configuration(name) {
+      const entry = entryNamed(name);
+      if (entry === undefined) return {};
+      const given = configurationIn(persisted, name);
+      const schema = entry.descriptor.configuration;
+      if (schema === undefined) return given;
+      const parsed = schema.safeParse(given);
+      if (parsed.success) return parsed.data;
+      const issue = parsed.error.issues[0];
+      const path = issue?.path.map(String) ?? [];
+      throw new ProviderConfigurationError(
+        location,
+        ['plugins', name, 'configuration', ...path].join('.'),
+        issue?.message ?? 'the configuration is not valid.',
+      );
+    },
     loadable: () => loadable,
     secrets,
     lockReason,

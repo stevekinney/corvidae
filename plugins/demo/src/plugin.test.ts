@@ -86,7 +86,7 @@ describe('the demo plugin', () => {
 
   test('declares one generated secret of its own, never the host’s approval secret', () => {
     expect(plugin.secrets).toEqual([{ key: 'demo-approval-secret', generated: true }]);
-    expect(plugin.enabledByDefault).toBe(false);
+    expect(plugin.enabled).toBe(false);
   });
 
   test('lists the eight agents under its prefix once enabled', async () => {

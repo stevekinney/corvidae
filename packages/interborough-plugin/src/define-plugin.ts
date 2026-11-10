@@ -12,7 +12,7 @@ function secretKey(declaration: PluginSecretDeclaration): string {
 }
 
 /**
- * Declares a plugin. It returns the descriptor unchanged, typed so `setup` and `afterStart` see the
+ * Declares a plugin. It returns the descriptor unchanged, typed so `setup` and `start` see the
  * configuration the `configuration` schema parses to, and refuses a malformed descriptor where the
  * plugin is written instead of where the host loads it: a name outside `pluginNamePattern`, an
  * empty title, version or description, or a secret that is empty or declared twice.

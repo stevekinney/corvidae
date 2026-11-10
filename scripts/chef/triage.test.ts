@@ -10,6 +10,7 @@ import {
   isExecutionReport,
   parseSections,
   pathOf,
+  present,
   proposeAction,
   readyFindings,
   run,
@@ -611,5 +612,19 @@ describe('run', () => {
       ['done', '--since', 'yesterday-ish'],
     ])
       expect(await rejectionOf(run(argv, deps))).toBeInstanceOf(UsageError);
+  });
+});
+
+describe('evidence for Jev', () => {
+  test('an absent or empty section is stated as none, never left unknown', () => {
+    const sections = new Map([
+      ['brief', 'Settle the threshold.'],
+      ['decisions', ''],
+    ]);
+    expect(present(sections, 'brief')).toBe('Settle the threshold.');
+    expect(present(sections, 'decisions')).toBe('none: the "decisions" section is empty');
+    expect(present(sections, 'open questions')).toBe(
+      'none: the issue has no "open questions" section',
+    );
   });
 });

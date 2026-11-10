@@ -17,8 +17,6 @@ import {
   type ComponentSource,
 } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
-import { PUBLISHED_VERSIONS_PATH } from './playground-paths.ts';
-import { readLastPublishedVersion } from './published-version.ts';
 import {
   addReadmeHeadingAnchors,
   readmeAnchorId,
@@ -67,7 +65,7 @@ type PackageManifest = {
  * (Chat's and Editor's). `RawPackageManifest` is the shape the file actually
  * has; `PackageManifest` (above) is what every OTHER reader in this module
  * gets, with `loadPackageManifestForDocumentation` responsible for replacing
- * whatever the file says with the version the public mirror last published.
+ * whatever the file says with the workspace sentinel.
  */
 type RawPackageManifest = Omit<PackageManifest, 'package'> & {
   package: { version?: string };
@@ -177,23 +175,10 @@ function isRawPackageManifest(value: unknown): value is RawPackageManifest {
 }
 
 /**
- * The version the documentation displays: the one the public repository last
- * published, recorded in `published-versions.json`. This is the single
- * source of `package.version`, so the page never shows the stale copy a
- * `components.json` carries. Thrown as the same `malformed-components-manifest`
- * error the manifest shape check uses, since a package the file does not record
- * is just as unusable here.
+ * The version the documentation displays. Workspaces carry no version of their own, so every
+ * package shows the `workspace` sentinel the generated token runtime also uses.
  */
-async function readDocumentedVersion(componentSource: ComponentSource): Promise<string> {
-  const version = await readLastPublishedVersion(componentSource.packageName);
-  if (version === undefined) {
-    throw new ComponentDocumentationError(
-      'malformed-components-manifest',
-      `${PUBLISHED_VERSIONS_PATH} records no lastPublishedVersion for ${componentSource.packageName}`,
-    );
-  }
-  return version;
-}
+const DOCUMENTED_VERSION = 'workspace';
 
 export async function loadPackageManifestForDocumentation(
   componentSource: ComponentSource = CINDER_COMPONENT_SOURCE,
@@ -205,8 +190,7 @@ export async function loadPackageManifestForDocumentation(
       `${componentSource.manifestPath} does not match the documentation manifest shape`,
     );
   }
-  const version = await readDocumentedVersion(componentSource);
-  return { ...raw, package: { version } };
+  return { ...raw, package: { version: DOCUMENTED_VERSION } };
 }
 
 async function readRequiredText(path: string, label: string): Promise<string> {

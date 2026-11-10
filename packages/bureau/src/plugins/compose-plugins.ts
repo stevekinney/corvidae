@@ -20,7 +20,7 @@
 import type {
   GuardrailFamily,
   PluginContributions,
-  PluginHostApi,
+  PluginHost,
   PluginMemoryGate,
   PluginSecrets,
   PluginSetupContext,
@@ -52,6 +52,7 @@ import {
 
 import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
+import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
 import type { AgentSource } from '../sources/definition-source';
 import {
   assertInterceptorHooks,
@@ -151,7 +152,7 @@ function settingsOf(
 
 function isEnabled(entry: BureauPluginEntry, settings: BureauPluginSettings): boolean {
   if (entry.descriptor.required === true) return true;
-  return settings.enabled ?? entry.descriptor.enabledByDefault ?? true;
+  return settings.enabled ?? entry.descriptor.enabled ?? true;
 }
 
 function configurationProblems(
@@ -583,6 +584,7 @@ class Contributed {
     plugin: string,
     version: string,
     result: PluginSetupResult,
+    configuration: unknown,
     tools: ReadonlyMap<string, Tool>,
     gate: PluginSecretGate | undefined,
   ): void {
@@ -611,7 +613,7 @@ class Contributed {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
     for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
-    this.providers.push(...providersOf(plugin, result));
+    this.providers.push(...providersOf(plugin, configuration, result));
     for (const detector of result.guardrails?.memory ?? []) {
       // The detector itself, not a copy of its fields: it may be an instance whose methods live on
       // its prototype.
@@ -634,10 +636,15 @@ class Contributed {
 }
 
 /** The providers a plugin's setup returned, each with the rows it carries or Operative's static ones. */
-function providersOf(plugin: string, result: PluginSetupResult): PluginProviderContribution[] {
+function providersOf(
+  plugin: string,
+  configuration: unknown,
+  result: PluginSetupResult,
+): PluginProviderContribution[] {
   return (result.providers ?? []).map((provider) => ({
     plugin,
     definition: provider,
+    configuration,
     rows:
       provider.rows ??
       createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
@@ -803,7 +810,7 @@ async function setUp(
       readonly plan: PluginContributionPlan;
       readonly redact: (message: string) => string;
       readonly gate: PluginSecretGate | undefined;
-      readonly bindHost: (host: PluginHostApi) => void;
+      readonly bindHost: (host: PluginHost) => void;
     }
 > {
   const { descriptor } = entry;
@@ -827,7 +834,7 @@ async function setUp(
       secrets,
       storage: createPluginStorage(storage, descriptor.name),
       host: host.api,
-      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
+      approvals: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
     // A malformed hook skips this plugin here, where every other malformed contribution does:
@@ -869,7 +876,7 @@ async function setUp(
  * with nothing it could change or reveal: storage confined to `plugin:<name>:` of a scratch
  * `MemoryStorage` that is dropped after, no secret (every `get` answers `undefined`), and a host
  * API that is never bound, so a call to it rejects. Only `agents` is kept; no other
- * contribution is registered, `afterStart` never runs, and none of the agents can start a run. A
+ * contribution is registered, `start` never runs, and none of the agents can start a run. A
  * plugin whose configuration does not parse, or whose `setup` throws, lists none: it is disabled
  * either way, and enabling it reports the failure where a running plugin's would be.
  */
@@ -890,7 +897,7 @@ async function agentsOfDisabledPlugin(
       secrets: { get: () => Promise.resolve(undefined) },
       storage: createPluginStorage(new MemoryStorage(), descriptor.name),
       host: lateHostApi(descriptor.name).api,
-      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
+      approvals: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup(context as never)) ?? {};
     const message = `Plugin ${descriptor.title ?? descriptor.name} is disabled`;
@@ -903,6 +910,22 @@ async function agentsOfDisabledPlugin(
   } catch {
     return [];
   }
+}
+
+/**
+ * The `formatter-unknown-kind` problems of a plugin whose formatters list an event kind Bureau
+ * never publishes, so a formatter cannot wait on an event that never fires (COR-2101).
+ */
+function formatterUnknownKinds(contributions: PluginContributions): PluginProblem[] {
+  const problems: PluginProblem[] = [];
+  for (const formatter of contributions.formatters ?? []) {
+    for (const kind of formatter.eventKinds) {
+      if (!Object.hasOwn(BUREAU_EVENT_CATALOG, kind)) {
+        problems.push({ code: 'formatter-unknown-kind', formatter: formatter.name, kind });
+      }
+    }
+  }
+  return problems;
 }
 
 /** `given` with every caller-owned collection composition reads after an await copied now. */
@@ -979,8 +1002,17 @@ export async function composePlugins<O extends ComposableOptions>(
       record(outcome.status, outcome.problems);
       continue;
     }
+    const unknownKinds = formatterUnknownKinds(outcome.result);
+    if (unknownKinds.length > 0) {
+      record('skipped', unknownKinds);
+      continue;
+    }
     const { plan } = outcome;
-    const providers = providersOf(entry.descriptor.name, outcome.result);
+    const providers = providersOf(
+      entry.descriptor.name,
+      outcome.context.configuration,
+      outcome.result,
+    );
     const checked =
       providers.length === 0
         ? []
@@ -1006,6 +1038,7 @@ export async function composePlugins<O extends ComposableOptions>(
       entry.descriptor.name,
       entry.descriptor.version,
       outcome.result,
+      outcome.context.configuration,
       plan.tools,
       outcome.gate,
     );

@@ -1,6 +1,7 @@
 /**
  * COR-2137 — the agent-file keys `defaultEffort`, `toolApproval`, `childAgents` and
- * `skillDescriptors` became `effort`, `approvals`, `children` and `card`. For each: a file that uses
+ * `skillDescriptors` became `effort`, `approvals`, `children` and `card`, and COR-2139 renamed
+ * `allowedSkills` to `skills`. For each: a file that uses
  * the new key parses, a file that still uses the old key is refused at the old key's own path, and
  * a snapshot or a saved version written under the old key still reads as the new one (and is never
  * written back under the old one). Override records of a built-in agent follow the same rule for the
@@ -62,6 +63,13 @@ const RENAMED: readonly RenamedKey[] = [
     yaml: '[{id: cite, name: Cite, description: Adds footnotes, tags: [footnoting]}]',
     value: [SKILL],
     otherValue: [{ ...SKILL, id: 'other' }],
+  },
+  {
+    oldKey: 'allowedSkills',
+    newKey: 'skills',
+    yaml: '[reviewer]',
+    value: ['reviewer'],
+    otherValue: ['writer'],
   },
 ];
 

@@ -50,6 +50,7 @@ describe('bureau.agents.overrides', () => {
         tools: null,
         approvals: null,
         guardrails: null,
+        interceptors: null,
         limits: null,
         model: null,
         models: null,
@@ -132,6 +133,45 @@ describe('bureau.agents.overrides', () => {
     await save(served, { limits: { steps: null } });
     const cleared = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
     expect(cleared.result).toMatchObject({ overrides: { limits: null } });
+  });
+
+  it('saves, serves and versions the interceptors of a running plugin’s agent, and refuses an id no plugin contributes', async () => {
+    const served = await serve({
+      overrides: {
+        plugins: [
+          demoPlugin({
+            interceptors: [{ name: 'watch', onStep: { handler: async () => {}, replay: 'safe' } }],
+          }),
+        ],
+      },
+    });
+    const update = async (interceptors: string[] | null) =>
+      callAs(served.owner, 'bureau.agents.overrides.update', {
+        id: 'demo:echo',
+        expectedHash: await currentHash(served, 'demo:echo'),
+        overrides: { interceptors },
+      });
+
+    const refused = await update(['demo:missing']);
+    expect(refused.error?.data).toMatchObject({ httpStatus: 422 });
+    const saved = await update(['demo:watch']);
+    expect(saved.result).toMatchObject({ id: 'demo:echo', version: 1 });
+
+    const now = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'demo:echo' });
+    expect(now.result).toMatchObject({ overrides: { interceptors: ['demo:watch'] } });
+    const versions = listOf(
+      await callAs(served.owner, 'bureau.agents.versions.list', { id: 'demo:echo' }),
+      'versions',
+    );
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toMatchObject({
+      changedKeys: ['interceptors'],
+      overrides: { interceptors: ['demo:watch'], guardrails: null },
+    });
+    // `null` removes the set, as it does any other key.
+    await update(null);
+    const cleared = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'demo:echo' });
+    expect(cleared.result).toMatchObject({ overrides: { interceptors: null } });
   });
 
   it('refuses the old override keys and the old field names', async () => {

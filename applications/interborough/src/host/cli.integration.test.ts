@@ -121,6 +121,21 @@ const productionServer = Bun.serve({
       if (body.method === 'bureau.assets.uploads.complete')
         return Response.json({ result: { assetId: 'compiled-asset' } });
       if (body.method === 'bureau.assets.uploads.abort') return Response.json({ result: {} });
+      if (body.method === 'bureau.plugins.contributions')
+        return Response.json({
+          result: {
+            providers: [
+              {
+                plugin: 'openai',
+                name: 'openai',
+                configuration: {
+                  type: 'object',
+                  properties: { baseURL: { type: 'string', format: 'uri' } },
+                },
+              },
+            ],
+          },
+        });
       return Response.json({ jsonrpc: '2.0', id: 'production', result: body.params });
     }
     if (pathname === '/bureau/v1/subscriptions/bureau.tasks.events') {
@@ -250,6 +265,25 @@ const productionServer = Bun.serve({
         incarnationId: 'production-incarnation',
         diagnostics: { providers: [] },
       });
+    if (new URL(request.url).pathname === '/host/providers' && request.method === 'GET')
+      return Response.json({ configurationRevision: 'compiled-r1', providers: [], models: [] });
+    if (new URL(request.url).pathname === '/host/plugins' && request.method === 'GET')
+      return Response.json({ configurationRevision: 'compiled-p1' });
+    if (new URL(request.url).pathname === '/host/plugins' && request.method === 'GET')
+      return Response.json({
+        configurationRevision: 'compiled-p1',
+        plugins: [
+          {
+            name: 'openai',
+            contributions: { providers: ['openai'] },
+            configurationSchema: { properties: { baseURL: { type: 'string' } } },
+          },
+        ],
+      });
+    if (new URL(request.url).pathname.startsWith('/host/plugins/') && request.method === 'PUT')
+      return Response.json({ plugin: 'openai', restartRequired: false });
+    if (new URL(request.url).pathname === '/host/providers/openai' && request.method === 'PUT')
+      return Response.json({ providers: [], catalogRevision: 2 });
     if (new URL(request.url).pathname === '/openrpc.json')
       return Response.json({ methods: [{ name: 'weft.alerts.list' }] });
     const body = (await request.json()) as { params?: unknown };
@@ -280,6 +314,73 @@ const productionConnection = await invoke(
 const productionStatus = await invoke(['status', '--connection', 'production'], {
   INTERBOROUGH_TOKEN: 'production-secret',
 });
+const compiledConfigurationList = await invoke(
+  ['providers', 'list', '--connection', 'production'],
+  {
+    INTERBOROUGH_TOKEN: 'production-secret',
+  },
+);
+const compiledConfigurationInput = join(directory, 'provider-configuration.json');
+writeFileSync(
+  compiledConfigurationInput,
+  JSON.stringify({
+    apiKey: 'compiled-provider-secret',
+    configuration: { baseURL: 'https://api.invalid' },
+  }),
+);
+const compiledConfigurationMutation = await invoke(
+  [
+    'providers',
+    'connect',
+    'openai',
+    '--connection',
+    'production',
+    '--input-file',
+    compiledConfigurationInput,
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
+const compiledUnknownProvider = await invoke(
+  [
+    'providers',
+    'connect',
+    'typo',
+    '--connection',
+    'production',
+    '--input-file',
+    compiledConfigurationInput,
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
+const compiledInvalidConfigurationInput = join(directory, 'invalid-provider-configuration.json');
+writeFileSync(
+  compiledInvalidConfigurationInput,
+  JSON.stringify({ apiKey: 'compiled-provider-secret', configuration: { baseURL: 'not a uri' } }),
+);
+const compiledInvalidConfiguration = await invoke(
+  [
+    'providers',
+    'connect',
+    'openai',
+    '--connection',
+    'production',
+    '--input-file',
+    compiledInvalidConfigurationInput,
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
+const compiledInlineSecret = await invoke(
+  [
+    'providers',
+    'connect',
+    'openai',
+    '--connection',
+    'production',
+    '--input',
+    '{"apiKey":"argv-secret"}',
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
 const productionCall = spawnWithHangGuard(
   [
     executable,
@@ -756,6 +857,43 @@ test('compiled binary upload preserves every non-UTF8 byte in bounded chunks and
   expect(body).toBeDefined();
   expect(JSON.stringify(body)).toContain('"provider":"bureau"');
   expect(JSON.stringify(body)).toContain('"value":"compiled-asset"');
+});
+
+test('compiled binary routes configuration commands through the authenticated host', () => {
+  expect(compiledConfigurationList.exitCode).toBe(0);
+  expect(compiledConfigurationList.stdout.toString()).toContain('configurationRevision');
+  expect(
+    productionRequests.some(
+      (request) => new URL(request.url).pathname === '/host/providers' && request.method === 'GET',
+    ),
+  ).toBe(true);
+});
+
+test('compiled binary performs revisioned provider configuration and rejects argv secrets', () => {
+  expect(compiledConfigurationMutation.exitCode).toBe(0);
+  expect(compiledUnknownProvider.exitCode).toBe(2);
+  expect(compiledInvalidConfiguration.exitCode).toBe(2);
+  expect(compiledInlineSecret.exitCode).toBe(2);
+  expect(compiledConfigurationMutation.stdout.toString()).not.toContain('compiled-provider-secret');
+  expect(compiledInlineSecret.stderr.toString()).toContain('never --input');
+  expect(
+    productionRequests.filter(
+      (request) =>
+        new URL(request.url).pathname === '/host/providers/openai' && request.method === 'PUT',
+    ),
+  ).toHaveLength(1);
+  expect(
+    productionRequests.filter(
+      (request) =>
+        new URL(request.url).pathname === '/host/plugins/openai' && request.method === 'PUT',
+    ),
+  ).toHaveLength(1);
+  expect(
+    productionRequests.some(
+      (request) =>
+        new URL(request.url).pathname === '/host/providers/openai' && request.method === 'PUT',
+    ),
+  ).toBe(true);
 });
 
 const invalidOptions = [

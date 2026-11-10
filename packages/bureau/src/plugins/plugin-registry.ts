@@ -1,5 +1,5 @@
 /**
- * COR-1879 — `bureau.plugins`: the plugins composition loaded, their `afterStart`, and the listing.
+ * COR-1879 — `bureau.plugins`: the plugins composition loaded, their `start`, and the listing.
  *
  * The listing is built fresh on every call from the descriptor's declared fields, never from the
  * descriptor itself, so it carries no schema, no function, no configuration value and no secret.
@@ -13,7 +13,7 @@ import { z } from 'zod';
 import {
   isGuardrailFactory,
   type PluginGuardrails,
-  type PluginHostApi,
+  type PluginHost,
   type PluginSetupContext,
   type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
@@ -29,6 +29,7 @@ import type {
   PluginContributionReferences,
   PluginReactionListing,
   PluginListing,
+  PluginProviderListing,
   PluginProblem,
   PluginStatus,
   PluginTriggerListing,
@@ -57,7 +58,7 @@ export interface PluginRecord {
     readonly context: PluginSetupContext;
     readonly redact: (message: string) => string;
     /** Points the context's `host` at the plugin's own host API once the Bureau exists. */
-    readonly bindHost: (host: PluginHostApi) => void;
+    readonly bindHost: (host: PluginHost) => void;
   };
 }
 
@@ -87,7 +88,7 @@ export function pluginListingOf(
       version: descriptor.version,
       description: descriptor.description,
       required: descriptor.required === true,
-      enabledByDefault: descriptor.enabledByDefault ?? true,
+      enabledByDefault: descriptor.enabled ?? true,
       secrets: (descriptor.secrets ?? []).map((declaration) =>
         typeof declaration === 'string'
           ? { key: declaration, generated: false }
@@ -118,11 +119,11 @@ export interface PluginRegistry {
   /** The value served as `bureau.plugins`. */
   readonly plugins: BureauPlugins;
   /**
-   * Binds each running plugin's `host` to the API `hostFor` builds for it, then runs `afterStart`
+   * Binds each running plugin's `host` to the API `hostFor` builds for it, then runs `start`
    * once for each, in load order, each after the one before has settled, with that same API. A
-   * rejection becomes that plugin's `after-start-failed` problem; it never rejects.
+   * rejection becomes that plugin's `start-failed` problem; it never rejects.
    */
-  start(hostFor: (plugin: string) => PluginHostApi): Promise<void>;
+  start(hostFor: (plugin: string) => PluginHost): Promise<void>;
   /**
    * Reads the Bureau from now on: the agent listing, so a file a running plugin ships that names a
    * contribution nothing loaded holds is that plugin's `reference-unresolved`, and what names each
@@ -435,6 +436,20 @@ export function createPluginRegistry(
             : [],
         ),
       ],
+      providers: () =>
+        records.flatMap((record): PluginProviderListing[] =>
+          record.status === 'running'
+            ? (record.setup?.result.providers ?? [])
+                .filter((provider) => registered(record, 'provider', provider.name))
+                .map((provider) => ({
+                  plugin: record.entry.descriptor.name,
+                  name: provider.name,
+                  configuration: jsonSchemaOf(
+                    record.entry.descriptor.configuration ?? z.object({}),
+                  ),
+                }))
+            : [],
+        ),
       reportPanelFailure: (plugin, app, message) => {
         const record = records.find(
           (candidate) =>
@@ -468,7 +483,7 @@ export function createPluginRegistry(
       entry.runs.add(runId);
     },
     async start(hostFor) {
-      const hosts = new Map<string, PluginHostApi>();
+      const hosts = new Map<string, PluginHost>();
       for (const record of records) {
         if (record.setup === undefined) continue;
         const host = hostFor(record.entry.descriptor.name);
@@ -478,13 +493,13 @@ export function createPluginRegistry(
       for (const record of records) {
         const { setup } = record;
         const host = hosts.get(record.entry.descriptor.name);
-        if (setup?.result.afterStart === undefined || host === undefined) continue;
+        if (setup?.result.start === undefined || host === undefined) continue;
         try {
-          await setup.result.afterStart(host, setup.context);
+          await setup.result.start(host, setup.context);
         } catch (error) {
           laterProblems.set(record.entry.descriptor.name, [
             {
-              code: 'after-start-failed',
+              code: 'start-failed',
               message: setup.redact(error instanceof Error ? error.message : String(error)),
             },
           ]);
@@ -501,11 +516,11 @@ export function createPluginRegistry(
  * the bind rejects.
  */
 export function lateHostApi(plugin: string): {
-  readonly api: PluginHostApi;
-  readonly bind: (host: PluginHostApi) => void;
+  readonly api: PluginHost;
+  readonly bind: (host: PluginHost) => void;
 } {
-  let bound: PluginHostApi | undefined;
-  const host = (): PluginHostApi => {
+  let bound: PluginHost | undefined;
+  const host = (): PluginHost => {
     if (bound === undefined) {
       throw new Error(`The host of plugin "${plugin}" has not started yet.`);
     }

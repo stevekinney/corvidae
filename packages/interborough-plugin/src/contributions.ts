@@ -26,18 +26,22 @@ import type {
   ValidateToolResultHook,
   Validator,
 } from '@lostgradient/operative';
-import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
+import type {
+  BackendDescriptor,
+  ProviderConfigurationBase,
+  ProviderDefinition,
+} from '@lostgradient/operative/provider-kit';
 import type { ActivityDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
 
-import type { PluginHostApi } from './host-api.ts';
+import type { PluginHost } from './host-api.ts';
 import type { PluginSetupContext } from './plugin-descriptor.ts';
 import type { PluginScorer } from './scorer.ts';
 
 /** An event the host publishes, as a trigger, hook action, or formatter receives it. */
 export interface PluginEvent {
-  /** The event's kind, such as `run.completed`. */
+  /** The event's kind, such as `run.settled`. */
   readonly kind: string;
   /** The Bureau that published the event. */
   readonly bureauId: string;
@@ -336,7 +340,11 @@ export interface PluginReaction {
  * models appear as. A row's `provider` is the definition's `name`; a row naming another provider
  * is refused when the plugin loads.
  */
-export type PluginProvider = ProviderDefinition & {
+export type PluginProvider<Configuration = unknown> = ProviderDefinition<
+  string,
+  ProviderConfigurationBase,
+  Configuration
+> & {
   /**
    * The catalog rows of the provider's models. Absent offers Operative's static rows for the
    * definition's `name`, which is what a provider package that ships its models there wants.
@@ -475,8 +483,5 @@ export interface PluginSetupResult<TConfiguration = unknown> extends PluginContr
    * Runs once after Bureau has started, with the host API and the context `setup` received. A
    * rejection marks the plugin failed without stopping the host.
    */
-  afterStart?(
-    bureau: PluginHostApi,
-    context: PluginSetupContext<TConfiguration>,
-  ): void | Promise<void>;
+  start?(bureau: PluginHost, context: PluginSetupContext<TConfiguration>): void | Promise<void>;
 }

@@ -51,7 +51,7 @@ export default definePlugin({
   title: 'Workspace',
   version: '1.0.0',
   description: 'Read-only file tools for explicitly configured workspace roots.',
-  enabledByDefault: false,
+  enabled: false,
   configuration,
   setup({ configuration: settings }) {
     const seen = new Set<string>();

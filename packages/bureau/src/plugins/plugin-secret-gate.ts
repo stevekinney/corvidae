@@ -41,7 +41,7 @@
  * function is: its `handler` refuses, and the fields beside it are kept, so a plugin's own
  * `onError: () => 'continue'` also swallows the refusal. The handler does not run either way.
  *
- * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
+ * `start` runs whether or not a secret is missing: the plugin loaded, and the host API it
  * receives needs no secret.
  *
  * @module plugin-secret-gate

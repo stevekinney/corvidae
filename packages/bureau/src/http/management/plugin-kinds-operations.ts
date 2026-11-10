@@ -26,7 +26,7 @@ import { unaryTransports as transports, unknownKeyPolicy } from './management-sc
 
 /** What `bureau.plugins.contributions` reads from the handler's `host`. */
 export type BureauPluginKindsOperationHost = {
-  readonly plugins: Pick<BureauPlugins, 'triggers' | 'reactions'>;
+  readonly plugins: Pick<BureauPlugins, 'triggers' | 'reactions' | 'providers'>;
 };
 
 /** What `bureau.events.format` reads from the handler's `host`. */
@@ -44,6 +44,9 @@ const configurationSchema = z
 const kindsInput = z.object({});
 
 const kindsOutput = z.object({
+  providers: z.array(
+    z.object({ plugin: z.string(), name: z.string(), configuration: configurationSchema }),
+  ),
   triggers: z
     .array(
       z.object({
@@ -81,7 +84,7 @@ export const pluginKindsOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the trigger and hook action kinds plugins contribute',
   description:
-    'Lists the trigger kinds a workflow file’s trigger can name besides `schedule` and `signal` (`id` is `plugin:name`) and the hook action kinds a hook’s `{ type: "plugin" }` action can name (`plugin` and `kind`), for the plugins that are running. Each has a `description`, the `version` a record that uses it pins, and its `configuration` as JSON Schema (the fields a trigger holds besides `kind`, or an action’s `configuration`), or `null` when the schema cannot be written as one. Read-only; any authenticated caller may read it.',
+    'Lists the model providers, trigger kinds and hook action kinds contributed by running plugins, with each plugin configuration as JSON Schema. Read-only; any authenticated caller may read it.',
   destructive: false,
   tags: ['Plugins'],
   inputSchema: kindsInput,
@@ -93,6 +96,7 @@ export const pluginKindsOperation = defineOperation<
   unknownKeyPolicy,
   invoke: ({ host }) =>
     Promise.resolve({
+      providers: host.plugins.providers().map((provider) => ({ ...provider })),
       triggers: host.plugins.triggers().map((kind) => ({ ...kind })),
       reactions: host.plugins.reactions().map((kind) => ({ ...kind })),
     }),

@@ -499,14 +499,14 @@ LF:10
 LH:0
 end_of_record
 TN:
-SF:scripts/knowledge/index.ts
+SF:scripts/generate-manifest.ts
 FNF:10
 FNH:0
 LF:10
 LH:0
 end_of_record
 TN:
-SF:scripts/knowledge/output.ts
+SF:scripts/check-token-naming.ts
 FNF:4
 FNH:4
 LF:4
@@ -682,11 +682,11 @@ end_of_record
 
   test('applies runtime scope exclusions to absolute package-local LCOV paths', () => {
     const absoluteScriptsPath = join(packageRoot, 'scripts', 'build.ts').replaceAll('\\', '/');
-    const absoluteCliPath = join(packageRoot, 'scripts', 'knowledge', 'index.ts').replaceAll(
+    const absoluteManifestPath = join(packageRoot, 'scripts', 'generate-manifest.ts').replaceAll(
       '\\',
       '/',
     );
-    const absoluteCliHelperPath = join(packageRoot, 'scripts', 'knowledge', 'output.ts').replaceAll(
+    const absoluteNamingPath = join(packageRoot, 'scripts', 'check-token-naming.ts').replaceAll(
       '\\',
       '/',
     );
@@ -713,14 +713,14 @@ LF:10
 LH:0
 end_of_record
 TN:
-SF:${absoluteCliPath}
+SF:${absoluteManifestPath}
 FNF:10
 FNH:0
 LF:10
 LH:0
 end_of_record
 TN:
-SF:${absoluteCliHelperPath}
+SF:${absoluteNamingPath}
 FNF:4
 FNH:4
 LF:4

@@ -377,8 +377,8 @@ describe('AccordionItem', () => {
     ).text();
     // Declared on `:root` like every other public token. These aliases were briefly
     // deferred out of `:root` so a scoped ancestor override could reach them, but that
-    // broke `validate:consumer` -- which asserts every `public: true` token is declared
-    // in the shipped CSS -- and failed the 0.25.1 release. Deferring them again requires
+    // broke the check that every `public: true` token is declared
+    // in the shipped CSS, and failed the 0.25.1 release. Deferring them again requires
     // the registry to first express "public but not root-declared"; see
     // DEFERRED_COMPONENT_ALIAS_FAMILIES in scripts/tokens/generate.ts.
     expect(tokenCss).toContain('--cinder-accordion-item-trigger-gap:');
