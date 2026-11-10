@@ -257,7 +257,10 @@ export async function runInstalled(
         JSON.stringify({ model: 'installed-fixture/scripted', instructions: 'Use the fixture.' }),
       );
       await writeFile(providerFile, JSON.stringify({ configuration: {} }));
-      await writeFile(workflowFile, JSON.stringify({ title: 'Installed workflow', steps: [] }));
+      await writeFile(
+        workflowFile,
+        JSON.stringify({ name: 'installed-cli-workflow', trigger: { kind: 'manual' }, steps: [] }),
+      );
       await writeFile(
         scheduleFile,
         JSON.stringify({
