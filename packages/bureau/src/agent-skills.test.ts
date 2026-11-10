@@ -4,19 +4,22 @@
  */
 import {
   createAgent,
+  createGuardrails,
+  DEFAULT_TAINT_THRESHOLD,
   type GenerateFunction,
   type InputDetector,
   type Toolbox,
 } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
+import { Conversation } from 'conversationalist';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { agentSkillNames, createAgentSkills } from './agent-skills';
+import { agentSkillNames, createAgentSkills, createSkillGuardrailOptions } from './agent-skills';
 
 /** Trips only on its own sentinel. */
 const sentinelDetector: InputDetector = {
@@ -185,5 +188,43 @@ describe('createAgentSkills', () => {
     expect(toolsByStep[0]).toContain('search');
     // COR-1633 — the skill lifecycle tools are exempt from the narrowing; the host tool is not.
     expect(toolsByStep[1]).toEqual(['activate_skill', 'load_skill_resource', 'deactivate_skill']);
+  });
+});
+
+describe('skill-path taint threshold (COR-2102)', () => {
+  const detectorAt = (confidence: number): InputDetector => ({
+    name: 'cor-2102-detector',
+    detect: async () => ({ triggered: true, category: 'prompt-injection', confidence }),
+  });
+  const event = (confidence: number) => ({
+    detector: 'cor-2102-detector',
+    category: 'prompt-injection' as const,
+    confidence,
+    action: 'warn' as const,
+    provenance: 'skill-resource' as const,
+  });
+
+  it('does not taint on a skill-resource detection at 0.85 without a configured threshold', () => {
+    const configuration = { input: { detectors: [detectorAt(0.85)], action: 'warn' as const } };
+    const guardrails = createGuardrails(configuration);
+    const skill = createSkillGuardrailOptions(configuration, guardrails);
+    skill?.onTriggered?.(event(0.85));
+    expect(guardrails.taint.isTainted()).toBe(false);
+  });
+
+  it('taints the skill path and createGuardrails at the same confidence', async () => {
+    for (const confidence of [0.85, DEFAULT_TAINT_THRESHOLD - 0.001, DEFAULT_TAINT_THRESHOLD]) {
+      const configuration = {
+        input: { detectors: [detectorAt(confidence)], action: 'warn' as const },
+      };
+      const viaSkill = createGuardrails(configuration);
+      createSkillGuardrailOptions(configuration, viaSkill)?.onTriggered?.(event(confidence));
+      const viaRun = createGuardrails(configuration);
+      const conversation = new Conversation();
+      conversation.appendUserMessage('hello');
+      await viaRun.prepareStep({ conversation, step: 1 } as never);
+      expect(viaSkill.taint.isTainted()).toBe(viaRun.taint.isTainted());
+      expect(viaSkill.taint.isTainted()).toBe(confidence >= DEFAULT_TAINT_THRESHOLD);
+    }
   });
 });

@@ -14,7 +14,7 @@ export type {
   PromptInjectionDetectorOptions,
   TopicBoundaryDetectorOptions,
 } from 'armorer';
-export { createGuardrails } from './create-guardrails';
+export { DEFAULT_TAINT_THRESHOLD, createGuardrails } from './create-guardrails';
 export { createDefaultGuardrailsPreset } from './default-preset';
 export { guardrailActionOf, guardrailOf } from './guardrail-entries';
 export { createInputGuardrail } from './input-guardrail';

@@ -16,6 +16,7 @@ import type {
 } from '@lostgradient/operative';
 import {
   AGENT_POLICY_HOOK_SOURCE,
+  DEFAULT_TAINT_THRESHOLD,
   guardrailOf,
   withActiveSkillToolPolicy,
 } from '@lostgradient/operative';
@@ -176,7 +177,7 @@ export function createSkillGuardrailOptions(
     ...(input.action !== undefined ? { action: input.action === 'warn' ? 'warn' : 'block' } : {}),
     getSessionTainted: () => guardrails.taint.isTainted(),
     onTriggered: (event) => {
-      if (event.confidence >= (configuration.taint?.taintThreshold ?? 0.8)) {
+      if (event.confidence >= (configuration.taint?.taintThreshold ?? DEFAULT_TAINT_THRESHOLD)) {
         guardrails.taint.taint({
           reason: event.detail ?? `Detection by ${event.detector}`,
           detector: event.detector,
