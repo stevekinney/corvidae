@@ -167,7 +167,7 @@ async function run(arguments_: string[]): Promise<number> {
         process.stderr.write(question);
         process.stdin.setRawMode(true);
         process.stdin.resume();
-        return await new Promise<string>((complete, reject) => {
+        return await new Promise<string>((_resolve, reject) => {
           let answer = '';
           const onAbort = () => finish(new DOMException('Aborted', 'AbortError'));
           const onData = (chunk: Buffer) => {
@@ -185,7 +185,7 @@ async function run(arguments_: string[]): Promise<number> {
             signal?.removeEventListener('abort', onAbort);
             if (error === undefined) {
               process.stderr.write('\n');
-              complete(answer);
+              _resolve(answer);
             } else reject(error);
           };
           process.stdin.on('data', onData);
