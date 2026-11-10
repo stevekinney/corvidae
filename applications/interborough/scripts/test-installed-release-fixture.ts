@@ -73,7 +73,7 @@ document.body.innerHTML = '<main>Installed fixture MCP panel</main>';
         {
           kind: 'activity',
           handler: 'agent',
-          input: { agent: 'installed-fixture-assistant', message: 'workflow hello' },
+          input: { agent: 'installed-fixture:assistant', message: 'workflow hello' },
         },
       ],
     }),
