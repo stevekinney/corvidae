@@ -25,6 +25,22 @@
     transition: background-color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* An icon keeps its size; only a truncating label gives way. */
+  .cinder-badge > svg {
+    flex-shrink: 0;
+  }
+
+  /* A truncating badge stays within the width it is given and ends its label with an ellipsis. */
+  .cinder-badge[data-cinder-truncate] {
+    max-inline-size: 100%;
+  }
+
+  .cinder-badge__label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */

@@ -19,6 +19,11 @@ export type BadgeProps =
       size?: BadgeSize;
       /** Render the badge label in a monospace font. */
       monospace?: boolean;
+      /**
+       * Keeps the badge within the width it is given and ends a long label with an ellipsis, with
+       * the full label in the `title`, for a value of any length such as a tag.
+       */
+      truncate?: boolean;
       class?: string;
       /** Render a standardized subscription lifecycle badge without hand-wiring tone, icon, and label. */
       subscriptionState: BadgeSubscriptionState;
@@ -31,6 +36,11 @@ export type BadgeProps =
       size?: BadgeSize;
       /** Render the badge label in a monospace font. */
       monospace?: boolean;
+      /**
+       * Keeps the badge within the width it is given and ends a long label with an ellipsis, with
+       * the full label in the `title`, for a value of any length such as a tag.
+       */
+      truncate?: boolean;
       class?: string;
       subscriptionState?: undefined;
       severity?: BadgeSeverity;
@@ -58,6 +68,12 @@ export interface BadgeSchemaProps {
    * @default false
    */
   monospace?: boolean;
+  /**
+   * Keeps the badge within the width it is given and ends a long label with an ellipsis, with the
+   * full label in the `title`.
+   * @default false
+   */
+  truncate?: boolean;
   /** Render a standardized subscription lifecycle badge without hand-wiring tone, icon, and label. */
   subscriptionState?: BadgeSubscriptionState;
   /** Ordered severity preset; critical uses the dedicated critical token. */

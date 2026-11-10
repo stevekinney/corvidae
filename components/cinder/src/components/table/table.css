@@ -351,6 +351,11 @@
     overflow-wrap: break-word;
   }
 
+  /* No value paints over the next column: what does not wrap or truncate is cut at its own cell. */
+  .cinder-table[data-cinder-fit] .cinder-table__cell {
+    overflow: clip;
+  }
+
   .cinder-table[data-cinder-fit] .cinder-table__cell-text {
     max-inline-size: 100%;
   }

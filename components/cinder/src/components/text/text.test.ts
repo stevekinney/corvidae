@@ -331,3 +331,28 @@ describe('Text middle truncation fit', () => {
     );
   });
 });
+
+describe('Text truncate="end"', () => {
+  const longName = `responsive-model-${'m'.repeat(300)}`;
+
+  test('renders the whole text on one cut line, with the whole of it in the title', () => {
+    const { container } = render(Text, { as: 'span', truncate: 'end', text: longName });
+    const root = container.querySelector('.cinder-text');
+    expect(root?.tagName).toBe('SPAN');
+    expect(root?.getAttribute('data-cinder-truncate')).toBe('end');
+    expect(root?.textContent).toBe(longName);
+    expect(root?.getAttribute('title')).toBe(longName);
+    expect(root?.hasAttribute('tabindex')).toBe(false);
+  });
+
+  test('keeps a title the caller set', () => {
+    const { container } = render(Text, { truncate: 'end', text: longName, title: 'Model' });
+    expect(container.querySelector('.cinder-text')?.getAttribute('title')).toBe('Model');
+  });
+
+  test('ends the line with an ellipsis in the typography of what holds it', () => {
+    expect(textCss).toMatch(
+      /\.cinder-text\[data-cinder-truncate='end'\]\s*\{[^}]*font:\s*inherit;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/,
+    );
+  });
+});

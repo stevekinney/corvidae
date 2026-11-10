@@ -238,10 +238,39 @@ describe('Badge — hugs its text inside a grid or flex parent (COR-1821)', () =
   });
 
   test('no size or variant rule widens the badge again', () => {
-    const sizing = [...badgeCss.matchAll(/(?:inline-size|width)\s*:\s*([^;]+);/g)].map((match) =>
-      match[1]?.trim(),
+    // A minimum or maximum only bounds the badge; it never widens it.
+    const sizing = [...badgeCss.matchAll(/(?<![-\w])(?:inline-size|width)\s*:\s*([^;]+);/g)].map(
+      (match) => match[1]?.trim(),
     );
     expect(sizing).toEqual(['fit-content']);
     expect(badgeCss).not.toMatch(/(?:flex-grow|align-self|justify-self)\s*:/);
+  });
+});
+
+describe('Badge truncate', () => {
+  const longTag = `responsive-tag-${'t'.repeat(200)}`;
+
+  test('wraps the label so it can end with an ellipsis, with the whole label in the title', async () => {
+    const { container } = render(Badge, { truncate: true, children: textSnippet(longTag) });
+    const badge = container.querySelector('.cinder-badge');
+    expect(badge?.hasAttribute('data-cinder-truncate')).toBe(true);
+    const label = badge?.querySelector('.cinder-badge__label');
+    expect(label?.textContent?.trim()).toBe(longTag);
+    await waitFor(() => expect(label?.getAttribute('title')).toBe(longTag));
+  });
+
+  test('leaves a badge without truncate as it was', () => {
+    const { container } = render(Badge, { children: textSnippet('Ready') });
+    const badge = container.querySelector('.cinder-badge');
+    expect(badge?.hasAttribute('data-cinder-truncate')).toBe(false);
+    expect(badge?.querySelector('.cinder-badge__label')).toBeNull();
+  });
+
+  test('stays within its width and keeps an icon whole', () => {
+    expect(badgeCss).toMatch(
+      /\.cinder-badge\[data-cinder-truncate\]\s*\{[^}]*max-inline-size:\s*100%;/,
+    );
+    expect(badgeCss).toMatch(/\.cinder-badge__label\s*\{[^}]*text-overflow:\s*ellipsis;/);
+    expect(badgeCss).toMatch(/\.cinder-badge > svg\s*\{[^}]*flex-shrink:\s*0;/);
   });
 });

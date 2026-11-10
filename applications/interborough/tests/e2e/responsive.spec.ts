@@ -89,6 +89,8 @@ const LONG_SCHEDULE_ID = `responsive-schedule-${String(Date.now())}`;
 const LONG_SCHEDULE_DESCRIPTION = `Responsive ${'s'.repeat(300)}`;
 const LONG_SCHEDULE_ZONE = 'America/Argentina/Buenos_Aires';
 const LONG_REVIEW_TITLE = `Refund ${'w'.repeat(300)}`;
+/** A tag of one unbroken word on the seeded order-processing run, listed by the engine's workflow table. */
+const LONG_TAG = `responsive-tag-${'t'.repeat(200)}`;
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
 const WORKFLOW_FILE = 'e2e-digest';
@@ -318,11 +320,16 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   // A record table ends a long value with an ellipsis and keeps the whole of it in the title (row 16c).
   '/settings/models': async (page) => {
     await expect(
-      page.locator(`code.ib-model-name__identifier[title="${LONG_MODEL}"]`),
+      page.locator(`.ib-model-name__identifier .cinder-text[title="${LONG_MODEL}"]`),
     ).toBeVisible();
   },
+  '/health/runs': async (page) => {
+    await expect(page.locator(`.cinder-badge__label[title="${LONG_TAG}"]`).first()).toBeVisible();
+  },
   '/hooks': async (page) => {
-    await expect(page.locator(`a.ib-hooks__sentence[title*="${LONG_HOOK_URL}"]`)).toBeVisible();
+    await expect(
+      page.locator(`a.ib-hooks__sentence .cinder-text[title*="${LONG_HOOK_URL}"]`),
+    ).toBeVisible();
     await expect(page.locator(`.ib-hooks__name[title="${LONG_HOOK_NAME}"]`).first()).toBeVisible();
   },
   // The whole log is closed until asked for; open it so its lines are measured too.
@@ -553,6 +560,13 @@ test.beforeAll(async ({ playwright }) => {
     await addCatalogRow(request, LONG_MODEL);
     const listed = await request.get('/v1/workflows?type=order-processing&limit=1');
     const runs = (await listed.json()) as { items?: { id: string }[] };
+    const taggedRun = runs.items?.[0]?.id;
+    if (taggedRun !== undefined) {
+      const tagged = await request.post(`/v1/workflows/${encodeURIComponent(taggedRun)}/tags`, {
+        data: { tags: [LONG_TAG] },
+      });
+      expect(tagged.status(), `tagging the run: ${await tagged.text()}`).toBeLessThan(300);
+    }
     const timelineResponse = await request.get(
       `/v1/workflows/${encodeURIComponent(RUN_STEPS_RUN_ID)}/timeline`,
     );

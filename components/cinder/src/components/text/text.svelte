@@ -124,7 +124,16 @@
   });
 </script>
 
-{#if middleParts !== undefined}
+{#if truncate === 'end' && typeof text === 'string'}
+  <svelte:element
+    this={element}
+    {...rest}
+    title={typeof rest.title === 'string' && rest.title !== '' ? rest.title : text}
+    class={classNames('cinder-text', className)}
+    data-cinder-variant={variant}
+    data-cinder-truncate="end">{text}</svelte:element
+  >
+{:else if middleParts !== undefined}
   <!-- The cut text is focusable, so a keyboard or touch user reaches the whole value in the tooltip. -->
   <Tooltip
     text={typeof rest.title === 'string' && rest.title !== '' ? rest.title : (text ?? '')}

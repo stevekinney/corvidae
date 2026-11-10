@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Text } from '@lostgradient/cinder';
+
   /**
    * A model's name as a person says it ("Claude Opus 5.5") with the identifier the provider calls it
    * (`claude-opus-5-5`) small and monospaced: under the name in a table row (board SettingsShell,
@@ -21,20 +23,23 @@
   let { name, identifier, layout = 'stacked', labelFor }: Props = $props();
 </script>
 
+<!-- Each line ends with an ellipsis when it is too long, with the whole of it in the title (row 16c). -->
 <span class="ib-model-name" data-layout={layout}>
   {#if labelFor === undefined}
-    <span class="ib-model-name__title" title={name}>{name}</span>
+    <span class="ib-model-name__title"><Text as="span" truncate="end" text={name} /></span>
   {:else}
-    <label class="ib-model-name__title ib-model-name__title--label" for={labelFor} title={name}
-      >{name}</label
+    <label class="ib-model-name__title ib-model-name__title--label" for={labelFor}
+      ><Text as="span" truncate="end" text={name} /></label
     >
   {/if}
-  <code class="ib-model-name__identifier" title={identifier}>{identifier}</code>
+  <code class="ib-model-name__identifier"><Text as="span" truncate="end" text={identifier} /></code>
 </span>
 
 <style>
   .ib-model-name {
     display: inline-flex;
+    /* In a row of checkboxes the name takes the room its row has, so a long one stays beside its box. */
+    flex: 1 1 0;
     min-inline-size: 0;
     max-inline-size: 100%;
     gap: var(--cinder-space-0-5) var(--cinder-space-2);
@@ -44,14 +49,10 @@
     flex-direction: column;
   }
 
-  /* An identifier is one word, so it is never broken in pieces: a long one ends with an ellipsis,
-   * and its title holds the whole of it (row 16c). */
+  /* An identifier is one word, so it is never broken in pieces. */
   .ib-model-name__identifier {
     min-inline-size: 0;
     max-inline-size: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .ib-model-name[data-layout='inline'] {
@@ -59,13 +60,9 @@
     align-items: baseline;
   }
 
-  /* A name is one line too: a long one ends with an ellipsis, with the whole of it in the title. */
   .ib-model-name__title {
     min-inline-size: 0;
     max-inline-size: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font-weight: var(--cinder-font-semibold);
   }
 

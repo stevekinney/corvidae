@@ -196,10 +196,10 @@
   {:else}
     <Table caption={copy.listLabel} density="condensed" fit class="ib-records__table">
       <colgroup>
-        <col style="width: 34%" />
+        <col style="width: 28%" />
         <col style="width: 15%" />
         <col style="width: 17%" />
-        <col style="width: 15%" />
+        <col style="width: 21%" />
         <!-- A status is one word ("Scheduled"), so its column fits it at the table's floor. -->
         <col style="width: 19%" />
       </colgroup>

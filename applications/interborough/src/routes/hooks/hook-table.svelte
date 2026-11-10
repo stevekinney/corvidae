@@ -7,7 +7,7 @@
    * The switch names the revision of the hook the list read. A hook that changed since is refused
    * and the list is read again, and nothing was changed.
    */
-  import { Alert, Button, RelativeTime, Table } from '@lostgradient/cinder';
+  import { Alert, Button, RelativeTime, Table, Text } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
   import { STALE_COPY } from '../../app/copy.ts';
@@ -101,15 +101,18 @@
       <Table.Row data-hook={hook.id} data-enabled={hook.enabled ? 'true' : 'false'}>
         <Table.Cell class="ib-records__wrap">
           <a
-            class="ib-hooks__sentence ib-records__truncate"
-            title={sentence}
+            class="ib-hooks__sentence"
             href={router.href(hookPath(hook.id))}
-            onclick={(event) => go(event, hookPath(hook.id))}>{sentence}</a
+            onclick={(event) => go(event, hookPath(hook.id))}
+            ><Text as="span" truncate="end" text={sentence} /></a
           >
           {#if hook.name !== null}
-            <span class="ib-records__muted ib-records__truncate ib-hooks__name" title={hook.name}
-              >{hook.name}</span
-            >
+            <Text
+              as="span"
+              truncate="end"
+              text={hook.name}
+              class="ib-records__muted ib-hooks__name"
+            />
           {/if}
         </Table.Cell>
         <Table.Cell class="ib-records__wrap" data-only-for>
@@ -158,6 +161,12 @@
 
   .ib-hooks__alert-body {
     margin: 4px 0 8px;
+  }
+
+  /* The sentence is a line of its own; a long one ends with an ellipsis (Cinder's `Text`). */
+  .ib-hooks__sentence {
+    display: block;
+    min-inline-size: 0;
   }
 
   .ib-hooks__line {

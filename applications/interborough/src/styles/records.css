@@ -50,18 +50,6 @@
   min-inline-size: 36rem;
 }
 
-/* One line of a cell that holds more than one (a name above its detail): a long value ends with an
- * ellipsis, and the element's `title` holds the whole of it (row 16c). A cell that holds one value
- * uses Cinder's `truncate` cell instead. */
-.ib-records__truncate {
-  display: block;
-  min-inline-size: 0;
-  max-inline-size: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .ib-records__muted {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
