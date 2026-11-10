@@ -41,6 +41,13 @@
     text-overflow: ellipsis;
   }
 
+  /* An icon inside a truncating label stays on the label's line, before its text. */
+  .cinder-badge__label > svg {
+    display: inline-block;
+    vertical-align: -0.125em;
+    margin-inline-end: var(--cinder-space-1);
+  }
+
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */

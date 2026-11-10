@@ -273,4 +273,15 @@ describe('Badge truncate', () => {
     expect(badgeCss).toMatch(/\.cinder-badge__label\s*\{[^}]*text-overflow:\s*ellipsis;/);
     expect(badgeCss).toMatch(/\.cinder-badge > svg\s*\{[^}]*flex-shrink:\s*0;/);
   });
+
+  test('keeps a leading icon on the label line, before its text', () => {
+    const { container } = render(Badge, {
+      truncate: true,
+      children: createRawSnippet(() => ({
+        render: () => '<span><svg aria-hidden="true"></svg>Active</span>',
+      })),
+    });
+    expect(container.querySelector('.cinder-badge__label svg')).not.toBeNull();
+    expect(badgeCss).toMatch(/\.cinder-badge__label > svg\s*\{[^}]*display:\s*inline-block;/);
+  });
 });

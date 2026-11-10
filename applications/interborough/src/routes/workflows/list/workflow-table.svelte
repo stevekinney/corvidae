@@ -21,9 +21,9 @@
    * table fits its container at every width (Cinder's `fit`, row 16c): a
    * column whose content never wraps (a status badge with its icon, a
    * shortened ID with its copy button, a time) is a fixed rem width that holds
-   * it, so the ID is never cut a second time; Revision holds a shortened
-   * revision, and its comparison badge ends with an ellipsis beside its own
-   * tooltip; Type and Tags share what is left, and each ends a long value with
+   * it, so the ID is never cut a second time; Revision wraps a shortened
+   * revision onto two lines at most, and its comparison badge ends with an
+   * ellipsis beside its own tooltip; Type and Tags share what is left, and each ends a long value with
    * an ellipsis.
    *
    * No column is sortable: weft's list order is server-fixed
