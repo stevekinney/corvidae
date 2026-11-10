@@ -15,7 +15,8 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { AgentSession } from '@lostgradient/operative';
 
-import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
+import { BureauError } from '../bureau-errors.ts';
+import { isDurableRunUnsettled } from '../durable-run-waits.ts';
 import type { Bureau } from '../types.ts';
 import {
   type AgUiLease,

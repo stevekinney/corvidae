@@ -15,7 +15,8 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { BureauLedgerConflictError, createCommandLedger } from '../command-ledger.ts';
-import { BureauError, createBureau } from '../create-bureau.ts';
+import { BureauError } from '../bureau-errors.ts';
+import { createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test/index.ts';
 import {
   createSqliteStorageFixture,

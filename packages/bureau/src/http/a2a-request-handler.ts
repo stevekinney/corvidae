@@ -86,7 +86,7 @@ import {
   canonicalJson,
   digestCommandPayload,
 } from '../command-ledger.ts';
-import { BureauError } from '../create-bureau.ts';
+import { BureauError } from '../bureau-errors.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import { isTopLevelTaskOrigin } from '../task-origin.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';

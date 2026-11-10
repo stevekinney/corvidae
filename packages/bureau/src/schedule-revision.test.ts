@@ -5,7 +5,8 @@
 import { decode, KEYS, ScheduleStaleRevisionError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import {
   startWorkflowBureau,
   type WorkflowBureauHarness,

@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import {
   startWorkflowBureau,
   type WorkflowBureauHarness,

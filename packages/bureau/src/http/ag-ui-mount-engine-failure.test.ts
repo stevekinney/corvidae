@@ -19,7 +19,7 @@ import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from '../create-bureau.ts';
+import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from '../durable-run-waits.ts';
 import {
   keysOf,
   openBureau,

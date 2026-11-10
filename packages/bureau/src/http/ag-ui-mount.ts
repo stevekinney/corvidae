@@ -77,7 +77,8 @@ import { createConversationHistory } from 'conversationalist';
 import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
-import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
+import { BureauError } from '../bureau-errors.ts';
+import { isDurableRunUnsettled } from '../durable-run-waits.ts';
 import type { Bureau, BureauReviews, BureauInternals, BureauTasks } from '../types.ts';
 import type { TaskState } from '../task-registry.ts';
 import {

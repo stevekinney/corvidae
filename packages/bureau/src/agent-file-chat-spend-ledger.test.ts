@@ -9,7 +9,7 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import type { BureauDiagnostic } from './types';
 import { CHAT_SPEND_KEY_PREFIX } from './chat-spend-ledger';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';

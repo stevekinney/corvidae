@@ -48,7 +48,7 @@ import {
 } from '../command-ledger.ts';
 import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
-import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../create-bureau.ts';
+import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../bureau-errors.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type {
   PendingReview,

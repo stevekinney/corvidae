@@ -50,7 +50,7 @@ import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import { SIGNAL_NAME_MAXIMUM_LENGTH } from '../../workflow-host.ts';
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError } from '../../bureau-errors.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
 import {
   type BureauWorkflows,

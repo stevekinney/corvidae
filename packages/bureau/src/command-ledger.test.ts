@@ -24,7 +24,7 @@ import {
   type RunCreationObservation,
   RunCreationReceiptUnrecordedError,
 } from './command-ledger';
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { RunSummary } from './types';
