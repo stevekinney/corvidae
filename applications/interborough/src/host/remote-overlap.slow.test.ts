@@ -122,7 +122,7 @@ function startOverlapHost(environment: Record<string, string>, counter: { count:
     extraAgents: { agents: createOverlapAgents(counter) },
   }).then(async (host) => {
     hosts.push(host);
-    // The demo plugin seeds the schedule and the goal in `afterStart`, which the host does not wait for.
+    // The demo plugin seeds the schedule and the goal in `start`, which the host does not wait for.
     await host.bureau.plugins.ready();
     return host;
   });

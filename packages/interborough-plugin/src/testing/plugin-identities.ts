@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import type { PluginContributions } from '../contributions.ts';
 import { type GuardrailFamily, isGuardrailFactory } from '../guardrail-family.ts';
-import type { PluginHostApi } from '../host-api.ts';
+import type { PluginHost } from '../host-api.ts';
 import type { PluginDescriptor } from '../plugin-descriptor.ts';
 
 /** One name a plugin's durable records, files or settings can refer to, with the shape it has. */
@@ -147,10 +147,10 @@ export function schemaDigest(schema: unknown): string | null {
   return `sha256:${hash}`;
 }
 
-const unstartedMessage = 'The host has not started: a plugin may call it only after afterStart.';
+const unstartedMessage = 'The host has not started: a plugin may call it only after start.';
 
 /** A host API whose every call rejects, as the real one does before the host has started. */
-const unstartedHost: PluginHostApi = {
+const unstartedHost: PluginHost = {
   agents: {
     list: () => {
       throw new Error(unstartedMessage);
@@ -183,7 +183,7 @@ export async function pluginContributions(
     secrets: { get: async () => undefined },
     storage: new MemoryStorage(),
     host: unstartedHost,
-    toolApprovalHooks: () => ({}),
+    approvals: () => ({}),
   });
 }
 

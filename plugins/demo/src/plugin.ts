@@ -26,7 +26,7 @@ export const DEMO_APPROVAL_SECRET = 'demo-approval-secret';
 /** What {@link createDemoPlugin} takes. */
 export interface DemoPluginOptions {
   /**
-   * Whether `afterStart` creates the seeded schedule and goal. Defaults to `true`. A test turns it
+   * Whether `start` creates the seeded schedule and goal. Defaults to `true`. A test turns it
    * off to control when {@link seedDemo} runs.
    */
   readonly seedOnStart?: boolean;
@@ -52,21 +52,21 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
     title: 'Demo',
     version: '1.0.0',
     description: 'Sample tools and agents for trying Interborough.',
-    enabledByDefault: false,
+    enabled: false,
     secrets: [{ key: DEMO_APPROVAL_SECRET, generated: true }],
-    async setup({ secrets, toolApprovalHooks }) {
+    async setup({ secrets, approvals }) {
       // Read once: a toolbox takes its approval secret at construction. A plugin composes once, so
       // a secret saved after the start applies on the next one.
       const approvalSecret = (await secrets.get(DEMO_APPROVAL_SECRET)) || undefined;
       return {
-        agents: createDemoAgents(approvalSecret, toolApprovalHooks).filter(
+        agents: createDemoAgents(approvalSecret, approvals).filter(
           ({ name }) => provided === undefined || provided.has(name),
         ),
         tools: [createLookupOrderTool(), createIssueRefundTool()],
         validators: createDemoValidators(),
         ...(seedOnStart
           ? {
-              afterStart: (host, { storage }) => seedDemo(host, storage),
+              start: (host, { storage }) => seedDemo(host, storage),
             }
           : {}),
       };

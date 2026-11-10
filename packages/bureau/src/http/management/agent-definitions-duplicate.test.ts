@@ -127,15 +127,15 @@ describe('bureau.agents.definitions.duplicate', () => {
 
 /**
  * A `demo` plugin, titled Demo, whose code agent `release-helper` answers from a script and names no
- * model. Its `setup` counts its runs, and its `afterStart` records that it ran.
+ * model. Its `setup` counts its runs, and its `start` records that it ran.
  */
-function demoPlugin(calls: { setup: number; afterStart: number }) {
+function demoPlugin(calls: { setup: number; start: number }) {
   return definePlugin({
     name: 'demo',
     title: 'Demo',
     version: '1.0.0',
     description: 'Scripted agents.',
-    enabledByDefault: false,
+    enabled: false,
     setup: () => {
       calls.setup += 1;
       return {
@@ -150,8 +150,8 @@ function demoPlugin(calls: { setup: number; afterStart: number }) {
             }),
           },
         ],
-        afterStart: () => {
-          calls.afterStart += 1;
+        start: () => {
+          calls.start += 1;
         },
       };
     },
@@ -160,7 +160,7 @@ function demoPlugin(calls: { setup: number; afterStart: number }) {
 
 async function serveDemo(enabled?: boolean) {
   const owner = await temporaryDirectory();
-  const calls = { setup: 0, afterStart: 0 };
+  const calls = { setup: 0, start: 0 };
   const served = await serve({
     directory: owner,
     overrides: {
@@ -187,7 +187,7 @@ describe('a disabled plugin’s agents (COR-2009)', () => {
     expect(bureau.agents.find('demo:release-helper')).toBeUndefined();
     expect(bureau.agents.has('demo:release-helper')).toBe(false);
     // Read once, for what its agents state; the plugin itself never started.
-    expect(calls).toEqual({ setup: 1, afterStart: 0 });
+    expect(calls).toEqual({ setup: 1, start: 0 });
 
     const refused = await rejectionOf(bureau.tasks.start('demo:release-helper', 'Draft them'));
     expect(String(refused)).toContain(
@@ -271,7 +271,7 @@ describe('a disabled plugin’s agents (COR-2009)', () => {
       bureau.agents.list().find(({ id }) => id === 'demo:release-helper')?.unavailable,
     ).toBeUndefined();
     expect(bureau.agents.has('demo:release-helper')).toBe(true);
-    expect(calls).toEqual({ setup: 1, afterStart: 1 });
+    expect(calls).toEqual({ setup: 1, start: 1 });
     const run = await bureau.tasks.start('demo:release-helper', 'Draft them');
     expect(run.id).toBeString();
   });

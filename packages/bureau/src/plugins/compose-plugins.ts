@@ -20,7 +20,7 @@
 import type {
   GuardrailFamily,
   PluginContributions,
-  PluginHostApi,
+  PluginHost,
   PluginMemoryGate,
   PluginSecrets,
   PluginSetupContext,
@@ -151,7 +151,7 @@ function settingsOf(
 
 function isEnabled(entry: BureauPluginEntry, settings: BureauPluginSettings): boolean {
   if (entry.descriptor.required === true) return true;
-  return settings.enabled ?? entry.descriptor.enabledByDefault ?? true;
+  return settings.enabled ?? entry.descriptor.enabled ?? true;
 }
 
 function configurationProblems(
@@ -803,7 +803,7 @@ async function setUp(
       readonly plan: PluginContributionPlan;
       readonly redact: (message: string) => string;
       readonly gate: PluginSecretGate | undefined;
-      readonly bindHost: (host: PluginHostApi) => void;
+      readonly bindHost: (host: PluginHost) => void;
     }
 > {
   const { descriptor } = entry;
@@ -827,7 +827,7 @@ async function setUp(
       secrets,
       storage: createPluginStorage(storage, descriptor.name),
       host: host.api,
-      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
+      approvals: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
     // A malformed hook skips this plugin here, where every other malformed contribution does:
@@ -869,7 +869,7 @@ async function setUp(
  * with nothing it could change or reveal: storage confined to `plugin:<name>:` of a scratch
  * `MemoryStorage` that is dropped after, no secret (every `get` answers `undefined`), and a host
  * API that is never bound, so a call to it rejects. Only `agents` is kept; no other
- * contribution is registered, `afterStart` never runs, and none of the agents can start a run. A
+ * contribution is registered, `start` never runs, and none of the agents can start a run. A
  * plugin whose configuration does not parse, or whose `setup` throws, lists none: it is disabled
  * either way, and enabling it reports the failure where a running plugin's would be.
  */
@@ -890,7 +890,7 @@ async function agentsOfDisabledPlugin(
       secrets: { get: () => Promise.resolve(undefined) },
       storage: createPluginStorage(new MemoryStorage(), descriptor.name),
       host: lateHostApi(descriptor.name).api,
-      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
+      approvals: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup(context as never)) ?? {};
     const message = `Plugin ${descriptor.title ?? descriptor.name} is disabled`;

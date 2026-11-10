@@ -118,7 +118,7 @@ export type PluginSecretStanding = {
 
 /** One plugin as the host reports it: Bureau's listing, with the owner's choices and its secrets. */
 export type PluginStanding = PluginListing & {
-  /** Whether the plugin is enabled in the persisted choices: its `enabledByDefault` until the owner chooses. */
+  /** Whether the plugin is enabled in the persisted choices: its `enabled` until the owner chooses. */
   readonly enabled: boolean;
   /** The stored configuration, or `{}` when none is. */
   readonly configuration: unknown;
@@ -466,9 +466,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     entry: BureauPluginEntry,
   ): boolean =>
     entry.descriptor.required === true ||
-    (settingsOf(settings, entry.descriptor.name).enabled ??
-      entry.descriptor.enabledByDefault ??
-      true);
+    (settingsOf(settings, entry.descriptor.name).enabled ?? entry.descriptor.enabled ?? true);
   const configurationIn = (
     settings: Readonly<Record<string, BureauPluginSettings>>,
     name: string,
@@ -560,7 +558,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       version: entry.descriptor.version,
       description: entry.descriptor.description,
       required: entry.descriptor.required === true,
-      enabledByDefault: entry.descriptor.enabledByDefault ?? true,
+      enabledByDefault: entry.descriptor.enabled ?? true,
       secrets: [],
     },
     source: entry.source,

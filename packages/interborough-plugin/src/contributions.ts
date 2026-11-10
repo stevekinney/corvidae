@@ -31,7 +31,7 @@ import type { ActivityDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
 
-import type { PluginHostApi } from './host-api.ts';
+import type { PluginHost } from './host-api.ts';
 import type { PluginSetupContext } from './plugin-descriptor.ts';
 import type { PluginScorer } from './scorer.ts';
 
@@ -475,8 +475,5 @@ export interface PluginSetupResult<TConfiguration = unknown> extends PluginContr
    * Runs once after Bureau has started, with the host API and the context `setup` received. A
    * rejection marks the plugin failed without stopping the host.
    */
-  afterStart?(
-    bureau: PluginHostApi,
-    context: PluginSetupContext<TConfiguration>,
-  ): void | Promise<void>;
+  start?(bureau: PluginHost, context: PluginSetupContext<TConfiguration>): void | Promise<void>;
 }

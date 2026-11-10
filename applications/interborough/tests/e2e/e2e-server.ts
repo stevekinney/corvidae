@@ -392,7 +392,7 @@ if (fixtureEngine === undefined) throw new Error('The host did not create the co
 const engine = fixtureEngine;
 const { server } = host;
 chatProofBureau = host.bureau;
-// The demo plugin seeds the schedule and the goal in `afterStart`, which `startHost` does not wait
+// The demo plugin seeds the schedule and the goal in `start`, which `startHost` does not wait
 // for, and the specs read both as soon as the server says it is listening.
 await host.bureau.plugins.ready();
 

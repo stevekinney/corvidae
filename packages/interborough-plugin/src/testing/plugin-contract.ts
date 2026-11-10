@@ -44,7 +44,7 @@ export interface PluginTestHost {
   readonly plugins: {
     /** Every plugin, as it stands now. */
     list(): Promise<readonly PluginTestHostListing[]>;
-    /** Settles once every running plugin's `afterStart` has settled. */
+    /** Settles once every running plugin's `start` has settled. */
     ready(): Promise<void>;
   };
   /** The agents the host lists, including every file the plugin ships. */

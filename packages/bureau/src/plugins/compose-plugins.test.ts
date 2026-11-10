@@ -256,13 +256,13 @@ describe('composePlugins', () => {
   });
 
   it('gives setup the host’s tool-approval rule for the tools a plugin names, and no others', async () => {
-    let hooks: ReturnType<PluginSetupContext['toolApprovalHooks']> | undefined;
+    let hooks: ReturnType<PluginSetupContext['approvals']> | undefined;
     const descriptor = definePlugin({
       name: 'p',
       version: '1.0.0',
       description: 'p',
-      setup: ({ toolApprovalHooks }) => {
-        hooks = toolApprovalHooks(['governed']);
+      setup: ({ approvals }) => {
+        hooks = approvals(['governed']);
         return {};
       },
     });
