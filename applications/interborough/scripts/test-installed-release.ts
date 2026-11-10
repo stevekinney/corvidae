@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+import { enableDemoPlugin } from '../src/host/demo-plugin-home.ts';
 import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
 import { linkPluginRuntime, writeFixture } from './test-installed-release-fixture.ts';
 import { mcp, runFixtureAgent, type InstalledFetch } from './test-installed-release-transport.ts';
@@ -213,6 +214,7 @@ export async function runInstalled(
   if (existingHome === undefined) {
     await writeFile(join(home, 'deployment-id'), '01ARZ3NDEKTSV4RRFFQ69G5FAV\n');
     await writeFixture(home, executable, marker);
+    await enableDemoPlugin(home);
   }
   console.info(`starting ${executable} home=${home}`);
   const probes: Probe[] = [];
