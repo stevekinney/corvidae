@@ -393,7 +393,7 @@ export async function staleFindings(issue: TriageIssue, context: StaleContext): 
         code: 'missing-symbol',
         message: `The symbol ${symbol} no longer appears in the repository.`,
       });
-  const commits = commitsSince(context.runner, issue.updatedAt, present);
+  const commits = commitsSince(context.runner, issue.updatedAt, existing);
   if (commits.length > 0)
     findings.push({
       code: 'files-changed',
