@@ -187,6 +187,12 @@
  * These slots are decorative-only; meaning lives in the button's accessible name.
  * ---------------------------------------- */
 
+  .cinder-button__shortcut {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
   .cinder-button__icon {
     display: inline-flex;
     align-items: center;
