@@ -43,6 +43,10 @@ The coordinator still makes these itself, asking Jev with `bun scripts/chef/jev.
 
 `scripts/chef/jev-predicates.ts` turns the coordinator's recurring questions into Jev questions and runs them in shadow mode: `bun scripts/chef/jev-predicates.ts shadow <predicate> --evidence-file <json>` logs Jev's answer, `outcome <id> --actual <value>` logs the coordinator's, and `report` measures agreement. Shadow mode never changes control flow: no predicate decides until its agreement is measured and it is promoted. Every predicate is `routine` (threshold 0.85).
 
+Promote a predicate (let its decided answers act, below-threshold ones still going to the coordinator) only when, counting records made since its question or its evidence last changed: at least 20 outcomes are recorded, agreement is at least 0.95, and at least half its calls cleared the threshold. Record each outcome from what actually happened, never from Jev's answer. A promotion, and a demotion after a disagreement on a decided answer, is a reviewed edit to this section that names the date and the counts.
+
+Measured so far (2026-11-09, first batch: COR-2101 and COR-2102, plus triage of ten Backlog issues): no predicate meets the rule. `unanswered-question` answered yes for every issue while an absent section reached Jev as "unknown"; once `triage.ts` stated absence explicitly it answered no on the settled issues and leaned yes (0.69) on COR-2300, whose open owner decisions the mechanical checks miss. `criteria-binary` disagreed on a settled issue (COR-2102), and `verification-exact`, `dispatch-plan` and `split-before-dispatch` agreed but rarely cleared 0.85.
+
 | Predicate | Rule it applies | Kind (threshold) |
 | --- | --- | --- |
 | `thread-triage` | AGENTS.md "Review guidelines": fix a real defect in changed lines, decline the out-of-scope or speculative, track what a COR issue already captures | routine (0.85) |

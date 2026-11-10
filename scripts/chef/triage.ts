@@ -381,8 +381,8 @@ export async function staleFindings(issue: TriageIssue, context: StaleContext): 
   const paths = [...new Set(inlineSpans(sections.get('files') ?? '').map(pathOf))].filter(
     (path): path is string => path !== undefined,
   );
-  const present = paths.filter((path) => context.pathExists(path));
-  for (const path of paths.filter((candidate) => !present.includes(candidate)))
+  const existing = paths.filter((path) => context.pathExists(path));
+  for (const path of paths.filter((candidate) => !existing.includes(candidate)))
     findings.push({
       code: 'missing-file',
       message: `Files lists ${path}, which no longer exists.`,
@@ -627,13 +627,24 @@ function readyEvidence(issue: TriageIssue): Record<string, unknown> {
   const sections = parseSections(issue.description ?? '');
   return {
     identifier: issue.identifier,
-    brief: sections.get('brief'),
-    criteria: sections.get('acceptance criteria'),
-    decisions: sections.get('decisions'),
-    openQuestions: sections.get('open questions'),
-    verification: sections.get('verification'),
+    brief: present(sections, 'brief'),
+    criteria: present(sections, 'acceptance criteria'),
+    decisions: present(sections, 'decisions'),
+    openQuestions: present(sections, 'open questions'),
+    verification: present(sections, 'verification'),
     files: inlineSpans(sections.get('files') ?? ''),
   };
+}
+
+/**
+ * A section's text, or a statement that the issue has none. Absence is a known fact about the
+ * issue, and Jev read the shadow log's former `unknown` as a possibly open question (2026-11-09:
+ * `unanswered-question` answered yes for all eight pre-template issues it saw).
+ */
+export function present(sections: Map<string, string>, name: string): string {
+  const body = sections.get(name);
+  if (body === undefined) return `none: the issue has no "${name}" section`;
+  return body === '' ? `none: the "${name}" section is empty` : body;
 }
 
 function staleEvidence(issue: TriageIssue, findings: Finding[]): Record<string, unknown> {

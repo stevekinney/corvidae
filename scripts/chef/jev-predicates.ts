@@ -259,7 +259,9 @@ export const PREDICATES: Predicate[] = [
       question:
         'Does this issue still hold an unanswered question? Yes when Decisions or any other ' +
         'section leaves a choice open, defers it ("TBD", "to be decided", a trailing question), or ' +
-        'an Open questions section lists anything; no when every question is answered and recorded.',
+        'an Open questions section lists anything; no when every question is answered and recorded. ' +
+        'A section the issue does not have is not a question: an issue with no Decisions or Open ' +
+        'questions section and a settled brief holds no unanswered question.',
       state: summarize(evidence, [
         ['issue', 'identifier'],
         ['brief', 'brief'],
