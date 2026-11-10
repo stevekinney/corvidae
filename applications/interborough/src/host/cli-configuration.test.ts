@@ -93,6 +93,45 @@ describe('CLI configuration commands', () => {
     expect(JSON.stringify(result)).not.toContain('not-an-argument-secret');
   });
 
+  test('writes provider plugin configuration through its schema-bearing plugin route', async () => {
+    const calls: string[] = [];
+    const inputPath = '/tmp/cor2061-provider.json';
+    await Bun.write(
+      inputPath,
+      JSON.stringify({
+        apiKey: 'provider-secret',
+        configuration: { baseURL: 'https://api.invalid' },
+      }),
+    );
+    const result = await executeCli(['providers', 'connect', 'openai', '--input-file', inputPath], {
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname;
+        calls.push(`${init?.method ?? 'GET'} ${path}`);
+        if (path === '/host/plugins')
+          return response({
+            configurationRevision: 'p1',
+            plugins: [
+              {
+                name: 'openai',
+                contributions: { providers: ['openai'] },
+                configurationSchema: { properties: { baseURL: { type: 'string' } } },
+              },
+            ],
+          });
+        if (path === '/host/providers') return response({ configurationRevision: 'r1' });
+        return response({ configurationRevision: 'p2', providers: [] });
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(calls).toEqual([
+      'GET /host/plugins',
+      'GET /host/plugins',
+      'PUT /host/plugins/openai',
+      'GET /host/providers',
+      'PUT /host/providers/openai',
+    ]);
+  });
+
   test('never opens OAuth when no-open is requested and reports settings restart state', async () => {
     let opened = false;
     const calls: string[] = [];
@@ -111,6 +150,29 @@ describe('CLI configuration commands', () => {
     expect(result.exitCode).toBe(0);
     expect(opened).toBe(false);
     expect(calls).toEqual(['GET /host/tool-sources', 'POST /host/tool-sources/github/authorize']);
+  });
+
+  test('never opens OAuth in non-interactive mode and rejects inline credential input', async () => {
+    let opened = false;
+    const noInput = await executeCli(['tool-sources', 'authorize', 'github', '--no-input'], {
+      open: () => {
+        opened = true;
+      },
+      fetch: async (url) =>
+        new URL(url).pathname === '/host/tool-sources'
+          ? response({ configurationRevision: 'r1' })
+          : response({ authorized: false, authorizationUrl: 'https://auth.invalid/' }),
+    });
+    const inline = await executeCli(
+      ['providers', 'connect', 'openai', '--input', '{"apiKey":"x"}'],
+      {
+        fetch: async () => response({ configurationRevision: 'r1' }),
+      },
+    );
+    expect(noInput.exitCode).toBe(0);
+    expect(opened).toBe(false);
+    expect(inline.exitCode).toBe(2);
+    expect(inline.stderr).toContain('never --input');
   });
 
   test('settings set reads the current revision before updating', async () => {
@@ -133,6 +195,24 @@ describe('CLI configuration commands', () => {
     });
     expect(result.exitCode).toBe(0);
     expect(methods).toEqual(['bureau.settings.get', 'bureau.settings.update']);
+  });
+
+  test('rejects a nonnumeric settings revision before the mutation request', async () => {
+    const methods: string[] = [];
+    const result = await executeCli(
+      ['settings', 'set', '--expected-revision', 'not-a-number', '--input', '{}'],
+      {
+        fetch: async (_url, init) => {
+          const body = JSON.parse(
+            typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body),
+          ) as { method: string };
+          methods.push(body.method);
+          return response({ result: { revision: 3 } });
+        },
+      },
+    );
+    expect(result.exitCode).toBe(2);
+    expect(methods).toEqual(['bureau.settings.get']);
   });
 
   test('treats an aborted DELETE as an unknown mutation outcome', async () => {

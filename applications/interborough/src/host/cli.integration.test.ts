@@ -250,6 +250,23 @@ const productionServer = Bun.serve({
         incarnationId: 'production-incarnation',
         diagnostics: { providers: [] },
       });
+    if (new URL(request.url).pathname === '/host/providers' && request.method === 'GET')
+      return Response.json({ configurationRevision: 'compiled-r1', providers: [], models: [] });
+    if (new URL(request.url).pathname === '/host/plugins' && request.method === 'GET')
+      return Response.json({
+        configurationRevision: 'compiled-p1',
+        plugins: [
+          {
+            name: 'openai',
+            contributions: { providers: ['openai'] },
+            configurationSchema: { properties: { baseURL: { type: 'string' } } },
+          },
+        ],
+      });
+    if (new URL(request.url).pathname.startsWith('/host/plugins/') && request.method === 'PUT')
+      return Response.json({ plugin: 'openai', restartRequired: false });
+    if (new URL(request.url).pathname === '/host/providers/openai' && request.method === 'PUT')
+      return Response.json({ providers: [], catalogRevision: 2 });
     if (new URL(request.url).pathname === '/openrpc.json')
       return Response.json({ methods: [{ name: 'weft.alerts.list' }] });
     const body = (await request.json()) as { params?: unknown };
@@ -280,6 +297,44 @@ const productionConnection = await invoke(
 const productionStatus = await invoke(['status', '--connection', 'production'], {
   INTERBOROUGH_TOKEN: 'production-secret',
 });
+const compiledConfigurationList = await invoke(
+  ['providers', 'list', '--connection', 'production'],
+  {
+    INTERBOROUGH_TOKEN: 'production-secret',
+  },
+);
+const compiledConfigurationInput = join(directory, 'provider-configuration.json');
+writeFileSync(
+  compiledConfigurationInput,
+  JSON.stringify({
+    apiKey: 'compiled-provider-secret',
+    configuration: { baseURL: 'https://api.invalid' },
+  }),
+);
+const compiledConfigurationMutation = await invoke(
+  [
+    'providers',
+    'connect',
+    'openai',
+    '--connection',
+    'production',
+    '--input-file',
+    compiledConfigurationInput,
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
+const compiledInlineSecret = await invoke(
+  [
+    'providers',
+    'connect',
+    'openai',
+    '--connection',
+    'production',
+    '--input',
+    '{"apiKey":"argv-secret"}',
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
 const productionCall = spawnWithHangGuard(
   [
     executable,
@@ -756,6 +811,29 @@ test('compiled binary upload preserves every non-UTF8 byte in bounded chunks and
   expect(body).toBeDefined();
   expect(JSON.stringify(body)).toContain('"provider":"bureau"');
   expect(JSON.stringify(body)).toContain('"value":"compiled-asset"');
+});
+
+test('compiled binary routes configuration commands through the authenticated host', () => {
+  expect(compiledConfigurationList.exitCode).toBe(0);
+  expect(compiledConfigurationList.stdout.toString()).toContain('configurationRevision');
+  expect(
+    productionRequests.some(
+      (request) => new URL(request.url).pathname === '/host/providers' && request.method === 'GET',
+    ),
+  ).toBe(true);
+});
+
+test('compiled binary performs revisioned provider configuration and rejects argv secrets', () => {
+  expect(compiledConfigurationMutation.exitCode).toBe(0);
+  expect(compiledInlineSecret.exitCode).toBe(2);
+  expect(compiledConfigurationMutation.stdout.toString()).not.toContain('compiled-provider-secret');
+  expect(compiledInlineSecret.stderr.toString()).toContain('never --input');
+  expect(
+    productionRequests.some(
+      (request) =>
+        new URL(request.url).pathname === '/host/providers/openai' && request.method === 'PUT',
+    ),
+  ).toBe(true);
 });
 
 const invalidOptions = [

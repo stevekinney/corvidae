@@ -23,9 +23,18 @@ function identifier(parsed: Parsed, position = 1): string {
   return value;
 }
 
-async function input(parsed: Parsed, dependencies: CliClientDependencies): Promise<unknown> {
+async function input(
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+  options: { readonly allowInline?: boolean } = {},
+): Promise<unknown> {
   const inline = option(parsed, 'input');
   const path = option(parsed, 'input-file') ?? option(parsed, 'file');
+  if (inline !== undefined && options.allowInline === false)
+    throw Object.assign(
+      new Error('Credential-bearing configuration requires --input-file or stdin, never --input.'),
+      { usage: true },
+    );
   if (inline !== undefined && path !== undefined)
     throw Object.assign(new Error('Use only one of --input and --input-file.'), { usage: true });
   if (inline === undefined && path === undefined) return {};
@@ -89,8 +98,10 @@ async function secret(parsed: Parsed, dependencies: CliClientDependencies): Prom
     const value = await (dependencies.stdin ?? (() => Bun.stdin.text()))();
     return value.trimEnd();
   }
-  if (!parsed.noInput && dependencies.stdinIsTTY === true && dependencies.prompt !== undefined)
-    return dependencies.prompt('Secret: ', dependencies.signal);
+  if (!parsed.noInput && dependencies.stdinIsTTY === true) {
+    const prompt = dependencies.promptSecret ?? dependencies.prompt;
+    if (prompt !== undefined) return prompt('Secret: ', dependencies.signal);
+  }
   throw Object.assign(
     new Error('A secret requires an interactive prompt, --secret-stdin, or --secret-file.'),
     {
@@ -132,22 +143,56 @@ async function providers(target: CliTarget, parsed: Parsed, dependencies: CliCli
       '/host/providers',
     );
   if (action === 'connect') {
-    const value = record(await input(parsed, dependencies));
+    if (option(parsed, 'input-file') === '-' && parsed.options.get('secret-stdin') === true)
+      throw Object.assign(
+        new Error('Use one stdin consumer: put apiKey in the input object or use --secret-file.'),
+        { usage: true },
+      );
+    const value = record(await input(parsed, dependencies, { allowInline: false }));
     const apiKey =
       typeof value['apiKey'] === 'string' ? value['apiKey'] : await secret(parsed, dependencies);
-    return hostMutation(
+    const configuration = value['configuration'];
+    let configurationChange: CliCommandResult | undefined;
+    if (configuration !== undefined) {
+      const plugins = await request(target, '/host/plugins', parsed, dependencies);
+      const rows = Array.isArray(record(plugins.data)['plugins'])
+        ? (record(plugins.data)['plugins'] as unknown[])
+        : [];
+      const plugin = rows.find((entry) => {
+        const row = record(entry);
+        return row['name'] === name || JSON.stringify(row['contributions'] ?? '').includes(name);
+      });
+      const pluginName = record(plugin)['name'];
+      if (typeof pluginName !== 'string')
+        throw Object.assign(new Error(`No provider plugin configuration was found for ${name}.`), {
+          usage: true,
+        });
+      configurationChange = await hostMutation(
+        target,
+        parsed,
+        dependencies,
+        `/host/plugins/${encodeURIComponent(pluginName)}`,
+        'PUT',
+        { configuration },
+        '/host/plugins',
+      );
+    }
+    const connected = await hostMutation(
       target,
       parsed,
       dependencies,
       `/host/providers/${encodeURIComponent(name)}`,
       'PUT',
       {
-        ...value,
+        ...Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'configuration')),
         provider: undefined,
         apiKey,
       },
       '/host/providers',
     );
+    return configurationChange === undefined
+      ? connected
+      : { data: { configuration: configurationChange.data, connected: connected.data } };
   }
   throw Object.assign(
     new Error('Usage: providers list|connect <provider>|disconnect <provider>.'),
@@ -181,7 +226,7 @@ async function toolSources(target: CliTarget, parsed: Parsed, dependencies: CliC
     );
     const data = record(response.data);
     const url = data['authorizationUrl'];
-    if (typeof url === 'string' && parsed.options.get('no-open') !== true) {
+    if (typeof url === 'string' && !parsed.noInput && parsed.options.get('no-open') !== true) {
       await (
         dependencies.open ??
         (async (address: string) => {
@@ -198,7 +243,7 @@ async function toolSources(target: CliTarget, parsed: Parsed, dependencies: CliC
       dependencies,
       `/host/tool-sources/${encodeURIComponent(id)}/probe`,
       'POST',
-      record(await input(parsed, dependencies)),
+      record(await input(parsed, dependencies, { allowInline: false })),
       '/host/tool-sources',
     );
   if (action === 'add' || action === 'update')
@@ -209,7 +254,7 @@ async function toolSources(target: CliTarget, parsed: Parsed, dependencies: CliC
       `/host/tool-sources/${encodeURIComponent(id)}`,
       'PUT',
       {
-        ...record(await input(parsed, dependencies)),
+        ...record(await input(parsed, dependencies, { allowInline: false })),
         ...(action === 'add' ? { create: true } : {}),
       },
       '/host/tool-sources',
@@ -247,9 +292,14 @@ async function settings(target: CliTarget, parsed: Parsed, dependencies: CliClie
     const revision = record(current.data)['revision'];
     if (typeof revision !== 'number' && option(parsed, 'expected-revision') === undefined)
       throw new Error('The settings response did not include a revision.');
+    const expectedRevision = Number(option(parsed, 'expected-revision') ?? revision);
+    if (!Number.isInteger(expectedRevision) || expectedRevision < 0)
+      throw Object.assign(new Error('Settings revision must be a nonnegative integer.'), {
+        usage: true,
+      });
     return rpc(target, parsed, dependencies, 'bureau.settings.update', {
       patch,
-      expectedRevision: Number(option(parsed, 'expected-revision') ?? revision),
+      expectedRevision,
     });
   }
   throw Object.assign(new Error('Usage: settings get|set|schema.'), { usage: true });

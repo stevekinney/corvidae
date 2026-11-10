@@ -86,6 +86,8 @@ export type CliClientDependencies = {
   readonly writeStdout?: (chunk: string) => void;
   /** Optional interactive prompt used only when the input stream is a TTY. */
   readonly prompt?: (question: string, signal?: AbortSignal) => Promise<string>;
+  /** Optional protected prompt used for credentials; implementations must not echo input. */
+  readonly promptSecret?: (question: string, signal?: AbortSignal) => Promise<string>;
   /** Whether interactive prompting is supported by the caller. */
   readonly stdinIsTTY?: boolean;
 };
@@ -674,6 +676,16 @@ async function resolveTarget(
       : preferences.connections.find((entry) => entry.name === parsed.connection);
   if (parsed.connection !== undefined && connection === undefined)
     return { stdout: '', stderr: `Unknown connection: ${parsed.connection}.`, exitCode: 1 };
+  if (
+    parsed.url !== undefined &&
+    connection?.credentialReference !== undefined &&
+    parsed.url.replace(/\/$/, '') !== connection.url.replace(/\/$/, '')
+  )
+    return {
+      stdout: '',
+      stderr: 'An explicit --url cannot override a saved connection credential for another host.',
+      exitCode: 3,
+    };
   const raw = parsed.url ?? connection?.url ?? CLI_DEFAULT_URL;
   const credential =
     connection?.credentialReference === undefined

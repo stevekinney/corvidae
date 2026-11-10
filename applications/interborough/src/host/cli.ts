@@ -161,6 +161,37 @@ async function run(arguments_: string[]): Promise<number> {
           readline.close();
         }
       },
+      promptSecret: async (question, signal) => {
+        if (!process.stdin.isTTY || process.stdin.setRawMode === undefined)
+          throw new Error('A protected secret prompt requires a TTY.');
+        process.stderr.write(question);
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        return await new Promise<string>((resolve, reject) => {
+          let answer = '';
+          const onAbort = () => finish(new DOMException('Aborted', 'AbortError'));
+          const onData = (chunk: Buffer) => {
+            for (const byte of chunk) {
+              if (byte === 3) return finish(new DOMException('Aborted', 'AbortError'));
+              if (byte === 13 || byte === 10) return finish();
+              if (byte === 127) answer = answer.slice(0, -1);
+              else answer += String.fromCharCode(byte);
+            }
+          };
+          const finish = (error?: Error) => {
+            process.stdin.setRawMode?.(false);
+            process.stdin.pause();
+            process.stdin.off('data', onData);
+            signal?.removeEventListener('abort', onAbort);
+            if (error === undefined) {
+              process.stderr.write('\n');
+              resolve(answer);
+            } else reject(error);
+          };
+          process.stdin.on('data', onData);
+          signal?.addEventListener('abort', onAbort, { once: true });
+        });
+      },
     });
     process.removeListener('SIGINT', onInterrupt);
     if (result.stdoutBytes !== undefined) process.stdout.write(result.stdoutBytes);
