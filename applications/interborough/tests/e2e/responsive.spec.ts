@@ -164,8 +164,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules/new (workflow)': /Pick what runs, then when, then name it/,
   // The long-named schedule's page prints its runs and the zone they are shown in.
   '/schedules/:schedule': /Upcoming above, past below/,
-  // Only the edit form offers to save its changes.
-  '/schedules/:schedule/edit': /Save changes/,
+  '/schedules/:schedule/edit': /If Interborough was off/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
@@ -180,17 +179,16 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/workers (worker open)': /Last heard from/,
   // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
   '/health/workers (queue open)': /Strategy/,
-  // The log counts its events once they load. The seeded schedule's creation is not a marker: the
-  // other cases' events push it past the first page.
-  '/health/audit': /\d+ events?\b/,
+  // The newest events are the hooks the seed made last; `reveal` loads back to the schedule's creation.
+  '/health/audit': /Created a hook/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
-  // The agent that opts in is listed by its name.
+  // The agent that opts in is listed by its name as a person says it.
   '/settings/a2a': /Responsive long description/,
   // Each tab of the API reference prints a value only its own read gives.
   '/settings/api-reference': /\/api\//,
   '/settings/api-reference (discovery)': /\/openapi\.json/,
-  '/settings/api-reference (scopes)': /runs:read/,
+  '/settings/api-reference (scopes)': /hooks:write/,
   '/settings/api-reference (sources)': /Where Interborough reads workflow files from/,
 };
 
@@ -334,6 +332,18 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
       page.locator(`a.ib-hooks__sentence .cinder-text[title*="${LONG_HOOK_URL}"]`),
     ).toBeVisible();
     await expect(page.locator(`.ib-hooks__name[title="${LONG_HOOK_NAME}"]`).first()).toBeVisible();
+  },
+  // The log loads a page of events at a time as it scrolls, and the seeded schedule's creation is
+  // older than the first page once the earlier specifications have written their own events.
+  '/health/audit': async (page) => {
+    const created = page.getByText('Created a schedule').first();
+    await expect
+      .poll(async () => {
+        if ((await created.count()) > 0) return true;
+        await page.locator('main.weft-shell-outlet tbody tr').last().scrollIntoViewIfNeeded();
+        return false;
+      })
+      .toBe(true);
   },
   // The whole log is closed until asked for; open it so its lines are measured too.
   '/runs/:run (steps and logs)': async (page) => {

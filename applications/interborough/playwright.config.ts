@@ -5,6 +5,7 @@ import { HANG_GUARD_MILLISECONDS } from '../../testing/testing/src/hang-guard.ts
 import {
   designReviewColorScheme,
   isContinuousIntegration,
+  requiresFreshServer,
 } from './scripts/environment-configuration.ts';
 import { E2E_BASE_URL } from './tests/e2e/e2e-constants.ts';
 
@@ -39,7 +40,9 @@ export default defineConfig({
     // after that and prints this line only once every seed has settled. Readiness is that line
     // alone, not a URL that answers earlier, so a spec never reads a half-seeded server.
     wait: { stdout: /Interborough E2E host listening/ },
-    reuseExistingServer: !continuousIntegration,
+    // The batch validate (`scripts/run-gated-browser-suite.ts`) never reuses a server: a leftover
+    // one on the port is another checkout's build, and the gate must test this tree.
+    reuseExistingServer: !continuousIntegration && !requiresFreshServer(),
     // Without this, Playwright SIGKILLs the server, so its SIGTERM handler never removes the
     // `interborough-e2e-*` scratch directory (a build and four homes) and every run leaks it.
     gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },

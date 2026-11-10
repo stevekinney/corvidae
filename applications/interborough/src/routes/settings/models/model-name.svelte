@@ -64,6 +64,7 @@
     min-inline-size: 0;
     max-inline-size: 100%;
     font-weight: var(--cinder-font-semibold);
+    overflow-wrap: anywhere;
   }
 
   .ib-model-name__title--label {

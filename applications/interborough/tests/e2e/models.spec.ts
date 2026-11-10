@@ -129,7 +129,9 @@ test('connects a provider after testing its key, adds its models with no restart
   await expect(row.getByRole('button', { name: /Manage/ })).toHaveCount(0);
   await row.getByRole('button', { name: /Connect/ }).click();
   const dialog = page.getByRole('dialog', { name: MODELS_COPY.connectDialog.title('Gemini') });
-  const field = dialog.locator('input[type="password"]');
+  // A refused key shows in its masked form as text until the field is focused again, so the field is
+  // found by its label, not by being a password input.
+  const field = dialog.getByLabel(MODELS_COPY.connectDialog.keyLabel);
   await expect(field).toBeVisible();
   await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle.idle);
 
@@ -153,6 +155,9 @@ test('connects a provider after testing its key, adds its models with no restart
       json: { error: 'invalid', field: 'apiKey', message: `Invalid apiKey ${KEY}.` },
     }),
   );
+  // Going back into the field shows the refused key instead of its mask, so the field is entered
+  // first and then replaced whole.
+  await field.focus();
   await field.fill(KEY);
   await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.connect }).click();
   await expect(page.getByTestId('provider-connect-failure')).toBeVisible();

@@ -261,20 +261,27 @@ describe('internal workspace architecture', () => {
     expect(scripts['test:slow']).toBe(
       "bun scripts/run-exclusively.ts 'turbo run test:slow test:self:slow --concurrency=1'",
     );
-    // COR-2008: the batch validate is `validate` plus the root Playwright suite's Chromium project,
-    // under one lock so the batch keeps its place from lint to the browser specs. `validate` itself
+    // COR-2008: the batch validate is `validate` plus the root Playwright suite's Chromium project
+    // and Interborough's end-to-end suite, under one lock so the batch keeps its place from lint to
+    // the browser specs. `validate` itself
     // stays unchanged, so a per-pull-request exception validate does not grow by the suite's length.
     // The Chromium step also holds the lock on its own, so it is safe to run alone. Firefox and
     // WebKit projects stay out: those browsers are not installed on the host. The `&&` chain is
     // what makes a failing spec fail the batch, and the Playwright runner exits non-zero for one.
     expect(scripts['validate:batch']).toBe(
-      "bun scripts/run-exclusively.ts 'bun run validate && bun run test:browser:chromium'",
+      "bun scripts/run-exclusively.ts 'bun run validate && bun run test:browser:chromium && bun run test:browser:interborough'",
+    );
+    // Interborough's suite runs on a free block of ports and never reuses a server
+    // (`applications/interborough/scripts/run-gated-browser-suite.ts`), and holds the lock alone too.
+    expect(scripts['test:browser:interborough']).toBe(
+      "bun scripts/run-exclusively.ts 'bun applications/interborough/scripts/run-gated-browser-suite.ts'",
     );
     expect(scripts['test:browser:chromium']).toBe(
       "bun scripts/run-exclusively.ts 'bun scripts/browser-fixtures/scripts/prepare-manifest.ts && bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts --project=chromium'",
     );
     expect(scripts['validate']).not.toContain('playwright');
     expect(scripts['validate']).not.toContain('test:browser:chromium');
+    expect(scripts['validate']).not.toContain('test:browser:interborough');
     // `batch-validate.ts` and `gate-run.ts run` record the configuration's `batchCommand` in main
     // health, so it must name the script that carries the browser gate.
     const repositoryConfiguration = (await Bun.file(
