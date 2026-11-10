@@ -16,16 +16,18 @@ import type {
  */
 export const SESSION_TAINT_METADATA_KEY = 'guardrailTaint';
 
-const PROVENANCES: readonly GuardrailProvenance[] = [
-  'user-input',
-  'recalled-memory',
-  'ingested-document',
-  'skill-resource',
-  'tool-result',
-];
+// A `Record` over the union, so a provenance armorer adds is a compile error here until it is
+// listed, rather than a stored taint that reads as untainted.
+const PROVENANCE_SET: Readonly<Record<GuardrailProvenance, true>> = {
+  'user-input': true,
+  'recalled-memory': true,
+  'ingested-document': true,
+  'skill-resource': true,
+  'tool-result': true,
+};
 
 function isProvenance(value: unknown): value is GuardrailProvenance {
-  return typeof value === 'string' && (PROVENANCES as readonly string[]).includes(value);
+  return typeof value === 'string' && Object.hasOwn(PROVENANCE_SET, value);
 }
 
 /**

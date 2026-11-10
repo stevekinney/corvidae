@@ -45,12 +45,14 @@ export function withSessionTaint(
   if (sessionTaint === undefined) return configuration;
   const own = configuration.taint?.onTainted;
   const inherited = sessionTaint.onTainted;
+  // The session's write starts first, so a configuration callback that throws cannot keep the taint
+  // from being stored, and both are awaited whether or not either rejects.
   const onTainted: SessionTaintOptions['onTainted'] =
     own !== undefined && inherited !== undefined
       ? (event) => {
-          const first = own(event);
-          const second = inherited(event);
-          return Promise.all([first, second]).then(() => undefined);
+          const stored = Promise.resolve(inherited(event));
+          const called = Promise.resolve(own(event));
+          return Promise.allSettled([stored, called]).then(() => undefined);
         }
       : (own ?? inherited);
   return {
@@ -323,7 +325,8 @@ function registerGuardrails(
   hooks.on('prepareStep', guardrails.prepareStep, {
     id: 'agent:guardrails-prepare-step',
     ...AGENT_POLICY_REGISTRATION,
-    // Scans and may taint in-process session state; no external write.
+    // Scans and may taint the session. The taint is stored by a compare-and-swap that keeps the first
+    // one, so a replayed step stores nothing twice (COR-2105).
     replay: 'safe',
   });
   // COR-2103 — the input detectors over each tool result. A waterfall, like `validateResponse`, so

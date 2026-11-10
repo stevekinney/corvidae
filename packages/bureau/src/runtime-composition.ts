@@ -2692,7 +2692,8 @@ function registerGuardrailInvariants(
 ): void {
   registry.on('prepareStep', guardrails.prepareStep, {
     id: 'bureau:guardrails-prepare-step',
-    // Scans and may taint in-process session state; no external write.
+    // Scans and may taint the session. The taint is stored by a compare-and-swap that keeps the first
+    // one, so a replayed step stores nothing twice (COR-2105).
     replay: 'safe',
   });
   registry.on('validateResponse', guardrails.validateResponse, {

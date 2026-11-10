@@ -3,8 +3,8 @@
  * `guardrailTaint`, seeds each later run's trackers, is inherited by a fork, and is published once
  * as `session.tainted` without the flagged text.
  */
-import { MemoryStorage } from '@lostgradient/storage';
-import { Conversation } from 'conversationalist';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -13,6 +13,9 @@ import {
   type Toolbox,
   type GenerateFunction,
   type InputDetector,
+  type DurableRunDeps,
+  createAgentSession,
+  createSessionStore,
   type JSONValue,
   readSessionTaint,
   SESSION_TAINT_METADATA_KEY,
@@ -22,6 +25,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { projectBureauEvent } from './bureau-event-feed';
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
+import { createSessionTaintSeam } from './session-taint-seam';
 import { SessionTaintEvent } from './events';
 import type { Bureau } from './types';
 
@@ -228,5 +232,186 @@ describe('a resumed run of a tainted session (COR-2105)', () => {
     await prepare({});
     await prepare(undefined);
     expect(seen).toEqual([false, false]);
+  });
+});
+
+describe('a durable run recovered after a restart (COR-2105)', () => {
+  const STORED_TAINT = {
+    category: 'prompt-injection',
+    detector: 'marker-detector',
+    provenance: 'user-input',
+    confidence: 0.95,
+    at: 1,
+    runId: 'earlier-run',
+  };
+
+  async function recover(metadata: Record<string, JSONValue>): Promise<boolean[]> {
+    const seen: boolean[] = [];
+    const runtime = await createRuntimeComposition({
+      generate,
+      toolbox: createToolbox([], { context: {} }),
+      guardrails: { input: { detectors: [markerDetector(seen)], action: 'warn' } },
+      storage: new MemoryStorage(),
+      durable: true,
+    });
+    try {
+      const runId = 'recovered-run';
+      await runtime.sessionStore?.save(
+        createAgentSession({
+          id: runId,
+          agentName: 'test-agent',
+          conversationHistory: createConversationHistory(),
+          metadata: {
+            lastRunId: runId,
+            lastRunStatus: 'running',
+            lastUserMessage: 'resume',
+            lastRequestAuthority: {
+              principalId: `run:${runId}`,
+              tenantId: 'bureau',
+              ownerId: 'test-agent',
+              capabilities: ['tools:execute'],
+              authorizationRevision: 'bureau:1',
+              audience: 'operator',
+            },
+            ...metadata,
+          },
+        }),
+      );
+      const result = await runtime.resolveRunServices({
+        workflowId: runId,
+        workflowType: 'agentRun',
+        input: { runId, sessionId: runId, agentName: 'test-agent' },
+      });
+      if (result.status !== 'available') throw new Error(`Expected services: ${result.reason}`);
+      const hooks = (result.services as DurableRunDeps).options.hooks;
+      const entry = hooks
+        ?.getHandlers('prepareStep')
+        .find((candidate) => candidate.id === 'bureau:guardrails-prepare-step');
+      const conversation = new Conversation();
+      conversation.appendUserMessage('a harmless resume');
+      await entry?.handler({ conversation, step: 0 });
+      return seen;
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  }
+
+  it('resumes tainted when its session holds guardrailTaint', async () => {
+    expect(await recover({ [SESSION_TAINT_METADATA_KEY]: STORED_TAINT })).toEqual([true]);
+  });
+
+  it('resumes untainted when its session was stored without the key', async () => {
+    expect(await recover({})).toEqual([false]);
+  });
+});
+
+describe('the session taint seam (COR-2105)', () => {
+  it('stores the first taint and publishes once when two trackers race on one session', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(
+      createAgentSession({
+        id: 'raced',
+        agentName: 'helper',
+        conversationHistory: createConversationHistory(),
+        metadata: {},
+      }),
+    );
+    const published: string[] = [];
+    const dependencies = {
+      store,
+      now: () => 5,
+      publish: (publication: { detector: string }) => void published.push(publication.detector),
+      diagnose: () => {},
+    };
+    const first = createSessionTaintSeam(dependencies, {
+      sessionId: 'raced',
+      runId: 'run-a',
+      metadata: {},
+    });
+    const second = createSessionTaintSeam(dependencies, {
+      sessionId: 'raced',
+      runId: 'run-b',
+      metadata: {},
+    });
+    const event = (detector: string) => ({
+      reason: MARKER,
+      detector,
+      category: 'prompt-injection',
+      confidence: 0.95,
+      step: 0,
+    });
+    await Promise.all([first.onTainted(event('first')), second.onTainted(event('second'))]);
+
+    expect(published).toHaveLength(1);
+    const session = await store.load('raced');
+    const stored = readSessionTaint(session?.metadata);
+    expect(stored?.detector).toBe(published[0]);
+    expect(JSON.stringify(stored)).not.toContain(MARKER);
+  });
+
+  it('diagnoses a failed write and never rejects', async () => {
+    const diagnosed: unknown[] = [];
+    const seam = createSessionTaintSeam(
+      {
+        store: {
+          update: async () => {
+            throw new Error('store is down');
+          },
+        } as never,
+        now: () => 5,
+        publish: () => {
+          throw new Error('must not publish');
+        },
+        diagnose: (cause) => void diagnosed.push(cause),
+      },
+      { sessionId: 'down', runId: 'run-a', metadata: undefined },
+    );
+    await seam.onTainted({
+      reason: 'x',
+      detector: 'd',
+      category: 'c',
+      confidence: 1,
+      step: 0,
+    });
+    expect(diagnosed).toHaveLength(1);
+  });
+});
+
+describe('a tripwire halt (COR-2105)', () => {
+  it('stores the taint before the run halts, so the next turn starts tainted', async () => {
+    const seen: boolean[] = [];
+    const events: SessionTaintEvent[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        helper: createAgent({
+          generate,
+          toolbox: createToolbox([]) as unknown as Toolbox,
+          guardrails: { mode: 'tripwire', input: { detectors: [markerDetector(seen)] } },
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: false,
+      onEvent: (event) => {
+        if (event instanceof SessionTaintEvent) events.push(event);
+      },
+    });
+    try {
+      const halted = await bureau.tasks.start('helper', `halt ${MARKER}`, { principal: OWNER });
+      await halted.result().catch(() => undefined);
+      const session = await bureau.internals.sessionStore?.load(halted.contextId);
+      expect(readSessionTaint(session?.metadata)).toMatchObject({ runId: halted.id });
+      expect(events).toHaveLength(1);
+
+      seen.length = 0;
+      const next = await bureau.tasks.start('helper', 'harmless', {
+        principal: OWNER,
+        contextId: halted.contextId,
+      });
+      await next.result().catch(() => undefined);
+      expect(seen.every((tainted) => tainted)).toBe(true);
+      expect(events).toHaveLength(1);
+    } finally {
+      await bureau.dispose();
+    }
   });
 });

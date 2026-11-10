@@ -701,7 +701,9 @@ export class MemoryGovernanceEvent extends Event {
  * taint is stored in the session (COR-2105). It names the session and the run, the detector, where
  * the flagged content came from, and the detector's confidence; it never carries the flagged text
  * or the detector's own detail. A later run of the same session starts tainted and does not fire it
- * again.
+ * again. It is published after the taint is stored, at most once: a process that stops between the
+ * two stores the taint (which is what matters) and drops the event. `runId` is the run's id, or the
+ * session's for a recovered run that has none.
  */
 export class SessionTaintEvent extends Event {
   /** The event name: `session.tainted`. */

@@ -17,12 +17,17 @@ import {
   type PersistedSessionTaint,
   type SessionStore,
   type SessionTaintedEvent,
-  type SessionTaintOptions,
 } from '@lostgradient/operative';
 
 /** What a run of a session needs from the session's taint: where it starts, and where it writes. */
-export type SessionTaintSeam = Required<Pick<SessionTaintOptions, 'onTainted' | 'runId'>> &
-  Pick<SessionTaintOptions, 'initial'>;
+export interface SessionTaintSeam {
+  /** The taint the session already carries; absent when it carries none. */
+  readonly initial?: PersistedSessionTaint;
+  /** The run the seam belongs to, which a persisted taint names when its event names none. */
+  readonly runId: string;
+  /** Stores a new taint and publishes it once; never rejects. */
+  readonly onTainted: (event: SessionTaintedEvent) => Promise<void>;
+}
 
 /** The session a run belongs to, as far as its taint goes: its id and its stored metadata. */
 export interface SessionTaintSource {
