@@ -23,9 +23,11 @@
 
 <span class="ib-model-name" data-layout={layout}>
   {#if labelFor === undefined}
-    <span class="ib-model-name__title">{name}</span>
+    <span class="ib-model-name__title" title={name}>{name}</span>
   {:else}
-    <label class="ib-model-name__title ib-model-name__title--label" for={labelFor}>{name}</label>
+    <label class="ib-model-name__title ib-model-name__title--label" for={labelFor} title={name}
+      >{name}</label
+    >
   {/if}
   <code class="ib-model-name__identifier" title={identifier}>{identifier}</code>
 </span>
@@ -57,7 +59,13 @@
     align-items: baseline;
   }
 
+  /* A name is one line too: a long one ends with an ellipsis, with the whole of it in the title. */
   .ib-model-name__title {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: var(--cinder-font-semibold);
   }
 

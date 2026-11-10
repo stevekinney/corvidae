@@ -291,10 +291,10 @@
       {#snippet action()}{@render startRun()}{/snippet}
     </EmptyState>
   {:else}
-    <Table caption={TASK_COPY.listHeading} density="condensed" fit>
+    <Table caption={TASK_COPY.listHeading} density="condensed" fit class="ib-records__table">
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell>{TASK_COPY.listColumns.agent}</Table.HeaderCell>
+          <Table.HeaderCell class="ib-records__primary">{TASK_COPY.listColumns.agent}</Table.HeaderCell>
           <Table.HeaderCell>{TASK_COPY.listColumns.startedBy}</Table.HeaderCell>
           <Table.HeaderCell>{TASK_COPY.listColumns.status}</Table.HeaderCell>
           <Table.HeaderCell>{TASK_COPY.listColumns.when}</Table.HeaderCell>

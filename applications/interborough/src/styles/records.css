@@ -43,6 +43,18 @@
   overflow-wrap: anywhere;
 }
 
+/* A record table fits its container (Cinder's `fit`), so a long value never widens it (row 16c). Its
+ * columns still need room to be read: below this floor the table scrolls inside its frame, by its
+ * column count and never by a value, and stays within two screens at a phone's width (row 24b). */
+.ib-records__table {
+  min-inline-size: 36rem;
+}
+
+/* The column that names the record (a workflow, an agent, a hook, a model) takes the larger share. */
+.ib-records__primary {
+  inline-size: 34%;
+}
+
 /* One line of a cell that holds more than one (a name above its detail): a long value ends with an
  * ellipsis, and the element's `title` holds the whole of it (row 16c). A cell that holds one value
  * uses Cinder's `truncate` cell instead. */

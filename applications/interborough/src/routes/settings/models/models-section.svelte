@@ -83,10 +83,10 @@
 <div class="ib-models" data-section="models">
   {#if failure === undefined && models.length > 0}
     <FormSection grouped heading={copy.heading} description={copy.description} />
-    <Table caption={copy.tableLabel} density="comfortable" fit bind:sort>
+    <Table caption={copy.tableLabel} density="comfortable" fit class="ib-records__table" bind:sort>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell column="model" sortable>{copy.columns.model}</Table.HeaderCell>
+          <Table.HeaderCell class="ib-records__primary" column="model" sortable>{copy.columns.model}</Table.HeaderCell>
           <Table.HeaderCell>{copy.columns.abilities}</Table.HeaderCell>
           <Table.HeaderCell column="context" sortable>{copy.columns.context}</Table.HeaderCell>
           <Table.HeaderCell>{copy.columns.allowed}</Table.HeaderCell>

@@ -194,10 +194,10 @@
       onClearFilters={clearFilters}
     />
   {:else}
-    <Table caption={copy.listLabel} density="condensed" fit>
+    <Table caption={copy.listLabel} density="condensed" fit class="ib-records__table">
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell>{copy.list.columns.workflow}</Table.HeaderCell>
+          <Table.HeaderCell class="ib-records__primary">{copy.list.columns.workflow}</Table.HeaderCell>
           <Table.HeaderCell>{copy.list.columns.kind}</Table.HeaderCell>
           <Table.HeaderCell>{copy.list.columns.starts}</Table.HeaderCell>
           <Table.HeaderCell>{copy.list.columns.runs}</Table.HeaderCell>

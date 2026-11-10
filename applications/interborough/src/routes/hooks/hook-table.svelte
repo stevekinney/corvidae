@@ -78,10 +78,10 @@
   </Alert>
 {/if}
 
-<Table caption={HOOKS_COPY.caption} density="condensed" fit>
+<Table caption={HOOKS_COPY.caption} density="condensed" fit class="ib-records__table">
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>{HOOKS_COPY.hookColumn}</Table.HeaderCell>
+      <Table.HeaderCell class="ib-records__primary">{HOOKS_COPY.hookColumn}</Table.HeaderCell>
       <Table.HeaderCell>{HOOKS_COPY.onlyForColumn}</Table.HeaderCell>
       <Table.HeaderCell>{HOOKS_COPY.lastDeliveryColumn}</Table.HeaderCell>
       <Table.HeaderCell>{HOOKS_COPY.onColumn}</Table.HeaderCell>

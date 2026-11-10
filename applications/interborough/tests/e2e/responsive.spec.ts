@@ -159,7 +159,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules/new (workflow)': /Pick what runs, then when, then name it/,
   // The long-named schedule's page prints its runs and the zone they are shown in.
   '/schedules/:schedule': /Upcoming above, past below/,
-  '/schedules/:schedule/edit': /Description/,
+  // Only the edit form offers to save its changes.
+  '/schedules/:schedule/edit': /Save changes/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
@@ -174,16 +175,17 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/workers (worker open)': /Last heard from/,
   // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
   '/health/workers (queue open)': /Strategy/,
-  // The audit log lists the seeded schedule's creation.
-  '/health/audit': /Created a schedule/,
+  // The log counts its events once they load. The seeded schedule's creation is not a marker: the
+  // other cases' events push it past the first page.
+  '/health/audit': /\d+ events?\b/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
-  // The agent that opts in prints its name, and its card address holds it too.
-  '/settings/a2a': /responsive-long-description/,
+  // The agent that opts in is listed by its name.
+  '/settings/a2a': /Responsive long description/,
   // Each tab of the API reference prints a value only its own read gives.
   '/settings/api-reference': /\/api\//,
   '/settings/api-reference (discovery)': /\/openapi\.json/,
-  '/settings/api-reference (scopes)': /workflows:read/,
+  '/settings/api-reference (scopes)': /runs:read/,
   '/settings/api-reference (sources)': /Where Interborough reads workflow files from/,
 };
 
@@ -298,7 +300,10 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
 
 /** Types into a picker and chooses the option with that text, as a person does. */
 async function choosePicker(page: Page, label: RegExp, option: string): Promise<void> {
-  await page.getByRole('combobox', { name: label }).click();
+  const picker = page.getByRole('combobox', { name: label });
+  // A picker ignores clicks while its options load, as Cinder's Combobox does by design.
+  await expect(picker).not.toHaveAttribute('aria-busy', 'true');
+  await picker.click();
   await page
     .getByRole('option', { name: new RegExp(option) })
     .first()

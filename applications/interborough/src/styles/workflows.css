@@ -100,6 +100,13 @@
   gap: var(--cinder-space-2);
 }
 
+/* The table fits its container (Cinder's `fit`), so a long value never widens it. Seven columns need
+ * room to be read: below this floor the table scrolls inside its frame, by its column count and
+ * never by a value, within two screens at a phone's width. */
+.weft-workflows-table {
+  min-inline-size: 40rem;
+}
+
 .weft-workflows-table__id-cell {
   display: flex;
   flex-direction: column;
