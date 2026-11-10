@@ -138,6 +138,7 @@ export default definePlugin({
     reactions: [
       {
         name: 'notify',
+        version: '1',
         description: 'Posts the event somewhere, once per delivery.',
         configuration: z.object({ channel: z.string() }),
         async run({ event, idempotencyKey, signal }) {
@@ -156,6 +157,8 @@ export default definePlugin({
   }),
 });
 ```
+
+A reaction must be safe to run twice: pass `idempotencyKey` to the service it calls, so an attempt repeated after a restart does not repeat the effect. Set the reaction's own `version`. A delivery pins the version of the reaction it was created against, and the pin defaults to the plugin's `version`, so without one every plugin release fails each delivery still pending (`version-mismatch`) instead of running it. A stored hook action, `{ type: 'plugin', plugin, kind }`, names the reaction by plugin and name, so it keeps delivering through the `reactions` contribution.
 
 An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, within a range of at most 999: a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them, and a number above 999 is lowered to it, because the host adds a tier's band to a priority and bands are 1000 apart, so a higher one would sort the plugin's hook ahead of the host's own invariants. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
 
