@@ -684,7 +684,7 @@ async function resolveTarget(
     return {
       stdout: '',
       stderr: 'An explicit --url cannot override a saved connection credential for another host.',
-      exitCode: 3,
+      exitCode: 1,
     };
   const raw = parsed.url ?? connection?.url ?? CLI_DEFAULT_URL;
   const credential =
@@ -779,7 +779,10 @@ async function execute(
       (value) => loopbackUrl(value) ?? remoteUrl(value),
     );
   const resolved = await resolveTarget(parsed, dependencies);
-  if ('exitCode' in resolved) return { data: undefined, metadata: { error: resolved.stderr } };
+  if ('exitCode' in resolved) {
+    if (resolved.exitCode === 1) throw Object.assign(new Error(resolved.stderr), resolved);
+    return { data: undefined, metadata: { error: resolved.stderr } };
+  }
   if (parsed.command === 'open') {
     await (
       dependencies.open ??
