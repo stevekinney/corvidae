@@ -13,6 +13,10 @@ function response(data: unknown): Response {
   return Response.json(data);
 }
 
+function pathname(url: RequestInfo | URL): string {
+  return new URL(typeof url === 'string' || url instanceof URL ? url : url.url).pathname;
+}
+
 describe('CLI configuration commands', () => {
   test('parses the complete configuration command surface', () => {
     for (const command of [
@@ -34,8 +38,8 @@ describe('CLI configuration commands', () => {
     const result = async (arguments_: string[]) =>
       commandRunner(arguments_, {
         fetch: async (url, init) => {
-          calls.push(`${init?.method ?? 'GET'} ${new URL(url).pathname}`);
-          if (new URL(url).pathname === '/bureau/jsonrpc') {
+          calls.push(`${init?.method ?? 'GET'} ${pathname(url)}`);
+          if (pathname(url) === '/bureau/jsonrpc') {
             const body = JSON.parse(
               typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body),
             ) as { method: string };
@@ -82,7 +86,7 @@ describe('CLI configuration commands', () => {
     const result = await commandRunner(['providers', 'connect', 'anthropic', '--secret-stdin'], {
       stdin: async () => 'not-an-argument-secret\n',
       fetch: async (url, init) => {
-        const path = new URL(url).pathname;
+        const path = pathname(url);
         const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
         calls.push({ method: init?.method ?? 'GET', path, body });
         if (path === '/bureau/jsonrpc')
@@ -122,7 +126,7 @@ describe('CLI configuration commands', () => {
       ['providers', 'connect', 'openai', '--input-file', inputPath],
       {
         fetch: async (url, init) => {
-          const path = new URL(url).pathname;
+          const path = pathname(url);
           calls.push(`${init?.method ?? 'GET'} ${path}`);
           if (path === '/bureau/jsonrpc')
             return response({
@@ -155,7 +159,7 @@ describe('CLI configuration commands', () => {
   test('rejects unknown and schema-invalid providers before any durable write', async () => {
     const mutations: string[] = [];
     const fetch = async (url: RequestInfo | URL, init?: RequestInit) => {
-      const path = new URL(url).pathname;
+      const path = pathname(url);
       if (init?.method === 'PUT' || init?.method === 'DELETE')
         mutations.push(`${init.method} ${path}`);
       return path === '/bureau/jsonrpc'
@@ -201,7 +205,7 @@ describe('CLI configuration commands', () => {
         opened = true;
       },
       fetch: async (url, init) => {
-        const path = new URL(url).pathname;
+        const path = pathname(url);
         calls.push(`${init?.method ?? 'GET'} ${path}`);
         return path === '/host/tool-sources'
           ? response({ configurationRevision: 'r1' })
@@ -220,7 +224,7 @@ describe('CLI configuration commands', () => {
         opened = true;
       },
       fetch: async (url) =>
-        new URL(url).pathname === '/host/tool-sources'
+        pathname(url) === '/host/tool-sources'
           ? response({ configurationRevision: 'r1' })
           : response({ authorized: false, authorizationUrl: 'https://auth.invalid/' }),
     });
