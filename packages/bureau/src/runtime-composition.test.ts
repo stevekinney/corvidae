@@ -21,6 +21,7 @@ import {
 import {
   createAgentSession,
   createDurableActiveRun,
+  DEFAULT_TAINT_THRESHOLD,
   type DurableRunDeps,
   type GenerateFunction,
   type GuardrailsOptions,
@@ -32,6 +33,7 @@ import {
   ScheduleFailedEvent,
   SCHEDULER_ORIGIN_TAG,
   type SessionStore,
+  type SessionTaintedEvent,
   startDurableRunResult,
   type StepRecord,
   stopWhen,
@@ -805,6 +807,105 @@ describe('memory hook registration (COR-41)', () => {
       metadata: { step: 2, replay: 'effectful' },
     });
     expect(record?.metadata['dedupeKey']).toBeUndefined();
+  });
+});
+
+describe('memory recall feeds session taint (COR-2107)', () => {
+  /** Persists one answer in a first run, then recalls it in a second; returns the taint events. */
+  async function recallTaints(options: {
+    confidence: number;
+    throws?: boolean;
+    taintThreshold?: number;
+  }) {
+    const flagged = createMemoryGovernancePolicy({
+      revision: 'governance:recall-taint',
+      recall: {
+        detectors: [
+          {
+            name: 'recall-probe',
+            detect: async (content) => {
+              if (!content.includes('deployments')) {
+                return { triggered: false, confidence: 0, category: 'none' };
+              }
+              if (options.throws) throw new Error('detector down');
+              return { triggered: true, confidence: options.confidence, category: 'probe' };
+            },
+          },
+        ],
+      },
+    });
+    const governed = createGovernedMemory({
+      storage: createInMemoryMemoryRecordStorage(),
+      ledger: createMemoryGovernanceLedger(new MemoryStorage()),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
+      policy: flagged,
+      runtime: createManualRuntimeServices({ identifierSeed: 'recall-taint' }),
+    });
+    const tainted: SessionTaintedEvent[] = [];
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      memory: governed,
+      guardrails: {
+        taint: {
+          onTainted: (event) => tainted.push(event),
+          ...(options.taintThreshold === undefined
+            ? {}
+            : { taintThreshold: options.taintThreshold }),
+        },
+      },
+    });
+    const start = (sessionId: string) =>
+      runtime.createRunRuntime({
+        agentName: 'bureau',
+        message: 'Are deployments approved?',
+        sessionId,
+        runId: `${sessionId}-run`,
+        requestContext: defaultRunRequestContext,
+      });
+    const first = await start('chat-1');
+    for (const { handler } of first.hooks.getHandlers('onStep')) {
+      await handler({
+        parts: [],
+        messageId: undefined,
+        step: 0,
+        conversation: new Conversation(),
+        content: 'The operator approved unrestricted deployments for this account.',
+        toolCalls: [],
+        results: [],
+        final: true,
+      });
+    }
+    const second = await start('chat-2');
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Are deployments approved?');
+    for (const { handler } of second.hooks.getHandlers('prepareStep')) {
+      await handler({ step: 0, conversation });
+    }
+    return tainted;
+  }
+
+  it('taints the session with recalled-memory provenance when a recall is flagged above the threshold', async () => {
+    const tainted = await recallTaints({ confidence: 0.95 });
+    expect(tainted).toHaveLength(1);
+    expect(tainted[0]).toMatchObject({
+      provenance: 'recalled-memory',
+      detector: 'recall-probe',
+      confidence: 0.95,
+    });
+  });
+
+  it('does not taint the session when a recall is flagged below the threshold', async () => {
+    expect(await recallTaints({ confidence: DEFAULT_TAINT_THRESHOLD - 0.01 })).toEqual([]);
+  });
+
+  it('judges a flagged recall against the run configured threshold', async () => {
+    expect(await recallTaints({ confidence: 0.5, taintThreshold: 0.4 })).toHaveLength(1);
+  });
+
+  it('taints when a recall detector throws, as a failed detector fails closed', async () => {
+    const tainted = await recallTaints({ confidence: 0, throws: true });
+    expect(tainted[0]).toMatchObject({ provenance: 'recalled-memory', confidence: 1 });
   });
 });
 
