@@ -39,7 +39,7 @@ describe('KeyFacts', () => {
       items: [{ value: 'LoDo', label: 'Neighborhood' }],
     });
     expect(container.querySelector('ul')?.getAttribute('aria-label')).toBe('Details');
-    expect(container.querySelector('.cinder-sr-only')?.textContent).toBe('Neighborhood:');
+    expect(container.querySelector('.cinder-sr-only')?.textContent).toBe('Neighborhood: ');
   });
 
   test('merges a custom class', () => {

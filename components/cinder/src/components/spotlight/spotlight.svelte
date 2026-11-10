@@ -25,7 +25,7 @@
 </script>
 
 <div {...rest} class={classNames('cinder-spotlight', className)}>
-  {#if status || statusLabel}
+  {#if status}
     <StatusDot
       class="cinder-spotlight__status"
       {...status ? { status } : {}}

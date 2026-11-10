@@ -5,7 +5,7 @@ Complete this record before merge. Automated checks can detect malformed APIs, m
 ## Design review (required)
 
 - Reviewer: Cinder maintainers
-- Review outcome: Final review complete—approved.
+- Review outcome: Pending. The design-reviewer verdict has not been recorded yet.
 - Nearest neighbours: DescriptionList, StackedListItem meta line, Badge.
 - Why this component exists: A line of facts joined by a separator glyph breaks mid-fact when it wraps and reads as one run of text. Typed facts with an icon and a value, separated by space, wrap only between facts.
 - Findings and resolutions: Colour never carries meaning: the icon is decorative and each fact can carry a hidden kind label. A long value is cut with an ellipsis instead of breaking inside the fact.
@@ -16,7 +16,7 @@ A novel interaction model includes a new disclosure or keyboard pattern, enterin
 
 - Applies: No—the row is a static list; a linked value is an ordinary link.
 - Reviewer: Not applicable.
-- Review outcome: No novel interaction review required.
+- Review outcome: Pending. The design-reviewer verdict has not been recorded yet.
 
 ### Focus management
 
