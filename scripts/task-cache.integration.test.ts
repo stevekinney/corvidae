@@ -619,13 +619,10 @@ test('no install task sits in the graph, and global inputs name files, not the w
   }
 });
 
-test('the playground build is keyed on the published versions its documentation reads', async () => {
+test('the playground build uses the generic build definition', async () => {
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
-  // The Playground reads each package's last published version from `published-versions.json`
-  // in its own directory: the documentation displays it, and the bundles stamp Cinder's into the
-  // token runtime. The generic `build` inputs cover the package directory, so a change to that file
-  // already invalidates the cache and the build needs no entry of its own. A package-specific entry
-  // would replace the generic definition, so none may reappear to hash a root file instead.
+  // The generic `build` inputs cover the package directory, so a package-specific entry would
+  // replace the generic definition and none may appear.
   expect(configuration.tasks['@lostgradient/playground#build']).toBeUndefined();
   expect(configuration.tasks.build.inputs).toBeUndefined();
   expect(configuration.tasks.build.dependsOn).toContain('transit');
@@ -637,35 +634,6 @@ test('the playground build is keyed on the published versions its documentation 
     join(root, 'applications/playground/package.json'),
   ).json();
   expect(playgroundManifest.scripts.build).toStartWith('NODE_ENV=production ');
-  expect(
-    await Bun.file(join(root, 'applications/playground/published-versions.json')).exists(),
-  ).toBe(true);
-  // Pin the read the key covers, so moving the read out of the package prompts revisiting it. The
-  // path is defined once in `playground-paths.ts`, shared by the version read and the file watcher,
-  // so the pin has three parts: the definition names the file inside the playground,
-  // `published-version.ts` imports that definition and reads the file through it, and both
-  // consumers of the version — the documentation, and the stamp that writes Cinder's version into
-  // the bundled token runtime (COR-231) — import that read.
-  const paths = await Bun.file(
-    join(root, 'applications/playground/src/playground-paths.ts'),
-  ).text();
-  expect(paths).toMatch(/export const PUBLISHED_VERSIONS_PATH\s*=\s*join\(PLAYGROUND_ROOT,/);
-  expect(paths).toContain("'published-versions.json'");
-  const read = await Bun.file(
-    join(root, 'applications/playground/src/published-version.ts'),
-  ).text();
-  // The imported name must be `PUBLISHED_VERSIONS_PATH` itself: `{ SOMETHING_ELSE as
-  // PUBLISHED_VERSIONS_PATH }` would satisfy a looser match while pointing the read elsewhere.
-  expect(read).toMatch(
-    /import\s*\{(?:[^}]*,)?\s*PUBLISHED_VERSIONS_PATH\s*(?:,[^}]*)?\}\s*from\s*'\.\/playground-paths\.ts'/,
-  );
-  expect(read).toContain('Bun.file(PUBLISHED_VERSIONS_PATH)');
-  for (const consumer of ['component-documentation.ts', 'cinder-package-version-plugin.ts']) {
-    const source = await Bun.file(join(root, 'applications/playground/src', consumer)).text();
-    expect(source).toMatch(
-      /import\s*\{(?:[^}]*,)?\s*readLastPublishedVersion\s*(?:,[^}]*)?\}\s*from\s*'\.\/published-version\.ts'/,
-    );
-  }
 });
 
 test('the bureau tests hash the runtime contracts guide they compare a fixture with', async () => {

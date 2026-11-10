@@ -9,9 +9,9 @@
  * `manifest.json` under `--evidence-directory` with installed versions, tarball hashes, resolved
  * module paths, exit codes, and per-case results.
  *
- * This is the published-artifact gate DR-9 names, separate from the existing staged-package
- * consumer scripts (`validate:consumer` and friends), which prove the mirror's own transform is
- * internally consistent but never install from a real tarball the way this does.
+ * This is the published-artifact gate DR-9 names, separate from the staged-package checks,
+ * which prove the mirror's own transform is internally consistent but never install from a real
+ * tarball the way this does.
  *
  * @module
  */
