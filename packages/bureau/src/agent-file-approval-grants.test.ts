@@ -14,7 +14,7 @@ import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import { runAgentInput, startRequest } from './http/ag-ui-fixtures.test-support';
 import { readAgUiStream } from './http/ag-ui-stream.test-support';
 import { createBureauHandler } from './http/create-bureau-handler';

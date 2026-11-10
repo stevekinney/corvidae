@@ -7,7 +7,7 @@ import { createAgent } from '@lostgradient/operative';
 import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
+import { BureauError, BureauShuttingDownError } from '../../bureau-errors.ts';
 import { SessionForkRefusedError, type SessionForkRefusalReason } from '../../session-fork.ts';
 import { waitForTaskState } from '../../test';
 import { noopTool, OPUS_5, OPUS_5_5 } from '../../testing/model-override.test-support.ts';

@@ -18,7 +18,8 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { classifyRecoveredRun, classifyRecoveredRunDetailed, createBureau } from './create-bureau';
+import { classifyRecoveredRun, classifyRecoveredRunDetailed } from './recovered-run-classification';
+import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { finishes } from './test/task-record-crash-agent';

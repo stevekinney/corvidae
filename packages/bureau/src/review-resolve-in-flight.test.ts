@@ -9,7 +9,7 @@ import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import type { BureauError } from './create-bureau';
+import type { BureauError } from './bureau-errors';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { createScheduleFireHarness, pollUntil } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

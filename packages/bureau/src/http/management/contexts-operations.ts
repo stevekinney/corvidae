@@ -24,7 +24,7 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import { SESSION_END_REASONS, sessionEndReasonOf } from '../../bureau-session-persistence.ts';
-import { BureauShuttingDownError } from '../../create-bureau.ts';
+import { BureauShuttingDownError } from '../../bureau-errors.ts';
 import {
   aggregateCleanup,
   type ContextActivity,

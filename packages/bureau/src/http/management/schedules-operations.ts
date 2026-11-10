@@ -46,7 +46,7 @@ import {
   BureauError,
   ScheduleLocatorUnavailableError,
   UnknownScheduleAgentError,
-} from '../../create-bureau.ts';
+} from '../../bureau-errors.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
 import type { BureauSchedules } from '../../types.ts';
 import type { WorkflowScheduleBlocker } from '../../workflow-runtime.ts';

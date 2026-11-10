@@ -7,7 +7,7 @@ import { createAgent } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauShuttingDownError } from '../../create-bureau.ts';
+import { BureauShuttingDownError } from '../../bureau-errors.ts';
 import { waitForTaskState } from '../../test';
 import { startTaskFrom } from '../../test/task-start-request.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';

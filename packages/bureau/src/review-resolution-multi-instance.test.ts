@@ -21,7 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { BureauError, createBureau, ReviewRoundChangedError } from './create-bureau';
+import { BureauError, ReviewRoundChangedError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { reviewDecisionKey } from './review-decision-record';
 import * as runtimeCompositionModule from './runtime-composition';
 import {

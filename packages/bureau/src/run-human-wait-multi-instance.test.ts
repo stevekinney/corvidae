@@ -20,7 +20,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import { createBureauHandler } from './http/create-bureau-handler';
 import { reviewDecisionKey } from './review-decision-record';
 import {

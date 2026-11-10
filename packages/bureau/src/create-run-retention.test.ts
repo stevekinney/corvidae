@@ -20,7 +20,8 @@ import {
   type RunCreationReceipt,
   type RunCreationReceiptLocation,
 } from './command-ledger';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import {
   type BureauStorageFixture,
   createLmdbStorageFixture,

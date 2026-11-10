@@ -417,25 +417,24 @@ export {
   serializeTaskRequestContext,
 } from './command-ledger';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
+export type { BureauErrorNotConfiguredSubject } from './bureau-errors';
 export type {
-  BureauErrorNotConfiguredSubject,
   ClassifyRecoveredRunArgs,
   RecoveredRunSessionMetadata,
   SessionLoadOutcome,
-} from './create-bureau';
+} from './recovered-run-classification';
 export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
-  classifyRecoveredRun,
-  classifyRecoveredRunDetailed,
-  createBureau,
   PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
   TaskRespondError,
   UnknownScheduleAgentError,
-} from './create-bureau';
+} from './bureau-errors';
+export { classifyRecoveredRun, classifyRecoveredRunDetailed } from './recovered-run-classification';
+export { createBureau } from './create-bureau';
 export {
   createFanOutRouting,
   createRoundRobinRouting,

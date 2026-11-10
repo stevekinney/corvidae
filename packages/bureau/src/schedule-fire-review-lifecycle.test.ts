@@ -11,7 +11,7 @@ import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/oper
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { ApprovalOutcomeNotWrittenError, BureauError } from './create-bureau';
+import { ApprovalOutcomeNotWrittenError, BureauError } from './bureau-errors';
 import { fireReviewFollowerOf } from './fire-review-follower';
 import {
   OWNER,

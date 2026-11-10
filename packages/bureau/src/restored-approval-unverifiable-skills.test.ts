@@ -15,7 +15,7 @@ import { KEYS } from '@lostgradient/weft';
 import { type Storage } from '@lostgradient/storage';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 
-import type { BureauError } from './create-bureau';
+import type { BureauError } from './bureau-errors';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import {
   createScheduleFireHarness,
