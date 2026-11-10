@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  import { setActionEmphasisContext } from './action-emphasis-context.ts';
+  import { getActionEmphasisContext, setActionEmphasisContext } from './action-emphasis-context.ts';
 
   /**
    * Scope for a header's actions: every Button rendered inside draws at the `xs` control height,
@@ -9,8 +9,14 @@
    */
   let { children }: { children: Snippet } = $props();
 
+  // Inherit the enclosing emphasis (a `<PageHeader error>` demotes primaries) and add only
+  // `compact`. The getter keeps the read reactive.
+  const enclosing = getActionEmphasisContext();
+
   setActionEmphasisContext({
-    demotePrimary: false,
+    get demotePrimary() {
+      return enclosing?.demotePrimary ?? false;
+    },
     compact: true,
   });
 </script>

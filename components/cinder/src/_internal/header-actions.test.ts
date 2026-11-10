@@ -27,6 +27,17 @@ describe('header actions never grow the header', () => {
     });
   }
 
+  for (const kind of ['card', 'section-heading'] as const) {
+    test(`${kind}: under an error-demoting context a primary header button is secondary at xs`, () => {
+      const { getByTestId } = render(Harness, {
+        props: { kind, withActions: true, underError: true },
+      });
+      const header = getByTestId('header-button');
+      expect(header.getAttribute('data-cinder-size')).toBe('xs');
+      expect(header.getAttribute('data-cinder-variant')).toBe('secondary');
+    });
+  }
+
   test('the actions box is the title line box, so the header height is equal with and without actions', () => {
     for (const name of ['card', 'section-heading']) {
       const css = component(name);
