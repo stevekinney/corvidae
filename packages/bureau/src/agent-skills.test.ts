@@ -201,6 +201,7 @@ describe('skill-path taint threshold (COR-2102)', () => {
     category: 'prompt-injection' as const,
     confidence,
     action: 'warn' as const,
+    input: 'skill text',
     provenance: 'skill-resource' as const,
   });
 
@@ -222,7 +223,7 @@ describe('skill-path taint threshold (COR-2102)', () => {
       const viaRun = createGuardrails(configuration);
       const conversation = new Conversation();
       conversation.appendUserMessage('hello');
-      await viaRun.prepareStep({ conversation, step: 1 } as never);
+      await viaRun.prepareStep({ conversation, step: 1 });
       expect(viaSkill.taint.isTainted()).toBe(viaRun.taint.isTainted());
       expect(viaSkill.taint.isTainted()).toBe(confidence >= DEFAULT_TAINT_THRESHOLD);
     }
