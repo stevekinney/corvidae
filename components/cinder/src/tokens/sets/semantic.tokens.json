@@ -2,7 +2,7 @@
   "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
   "surface": {
     "$type": "color",
-    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode anchors at white: the ramp is `inset 0.960 -> bg 0.995 -> surface 0.998 -> raised 1.000`, with elevation carried by border + shadow rather than fill separation. Dark mode builds up from near-black across a wider span. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
+    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode anchors at white: the ramp is `inset 0.960 -> bg 0.975 -> surface 0.998 -> raised 1.000`, with elevation carried by border + shadow rather than fill separation. Dark mode builds up from near-black across a wider span. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
     "base": {
       "$value": {
         "colorSpace": "oklch",
@@ -158,15 +158,15 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.995, 0, 255]
+        "components": [0.975, 0, 255]
       },
-      "$description": "Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.995 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness.",
+      "$description": "Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.975 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-surface-canvas",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(99.5% 0 255), oklch(15% 0.035 245))",
+          "cssRecipe": "light-dark(oklch(97.5% 0 255), oklch(15% 0.035 245))",
           "palette": {
             "family": "neutral",
             "role": "surface-canvas"

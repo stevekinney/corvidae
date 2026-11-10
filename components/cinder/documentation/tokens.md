@@ -226,7 +226,7 @@ Background and surface tokens for the three core elevations — page background,
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-surface-canvas` | `light-dark(oklch(99.5% 0 255), oklch(15% 0.035 245))` | Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.995 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness. |
+| `--cinder-surface-canvas` | `light-dark(oklch(97.5% 0 255), oklch(15% 0.035 245))` | Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.975 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness. |
 | `--cinder-surface` | `light-dark(oklch(99.8% 0 255), oklch(21% 0.04 245))` | Default semantic surface. Theme modifiers provide its dark value. |
 | `--cinder-surface-raised` | `light-dark(oklch(100% 0 255), oklch(28% 0.045 245))` | Elevated semantic surface. Theme modifiers provide its dark value. |
 | `--cinder-surface-inset` | `light-dark(oklch(96% 0.008 270), oklch(18% 0.035 245))` | Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 18% lightness, between the canvas (15%) and the surface (21%), so bands step up gently instead of reading as holes. |

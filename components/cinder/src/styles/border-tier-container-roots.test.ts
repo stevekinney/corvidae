@@ -16,6 +16,19 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
   const EXCEPTIONS: Record<string, string> = {
     accordion: 'a stack of panels, each a real outlined region',
     alert: 'a status role; the border carries the tone',
+    'access-gate': 'a framed gate panel',
+    banner: 'a full-width status strip; the rule bounds it',
+    button: 'a control; the border is its boundary',
+    'description-list': 'rules between rows are its structure',
+    'docked-action-bar': 'docked chrome; the rule separates it from the page',
+    'empty-state': 'a framed placeholder panel',
+    'error-state': 'a framed status panel',
+    'find-bar': 'docked chrome; the rule separates it from content',
+    footer: 'page chrome; the rule separates it from content',
+    'form-actions': 'a docked action row; the rule separates it from the form',
+    'navigation-bar': 'page chrome; the rule separates it from content',
+    sidebar: 'page chrome; the rule separates it from content',
+    'accordion-item': 'the rule between items is its structure',
     avatar: 'a small identity chip, not a container',
     badge: 'a small label chip, not a container',
     callout: 'a status role; the border carries the tone',
@@ -32,12 +45,19 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
     'pricing-card': 'a marketing panel',
     'share-card': 'a marketing panel',
     'source-diff-viewer': 'a framed code region',
+    'statistic-group': 'the default variant is a quiet panel with a resting border',
     surface: 'the explicit bordered surface primitive',
     table: 'a framed data surface; `frameless` opts out',
     'terminal-frame': 'a framed code region',
     'theme-switch': 'a control track',
     'tool-call-panel': 'a framed panel inside a conversation',
   };
+
+  const BORDER_DECLARATION =
+    /(?:^|[;\s])border(?:-(?:top|bottom|left|right|block|inline)(?:-(?:start|end))?)?(?:-color)?:\s*([^;]+);/g;
+
+  // An explicit opt-in the component documents (`edge="border"`, `divider`) is not a default.
+  const OPT_IN = /\[data-cinder-(?:edge='border'|divider='true')\]/;
 
   function bordered(): string[] {
     const found: string[] = [];
@@ -48,8 +68,11 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
         ' '.repeat(c.length),
       );
       for (const match of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-        if (match[1]!.replace(/\s+/g, ' ').trim() !== `.cinder-${name}`) continue;
-        const edges = match[2]!.match(/(?:^|[;\s])border(?:-color)?:\s*([^;]+);/g) ?? [];
+        const subject = new RegExp(`^\\.cinder-${name}(\\[[^\\]]+\\])*$`);
+        const selectors = match[1]!.split(',').map((part) => part.replace(/\s+/g, ' ').trim());
+        if (!selectors.some((selector) => subject.test(selector) && !OPT_IN.test(selector)))
+          continue;
+        const edges = match[2]!.match(BORDER_DECLARATION) ?? [];
         if (edges.some((edge) => /--cinder-border(-muted|-strong)?\)/.test(edge))) found.push(name);
       }
     }

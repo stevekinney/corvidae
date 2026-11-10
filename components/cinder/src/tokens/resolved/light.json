@@ -1487,8 +1487,8 @@
   },
   "surface.canvas": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.995, 0, 255] },
-    "$description": "Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.995 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness.",
+    "$value": { "colorSpace": "oklch", "components": [0.975, 0, 255] },
+    "$description": "Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.975 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-canvas",

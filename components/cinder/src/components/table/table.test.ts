@@ -988,7 +988,11 @@ describe('CSS rule assertions — sort indicator and focus ring', () => {
     const tableRule = injectTableCssAndFind('.cinder-table-scroll > .cinder-table');
     expect(wrapperRule?.style.overflowX).toBe('auto');
     expect(wrapperRule?.style.borderRadius).toBe('var(--cinder-radius-lg)');
-    expect(tableRule?.style.minInlineSize).toBe('max-content');
+    // min-content, not max-content (COR-2311): prose cells wrap, the no-wrap headers set each
+    // column's minimum, and the wrapper scrolls only when those minimums do not fit.
+    expect(tableRule?.style.minInlineSize).toBe('min-content');
+    const headerRule = injectTableCssAndFind('.cinder-table__header-cell');
+    expect(headerRule?.style.whiteSpace).toBe('nowrap');
   });
 
   test('scroll wrapper focus-visible state declares a visible focus ring', () => {

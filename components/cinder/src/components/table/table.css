@@ -77,7 +77,7 @@
     border: 0;
     border-radius: 0;
     flex: 0 0 auto;
-    min-inline-size: max-content;
+    min-inline-size: min-content;
   }
 
   .cinder-table-scroll::after {
