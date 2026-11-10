@@ -8,6 +8,7 @@ import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
 import { request, type CliTarget } from './cli-client-transport.ts';
+import { executeConfiguration } from './cli-configuration.ts';
 import { executeDefinitions } from './cli-definitions.ts';
 import { executeMemory } from './cli-memory.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
@@ -183,6 +184,9 @@ const optionNames = new Set([
   'content',
   'query',
   'overwrite',
+  'secret-file',
+  'secret-stdin',
+  'no-open',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -436,6 +440,61 @@ const commandOptions: Record<string, readonly string[]> = {
     'secret-output',
     'limit',
   ],
+  providers: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'workspace',
+    'input',
+    'input-file',
+    'file',
+    'expected-revision',
+    'secret-file',
+    'secret-stdin',
+  ],
+  models: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  tools: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  'tool-sources': [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'workspace',
+    'input',
+    'input-file',
+    'file',
+    'expected-revision',
+    'no-open',
+  ],
+  plugins: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'workspace',
+    'expected-revision',
+  ],
+  skills: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  settings: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'workspace',
+    'input',
+    'input-file',
+    'file',
+    'expected-revision',
+  ],
 };
 
 const helpText: Record<string, string> = {
@@ -465,6 +524,14 @@ const helpText: Record<string, string> = {
   goals: 'Usage: interborough goals <list|get|create|cancel> [options]',
   hooks:
     'Usage: interborough hooks <list|get|create|update|replace-secret|delete|test|deliveries> [options]',
+  providers: 'Usage: interborough providers <list|connect|disconnect> [provider] [options]',
+  models: 'Usage: interborough models list [options]',
+  tools: 'Usage: interborough tools list [options]',
+  'tool-sources':
+    'Usage: interborough tool-sources <list|add|update|probe|authorize|remove> [id] [options]',
+  plugins: 'Usage: interborough plugins <list|enable|disable> [plugin] [options]',
+  skills: 'Usage: interborough skills list [options]',
+  settings: 'Usage: interborough settings <get|set|schema> [options]',
 };
 const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
@@ -497,7 +564,7 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     if (values.has(name)) return usage(`Duplicate option --${name}.`);
     const inline = equals === -1 ? undefined : argument.slice(equals + 1);
     const booleanOption =
-      ['all', 'help', 'no-input', 'yes', 'overwrite'].includes(name) ||
+      ['all', 'help', 'no-input', 'yes', 'overwrite', 'secret-stdin', 'no-open'].includes(name) ||
       ((name === 'wait' || name === 'include-runs') && command === 'workflows');
     if (booleanOption) {
       if (inline !== undefined) return usage(`Option --${name} does not take a value.`);
@@ -723,6 +790,12 @@ async function execute(
   if (parsed.command === 'assets') return executeAssets(resolved, parsed, dependencies);
   if (parsed.command === 'schedules' || parsed.command === 'goals' || parsed.command === 'hooks')
     return executeAutomation(resolved, parsed, dependencies);
+  if (
+    ['providers', 'models', 'tools', 'tool-sources', 'plugins', 'skills', 'settings'].includes(
+      parsed.command,
+    )
+  )
+    return executeConfiguration(resolved, parsed, dependencies);
   if (parsed.command === 'restart') {
     if (parsed.options.get('yes') !== true)
       throw makeCliFailure(
@@ -963,6 +1036,19 @@ export async function executeCli(
         ['remember', 'correct', 'forget'].includes(parsed.arguments[0] ?? '')) ||
       (parsed.command === 'assets' && parsed.arguments[0] === 'upload') ||
       (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
+      (['providers', 'tool-sources', 'plugins', 'settings'].includes(parsed.command) &&
+        [
+          'connect',
+          'disconnect',
+          'add',
+          'update',
+          'probe',
+          'authorize',
+          'remove',
+          'enable',
+          'disable',
+          'set',
+        ].includes(parsed.arguments[0] ?? '')) ||
       (parsed.command === 'runs' && parsed.arguments[0] === 'cancel') ||
       (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
         [
