@@ -2599,6 +2599,16 @@ export interface RuntimeComposition {
    * run its hooks composes them here (`run-hook-tiers.ts`).
    */
   composeRunHooks(tiers: RunHookTiers): HookRegistry<OperativeHookMap>;
+  /**
+   * COR-2299 — the taint seam of one run of `sessionId`: the taint `metadata` holds, and an
+   * `onTainted` that stores a new one. For a caller that builds a hook plan outside a run's start,
+   * as the scan of an approved call's result does.
+   */
+  sessionTaintSeam(
+    sessionId: string,
+    runId: string,
+    metadata: Readonly<Record<string, JSONValue>> | undefined,
+  ): SessionTaintSeam;
 }
 
 /** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
@@ -2609,6 +2619,11 @@ export interface BureauInvariantOptions {
    * guardrail invariant of its own for the run.
    */
   agentResolvesGuardrails?: boolean;
+  /**
+   * COR-2299 — the session taint the Bureau guardrails start from and write back to, for a plan
+   * built outside a run's start (an approved call's result scan). Absent, they start untainted.
+   */
+  sessionTaint?: SessionTaintSeam | undefined;
 }
 
 /**
@@ -3538,7 +3553,11 @@ async function buildRuntimeComposition(
         ? undefined
         : resolveGuardrailsConfiguration();
     if (guardrailsConfig) {
-      registerGuardrailInvariants(invariants, createGuardrails(guardrailsConfig));
+      const seam = invariantOptions?.sessionTaint;
+      registerGuardrailInvariants(
+        invariants,
+        createGuardrails(withSessionTaint(guardrailsConfig, seam, seam?.runId)),
+      );
     }
     return invariants;
   }
@@ -5907,6 +5926,7 @@ async function buildRuntimeComposition(
     createBureauInvariantHooks,
     bureauChildInvariants,
     composeRunHooks: composeHooks,
+    sessionTaintSeam: sessionTaintSeamFor,
     resolveSessionAgentRun,
   };
 

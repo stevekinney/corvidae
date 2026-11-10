@@ -40,6 +40,11 @@ export interface ScannedToolResult {
   readonly blocked: boolean;
   /** The tripwire a guardrail raised; the result is withheld, as in the loop. */
   readonly tripwire?: GuardrailTripwireError | undefined;
+  /**
+   * The scan itself failed, rather than a guardrail refusing the result, and the result was
+   * withheld (COR-2300). A guardrail that fails inside its own hook is a refusal, not this.
+   */
+  readonly failed?: boolean | undefined;
 }
 
 /** The message of a result withheld because the scan itself failed. */
@@ -104,8 +109,10 @@ export async function scanToolResult(
         ? {}
         : { reportGuardrail: options.reportGuardrail }),
     });
-    if (validated === undefined || validated === result) return { result, blocked: false };
-    return { result: validated, blocked: validated.error?.code === GUARDRAIL_BLOCKED_CODE };
+    // Read from the value the scan leaves, not from whether the reference changed: a hook may
+    // mutate the result in place into a blocked one and return nothing, or the same object.
+    const decided = validated ?? result;
+    return { result: decided, blocked: decided.error?.code === GUARDRAIL_BLOCKED_CODE };
   } catch (error) {
     if (error instanceof GuardrailTripwireError) {
       return {
@@ -114,6 +121,10 @@ export async function scanToolResult(
         tripwire: error,
       };
     }
-    return { result: guardrailBlockedResult(result, SCAN_FAILED_MESSAGE), blocked: true };
+    return {
+      result: guardrailBlockedResult(result, SCAN_FAILED_MESSAGE),
+      blocked: true,
+      failed: true,
+    };
   }
 }

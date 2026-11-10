@@ -58,8 +58,13 @@ function inspectResult(result: ToolExecutionResult): {
   const message = result.error?.message;
   if (message !== undefined && message !== '') texts.push(message);
   // COR-2299: an injection split across two strings (a streamed result's chunks, two fields) trips
-  // no detector leaf by leaf, so the model's whole view of the result is read once more, joined.
-  if (texts.length > 1) texts.push(texts.join(' '));
+  // no detector leaf by leaf, so the model's whole view of the result is read once more, joined:
+  // with nothing between them, which is how chunks of one text join and catches a split
+  // mid-word, and with a space, which catches a split at a word boundary.
+  if (texts.length > 1) {
+    const leaves = [...texts];
+    texts.push(leaves.join(''), leaves.join(' '));
+  }
   return { texts, uninspectable };
 }
 

@@ -115,7 +115,7 @@ export function* runWorkflowPark(
     const scanHooks = runDepsFrom(ctx.services).options.hooks;
     const step = state.pendingChildStepRecord?.step ?? state.cursor.step;
     const result: ToolExecutionResult = yield* ctx.memo(
-      `child-wait-scan-${state.cursor.step}-${request.toolCallId}`,
+      `child-wait-scan-${step}-${request.toolCallId}`,
       async () => {
         const scanned = await scanToolResult(answered, { hooks: scanHooks, conversation, step });
         return scanned.result;

@@ -122,6 +122,7 @@ import {
   scanToolResult,
   type OperativeHookMap,
 } from '@lostgradient/operative';
+import type { SessionTaintSeam } from './session-taint-seam';
 import {
   approvalDecisionMetadata,
   type ApprovalDecisionRecord,
@@ -18169,22 +18170,30 @@ async function constructBureau<const D extends AgentDefinitions>(
   /**
    * COR-2299 — the hook plan a catalog agent's run this process does not hold would run with:
    * Bureau's tier for the agent, the plugin tier, and the agent's own hooks, as a dispatch composes
-   * them. An agent that cannot be resolved falls back to Bureau's own guardrails alone, so the
-   * result is still scanned.
+   * them, each tracker seeded from the session's taint (`sessionTaint`) and writing a new one back.
+   * An agent that cannot be resolved falls back to Bureau's own guardrails alone, so the result is
+   * still scanned.
    */
-  async function catalogRunHookPlan(runId: string): Promise<HookRegistry<OperativeHookMap>> {
-    const agentName = runAttribution.get(runId)?.agentName;
+  async function catalogRunHookPlan(
+    runId: string,
+    sessionTaint: SessionTaintSeam,
+    reviewedAgentName: string | undefined,
+  ): Promise<HookRegistry<OperativeHookMap>> {
+    // A run this process restarted into has no attribution; its review still names the agent.
+    const agentName = runAttribution.get(runId)?.agentName ?? reviewedAgentName;
     const agent = agentName === undefined ? undefined : agentCatalog.find(agentName);
     if (agent !== undefined && hasDefinitionResolver(agent)) {
       try {
         const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('', {
           runId,
+          sessionTaint,
           ...(agentName === undefined ? {} : { agentName }),
           ...catalogRunGuardrailsContext(agent),
         });
         return runtime.composeRunHooks({
           bureau: runtime.createBureauInvariantHooks(undefined, {
             agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+            sessionTaint,
           }),
           agent: resolved.hooks,
         });
@@ -18193,7 +18202,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     return runtime.composeRunHooks({
-      bureau: runtime.createBureauInvariantHooks(),
+      bureau: runtime.createBureauInvariantHooks(undefined, { sessionTaint }),
       agent: undefined,
     });
   }
@@ -18201,25 +18210,49 @@ async function constructBureau<const D extends AgentDefinitions>(
   /**
    * COR-2299 — an approved call runs outside the run's step, so its result reaches the session
    * without the run loop's `validateToolResult` scan. Scanned here with the run's own hook plan (a
-   * run this process does not hold has Bureau's own guardrails), a hit writes the blocked result
-   * in its place, as the loop does; a scan that fails does too (COR-2300).
+   * run this process does not hold has one built from its agent, seeded from the session's
+   * persisted taint), a hit writes the blocked result in its place, as the loop does, and taints
+   * the session; the taint is stored before this returns. A scan that fails does the same
+   * (COR-2300).
    */
   async function scanApprovedToolResult(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     executed: ToolExecutionResult,
   ): Promise<ToolExecutionResult> {
-    const hooks = runHookPlans.get(review.runId) ?? (await catalogRunHookPlan(review.runId));
     let conversation = new Conversation(undefined, { runtime: runtimeServices });
+    let metadata: Record<string, JSONValue> | undefined;
     try {
       const stored = await runtime.sessionStore?.load(review.sessionId);
       if (stored !== undefined) {
         conversation = new Conversation(stored.conversationHistory, { runtime: runtimeServices });
+        metadata = stored.metadata;
       }
     } catch {
-      // The conversation only gives a detector its length; an unreadable session is scanned empty.
+      // The conversation only gives a detector its length; an unreadable session is scanned empty,
+      // and starts untainted in memory (a taint it raises is still stored).
     }
+    const seam = runtime.sessionTaintSeam(review.sessionId, review.runId, metadata);
+    const hooks =
+      runHookPlans.get(review.runId) ??
+      (await catalogRunHookPlan(review.runId, seam, review.agentName));
     const scanned = await scanToolResult(executed, { hooks, conversation, step: 0 });
     if (scanned.blocked) {
+      // A result a guardrail refused taints the session, and the trackers do it as they refuse. A
+      // tripwire, or a scan that failed before a tracker could, is recorded here; a session that
+      // already holds a taint keeps it (the write is compare-and-set), so this never publishes twice.
+      if (scanned.tripwire !== undefined || scanned.failed === true) {
+        await seam.onTainted({
+          reason:
+            scanned.tripwire === undefined
+              ? 'The guardrail scan of an approved call failed'
+              : `Guardrail tripwire on an approved call's result: ${scanned.tripwire.guardrailName}`,
+          detector: scanned.tripwire?.guardrailName ?? 'tool-result-scan',
+          category: scanned.tripwire?.category ?? 'detector-failure',
+          confidence: scanned.tripwire?.confidence ?? 1,
+          step: 0,
+          provenance: 'tool-result',
+        });
+      }
       diagnose({
         level: 'warn',
         scope: 'guardrails',
