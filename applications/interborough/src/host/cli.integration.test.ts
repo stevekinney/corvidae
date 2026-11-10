@@ -883,6 +883,12 @@ test('compiled binary performs revisioned provider configuration and rejects arg
     ),
   ).toHaveLength(1);
   expect(
+    productionRequests.filter(
+      (request) =>
+        new URL(request.url).pathname === '/host/plugins/openai' && request.method === 'PUT',
+    ),
+  ).toHaveLength(1);
+  expect(
     productionRequests.some(
       (request) =>
         new URL(request.url).pathname === '/host/providers/openai' && request.method === 'PUT',
