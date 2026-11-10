@@ -296,6 +296,7 @@ export async function runInstalled(
             json: true,
           },
           { args: ['workflows', 'start', 'installed-cli-workflow', '--wait'], json: true },
+          { args: ['schedules', 'create', '--file', scheduleFile], json: true },
           {
             args: ['schedules', 'create', '--file', scheduleFile],
             json: true,
