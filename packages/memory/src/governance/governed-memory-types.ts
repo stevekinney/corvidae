@@ -189,6 +189,19 @@ export interface MemoryRecallExclusion {
   readonly revision: string;
   readonly reason: MemoryRecallExclusionReason;
   readonly stage: MemoryPolicyFilter | MemoryRetrievalStage | 'budget' | 'admission';
+  /**
+   * Present on a `content-policy` exclusion: the recall detector that withheld the record. A
+   * detector that threw reports category `detector-failure` at confidence 1. The consumer judges
+   * the confidence against its own taint threshold.
+   */
+  readonly detection?: MemoryRecallDetection;
+}
+
+/** The recall detector finding behind a `content-policy` exclusion. */
+export interface MemoryRecallDetection {
+  readonly detector: string;
+  readonly category: string;
+  readonly confidence: number;
 }
 
 /** What one selected stage did: `applied`, `skipped` (nothing to do), or `unavailable` (no backing primitive). */

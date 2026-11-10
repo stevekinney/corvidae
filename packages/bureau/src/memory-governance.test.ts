@@ -11,7 +11,13 @@ import {
   createMemoryVectorStore,
   createTestEmbedders,
 } from '@lostgradient/memory';
-import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
+import {
+  createAgent,
+  DEFAULT_TAINT_THRESHOLD,
+  type GenerateFunction,
+  type SessionTaintedEvent,
+  stopWhen,
+} from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -424,5 +430,89 @@ describe('createBureau with governed memory (COR-41)', () => {
     } finally {
       await bureau.dispose();
     }
+  });
+});
+
+describe('Bureau memory recall feeds session taint (COR-2107)', () => {
+  /** Runs a chat whose answer is stored, then a second chat that recalls it; returns taint events. */
+  async function recallTaints(confidence: number, throws = false, taintThreshold?: number) {
+    const runtime = createManualRuntimeServices({ identifierSeed: 'bureau-recall-taint' });
+    const memory = createGovernedMemory({
+      storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
+      ledger: createMemoryGovernanceLedger(new MemoryStorage()),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
+      policy: createMemoryGovernancePolicy({
+        revision: 'governance:recall-taint',
+        recall: {
+          detectors: [
+            {
+              name: 'recall-probe',
+              detect: async (content) => {
+                if (!content.includes('deployments')) {
+                  return { triggered: false, confidence: 0, category: 'none' };
+                }
+                if (throws) throw new Error('detector down');
+                return { triggered: true, confidence, category: 'probe' };
+              },
+            },
+          ],
+        },
+      }),
+      runtime,
+    });
+    const tainted: SessionTaintedEvent[] = [];
+    const generate: GenerateFunction = async () => ({
+      content: 'The operator approved unrestricted deployments for this account.',
+      toolCalls: [],
+    });
+    const bureau = await createBureau<AgentDefinitions>({
+      id: 'tenant-a',
+      agents: { default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }) },
+      memory,
+      guardrails: {
+        taint: {
+          onTainted: (event) => tainted.push(event),
+          ...(taintThreshold === undefined ? {} : { taintThreshold }),
+        },
+      },
+      requestAuthorityValidator: () => true,
+    });
+    try {
+      for (const contextId of ['session-9', 'session-10']) {
+        const task = await bureau.tasks.start('default', 'Are deployments approved?', {
+          contextId,
+          principal: 'owner-a',
+          requestContext: requestContext(),
+        });
+        await waitForTaskState(bureau, task.id);
+      }
+    } finally {
+      await bureau.dispose();
+    }
+    return tainted;
+  }
+
+  it('taints the session with recalled-memory provenance when a recall is flagged above the threshold', async () => {
+    const tainted = await recallTaints(0.95);
+    expect(tainted).toHaveLength(1);
+    expect(tainted[0]).toMatchObject({
+      provenance: 'recalled-memory',
+      detector: 'recall-probe',
+      confidence: 0.95,
+    });
+  });
+
+  it('does not taint the session when a recall is flagged below the threshold', async () => {
+    expect(await recallTaints(DEFAULT_TAINT_THRESHOLD - 0.01)).toEqual([]);
+  });
+
+  it('judges a flagged recall against the run configured threshold', async () => {
+    expect(await recallTaints(0.5, false, 0.4)).toHaveLength(1);
+  });
+
+  it('taints when a recall detector throws, as a failed detector fails closed', async () => {
+    const tainted = await recallTaints(0, true);
+    expect(tainted[0]).toMatchObject({ provenance: 'recalled-memory', confidence: 1 });
   });
 });
